@@ -2,7 +2,7 @@
 //!
 //! The crate accepts OTLP trace batches in a narrow Rust representation, signs
 //! span-derived Chio receipts, appends them to a configured receipt store, and
-//! exposes the M10 high-cardinality attribute deny-list used before forwarding
+//! exposes the high-cardinality attribute deny-list used before forwarding
 //! span attributes to Prometheus-shaped sinks.
 
 pub mod denylist;
@@ -17,5 +17,6 @@ pub use ingress::{
     OtlpAttribute, OtlpGrpcIngress, OtlpGrpcTraceExport, OtlpResourceSpans, OtlpSpan,
 };
 pub use sink::{
-    OTelReceiptExportError, ReceiptStoreSink, ReceiptStoreSinkConfig, ReceiptStoreSinkSummary,
+    CanonicalChioReceipt, CanonicalReceiptSink, OTelReceiptExportError, ReceiptStoreSink,
+    ReceiptStoreSinkConfig, ReceiptStoreSinkSummary,
 };
