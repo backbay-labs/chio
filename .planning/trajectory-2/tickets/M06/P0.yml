@@ -36,18 +36,19 @@
 - id: M06.P0.T2
   milestone: M06
   phase: 0
-  title: Pin dhat dev-dep and bump Cargo.lock with single-version verification
+  title: Pin dhat workspace dev-dep, materialize chio-kernel dev-dep, and bump Cargo.lock with single-version verification
   status: review
   effort_days: 0.5
   owner_glob:
     - Cargo.toml
+    - crates/chio-kernel/Cargo.toml
   shared_paths:
     - Cargo.lock
   depends_on:
     - M06.P0.T1
   soft_deps: []
   gate_check:
-    cmd: grep -q 'dhat' Cargo.toml && cargo tree -d --workspace 2>&1 | tee /tmp/m06-tree.txt && ! grep -E '^(dashmap|arc-swap|wasmtime|prometheus|r2d2) v[0-9]' /tmp/m06-tree.txt | sort -u | awk '{print $1}' | uniq -d | grep -q .
+    cmd: "grep -q 'dhat' Cargo.toml && rg -q '^dhat = \\{ workspace = true \\}' crates/chio-kernel/Cargo.toml && rg -q '^name = \"dhat\"' Cargo.lock && cargo tree -d --workspace 2>&1 | tee /tmp/m06-tree.txt && ! grep -E '^(dashmap|arc-swap|wasmtime|prometheus|r2d2) v[0-9]' /tmp/m06-tree.txt | sort -u | awk '{print $1}' | uniq -d | grep -q ."
     timeout_seconds: 600
   worktree_branch: wave/W1/m06/p0.t2-pin-dhat-and-lockfile-bump
   agent_role: kernel-rust
