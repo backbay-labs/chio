@@ -112,12 +112,12 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Install cargo-mutants (pinned per Decision 12)
+      - name: Install cargo-mutants 25.x
         if: steps.forced.outputs.skip == 'false'
         run: |
           set -euo pipefail
-          # Decision 12: cargo-mutants pinned exactly; do not float.
-          cargo install cargo-mutants --version 25.3.1 --locked
+          # Keep cargo-mutants on the 25.x line; do not float to the next major.
+          cargo install cargo-mutants --version '~25' --locked
 
       - name: Verify shared 30-day fuzz/mutants budget
         if: steps.forced.outputs.skip == 'false'
@@ -260,11 +260,11 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Install cargo-mutants (pinned per Decision 12)
+      - name: Install cargo-mutants 25.x
         if: steps.forced.outputs.skip == 'false'
         run: |
           set -euo pipefail
-          cargo install cargo-mutants --version 25.3.1 --locked
+          cargo install cargo-mutants --version '~25' --locked
 
       - name: Verify shared 30-day fuzz/mutants budget
         if: steps.forced.outputs.skip == 'false'
