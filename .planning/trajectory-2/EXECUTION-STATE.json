@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-29T18:37:28.579792Z",
+  "last_checkpoint_at": "2026-04-29T18:45:13.167099Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -14,7 +14,7 @@
     "M01": {
       "status": "in_progress",
       "phase": "P0",
-      "owner_branch": "wave/W1/m01/p0.t1-pin-errors-and-lsp-deps",
+      "owner_branch": null,
       "trust_boundary": false
     },
     "M02": {

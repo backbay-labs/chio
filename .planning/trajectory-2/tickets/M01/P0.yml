@@ -26,7 +26,7 @@
   milestone: M01
   phase: 0
   title: Pin miette, tower-lsp, lsp-types, notify in workspace Cargo.toml (dashmap pinned by M06.P0.T1 per Wave-1 lock-bump chain; do not re-pin here)
-  status: review
+  status: merged
   effort_days: 0.5
   owner_glob:
     - Cargo.toml
@@ -44,9 +44,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: b7d56bc5c7916cfb9c41501815e8c2b02497edcb
-  merged_sha: null
+  merged_sha: 167dd352b558b17b477d698e4aaaf2507b6770ce
   opened_ts: "2026-04-29T18:26:01.477848Z"
-  merged_ts: null
+  merged_ts: "2026-04-29T18:44:14Z"
 
 - id: M01.P0.T2
   milestone: M01
