@@ -12,7 +12,7 @@
   milestone: M06
   phase: 0
   title: Open M06 audit doc with starting counts, reference-runner contract, and CanonicalBytes API surface decision (Clone vs !Clone; `Arc<CanonicalBytes>` is the sharing primitive)
-  status: blocked
+  status: review
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M06-perf-hardening.md
