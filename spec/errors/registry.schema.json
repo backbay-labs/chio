@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.chio.dev/errors/registry.schema.json",
+  "title": "Chio URN error registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "version",
+    "updated_at",
+    "domains",
+    "codes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.error-urn-registry.v1"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "updated_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "domains": {
+      "type": "array",
+      "minItems": 18,
+      "items": {
+        "$ref": "#/$defs/domain"
+      }
+    },
+    "codes": {
+      "type": "array",
+      "minItems": 40,
+      "items": {
+        "$ref": "#/$defs/code"
+      }
+    }
+  },
+  "$defs": {
+    "domainName": {
+      "type": "string",
+      "enum": [
+        "capability",
+        "policy",
+        "guard",
+        "attest",
+        "replay",
+        "provider",
+        "manifest",
+        "kernel",
+        "transport",
+        "cli",
+        "delegation",
+        "adversarial",
+        "threat",
+        "arena",
+        "economy",
+        "lineage",
+        "custody",
+        "weights"
+      ]
+    },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "class",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/domainName"
+        },
+        "class": {
+          "type": "string",
+          "enum": [
+            "core",
+            "reserved"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reserved_for": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "urn",
+        "domain",
+        "severity",
+        "summary",
+        "help",
+        "legacy_string_code",
+        "since",
+        "stability",
+        "consumed_by"
+      ],
+      "properties": {
+        "urn": {
+          "type": "string",
+          "pattern": "^urn:chio:error:(capability|policy|guard|attest|replay|provider|manifest|kernel|transport|cli|delegation|adversarial|threat|arena|economy|lineage|custody|weights):[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+        },
+        "domain": {
+          "$ref": "#/$defs/domainName"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "error",
+            "fatal"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "help": {
+          "type": "string",
+          "minLength": 1
+        },
+        "legacy_string_code": {
+          "type": "string",
+          "pattern": "^CHIO-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+        },
+        "jsonrpc_code": {
+          "type": "integer",
+          "enum": [
+            1000,
+            1001,
+            1002,
+            1100,
+            2100,
+            2101,
+            2102,
+            3100,
+            4100,
+            5100,
+            6100
+          ]
+        },
+        "since": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?$"
+        },
+        "stability": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "unstable",
+            "deprecated"
+          ]
+        },
+        "consumed_by": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      }
+    }
+  }
+}

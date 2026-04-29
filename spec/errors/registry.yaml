@@ -1,0 +1,660 @@
+schema: "chio.error-urn-registry.v1"
+version: "0.1.0"
+updated_at: "2026-04-29"
+domains:
+  - id: capability
+    class: core
+    description: "Capability token validation, scope, subject binding, and revocation failures."
+  - id: policy
+    class: core
+    description: "Policy load, compile, and decision failures."
+  - id: guard
+    class: core
+    description: "Native, data, external, and WASM guard pipeline failures."
+  - id: attest
+    class: core
+    description: "Receipt signing, evidence verification, and provenance failures."
+  - id: replay
+    class: core
+    description: "Replay corpus, fixture, and deterministic comparison failures."
+  - id: provider
+    class: core
+    description: "Provider adapter and tool-server failures."
+  - id: manifest
+    class: core
+    description: "Manifest schema, signature, and registration failures."
+  - id: kernel
+    class: core
+    description: "Runtime kernel session, request, budget, and internal failures."
+  - id: transport
+    class: core
+    description: "Wire protocol, HTTP, JSON-RPC, auth, and DPoP transport failures."
+  - id: cli
+    class: core
+    description: "Command-line parsing, local I/O, config, and rendering failures."
+  - id: delegation
+    class: reserved
+    reserved_for: "Recursive delegation and revocation oracle."
+    description: "Delegation chain and revocation oracle failures."
+  - id: adversarial
+    class: reserved
+    reserved_for: "Adversarial escape suite."
+    description: "Adversarial escape, mutation, and containment failures."
+  - id: threat
+    class: reserved
+    reserved_for: "Threat-model coverage checks."
+    description: "Threat model coverage and evidence classification failures."
+  - id: arena
+    class: reserved
+    reserved_for: "Arena replay coliseum."
+    description: "Arena replay, verdict, and fixture orchestration failures."
+  - id: economy
+    class: reserved
+    reserved_for: "Economic layer activation."
+    description: "Metering, market, settlement, and budget-accounting failures."
+  - id: lineage
+    class: reserved
+    reserved_for: "Lineage and provenance graph."
+    description: "Lineage graph, anchor, and ancestry failures."
+  - id: custody
+    class: reserved
+    reserved_for: "Hardware custody workflows."
+    description: "Hardware key, custody envelope, and quote custody failures."
+  - id: weights
+    class: reserved
+    reserved_for: "Model-card and weight custody workflows."
+    description: "Model-card, weight hash, and artifact integrity failures."
+codes:
+  - urn: "urn:chio:error:capability:scope-exceeded"
+    domain: capability
+    severity: error
+    summary: "Capability scope does not allow the requested tool, resource, or prompt."
+    help: "Issue a capability that explicitly grants the requested scope, or change the request to fit the granted scope."
+    legacy_string_code: "CHIO-KERNEL-OUT-OF-SCOPE-TOOL"
+    jsonrpc_code: 2100
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-cli
+      - chio-control-plane
+  - urn: "urn:chio:error:capability:expired"
+    domain: capability
+    severity: error
+    summary: "Capability token expired before the kernel evaluated the request."
+    help: "Obtain or issue a fresh time-bounded capability before retrying the operation."
+    legacy_string_code: "CHIO-KERNEL-CAPABILITY-EXPIRED"
+    jsonrpc_code: 2101
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-cli
+      - chio-control-plane
+  - urn: "urn:chio:error:capability:revoked"
+    domain: capability
+    severity: error
+    summary: "Capability token was revoked and must not be retried."
+    help: "Resolve the revocation reason and request a newly issued capability."
+    legacy_string_code: "CHIO-KERNEL-CAPABILITY-REVOKED"
+    jsonrpc_code: 2102
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-cli
+      - chio-control-plane
+  - urn: "urn:chio:error:capability:not-yet-valid"
+    domain: capability
+    severity: error
+    summary: "Capability token is not valid at the current evaluation time."
+    help: "Retry after the not-before timestamp or issue a capability with the intended validity window."
+    legacy_string_code: "CHIO-KERNEL-CAPABILITY-NOT-YET-VALID"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-cli
+  - urn: "urn:chio:error:capability:subject-mismatch"
+    domain: capability
+    severity: error
+    summary: "Capability subject does not match the requesting actor."
+    help: "Bind the capability to the correct subject DID or use credentials for the subject named by the token."
+    legacy_string_code: "CHIO-KERNEL-SUBJECT-MISMATCH"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-credentials
+  - urn: "urn:chio:error:capability:signature-invalid"
+    domain: capability
+    severity: fatal
+    summary: "Capability signature verification failed."
+    help: "Reject the capability, verify issuer trust, and reissue the token with canonical JSON signing."
+    legacy_string_code: "CHIO-KERNEL-INVALID-SIGNATURE"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-credentials
+  - urn: "urn:chio:error:policy:decision-denied"
+    domain: policy
+    severity: error
+    summary: "Policy evaluation denied the requested action."
+    help: "Inspect the policy rule path and update the request or policy inputs before retrying."
+    legacy_string_code: "CHIO-CLI-POLICY"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-policy
+      - chio-cli
+      - chio-control-plane
+  - urn: "urn:chio:error:policy:compile-failed"
+    domain: policy
+    severity: error
+    summary: "Policy document failed to compile."
+    help: "Fix the policy syntax or schema issue reported by the compiler and reload the policy."
+    legacy_string_code: "CHIO-CLI-POLICY"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-policy
+      - chio-cli
+  - urn: "urn:chio:error:policy:constraint-invalid"
+    domain: policy
+    severity: error
+    summary: "Policy constraint was syntactically valid but semantically invalid."
+    help: "Regenerate or edit the constraint so every referenced scope, resource, and operator is supported."
+    legacy_string_code: "CHIO-KERNEL-INVALID-CONSTRAINT"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-policy
+      - chio-kernel
+  - urn: "urn:chio:error:policy:governance-denied"
+    domain: policy
+    severity: error
+    summary: "Governance policy denied a governed transaction."
+    help: "Follow the governance approval path or remove the governed operation from the request."
+    legacy_string_code: "CHIO-KERNEL-GOVERNED-TRANSACTION-DENIED"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-governance
+      - chio-kernel
+  - urn: "urn:chio:error:guard:denied"
+    domain: guard
+    severity: error
+    summary: "Guard pipeline denied the request or response."
+    help: "Inspect the guard verdict and adjust the prompt, tool input, policy, or output before retrying."
+    legacy_string_code: "CHIO-KERNEL-GUARD-DENIED"
+    jsonrpc_code: 3100
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-guards
+      - chio-cli
+  - urn: "urn:chio:error:guard:input-redacted"
+    domain: guard
+    severity: warning
+    summary: "Guard redacted sensitive input before it crossed a trust boundary."
+    help: "Review the redaction receipt and provide lower-risk input if the tool requires the removed field."
+    legacy_string_code: "CHIO-GUARD-INPUT-REDACTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-data-guards
+      - chio-guards
+  - urn: "urn:chio:error:guard:output-redacted"
+    domain: guard
+    severity: warning
+    summary: "Guard redacted sensitive output before it crossed a trust boundary."
+    help: "Review the guard receipt and update the downstream consumer to handle redacted fields."
+    legacy_string_code: "CHIO-GUARD-OUTPUT-REDACTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-data-guards
+      - chio-guards
+  - urn: "urn:chio:error:guard:wasm-trap"
+    domain: guard
+    severity: fatal
+    summary: "WASM guard trapped during evaluation."
+    help: "Fail closed, inspect the guard bundle, and republish a guard that completes deterministically."
+    legacy_string_code: "CHIO-GUARD-WASM-TRAP"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-wasm-guards
+      - chio-guard-sdk
+  - urn: "urn:chio:error:attest:receipt-signing-failed"
+    domain: attest
+    severity: fatal
+    summary: "Kernel could not sign the receipt for a decision or tool call."
+    help: "Treat the operation as failed and repair the signing key, key store, or canonical payload."
+    legacy_string_code: "CHIO-KERNEL-RECEIPT-SIGNING-FAILED"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-attest-verify
+  - urn: "urn:chio:error:attest:quote-verification-failed"
+    domain: attest
+    severity: fatal
+    summary: "TEE quote verification failed."
+    help: "Reject the attestation and refresh the quote or verifier trust roots before retrying."
+    legacy_string_code: "CHIO-ATTEST-QUOTE-VERIFICATION-FAILED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-attest-verify
+      - chio-tee
+  - urn: "urn:chio:error:attest:provenance-missing"
+    domain: attest
+    severity: error
+    summary: "Required provenance evidence was missing from the receipt context."
+    help: "Regenerate the evidence bundle and include provenance before submitting the operation."
+    legacy_string_code: "CHIO-ATTEST-PROVENANCE-MISSING"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-attest-verify
+      - chio-otel-receipt-exporter
+  - urn: "urn:chio:error:replay:trace-not-found"
+    domain: replay
+    severity: error
+    summary: "Replay trace could not be found."
+    help: "Check the replay corpus path and regenerate the trace if it was not archived."
+    legacy_string_code: "CHIO-REPLAY-TRACE-NOT-FOUND"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-replay-corpus
+      - chio-cli
+  - urn: "urn:chio:error:replay:deterministic-mismatch"
+    domain: replay
+    severity: error
+    summary: "Replay produced a deterministic output mismatch."
+    help: "Compare the recorded receipt, model fixture, and guard bundle versions before accepting the replay."
+    legacy_string_code: "CHIO-REPLAY-DETERMINISTIC-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-replay-corpus
+      - chio-conformance
+  - urn: "urn:chio:error:replay:fixture-drift"
+    domain: replay
+    severity: warning
+    summary: "Replay fixture no longer matches the registry or schema it was recorded against."
+    help: "Regenerate the fixture from the current registry and rerun replay validation."
+    legacy_string_code: "CHIO-REPLAY-FIXTURE-DRIFT"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-replay-corpus
+      - chio-spec-codegen
+  - urn: "urn:chio:error:provider:tool-server-error"
+    domain: provider
+    severity: error
+    summary: "Tool server returned an adapter or execution error."
+    help: "Retry with bounded backoff only when the provider marks the failure as transient."
+    legacy_string_code: "CHIO-KERNEL-TOOL-SERVER"
+    jsonrpc_code: 5100
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-tool-call-fabric
+      - chio-provider-conformance
+  - urn: "urn:chio:error:provider:openai"
+    domain: provider
+    severity: error
+    summary: "OpenAI provider adapter returned a normalized provider error."
+    help: "Inspect the provider error details and retry only when the adapter marks the failure transient."
+    legacy_string_code: "CHIO-PROVIDER-OPENAI"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-openai-adapter
+      - chio-provider-conformance
+  - urn: "urn:chio:error:provider:anthropic"
+    domain: provider
+    severity: error
+    summary: "Anthropic provider adapter returned a normalized provider error."
+    help: "Inspect the provider error details and retry only when the adapter marks the failure transient."
+    legacy_string_code: "CHIO-PROVIDER-ANTHROPIC"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-anthropic-tools-adapter
+      - chio-provider-conformance
+  - urn: "urn:chio:error:provider:bedrock"
+    domain: provider
+    severity: error
+    summary: "Bedrock Converse provider adapter returned a normalized provider error."
+    help: "Inspect the provider error details and retry only when the adapter marks the failure transient."
+    legacy_string_code: "CHIO-PROVIDER-BEDROCK"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-bedrock-converse-adapter
+      - chio-provider-conformance
+  - urn: "urn:chio:error:manifest:schema-invalid"
+    domain: manifest
+    severity: error
+    summary: "Manifest did not validate against the expected schema."
+    help: "Fix the manifest shape and rerun schema validation before loading it."
+    legacy_string_code: "CHIO-CLI-YAML"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-manifest
+      - chio-cli
+      - chio-spec-validate
+  - urn: "urn:chio:error:manifest:signature-invalid"
+    domain: manifest
+    severity: fatal
+    summary: "Manifest signature verification failed."
+    help: "Reject the manifest and republish it with the expected signing key and canonical payload."
+    legacy_string_code: "CHIO-MANIFEST-SIGNATURE-INVALID"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-manifest
+      - chio-guard-registry
+  - urn: "urn:chio:error:manifest:tool-not-registered"
+    domain: manifest
+    severity: error
+    summary: "Requested tool is not registered in the active manifest."
+    help: "Register the tool in the manifest or request a tool that is present."
+    legacy_string_code: "CHIO-KERNEL-TOOL-NOT-REGISTERED"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-manifest
+      - chio-kernel
+  - urn: "urn:chio:error:manifest:resource-root-denied"
+    domain: manifest
+    severity: error
+    summary: "Requested resource root is not allowed by the manifest."
+    help: "Grant the resource root in the manifest or request a resource under an allowed root."
+    legacy_string_code: "CHIO-KERNEL-RESOURCE-ROOT-DENIED"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-manifest
+      - chio-kernel
+  - urn: "urn:chio:error:kernel:internal-error"
+    domain: kernel
+    severity: fatal
+    summary: "Kernel hit an internal error while evaluating the request."
+    help: "Retry with bounded backoff only after preserving the receipt and diagnostic context."
+    legacy_string_code: "CHIO-KERNEL-INTERNAL"
+    jsonrpc_code: 6100
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-cli
+  - urn: "urn:chio:error:kernel:session-not-initialized"
+    domain: kernel
+    severity: error
+    summary: "Request arrived before the session was initialized."
+    help: "Open a new session and complete initialization before retrying the operation."
+    legacy_string_code: "CHIO-KERNEL-UNKNOWN-SESSION"
+    jsonrpc_code: 1001
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-http-session
+  - urn: "urn:chio:error:kernel:session-already-exists"
+    domain: kernel
+    severity: error
+    summary: "Session creation attempted to reuse an existing session identifier."
+    help: "Choose a new session identifier or attach to the existing session."
+    legacy_string_code: "CHIO-KERNEL-SESSION-ALREADY-EXISTS"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-http-session
+  - urn: "urn:chio:error:kernel:request-incomplete"
+    domain: kernel
+    severity: error
+    summary: "Kernel request is missing required fields."
+    help: "Provide every required request field before dispatching the operation."
+    legacy_string_code: "CHIO-KERNEL-REQUEST-INCOMPLETE"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-core-types
+  - urn: "urn:chio:error:kernel:request-cancelled"
+    domain: kernel
+    severity: warning
+    summary: "Kernel request was cancelled before completion."
+    help: "Treat any partial tool output as invalid and retry with a new request if work is still required."
+    legacy_string_code: "CHIO-KERNEL-REQUEST-CANCELLED"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-tool-call-fabric
+  - urn: "urn:chio:error:kernel:budget-exhausted"
+    domain: kernel
+    severity: error
+    summary: "Kernel budget for the requested operation was exhausted."
+    help: "Retry only after replenishing the budget, widening the grant, or reconciling billing state."
+    legacy_string_code: "CHIO-KERNEL-BUDGET-EXHAUSTED"
+    jsonrpc_code: 4100
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-metering
+      - chio-cli
+  - urn: "urn:chio:error:transport:protocol-version-unsupported"
+    domain: transport
+    severity: error
+    summary: "Peer requested an unsupported protocol version."
+    help: "Negotiate a supported Chio protocol version before retrying."
+    legacy_string_code: "CHIO-CLI-TRANSPORT"
+    jsonrpc_code: 1000
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-http-core
+      - chio-mcp-edge
+      - chio-a2a-edge
+  - urn: "urn:chio:error:transport:invalid-request-shape"
+    domain: transport
+    severity: error
+    summary: "Request payload did not match the expected wire shape."
+    help: "Correct the JSON-RPC or HTTP request shape before retrying."
+    legacy_string_code: "CHIO-CLI-JSON"
+    jsonrpc_code: 1002
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-http-core
+      - chio-spec-validate
+  - urn: "urn:chio:error:transport:auth-missing-or-invalid"
+    domain: transport
+    severity: error
+    summary: "Transport authentication was missing, expired, or invalid."
+    help: "Refresh credentials and resend the request with valid transport authentication."
+    legacy_string_code: "CHIO-CLI-CREDENTIAL"
+    jsonrpc_code: 1100
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-http-core
+      - chio-credentials
+  - urn: "urn:chio:error:transport:http-failed"
+    domain: transport
+    severity: error
+    summary: "HTTP transport failed before the kernel could evaluate the request."
+    help: "Check endpoint reachability, TLS configuration, and response body diagnostics before retrying."
+    legacy_string_code: "CHIO-CLI-HTTP"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-http-core
+      - chio-cli
+  - urn: "urn:chio:error:transport:dpop-verification-failed"
+    domain: transport
+    severity: fatal
+    summary: "DPoP proof verification failed."
+    help: "Reject the request and require a fresh proof bound to the correct method, URI, and key."
+    legacy_string_code: "CHIO-KERNEL-DPOP-VERIFICATION-FAILED"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-http-core
+  - urn: "urn:chio:error:cli:io"
+    domain: cli
+    severity: error
+    summary: "CLI failed while reading or writing local data."
+    help: "Check the path, permissions, and filesystem state before retrying."
+    legacy_string_code: "CHIO-CLI-IO"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-cli
+      - chio-control-plane
+  - urn: "urn:chio:error:cli:json"
+    domain: cli
+    severity: error
+    summary: "CLI failed to parse or render JSON."
+    help: "Fix the JSON payload or output template and rerun the command."
+    legacy_string_code: "CHIO-CLI-JSON"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-cli
+      - chio-control-plane
+  - urn: "urn:chio:error:cli:yaml"
+    domain: cli
+    severity: error
+    summary: "CLI failed to parse or render YAML."
+    help: "Fix the YAML document and rerun the command."
+    legacy_string_code: "CHIO-CLI-YAML"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-cli
+      - chio-control-plane
+  - urn: "urn:chio:error:cli:sqlite"
+    domain: cli
+    severity: error
+    summary: "CLI SQLite store operation failed."
+    help: "Check the database path, schema version, and write permissions before retrying."
+    legacy_string_code: "CHIO-CLI-SQLITE"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-cli
+      - chio-store-sqlite
+  - urn: "urn:chio:error:cli:other"
+    domain: cli
+    severity: error
+    summary: "CLI returned an uncategorized compatibility error."
+    help: "Preserve the original message and migrate the call site to a specific registry code when touched."
+    legacy_string_code: "CHIO-CLI-OTHER"
+    since: "0.1.0"
+    stability: deprecated
+    consumed_by:
+      - chio-cli
+      - chio-control-plane
+  - urn: "urn:chio:error:delegation:chain-revoked"
+    domain: delegation
+    severity: error
+    summary: "Delegation chain includes a revoked link."
+    help: "Rebuild the chain from non-revoked grants before retrying delegated execution."
+    legacy_string_code: "CHIO-KERNEL-DELEGATION-CHAIN-REVOKED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel
+      - chio-federation
+  - urn: "urn:chio:error:adversarial:escape-detected"
+    domain: adversarial
+    severity: fatal
+    summary: "Adversarial suite detected an escape from the intended guard boundary."
+    help: "Fail the run, preserve artifacts, and tighten the guard or sandbox before rerunning."
+    legacy_string_code: "CHIO-ADVERSARIAL-ESCAPE-DETECTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-conformance
+      - chio-guards
+  - urn: "urn:chio:error:threat:coverage-gap"
+    domain: threat
+    severity: warning
+    summary: "Threat model coverage check found an uncovered failure mode."
+    help: "Add a mapped test, fixture, or documented deferral before closing the coverage finding."
+    legacy_string_code: "CHIO-THREAT-COVERAGE-GAP"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-conformance
+      - chio-spec-validate
+  - urn: "urn:chio:error:arena:replay-divergence"
+    domain: arena
+    severity: error
+    summary: "Arena replay produced a verdict divergence."
+    help: "Compare the replay receipt, policy, guard bundle, and provider fixture before accepting the run."
+    legacy_string_code: "CHIO-ARENA-REPLAY-DIVERGENCE"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-replay-corpus
+      - chio-conformance
+  - urn: "urn:chio:error:economy:metering-unavailable"
+    domain: economy
+    severity: error
+    summary: "Metering or balance state was unavailable for an economic decision."
+    help: "Retry after the metering backend or settlement ledger is reachable and current."
+    legacy_string_code: "CHIO-ECONOMY-METERING-UNAVAILABLE"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-metering
+      - chio-settle
+      - chio-credit
+  - urn: "urn:chio:error:lineage:ancestor-missing"
+    domain: lineage
+    severity: error
+    summary: "Lineage graph references an ancestor that cannot be resolved."
+    help: "Repair the lineage edge or import the missing receipt before accepting the graph."
+    legacy_string_code: "CHIO-LINEAGE-ANCESTOR-MISSING"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-anchor
+      - chio-otel-receipt-exporter
+  - urn: "urn:chio:error:custody:hardware-key-unavailable"
+    domain: custody
+    severity: fatal
+    summary: "Required hardware custody key was unavailable."
+    help: "Do not fall back to a software key; restore the custody key path and retry."
+    legacy_string_code: "CHIO-CUSTODY-HARDWARE-KEY-UNAVAILABLE"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-tee
+      - chio-attest-verify
+  - urn: "urn:chio:error:weights:model-card-missing"
+    domain: weights
+    severity: error
+    summary: "Model weights or runtime artifact lacks a required model card."
+    help: "Attach the signed model card and verify its hash before running the workload."
+    legacy_string_code: "CHIO-WEIGHTS-MODEL-CARD-MISSING"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-tee-frame
+      - chio-attest-verify
