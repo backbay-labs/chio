@@ -11,6 +11,9 @@
 #![cfg(feature = "wasmtime-runtime")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+#[path = "support/wasm_examples.rs"]
+mod wasm_examples;
+
 use std::collections::HashMap;
 
 use chio_wasm_guards::abi::{GuardRequest, GuardVerdict, WasmGuardAbi};
@@ -23,17 +26,12 @@ use chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend;
 
 /// Load an example guard WASM binary by crate artifact name.
 fn load_example_wasm(name: &str) -> Vec<u8> {
-    let path = format!(
-        "{}/../../target/wasm32-unknown-unknown/release/{}.wasm",
-        env!("CARGO_MANIFEST_DIR"),
-        name
-    );
-    std::fs::read(&path).unwrap_or_else(|e| {
-        panic!(
-            "Missing .wasm at {path}: {e}. Build with: \
-             cargo build --target wasm32-unknown-unknown --release -p <example-crate>"
-        )
-    })
+    let package = match name {
+        "chio_example_tool_gate" => "chio-example-tool-gate",
+        "chio_example_enriched_inspector" => "chio-example-enriched-inspector",
+        other => panic!("unknown Rust example guard artifact: {other}"),
+    };
+    wasm_examples::load_rust_example_wasm(package, name)
 }
 
 /// Create a minimal guard request with only a tool name set.

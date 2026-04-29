@@ -1,0 +1,84 @@
+# M06 Phase 0 - Wave-opener pins and audit doc.
+# Source of truth: .planning/trajectory-2/06-performance-hardening-pack.md
+# (Phases section, P0 bullets). Wave: W1 (foundation).
+#
+# M06 is determinism-safe: M01 canonical-JSON vectors lock byte-equivalence
+# for every receipt path the milestone touches. P0 establishes the audit
+# doc and pins workspace dev-deps; no behaviour change yet.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M06.P0.T1
+  milestone: M06
+  phase: 0
+  title: Open M06 audit doc with starting counts, reference-runner contract, and CanonicalBytes API surface decision (Clone vs !Clone; `Arc<CanonicalBytes>` is the sharing primitive)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/audits/M06-perf-hardening.md
+  shared_paths: []
+  depends_on: []
+  soft_deps:
+    - "trajectory-1 M01 canonical-JSON vectors live at spec/vectors/canonical_json/ and are the byte-equivalence oracle for CanonicalBytes"
+    - "trajectory-1 M05.P3.T4 bench-regression gate consumes M06's new Criterion harnesses without re-cutting"
+  gate_check:
+    cmd: test -f .planning/audits/M06-perf-hardening.md && grep -q 'canonical_json_bytes' .planning/audits/M06-perf-hardening.md && grep -q 'InstancePre' .planning/audits/M06-perf-hardening.md && grep -q 'r2d2' .planning/audits/M06-perf-hardening.md && grep -qE 'CanonicalBytes.*(Clone|!Clone)' .planning/audits/M06-perf-hardening.md
+    timeout_seconds: 60
+  worktree_branch: wave/W1/m06/p0.t1-open-perf-audit-doc
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P0.T2
+  milestone: M06
+  phase: 0
+  title: Pin dhat dev-dep and bump Cargo.lock with single-version verification
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - Cargo.toml
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M06.P0.T1
+  soft_deps: []
+  gate_check:
+    cmd: grep -q 'dhat' Cargo.toml && cargo tree -d --workspace 2>&1 | tee /tmp/m06-tree.txt && ! grep -E '^(dashmap|arc-swap|wasmtime|prometheus|r2d2) v[0-9]' /tmp/m06-tree.txt | sort -u | awk '{print $1}' | uniq -d | grep -q .
+    timeout_seconds: 600
+  worktree_branch: wave/W1/m06/p0.t2-pin-dhat-and-lockfile-bump
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P0.T3
+  milestone: M06
+  phase: 0
+  title: Document bench reference-runner contract for M06 harnesses in audit doc
+  status: pending
+  effort_days: 0.25
+  owner_glob:
+    - .planning/audits/M06-perf-hardening.md
+  shared_paths: []
+  depends_on:
+    - M06.P0.T1
+  soft_deps:
+    - "trajectory-1 M05 reference runner contract: 4-core Linux, in-memory stores, warm cache, criterion 100-sample median, 95 percent CI on the diff"
+  gate_check:
+    cmd: grep -q '4-core Linux' .planning/audits/M06-perf-hardening.md && grep -q '95 percent' .planning/audits/M06-perf-hardening.md
+    timeout_seconds: 60
+  worktree_branch: wave/W1/m06/p0.t3-bench-reference-runner-contract
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
