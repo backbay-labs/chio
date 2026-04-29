@@ -64,6 +64,13 @@ use std::path::{Path, PathBuf};
 
 use typify::{TypeSpace, TypeSpaceSettings};
 
+mod errors_pass;
+
+pub use errors_pass::{
+    codegen_error_codes, render_error_codes, ERRORS_GENERATED_DIR, ERROR_CODES_OUTPUT,
+    ERROR_REGISTRY_INPUT,
+};
+
 /// Canonical header stamped onto every regenerated Rust source file.
 ///
 /// The phrasing is matched exactly by
@@ -100,6 +107,8 @@ pub enum CodegenError {
     Typify(PathBuf, String),
     /// The token stream emitted by typify did not parse as a `syn::File`.
     SynParse(syn::Error),
+    /// The error registry YAML could not be loaded or validated.
+    Registry(PathBuf, String),
     /// The schemas directory did not exist on disk.
     SchemasDirMissing(PathBuf),
 }
@@ -116,6 +125,13 @@ impl fmt::Display for CodegenError {
                 write!(f, "typify rejected schema {}: {msg}", path.display())
             }
             Self::SynParse(err) => write!(f, "generated tokens did not parse: {err}"),
+            Self::Registry(path, msg) => {
+                write!(
+                    f,
+                    "error registry load failed for {}: {msg}",
+                    path.display()
+                )
+            }
             Self::SchemasDirMissing(path) => {
                 write!(f, "schemas directory does not exist: {}", path.display())
             }
@@ -256,7 +272,7 @@ fn is_schema_json(path: &Path) -> bool {
     name.ends_with(".schema.json")
 }
 
-fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Ok(existing) = fs::read(path) {
         if existing == bytes {
             return Ok(());
