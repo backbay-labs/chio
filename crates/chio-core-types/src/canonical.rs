@@ -16,11 +16,88 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use core::cmp::Ordering;
+use core::marker::PhantomData;
 
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::{Error, Result};
+
+/// Type-level witness for bytes produced by the canonical JSON serializer.
+///
+/// `CanonicalBytes<CanonicalJsonWitness>` can only be constructed through
+/// this module's canonical JSON serializer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct CanonicalJsonWitness;
+
+/// Canonical JSON bytes paired with a phantom validation witness.
+///
+/// The wrapped buffer is immutable once constructed, so downstream signing,
+/// storage, and export paths can share it without reserializing or risking
+/// accidental mutation.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CanonicalBytes<W = CanonicalJsonWitness> {
+    bytes: Vec<u8>,
+    witness: PhantomData<W>,
+}
+
+impl CanonicalBytes<CanonicalJsonWitness> {
+    /// Serialize a value to canonical JSON bytes and wrap them with a witness.
+    pub fn new<T: Serialize>(value: &T) -> Result<Self> {
+        Self::from_serializable(value)
+    }
+
+    /// Serialize a value to canonical JSON bytes and wrap them with a witness.
+    pub fn from_serializable<T: Serialize>(value: &T) -> Result<Self> {
+        let bytes = canonical_json_bytes(value)?;
+        Ok(Self::from_canonical_bytes(bytes))
+    }
+
+    /// Canonicalize a JSON value and wrap the resulting bytes with a witness.
+    pub fn from_value(value: &Value) -> Result<Self> {
+        let bytes = canonicalize(value)?.into_bytes();
+        Ok(Self::from_canonical_bytes(bytes))
+    }
+}
+
+impl<W> CanonicalBytes<W> {
+    fn from_canonical_bytes(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            witness: PhantomData,
+        }
+    }
+
+    /// Borrow the canonical JSON byte buffer.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Consume the wrapper and return the canonical JSON byte buffer.
+    #[must_use]
+    pub fn into_vec(self) -> Vec<u8> {
+        self.bytes
+    }
+
+    /// Return the byte length of the canonical JSON buffer.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+
+    /// Return true when the canonical JSON buffer is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+}
+
+impl<W> AsRef<[u8]> for CanonicalBytes<W> {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
 
 /// Serialize a value to canonical JSON bytes (RFC 8785).
 ///
@@ -468,6 +545,31 @@ mod tests {
         let bytes = canonical_json_bytes(&value).unwrap();
         let string = canonical_json_string(&value).unwrap();
         assert_eq!(bytes, string.as_bytes());
+    }
+
+    #[test]
+    fn canonical_bytes_newtype_matches_existing_bytes() -> Result<()> {
+        let value = serde_json::json!({"z": 1, "a": [2, 3]});
+        let wrapped = CanonicalBytes::new(&value)?;
+        let bytes = canonical_json_bytes(&value)?;
+
+        assert_eq!(wrapped.as_bytes(), bytes.as_slice());
+        assert_eq!(wrapped.len(), bytes.len());
+        assert!(!wrapped.is_empty());
+        assert_eq!(wrapped.clone().into_vec(), bytes);
+
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_bytes_from_value_matches_canonicalizer() -> Result<()> {
+        let value = serde_json::json!({"outer": {"b": true, "a": null}});
+        let wrapped = CanonicalBytes::from_value(&value)?;
+        let canonical = canonicalize(&value)?;
+
+        assert_eq!(wrapped.as_ref(), canonical.as_bytes());
+
+        Ok(())
     }
 
     // (Actual signing tests live in crypto.rs; this just confirms the output

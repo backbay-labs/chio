@@ -30,7 +30,9 @@ pub mod receipt;
 pub mod runtime_attestation;
 pub mod session;
 
-pub use canonical::{canonical_json_bytes, canonical_json_string, canonicalize};
+pub use canonical::{
+    canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
+};
 pub use capability::{
     canonicalize_attestation_verifier, validate_attenuation, validate_delegation_chain,
     Attenuation, AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule,
