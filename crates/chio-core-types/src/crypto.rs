@@ -37,6 +37,7 @@
 
 use alloc::format;
 use alloc::string::{String, ToString};
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use ed25519_dalek::{
@@ -46,7 +47,11 @@ use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::canonical::{CanonicalBytes, CanonicalJsonWitness};
 use crate::error::{Error, Result};
+
+/// Shared canonical JSON bytes suitable for signing and verification.
+pub type SharedCanonicalBytes = Arc<CanonicalBytes<CanonicalJsonWitness>>;
 
 // ---------------------------------------------------------------------------
 // SigningAlgorithm
@@ -177,9 +182,24 @@ impl Keypair {
     /// Returns the signature and the canonical bytes that were signed, so the
     /// caller can store or transmit them alongside the signature.
     pub fn sign_canonical<T: Serialize>(&self, value: &T) -> Result<(Signature, Vec<u8>)> {
-        let bytes = canonical_json_bytes(value)?;
-        let sig = self.sign(&bytes);
-        Ok((sig, bytes))
+        let signed = self.sign_canonical_shared(value)?;
+        Ok(signed.into_signature_and_bytes())
+    }
+
+    /// Sign a serializable value after converting it to shared canonical JSON.
+    ///
+    /// The returned payload carries the exact canonical bytes behind an
+    /// `Arc`, allowing downstream code to reuse the signed representation.
+    pub fn sign_canonical_shared<T: Serialize>(&self, value: &T) -> Result<SignedCanonicalPayload> {
+        let canonical = canonical_json_shared_bytes(value)?;
+        Ok(self.sign_shared_canonical(canonical))
+    }
+
+    /// Sign shared canonical JSON bytes without reserializing the payload.
+    #[must_use]
+    pub fn sign_shared_canonical(&self, canonical: SharedCanonicalBytes) -> SignedCanonicalPayload {
+        let signature = self.sign(canonical.as_bytes());
+        SignedCanonicalPayload::new(signature, canonical)
     }
 
     #[must_use]
@@ -385,8 +405,28 @@ impl PublicKey {
 
     /// Verify a signature over the canonical JSON form of a serializable value.
     pub fn verify_canonical<T: Serialize>(&self, value: &T, signature: &Signature) -> Result<bool> {
-        let bytes = canonical_json_bytes(value)?;
-        Ok(self.verify(&bytes, signature))
+        let canonical = canonical_json_shared_bytes(value)?;
+        Ok(self.verify_shared_canonical(&canonical, signature))
+    }
+
+    /// Verify a signature over shared canonical JSON bytes.
+    #[must_use]
+    pub fn verify_shared_canonical(
+        &self,
+        canonical: &SharedCanonicalBytes,
+        signature: &Signature,
+    ) -> bool {
+        self.verify_canonical_bytes(canonical.as_ref(), signature)
+    }
+
+    /// Verify a signature over canonical JSON bytes without reserializing.
+    #[must_use]
+    pub fn verify_canonical_bytes(
+        &self,
+        canonical: &CanonicalBytes<CanonicalJsonWitness>,
+        signature: &Signature,
+    ) -> bool {
+        self.verify(canonical.as_bytes(), signature)
     }
 
     /// Hex encoding, with algorithm prefix for non-Ed25519 keys.
@@ -588,6 +628,55 @@ impl Signature {
     }
 }
 
+/// Detached signature paired with the shared canonical bytes that were signed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignedCanonicalPayload {
+    signature: Signature,
+    canonical: SharedCanonicalBytes,
+}
+
+impl SignedCanonicalPayload {
+    /// Build a signed canonical payload from a signature and shared bytes.
+    #[must_use]
+    pub fn new(signature: Signature, canonical: SharedCanonicalBytes) -> Self {
+        Self {
+            signature,
+            canonical,
+        }
+    }
+
+    /// Borrow the detached signature.
+    #[must_use]
+    pub fn signature(&self) -> &Signature {
+        &self.signature
+    }
+
+    /// Borrow the shared canonical JSON bytes.
+    #[must_use]
+    pub fn canonical(&self) -> &SharedCanonicalBytes {
+        &self.canonical
+    }
+
+    /// Borrow the signed canonical JSON byte slice.
+    #[must_use]
+    pub fn canonical_bytes(&self) -> &[u8] {
+        self.canonical.as_bytes()
+    }
+
+    /// Consume the payload into its signature and shared canonical bytes.
+    #[must_use]
+    pub fn into_parts(self) -> (Signature, SharedCanonicalBytes) {
+        (self.signature, self.canonical)
+    }
+
+    /// Consume the payload into the compatibility tuple shape.
+    #[must_use]
+    pub fn into_signature_and_bytes(self) -> (Signature, Vec<u8>) {
+        let (signature, canonical) = self.into_parts();
+        (signature, canonical.as_bytes().to_vec())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SigningBackend
 // ---------------------------------------------------------------------------
@@ -613,6 +702,14 @@ pub trait SigningBackend: Send + Sync {
 
     /// Produce a detached signature over `message`.
     fn sign_bytes(&self, message: &[u8]) -> Result<Signature>;
+
+    /// Produce a detached signature over canonical JSON bytes.
+    fn sign_canonical_bytes(
+        &self,
+        canonical: &CanonicalBytes<CanonicalJsonWitness>,
+    ) -> Result<Signature> {
+        self.sign_bytes(canonical.as_bytes())
+    }
 }
 
 /// Sign the canonical JSON form of `value` with the given backend.
@@ -625,9 +722,30 @@ pub fn sign_canonical_with_backend<T: Serialize>(
     backend: &dyn SigningBackend,
     value: &T,
 ) -> Result<(Signature, Vec<u8>)> {
-    let bytes = canonical_json_bytes(value)?;
-    let sig = backend.sign_bytes(&bytes)?;
-    Ok((sig, bytes))
+    let signed = sign_canonical_with_backend_shared(backend, value)?;
+    Ok(signed.into_signature_and_bytes())
+}
+
+/// Sign shared canonical JSON bytes with the given backend.
+///
+/// The returned payload keeps the exact bytes behind an `Arc` so callers can
+/// share the signed representation without copying or reserializing.
+pub fn sign_shared_canonical_with_backend(
+    backend: &dyn SigningBackend,
+    canonical: SharedCanonicalBytes,
+) -> Result<SignedCanonicalPayload> {
+    let signature = backend.sign_canonical_bytes(canonical.as_ref())?;
+    Ok(SignedCanonicalPayload::new(signature, canonical))
+}
+
+/// Sign the canonical JSON form of `value` with the given backend and keep the
+/// canonical byte sequence shareable.
+pub fn sign_canonical_with_backend_shared<T: Serialize>(
+    backend: &dyn SigningBackend,
+    value: &T,
+) -> Result<SignedCanonicalPayload> {
+    let canonical = canonical_json_shared_bytes(value)?;
+    sign_shared_canonical_with_backend(backend, canonical)
 }
 
 /// Ed25519 [`SigningBackend`] wrapping the historical [`Keypair`].
@@ -876,6 +994,11 @@ pub fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>> {
     crate::canonical::canonical_json_bytes(value)
 }
 
+/// Serialize a value to shared canonical JSON bytes.
+pub fn canonical_json_shared_bytes<T: Serialize>(value: &T) -> Result<SharedCanonicalBytes> {
+    Ok(Arc::new(CanonicalBytes::from_serializable(value)?))
+}
+
 /// Serialize a value to a canonical JSON string (RFC 8785 / JCS).
 pub fn canonical_json_string<T: Serialize>(value: &T) -> Result<String> {
     crate::canonical::canonical_json_string(value)
@@ -974,6 +1097,46 @@ mod tests {
         let (sig, _bytes) = kp.sign_canonical(&value).unwrap();
         let valid = kp.public_key().verify_canonical(&value, &sig).unwrap();
         assert!(valid);
+    }
+
+    #[test]
+    fn sign_canonical_shared_returns_shared_canonical_bytes() -> Result<()> {
+        let kp = Keypair::from_seed(&[7u8; 32]);
+        let value = serde_json::json!({"b": 2, "a": 1});
+        let signed = kp.sign_canonical_shared(&value)?;
+
+        assert_eq!(signed.canonical_bytes(), br#"{"a":1,"b":2}"#);
+        assert!(kp
+            .public_key()
+            .verify_shared_canonical(signed.canonical(), signed.signature()));
+
+        let shared = signed.canonical().clone();
+        assert!(Arc::ptr_eq(signed.canonical(), &shared));
+
+        let (legacy_signature, legacy_bytes) = kp.sign_canonical(&value)?;
+        assert_eq!(&legacy_signature, signed.signature());
+        assert_eq!(legacy_bytes, signed.canonical_bytes());
+
+        Ok(())
+    }
+
+    #[test]
+    fn backend_signing_reuses_supplied_shared_canonical_bytes() -> Result<()> {
+        let backend = Ed25519Backend::new(Keypair::from_seed(&[9u8; 32]));
+        let value = serde_json::json!({"z": 0, "a": [true]});
+        let canonical = canonical_json_shared_bytes(&value)?;
+        let signed = sign_shared_canonical_with_backend(&backend, canonical.clone())?;
+
+        assert!(Arc::ptr_eq(&canonical, signed.canonical()));
+        assert!(backend
+            .public_key()
+            .verify_shared_canonical(signed.canonical(), signed.signature()));
+
+        let (legacy_signature, legacy_bytes) = sign_canonical_with_backend(&backend, &value)?;
+        assert_eq!(&legacy_signature, signed.signature());
+        assert_eq!(legacy_bytes, signed.canonical_bytes());
+
+        Ok(())
     }
 
     #[test]

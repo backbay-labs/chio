@@ -100,7 +100,9 @@ pub use autonomy::{
     CHIO_AUTONOMOUS_ROLLBACK_PLAN_SCHEMA, CHIO_CAPITAL_POOL_OPTIMIZATION_SCHEMA,
     CHIO_CAPITAL_POOL_SIMULATION_REPORT_SCHEMA,
 };
-pub use canonical::{canonical_json_bytes, canonical_json_string, canonicalize};
+pub use canonical::{
+    canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
+};
 pub use capability::{
     Attenuation, AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule,
     CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, DelegationLink,
@@ -166,7 +168,12 @@ pub use credit::{
     MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT, MAX_CREDIT_PROVIDER_LOSS_LIMIT,
     MAX_EXPOSURE_LEDGER_DECISION_LIMIT, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT,
 };
-pub use crypto::{sha256_hex, Keypair, PublicKey, Signature};
+pub use crypto::{
+    canonical_json_shared_bytes, sha256_hex, sign_canonical_with_backend,
+    sign_canonical_with_backend_shared, sign_shared_canonical_with_backend, Ed25519Backend,
+    Keypair, PublicKey, SharedCanonicalBytes, Signature, SignedCanonicalPayload, SigningAlgorithm,
+    SigningBackend,
+};
 pub use error::Error;
 pub use extension::{
     negotiate_extension, validate_extension_inventory, validate_extension_manifest,
