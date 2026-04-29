@@ -147,9 +147,10 @@ Eight agents in parallel:
 ### Round 4 close-out pass (this turn)
 
 - Removed `dashmap` from M01.P0.T1's pin list (E4-flagged residue
-  from F2's partial application). M06.P0.T1 owns the dashmap pin per
-  Wave-1 lock-bump chain; M01.P0.T1 gate_check now asserts that no
-  duplicate dashmap pin appears in Cargo.toml.
+  from F2's partial application). M06.P0.T2 owns the watched dashmap
+  single-version check per the Wave-1 lock-bump chain; M01.P0.T1
+  gate_check now asserts that no duplicate dashmap pin appears in
+  Cargo.toml.
 - Manifest regenerated: 325 tickets, 420.25 effort-days, 61 per-phase
   files, 8,355 lines.
 - Wrote this Round 4 CHANGELOG entry.
