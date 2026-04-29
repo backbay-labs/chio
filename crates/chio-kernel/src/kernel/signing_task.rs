@@ -15,9 +15,10 @@
 //! The existing synchronous `build_and_sign_receipt` helper in
 //! `kernel/responses.rs` is unchanged. Internal call sites (deny-receipt
 //! builders, child-receipt builders, federation cosign hook) keep their inline
-//! path. The mpsc path delegates to the same `chio_kernel_core::sign_receipt`
-//! portable helper, so receipt bytes are byte-identical across the two paths.
-//! Persistence stays inline; only the signature step crosses the channel.
+//! path. The mpsc path signs the same canonical receipt body bytes through the
+//! shared canonical-byte signing API, so receipt bytes are byte-identical across
+//! the two paths. Persistence stays inline; only the signature step crosses the
+//! channel.
 //!
 //! ## Crash recovery contract
 //!
@@ -46,6 +47,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+use chio_core::crypto::{
+    canonical_json_shared_bytes, sign_shared_canonical_with_backend, Ed25519Backend, Signature,
+    SigningAlgorithm, SigningBackend,
+};
 use tokio::runtime::Handle;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -454,15 +459,55 @@ async fn run_signing_task(keypair: Keypair, mut receiver: mpsc::Receiver<SignReq
 /// receipts produced via the channel are byte-identical to receipts
 /// produced via `build_and_sign_receipt`.
 fn sign_one(keypair: &Keypair, body: ChioReceiptBody) -> Result<ChioReceipt, KernelError> {
-    let backend = chio_core::crypto::Ed25519Backend::new(keypair.clone());
-    chio_kernel_core::sign_receipt(body, &backend).map_err(|error| {
-        use chio_kernel_core::ReceiptSigningError;
-        let message = match error {
-            ReceiptSigningError::KernelKeyMismatch => {
-                "kernel signing key does not match receipt body kernel_key".to_string()
-            }
-            ReceiptSigningError::SigningFailed(reason) => reason,
-        };
-        KernelError::ReceiptSigningFailed(message)
-    })
+    let backend = Ed25519Backend::new(keypair.clone());
+    sign_one_with_backend(body, &backend)
+}
+
+fn sign_one_with_backend(
+    body: ChioReceiptBody,
+    backend: &dyn SigningBackend,
+) -> Result<ChioReceipt, KernelError> {
+    let backend_key = backend.public_key();
+    if body.kernel_key.algorithm() != backend_key.algorithm() || body.kernel_key != backend_key {
+        return Err(KernelError::ReceiptSigningFailed(
+            "kernel signing key does not match receipt body kernel_key".to_string(),
+        ));
+    }
+
+    let canonical = canonical_json_shared_bytes(&body)
+        .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?;
+    let (signature, _canonical) = sign_shared_canonical_with_backend(backend, canonical)
+        .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?
+        .into_parts();
+
+    Ok(receipt_from_signed_body(
+        body,
+        Some(backend.algorithm()),
+        signature,
+    ))
+}
+
+fn receipt_from_signed_body(
+    body: ChioReceiptBody,
+    algorithm: Option<SigningAlgorithm>,
+    signature: Signature,
+) -> ChioReceipt {
+    ChioReceipt {
+        id: body.id,
+        timestamp: body.timestamp,
+        capability_id: body.capability_id,
+        tool_server: body.tool_server,
+        tool_name: body.tool_name,
+        action: body.action,
+        decision: body.decision,
+        content_hash: body.content_hash,
+        policy_hash: body.policy_hash,
+        evidence: body.evidence,
+        metadata: body.metadata,
+        trust_level: body.trust_level,
+        tenant_id: body.tenant_id,
+        kernel_key: body.kernel_key,
+        algorithm,
+        signature,
+    }
 }
