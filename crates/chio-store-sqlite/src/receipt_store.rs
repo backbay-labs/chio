@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::canonical::canonical_json_bytes;
+use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
 use chio_core::capability::{CapabilityToken, ChioScope};
 use chio_core::crypto::{sha256_hex, Signature};
 use chio_core::receipt::{
@@ -155,4 +156,138 @@ impl SqliteReceiptStore {
         self.strict_tenant_isolation
             .load(std::sync::atomic::Ordering::SeqCst)
     }
+
+    pub fn append_chio_receipt_canonical(
+        &self,
+        canonical: Arc<CanonicalBytes>,
+    ) -> Result<(), ReceiptStoreError> {
+        self.append_chio_receipt_canonical_returning_seq(canonical)
+            .map(|_| ())
+    }
+
+    pub fn append_chio_receipt_canonical_bytes(
+        &self,
+        canonical: Arc<CanonicalBytes>,
+    ) -> Result<(), ReceiptStoreError> {
+        self.append_chio_receipt_canonical(canonical)
+    }
+
+    pub fn append_chio_receipt_canonical_returning_seq(
+        &self,
+        canonical: Arc<CanonicalBytes>,
+    ) -> Result<u64, ReceiptStoreError> {
+        let receipt = decode_canonical_chio_receipt(canonical.as_ref())?;
+        let raw_json = canonical_receipt_json(canonical.as_ref())?;
+        self.append_chio_receipt_canonical_record(&receipt, raw_json)
+    }
+
+    pub fn append_chio_receipt_canonical_bytes_returning_seq(
+        &self,
+        canonical: Arc<CanonicalBytes>,
+    ) -> Result<u64, ReceiptStoreError> {
+        self.append_chio_receipt_canonical_returning_seq(canonical)
+    }
+
+    fn append_chio_receipt_canonical_record(
+        &self,
+        receipt: &ChioReceipt,
+        raw_json: &str,
+    ) -> Result<u64, ReceiptStoreError> {
+        ensure_chio_receipt_verified(receipt)?;
+        let attribution = extract_receipt_attribution(receipt);
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let mut subject_key = attribution.subject_key;
+        let mut issuer_key = attribution.issuer_key;
+        if subject_key.is_none() || issuer_key.is_none() {
+            if let Some((lineage_subject_key, lineage_issuer_key)) = tx
+                .query_row(
+                    "SELECT subject_key, issuer_key FROM capability_lineage WHERE capability_id = ?1",
+                    params![receipt.capability_id.as_str()],
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                        ))
+                    },
+                )
+                .optional()?
+            {
+                if subject_key.is_none() {
+                    subject_key = lineage_subject_key;
+                }
+                if issuer_key.is_none() {
+                    issuer_key = lineage_issuer_key;
+                }
+            }
+        }
+        let inserted = tx.execute(
+            r#"
+            INSERT INTO chio_tool_receipts (
+                receipt_id,
+                timestamp,
+                capability_id,
+                subject_key,
+                issuer_key,
+                grant_index,
+                tool_server,
+                tool_name,
+                decision_kind,
+                policy_hash,
+                content_hash,
+                tenant_id,
+                raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(receipt_id) DO NOTHING
+            "#,
+            params![
+                receipt.id.as_str(),
+                sqlite_i64(receipt.timestamp, "receipt timestamp")?,
+                receipt.capability_id.as_str(),
+                subject_key,
+                issuer_key,
+                attribution.grant_index.map(i64::from),
+                receipt.tool_server.as_str(),
+                receipt.tool_name.as_str(),
+                decision_kind(&receipt.decision),
+                receipt.policy_hash.as_str(),
+                receipt.content_hash.as_str(),
+                receipt.tenant_id.as_deref(),
+                raw_json,
+            ],
+        )?;
+        if inserted == 0 {
+            tx.commit()?;
+            return Ok(0);
+        }
+        let source_seq = tx.query_row(
+            "SELECT seq FROM chio_tool_receipts WHERE receipt_id = ?1",
+            params![receipt.id.as_str()],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let source_seq = sqlite_u64(source_seq, "tool receipt source_seq")?;
+        let entry_seq = tx.query_row(
+            r#"
+            SELECT entry_seq
+            FROM claim_receipt_log_entries
+            WHERE receipt_kind = 'tool_receipt' AND source_seq = ?1
+            "#,
+            params![sqlite_i64(source_seq, "tool receipt source_seq")?],
+            |row| row.get::<_, i64>(0),
+        )?;
+        tx.commit()?;
+        sqlite_u64(entry_seq, "tool receipt claim log entry_seq")
+    }
+}
+
+fn decode_canonical_chio_receipt(
+    canonical: &CanonicalBytes,
+) -> Result<ChioReceipt, ReceiptStoreError> {
+    serde_json::from_slice(canonical.as_bytes()).map_err(ReceiptStoreError::from)
+}
+
+fn canonical_receipt_json(canonical: &CanonicalBytes) -> Result<&str, ReceiptStoreError> {
+    std::str::from_utf8(canonical.as_bytes()).map_err(|error| {
+        ReceiptStoreError::Canonical(format!("canonical receipt bytes are not UTF-8: {error}"))
+    })
 }
