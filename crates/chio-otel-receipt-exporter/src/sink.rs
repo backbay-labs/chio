@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chio_core::canonical::canonical_json_bytes;
+use chio_core::canonical::CanonicalBytes;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_core::{sha256_hex, Keypair};
 use chio_kernel::otel::{
@@ -42,6 +42,73 @@ pub struct ReceiptStoreSinkSummary {
     pub appended_receipts: usize,
 }
 
+#[derive(Clone, Debug)]
+pub struct CanonicalChioReceipt {
+    receipt: ChioReceipt,
+    canonical: Arc<CanonicalBytes>,
+}
+
+impl CanonicalChioReceipt {
+    fn from_receipt(receipt: ChioReceipt) -> Result<Self, OTelReceiptExportError> {
+        let canonical = Arc::new(
+            CanonicalBytes::from_serializable(&receipt)
+                .map_err(|error| OTelReceiptExportError::Canonical(error.to_string()))?,
+        );
+        Ok(Self { receipt, canonical })
+    }
+
+    #[must_use]
+    pub fn receipt(&self) -> &ChioReceipt {
+        &self.receipt
+    }
+
+    #[must_use]
+    pub fn canonical(&self) -> &Arc<CanonicalBytes> {
+        &self.canonical
+    }
+
+    #[must_use]
+    pub fn canonical_bytes(&self) -> &[u8] {
+        self.canonical.as_bytes()
+    }
+
+    #[must_use]
+    pub fn into_receipt(self) -> ChioReceipt {
+        self.receipt
+    }
+
+    #[must_use]
+    pub fn into_parts(self) -> (ChioReceipt, Arc<CanonicalBytes>) {
+        (self.receipt, self.canonical)
+    }
+}
+
+pub trait CanonicalReceiptSink: Send + Sync {
+    fn append_chio_receipt_canonical(
+        &self,
+        receipt: CanonicalChioReceipt,
+    ) -> Result<(), ReceiptStoreError>;
+}
+
+struct ReceiptStoreCanonicalAdapter {
+    store: Arc<dyn ReceiptStore>,
+}
+
+impl ReceiptStoreCanonicalAdapter {
+    fn new(store: Arc<dyn ReceiptStore>) -> Self {
+        Self { store }
+    }
+}
+
+impl CanonicalReceiptSink for ReceiptStoreCanonicalAdapter {
+    fn append_chio_receipt_canonical(
+        &self,
+        receipt: CanonicalChioReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        self.store.append_chio_receipt(receipt.receipt())
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum OTelReceiptExportError {
     #[error("invalid OTLP span provenance: {0}")]
@@ -55,13 +122,27 @@ pub enum OTelReceiptExportError {
 }
 
 pub struct ReceiptStoreSink {
-    store: Arc<dyn ReceiptStore>,
+    sink: Arc<dyn CanonicalReceiptSink>,
     config: ReceiptStoreSinkConfig,
 }
 
 impl ReceiptStoreSink {
     pub fn new(store: Arc<dyn ReceiptStore>, config: ReceiptStoreSinkConfig) -> Self {
-        Self { store, config }
+        Self::from_receipt_store(store, config)
+    }
+
+    pub fn from_receipt_store(
+        store: Arc<dyn ReceiptStore>,
+        config: ReceiptStoreSinkConfig,
+    ) -> Self {
+        Self::new_canonical(Arc::new(ReceiptStoreCanonicalAdapter::new(store)), config)
+    }
+
+    pub fn new_canonical(
+        sink: Arc<dyn CanonicalReceiptSink>,
+        config: ReceiptStoreSinkConfig,
+    ) -> Self {
+        Self { sink, config }
     }
 
     pub fn export_traces(
@@ -70,12 +151,12 @@ impl ReceiptStoreSink {
     ) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
         let receipts = export
             .spans()
-            .map(|span| self.receipt_for_span(span))
+            .map(|span| self.canonical_receipt_for_span(span))
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut summary = ReceiptStoreSinkSummary::default();
         for receipt in receipts {
-            self.store.append_chio_receipt(&receipt)?;
+            self.sink.append_chio_receipt_canonical(receipt)?;
             summary.accepted_spans += 1;
             summary.appended_receipts += 1;
         }
@@ -83,6 +164,13 @@ impl ReceiptStoreSink {
     }
 
     pub fn receipt_for_span(&self, span: &OtlpSpan) -> Result<ChioReceipt, OTelReceiptExportError> {
+        Ok(self.canonical_receipt_for_span(span)?.into_receipt())
+    }
+
+    pub fn canonical_receipt_for_span(
+        &self,
+        span: &OtlpSpan,
+    ) -> Result<CanonicalChioReceipt, OTelReceiptExportError> {
         validate_trace_id(&span.trace_id)?;
         validate_span_id(&span.span_id)?;
 
@@ -97,7 +185,7 @@ impl ReceiptStoreSink {
             "started_at_unix_nano": span.started_at_unix_nano,
             "ended_at_unix_nano": span.ended_at_unix_nano,
         });
-        let canonical_span = canonical_json_bytes(&source_payload)
+        let canonical_span = CanonicalBytes::from_value(&source_payload)
             .map_err(|error| OTelReceiptExportError::Canonical(error.to_string()))?;
         let action = ToolCallAction::from_parameters(serde_json::json!({
             "span_name": span.name,
@@ -122,7 +210,7 @@ impl ReceiptStoreSink {
                 .unwrap_or_else(|| self.config.default_tool_name.clone()),
             action,
             decision: decision_from_span(span)?,
-            content_hash: sha256_hex(&canonical_span),
+            content_hash: sha256_hex(canonical_span.as_bytes()),
             policy_hash: self.config.policy_hash.clone(),
             evidence: Vec::new(),
             metadata: Some(receipt_metadata(span, &sanitized_attributes)),
@@ -131,7 +219,9 @@ impl ReceiptStoreSink {
             kernel_key: self.config.signing_keypair.public_key(),
         };
 
-        ChioReceipt::sign(body, &self.config.signing_keypair).map_err(OTelReceiptExportError::Sign)
+        let receipt = ChioReceipt::sign(body, &self.config.signing_keypair)
+            .map_err(OTelReceiptExportError::Sign)?;
+        CanonicalChioReceipt::from_receipt(receipt)
     }
 }
 
@@ -236,4 +326,69 @@ fn is_nonzero_lower_hex(value: &str, expected_len: usize) -> bool {
         && value
             .chars()
             .all(|char| matches!(char, '0'..='9' | 'a'..='f'))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::sync::Mutex;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct RecordingCanonicalSink {
+        receipts: Mutex<Vec<CanonicalChioReceipt>>,
+    }
+
+    impl RecordingCanonicalSink {
+        fn receipts(&self) -> Result<Vec<CanonicalChioReceipt>, ReceiptStoreError> {
+            let guard = self
+                .receipts
+                .lock()
+                .map_err(|_| ReceiptStoreError::Pool("receipt mutex poisoned".to_string()))?;
+            Ok(guard.clone())
+        }
+    }
+
+    impl CanonicalReceiptSink for RecordingCanonicalSink {
+        fn append_chio_receipt_canonical(
+            &self,
+            receipt: CanonicalChioReceipt,
+        ) -> Result<(), ReceiptStoreError> {
+            let mut guard = self
+                .receipts
+                .lock()
+                .map_err(|_| ReceiptStoreError::Pool("receipt mutex poisoned".to_string()))?;
+            guard.push(receipt);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn export_traces_passes_canonical_receipt_bytes_to_sink() -> Result<(), Box<dyn Error>> {
+        let canonical_sink = Arc::new(RecordingCanonicalSink::default());
+        let sink = ReceiptStoreSink::new_canonical(
+            canonical_sink.clone(),
+            ReceiptStoreSinkConfig::new(Keypair::generate()),
+        );
+        let span = OtlpSpan::new(
+            "0123456789abcdef0123456789abcdef",
+            "0123456789abcdef",
+            "gen_ai.tool.call",
+        )
+        .with_attribute("chio.verdict", serde_json::json!("allow"));
+
+        let summary = sink.export_traces(&OtlpGrpcTraceExport::from_spans(vec![span]))?;
+        let receipts = canonical_sink.receipts()?;
+        let receipt = receipts
+            .first()
+            .ok_or_else(|| std::io::Error::other("missing canonical receipt"))?;
+        let expected = CanonicalBytes::from_serializable(receipt.receipt())?;
+
+        assert_eq!(summary.appended_receipts, 1);
+        assert_eq!(receipt.canonical_bytes(), expected.as_bytes());
+        assert!(receipt.receipt().verify_signature()?);
+
+        Ok(())
+    }
 }
