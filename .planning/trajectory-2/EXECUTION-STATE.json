@@ -2,13 +2,13 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": null,
-  "last_checkpoint_at": "2026-04-29T16:29:54.436349Z",
+  "last_checkpoint_at": "2026-04-29T17:45:00.341796Z",
   "current_wave": "wave-0-authoring",
   "halt": {
-    "halted": true,
-    "reason": "trigger_11_preflight_workspace_one_liner_failed: cargo test failed in chio-wasm-guards conformance_runner because wasm32 release artifacts were missing",
-    "trigger_event_id": "01KQD16PC4RXAKPBW65T0S161K",
-    "halted_at": "2026-04-29T16:29:54.436349Z"
+    "halted": false,
+    "reason": null,
+    "trigger_event_id": null,
+    "halted_at": null
   },
   "milestones": {
     "M01": {
