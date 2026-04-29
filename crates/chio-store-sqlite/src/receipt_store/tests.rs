@@ -3,7 +3,7 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::canonical::canonical_json_bytes;
+use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
 use chio_core::capability::{
     CapabilityToken, CapabilityTokenBody, ChioScope, GovernedCallChainContext,
     GovernedCallChainProvenance, GovernedProvenanceEvidenceClass, MeteredBillingQuote,
@@ -741,6 +741,30 @@ fn append_chio_receipt_rejects_invalid_signature() {
         error,
         chio_kernel::ReceiptStoreError::Conflict(message)
             if message.contains("invalid signature")
+    ));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn append_chio_receipt_canonical_rejects_unsigned_extra_fields() {
+    let path = unique_db_path("chio-receipts-canonical-extra-fields");
+    let store = SqliteReceiptStore::open(&path).unwrap();
+    let receipt = sample_receipt_with_id("rcpt-canonical-extra-fields");
+    let mut value = serde_json::to_value(&receipt).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .insert("unsigned_extra".to_string(), serde_json::json!("ignored"));
+    let canonical = Arc::new(CanonicalBytes::from_value(&value).unwrap());
+
+    let error = store
+        .append_chio_receipt_canonical_returning_seq(canonical)
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        chio_kernel::ReceiptStoreError::Canonical(message)
+            if message.contains("do not match ChioReceipt serialization")
     ));
 
     let _ = fs::remove_file(path);

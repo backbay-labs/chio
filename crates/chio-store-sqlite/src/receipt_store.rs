@@ -283,7 +283,16 @@ impl SqliteReceiptStore {
 fn decode_canonical_chio_receipt(
     canonical: &CanonicalBytes,
 ) -> Result<ChioReceipt, ReceiptStoreError> {
-    serde_json::from_slice(canonical.as_bytes()).map_err(ReceiptStoreError::from)
+    let receipt: ChioReceipt =
+        serde_json::from_slice(canonical.as_bytes()).map_err(ReceiptStoreError::from)?;
+    let expected = canonical_json_bytes(&receipt)
+        .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
+    if expected.as_slice() != canonical.as_bytes() {
+        return Err(ReceiptStoreError::Canonical(
+            "canonical receipt bytes do not match ChioReceipt serialization".to_string(),
+        ));
+    }
+    Ok(receipt)
 }
 
 fn canonical_receipt_json(canonical: &CanonicalBytes) -> Result<&str, ReceiptStoreError> {
