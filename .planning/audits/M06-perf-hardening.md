@@ -65,7 +65,7 @@ M06 bench additions reuse the trajectory-1 M05 reference runner contract:
 - Warm cache before measurement.
 - In-memory stores for canonical bytes and guard checkout benches unless the
   benchmark specifically measures file-backed SQLite behavior.
-- Criterion 100-sample median with 95 percent confidence interval.
+- Criterion 100-sample median with 95 percent CI on the diff.
 - Existing 10 percent regression tolerance remains the CI comparison policy.
 - Sustained p99 lanes must run separately from short Criterion samples and
   must report queue depth, drop counters, and allocation counts when relevant.
@@ -101,7 +101,7 @@ rg -n "channel|mpsc|unbounded|Sender::send|send\\(" crates/chio-otel-receipt-exp
 - [x] P0.T1: Open this audit doc with starting counts, the reference-runner
   contract, and the `CanonicalBytes` API surface decision.
 - [ ] P0.T2: Pin `dhat = "0.3"` and verify dependency resolution.
-- [ ] P0.T3: Confirm bench reference runner contract during bench scaffold
+- [x] P0.T3: Confirm bench reference runner contract during bench scaffold
   wiring.
 - [ ] P1: Add and migrate `Arc<CanonicalBytes>` through the hot path.
 - [ ] P2: Bound OTEL exporter and signing queues with drop-oldest semantics.
