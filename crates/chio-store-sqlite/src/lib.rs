@@ -11,6 +11,8 @@ pub mod receipt_query;
 pub mod receipt_store;
 pub mod revocation_store;
 
+pub use chio_core::crypto::SharedCanonicalBytes;
+pub use chio_core::{CanonicalBytes, CanonicalJsonWitness};
 pub use chio_kernel::{EvidenceChildReceiptScope, EvidenceExportQuery};
 
 pub use approval_store::SqliteApprovalStore;
