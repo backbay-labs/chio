@@ -1,0 +1,20 @@
+[package]
+name = "chio-errors"
+description = "Typed Chio error codes and diagnostics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_errors"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

@@ -2642,6 +2642,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-errors"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-example-enriched-inspector"
 version = "0.1.0"
 dependencies = [
