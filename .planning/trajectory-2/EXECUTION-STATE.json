@@ -1,9 +1,9 @@
 {
   "schema_version": "1",
   "trajectory": "trajectory-2",
-  "started_at": null,
-  "last_checkpoint_at": "2026-04-29T17:45:00.341796Z",
-  "current_wave": "wave-0-authoring",
+  "started_at": "2026-04-29T17:50:25.052347Z",
+  "last_checkpoint_at": "2026-04-29T17:50:25.052347Z",
+  "current_wave": "W1",
   "halt": {
     "halted": false,
     "reason": null,
@@ -96,5 +96,8 @@
     "Seed state authored 2026-04-29 alongside narrative + ticket files.",
     "Wave 0 is the authoring wave: narrative + tickets land before any P0 wave-opener Cargo.lock bumps.",
     "Trust-boundary milestones (M03, M04, M05, M10) require security x2 review on every PR per trajectory-1 precedent."
-  ]
+  ],
+  "wave_heads": {
+    "W1": "5a5a8c4d008fc51538b09f4f9800320e9d1f196d"
+  }
 }
