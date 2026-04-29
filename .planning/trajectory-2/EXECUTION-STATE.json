@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-29T19:37:12.625398Z",
+  "last_checkpoint_at": "2026-04-29T19:43:59.616825Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -13,8 +13,8 @@
   "milestones": {
     "M01": {
       "status": "in_progress",
-      "phase": "P0",
-      "owner_branch": "wave/W1/m01/p0.t2-audit-doc-starting-counts",
+      "phase": "P1",
+      "owner_branch": null,
       "trust_boundary": false
     },
     "M02": {
