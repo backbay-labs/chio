@@ -19,7 +19,7 @@
   milestone: M02
   phase: 0
   title: Open M02 audit doc and snapshot trajectory-1 M02.P3 advisory state
-  status: in_progress
+  status: review
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M02-mutation-and-verdict-matrix.md
@@ -34,7 +34,7 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 998a2babded9a8535eb1735b808ada24839452aa
   merged_sha: null
   opened_ts: "2026-04-29T18:14:23.386912Z"
   merged_ts: null
