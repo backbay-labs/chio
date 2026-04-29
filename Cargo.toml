@@ -179,6 +179,7 @@ uuid = "1"
 url = "2"
 proptest = "1.10"
 criterion = "0.5"
+dhat = "0.3"
 tempfile = "3"
 testcontainers = { version = "0.27.3", default-features = false }
 jsonschema = { version = "0.46", default-features = false, features = ["resolve-file"] }

@@ -49,6 +49,7 @@ ureq = { version = "2.10", features = ["json"] }
 [dev-dependencies]
 chio-store-sqlite = { path = "../chio-store-sqlite" }
 criterion = { workspace = true }
+dhat = { workspace = true }
 loom = { workspace = true }
 # proptest = "1.10" (via workspace.dependencies). Used by:
 # - tests/property_budget_store.rs
