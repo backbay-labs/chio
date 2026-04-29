@@ -37,7 +37,7 @@
   milestone: M06
   phase: 0
   title: Pin dhat workspace dev-dep, materialize chio-kernel dev-dep, and bump Cargo.lock with single-version verification
-  status: review
+  status: merged
   effort_days: 0.5
   owner_glob:
     - Cargo.toml
@@ -59,9 +59,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: 909c02798575efc89bb8dc39e9e2ac89b8040972
-  merged_sha: null
+  merged_sha: b024cf97905ca834ac0ce8c56c4e525f7dadbfe6
   opened_ts: "2026-04-29T18:49:38.516792Z"
-  merged_ts: null
+  merged_ts: "2026-04-29T20:31:56Z"
 
 - id: M06.P0.T3
   milestone: M06
