@@ -77,6 +77,11 @@ pub use trust_tier::{
     TRUST_TIER_VERIFIED_MIN,
 };
 
+// libFuzzer entry-point module, enabled only when the `fuzz` feature is
+// turned on by the standalone `chio-fuzz` workspace at `../../fuzz`.
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
+
 include!("artifact.rs");
 include!("passport.rs");
 include!("cross_issuer.rs");

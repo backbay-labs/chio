@@ -27,6 +27,7 @@ chio-kernel = { path = "../chio-kernel" }
 
 [dev-dependencies]
 chio-core = { path = "../chio-core" }
+tokio = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"

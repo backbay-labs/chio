@@ -1,0 +1,444 @@
+# M02 Phase 1 - Trust-boundary harness expansion (eleven new fuzz targets + receipt_log_replay).
+#
+# Source of truth: .planning/trajectory/02-fuzzing-post-pr13.md (Phase 1, lines 141-160)
+# plus the Round-2 (NEW) P1.T8 receipt_log_replay target (lines 379-385).
+#
+# Wave-1b execution gate: every Phase-1 ticket depends transitively on M02.P0.T1
+# (Cargo.lock bump) and on PR #13 being merged into main (now true as of
+# 2026-04-25; see EXECUTION-BOARD.md section 1 row 11 + section 2 Wave 1b).
+#
+# Atomic-task layout: the source doc groups targets by family (T1 credentials,
+# T2 anchor, T3 wire envelopes, T4 wasm-guards, T5 config/ingest) and instructs
+# "One target per commit" for the multi-target families. Per-family tasks are
+# therefore split with the schema's `.a/.b/.c` suffix to keep ticket = atomic
+# mergeable PR. T6 extends fuzz.yml; T7 lands docs/fuzzing/continuous.md; T8
+# is the (NEW) receipt_log_replay target.
+#
+# fuzz/tests/smoke.rs (new) is created in T1.a (the first credentials ticket)
+# and re-used by every later target's smoke wiring.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M02.P1.T1.a
+  milestone: M02
+  phase: 1
+  title: "Add jwt_vc_verify libFuzzer target with curated seed corpus and smoke test"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "fuzz/fuzz_targets/jwt_vc_verify.rs"
+    - "fuzz/corpus/jwt_vc_verify/"
+    - "fuzz/tests/smoke.rs"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-credentials/Cargo.toml"
+    - "crates/chio-credentials/src/lib.rs"
+    - "crates/chio-credentials/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P0.T1
+  soft_deps:
+    - "PR #13 merged into main (Wave-1b gate per EXECUTION-BOARD.md section 1 row 11)"
+    - "M03 generators in formal/diff-tests/src/generators.rs (consumed via arbitrary::Arbitrary adapter)"
+  gate_check:
+    cmd: "cargo +nightly fuzz build jwt_vc_verify && cargo +nightly fuzz run jwt_vc_verify -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke jwt_vc_verify_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t1.a-jwt-vc-verify-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T1.b
+  milestone: M02
+  phase: 1
+  title: "Add oid4vp_presentation libFuzzer target with curated seed corpus"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "fuzz/fuzz_targets/oid4vp_presentation.rs"
+    - "fuzz/corpus/oid4vp_presentation/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-credentials/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T1.a
+  soft_deps:
+    - "M03 oid4vp generators (formal/diff-tests/src/generators.rs)"
+  gate_check:
+    cmd: "cargo +nightly fuzz build oid4vp_presentation && cargo +nightly fuzz run oid4vp_presentation -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke oid4vp_presentation_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t1.b-oid4vp-presentation-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T1.c
+  milestone: M02
+  phase: 1
+  title: "Add did_resolve libFuzzer target with curated seed corpus"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "fuzz/fuzz_targets/did_resolve.rs"
+    - "fuzz/corpus/did_resolve/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-did/Cargo.toml"
+    - "crates/chio-did/src/lib.rs"
+    - "crates/chio-did/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T1.b
+  soft_deps: []
+  gate_check:
+    cmd: "cargo +nightly fuzz build did_resolve && cargo +nightly fuzz run did_resolve -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke did_resolve_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t1.c-did-resolve-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T2
+  milestone: M02
+  phase: 1
+  title: "Add anchor_bundle_verify libFuzzer target with curated seed corpus"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "fuzz/fuzz_targets/anchor_bundle_verify.rs"
+    - "fuzz/corpus/anchor_bundle_verify/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-anchor/Cargo.toml"
+    - "crates/chio-anchor/src/lib.rs"
+    - "crates/chio-anchor/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T1.c
+  soft_deps:
+    - "verify_proof_bundle and verify_checkpoint_publication_records entry points (crates/chio-anchor/src/bundle.rs)"
+  gate_check:
+    cmd: "cargo +nightly fuzz build anchor_bundle_verify && cargo +nightly fuzz run anchor_bundle_verify -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke anchor_bundle_verify_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t2-anchor-bundle-verify-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T3.a
+  milestone: M02
+  phase: 1
+  title: "Add mcp_envelope_decode libFuzzer target invoking evaluator post-decode"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "fuzz/fuzz_targets/mcp_envelope_decode.rs"
+    - "fuzz/corpus/mcp_envelope_decode/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-mcp-adapter/Cargo.toml"
+    - "crates/chio-mcp-adapter/src/lib.rs"
+    - "crates/chio-mcp-adapter/src/fuzz.rs"
+    - "crates/chio-mcp-edge/Cargo.toml"
+    - "crates/chio-mcp-edge/src/lib.rs"
+    - "crates/chio-mcp-edge/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T2
+  soft_deps:
+    - "Trust-boundary decode -> evaluator pipeline oracle (M02 vs M03 oracle ownership table)"
+  gate_check:
+    cmd: "cargo +nightly fuzz build mcp_envelope_decode && cargo +nightly fuzz run mcp_envelope_decode -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke mcp_envelope_decode_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t3.a-mcp-envelope-decode-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T3.b
+  milestone: M02
+  phase: 1
+  title: "Add a2a_envelope_decode libFuzzer target with per-envelope fan-out"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "fuzz/fuzz_targets/a2a_envelope_decode.rs"
+    - "fuzz/corpus/a2a_envelope_decode/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-a2a-adapter/Cargo.toml"
+    - "crates/chio-a2a-adapter/src/lib.rs"
+    - "crates/chio-a2a-adapter/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T3.a
+  soft_deps:
+    - "parse_sse_stream private fn re-export under the fuzz feature (crates/chio-a2a-adapter/src/transport.rs)"
+  gate_check:
+    cmd: "cargo +nightly fuzz build a2a_envelope_decode && cargo +nightly fuzz run a2a_envelope_decode -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke a2a_envelope_decode_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t3.b-a2a-envelope-decode-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T3.c
+  milestone: M02
+  phase: 1
+  title: "Add acp_envelope_decode libFuzzer target invoking handle_jsonrpc"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "fuzz/fuzz_targets/acp_envelope_decode.rs"
+    - "fuzz/corpus/acp_envelope_decode/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-acp-edge/Cargo.toml"
+    - "crates/chio-acp-edge/src/lib.rs"
+    - "crates/chio-acp-edge/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T3.b
+  soft_deps: []
+  gate_check:
+    cmd: "cargo +nightly fuzz build acp_envelope_decode && cargo +nightly fuzz run acp_envelope_decode -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke acp_envelope_decode_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t3.c-acp-envelope-decode-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T4.a
+  milestone: M02
+  phase: 1
+  title: "Add wasm_preinstantiate_validate libFuzzer target on ComponentBackend::load_module"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "fuzz/fuzz_targets/wasm_preinstantiate_validate.rs"
+    - "fuzz/corpus/wasm_preinstantiate_validate/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-wasm-guards/Cargo.toml"
+    - "crates/chio-wasm-guards/src/lib.rs"
+    - "crates/chio-wasm-guards/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T3.c
+  soft_deps:
+    - "M06 wasm-guards manifest owner (signed-module branch gated behind cfg(feature = attest_verify) until M09 P3 lands chio-attest-verify)"
+  gate_check:
+    cmd: "cargo +nightly fuzz build wasm_preinstantiate_validate && cargo +nightly fuzz run wasm_preinstantiate_validate -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke wasm_preinstantiate_validate_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t4.a-wasm-preinstantiate-validate-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T4.b
+  milestone: M02
+  phase: 1
+  title: "Add wit_host_call_boundary libFuzzer target on guard ABI deserialization"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "fuzz/fuzz_targets/wit_host_call_boundary.rs"
+    - "fuzz/corpus/wit_host_call_boundary/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-wasm-guards/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T4.a
+  soft_deps:
+    - "GuardRequest / GuardVerdict Deserialize derives (crates/chio-wasm-guards/src/abi.rs)"
+  gate_check:
+    cmd: "cargo +nightly fuzz build wit_host_call_boundary && cargo +nightly fuzz run wit_host_call_boundary -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke wit_host_call_boundary_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t4.b-wit-host-call-boundary-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T5.a
+  milestone: M02
+  phase: 1
+  title: "Add chio_yaml_parse libFuzzer target on chio-config loader::load_from_str"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "fuzz/fuzz_targets/chio_yaml_parse.rs"
+    - "fuzz/corpus/chio_yaml_parse/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-config/Cargo.toml"
+    - "crates/chio-config/src/lib.rs"
+    - "crates/chio-config/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T4.b
+  soft_deps: []
+  gate_check:
+    cmd: "cargo +nightly fuzz build chio_yaml_parse && cargo +nightly fuzz run chio_yaml_parse -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke chio_yaml_parse_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t5.a-chio-yaml-parse-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T5.b
+  milestone: M02
+  phase: 1
+  title: "Add openapi_ingest libFuzzer target on OpenApiMcpBridge::from_spec"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "fuzz/fuzz_targets/openapi_ingest.rs"
+    - "fuzz/corpus/openapi_ingest/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-openapi-mcp-bridge/Cargo.toml"
+    - "crates/chio-openapi-mcp-bridge/src/lib.rs"
+    - "crates/chio-openapi-mcp-bridge/src/fuzz.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T5.a
+  soft_deps: []
+  gate_check:
+    cmd: "cargo +nightly fuzz build openapi_ingest && cargo +nightly fuzz run openapi_ingest -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke openapi_ingest_smoke"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t5.b-openapi-ingest-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T6
+  milestone: M02
+  phase: 1
+  title: "Extend .github/workflows/fuzz.yml scheduled matrix with all eleven new targets"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/fuzz.yml"
+  shared_paths:
+    - ".github/workflows/fuzz.yml"
+  depends_on:
+    - M02.P1.T5.b
+  soft_deps:
+    - "M02.P1.T8 (receipt_log_replay added to the matrix once it lands; T6 may pre-include the slot)"
+  gate_check:
+    cmd: "actionlint .github/workflows/fuzz.yml && grep -q 'jwt_vc_verify' .github/workflows/fuzz.yml && grep -q 'oid4vp_presentation' .github/workflows/fuzz.yml && grep -q 'did_resolve' .github/workflows/fuzz.yml && grep -q 'anchor_bundle_verify' .github/workflows/fuzz.yml && grep -q 'mcp_envelope_decode' .github/workflows/fuzz.yml && grep -q 'a2a_envelope_decode' .github/workflows/fuzz.yml && grep -q 'acp_envelope_decode' .github/workflows/fuzz.yml && grep -q 'wasm_preinstantiate_validate' .github/workflows/fuzz.yml && grep -q 'wit_host_call_boundary' .github/workflows/fuzz.yml && grep -q 'chio_yaml_parse' .github/workflows/fuzz.yml && grep -q 'openapi_ingest' .github/workflows/fuzz.yml"
+    timeout_seconds: 120
+  worktree_branch: "wave/W1/m02/p1.t6-fuzz-matrix-eleven-new-targets"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T7
+  milestone: M02
+  phase: 1
+  title: "Author docs/fuzzing/continuous.md with locked OSS-Fuzz primary / ClusterFuzzLite bridge decision"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "docs/fuzzing/continuous.md"
+    - "docs/README.md"
+  shared_paths: []
+  depends_on:
+    - M02.P1.T6
+  soft_deps:
+    - "Continuous-fuzzing decision locked in .planning/trajectory/README.md decision 2"
+  gate_check:
+    cmd: "test -f docs/fuzzing/continuous.md && grep -q 'OSS-Fuzz' docs/fuzzing/continuous.md && grep -q 'ClusterFuzzLite' docs/fuzzing/continuous.md && grep -q '2,000' docs/fuzzing/continuous.md && grep -q 'continuous.md' docs/README.md"
+    timeout_seconds: 120
+  worktree_branch: "wave/W1/m02/p1.t7-continuous-fuzzing-runbook"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P1.T8
+  milestone: M02
+  phase: 1
+  title: "Add receipt_log_replay libFuzzer target on chio-kernel-core replay verifier"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "fuzz/fuzz_targets/receipt_log_replay.rs"
+    - "fuzz/corpus/receipt_log_replay/"
+    - "fuzz/Cargo.toml"
+    - "crates/chio-kernel-core/Cargo.toml"
+    - "crates/chio-kernel-core/src/lib.rs"
+    - "crates/chio-kernel-core/src/fuzz.rs"
+    - ".github/workflows/fuzz.yml"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+    - ".github/workflows/fuzz.yml"
+  depends_on:
+    - M02.P1.T7
+  soft_deps:
+    - "M04 deterministic-replay fixtures double as fuzz seeds"
+    - "Catches reordered/corrupted-chain bugs that merkle_checkpoint cannot (per Round-2 rationale)"
+  gate_check:
+    cmd: "cargo +nightly fuzz build receipt_log_replay && cargo +nightly fuzz run receipt_log_replay -- -runs=0 -max_total_time=1 && cargo test -p chio-fuzz --test smoke receipt_log_replay_smoke && grep -q 'receipt_log_replay' .github/workflows/fuzz.yml"
+    timeout_seconds: 600
+  worktree_branch: "wave/W1/m02/p1.t8-receipt-log-replay-target"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

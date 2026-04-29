@@ -1,11 +1,12 @@
 use std::fs;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 
 use chio_kernel::{RevocationRecord, RevocationStore, RevocationStoreError};
 use rusqlite::{params, Connection};
 
 pub struct SqliteRevocationStore {
-    connection: Connection,
+    connection: Mutex<Connection>,
 }
 
 impl SqliteRevocationStore {
@@ -32,7 +33,15 @@ impl SqliteRevocationStore {
             "#,
         )?;
 
-        Ok(Self { connection })
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
+    }
+
+    fn connection(&self) -> Result<MutexGuard<'_, Connection>, RevocationStoreError> {
+        self.connection.lock().map_err(|_| {
+            RevocationStoreError::Sync("sqlite revocation store lock poisoned".to_string())
+        })
     }
 
     pub fn list_revocations(
@@ -40,7 +49,8 @@ impl SqliteRevocationStore {
         limit: usize,
         capability_id: Option<&str>,
     ) -> Result<Vec<RevocationRecord>, RevocationStoreError> {
-        let mut statement = self.connection.prepare(
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
             r#"
             SELECT capability_id, revoked_at
             FROM revoked_capabilities
@@ -64,7 +74,8 @@ impl SqliteRevocationStore {
         after_revoked_at: Option<i64>,
         after_capability_id: Option<&str>,
     ) -> Result<Vec<RevocationRecord>, RevocationStoreError> {
-        let mut statement = self.connection.prepare(
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
             r#"
             SELECT capability_id, revoked_at
             FROM revoked_capabilities
@@ -89,11 +100,8 @@ impl SqliteRevocationStore {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    pub fn upsert_revocation(
-        &mut self,
-        record: &RevocationRecord,
-    ) -> Result<(), RevocationStoreError> {
-        self.connection.execute(
+    pub fn upsert_revocation(&self, record: &RevocationRecord) -> Result<(), RevocationStoreError> {
+        self.connection()?.execute(
             r#"
             INSERT INTO revoked_capabilities (capability_id, revoked_at)
             VALUES (?1, ?2)
@@ -108,7 +116,7 @@ impl SqliteRevocationStore {
 
 impl RevocationStore for SqliteRevocationStore {
     fn is_revoked(&self, capability_id: &str) -> Result<bool, RevocationStoreError> {
-        let exists = self.connection.query_row(
+        let exists = self.connection()?.query_row(
             "SELECT EXISTS(SELECT 1 FROM revoked_capabilities WHERE capability_id = ?1)",
             params![capability_id],
             |row| row.get::<_, i64>(0),
@@ -116,12 +124,12 @@ impl RevocationStore for SqliteRevocationStore {
         Ok(exists != 0)
     }
 
-    fn revoke(&mut self, capability_id: &str) -> Result<bool, RevocationStoreError> {
+    fn revoke(&self, capability_id: &str) -> Result<bool, RevocationStoreError> {
         let revoked_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|duration| duration.as_secs() as i64)
             .unwrap_or(0);
-        let rows = self.connection.execute(
+        let rows = self.connection()?.execute(
             r#"
             INSERT INTO revoked_capabilities (capability_id, revoked_at)
             VALUES (?1, ?2)
@@ -152,7 +160,7 @@ mod tests {
     fn sqlite_revocation_store_persists_across_reopen() {
         let path = unique_db_path("chio-revocations");
         {
-            let mut store = SqliteRevocationStore::open(&path).unwrap();
+            let store = SqliteRevocationStore::open(&path).unwrap();
             assert!(!store.is_revoked("cap-1").unwrap());
             assert!(store.revoke("cap-1").unwrap());
             assert!(store.is_revoked("cap-1").unwrap());
@@ -168,7 +176,7 @@ mod tests {
     #[test]
     fn sqlite_revocation_store_lists_filtered_entries() {
         let path = unique_db_path("chio-revocations-filtered");
-        let mut store = SqliteRevocationStore::open(&path).unwrap();
+        let store = SqliteRevocationStore::open(&path).unwrap();
         assert!(store.revoke("cap-1").unwrap());
         assert!(store.revoke("cap-2").unwrap());
 

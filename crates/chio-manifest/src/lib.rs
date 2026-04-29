@@ -41,12 +41,72 @@ pub struct ToolManifest {
     /// The tools this server provides.
     pub tools: Vec<ToolDefinition>,
 
+    /// Provider-native server tools this manifest explicitly allows.
+    ///
+    /// Anthropic server tools are larger trust-boundary surfaces than regular
+    /// client-hosted tools. They default to deny unless the manifest lists the
+    /// stable logical tool name here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub server_tools: Vec<ServerTool>,
+
     /// Permissions this server requires from the host environment
     /// (filesystem paths, network access, environment variables, etc.).
     pub required_permissions: Option<RequiredPermissions>,
 
     /// Hex-encoded Ed25519 public key of this tool server.
     pub public_key: String,
+}
+
+impl ToolManifest {
+    /// Return whether a provider-native server tool is explicitly allowlisted.
+    pub fn allows_server_tool(&self, server_tool: ServerTool) -> bool {
+        self.server_tools.contains(&server_tool)
+    }
+}
+
+/// Provider-native server tools that require manifest allowlisting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerTool {
+    /// Anthropic `computer_use_*` server tool.
+    ComputerUse,
+    /// Anthropic `bash_*` server tool.
+    Bash,
+    /// Anthropic `text_editor_*` server tool.
+    TextEditor,
+}
+
+impl ServerTool {
+    /// Stable manifest spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ServerTool::ComputerUse => "computer_use",
+            ServerTool::Bash => "bash",
+            ServerTool::TextEditor => "text_editor",
+        }
+    }
+
+    /// Map Anthropic server-tool wire names to stable manifest entries.
+    ///
+    /// Anthropic versions server-tool names with a trailing date, for example
+    /// `bash_20241022`. Treat known categories as server tools so version bumps
+    /// stay fail-closed behind the same allowlist entry.
+    pub fn from_anthropic_wire_name(name: &str) -> Option<Self> {
+        if name == "computer_use" || has_anthropic_date_suffix(name, "computer_use_") {
+            Some(ServerTool::ComputerUse)
+        } else if name == "bash" || has_anthropic_date_suffix(name, "bash_") {
+            Some(ServerTool::Bash)
+        } else if name == "text_editor" || has_anthropic_date_suffix(name, "text_editor_") {
+            Some(ServerTool::TextEditor)
+        } else {
+            None
+        }
+    }
+}
+
+fn has_anthropic_date_suffix(name: &str, prefix: &str) -> bool {
+    name.strip_prefix(prefix)
+        .is_some_and(|suffix| suffix.len() == 8 && suffix.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// Definition of a single tool within a manifest.
@@ -161,6 +221,9 @@ pub enum ManifestError {
     #[error("duplicate tool name: {0}")]
     DuplicateToolName(String),
 
+    #[error("duplicate server tool allowlist entry: {0}")]
+    DuplicateServerTool(String),
+
     #[error("manifest schema version is not supported: {0}")]
     UnsupportedSchema(String),
 
@@ -182,6 +245,15 @@ pub fn validate_manifest(manifest: &ToolManifest) -> Result<(), ManifestError> {
     for tool in &manifest.tools {
         if !seen.insert(&tool.name) {
             return Err(ManifestError::DuplicateToolName(tool.name.clone()));
+        }
+    }
+
+    let mut seen_server_tools = std::collections::HashSet::new();
+    for server_tool in &manifest.server_tools {
+        if !seen_server_tools.insert(*server_tool) {
+            return Err(ManifestError::DuplicateServerTool(
+                server_tool.as_str().to_string(),
+            ));
         }
     }
 
@@ -252,6 +324,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Instant),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "deadbeef".into(),
         }

@@ -1,44 +1,46 @@
-package chio:guard@0.1.0;
+package chio:guard@0.2.0;
 
-/// The interface a guard component implements.
 interface types {
-    /// The verdict a guard returns after evaluating a tool-call request.
+    // Verbatim from on-disk wit/chio-guard/world.wit @ 0.1.0; types are
+    // unchanged across the 0.1 -> 0.2 bump. The 0.2 delta is purely additive:
+    // new `interface host`, new `interface policy-context`, two `import`
+    // lines on the world. No field is renamed, removed, or retyped.
     variant verdict {
-        /// The guard allows the request to proceed.
         allow,
-        /// The guard denies the request with a human-readable reason.
         deny(string),
     }
-
-    /// Read-only request context provided to the guard by the host.
     record guard-request {
-        /// Tool being invoked.
         tool-name: string,
-        /// Server hosting the tool.
         server-id: string,
-        /// Agent making the request.
         agent-id: string,
-        /// Tool arguments as a JSON-encoded string.
         arguments: string,
-        /// Capability scopes granted (serialized scope names).
         scopes: list<string>,
-        /// Host-extracted action type (e.g. "file_access", "network_egress").
         action-type: option<string>,
-        /// Normalized file path for filesystem actions.
         extracted-path: option<string>,
-        /// Target domain string for network egress actions.
         extracted-target: option<string>,
-        /// Session-scoped filesystem roots from the kernel context.
         filesystem-roots: list<string>,
-        /// Index of the matched grant in the capability scope.
         matched-grant-index: option<u32>,
     }
 }
 
-/// The world a guard component targets.
+interface host {
+    log: func(level: u32, msg: string);
+    get-config: func(key: string) -> option<string>;
+    get-time-unix-secs: func() -> u64;
+    fetch-blob: func(handle: u32, offset: u64, len: u32) -> result<list<u8>, string>;
+}
+
+interface policy-context {
+    resource bundle-handle {
+        constructor(id: string);
+        read: func(offset: u64, len: u32) -> result<list<u8>, string>;
+        close: func();
+    }
+}
+
 world guard {
     use types.{verdict, guard-request};
-
-    /// Evaluate a tool-call request and return a verdict.
+    import host;
+    import policy-context;
     export evaluate: func(request: guard-request) -> verdict;
 }

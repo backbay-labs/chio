@@ -29,12 +29,16 @@ chio-federation = { path = "../chio-federation" }
 chio-hosted-mcp = { path = "../chio-hosted-mcp" }
 chio-kernel = { path = "../chio-kernel" }
 chio-guards = { path = "../chio-guards" }
+chio-guard-registry = { path = "../chio-guard-registry" }
 chio-listing = { path = "../chio-listing" }
 chio-policy = { path = "../chio-policy" }
 chio-mcp-adapter = { path = "../chio-mcp-adapter" }
 chio-conformance = { path = "../chio-conformance" }
+chio-replay-corpus = { path = "../chio-replay-corpus" }
 chio-reputation = { path = "../chio-reputation" }
 chio-store-sqlite = { path = "../chio-store-sqlite" }
+chio-tee-frame = { path = "../chio-tee-frame" }
+chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
@@ -67,11 +71,14 @@ wasmparser = "0.221"
 flate2 = "1"
 tar = "0.4"
 rand_core = { workspace = true }
+semver = "1"
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 chio-credit = { path = "../chio-credit" }
 chio-open-market = { path = "../chio-open-market" }
 chio-underwriting = { path = "../chio-underwriting" }
+insta = { version = "1.42", features = ["json", "redactions"] }
 rand_core = { workspace = true }
 tempfile = "3"
 wiremock = "0.6"

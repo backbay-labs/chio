@@ -24,9 +24,21 @@ tracing = { workspace = true }
 url = { workspace = true }
 ureq = { version = "2.10", features = ["json"] }
 webpki-roots = "0.26"
+# `arbitrary` is gated behind the `fuzz` feature so production builds stay
+# free of fuzz instrumentation. Pulled in by `fuzz/fuzz_targets/a2a_envelope_decode.rs`
+# via `chio-a2a-adapter = { features = ["fuzz"] }`.
+arbitrary = { version = "1", features = ["derive"], optional = true }
+
+[features]
+# Enables `chio_a2a_adapter::fuzz`, the libFuzzer entry-point module driving
+# the per-envelope fan-out trust boundary. Off by default; turned on only by
+# the `chio-fuzz` standalone workspace at `../../fuzz`. Production builds of
+# `chio-a2a-adapter` never pull in `arbitrary` and never expose `fuzz` symbols.
+fuzz = ["dep:arbitrary"]
 
 [dev-dependencies]
 rcgen = "0.13"
+tokio = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"

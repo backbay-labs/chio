@@ -1,0 +1,1 @@
+{"action":{"parameter_hash":"0000000000000000000000000000000000000000000000000000000000000000","parameters":{"input":"fuzz"}},"capability_id":"cap_test_001","content_hash":"0000000000000000000000000000000000000000000000000000000000000000","decision":{"verdict":"allow"},"id":"rcpt-fuzz-single-001","kernel_key":"ea4a6c63e29c520abef5507b1

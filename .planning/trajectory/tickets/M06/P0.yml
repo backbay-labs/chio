@@ -1,0 +1,49 @@
+# M06 Phase 0 - Wave 2b lock-bump opener for the wasm guard platform.
+# Source of truth: .planning/trajectory/06-wasm-guard-platform.md (Phases 1-4)
+# and EXECUTION-BOARD.md section 2 (Wave 2b: M05 + M06 serial within each
+# milestone).
+#
+# M06 introduces new workspace dependencies (oci-distribution, arc_swap,
+# notify, tracing-opentelemetry feature flags, new chio-guard-registry crate)
+# and wasmtime bindgen! feature flags. P0 baselines Cargo.lock against the
+# Wave 2b cohort BEFORE P1 begins so resolver churn is isolated from
+# substantive WIT/registry/runtime work.
+#
+# Trust-boundary status: M06 is a TRUST-BOUNDARY milestone (Security x2 review
+# applies on every PR per EXECUTION-BOARD section 7). The lock bump itself
+# does not touch trust-boundary crate sources but the review checklist
+# applies because it lands a new workspace dep tree that downstream
+# trust-boundary code (P1-P4) consumes.
+#
+# Dep gating: chains after M05 P0 (Wave 2b kernel-side opener) when that
+# ticket exists; until then, soft-pinned to "Wave 2b open" via prose.
+# M05.P1.T3 publish is the gate for P1.T2 (bindgen! async wiring), NOT for
+# this P0.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M06.P0.T1
+  milestone: M06
+  phase: 0
+  title: "Wave-opener: refresh Cargo.lock for M06 wasm guard platform phase"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "Cargo.lock"
+    - "Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on: []
+  soft_deps:
+    - "Wave 2b opener; precedes M06 P1 WIT bump and M06 P2 chio-guard-registry crate scaffold."
+    - "M05 lands its own P0 lock-bump opener for the kernel-side Wave 2b cohort."
+  gate_check:
+    cmd: "cargo update --workspace --quiet && cargo metadata --locked --no-deps --format-version 1 >/dev/null && cargo build --workspace --quiet"
+  worktree_branch: "wave/W2/m06/p0.t1-wave-opener-lock-bump"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

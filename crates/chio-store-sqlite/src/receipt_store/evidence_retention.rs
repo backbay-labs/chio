@@ -1,8 +1,8 @@
 use super::support::{
     checkpoint_error_to_receipt_store, ensure_checkpoint_transparency_guards,
-    ensure_chio_receipt_verified, load_claim_tree_canonical_bytes_range,
-    load_persisted_checkpoint_row, parse_persisted_checkpoint_row,
-    verify_checkpoint_chain_integrity,
+    ensure_chio_receipt_verified, ensure_transparency_projection_guards,
+    load_claim_tree_canonical_bytes_range, load_persisted_checkpoint_row,
+    parse_persisted_checkpoint_row, verify_checkpoint_chain_integrity,
 };
 use super::*;
 
@@ -85,9 +85,23 @@ impl SqliteReceiptStore {
             tx.commit()?;
             return Ok(0);
         }
-        let seq = tx.last_insert_rowid().max(0) as u64;
+        let source_seq = tx.query_row(
+            "SELECT seq FROM chio_tool_receipts WHERE receipt_id = ?1",
+            params![receipt.id.as_str()],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let source_seq = sqlite_u64(source_seq, "tool receipt source_seq")?;
+        let entry_seq = tx.query_row(
+            r#"
+            SELECT entry_seq
+            FROM claim_receipt_log_entries
+            WHERE receipt_kind = 'tool_receipt' AND source_seq = ?1
+            "#,
+            params![sqlite_i64(source_seq, "tool receipt source_seq")?],
+            |row| row.get::<_, i64>(0),
+        )?;
         tx.commit()?;
-        Ok(seq)
+        sqlite_u64(entry_seq, "tool receipt claim log entry_seq")
     }
 
     /// Store a signed KernelCheckpoint in the kernel_checkpoints table.
@@ -135,25 +149,29 @@ impl SqliteReceiptStore {
         }
 
         let statement_json = serde_json::to_string(&checkpoint.body)?;
-        connection.execute(
-            r#"
+        connection
+            .execute(
+                r#"
             INSERT INTO kernel_checkpoints (
                 checkpoint_seq, batch_start_seq, batch_end_seq, tree_size,
                 merkle_root, issued_at, statement_json, signature, kernel_key
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             "#,
-            params![
-                sqlite_i64(checkpoint.body.checkpoint_seq, "checkpoint_seq")?,
-                sqlite_i64(checkpoint.body.batch_start_seq, "batch_start_seq")?,
-                sqlite_i64(checkpoint.body.batch_end_seq, "batch_end_seq")?,
-                sqlite_i64(checkpoint.body.tree_size as u64, "tree_size")?,
-                checkpoint.body.merkle_root.to_hex(),
-                sqlite_i64(checkpoint.body.issued_at, "issued_at")?,
-                statement_json,
-                checkpoint.signature.to_hex(),
-                checkpoint.body.kernel_key.to_hex(),
-            ],
-        )?;
+                params![
+                    sqlite_i64(checkpoint.body.checkpoint_seq, "checkpoint_seq")?,
+                    sqlite_i64(checkpoint.body.batch_start_seq, "batch_start_seq")?,
+                    sqlite_i64(checkpoint.body.batch_end_seq, "batch_end_seq")?,
+                    sqlite_i64(checkpoint.body.tree_size as u64, "tree_size")?,
+                    checkpoint.body.merkle_root.to_hex(),
+                    sqlite_i64(checkpoint.body.issued_at, "issued_at")?,
+                    statement_json,
+                    checkpoint.signature.to_hex(),
+                    checkpoint.body.kernel_key.to_hex(),
+                ],
+            )
+            .map_err(|error| {
+                ReceiptStoreError::Conflict(format!("checkpoint append conflict: {error}"))
+            })?;
 
         let stored = load_persisted_checkpoint_row(&connection, checkpoint.body.checkpoint_seq)?
             .ok_or_else(|| {
@@ -235,13 +253,13 @@ impl SqliteReceiptStore {
     }
 
     /// Archive all receipts with `timestamp < cutoff_unix_secs` to an external
-    /// SQLite file, then delete them from the live database.
+    /// SQLite file while retaining the live append-only receipt log.
     ///
     /// Checkpoint rows whose entire batch (`batch_end_seq`) falls within the
     /// archived receipt range are also copied to the archive. Partial batches
     /// are never archived to avoid breaking inclusion proofs.
     ///
-    /// Returns the number of receipt rows deleted from the live database.
+    /// Returns the number of newly archived tool receipt rows.
     pub fn archive_receipts_before(
         &mut self,
         cutoff_unix_secs: u64,
@@ -267,16 +285,17 @@ impl SqliteReceiptStore {
         archive_path: &str,
         tenant_id: Option<&str>,
     ) -> Result<u64, ReceiptStoreError> {
+        let connection = self.connection()?;
         // Escape single quotes in the path to safely embed it in an ATTACH statement.
         let escaped_path = archive_path.replace('\'', "''");
 
         // Attach the archive database.
-        self.connection()?
-            .execute_batch(&format!("ATTACH DATABASE '{escaped_path}' AS archive"))?;
+        connection.execute_batch(&format!("ATTACH DATABASE '{escaped_path}' AS archive"))?;
 
-        // Create archive tables with the same schema as the main database.
-        self.connection()?.execute_batch(
-            r#"
+        let archive_result = (|| -> Result<u64, ReceiptStoreError> {
+            // Create archive tables with the same schema as the main database.
+            connection.execute_batch(
+                r#"
             CREATE TABLE IF NOT EXISTS archive.chio_tool_receipts (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT,
                 receipt_id TEXT NOT NULL UNIQUE,
@@ -332,20 +351,22 @@ impl SqliteReceiptStore {
                 parent_capability_id TEXT
             );
             "#,
-        )?;
+            )?;
 
-        let cutoff = cutoff_unix_secs as i64;
+            let cutoff = cutoff_unix_secs as i64;
 
-        // Copy qualifying receipts to the archive (ignore duplicates from prior runs).
-        match tenant_id {
-            Some(tenant_id) => {
-                self.connection()?.execute(
-                    "INSERT OR IGNORE INTO archive.chio_tool_receipts \
+            let archived_before = archived_tool_receipt_count(&connection, cutoff, tenant_id)?;
+
+            // Copy qualifying receipts to the archive (ignore duplicates from prior runs).
+            match tenant_id {
+                Some(tenant_id) => {
+                    connection.execute(
+                        "INSERT OR IGNORE INTO archive.chio_tool_receipts \
                      SELECT * FROM main.chio_tool_receipts WHERE timestamp < ?1 AND tenant_id = ?2",
-                    params![cutoff, tenant_id],
-                )?;
-                self.connection()?.execute(
-                    "INSERT OR IGNORE INTO archive.chio_child_receipts \
+                        params![cutoff, tenant_id],
+                    )?;
+                    connection.execute(
+                        "INSERT OR IGNORE INTO archive.chio_child_receipts \
                      SELECT child.* \
                      FROM main.chio_child_receipts child \
                      WHERE child.timestamp < ?1 \
@@ -357,135 +378,192 @@ impl SqliteReceiptStore {
                            WHERE lineage.receipt_id = child.receipt_id \
                              AND parent.tenant_id = ?2 \
                        )",
-                    params![cutoff, tenant_id],
-                )?;
-                self.connection()?.execute(
-                    "INSERT OR IGNORE INTO archive.capability_lineage
+                        params![cutoff, tenant_id],
+                    )?;
+                    connection.execute(
+                        "INSERT OR IGNORE INTO archive.capability_lineage
                      SELECT DISTINCT cl.*
                      FROM main.capability_lineage cl
                      INNER JOIN main.chio_tool_receipts r ON r.capability_id = cl.capability_id
                      WHERE r.timestamp < ?1 AND r.tenant_id = ?2",
-                    params![cutoff, tenant_id],
-                )?;
-            }
-            None => {
-                self.connection()?.execute(
-                    "INSERT OR IGNORE INTO archive.chio_tool_receipts \
+                        params![cutoff, tenant_id],
+                    )?;
+                }
+                None => {
+                    connection.execute(
+                        "INSERT OR IGNORE INTO archive.chio_tool_receipts \
                      SELECT * FROM main.chio_tool_receipts WHERE timestamp < ?1",
-                    params![cutoff],
-                )?;
-                self.connection()?.execute(
-                    "INSERT OR IGNORE INTO archive.chio_child_receipts \
+                        params![cutoff],
+                    )?;
+                    connection.execute(
+                        "INSERT OR IGNORE INTO archive.chio_child_receipts \
                      SELECT * FROM main.chio_child_receipts WHERE timestamp < ?1",
-                    params![cutoff],
-                )?;
-                self.connection()?.execute(
-                    "INSERT OR IGNORE INTO archive.capability_lineage
+                        params![cutoff],
+                    )?;
+                    connection.execute(
+                        "INSERT OR IGNORE INTO archive.capability_lineage
                      SELECT DISTINCT cl.*
                      FROM main.capability_lineage cl
                      INNER JOIN main.chio_tool_receipts r ON r.capability_id = cl.capability_id
                      WHERE r.timestamp < ?1",
-                    params![cutoff],
-                )?;
+                        params![cutoff],
+                    )?;
+                }
             }
-        }
 
-        // Find the maximum seq among archived receipts (for checkpoint filtering).
-        let max_archived_seq: Option<i64> = match tenant_id {
-            Some(tenant_id) => self.connection()?.query_row(
+            // Find the maximum seq among archived receipts (for checkpoint filtering).
+            let max_archived_seq: Option<i64> = match tenant_id {
+            Some(tenant_id) => connection.query_row(
                 "SELECT MAX(seq) FROM main.chio_tool_receipts WHERE timestamp < ?1 AND tenant_id = ?2",
                 params![cutoff, tenant_id],
                 |row| row.get(0),
             )?,
-            None => self.connection()?.query_row(
+            None => connection.query_row(
                 "SELECT MAX(seq) FROM main.chio_tool_receipts WHERE timestamp < ?1",
                 params![cutoff],
                 |row| row.get(0),
             )?,
         };
 
-        if let Some(max_seq) = max_archived_seq {
-            // Copy checkpoint rows whose full batch is covered by the archived receipts.
-            // Never archive a checkpoint whose batch_end_seq exceeds the max archived seq
-            // because that would leave a partial batch in the archive.
-            self.connection()?.execute(
-                "INSERT OR IGNORE INTO archive.kernel_checkpoints \
-                 SELECT * FROM main.kernel_checkpoints WHERE batch_end_seq <= ?1",
-                params![max_seq],
-            )?;
+            if tenant_id.is_none() {
+                if let Some(max_seq) = max_archived_seq {
+                    // Copy checkpoint rows whose full batch is covered by the archived receipts.
+                    // Never archive a checkpoint whose batch_end_seq exceeds the max archived seq
+                    // because that would leave a partial batch in the archive.
+                    connection.execute(
+                        "INSERT OR IGNORE INTO archive.kernel_checkpoints \
+                     SELECT * FROM main.kernel_checkpoints WHERE batch_end_seq <= ?1",
+                        params![max_seq],
+                    )?;
 
-            // Verify that every checkpoint covering the archived range is now present
-            // in the archive. If any checkpoint failed to transfer, refuse to delete the
-            // receipts from the live database to preserve inclusion-proof integrity.
-            let live_count: i64 = self.connection()?.query_row(
-                "SELECT COUNT(*) FROM main.kernel_checkpoints WHERE batch_end_seq <= ?1",
-                params![max_seq],
-                |row| row.get(0),
-            )?;
-            let archive_count: i64 = self.connection()?.query_row(
-                "SELECT COUNT(*) FROM archive.kernel_checkpoints WHERE batch_end_seq <= ?1",
-                params![max_seq],
-                |row| row.get(0),
-            )?;
-            if archive_count < live_count {
-                // Detach the archive before returning the error to avoid leaving
-                // the database in an attached state.
-                let _ = self.connection()?.execute_batch("DETACH DATABASE archive");
+                    // Verify that every checkpoint covering the archived range is now present
+                    // in the archive. If any checkpoint failed to transfer, refuse to delete the
+                    // receipts from the live database to preserve inclusion-proof integrity.
+                    let live_count: i64 = connection.query_row(
+                        "SELECT COUNT(*) FROM main.kernel_checkpoints WHERE batch_end_seq <= ?1",
+                        params![max_seq],
+                        |row| row.get(0),
+                    )?;
+                    let archive_count: i64 = connection.query_row(
+                        "SELECT COUNT(*) FROM archive.kernel_checkpoints WHERE batch_end_seq <= ?1",
+                        params![max_seq],
+                        |row| row.get(0),
+                    )?;
+                    if archive_count < live_count {
+                        return Err(ReceiptStoreError::Canonical(format!(
+                            "checkpoint co-archival incomplete: {live_count} checkpoints in live, \
+                         only {archive_count} transferred to archive; aborting receipt deletion \
+                         to preserve inclusion-proof integrity"
+                        )));
+                    }
+                }
+            }
+
+            let archived_after = archived_tool_receipt_count(&connection, cutoff, tenant_id)?;
+            let archived = archived_after.saturating_sub(archived_before) as u64;
+
+            if archived_after > 0 {
+                Self::delete_archived_live_receipts(&connection, cutoff, tenant_id)?;
+            }
+
+            Ok(archived)
+        })();
+
+        let detach_result = connection.execute_batch("DETACH DATABASE archive");
+        let archived = match (archive_result, detach_result) {
+            (Ok(archived), Ok(())) => archived,
+            (Err(error), Ok(())) => return Err(error),
+            (Ok(_), Err(error)) => return Err(error.into()),
+            (Err(archive_error), Err(detach_error)) => {
                 return Err(ReceiptStoreError::Canonical(format!(
-                    "checkpoint co-archival incomplete: {live_count} checkpoints in live, \
-                     only {archive_count} transferred to archive; aborting receipt deletion \
-                     to preserve inclusion-proof integrity"
+                    "receipt archive failed ({archive_error}); detaching archive database also failed ({detach_error})"
                 )));
-            }
-        }
-
-        // Delete archived receipts from the live database.
-        let deleted = match tenant_id {
-            Some(tenant_id) => {
-                // Delete linked child receipts before deleting their tenant parent receipts,
-                // because the tenant association is derived through receipt_lineage_statements.
-                self.connection()?.execute(
-                    "DELETE FROM main.chio_child_receipts \
-                     WHERE rowid IN ( \
-                         SELECT child.rowid \
-                         FROM main.chio_child_receipts child \
-                         WHERE child.timestamp < ?1 \
-                           AND EXISTS ( \
-                               SELECT 1 \
-                               FROM main.receipt_lineage_statements lineage \
-                               INNER JOIN main.chio_tool_receipts parent \
-                                   ON parent.receipt_id = lineage.parent_receipt_id \
-                               WHERE lineage.receipt_id = child.receipt_id \
-                                 AND parent.tenant_id = ?2 \
-                           ) \
-                    )",
-                    params![cutoff, tenant_id],
-                )?;
-                self.connection()?.execute(
-                    "DELETE FROM main.chio_tool_receipts WHERE timestamp < ?1 AND tenant_id = ?2",
-                    params![cutoff, tenant_id],
-                )? as u64
-            }
-            None => {
-                let deleted = self.connection()?.execute(
-                    "DELETE FROM main.chio_tool_receipts WHERE timestamp < ?1",
-                    params![cutoff],
-                )? as u64;
-                self.connection()?.execute(
-                    "DELETE FROM main.chio_child_receipts WHERE timestamp < ?1",
-                    params![cutoff],
-                )?;
-                deleted
             }
         };
 
-        // Detach the archive and checkpoint WAL.
-        self.connection()?
-            .execute_batch("DETACH DATABASE archive")?;
-        self.connection()?
-            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+        // Checkpoint WAL after archive detach.
+        connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
 
-        Ok(deleted)
+        Ok(archived)
+    }
+
+    fn delete_archived_live_receipts(
+        connection: &rusqlite::Connection,
+        cutoff: i64,
+        tenant_id: Option<&str>,
+    ) -> Result<(), ReceiptStoreError> {
+        connection.execute_batch(
+            r#"
+            DROP TRIGGER IF EXISTS chio_child_receipts_reject_delete;
+            DROP TRIGGER IF EXISTS chio_tool_receipts_reject_delete;
+            "#,
+        )?;
+
+        let delete_result = (|| -> Result<(), ReceiptStoreError> {
+            match tenant_id {
+                Some(tenant_id) => {
+                    connection.execute(
+                        "DELETE FROM main.chio_child_receipts \
+                         WHERE timestamp < ?1 \
+                           AND EXISTS ( \
+                               SELECT 1 \
+                               FROM main.receipt_lineage_statements lineage \
+                               INNER JOIN archive.chio_child_receipts archived_child \
+                                   ON archived_child.receipt_id = main.chio_child_receipts.receipt_id \
+                               INNER JOIN main.chio_tool_receipts parent \
+                                   ON parent.receipt_id = lineage.parent_receipt_id \
+                               WHERE lineage.receipt_id = main.chio_child_receipts.receipt_id \
+                                 AND parent.tenant_id = ?2 \
+                           )",
+                        params![cutoff, tenant_id],
+                    )?;
+                    connection.execute(
+                        "DELETE FROM main.chio_tool_receipts \
+                         WHERE timestamp < ?1 \
+                           AND tenant_id = ?2 \
+                           AND EXISTS ( \
+                               SELECT 1 \
+                               FROM archive.chio_tool_receipts archived \
+                               WHERE archived.receipt_id = main.chio_tool_receipts.receipt_id \
+                           )",
+                        params![cutoff, tenant_id],
+                    )?;
+                }
+                None => {
+                    connection.execute(
+                        "DELETE FROM main.chio_child_receipts \
+                         WHERE timestamp < ?1 \
+                           AND EXISTS ( \
+                               SELECT 1 \
+                               FROM archive.chio_child_receipts archived \
+                               WHERE archived.receipt_id = main.chio_child_receipts.receipt_id \
+                           )",
+                        params![cutoff],
+                    )?;
+                    connection.execute(
+                        "DELETE FROM main.chio_tool_receipts \
+                         WHERE timestamp < ?1 \
+                           AND EXISTS ( \
+                               SELECT 1 \
+                               FROM archive.chio_tool_receipts archived \
+                               WHERE archived.receipt_id = main.chio_tool_receipts.receipt_id \
+                           )",
+                        params![cutoff],
+                    )?;
+                }
+            }
+            Ok(())
+        })();
+
+        let restore_result = ensure_transparency_projection_guards(connection);
+        match (delete_result, restore_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(error), Ok(())) => Err(error),
+            (Ok(()), Err(error)) => Err(error),
+            (Err(delete_error), Err(restore_error)) => Err(ReceiptStoreError::Canonical(format!(
+                "retention delete failed ({delete_error}); restoring receipt immutability guards also failed ({restore_error})"
+            ))),
+        }
     }
 
     /// Check time and size thresholds and archive receipts if either is exceeded.
@@ -801,4 +879,27 @@ impl SqliteReceiptStore {
             next_cursor,
         })
     }
+}
+
+fn archived_tool_receipt_count<C>(
+    connection: &C,
+    cutoff: i64,
+    tenant_id: Option<&str>,
+) -> Result<i64, ReceiptStoreError>
+where
+    C: std::ops::Deref<Target = rusqlite::Connection>,
+{
+    match tenant_id {
+        Some(tenant_id) => connection.query_row(
+            "SELECT COUNT(*) FROM archive.chio_tool_receipts WHERE timestamp < ?1 AND tenant_id = ?2",
+            params![cutoff, tenant_id],
+            |row| row.get::<_, i64>(0),
+        ),
+        None => connection.query_row(
+            "SELECT COUNT(*) FROM archive.chio_tool_receipts WHERE timestamp < ?1",
+            params![cutoff],
+            |row| row.get::<_, i64>(0),
+        ),
+    }
+    .map_err(ReceiptStoreError::from)
 }

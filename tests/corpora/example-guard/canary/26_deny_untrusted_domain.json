@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "fetch_url",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 26,
+      "verdict": "deny",
+      "reason": "untrusted domain denied"
+    },
+    "scopes": [
+      "example-server:fetch_url"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"untrusted domain denied\"}"
+}

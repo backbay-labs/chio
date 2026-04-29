@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_kernel::budget_store::{BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord};
@@ -7,7 +8,7 @@ use chio_kernel::{BudgetStore, BudgetStoreError, BudgetUsageRecord};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 pub struct SqliteBudgetStore {
-    connection: Connection,
+    connection: Mutex<Connection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,26 +148,32 @@ impl SqliteBudgetStore {
         ensure_budget_mutation_event_seq_column(&connection)?;
         initialize_budget_replication_seq(&mut connection)?;
 
-        Ok(Self { connection })
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
     }
 
-    pub fn upsert_usage(&mut self, record: &BudgetUsageRecord) -> Result<(), BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+    fn connection(&self) -> Result<MutexGuard<'_, Connection>, BudgetStoreError> {
+        self.connection.lock().map_err(|_| {
+            BudgetStoreError::Invariant("sqlite budget store lock poisoned".to_string())
+        })
+    }
+
+    pub fn upsert_usage(&self, record: &BudgetUsageRecord) -> Result<(), BudgetStoreError> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         Self::upsert_usage_in_transaction(&transaction, record)?;
         transaction.commit()?;
         Ok(())
     }
 
     pub fn import_snapshot_records(
-        &mut self,
+        &self,
         usages: &[BudgetUsageRecord],
         events: &[BudgetMutationRecord],
     ) -> Result<(), BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         for usage in usages {
             Self::upsert_usage_in_transaction(&transaction, usage)?;
         }
@@ -229,10 +236,9 @@ impl SqliteBudgetStore {
         Ok(())
     }
 
-    pub fn delete_mutation_event(&mut self, event_id: &str) -> Result<(), BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+    pub fn delete_mutation_event(&self, event_id: &str) -> Result<(), BudgetStoreError> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute(
             "DELETE FROM budget_mutation_events WHERE event_id = ?1",
             params![event_id],
@@ -241,10 +247,9 @@ impl SqliteBudgetStore {
         Ok(())
     }
 
-    pub fn delete_hold(&mut self, hold_id: &str) -> Result<(), BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+    pub fn delete_hold(&self, hold_id: &str) -> Result<(), BudgetStoreError> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute(
             "DELETE FROM budget_authorization_holds WHERE hold_id = ?1",
             params![hold_id],
@@ -254,24 +259,22 @@ impl SqliteBudgetStore {
     }
 
     pub fn hold_authority(
-        &mut self,
+        &self,
         hold_id: &str,
     ) -> Result<Option<BudgetEventAuthority>, BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
         let authority = Self::load_hold(&transaction, hold_id)?.and_then(|hold| hold.authority);
         transaction.rollback()?;
         Ok(authority)
     }
 
     pub fn import_mutation_record(
-        &mut self,
+        &self,
         record: &BudgetMutationRecord,
     ) -> Result<(), BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         Self::import_mutation_record_in_transaction(&transaction, record)?;
         transaction.commit()?;
         Ok(())
@@ -376,7 +379,8 @@ impl SqliteBudgetStore {
         limit: usize,
         after_seq: Option<u64>,
     ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
-        let mut statement = self.connection.prepare(
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
             r#"
             SELECT
                 capability_id,
@@ -400,7 +404,8 @@ impl SqliteBudgetStore {
     }
 
     pub fn list_all_usages(&self) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
-        let mut statement = self.connection.prepare(
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
             r#"
             SELECT
                 capability_id,
@@ -423,7 +428,8 @@ impl SqliteBudgetStore {
         limit: usize,
         after_event_seq: u64,
     ) -> Result<Vec<BudgetMutationRecord>, BudgetStoreError> {
-        let mut statement = self.connection.prepare(
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
             r#"
             SELECT
                 event_id,
@@ -1216,15 +1222,14 @@ impl SqliteBudgetStore {
     }
 
     pub fn try_increment_with_event_id(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
         event_id: Option<&str>,
     ) -> Result<bool, BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
         if let Some(allowed) = SqliteBudgetStore::existing_increment_allowed(
             &transaction,
@@ -1337,7 +1342,7 @@ impl SqliteBudgetStore {
 
 impl BudgetStore for SqliteBudgetStore {
     fn try_increment(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -1346,7 +1351,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn try_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -1367,7 +1372,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn try_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -1391,7 +1396,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn try_charge_cost_with_ids_and_authority(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -1402,9 +1407,8 @@ impl BudgetStore for SqliteBudgetStore {
         event_id: Option<&str>,
         authority: Option<&BudgetEventAuthority>,
     ) -> Result<bool, BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
         if let Some(existing_allowed) = SqliteBudgetStore::existing_event_allowed(
             &transaction,
@@ -1787,7 +1791,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn reverse_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -1796,7 +1800,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn reverse_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -1814,7 +1818,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn reverse_charge_cost_with_ids_and_authority(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -1822,9 +1826,8 @@ impl BudgetStore for SqliteBudgetStore {
         event_id: Option<&str>,
         authority: Option<&BudgetEventAuthority>,
     ) -> Result<(), BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
         if SqliteBudgetStore::existing_event_allowed(
             &transaction,
@@ -1970,7 +1973,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn reduce_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -1979,7 +1982,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn reduce_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -1997,7 +2000,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn reduce_charge_cost_with_ids_and_authority(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -2005,9 +2008,8 @@ impl BudgetStore for SqliteBudgetStore {
         event_id: Option<&str>,
         authority: Option<&BudgetEventAuthority>,
     ) -> Result<(), BudgetStoreError> {
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
         if SqliteBudgetStore::existing_event_allowed(
             &transaction,
@@ -2150,7 +2152,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn settle_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         exposed_cost_units: u64,
@@ -2167,7 +2169,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn settle_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         exposed_cost_units: u64,
@@ -2187,7 +2189,7 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn settle_charge_cost_with_ids_and_authority(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         exposed_cost_units: u64,
@@ -2202,9 +2204,8 @@ impl BudgetStore for SqliteBudgetStore {
             ));
         }
 
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
         if SqliteBudgetStore::existing_event_allowed(
             &transaction,
@@ -2362,7 +2363,8 @@ impl BudgetStore for SqliteBudgetStore {
         limit: usize,
         capability_id: Option<&str>,
     ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
-        let mut statement = self.connection.prepare(
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
             r#"
             SELECT
                 capability_id,
@@ -2387,7 +2389,7 @@ impl BudgetStore for SqliteBudgetStore {
         capability_id: &str,
         grant_index: usize,
     ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
-        self.connection
+        self.connection()?
             .query_row(
                 r#"
                 SELECT
@@ -2414,7 +2416,8 @@ impl BudgetStore for SqliteBudgetStore {
         capability_id: Option<&str>,
         grant_index: Option<usize>,
     ) -> Result<Vec<BudgetMutationRecord>, BudgetStoreError> {
-        let mut statement = self.connection.prepare(
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
             r#"
             SELECT
                 event_id,
@@ -2866,7 +2869,7 @@ mod tests {
     fn sqlite_budget_store_persists_across_reopen() {
         let path = unique_db_path("chio-budgets");
         {
-            let mut store = SqliteBudgetStore::open(&path).unwrap();
+            let store = SqliteBudgetStore::open(&path).unwrap();
             assert!(store.try_increment("cap-1", 0, Some(2)).unwrap());
             assert!(store.try_increment("cap-1", 0, Some(2)).unwrap());
             assert!(!store.try_increment("cap-1", 0, Some(2)).unwrap());
@@ -2922,7 +2925,7 @@ mod tests {
     #[test]
     fn sqlite_budget_store_upsert_usage_keeps_newer_seq_state() {
         let path = unique_db_path("chio-budget-upsert");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         store
             .upsert_usage(&usage_record("cap-1", 0, 3, 10, 3, 300, 0))
             .unwrap();
@@ -2941,7 +2944,7 @@ mod tests {
     #[test]
     fn sqlite_budget_store_uses_seq_for_same_key_delta_queries() {
         let path = unique_db_path("chio-budget-seq-delta");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
 
         assert!(store.try_increment("cap-1", 0, Some(5)).unwrap());
         let first = store.list_usages(10, Some("cap-1")).unwrap();
@@ -2962,7 +2965,7 @@ mod tests {
     #[test]
     fn sqlite_budget_store_preserves_imported_seq_across_failover_writes() {
         let path = unique_db_path("chio-budget-seq-floor");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
 
         store
             .upsert_usage(&usage_record("cap-1", 0, 3, 10, 42, 0, 0))
@@ -2982,7 +2985,7 @@ mod tests {
     #[test]
     fn budget_store_try_charge_cost_within_limits_returns_true_sqlite() {
         let path = unique_db_path("chio-charge-cost-ok");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         // 100 units, cap is 200 per invocation, total cap is 1000
         let ok = store
             .try_charge_cost("cap-1", 0, Some(10), 100, Some(200), Some(1000))
@@ -2999,7 +3002,7 @@ mod tests {
     #[test]
     fn budget_store_try_charge_cost_exceeds_per_invocation_cap_sqlite() {
         let path = unique_db_path("chio-charge-cost-per-inv");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         // 500 units > max_cost_per_invocation of 200
         let ok = store
             .try_charge_cost("cap-1", 0, Some(10), 500, Some(200), Some(1000))
@@ -3016,7 +3019,7 @@ mod tests {
     #[test]
     fn budget_store_try_charge_cost_exceeds_total_cap_sqlite() {
         let path = unique_db_path("chio-charge-cost-total");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         // First charge 900 of 1000 budget
         assert!(store
             .try_charge_cost("cap-1", 0, Some(10), 900, Some(1000), Some(1000))
@@ -3036,7 +3039,7 @@ mod tests {
     #[test]
     fn budget_store_try_charge_cost_atomic_increment_sqlite() {
         let path = unique_db_path("chio-charge-cost-atomic");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         assert!(store
             .try_charge_cost("cap-1", 0, None, 100, Some(200), Some(1000))
             .unwrap());
@@ -3053,7 +3056,7 @@ mod tests {
 
     #[test]
     fn budget_store_try_charge_cost_within_limits_returns_true_inmemory() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let ok = store
             .try_charge_cost("cap-1", 0, Some(10), 100, Some(200), Some(1000))
             .unwrap();
@@ -3066,7 +3069,7 @@ mod tests {
 
     #[test]
     fn budget_store_try_charge_cost_exceeds_per_invocation_cap_inmemory() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let ok = store
             .try_charge_cost("cap-1", 0, Some(10), 500, Some(200), Some(1000))
             .unwrap();
@@ -3075,7 +3078,7 @@ mod tests {
 
     #[test]
     fn budget_store_try_charge_cost_exceeds_total_cap_inmemory() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         assert!(store
             .try_charge_cost("cap-1", 0, Some(10), 900, Some(1000), Some(1000))
             .unwrap());
@@ -3087,7 +3090,7 @@ mod tests {
 
     #[test]
     fn budget_usage_record_includes_split_cost_state() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         assert!(store
             .try_charge_cost("cap-1", 0, None, 42, None, None)
             .unwrap());
@@ -3097,7 +3100,7 @@ mod tests {
 
     #[test]
     fn budget_store_reverse_charge_cost_restores_prior_state_inmemory() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         assert!(store
             .try_charge_cost("cap-1", 0, Some(10), 100, Some(200), Some(1000))
             .unwrap());
@@ -3112,7 +3115,7 @@ mod tests {
     #[test]
     fn budget_store_reverse_charge_cost_restores_prior_state_sqlite() {
         let path = unique_db_path("chio-reverse-charge");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         assert!(store
             .try_charge_cost("cap-1", 0, Some(10), 100, Some(200), Some(1000))
             .unwrap());
@@ -3128,7 +3131,7 @@ mod tests {
 
     #[test]
     fn budget_store_reduce_charge_cost_releases_exposure_only_inmemory() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         assert!(store
             .try_charge_cost("cap-1", 0, Some(10), 100, Some(200), Some(1000))
             .unwrap());
@@ -3143,7 +3146,7 @@ mod tests {
     #[test]
     fn budget_store_reduce_charge_cost_releases_exposure_only_sqlite() {
         let path = unique_db_path("chio-reduce-charge");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         assert!(store
             .try_charge_cost("cap-1", 0, Some(10), 100, Some(200), Some(1000))
             .unwrap());
@@ -3159,7 +3162,7 @@ mod tests {
 
     #[test]
     fn budget_store_settle_charge_cost_moves_exposure_to_realized_inmemory() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         assert!(store
             .try_charge_cost("cap-1", 0, Some(10), 100, Some(200), Some(1000))
             .unwrap());
@@ -3174,7 +3177,7 @@ mod tests {
     #[test]
     fn budget_store_settle_charge_cost_moves_exposure_to_realized_sqlite() {
         let path = unique_db_path("chio-settle-charge");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         assert!(store
             .try_charge_cost("cap-1", 0, Some(10), 100, Some(200), Some(1000))
             .unwrap());
@@ -3190,7 +3193,7 @@ mod tests {
 
     #[test]
     fn budget_store_try_charge_cost_with_ids_is_idempotent_inmemory() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let hold_id = "hold-cap-1-0";
         let event_id = "hold-cap-1-0:authorize";
 
@@ -3236,7 +3239,7 @@ mod tests {
     #[test]
     fn budget_store_try_charge_cost_with_ids_is_idempotent_sqlite() {
         let path = unique_db_path("chio-charge-cost-idempotent");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let hold_id = "hold-cap-1-0";
         let event_id = "hold-cap-1-0:authorize";
 
@@ -3284,7 +3287,7 @@ mod tests {
     #[test]
     fn budget_store_settle_with_ids_is_idempotent_and_append_only_sqlite() {
         let path = unique_db_path("chio-settle-charge-idempotent");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let hold_id = "hold-cap-1-0";
         let authorize_event_id = "hold-cap-1-0:authorize";
         let reconcile_event_id = "hold-cap-1-0:reconcile";
@@ -3345,7 +3348,7 @@ mod tests {
     #[test]
     fn budget_store_reduce_charge_cost_allows_zero_invocation_release_sqlite() {
         let path = unique_db_path("chio-reduce-charge-zero-invocations");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         store
             .upsert_usage(&usage_record("cap-zero", 0, 0, 10, 10, 40, 0))
             .unwrap();
@@ -3370,7 +3373,7 @@ mod tests {
     #[test]
     fn budget_store_list_mutation_events_preserves_append_order_sqlite() {
         let path = unique_db_path("chio-budget-event-order");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
 
         assert!(store
             .try_charge_cost_with_ids(
@@ -3408,7 +3411,7 @@ mod tests {
 
     #[test]
     fn budget_store_hold_authority_requires_exact_lease_inmemory() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let hold_id = "hold-cap-lease-0";
         let authorize_event_id = "hold-cap-lease-0:authorize";
         let release_event_id = "hold-cap-lease-0:release";
@@ -3509,7 +3512,7 @@ mod tests {
     #[test]
     fn budget_store_event_id_reuse_rejects_authority_rollover_sqlite() {
         let path = unique_db_path("chio-hold-authority-event-reuse");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let hold_id = "hold-cap-lease-0";
         let event_id = "hold-cap-lease-0:authorize";
         let initial = authority("budget-primary", "lease-7", 7);
@@ -3562,7 +3565,7 @@ mod tests {
     #[test]
     fn budget_store_deleted_provisional_event_allows_retry_after_compensation_sqlite() {
         let path = unique_db_path("chio-hold-authority-compensation");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let hold_id = "hold-cap-lease-0";
         let event_id = "hold-cap-lease-0:authorize";
         let initial = authority("budget-primary", "lease-7", 7);
@@ -3633,7 +3636,7 @@ mod tests {
     #[test]
     fn budget_store_rollback_artifact_allows_retry_with_new_authority_sqlite() {
         let path = unique_db_path("chio-hold-authority-rollback-retry");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let hold_id = "hold-cap-lease-0";
         let event_id = "hold-cap-lease-0:authorize";
         let rollback_event_id = "hold-cap-lease-0:authorize:rollback:2";
@@ -3697,7 +3700,7 @@ mod tests {
     #[test]
     fn budget_store_retry_after_rollback_replaces_orphaned_open_hold_sqlite() {
         let path = unique_db_path("chio-hold-rollback-orphan-retry");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let hold_id = "hold-cap-orphan-0";
         let event_id = "hold-cap-orphan-0:authorize";
         let rollback_event_id = "hold-cap-orphan-0:authorize:rollback:5";
@@ -3733,28 +3736,30 @@ mod tests {
             )
             .unwrap();
 
-        let transaction = store
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .unwrap();
-        transaction
-            .execute(
-                "DELETE FROM budget_mutation_events WHERE event_id = ?1",
-                params![event_id],
+        {
+            let mut connection = store.connection().unwrap();
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            transaction
+                .execute(
+                    "DELETE FROM budget_mutation_events WHERE event_id = ?1",
+                    params![event_id],
+                )
+                .unwrap();
+            SqliteBudgetStore::upsert_hold(
+                &transaction,
+                hold_id,
+                "cap-orphan",
+                0,
+                75,
+                75,
+                HoldDisposition::Open,
+                Some(&initial),
             )
             .unwrap();
-        SqliteBudgetStore::upsert_hold(
-            &transaction,
-            hold_id,
-            "cap-orphan",
-            0,
-            75,
-            75,
-            HoldDisposition::Open,
-            Some(&initial),
-        )
-        .unwrap();
-        transaction.commit().unwrap();
+            transaction.commit().unwrap();
+        }
 
         assert!(store
             .try_charge_cost_with_ids_and_authority(
@@ -3788,28 +3793,31 @@ mod tests {
         assert!(retry.event_seq > rollback.event_seq);
         assert_eq!(retry.authority.as_ref(), Some(&changed));
 
-        let transaction = store
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .unwrap();
-        let hold = SqliteBudgetStore::load_hold(&transaction, hold_id)
-            .unwrap()
-            .expect("retry open hold");
-        assert_eq!(hold.remaining_exposure_units, 75);
-        assert_eq!(hold.disposition, HoldDisposition::Open);
-        drop(transaction);
+        {
+            let mut connection = store.connection().unwrap();
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            let hold = SqliteBudgetStore::load_hold(&transaction, hold_id)
+                .unwrap()
+                .expect("retry open hold");
+            assert_eq!(hold.remaining_exposure_units, 75);
+            assert_eq!(hold.disposition, HoldDisposition::Open);
+        }
 
-        let transaction = store
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .unwrap();
-        transaction
-            .execute(
-                "DELETE FROM budget_mutation_events WHERE event_id = ?1",
-                params![event_id],
-            )
-            .unwrap();
-        transaction.commit().unwrap();
+        {
+            let mut connection = store.connection().unwrap();
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            transaction
+                .execute(
+                    "DELETE FROM budget_mutation_events WHERE event_id = ?1",
+                    params![event_id],
+                )
+                .unwrap();
+            transaction.commit().unwrap();
+        }
 
         assert!(store
             .try_charge_cost_with_ids_and_authority(
@@ -3840,7 +3848,7 @@ mod tests {
     #[test]
     fn import_mutation_record_keeps_duplicate_release_events_idempotent_sqlite() {
         let path = unique_db_path("chio-budget-import-release-idempotent");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let hold_id = "hold-cap-import-0";
         let authorize_event_id = "hold-cap-import-0:authorize";
         let release_event_id = "hold-cap-import-0:release";
@@ -3880,16 +3888,17 @@ mod tests {
         assert_eq!(usage.invocation_count, 1);
         assert_usage_totals(&usage, 0, 0);
 
-        let transaction = store
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .unwrap();
-        let hold = SqliteBudgetStore::load_hold(&transaction, hold_id)
-            .unwrap()
-            .expect("released hold state");
-        assert_eq!(hold.remaining_exposure_units, 0);
-        assert_eq!(hold.disposition, HoldDisposition::Released);
-        drop(transaction);
+        {
+            let mut connection = store.connection().unwrap();
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            let hold = SqliteBudgetStore::load_hold(&transaction, hold_id)
+                .unwrap()
+                .expect("released hold state");
+            assert_eq!(hold.remaining_exposure_units, 0);
+            assert_eq!(hold.disposition, HoldDisposition::Released);
+        }
 
         let events = store
             .list_mutation_events(10, Some("cap-import"), Some(0))
@@ -3905,7 +3914,7 @@ mod tests {
     fn import_snapshot_records_replay_is_idempotent_when_peer_cursor_is_lost_sqlite() {
         let source_path = unique_db_path("chio-budget-import-replay-source");
         let target_path = unique_db_path("chio-budget-import-replay-target");
-        let mut source = SqliteBudgetStore::open(&source_path).unwrap();
+        let source = SqliteBudgetStore::open(&source_path).unwrap();
 
         assert!(source
             .try_charge_cost_with_ids(
@@ -3927,7 +3936,7 @@ mod tests {
             .list_mutation_events(10, Some("cap-import-replay"), Some(0))
             .unwrap();
 
-        let mut target = SqliteBudgetStore::open(&target_path).unwrap();
+        let target = SqliteBudgetStore::open(&target_path).unwrap();
         target
             .import_snapshot_records(std::slice::from_ref(&usage), &events)
             .unwrap();
@@ -3957,7 +3966,7 @@ mod tests {
     #[test]
     fn import_snapshot_records_rolls_back_usage_rows_when_mutation_conflicts_sqlite() {
         let path = unique_db_path("chio-budget-import-atomic");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let initial_authority = authority("budget-primary", "lease-1", 1);
         let conflicting_authority = authority("budget-primary", "lease-2", 2);
 
@@ -4003,7 +4012,7 @@ mod tests {
     #[test]
     fn budget_store_open_hold_recovers_missing_authorize_event_sqlite() {
         let path = unique_db_path("chio-hold-authority-recover-missing-event");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let hold_id = "hold-cap-recover-0";
         let event_id = "hold-cap-recover-0:authorize";
         let authority = authority("budget-primary", "lease-7", 7);
@@ -4049,7 +4058,7 @@ mod tests {
     #[test]
     fn upsert_usage_preserves_newer_split_cost_state() {
         let path = unique_db_path("chio-budget-upsert-cost");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
 
         // Higher-seq record written first
         store
@@ -4071,7 +4080,7 @@ mod tests {
     #[test]
     fn upsert_usage_does_not_resurrect_split_cost_state_from_stale_seq() {
         let path = unique_db_path("chio-budget-upsert-split");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
 
         store
             .upsert_usage(&usage_record("cap-1", 0, 1, 20, 20, 0, 75))
@@ -4105,8 +4114,8 @@ mod tests {
         let node_count: u64 = 2;
 
         // Both nodes start fresh (simulating split-brain: neither sees the other's write)
-        let mut node_a = SqliteBudgetStore::open(&path_a).unwrap();
-        let mut node_b = SqliteBudgetStore::open(&path_b).unwrap();
+        let node_a = SqliteBudgetStore::open(&path_a).unwrap();
+        let node_b = SqliteBudgetStore::open(&path_b).unwrap();
 
         // Both nodes independently approve an invocation of max_per_invocation
         let approved_a = node_a
@@ -4159,7 +4168,7 @@ mod tests {
     #[test]
     fn budget_store_zero_max_total_denies_any_charge_inmemory() {
         // A grant with max_total_cost = 0 must deny even a charge of 1 unit.
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let ok = store
             .try_charge_cost("cap-zero-budget", 0, None, 1, None, Some(0))
             .unwrap();
@@ -4177,7 +4186,7 @@ mod tests {
     #[test]
     fn budget_store_zero_max_total_denies_any_charge_sqlite() {
         let path = unique_db_path("chio-zero-budget-sqlite");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let ok = store
             .try_charge_cost("cap-zero-budget", 0, None, 1, None, Some(0))
             .unwrap();
@@ -4197,7 +4206,7 @@ mod tests {
     fn budget_store_zero_cost_invocation_succeeds_and_records_zero_inmemory() {
         // A zero-cost invocation against a monetary grant should succeed and
         // record cost_charged = 0.
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let ok = store
             .try_charge_cost("cap-zero-cost", 0, None, 0, None, Some(1000))
             .unwrap();
@@ -4214,7 +4223,7 @@ mod tests {
     #[test]
     fn budget_store_zero_cost_invocation_succeeds_and_records_zero_sqlite() {
         let path = unique_db_path("chio-zero-cost-sqlite");
-        let mut store = SqliteBudgetStore::open(&path).unwrap();
+        let store = SqliteBudgetStore::open(&path).unwrap();
         let ok = store
             .try_charge_cost("cap-zero-cost", 0, None, 0, None, Some(1000))
             .unwrap();

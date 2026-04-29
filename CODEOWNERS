@@ -1,0 +1,66 @@
+# CODEOWNERS - GENERATED from .planning/trajectory/OWNERS.toml
+# Do not hand-edit. Regenerate with `scripts/regen-codeowners.sh`.
+# CI fails if this file drifts from OWNERS.toml.
+#
+# Order matters in CODEOWNERS: later patterns take precedence over earlier
+# ones. The generator places frozen entries last so they override any
+# broader pattern.
+spec/schemas/**/*.json                       @bb-connor
+tests/bindings/vectors/**                    @bb-connor
+tests/conformance/**                         @bb-connor
+tests/replay/fixtures/**                     @bb-connor
+tests/replay/goldens/**                      @bb-connor
+tests/replay/test-key.seed                   @bb-connor
+tests/replay/test-key.seed.sha256            @bb-connor
+tests/replay/test-key.seed.README            @bb-connor
+crates/chio-kernel/src/receipt_*.rs          @bb-connor
+crates/chio-kernel-core/**                   @bb-connor
+crates/chio-kernel-browser/**                @bb-connor
+crates/chio-core-types/src/capability*.rs    @bb-connor
+crates/chio-core-types/src/scope*.rs         @bb-connor
+crates/chio-core-types/src/receipt*.rs       @bb-connor
+crates/chio-core-types/src/provenance*.rs    @bb-connor
+crates/chio-tower/src/middleware/**          @bb-connor
+crates/chio-tower/src/host_call.rs           @bb-connor
+crates/chio-tower/src/adapter.rs             @bb-connor
+crates/chio-wasm-guards/src/host.rs          @bb-connor
+crates/chio-wasm-guards/src/registry.rs      @bb-connor
+crates/chio-wasm-guards/src/hot_reload.rs    @bb-connor
+wit/chio-guard/world.wit                     @bb-connor
+wit/chio-guards-redact/world.wit             @bb-connor
+crates/chio-attest-verify/**                 @bb-connor
+crates/chio-tee/**                           @bb-connor
+crates/chio-tee-frame/**                     @bb-connor
+crates/chio-tool-call-fabric/**              @bb-connor
+crates/chio-openai/**                        @bb-connor
+crates/chio-conformance/**                   @bb-connor
+sdks/typescript/packages/browser/**          @bb-connor
+sdks/typescript/packages/workers/**          @bb-connor
+sdks/typescript/packages/edge/**             @bb-connor
+sdks/typescript/packages/conformance/src/browser-subset.ts @bb-connor
+sdks/typescript/packages/wire/**             @bb-connor
+sdks/python/**/_generated/**                 @bb-connor
+sdks/python/**                               @bb-connor
+formal/lean4/**                              @bb-connor
+formal/tla/**                                @bb-connor
+formal/rust-verification/**                  @bb-connor
+fuzz/fuzz_targets/**                         @bb-connor
+fuzz/corpus/**                               @bb-connor
+fuzz/corpora/**                              @bb-connor
+fuzz/target-map.toml                         @bb-connor
+Cargo.toml                                   @bb-connor
+Cargo.lock                                   @bb-connor
+deny.toml                                    @bb-connor
+.github/workflows/ci.yml                     @bb-connor
+CODEOWNERS                                   @bb-connor
+README.md                                    @bb-connor
+AGENTS.md                                    @bb-connor
+CLAUDE.md                                    @bb-connor
+.planning/trajectory/**                      @bb-connor
+scripts/install-orchestrator-tools.sh        @bb-connor
+scripts/check-fuzz-budget.sh                 @bb-connor
+scripts/classify-trust-diff.sh               @bb-connor
+crates/*/tests/regression_*.rs               @bb-connor
+tests/regression_*.rs                        @bb-connor
+releases.toml                                @bb-connor
+rust-toolchain.toml                          @bb-connor

@@ -3,6 +3,11 @@
 These files are the machine-readable schema contract for the shipped native Chio
 message families defined in [WIRE_PROTOCOL.md](../../../WIRE_PROTOCOL.md).
 
+The JSON Schema documents in this directory are the source of truth for the
+Chio v1 wire contract. Any SDK, codegen pipeline, or conformance harness that
+needs to validate Chio payloads should resolve types from these files first
+and treat hand-typed bindings as derived artifacts.
+
 Directory layout:
 
 - `agent/`
@@ -28,13 +33,18 @@ Directory layout:
   - `policy_denied.schema.json`
   - `tool_server_error.schema.json`
   - `internal_error.schema.json`
+- `capability/` - capability tokens, grants, and revocation envelopes.
+- `jsonrpc/` - JSON-RPC framing used by the hosted MCP HTTP edge.
+- `provenance/` - provenance and attestation records emitted by the kernel.
+- `receipt/` - signed receipts produced after tool calls complete.
+- `trust-control/` - trust-control plane messages (policy, allowlist, audit).
 
-Scope notes:
+Source-of-truth pointers:
 
-- These schemas cover the typed native Chio message families that the Rust
-  implementation serializes directly today.
-- The hosted MCP HTTP edge and trust-control APIs are specified normatively in
-  `spec/WIRE_PROTOCOL.md`, but they are not represented as typed JSON Schema
-  documents in this directory because the shipped implementation handles those
-  payloads as protocol-specific HTTP / JSON-RPC values rather than dedicated
-  Rust wire enums.
+- The Rust types backing these schemas live in `crates/chio-core-types`. When
+  Rust types and these schemas disagree, fix the schema or the type so they
+  match again before shipping.
+- Cross-language conformance vectors live under `tests/bindings/vectors/`
+  (canonical JSON, capability, hashing, manifest, receipt, signing). SDKs in
+  other languages must round-trip those vectors through their generated
+  bindings.

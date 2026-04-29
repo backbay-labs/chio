@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "send_message",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 20,
+      "verdict": "deny",
+      "reason": "PII email denied"
+    },
+    "scopes": [
+      "example-server:send_message"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"PII email denied\"}"
+}

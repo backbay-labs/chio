@@ -1,0 +1,1 @@
+{"compact":"header.payload.signature","passportId":"passport-fuzz-001","subjectDid":"did:chio:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH","issuer":"https://issuer.fuzz.chio","issuerJwk":{"kty":"OKP","crv":"Ed25519","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}

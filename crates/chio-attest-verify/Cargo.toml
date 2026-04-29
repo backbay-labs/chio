@@ -1,0 +1,40 @@
+[package]
+name = "chio-attest-verify"
+description = "Chio shared Sigstore verification surface (M09 supply-chain attestation)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_attest_verify"
+
+[dependencies]
+sigstore = { version = "0.13", default-features = false, features = [
+    "cosign",
+    "rustls-tls",
+    "sigstore-trust-root",
+    "bundle",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+regex = "1"
+tokio = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+x509-cert = { version = "0.2", default-features = false, features = ["pem", "std"] }
+pem = "3"
+pki-types = { version = "1.11", default-features = false, package = "rustls-pki-types" }
+webpki = { version = "0.103", default-features = false, features = ["std", "aws-lc-rs"], package = "rustls-webpki" }
+const-oid = "0.9"
+sigstore_protobuf_specs = { version = "0.5", default-features = false }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

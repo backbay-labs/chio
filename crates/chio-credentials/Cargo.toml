@@ -22,6 +22,39 @@ chrono = { workspace = true, features = ["clock"] }
 base64 = { workspace = true }
 rand_core = { workspace = true, features = ["getrandom"] }
 sha2 = { workspace = true }
+# `arbitrary` is gated behind the `fuzz` feature so production builds stay
+# free of fuzz instrumentation. Pulled in by `fuzz/fuzz_targets/jwt_vc_verify.rs`
+# via `chio-credentials = { features = ["fuzz"] }`.
+arbitrary = { version = "1", features = ["derive"], optional = true }
+# `dudect-bencher` is gated behind the `dudect` feature so default builds
+# (and `cargo test` without `--features dudect`) never pull it in. Used by
+# the timing-leak harness at `tests/dudect/jwt_verify.rs`, which
+# statistically detects data-dependent timing in
+# `verify_chio_passport_jwt_vc_json`.
+dudect-bencher = { version = "0.7", optional = true }
+
+[features]
+# Enables `chio_credentials::fuzz`, the libFuzzer entry-point module.
+# Off by default; turned on only by the `chio-fuzz` standalone workspace.
+fuzz = ["dep:arbitrary"]
+# Enables the dudect timing-leak harness at `tests/dudect/jwt_verify.rs`.
+# Off by default so `cargo test -p chio-credentials` stays fast and
+# deterministic; the dudect lane is opt-in via
+# `cargo test -p chio-credentials --features dudect --release jwt_verify`.
+dudect = ["dep:dudect-bencher"]
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+# Timing-leak dudect harness. `harness = false` so the test binary's `main`
+# is provided by `dudect_bencher::ctbench_main!`. Gated behind the `dudect`
+# feature so default `cargo test` does not try to compile it (the source is
+# `#![cfg(feature = "dudect")]`).
+[[test]]
+name = "dudect_jwt_verify"
+path = "tests/dudect/jwt_verify.rs"
+harness = false
+required-features = ["dudect"]
 
 [lints.clippy]
 unwrap_used = "deny"

@@ -1,0 +1,39 @@
+[package]
+name = "chio-bedrock-converse-adapter"
+description = "Amazon Bedrock Converse adapter for Chio, pinned to one workspace AWS SDK and us-east-1"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+publish = false
+
+[lib]
+name = "chio_bedrock_converse_adapter"
+
+# Pinned Bedrock Converse scaffold metadata. The SDK version is pinned once
+# in root Cargo.toml under [workspace.dependencies] and inherited below.
+# Bumping the SDK pin or region requires a fixture re-record PR.
+[package.metadata.chio]
+bedrock_converse_api = "bedrock.converse.v1"
+aws_region = "us-east-1"
+aws_sdk_bedrockruntime_workspace_dependency = "1.130.0"
+
+[dependencies]
+aws-sdk-bedrockruntime = { workspace = true }
+aws-sdk-sts = "1"
+chio-attest-verify = { path = "../chio-attest-verify" }
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = "0.8"
+
+[[bench]]
+name = "verdict_latency"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

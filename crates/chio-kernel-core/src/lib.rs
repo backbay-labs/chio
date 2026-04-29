@@ -56,6 +56,8 @@ pub mod clock;
 pub mod evaluate;
 pub(crate) mod formal_aeneas;
 pub(crate) mod formal_core;
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
 pub mod guard;
 pub mod normalized;
 pub mod passport_verify;

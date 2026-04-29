@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "upload",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 11,
+      "verdict": "deny",
+      "reason": "payload length limit exceeded"
+    },
+    "scopes": [
+      "example-server:upload"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"payload length limit exceeded\"}"
+}

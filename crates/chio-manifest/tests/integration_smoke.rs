@@ -22,6 +22,7 @@ fn manifest_sign_and_verify_roundtrip_uses_public_api() -> Result<(), Box<dyn st
             has_side_effects: false,
             latency_hint: Some(LatencyHint::Instant),
         }],
+        server_tools: Vec::new(),
         required_permissions: None,
         public_key: keypair.public_key().to_hex(),
     };

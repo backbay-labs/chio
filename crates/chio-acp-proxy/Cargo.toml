@@ -11,6 +11,10 @@ publish = false
 [lib]
 name = "chio_acp_proxy"
 
+[features]
+default = []
+otel = ["chio-kernel/otel"]
+
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }

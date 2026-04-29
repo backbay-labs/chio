@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, thiserror::Error)]
@@ -260,9 +261,9 @@ pub type BudgetReverseHoldDecision = BudgetHoldMutationDecision;
 pub type BudgetReconcileHoldDecision = BudgetHoldMutationDecision;
 pub type BudgetCaptureHoldDecision = BudgetHoldMutationDecision;
 
-pub trait BudgetStore: Send {
+pub trait BudgetStore: Send + Sync {
     fn try_increment(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -287,7 +288,7 @@ pub trait BudgetStore: Send {
     // bounded by max_cost_per_invocation multiplied by the number of active
     // nodes in the HA cluster.
     fn try_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -298,7 +299,7 @@ pub trait BudgetStore: Send {
 
     #[allow(clippy::too_many_arguments)]
     fn try_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -322,7 +323,7 @@ pub trait BudgetStore: Send {
 
     #[allow(clippy::too_many_arguments)]
     fn try_charge_cost_with_ids_and_authority(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -348,14 +349,14 @@ pub trait BudgetStore: Send {
 
     /// Reverse a previously applied provisional exposure for a pre-execution denial path.
     fn reverse_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
     ) -> Result<(), BudgetStoreError>;
 
     fn reverse_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -368,7 +369,7 @@ pub trait BudgetStore: Send {
     }
 
     fn reverse_charge_cost_with_ids_and_authority(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -385,14 +386,14 @@ pub trait BudgetStore: Send {
     /// This is used when the kernel needs to release provisional exposure without
     /// realizing any spend in the budget store itself.
     fn reduce_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
     ) -> Result<(), BudgetStoreError>;
 
     fn reduce_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -405,7 +406,7 @@ pub trait BudgetStore: Send {
     }
 
     fn reduce_charge_cost_with_ids_and_authority(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -424,7 +425,7 @@ pub trait BudgetStore: Send {
     /// invocation count. `realized_cost_units` must not exceed
     /// `exposed_cost_units`.
     fn settle_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         exposed_cost_units: u64,
@@ -432,7 +433,7 @@ pub trait BudgetStore: Send {
     ) -> Result<(), BudgetStoreError>;
 
     fn settle_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         exposed_cost_units: u64,
@@ -452,7 +453,7 @@ pub trait BudgetStore: Send {
 
     #[allow(clippy::too_many_arguments)]
     fn settle_charge_cost_with_ids_and_authority(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         exposed_cost_units: u64,
@@ -508,7 +509,7 @@ pub trait BudgetStore: Send {
     }
 
     fn authorize_budget_hold(
-        &mut self,
+        &self,
         request: BudgetAuthorizeHoldRequest,
     ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
         let allowed = self.try_charge_cost_with_ids_and_authority(
@@ -560,7 +561,7 @@ pub trait BudgetStore: Send {
     }
 
     fn reverse_budget_hold(
-        &mut self,
+        &self,
         request: BudgetReverseHoldRequest,
     ) -> Result<BudgetReverseHoldDecision, BudgetStoreError> {
         self.reverse_charge_cost_with_ids_and_authority(
@@ -592,7 +593,7 @@ pub trait BudgetStore: Send {
     }
 
     fn release_budget_hold(
-        &mut self,
+        &self,
         request: BudgetReleaseHoldRequest,
     ) -> Result<BudgetReleaseHoldDecision, BudgetStoreError> {
         self.reduce_charge_cost_with_ids_and_authority(
@@ -624,7 +625,7 @@ pub trait BudgetStore: Send {
     }
 
     fn reconcile_budget_hold(
-        &mut self,
+        &self,
         request: BudgetReconcileHoldRequest,
     ) -> Result<BudgetReconcileHoldDecision, BudgetStoreError> {
         self.settle_charge_cost_with_ids_and_authority(
@@ -657,7 +658,7 @@ pub trait BudgetStore: Send {
     }
 
     fn capture_budget_hold(
-        &mut self,
+        &self,
         request: BudgetCaptureHoldRequest,
     ) -> Result<BudgetCaptureHoldDecision, BudgetStoreError> {
         self.reconcile_budget_hold(request)
@@ -730,8 +731,32 @@ struct RecordedBudgetMutation {
     record: BudgetMutationRecord,
 }
 
-#[derive(Default)]
 pub struct InMemoryBudgetStore {
+    inner: Mutex<InMemoryBudgetStoreInner>,
+}
+
+impl Default for InMemoryBudgetStore {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new(InMemoryBudgetStoreInner::default()),
+        }
+    }
+}
+
+impl InMemoryBudgetStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn lock_inner(&self) -> Result<MutexGuard<'_, InMemoryBudgetStoreInner>, BudgetStoreError> {
+        self.inner.lock().map_err(|_| {
+            BudgetStoreError::Invariant("in-memory budget store lock poisoned".to_string())
+        })
+    }
+}
+
+#[derive(Default)]
+struct InMemoryBudgetStoreInner {
     counts: HashMap<(String, usize), BudgetUsageRecord>,
     events: Vec<BudgetMutationRecord>,
     explicit_events: HashMap<String, RecordedBudgetMutation>,
@@ -740,11 +765,7 @@ pub struct InMemoryBudgetStore {
     next_event_ordinal: u64,
 }
 
-impl InMemoryBudgetStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
+impl InMemoryBudgetStoreInner {
     fn next_event_id(&mut self) -> String {
         self.next_event_ordinal = self.next_event_ordinal.saturating_add(1);
         format!("local-budget-event-{}", self.next_event_ordinal)
@@ -873,7 +894,7 @@ fn checked_committed_cost_units(
         })
 }
 
-impl BudgetStore for InMemoryBudgetStore {
+impl InMemoryBudgetStoreInner {
     fn try_increment(
         &mut self,
         capability_id: &str,
@@ -959,6 +980,7 @@ impl BudgetStore for InMemoryBudgetStore {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn try_charge_cost_with_ids(
         &mut self,
         capability_id: &str,
@@ -983,6 +1005,7 @@ impl BudgetStore for InMemoryBudgetStore {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn try_charge_cost_with_ids_and_authority(
         &mut self,
         capability_id: &str,
@@ -1412,6 +1435,7 @@ impl BudgetStore for InMemoryBudgetStore {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn settle_charge_cost_with_ids_and_authority(
         &mut self,
         capability_id: &str,
@@ -1579,6 +1603,424 @@ impl BudgetStore for InMemoryBudgetStore {
     }
 }
 
+impl BudgetStore for InMemoryBudgetStore {
+    fn try_increment(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.lock_inner()?
+            .try_increment(capability_id, grant_index, max_invocations)
+    }
+
+    fn try_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.lock_inner()?.try_charge_cost(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_charge_cost_with_ids(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.lock_inner()?.try_charge_cost_with_ids(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&BudgetEventAuthority>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.lock_inner()?.try_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+    }
+
+    fn reverse_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?
+            .reverse_charge_cost(capability_id, grant_index, cost_units)
+    }
+
+    fn reverse_charge_cost_with_ids(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?.reverse_charge_cost_with_ids(
+            capability_id,
+            grant_index,
+            cost_units,
+            hold_id,
+            event_id,
+        )
+    }
+
+    fn reverse_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?
+            .reverse_charge_cost_with_ids_and_authority(
+                capability_id,
+                grant_index,
+                cost_units,
+                hold_id,
+                event_id,
+                authority,
+            )
+    }
+
+    fn reduce_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?
+            .reduce_charge_cost(capability_id, grant_index, cost_units)
+    }
+
+    fn reduce_charge_cost_with_ids(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?.reduce_charge_cost_with_ids(
+            capability_id,
+            grant_index,
+            cost_units,
+            hold_id,
+            event_id,
+        )
+    }
+
+    fn reduce_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?
+            .reduce_charge_cost_with_ids_and_authority(
+                capability_id,
+                grant_index,
+                cost_units,
+                hold_id,
+                event_id,
+                authority,
+            )
+    }
+
+    fn settle_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?.settle_charge_cost(
+            capability_id,
+            grant_index,
+            exposed_cost_units,
+            realized_cost_units,
+        )
+    }
+
+    fn settle_charge_cost_with_ids(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?.settle_charge_cost_with_ids(
+            capability_id,
+            grant_index,
+            exposed_cost_units,
+            realized_cost_units,
+            hold_id,
+            event_id,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn settle_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?
+            .settle_charge_cost_with_ids_and_authority(
+                capability_id,
+                grant_index,
+                exposed_cost_units,
+                realized_cost_units,
+                hold_id,
+                event_id,
+                authority,
+            )
+    }
+
+    fn list_usages(
+        &self,
+        limit: usize,
+        capability_id: Option<&str>,
+    ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
+        self.lock_inner()?.list_usages(limit, capability_id)
+    }
+
+    fn get_usage(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+    ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
+        self.lock_inner()?.get_usage(capability_id, grant_index)
+    }
+
+    fn list_mutation_events(
+        &self,
+        limit: usize,
+        capability_id: Option<&str>,
+        grant_index: Option<usize>,
+    ) -> Result<Vec<BudgetMutationRecord>, BudgetStoreError> {
+        self.lock_inner()?
+            .list_mutation_events(limit, capability_id, grant_index)
+    }
+
+    fn authorize_budget_hold(
+        &self,
+        request: BudgetAuthorizeHoldRequest,
+    ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
+        let mut inner = self.lock_inner()?;
+        let allowed = inner.try_charge_cost_with_ids_and_authority(
+            &request.capability_id,
+            request.grant_index,
+            request.max_invocations,
+            request.requested_exposure_units,
+            request.max_cost_per_invocation,
+            request.max_total_cost_units,
+            request.hold_id.as_deref(),
+            request.event_id.as_deref(),
+            request.authority.as_ref(),
+        )?;
+        let usage = inner.get_usage(&request.capability_id, request.grant_index)?;
+        let committed_cost_units_after = usage
+            .as_ref()
+            .map(BudgetUsageRecord::committed_cost_units)
+            .transpose()?
+            .unwrap_or(0);
+        let invocation_count_after = usage.as_ref().map_or(0, |usage| usage.invocation_count);
+        let metadata = budget_commit_metadata(
+            self,
+            request.authority,
+            allowed
+                .then(|| usage.as_ref().map(|usage| usage.seq))
+                .flatten(),
+            request.event_id,
+        );
+
+        if allowed {
+            Ok(BudgetAuthorizeHoldDecision::Authorized(
+                AuthorizedBudgetHold {
+                    hold_id: request.hold_id,
+                    authorized_exposure_units: request.requested_exposure_units,
+                    committed_cost_units_after,
+                    invocation_count_after,
+                    metadata,
+                },
+            ))
+        } else {
+            Ok(BudgetAuthorizeHoldDecision::Denied(DeniedBudgetHold {
+                hold_id: request.hold_id,
+                attempted_exposure_units: request.requested_exposure_units,
+                committed_cost_units_after,
+                invocation_count_after,
+                metadata,
+            }))
+        }
+    }
+
+    fn reverse_budget_hold(
+        &self,
+        request: BudgetReverseHoldRequest,
+    ) -> Result<BudgetReverseHoldDecision, BudgetStoreError> {
+        let mut inner = self.lock_inner()?;
+        inner.reverse_charge_cost_with_ids_and_authority(
+            &request.capability_id,
+            request.grant_index,
+            request.reversed_exposure_units,
+            request.hold_id.as_deref(),
+            request.event_id.as_deref(),
+            request.authority.as_ref(),
+        )?;
+        let usage = inner.get_usage(&request.capability_id, request.grant_index)?;
+        Ok(BudgetHoldMutationDecision {
+            hold_id: request.hold_id,
+            exposure_units: request.reversed_exposure_units,
+            realized_spend_units: 0,
+            committed_cost_units_after: usage
+                .as_ref()
+                .map(BudgetUsageRecord::committed_cost_units)
+                .transpose()?
+                .unwrap_or(0),
+            invocation_count_after: usage.as_ref().map_or(0, |usage| usage.invocation_count),
+            metadata: budget_commit_metadata(
+                self,
+                request.authority,
+                usage.as_ref().map(|usage| usage.seq),
+                request.event_id,
+            ),
+        })
+    }
+
+    fn release_budget_hold(
+        &self,
+        request: BudgetReleaseHoldRequest,
+    ) -> Result<BudgetReleaseHoldDecision, BudgetStoreError> {
+        let mut inner = self.lock_inner()?;
+        inner.reduce_charge_cost_with_ids_and_authority(
+            &request.capability_id,
+            request.grant_index,
+            request.released_exposure_units,
+            request.hold_id.as_deref(),
+            request.event_id.as_deref(),
+            request.authority.as_ref(),
+        )?;
+        let usage = inner.get_usage(&request.capability_id, request.grant_index)?;
+        Ok(BudgetHoldMutationDecision {
+            hold_id: request.hold_id,
+            exposure_units: request.released_exposure_units,
+            realized_spend_units: 0,
+            committed_cost_units_after: usage
+                .as_ref()
+                .map(BudgetUsageRecord::committed_cost_units)
+                .transpose()?
+                .unwrap_or(0),
+            invocation_count_after: usage.as_ref().map_or(0, |usage| usage.invocation_count),
+            metadata: budget_commit_metadata(
+                self,
+                request.authority,
+                usage.as_ref().map(|usage| usage.seq),
+                request.event_id,
+            ),
+        })
+    }
+
+    fn reconcile_budget_hold(
+        &self,
+        request: BudgetReconcileHoldRequest,
+    ) -> Result<BudgetReconcileHoldDecision, BudgetStoreError> {
+        let mut inner = self.lock_inner()?;
+        inner.settle_charge_cost_with_ids_and_authority(
+            &request.capability_id,
+            request.grant_index,
+            request.exposed_cost_units,
+            request.realized_spend_units,
+            request.hold_id.as_deref(),
+            request.event_id.as_deref(),
+            request.authority.as_ref(),
+        )?;
+        let usage = inner.get_usage(&request.capability_id, request.grant_index)?;
+        Ok(BudgetHoldMutationDecision {
+            hold_id: request.hold_id,
+            exposure_units: request.exposed_cost_units,
+            realized_spend_units: request.realized_spend_units,
+            committed_cost_units_after: usage
+                .as_ref()
+                .map(BudgetUsageRecord::committed_cost_units)
+                .transpose()?
+                .unwrap_or(0),
+            invocation_count_after: usage.as_ref().map_or(0, |usage| usage.invocation_count),
+            metadata: budget_commit_metadata(
+                self,
+                request.authority,
+                usage.as_ref().map(|usage| usage.seq),
+                request.event_id,
+            ),
+        })
+    }
+
+    fn capture_budget_hold(
+        &self,
+        request: BudgetCaptureHoldRequest,
+    ) -> Result<BudgetCaptureHoldDecision, BudgetStoreError> {
+        self.reconcile_budget_hold(request)
+    }
+}
+
 fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1592,7 +2034,7 @@ mod tests {
 
     #[test]
     fn authorize_and_reconcile_hold_preserve_authority_metadata() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let authority = BudgetEventAuthority {
             authority_id: "kernel:test-authority".to_string(),
             lease_id: "single-node".to_string(),
@@ -1664,7 +2106,7 @@ mod tests {
 
     #[test]
     fn denied_authorize_hold_reports_guarantee_metadata_without_commit_index() {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let authority = BudgetEventAuthority {
             authority_id: "kernel:test-authority".to_string(),
             lease_id: "single-node".to_string(),

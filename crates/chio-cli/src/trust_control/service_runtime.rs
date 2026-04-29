@@ -3012,7 +3012,7 @@ impl RevocationStore for RemoteRevocationStore {
             .map_err(into_revocation_store_error)
     }
 
-    fn revoke(&mut self, capability_id: &str) -> Result<bool, RevocationStoreError> {
+    fn revoke(&self, capability_id: &str) -> Result<bool, RevocationStoreError> {
         self.client
             .revoke_capability(capability_id)
             .map(|response| response.newly_revoked)
@@ -3021,14 +3021,14 @@ impl RevocationStore for RemoteRevocationStore {
 }
 
 impl ReceiptStore for RemoteReceiptStore {
-    fn append_chio_receipt(&mut self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+    fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         self.client
             .append_tool_receipt(receipt)
             .map_err(into_receipt_store_error)
     }
 
     fn append_child_receipt(
-        &mut self,
+        &self,
         receipt: &ChildRequestReceipt,
     ) -> Result<(), ReceiptStoreError> {
         self.client
@@ -3037,7 +3037,7 @@ impl ReceiptStore for RemoteReceiptStore {
     }
 
     fn record_capability_snapshot(
-        &mut self,
+        &self,
         token: &CapabilityToken,
         parent_capability_id: Option<&str>,
     ) -> Result<(), ReceiptStoreError> {
@@ -3069,7 +3069,7 @@ impl ReceiptStore for RemoteReceiptStore {
 
 impl BudgetStore for RemoteBudgetStore {
     fn try_increment(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -3091,7 +3091,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn try_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -3126,7 +3126,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn try_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         max_invocations: Option<u32>,
@@ -3165,7 +3165,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn reverse_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -3189,7 +3189,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn reverse_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -3215,7 +3215,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn reduce_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -3239,7 +3239,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn reduce_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         cost_units: u64,
@@ -3265,7 +3265,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn settle_charge_cost(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         exposed_cost_units: u64,
@@ -3295,7 +3295,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn settle_charge_cost_with_ids(
-        &mut self,
+        &self,
         capability_id: &str,
         grant_index: usize,
         exposed_cost_units: u64,
@@ -3329,7 +3329,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn authorize_budget_hold(
-        &mut self,
+        &self,
         request: BudgetAuthorizeHoldRequest,
     ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
         let response = self
@@ -3385,7 +3385,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn reverse_budget_hold(
-        &mut self,
+        &self,
         request: BudgetReverseHoldRequest,
     ) -> Result<BudgetHoldMutationDecision, BudgetStoreError> {
         let response = self
@@ -3426,7 +3426,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn release_budget_hold(
-        &mut self,
+        &self,
         request: BudgetReleaseHoldRequest,
     ) -> Result<BudgetHoldMutationDecision, BudgetStoreError> {
         let response = self
@@ -3467,7 +3467,7 @@ impl BudgetStore for RemoteBudgetStore {
     }
 
     fn reconcile_budget_hold(
-        &mut self,
+        &self,
         request: BudgetReconcileHoldRequest,
     ) -> Result<BudgetHoldMutationDecision, BudgetStoreError> {
         let response = self
@@ -4843,7 +4843,7 @@ mod service_runtime_tests {
         })
         .to_string();
         let server = StaticResponseServer::spawn(200, &body, "application/json", 1);
-        let mut store =
+        let store =
             build_remote_budget_store(&server.url, "secret").expect("build remote budget store");
 
         let decision = store

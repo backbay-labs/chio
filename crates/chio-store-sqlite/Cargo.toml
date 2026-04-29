@@ -12,6 +12,7 @@ publish = false
 name = "chio_store_sqlite"
 
 [dependencies]
+chacha20poly1305 = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-kernel = { path = "../chio-kernel" }
 r2d2 = "0.8"
@@ -20,6 +21,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 rusqlite = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
+zeroize = { version = "1.8", features = ["derive"] }
 
 [lints.clippy]
 unwrap_used = "deny"

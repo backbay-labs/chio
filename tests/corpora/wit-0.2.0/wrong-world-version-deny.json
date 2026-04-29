@@ -1,0 +1,36 @@
+{
+  "schema": "chio.guard.wit.fixture.v1",
+  "id": "wrong_world_version_deny",
+  "title": "fixture fails closed for a non-0.2.0 guard world",
+  "description": "Fail-closed fixture for semver gating before host import execution.",
+  "witWorld": "chio:guard/guard@0.1.0",
+  "imports": [
+    "host.fetch-blob"
+  ],
+  "blobStore": {
+    "handles": [
+      {
+        "handle": 7,
+        "bytes": [
+          108,
+          101,
+          103,
+          97,
+          99,
+          121
+        ]
+      }
+    ],
+    "bundles": []
+  },
+  "input": {
+    "operation": "host.fetch-blob",
+    "handle": 7,
+    "offset": 0,
+    "len": 2
+  },
+  "expected": {
+    "status": "deny",
+    "errorKind": "unsupported-wit-world"
+  }
+}

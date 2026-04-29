@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "read_file",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 1,
+      "verdict": "allow",
+      "category": "basic"
+    },
+    "scopes": [
+      "example-server:read_file"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

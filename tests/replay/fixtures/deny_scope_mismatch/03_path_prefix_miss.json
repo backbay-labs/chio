@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "scope_mismatch",
+  "expected_verdict": "deny",
+  "family": "deny_scope_mismatch",
+  "fixed_nonce_seed_index": 26,
+  "intent": "Deny because the request path does not match the capability's path-prefix predicate, exercising path-prefix scope rejection.",
+  "name": "deny_scope_mismatch/03_path_prefix_miss",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "scope-mismatch", "path-prefix"]
+}

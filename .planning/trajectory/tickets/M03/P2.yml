@@ -1,0 +1,175 @@
+# M03 Phase 2 - Kani harness expansion (5 -> 10).
+# Source of truth: .planning/trajectory/03-capability-algebra-properties.md
+# (Phase 2, lines 91-122). Seven atomic tasks map 1:1 to T1-T7 in doc order.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M03.P2.T1
+  milestone: M03
+  phase: 2
+  title: Prove scope intersection associative and revocation predicate idempotent (Kani)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel-core/src/kani_public_harnesses.rs
+  shared_paths: []
+  depends_on:
+    - M03.P1.T7
+  soft_deps: []
+  gate_check:
+    cmd: cargo kani --harness verify_scope_intersection_associative --harness verify_revocation_predicate_idempotent
+    timeout_seconds: 1800
+  worktree_branch: wave/W1/m03/p2.t1-scope-intersection-revocation-idempotent
+  agent_role: formal-kani
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P2.T2
+  milestone: M03
+  phase: 2
+  title: Prove single-step delegation attenuation (Kani verify_delegation_chain_step)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel-core/src/kani_public_harnesses.rs
+  shared_paths: []
+  depends_on:
+    - M03.P2.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo kani --harness verify_delegation_chain_step
+    timeout_seconds: 1800
+  worktree_branch: wave/W1/m03/p2.t2-delegation-chain-step
+  agent_role: formal-kani
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P2.T3
+  milestone: M03
+  phase: 2
+  title: Prove receipt sign/verify roundtrip (Kani verify_receipt_roundtrip)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-kernel-core/src/kani_public_harnesses.rs
+  shared_paths: []
+  depends_on:
+    - M03.P2.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo kani --harness verify_receipt_roundtrip
+    timeout_seconds: 1800
+  worktree_branch: wave/W1/m03/p2.t3-receipt-roundtrip
+  agent_role: formal-kani
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P2.T4
+  milestone: M03
+  phase: 2
+  title: Prove budget overflow never partial-commits (Kani verify_budget_checked_add_no_overflow)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel-core/src/kani_public_harnesses.rs
+  shared_paths: []
+  depends_on:
+    - M03.P2.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo kani --harness verify_budget_checked_add_no_overflow
+    timeout_seconds: 1800
+  worktree_branch: wave/W1/m03/p2.t4-budget-checked-add-no-overflow
+  agent_role: formal-kani
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P2.T5
+  milestone: M03
+  phase: 2
+  title: Extend kani-public-harnesses.toml covered_symbols to ten with nightly_only group
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - formal/rust-verification/kani-public-harnesses.toml
+  shared_paths:
+    - formal/rust-verification/kani-public-harnesses.toml
+  depends_on:
+    - M03.P2.T4
+  soft_deps: []
+  gate_check:
+    cmd: bash scripts/check-kani-public-core.sh
+  worktree_branch: wave/W1/m03/p2.t5-kani-public-coverage-ten
+  agent_role: formal-kani
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P2.T6
+  milestone: M03
+  phase: 2
+  title: Wall-clock Kani harnesses and split slow ones to nightly group
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - formal/rust-verification/kani-public-harnesses.toml
+    - .github/workflows/ci.yml
+    - .github/workflows/nightly.yml
+  shared_paths:
+    - formal/rust-verification/kani-public-harnesses.toml
+    - .github/workflows/ci.yml
+  depends_on:
+    - M03.P2.T5
+  soft_deps: []
+  gate_check:
+    cmd: bash scripts/check-kani-public-core.sh
+  worktree_branch: wave/W1/m03/p2.t6-split-slow-kani-nightly
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P2.T7
+  milestone: M03
+  phase: 2
+  title: Scope PR Kani run to changed harnesses (preserve full sweep on main/nightly)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .github/workflows/ci.yml
+    - scripts/kani-changed-harnesses.sh
+  shared_paths:
+    - .github/workflows/ci.yml
+  depends_on:
+    - M03.P2.T6
+  soft_deps: []
+  gate_check:
+    cmd: actionlint .github/workflows/ci.yml || true; bash scripts/kani-changed-harnesses.sh --dry-run
+  worktree_branch: wave/W1/m03/p2.t7-pr-kani-changed-only
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

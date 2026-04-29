@@ -220,8 +220,8 @@ fn evaluate_response_omits_nonce_when_absent() {
     );
 }
 
-#[test]
-fn kernel_issued_nonce_verifies_and_replay_fails_end_to_end() {
+#[tokio::test]
+async fn kernel_issued_nonce_verifies_and_replay_fails_end_to_end() {
     // End-to-end: evaluate() -> lift nonce -> re-present -> verify OK.
     // Second re-presentation (replay) must be rejected.
     let kernel = make_kernel_with_nonce();
@@ -230,7 +230,8 @@ fn kernel_issued_nonce_verifies_and_replay_fails_end_to_end() {
     let req = make_request("http-e2e", &cap);
 
     let response = kernel
-        .evaluate_tool_call_blocking(&req)
+        .evaluate_tool_call(&req)
+        .await
         .expect("evaluate allow");
     let signed: SignedExecutionNonce = *response
         .execution_nonce

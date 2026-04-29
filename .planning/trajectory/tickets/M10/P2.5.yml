@@ -1,0 +1,127 @@
+# M10 Phase 2.5 - Fixture-graduation boundary: shadow-mode capture ->
+# M04 corpus. New crates/chio-replay-corpus/ adapts a captured NDJSON
+# session into a fixture suitable for M04's chio-replay-gate, so a single
+# `chio replay --bless --into <fixture-dir>` re-redacts under the current
+# default redactor set, strips tenant_sig and request/response blobs,
+# writes the M04 directory shape (receipts.ndjson, checkpoint.json,
+# root.hex), and emits an audit-log entry.
+#
+# Phase 2.5 is the explicit milestone-boundary semantic: it is the only
+# supported path for a captured prod-traffic NDJSON to enter the M04
+# regression corpus. This is a one-way door (capture -> fixture); blessed
+# fixtures inherit M04's golden-machinery and are re-verified on every
+# CI run thereafter. The bless flow refuses to run if the resulting
+# fixture would diverge from the M04 directory shape (smoke gate before
+# the M04 review).
+#
+# Phase id "2.5" is encoded as the string "2.5" per schema phase pattern
+# ^[0-9]+(\.[0-9]+)?$. Ticket ids use the literal form M10.P2.5.T{n};
+# branches use wave/W4/m10/p2.5.t{n}-... per the worktree_branch regex
+# which permits decimal phase via (\.[0-9]+)? in the path.
+#
+# Source of truth: .planning/trajectory/10-tee-replay-harness.md
+# (Phase 2.5 lines 253-267; Bless graduation runbook lines 502-541).
+#
+# Three atomic tickets. Doc T1 (scaffold) and doc T2 (dedupe + re-redact)
+# are folded into T1 since the dedupe + re-redaction logic IS the crate's
+# core implementation and shipping the empty crate alone has no useful
+# gate. Doc T3 -> T2; doc T4 (audit-log + runbook) and doc T5 (e2e test)
+# are folded into T3 since the audit-log entry and SLA runbook are
+# enforced by the e2e gate that proves the bless flow lands a fixture
+# that passes chio-replay-gate.
+#
+# Wave 4 worktree branches: wave/W4/m10/p2.5.t{n}-...
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M10.P2.5.T1
+  milestone: M10
+  phase: "2.5"
+  title: "Scaffold crates/chio-replay-corpus with canonical-JSON dedupe and re-redaction under default redactor set"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-replay-corpus/Cargo.toml"
+    - "crates/chio-replay-corpus/src/lib.rs"
+    - "crates/chio-replay-corpus/src/dedupe.rs"
+    - "crates/chio-replay-corpus/src/reredact.rs"
+    - "crates/chio-replay-corpus/tests/dedupe_lastwins.rs"
+    - "crates/chio-replay-corpus/tests/reredact_stable.rs"
+  shared_paths:
+    - "Cargo.toml"
+    - "Cargo.lock"
+  depends_on:
+    - M10.P1.T6
+    - M10.P2.T1
+  soft_deps:
+    - "Dedupe is keyed on canonical-JSON hash of the invocation field (last-wins). Dedupe runs AFTER redaction so the dedupe key is stable across captures (10-tee-replay-harness.md line 509)."
+    - "Re-redaction uses the current default redactor set via the M06 host call so blessed fixtures reflect the live redactor pipeline."
+  gate_check:
+    cmd: "cargo test -p chio-replay-corpus"
+  worktree_branch: "wave/W4/m10/p2.5.t1-replay-corpus-dedupe-reredact"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P2.5.T2
+  milestone: M10
+  phase: "2.5"
+  title: "Implement chio replay --bless --into <fixture-dir> writing M04 directory shape (receipts.ndjson, checkpoint.json, root.hex)"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-cli/src/cli/replay/bless.rs"
+    - "crates/chio-cli/src/cli/replay/bless/m04_layout.rs"
+    - "crates/chio-cli/src/cli/replay/bless/strip.rs"
+    - "crates/chio-cli/Cargo.toml"
+    - "crates/chio-replay-corpus/src/m04_writer.rs"
+  shared_paths: []
+  depends_on:
+    - M10.P2.5.T1
+  soft_deps:
+    - "Output layout MUST match M04 Phase 1 golden directories: tests/replay/goldens/<family>/<name>/{receipts.ndjson,checkpoint.json,root.hex} (10-tee-replay-harness.md lines 263-267)."
+    - "Strip tenant_sig and request/response blobs so only canonical invocation and verdict survive in the blessed fixture."
+    - "Bless is gated behind the chio:tee/bless@1 capability and refuses to run if the resulting fixture would diverge from the M04 directory shape (smoke gate before the M04 review)."
+  gate_check:
+    cmd: "cargo test -p chio-cli --lib cli::replay::bless:: && cargo test -p chio-replay-corpus --lib m04_writer::"
+  worktree_branch: "wave/W4/m10/p2.5.t2-replay-bless-m04-layout"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P2.5.T3
+  milestone: M10
+  phase: "2.5"
+  title: "End-to-end bless test (capture->redact->dedupe->bless) green under chio-replay-gate; audit-log entry + 30-day expiry runbook"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-replay-corpus/tests/e2e_bless_to_replay_gate.rs"
+    - "crates/chio-replay-corpus/tests/audit_log_entry.rs"
+    - "docs/replay-cli.md"
+    - ".github/workflows/chio-tee-corpus-expire.yml"
+  shared_paths:
+    - ".github/workflows/"
+  depends_on:
+    - M10.P2.5.T2
+  soft_deps:
+    - "End-to-end gate: capture -> redact -> dedupe -> bless -> resulting fixture passes chio-replay-gate on subsequent CI runs (10-tee-replay-harness.md exit-criteria line 548)."
+    - "Audit-log entry written to receipt store as a tee.bless event with operator did:web identity, capture frame counts, fixture path, receipts_root, redaction_pass_id, and ed25519 signature (10-tee-replay-harness.md lines 514-541)."
+    - "Weekly review SLA Tuesdays 14:00 UTC; unreviewed captures expire from chio-tee-corpus after 30 days via the chio-tee-corpus-expire cron."
+  gate_check:
+    cmd: "cargo test -p chio-replay-corpus --test e2e_bless_to_replay_gate --test audit_log_entry && actionlint .github/workflows/chio-tee-corpus-expire.yml"
+  worktree_branch: "wave/W4/m10/p2.5.t3-bless-e2e-and-expiry-cron"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

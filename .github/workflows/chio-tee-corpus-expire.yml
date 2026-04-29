@@ -1,0 +1,126 @@
+# chio-tee-corpus-expire.yml - Weekly expiry for unreviewed tee captures.
+#
+# Source-doc anchor: .planning/trajectory/10-tee-replay-harness.md
+# Phase 2.5 "Bless graduation runbook" requires Tuesday 14:00 UTC review
+# and 30-day expiry for unreviewed `chio-tee-corpus` releases.
+
+name: chio-tee-corpus-expire
+
+on:
+  schedule:
+    # Tuesdays at 14:00 UTC, aligned with the M10 review SLA.
+    - cron: "0 14 * * 2"
+  workflow_dispatch:
+    inputs:
+      delete_expired:
+        description: "Delete expired unreviewed releases instead of dry-run"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chio-tee-corpus-expire
+  cancel-in-progress: false
+
+env:
+  CORPUS_RELEASE_PREFIX: "chio-tee-corpus/"
+  EXPIRY_DAYS: "30"
+
+jobs:
+  expire:
+    name: expire-unreviewed-captures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve expiry posture
+        id: posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+            dry_run="false"
+          elif [ "${{ inputs.delete_expired }}" = "true" ]; then
+            dry_run="false"
+          else
+            dry_run="true"
+          fi
+          echo "dry_run=${dry_run}" >> "${GITHUB_OUTPUT}"
+          echo "review_sla=Tuesday 14:00 UTC"
+          echo "expiry_days=${EXPIRY_DAYS}"
+          echo "dry_run=${dry_run}"
+
+      - name: Expire old unreviewed releases
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          DRY_RUN: ${{ steps.posture.outputs.dry_run }}
+          CORPUS_RELEASE_PREFIX: ${{ env.CORPUS_RELEASE_PREFIX }}
+          EXPIRY_DAYS: ${{ env.EXPIRY_DAYS }}
+        with:
+          script: |
+            const prefix = process.env.CORPUS_RELEASE_PREFIX;
+            const expiryDays = Number.parseInt(process.env.EXPIRY_DAYS, 10);
+            const dryRun = process.env.DRY_RUN === 'true';
+            if (!prefix) {
+              core.setFailed('CORPUS_RELEASE_PREFIX is empty');
+              return;
+            }
+            if (!Number.isInteger(expiryDays) || expiryDays <= 0) {
+              core.setFailed(`EXPIRY_DAYS must be positive, got ${process.env.EXPIRY_DAYS}`);
+              return;
+            }
+
+            const cutoffMs = Date.now() - expiryDays * 24 * 60 * 60 * 1000;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+
+            const expired = [];
+            for (const release of releases) {
+              const name = release.name || '';
+              const body = release.body || '';
+              const createdAt = Date.parse(release.created_at);
+              const isCorpusRelease =
+                release.tag_name.startsWith(prefix) || name.startsWith(prefix);
+              const reviewed =
+                /\bchio-tee-review:\s*approved\b/i.test(body) ||
+                /\breviewed=true\b/i.test(body);
+              const isExpired = Number.isFinite(createdAt) && createdAt < cutoffMs;
+              if (!isCorpusRelease || reviewed || !isExpired) {
+                continue;
+              }
+
+              expired.push({
+                id: release.id,
+                tag: release.tag_name,
+                name,
+                created_at: release.created_at,
+                url: release.html_url,
+              });
+
+              if (!dryRun) {
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: release.id,
+                });
+              }
+            }
+
+            const verb = dryRun ? 'would expire' : 'expired';
+            core.info(`${verb} ${expired.length} ${prefix} release(s) older than ${expiryDays} days`);
+            for (const release of expired) {
+              core.info(`${verb}: ${release.tag} (${release.created_at}) ${release.url}`);
+            }
+
+            await core.summary
+              .addHeading('chio-tee-corpus expiry')
+              .addRaw(`Mode: ${dryRun ? 'dry-run' : 'delete'}\n\n`)
+              .addRaw(`Prefix: ${prefix}\n\n`)
+              .addRaw(`Expiry: ${expiryDays} days\n\n`)
+              .addRaw(`Matches: ${expired.length}\n`)
+              .write();

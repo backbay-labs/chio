@@ -1,0 +1,19 @@
+{
+  "request": {
+    "tool_name": "record_event",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 27,
+      "verdict": "allow",
+      "metadata": {
+        "class": "audit",
+        "level": "info"
+      }
+    },
+    "scopes": [
+      "example-server:record_event"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

@@ -89,9 +89,10 @@ pub fn load_wasm_guards(
         // 7. Load module into backend
         backend.load_module(&wasm_bytes, entry.fuel_limit)?;
 
-        // 8. Create WasmGuard with manifest wasm_sha256 for receipt metadata
-        let guard = WasmGuard::new(
+        // 8. Create WasmGuard with manifest metadata for receipts and spans.
+        let guard = WasmGuard::new_with_metadata(
             entry.name.clone(),
+            guard_manifest.version.clone(),
             Box::new(backend),
             entry.advisory,
             Some(guard_manifest.wasm_sha256.clone()),
@@ -177,9 +178,11 @@ mod tests {
             "name: test-guard\n\
              version: \"1.0.0\"\n\
              abi_version: \"{abi_version}\"\n\
+             wit_world: \"{wit_world}\"\n\
              wasm_path: {wasm_filename}\n\
              wasm_sha256: {wasm_sha256}\n\
-             {config_yaml}"
+             {config_yaml}",
+            wit_world = crate::manifest::REQUIRED_WIT_WORLD,
         );
         let manifest_path = dir.join(crate::manifest::MANIFEST_FILENAME);
         let mut f = std::fs::File::create(&manifest_path).unwrap();
@@ -293,7 +296,7 @@ mod tests {
         // The guard was loaded successfully with the manifest config.
         // Config values are passed to the backend constructor (WasmtimeBackend::with_engine_and_config).
         // We verify the guard was created with the correct manifest SHA-256.
-        assert_eq!(guards[0].manifest_sha256(), Some(hash.as_str()));
+        assert_eq!(guards[0].manifest_sha256().as_deref(), Some(hash.as_str()));
     }
 
     // -----------------------------------------------------------------------

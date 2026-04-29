@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chio HTTP Stream Frame",
+  "description": "A single streamed tool-output frame emitted over the chio-http edge. Mirrors the JSON-RPC notification constructed by `queue_tool_stream_chunk_notifications` in `crates/chio-mcp-edge/src/runtime/protocol.rs` (lines 94-117). Each frame is a JSON-RPC 2.0 notification carrying one chunk produced by `ToolCallStream::chunks` (see `crates/chio-kernel/src/runtime.rs` lines 109-125) and uses the wire method `notifications/chio/tool_call_chunk` declared in `crates/chio-mcp-edge/src/runtime.rs` line 53. The optional `_meta.io.modelcontextprotocol/related-task` annotation is appended by `attach_related_task_meta_to_message` (`crates/chio-mcp-edge/src/runtime/protocol.rs` lines 343-368), which inserts `_meta` INSIDE `params` (not at the top level), so the schema reflects the same nesting. The MCP-style `_meta` envelope intentionally permits arbitrary string keys (for example the `io.modelcontextprotocol/related-task` annotation), but each annotation value is bounded to a single object level: `_meta` itself is an object whose values are JSON scalars, arrays of scalars, or one-level-deep objects whose values are scalars or arrays of scalars. The overall recursion depth is therefore `params -> _meta -> <annotation> -> <one inner object>`, so schema-driven consumers can rely on a fixed traversal depth.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["jsonrpc", "method", "params"],
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0",
+      "description": "Protocol version literal. Always the string '2.0'."
+    },
+    "method": {
+      "const": "notifications/chio/tool_call_chunk",
+      "description": "Chio tool-streaming notification method, exposed in code as `CHIO_TOOL_STREAMING_NOTIFICATION_METHOD`."
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "chunkIndex", "totalChunks", "chunk"],
+      "description": "Notification params. Carries the chunk payload plus the optional MCP-style `_meta` annotations attached by `attach_related_task_meta_to_message`. `_meta` is intentionally nested inside `params` (not at the top level) to match the runtime emission path.",
+      "properties": {
+        "requestId": {
+          "description": "Identifier of the originating tool-call request. Mirrors the JSON-RPC `id` value the caller supplied (typically a string or integer).",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "integer" }
+          ]
+        },
+        "chunkIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based index of this chunk within the stream."
+        },
+        "totalChunks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of chunks the kernel observed for this stream at notification time. Equal to `ToolCallStream::chunk_count()`."
+        },
+        "chunk": {
+          "description": "Chunk payload. The kernel forwards `ToolCallChunk::data` verbatim and applies no shape constraints, so any JSON value is permitted.",
+          "type": ["object", "array", "string", "number", "boolean", "null"]
+        },
+        "_meta": {
+          "type": "object",
+          "description": "Optional MCP-style notification metadata. Chio attaches the related-task annotation when a parent task is in flight. Each top-level key (`io.modelcontextprotocol/related-task` and any future MCP annotation) maps to a value bounded to a single object level so the overall traversal depth is fixed at `_meta -> <annotation> -> <one inner object>`.",
+          "additionalProperties": {
+            "description": "MCP-style annotation value. Permitted shapes: any JSON scalar, an array of scalars, or a single-level-deep object whose values are themselves scalars or arrays of scalars. Deeper nesting is rejected so that schema-driven consumers can rely on a fixed traversal depth.",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "integer" },
+              { "type": "boolean" },
+              { "type": "null" },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "number" },
+                    { "type": "integer" },
+                    { "type": "boolean" },
+                    { "type": "null" }
+                  ]
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "number" },
+                    { "type": "integer" },
+                    { "type": "boolean" },
+                    { "type": "null" },
+                    {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          { "type": "string" },
+                          { "type": "number" },
+                          { "type": "integer" },
+                          { "type": "boolean" },
+                          { "type": "null" }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "not": {
+    "required": ["id"]
+  }
+}

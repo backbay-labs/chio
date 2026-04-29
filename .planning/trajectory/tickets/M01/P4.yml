@@ -1,0 +1,195 @@
+# M01 Phase 4: Conformance suite packaging
+#
+# Source: .planning/trajectory/01-spec-codegen-conformance.md
+#         "Phase 4: Conformance suite packaging" (size M, 5-7 days).
+# Goal: make the existing scenario runner usable outside the repo by lifting
+# crates/chio-conformance/ into a publishable crate plus a chio conformance
+# CLI subcommand, with pinned peer-binary downloads and external-consumer
+# smoke coverage.
+# Owner: M01 (single-owner trajectory routes to @bb-connor).
+# Wave: 2. Branch prefix wave/W2/m01/p4.t*.
+#
+# Phase doc enumerates 6 tasks (P4.T1-T6). Each fits the 2 engineer-day cap
+# without splitting. Hard dep chain:
+#   T1 first (flips chio-conformance Cargo.toml to publishable shape; this is
+#       the doc's "first commit" and gates everything else in P4).
+#   T2 adds the chio conformance CLI subcommand on top of T1's publishable
+#       shape so the dispatch surface exists before tests target it.
+#   T3 lands the CLI integration test (insta snapshot of report shape) and
+#       therefore depends on T2.
+#   T4 adds the fetch-peers subcommand and peers.lock.toml; depends on T2 for
+#       the dispatch surface.
+#   T5 lands docs/conformance.md describing the standalone consumer flow;
+#       depends on T2 + T4 so every command the doc invokes already exists.
+#   T6 cpp_peer_p0.rs integration test; depends on T1 publishable shape so
+#       the in-repo-fixtures feature flag gating is in place.
+#
+# Cross-phase deps: T1 depends on M01.P3.T6 (Python framework adapter
+# regression) so the publishable shape consumes the final regenerated
+# chio-sdk-python types and there is no churn between codegen flip and
+# packaging flip.
+#
+# Soft deps: T1 references M06 WASM guard fixtures (additive on top of the
+# packaged conformance crate). T4 references the M01 release artifacts that
+# host the pinned peer binaries (release-asset URLs land in peers.lock.toml).
+
+- id: M01.P4.T1
+  milestone: M01
+  phase: 4
+  title: "Flip chio-conformance Cargo.toml to publishable shape with included peer fixtures"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-conformance/Cargo.toml"
+    - "crates/chio-conformance/README.md"
+    - "docs/conformance.md"
+  shared_paths:
+    - "Cargo.toml"
+    - "Cargo.lock"
+  depends_on:
+    - "M01.P3.T6"
+  soft_deps:
+    - "M06 WASM guard fixtures (chio:guard@0.2.0 host.fetch-blob, policy-context) ride on this packaging"
+  gate_check:
+    cmd: "cargo publish -p chio-conformance --dry-run --allow-dirty && cargo build -p chio-conformance --no-default-features"
+  worktree_branch: "wave/W2/m01/p4.t1-conformance-publishable-cargo"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P4.T2
+  milestone: M01
+  phase: 4
+  title: "Add chio conformance run subcommand to chio-cli with peer/scenario/report flags"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-cli/src/cli/conformance.rs"
+    - "crates/chio-cli/src/cli/dispatch.rs"
+    - "crates/chio-cli/Cargo.toml"
+    - "Cargo.lock"
+  shared_paths:
+    - "Cargo.lock"
+    - "crates/chio-cli/src/cli/dispatch.rs"
+  depends_on:
+    - "M01.P4.T1"
+  soft_deps: []
+  gate_check:
+    cmd: "cargo build -p chio-cli && cargo run --quiet -p chio-cli -- conformance run --help"
+  worktree_branch: "wave/W2/m01/p4.t2-cli-conformance-run-subcommand"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P4.T3
+  milestone: M01
+  phase: 4
+  title: "Land conformance_cli.rs insta-snapshot integration test for report shape stability"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-cli/tests/conformance_cli.rs"
+    - "crates/chio-cli/tests/snapshots/"
+    - "crates/chio-cli/Cargo.toml"
+    - "Cargo.lock"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - "M01.P4.T2"
+  soft_deps:
+    - "M01 P5 conformance-matrix workflow reruns this CLI flow as the external-consumer-smoke job"
+  gate_check:
+    cmd: "cargo test -p chio-cli --test conformance_cli"
+  worktree_branch: "wave/W2/m01/p4.t3-conformance-cli-insta-test"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P4.T4
+  milestone: M01
+  phase: 4
+  title: "Add chio conformance fetch-peers subcommand and peers.lock.toml with sha256-pinned URLs"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-cli/src/cli/conformance.rs"
+    - "crates/chio-conformance/peers.lock.toml"
+    - "crates/chio-conformance/src/peers.rs"
+    - "crates/chio-conformance/Cargo.toml"
+    - "Cargo.lock"
+  shared_paths:
+    - "Cargo.lock"
+    - "crates/chio-cli/src/cli/conformance.rs"
+  depends_on:
+    - "M01.P4.T2"
+  soft_deps:
+    - "Peer binaries hosted as M01 release-asset URLs; peers.lock.toml pins by sha256"
+    - "M01 P5 external-consumer-smoke job invokes fetch-peers nightly to detect URL drift"
+  gate_check:
+    cmd: "cargo run --quiet -p chio-cli -- conformance fetch-peers --check && cargo test -p chio-conformance --lib peers"
+  worktree_branch: "wave/W2/m01/p4.t4-conformance-fetch-peers-subcommand"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P4.T5
+  milestone: M01
+  phase: 4
+  title: "Land docs/conformance.md describing the standalone external-consumer flow"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "docs/conformance.md"
+    - "docs/README.md"
+  shared_paths: []
+  depends_on:
+    - "M01.P4.T2"
+    - "M01.P4.T4"
+  soft_deps: []
+  gate_check:
+    cmd: "test -f docs/conformance.md && grep -q 'cargo install chio-conformance' docs/conformance.md && grep -q 'chio conformance fetch-peers' docs/conformance.md && grep -q 'chio conformance run' docs/conformance.md"
+  worktree_branch: "wave/W2/m01/p4.t5-conformance-consumer-docs"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P4.T6
+  milestone: M01
+  phase: 4
+  title: "Land cpp_peer_p0.rs asserting mcp_core and auth scenarios pass via chio-cpp-kernel-ffi"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-conformance/tests/cpp_peer_p0.rs"
+    - "crates/chio-conformance/Cargo.toml"
+    - "Cargo.lock"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - "M01.P4.T1"
+  soft_deps:
+    - "Wave 1 decision 5 locks C++ P0 scope to mcp_core + auth; chio-extensions, tasks, nested_callbacks, notifications deferred to a follow-on milestone"
+  gate_check:
+    cmd: "cargo test -p chio-conformance --test cpp_peer_p0"
+  worktree_branch: "wave/W2/m01/p4.t6-cpp-peer-p0-mcp-core-auth"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

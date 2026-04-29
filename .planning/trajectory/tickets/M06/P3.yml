@@ -1,0 +1,216 @@
+# M06 Phase 3 - Hot-reload and atomic swap.
+# Source of truth: .planning/trajectory/06-wasm-guard-platform.md
+# (Phase 3, lines 225-310). Seven atomic tasks map 1:1 to P3.T1-P3.T7 in
+# doc order; the three Round-2 NEW sub-tasks (canary fixture provenance
+# harness, rollback incident directory writer, digest blocklist
+# enforcement) are absorbed into P3.T5 and P3.T6 deliverables since they
+# are prerequisites for the named exit criteria.
+#
+# Trust-boundary status: M06 is a TRUST-BOUNDARY milestone. Hot-reload
+# touches the live load path; an incorrect swap can replace a verified
+# guard with an unverified one. Security x2 review applies (EXECUTION-BOARD
+# section 7).
+#
+# Dep gating:
+#   - P3 chains after P2 (atomic phase order).
+#   - No external dep on M05 / M09 in P3; the runtime work is internal.
+#   - Owns crates/chio-wasm-guards/src/{epoch.rs,hot_reload.rs,incident.rs,
+#     blocklist.rs} (new) and runtime.rs.
+#
+# Wave: all P3 tickets land in Wave 2b under wave/W2/m06/p3.* branches.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M06.P3.T1
+  milestone: M06
+  phase: 3
+  title: Add ArcSwap-backed LoadedModule with EpochId monotonic tracking
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-wasm-guards/src/runtime.rs"
+    - "crates/chio-wasm-guards/src/epoch.rs"
+    - "crates/chio-wasm-guards/Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - M06.P2.T6
+  soft_deps:
+    - "arc_swap chosen for lock-free reads on the hot path; evaluate does a single load_full() and never blocks (phase doc line 229)."
+  gate_check:
+    cmd: "cargo build -p chio-wasm-guards && cargo test -p chio-wasm-guards --lib epoch"
+  worktree_branch: "wave/W2/m06/p3.t1-arcswap-loaded-module-epoch"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P3.T2
+  milestone: M06
+  phase: 3
+  title: Implement Engine::reload with atomic ArcSwap publish
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-wasm-guards/src/runtime.rs"
+    - "crates/chio-wasm-guards/src/hot_reload.rs"
+    - "crates/chio-wasm-guards/tests/engine_reload.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P3.T1
+  soft_deps:
+    - "Signature: Engine::reload(guard_id, new_module_bytes) -> Result<EpochId> (phase doc line 229)."
+    - "In-flight calls finish on the old module; new calls land on the new epoch once the swap publishes."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test engine_reload"
+  worktree_branch: "wave/W2/m06/p3.t2-engine-reload-atomic-swap"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P3.T3
+  milestone: M06
+  phase: 3
+  title: File-watcher and registry-poll reload triggers
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-wasm-guards/src/hot_reload.rs"
+    - "crates/chio-wasm-guards/Cargo.toml"
+    - "crates/chio-wasm-guards/tests/reload_triggers.rs"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - M06.P3.T2
+  soft_deps:
+    - "notify-based file watcher on the guard directory plus a tokio::time::interval registry-poll task keyed by digest (phase doc line 229)."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test reload_triggers"
+  worktree_branch: "wave/W2/m06/p3.t3-reload-triggers-watch-and-poll"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P3.T4
+  milestone: M06
+  phase: 3
+  title: Per-guard reload mutex with 5s debounce and monotonic seq
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-wasm-guards/src/hot_reload.rs"
+    - "crates/chio-wasm-guards/tests/reload_race.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P3.T3
+  soft_deps:
+    - "Per-guard tokio::sync::Mutex<ReloadSlot> keyed in DashMap; 5s debounce with last-write-wins; monotonic seq tagged on receipts as guard.reload_seq (phase doc lines 263-266)."
+    - "Lands the deterministic race-repro test from phase doc lines 270-291 (registry_poll_burst_does_not_double_swap)."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test reload_race -- registry_poll_burst_does_not_double_swap"
+  worktree_branch: "wave/W2/m06/p3.t4-per-guard-mutex-debounce"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P3.T5
+  milestone: M06
+  phase: 3
+  title: Canary harness + provenance gate for 32-fixture pre-swap verification
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-wasm-guards/src/hot_reload.rs"
+    - "crates/chio-wasm-guards/tests/canary_harness.rs"
+    - "crates/chio-wasm-guards/tests/canary_provenance.rs"
+    - "tests/corpora/example-guard/canary/MANIFEST.sha256"
+    - "tests/corpora/example-guard/canary/PROVENANCE.md"
+  shared_paths: []
+  depends_on:
+    - M06.P3.T4
+  soft_deps:
+    - "Canary corpus is hand-curated, frozen at fixture-commit time, and sha256-stamped in MANIFEST.sha256 (phase doc lines 232-256)."
+    - "Round-2 NEW: canary_provenance.rs walks all corpora and rejects fixture drift; wired into default cargo test --workspace lane."
+    - "Harness rejects guards whose fixture count != 32 or whose manifest hash mismatches; byte-identical verdicts required for all 32 fixtures."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test canary_harness --test canary_provenance"
+  worktree_branch: "wave/W2/m06/p3.t5-canary-harness-and-provenance"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P3.T6
+  milestone: M06
+  phase: 3
+  title: Post-swap watchdog with M>=5/60s rollback, incident directory writer, and digest blocklist
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-wasm-guards/src/hot_reload.rs"
+    - "crates/chio-wasm-guards/src/incident.rs"
+    - "crates/chio-wasm-guards/src/blocklist.rs"
+    - "crates/chio-cli/src/commands/guard_blocklist.rs"
+    - "crates/chio-wasm-guards/tests/watchdog_rollback.rs"
+    - "crates/chio-wasm-guards/tests/blocklist_enforcement.rs"
+    - "docs/guards/15-HOT-RELOAD.md"
+  shared_paths: []
+  depends_on:
+    - M06.P3.T5
+  soft_deps:
+    - "Watchdog: M>=5 consecutive error-class verdicts within 60s window triggers atomic rollback to prior epoch and emits chio.guard.reload.rolled_back (phase doc line 260)."
+    - "Round-2 NEW: incident.rs writes ${XDG_STATE_HOME}/chio/incidents/<utc-iso8601>-<guard_id>-<reload_seq>/ with redacted last_5_eval_traces.ndjson (phase doc lines 366, 376)."
+    - "Round-2 NEW: blocklist.rs persists ${XDG_STATE_HOME}/chio/guards/blocklist.json; chio guard pull and Engine::reload both consult it; structured error E_GUARD_DIGEST_BLOCKLISTED; CLI escape hatch chio guard blocklist remove <digest> (phase doc lines 368, 377)."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test watchdog_rollback --test blocklist_enforcement"
+  worktree_branch: "wave/W2/m06/p3.t6-watchdog-incident-blocklist"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P3.T7
+  milestone: M06
+  phase: 3
+  title: Deterministic 100rps no-drop test for hot-reload under load
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "crates/chio-wasm-guards/tests/reload_no_drop_100rps.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P3.T6
+  soft_deps:
+    - "Companion to the deterministic race-repro test (M06.P3.T4); asserts zero dropped requests during swap and boundary-consistent verdicts (phase doc line 309)."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test reload_no_drop_100rps"
+    timeout_seconds: 600
+  worktree_branch: "wave/W2/m06/p3.t7-reload-100rps-no-drop"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

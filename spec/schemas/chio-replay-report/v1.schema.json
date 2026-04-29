@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-replay-report/v1.json",
+  "title": "chio-replay-report.v1",
+  "description": "Stable JSON report shape emitted by `chio replay --json`. Mirrors the `ReplayReport` struct in crates/chio-cli/src/cli/replay/report.rs. The schema string `chio.replay.report/v1` is pinned by M04 Phase 4 task 5; the report is emitted on every `--json` run regardless of exit code so consumers can drive triage off a single byte stream.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "log_path",
+    "receipts_checked",
+    "computed_root",
+    "expected_root",
+    "first_divergence",
+    "exit_code"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "chio.replay.report/v1",
+      "description": "Stable schema identifier. Pinned to `chio.replay.report/v1`; downstream consumers MUST gate on byte-equal match before parsing the rest of the document."
+    },
+    "log_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Filesystem path the replay was driven against. Recorded verbatim from the `<log>` positional argument. Useful for triage when batch-replaying multiple corpora."
+    },
+    "receipts_checked": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of receipts the reader yielded and the verify/merkle/verdict pipelines processed. May be `0` only when an empty-corpus error short-circuited the run before any receipt was processed; in that case `exit_code` is non-zero and `first_divergence` carries a structural error."
+    },
+    "computed_root": {
+      "type": "string",
+      "description": "Lowercase-hex SHA-256 synthetic root produced by the streaming `MerkleAccumulator` over receipt canonical bytes in append order. Empty string when the run aborted before any receipt could be folded into the accumulator (matched only by the empty-corpus / pre-read failure case)."
+    },
+    "expected_root": {
+      "type": ["string", "null"],
+      "description": "Lowercase-hex root the run was asserted against (`--expect-root` flag). `null` when the user did not supply an expectation. When present and `computed_root != expected_root`, the divergence is reported as a `merkle_mismatch` kind and the exit code is the canonical merkle-divergence code (`0` is impossible on root mismatch)."
+    },
+    "first_divergence": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "receipt_index"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "verdict_drift",
+                "signature_mismatch",
+                "parse_error",
+                "schema_mismatch",
+                "redaction_mismatch",
+                "merkle_mismatch"
+              ],
+              "description": "Divergence shape. The set of valid values mirrors the canonical exit-code registry in `.planning/trajectory/04-deterministic-replay.md` Phase 4 plus `merkle_mismatch` for the `--expect-root` mismatch case."
+            },
+            "receipt_index": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Zero-based index (in the order the reader yielded them) of the first receipt that exhibited the divergence. For pre-read structural errors (empty corpus, IO) this field is `0` and consumers MUST gate attribution on `kind`."
+            },
+            "receipt_id": {
+              "type": ["string", "null"],
+              "description": "The `id` field of the offending receipt, when known. Absent for parse-error / pre-read shapes where the receipt could not be deserialized far enough to extract an id."
+            },
+            "json_pointer": {
+              "type": ["string", "null"],
+              "description": "RFC 6901 JSON Pointer to the offending field inside the receipt (e.g. `/decision/verdict` for verdict drift). Absent when the divergence is whole-receipt (signature mismatch) or pre-read."
+            },
+            "byte_offset": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Byte offset into the receipt log file where the offending receipt starts, when the reader can attribute it. Absent for directory-mode runs where per-file offsets do not compose into a single stream offset."
+            },
+            "expected": {
+              "type": ["string", "null"],
+              "description": "Stored / expected value at `json_pointer`. For verdict drift this is the receipt's recorded decision label (`allow`, `deny`, ...). For merkle mismatch this is `expected_root`."
+            },
+            "observed": {
+              "type": ["string", "null"],
+              "description": "Newly-derived / observed value at `json_pointer`. For verdict drift this is what the current build would produce. For merkle mismatch this is `computed_root`."
+            },
+            "detail": {
+              "type": ["string", "null"],
+              "description": "Free-form human-readable failure note. Present for parse-error / verifier-error shapes that do not decompose into a structured `expected` / `observed` pair."
+            }
+          }
+        }
+      ],
+      "description": "First divergence the pipeline observed, or `null` for a clean run. The pipeline order is: read -> signature verify -> verdict re-derive -> Merkle root compare. The first failing stage owns `first_divergence` and aborts subsequent stages."
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [0, 10, 20, 30, 40, 50],
+      "description": "Process exit code the dispatch layer will use after writing the JSON report. Pinned by the canonical exit-code registry in M04 Phase 4: `0` clean, `10` verdict drift, `20` signature mismatch, `30` parse error, `40` schema mismatch, `50` redaction mismatch."
+    }
+  }
+}

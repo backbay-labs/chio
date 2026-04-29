@@ -1,0 +1,6 @@
+93f02e4f7523caad7d16a4e6d421c9b13fcf61c14ae69ad7a0fedcd0a9c42d38  tests/bindings/vectors/canonical/v1.json
+548f4dc65f8ae6b2ae8a4f3e48c578db1a4c179537cd4a1974080bdb135e323a  tests/bindings/vectors/capability/v1.json
+c22fa7f39f71a11060ecd710bdd17297eadd249612964a95d519e98c60e95cc6  tests/bindings/vectors/hashing/v1.json
+5492de0309012bceb976bb34760876a69620b244737714fe57f0636cb477167e  tests/bindings/vectors/manifest/v1.json
+acf9fe1d2695ce7fe8505b7b2e461205691862eb57a8bb5b4f8f2b87b276918a  tests/bindings/vectors/receipt/v1.json
+d8afddad6b16db986f2d1408d06529fa0cf2273081eff5984c6de3476f95dd17  tests/bindings/vectors/signing/v1.json

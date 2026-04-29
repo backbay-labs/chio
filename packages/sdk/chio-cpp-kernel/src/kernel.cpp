@@ -145,6 +145,13 @@ EvaluateResult Kernel::evaluate(const EvaluateRequest& request) const {
         "trusted issuer set missing");
   }
 
+  if (!options_.policy_json.empty()) {
+    return failure(
+        "unsupported_policy",
+        "KernelOptions.policy_json is not supported by the current C++ kernel FFI backend",
+        "fail-closed because configured policy would otherwise be ignored");
+  }
+
 #ifdef CHIO_CPP_KERNEL_ENABLE_FFI
   const std::string envelope = detail::build_kernel_request_json(options_, request);
   return from_ffi_result(chio_kernel_evaluate_json(envelope.c_str()));

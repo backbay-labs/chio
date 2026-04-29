@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "tampered_signature",
+  "expected_verdict": "deny",
+  "family": "tampered_signature",
+  "fixed_nonce_seed_index": 44,
+  "intent": "Deny because a single byte inside the Ed25519 signature has been flipped, exercising bit-precise signature-verification rejection.",
+  "name": "tampered_signature/01_flipped_byte",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "signature-tampering"]
+}

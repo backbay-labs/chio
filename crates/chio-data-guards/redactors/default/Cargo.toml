@@ -1,0 +1,25 @@
+[package]
+name = "chio-data-guards-redactors-default"
+description = "Default redactor for chio:guards/redact@0.1.0: secrets, basic PII, and bearer-token stripping over the M06 namespace."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_data_guards_redactors_default"
+
+[dependencies]
+regex = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

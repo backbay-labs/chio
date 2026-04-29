@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "redact_message",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 22,
+      "verdict": "allow",
+      "rewrite": "email_redacted"
+    },
+    "scopes": [
+      "example-server:redact_message"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

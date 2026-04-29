@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/revocation/v1",
+  "title": "Chio Capability Revocation Entry",
+  "description": "A single revocation entry recording that a previously issued capability token (identified by its `id`) is no longer valid as of `revoked_at`. Mirrors `RevocationRecord` in `crates/chio-kernel/src/revocation_store.rs` (the kernel's persisted revocation row), and is the wire-level companion to the `capability_revoked` kernel notification under `chio-wire/v1/kernel/capability_revoked.schema.json`. Operators read these entries from `/admin/revocations` (hosted edge) and from the trust-control revocation list.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["capability_id", "revoked_at"],
+  "properties": {
+    "capability_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The `id` field of the revoked CapabilityToken. Used to match revocations against presented tokens."
+    },
+    "revoked_at": {
+      "type": "integer",
+      "description": "Unix timestamp (seconds) at which the revocation took effect. Stored as a signed integer in the kernel store; negative values are not produced by the issuer but are not rejected here in order to match the Rust `i64` shape."
+    }
+  }
+}

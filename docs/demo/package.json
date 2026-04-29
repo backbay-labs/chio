@@ -1,0 +1,22 @@
+{
+  "name": "docs-demo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Chio M04-fixture verify demo. Engineering output, not a release. Built as a static site under docs/demo/dist/ for GitHub Pages publication.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@chio-protocol/browser": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "typescript": "~5.7.0",
+    "vite": "^6.0.0"
+  }
+}

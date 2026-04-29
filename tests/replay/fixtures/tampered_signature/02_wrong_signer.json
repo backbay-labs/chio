@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "tampered_signature",
+  "expected_verdict": "deny",
+  "family": "tampered_signature",
+  "fixed_nonce_seed_index": 45,
+  "intent": "Deny because the signature was produced by a key whose public half does not match the claimed signer, exercising signer-identity binding.",
+  "name": "tampered_signature/02_wrong_signer",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "signature-tampering", "wrong-signer"]
+}

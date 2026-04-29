@@ -1,0 +1,87 @@
+# M02 Phase 3 - Mutation-testing gate flips from advisory to blocking.
+#
+# Source of truth: .planning/trajectory/02-fuzzing-post-pr13.md
+# - Mutation-testing CI shape > Threshold-enforcement logic (lines 315-320):
+#     advisory while releases.toml cycle_end_tag is empty; blocking once a
+#     release-creation hook writes the next post-Phase-3 tag into it.
+# - Open question 2 (line 437): "advisory for one release cycle, blocking
+#   thereafter" is the locked decision; this phase mechanizes the flip.
+#
+# Wave 4 execution gate (EXECUTION-BOARD.md section 2): P3 may not enter
+# in_progress until at least one full release cycle after M02 P2 has merged
+# (the cycle_end_tag is sourced from a release tag). The dependency on
+# M02 P2 advisory lane being live is hard; the dependency on a specific
+# release tag is informational (soft_dep) since the release tag is owned
+# by the release pipeline, not this ticket.
+#
+# Wave 4 gate adds: "mutation-testing gate becomes blocking via releases.toml
+# flip" per EXECUTION-BOARD section 2 Wave 4 gate paragraph.
+#
+# Ticket count: ~2 per EXECUTION-BOARD section 2 row "M02 | P3 | ~2".
+# T1 wires the auto-flip hook in release-binaries.yml; T2 lands the
+# CODEOWNERS gate + mutants-gate-override escape hatch on releases.toml.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M02.P3.T1
+  milestone: M02
+  phase: 3
+  title: "Wire release-binaries.yml auto-flip: write cycle_end_tag into releases.toml on first post-Phase-3 release"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/release-binaries.yml"
+    - "releases.toml"
+    - "scripts/mutants-gate.sh"
+    - "docs/fuzzing/mutants.md"
+  shared_paths:
+    - "releases.toml"
+    - ".github/workflows/release-binaries.yml"
+  depends_on:
+    - M02.P2.T2
+  soft_deps:
+    - "Source-doc anchor: Mutation-testing CI shape > Threshold-enforcement logic"
+    - "Once cycle_end_tag is non-empty, mutants-nightly exits 1 on miss instead of 0; PR comments switch from 'advisory' to 'blocking' label"
+    - "Hook commit lands automatically as a single PR titled 'chore(mutants): activate blocking gate after cycle <tag>'"
+  gate_check:
+    cmd: "actionlint .github/workflows/release-binaries.yml && grep -q 'cycle_end_tag' .github/workflows/release-binaries.yml && grep -q 'chore(mutants): activate blocking gate' .github/workflows/release-binaries.yml && bash -n scripts/mutants-gate.sh && grep -qE 'cycle_end_tag' scripts/mutants-gate.sh && grep -q 'blocking' docs/fuzzing/mutants.md"
+    timeout_seconds: 120
+  worktree_branch: "wave/W4/m02/p3.t1-mutants-gate-auto-flip-hook"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P3.T2
+  milestone: M02
+  phase: 3
+  title: "Add CODEOWNERS gate on releases.toml and mutants-gate-override label escape hatch"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "CODEOWNERS"
+    - ".github/workflows/mutants.yml"
+    - "docs/fuzzing/mutants.md"
+  shared_paths:
+    - "CODEOWNERS"
+    - ".github/workflows/mutants.yml"
+  depends_on:
+    - M02.P3.T1
+  soft_deps:
+    - "Source-doc anchor: Mutation-testing CI shape > Override paragraph (line 319-320)"
+    - "Override path: maintainer clears cycle_end_tag in a PR labelled 'mutants-gate-override'; PR requires CODEOWNERS review on releases.toml"
+    - "CODEOWNERS file may already exist from M02 P4 triage work; this ticket appends the releases.toml line if so"
+  gate_check:
+    cmd: "test -f CODEOWNERS && grep -qE '^/?releases\\.toml.*@bb-connor' CODEOWNERS && grep -q 'mutants-gate-override' .github/workflows/mutants.yml && grep -q 'mutants-gate-override' docs/fuzzing/mutants.md"
+    timeout_seconds: 60
+  worktree_branch: "wave/W4/m02/p3.t2-mutants-gate-codeowners-and-override"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "tampered_canonical_json",
+  "expected_verdict": "deny",
+  "family": "tampered_canonical_json",
+  "fixed_nonce_seed_index": 47,
+  "intent": "Deny because the receipt-input has fields in non-sorted order, violating canonical-JSON key ordering and breaking hash equivalence.",
+  "name": "tampered_canonical_json/01_field_reordered",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "tampering", "key-order"]
+}

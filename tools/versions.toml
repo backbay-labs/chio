@@ -1,0 +1,9 @@
+[wit]
+world = "chio:guard@0.2.0"
+
+[toolchain]
+jco = "1.17.6"
+componentize-py = "0.23.0"
+tinygo = "0.34.0"
+wit-bindgen = "0.51.0"
+wit-bindgen-go = "0.7.0"

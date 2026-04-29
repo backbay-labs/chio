@@ -1786,8 +1786,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_invocation_produces_allow_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_invocation_produces_allow_receipt() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc() else {
             return;
         };
@@ -1845,7 +1845,7 @@ mod tests {
         .expect("sign capability");
 
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -1861,6 +1861,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
@@ -1877,8 +1878,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_query_api_key_invocation_produces_allow_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_query_api_key_invocation_produces_allow_receipt() {
         let Some(server) = FakeA2aServer::spawn_http_json_api_key_query_required() else {
             return;
         };
@@ -1911,7 +1912,7 @@ mod tests {
 
         let capability = test_capability(&issuer, &subject, &server_id, "cap-a2a-query-auth");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-query-auth".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -1926,6 +1927,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate query-auth A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
@@ -1941,8 +1943,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_basic_auth_invocation_produces_allow_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_basic_auth_invocation_produces_allow_receipt() {
         let Some(server) = FakeA2aServer::spawn_http_json_basic_required() else {
             return;
         };
@@ -1975,7 +1977,7 @@ mod tests {
 
         let capability = test_capability(&issuer, &subject, &server_id, "cap-a2a-basic-auth");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-basic-auth".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -1990,6 +1992,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate basic-auth A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
@@ -2008,8 +2011,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_mtls_invocation_produces_allow_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_mtls_invocation_produces_allow_receipt() {
         ensure_rustls_crypto_provider();
         let Some(server) = FakeMtlsA2aServer::spawn_jsonrpc() else {
             return;
@@ -2048,7 +2051,7 @@ mod tests {
 
         let capability = test_capability(&issuer, &subject, &server_id, "cap-a2a-mtls");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-mtls".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2063,6 +2066,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate mTLS A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
@@ -2078,8 +2082,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_get_task_follow_up_produces_allow_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_get_task_follow_up_produces_allow_receipt() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_task_follow_up() else {
             return;
         };
@@ -2137,7 +2141,7 @@ mod tests {
         .expect("sign capability");
 
         let initial = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-start".to_string(),
                 capability: capability.clone(),
                 tool_name: "research".to_string(),
@@ -2153,6 +2157,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate initial A2A tool call");
         assert_eq!(initial.verdict, Verdict::Allow);
         assert_eq!(initial.receipt.body().decision, Decision::Allow);
@@ -2163,7 +2168,7 @@ mod tests {
         );
 
         let follow_up = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-poll".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2181,6 +2186,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate follow-up A2A tool call");
 
         assert_eq!(follow_up.verdict, Verdict::Allow);
@@ -2200,8 +2206,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_cancel_task_produces_allow_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_cancel_task_produces_allow_receipt() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_cancel_task() else {
             return;
         };
@@ -2233,7 +2239,7 @@ mod tests {
 
         let capability = test_capability(&issuer, &subject, &server_id, "cap-a2a-cancel");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-cancel".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2251,6 +2257,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate cancel-task A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
@@ -2265,8 +2272,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_streaming_invocation_produces_allow_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_streaming_invocation_produces_allow_receipt() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_streaming_complete() else {
             return;
         };
@@ -2298,7 +2305,7 @@ mod tests {
 
         let capability = test_capability(&issuer, &subject, &server_id, "cap-a2a-stream");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-stream".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2314,6 +2321,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate streaming A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
@@ -2327,8 +2335,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_incomplete_streaming_invocation_produces_incomplete_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_incomplete_streaming_invocation_produces_incomplete_receipt() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_streaming_incomplete() else {
             return;
         };
@@ -2361,7 +2369,7 @@ mod tests {
         let capability =
             test_capability(&issuer, &subject, &server_id, "cap-a2a-stream-incomplete");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-stream-incomplete".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2377,6 +2385,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate incomplete streaming A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Deny);
@@ -2392,8 +2401,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_subscribe_task_produces_allow_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_subscribe_task_produces_allow_receipt() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_complete() else {
             return;
         };
@@ -2425,7 +2434,7 @@ mod tests {
 
         let capability = test_capability(&issuer, &subject, &server_id, "cap-a2a-subscribe");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-subscribe".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2440,6 +2449,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate subscribe-to-task A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);
@@ -2453,8 +2463,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_a2a_incomplete_subscribe_task_produces_incomplete_receipt() {
+    #[tokio::test]
+    async fn kernel_e2e_a2a_incomplete_subscribe_task_produces_incomplete_receipt() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_incomplete() else {
             return;
         };
@@ -2491,7 +2501,7 @@ mod tests {
             "cap-a2a-subscribe-incomplete",
         );
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-subscribe-incomplete".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2506,6 +2516,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate incomplete subscribe-to-task A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Deny);
@@ -2521,8 +2532,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_missing_required_bearer_security_denies_request() {
+    #[tokio::test]
+    async fn kernel_e2e_missing_required_bearer_security_denies_request() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_bearer_required() else {
             return;
         };
@@ -2554,7 +2565,7 @@ mod tests {
 
         let capability = test_capability(&issuer, &subject, &server_id, "cap-a2a-auth-deny");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-auth-deny".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2569,6 +2580,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Deny);
@@ -2581,8 +2593,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn kernel_e2e_oauth_client_credentials_allows_request() {
+    #[tokio::test]
+    async fn kernel_e2e_oauth_client_credentials_allows_request() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_oauth_client_credentials_single_invoke() else {
             return;
         };
@@ -2615,7 +2627,7 @@ mod tests {
 
         let capability = test_capability(&issuer, &subject, &server_id, "cap-a2a-oauth");
         let response = kernel
-            .evaluate_tool_call_blocking(&ToolCallRequest {
+            .evaluate_tool_call(&ToolCallRequest {
                 request_id: "req-a2a-oauth".to_string(),
                 capability,
                 tool_name: "research".to_string(),
@@ -2630,6 +2642,7 @@ mod tests {
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             })
+            .await
             .expect("evaluate OAuth-backed A2A tool call");
 
         assert_eq!(response.verdict, Verdict::Allow);

@@ -573,6 +573,7 @@ fn sample_manifest() -> ToolManifest {
                 latency_hint: Some(LatencyHint::Slow),
             },
         ],
+        server_tools: Vec::new(),
         required_permissions: None,
         public_key: "abcd".into(),
     }
@@ -605,6 +606,7 @@ fn streaming_manifest() -> ToolManifest {
                 latency_hint: Some(LatencyHint::Slow),
             },
         ],
+        server_tools: Vec::new(),
         required_permissions: None,
         public_key: "stream-abcd".into(),
     }
@@ -758,6 +760,37 @@ fn execute_bridge_mcp_tool_call_preserves_model_metadata() {
     assert!(matches!(bridge.response.verdict, Verdict::Allow));
 }
 
+#[tokio::test]
+async fn execute_bridge_mcp_tool_call_async_preserves_model_metadata() {
+    let (kernel, _) = make_kernel();
+    let agent = Keypair::generate();
+    let capability = issue_model_constrained_capability(&kernel, &agent);
+
+    let bridge = execute_bridge_mcp_tool_call_async(
+        &kernel,
+        BridgeMcpToolCallRequest {
+            request_id: "mcp-model-async-1".to_string(),
+            capability,
+            server_id: "srv".to_string(),
+            tool_name: "read_file".to_string(),
+            arguments: json!({"path":"/tmp/demo.txt"}),
+            agent_id: agent.public_key().to_hex(),
+            model_metadata: Some(ModelMetadata {
+                model_id: "gpt-5".to_string(),
+                safety_tier: Some(ModelSafetyTier::High),
+                provider: Some("openai".to_string()),
+                provenance_class: ProvenanceEvidenceClass::Asserted,
+            }),
+            route_selection_metadata: None,
+            peer_supports_chio_tool_streaming: false,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(bridge.response.verdict, Verdict::Allow));
+}
+
 #[test]
 fn tools_call_uses_meta_model_metadata_and_records_asserted_provenance() {
     let mut edge = make_model_constrained_edge(10);
@@ -898,6 +931,7 @@ fn make_url_required_edge() -> ChioMcpEdge {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Moderate),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "url-abcd".into(),
         }],
@@ -2825,7 +2859,7 @@ fn initialize_persists_configured_session_auth_context() {
     };
 
     let session = edge.kernel.session(&session_id).expect("session exists");
-    assert_eq!(session.auth_context(), &auth_context);
+    assert_eq!(session.auth_context(), auth_context);
 }
 
 #[test]

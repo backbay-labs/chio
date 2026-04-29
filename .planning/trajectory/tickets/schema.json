@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/ticket-manifest/v1",
+  "title": "Chio trajectory ticket manifest",
+  "description": "Schema for .planning/trajectory/tickets/manifest.yml and per-phase tickets/M{nn}/P{n}.yml files. Tickets are atomic mergeable PRs sized 0.5-2 engineer-days. The manifest is regenerated from the per-phase files; both are committed and CI validates consistency.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/ticket" },
+  "$defs": {
+    "ticket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "milestone", "phase", "title", "status",
+        "effort_days", "owner_glob", "shared_paths",
+        "depends_on", "soft_deps", "gate_check",
+        "worktree_branch", "agent_role", "review_required",
+        "first_commit_sha", "merged_sha", "opened_ts", "merged_ts"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^M(0[1-9]|10)\\.P[0-9]+(\\.[0-9]+)?\\.T[0-9]+(\\.[a-z0-9]+)?$",
+          "description": "M{nn}.P{n}[.{n}].T{n}[.{k}]; .k allows splits without renumbering siblings."
+        },
+        "milestone": {
+          "type": "string",
+          "pattern": "^M(0[1-9]|10)$"
+        },
+        "phase": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0, "maximum": 99 },
+            { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" }
+          ]
+        },
+        "title": { "type": "string", "minLength": 8, "maxLength": 200 },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "review", "blocked", "merged"]
+        },
+        "effort_days": { "type": "number", "minimum": 0.25, "maximum": 5 },
+        "owner_glob": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "shared_paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Paths the orchestrator must serialize against; e.g. Cargo.lock"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^M(0[1-9]|10)\\.P[0-9]+(\\.[0-9]+)?\\.T[0-9]+(\\.[a-z0-9]+)?$"
+          },
+          "description": "Hard dependencies; ticket cannot leave pending until each is merged."
+        },
+        "soft_deps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Soft dependencies; informational, not blocking."
+        },
+        "gate_check": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cmd"],
+          "properties": {
+            "cmd": { "type": "string" },
+            "timeout_seconds": { "type": "integer", "minimum": 30 }
+          }
+        },
+        "worktree_branch": {
+          "type": "string",
+          "pattern": "^wave/W[1-4]/m(0[1-9]|10)/p[0-9]+(\\.[0-9]+)?\\.t[0-9]+(\\.[a-z0-9]+)?-[a-z0-9][a-z0-9-]{2,48}$"
+        },
+        "agent_role": {
+          "type": "string",
+          "enum": [
+            "kernel-rust", "spec-rust", "spec-python", "spec-typescript",
+            "spec-go", "fuzz-rust", "formal-tla", "formal-kani",
+            "wasm-rust", "provider-rust", "browser-ts",
+            "supply-chain", "tee-rust", "infra-yaml"
+          ]
+        },
+        "review_required": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^@[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?)?$" },
+          "description": "GitHub handles. Permits both personal handles (e.g. '@bb-connor') and team handles (e.g. '@org/team'). Single-owner trajectory uses personal handles; the schema accepts either form so re-introduction of teams later is non-breaking."
+        },
+        "first_commit_sha": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          ]
+        },
+        "merged_sha": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          ]
+        },
+        "opened_ts": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "format": "date-time" }
+          ]
+        },
+        "merged_ts": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "format": "date-time" }
+          ]
+        }
+      }
+    }
+  }
+}

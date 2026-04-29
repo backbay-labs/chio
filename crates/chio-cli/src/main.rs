@@ -15,6 +15,9 @@
 
 mod admin;
 mod cert;
+mod commands {
+    pub mod guard_blocklist;
+}
 mod did;
 mod guard;
 mod guards;
@@ -27,6 +30,24 @@ include!("cli/dispatch.rs");
 include!("cli/runtime.rs");
 include!("cli/trust_commands.rs");
 include!("cli/session.rs");
+include!("cli/conformance.rs");
+include!("cli/replay.rs");
+include!("cli/replay/reader.rs");
+include!("cli/replay/verify.rs");
+include!("cli/replay/merkle.rs");
+include!("cli/replay/verdict.rs");
+include!("cli/replay/report.rs");
+include!("cli/replay/ndjson.rs");
+include!("cli/replay/validate.rs");
+include!("cli/replay/schema_gate.rs");
+include!("cli/replay/policy_ref.rs");
+include!("cli/replay/receipt_partition.rs");
+include!("cli/replay/execute.rs");
+include!("cli/replay/diff.rs");
+include!("cli/replay/traffic.rs");
+include!("cli/replay/bless/strip.rs");
+include!("cli/replay/bless/m04_layout.rs");
+include!("cli/replay/bless.rs");
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]

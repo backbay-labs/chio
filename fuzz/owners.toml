@@ -1,0 +1,77 @@
+# fuzz/owners.toml - fuzz target -> owning crate map.
+#
+# Used by scripts/promote_fuzz_seed.sh to decide where to drop the
+# generated regression test when a fuzz seed is graduated into the
+# permanent corpus. Each target binary under fuzz/fuzz_targets/ wraps
+# the trust-boundary surface of exactly one chio-* crate; that crate
+# owns the regression test that pins the seed.
+#
+# Schema:
+#   [targets.<name>]
+#   crate = workspace member that owns regression tests for this target
+#   path  = filesystem path to the owning crate's directory
+#
+
+[targets.attest_verify]
+crate = "chio-attest-verify"
+path  = "crates/chio-attest-verify"
+
+[targets.jwt_vc_verify]
+crate = "chio-credentials"
+path  = "crates/chio-credentials"
+
+[targets.oid4vp_presentation]
+crate = "chio-credentials"
+path  = "crates/chio-credentials"
+
+[targets.did_resolve]
+crate = "chio-did"
+path  = "crates/chio-did"
+
+[targets.anchor_bundle_verify]
+crate = "chio-anchor"
+path  = "crates/chio-anchor"
+
+[targets.mcp_envelope_decode]
+crate = "chio-mcp-edge"
+path  = "crates/chio-mcp-edge"
+
+[targets.a2a_envelope_decode]
+crate = "chio-a2a-adapter"
+path  = "crates/chio-a2a-adapter"
+
+[targets.acp_envelope_decode]
+crate = "chio-acp-edge"
+path  = "crates/chio-acp-edge"
+
+[targets.wasm_preinstantiate_validate]
+crate = "chio-wasm-guards"
+path  = "crates/chio-wasm-guards"
+
+[targets.wit_host_call_boundary]
+crate = "chio-wasm-guards"
+path  = "crates/chio-wasm-guards"
+
+[targets.chio_yaml_parse]
+crate = "chio-config"
+path  = "crates/chio-config"
+
+[targets.openapi_ingest]
+crate = "chio-openapi-mcp-bridge"
+path  = "crates/chio-openapi-mcp-bridge"
+
+[targets.receipt_log_replay]
+crate = "chio-kernel-core"
+path  = "crates/chio-kernel-core"
+
+[targets.canonical_json]
+crate = "chio-core-types"
+path  = "crates/chio-core-types"
+
+[targets.capability_receipt]
+crate = "chio-core-types"
+path  = "crates/chio-core-types"
+
+[targets.manifest_roundtrip]
+crate = "chio-manifest"
+path  = "crates/chio-manifest"

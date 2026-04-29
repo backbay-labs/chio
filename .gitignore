@@ -2,6 +2,12 @@
 /target/
 **/*.rs.bk
 
+# Orchestrator runtime state
+.worktrees/
+.planning/trajectory/*.bak
+.planning/trajectory/tool-versions.lock
+.planning/trajectory/EXECUTION-LOG.[0-9]*.ndjson
+
 # Editor files
 *.swp
 *.swo
@@ -76,6 +82,27 @@ crates/chio-cli/dashboard/dist/
 crates/chio-cli/dashboard/node_modules/
 tests/conformance/results/generated/
 tests/conformance/reports/generated/
+
+# sdks/typescript/scripts is the codegen tool pin install root used by
+# `cargo xtask codegen --lang ts`. The package-lock.json is checked in
+# (see xtask/codegen-tools.lock.toml [typescript] block); node_modules is
+# regenerated via `npm ci` inside the script directory.
+sdks/typescript/scripts/node_modules/
+
+# docs-demo build outputs and per-package node_modules
+docs/demo/dist/
+docs/demo/node_modules/
+docs/demo/test-results/
+docs/demo/playwright-report/
+docs/demo/.vite/
+
+# Top-level workspace and TS SDK package node_modules
+/node_modules/
+sdks/typescript/packages/*/node_modules/
+
+# wasm-pack output for the browser SDK (regenerated via build-wasm.sh)
+sdks/typescript/packages/browser/pkg/
+sdks/typescript/packages/browser/dist/
 *.pyc
 *.pyo
 *.pyd

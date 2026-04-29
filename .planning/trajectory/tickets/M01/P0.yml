@@ -1,0 +1,30 @@
+# Wave-opener Cargo.lock bump for M01 (third in the wave-opener chain).
+# Order: M09 -> M03 -> M01 -> M02 per EXECUTION-BOARD.md section 2.
+# Lands before M01 P1 schema additions so any conformance-related dep
+# updates baseline against a fresh resolver run.
+
+- id: M01.P0.T1
+  milestone: M01
+  phase: 0
+  title: "Wave-opener: refresh Cargo.lock for M01 spec-codegen phase"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "Cargo.lock"
+    - "Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - M03.P0.T1
+  soft_deps:
+    - "Third in the Wave-1 lock-bump chain; M01 P1 schema additions baseline against this."
+  gate_check:
+    cmd: "cargo update --workspace --quiet && cargo metadata --locked --no-deps --format-version 1 >/dev/null && cargo build --workspace --quiet"
+  worktree_branch: "wave/W1/m01/p0.t1-wave-opener-lock-bump"
+  agent_role: spec-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

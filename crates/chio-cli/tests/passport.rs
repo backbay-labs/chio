@@ -2,8 +2,10 @@
 
 use std::fs;
 use std::io::Read;
+use std::net::{SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
@@ -61,11 +63,24 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn reserve_listen_addr() -> std::net::SocketAddr {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
-    let addr = listener.local_addr().expect("listener addr");
-    drop(listener);
-    addr
+fn reserve_listen_addr() -> SocketAddr {
+    static NEXT_PORT_OFFSET: AtomicU32 = AtomicU32::new(0);
+    const TEST_PORT_BASE: u32 = 15_000;
+    const TEST_PORT_SPAN: u32 = 10_000;
+
+    let process_offset = std::process::id() % TEST_PORT_SPAN;
+    for _ in 0..TEST_PORT_SPAN {
+        let offset = NEXT_PORT_OFFSET.fetch_add(1, Ordering::Relaxed);
+        let port = TEST_PORT_BASE + ((process_offset + offset) % TEST_PORT_SPAN);
+        let addr = SocketAddr::from(([127, 0, 0, 1], port as u16));
+        if let Ok(listener) = TcpListener::bind(addr) {
+            let addr = listener.local_addr().expect("listener addr");
+            drop(listener);
+            return addr;
+        }
+    }
+
+    panic!("could not reserve local passport test port");
 }
 
 struct ServerGuard {

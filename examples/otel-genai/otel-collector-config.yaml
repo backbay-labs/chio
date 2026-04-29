@@ -1,0 +1,41 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+  attributes/chio-metric-safety:
+    actions:
+      - key: gen_ai.tool.call.id
+        action: delete
+      - key: chio.receipt.id
+        action: delete
+      - key: chio.replay.run_id
+        action: delete
+
+exporters:
+  debug:
+    verbosity: basic
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, otlp/jaeger, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [attributes/chio-metric-safety, batch]
+      exporters: [debug]

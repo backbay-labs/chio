@@ -6,7 +6,19 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+publish = true
+readme = "README.md"
+keywords = ["chio", "conformance", "mcp", "agent-protocol"]
+categories = ["development-tools::testing", "command-line-utilities"]
+include = [
+    "src/**",
+    "README.md",
+    "Cargo.toml",
+    "peers.lock.toml",
+    "tests/conformance/scenarios/**",
+    "tests/conformance/peers/python/**",
+    "tests/conformance/peers/js/**",
+]
 
 [lib]
 name = "chio_conformance"
@@ -27,15 +39,31 @@ path = "src/bin/chio_native_conformance_runner.rs"
 name = "chio-native-conformance-fixture"
 path = "src/bin/chio_native_conformance_fixture.rs"
 
+[features]
+# Default keeps the historical in-repo behaviour: paths resolved relative to
+# the workspace root point at the tests/conformance/{scenarios,peers,fixtures}
+# directories that ship inside this repository. External consumers who pull
+# the crate from crates.io can keep this feature on (the included fixtures
+# under tests/conformance/{scenarios,peers/python,peers/js}/ ride along) or
+# disable it via `--no-default-features` when wiring their own scenario
+# directories through `ConformanceRunOptions`.
+default = ["in-repo-fixtures"]
+in-repo-fixtures = []
+
 [dependencies]
-chio-core = { package = "chio-core-types", path = "../chio-core-types" }
-chio-kernel = { path = "../chio-kernel" }
-serde = { workspace = true }
+chio-core = { package = "chio-core-types", version = "0.1.0", path = "../chio-core-types" }
+chio-kernel = { version = "0.1.0", path = "../chio-kernel" }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+toml = "0.8"
 reqwest = { workspace = true, features = ["blocking", "form", "query", "rustls"] }
 tiny_http = "0.12"
 
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

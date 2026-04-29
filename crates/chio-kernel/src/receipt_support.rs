@@ -235,6 +235,95 @@ pub(super) fn merge_metadata_objects(
     }
 }
 
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReceiptProvenanceMetadata {
+    otel: ReceiptProvenanceOtelMetadata,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    supply_chain: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReceiptProvenanceOtelMetadata {
+    trace_id: String,
+    span_id: String,
+}
+
+fn is_w3c_lower_hex_id(value: &str, expected_len: usize) -> bool {
+    value.len() == expected_len
+        && value.chars().any(|char| char != '0')
+        && value
+            .chars()
+            .all(|char| matches!(char, '0'..='9' | 'a'..='f'))
+}
+
+fn is_w3c_trace_id(value: &str) -> bool {
+    is_w3c_lower_hex_id(value, 32)
+}
+
+fn is_w3c_span_id(value: &str) -> bool {
+    is_w3c_lower_hex_id(value, 16)
+}
+
+fn receipt_provenance_metadata(
+    extra_metadata: Option<&serde_json::Value>,
+) -> Result<Option<serde_json::Value>, KernelError> {
+    let Some(provenance) = extra_metadata
+        .and_then(serde_json::Value::as_object)
+        .and_then(|extra_metadata| extra_metadata.get("provenance"))
+    else {
+        return Ok(None);
+    };
+
+    if provenance
+        .as_object()
+        .and_then(|provenance| provenance.get("supply_chain"))
+        .is_some_and(serde_json::Value::is_null)
+    {
+        return Err(KernelError::ReceiptSigningFailed(
+            "receipt provenance metadata supply_chain must be an object".to_string(),
+        ));
+    }
+
+    let provenance: ReceiptProvenanceMetadata = serde_json::from_value(provenance.clone())
+        .map_err(|error| {
+            KernelError::ReceiptSigningFailed(format!(
+                "receipt provenance metadata violates schema: {error}"
+            ))
+        })?;
+
+    if !is_w3c_trace_id(&provenance.otel.trace_id) {
+        return Err(KernelError::ReceiptSigningFailed(format!(
+            "receipt provenance metadata trace_id must be 32 non-zero lowercase hex chars, got {:?}",
+            provenance.otel.trace_id
+        )));
+    }
+    if !is_w3c_span_id(&provenance.otel.span_id) {
+        return Err(KernelError::ReceiptSigningFailed(format!(
+            "receipt provenance metadata span_id must be 16 non-zero lowercase hex chars, got {:?}",
+            provenance.otel.span_id
+        )));
+    }
+    if provenance
+        .supply_chain
+        .as_ref()
+        .is_some_and(|supply_chain| !supply_chain.is_object())
+    {
+        return Err(KernelError::ReceiptSigningFailed(
+            "receipt provenance metadata supply_chain must be an object".to_string(),
+        ));
+    }
+
+    serde_json::to_value(provenance)
+        .map(|provenance| Some(serde_json::json!({ "provenance": provenance })))
+        .map_err(|error| {
+            KernelError::ReceiptSigningFailed(format!(
+                "failed to serialize receipt provenance metadata: {error}"
+            ))
+        })
+}
+
 pub(super) fn verify_governed_runtime_attestation_record(
     attestation: &chio_core::capability::RuntimeAttestationEvidence,
     attestation_trust_policy: Option<&AttestationTrustPolicy>,
@@ -611,10 +700,14 @@ pub(super) fn request_receipt_metadata(
             .transpose()?
             .flatten(),
     )?;
+    let provenance_metadata = receipt_provenance_metadata(extra_metadata)?;
 
     Ok(merge_metadata_objects(
-        governed_metadata,
-        request_model_metadata_receipt_metadata(request),
+        merge_metadata_objects(
+            governed_metadata,
+            request_model_metadata_receipt_metadata(request),
+        ),
+        provenance_metadata,
     ))
 }
 

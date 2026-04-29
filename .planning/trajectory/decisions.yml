@@ -1,0 +1,184 @@
+# decisions.yml - Wave-1 locked decisions.
+#
+# Mirror of the "Wave 1 decisions (resolved 2026-04-25)" section in
+# .planning/trajectory/README.md, in machine-readable form. Re-opening a
+# decision requires editing both this file and README.md in the same PR
+# through the sequencer.
+#
+# Schema:
+#   - id: short kebab-case
+#     milestone: M0X owner
+#     question: what was decided
+#     decision: short answer
+#     rationale: why
+#     status: locked | open | deferred
+#     decided_at: ISO date
+#     decided_by: who locked it (user | recommendation)
+#     reopen_path: path-set that must be co-edited if reopened
+
+decisions:
+  - id: codegen-toolchain-per-language
+    milestone: M01
+    question: Codegen toolchain primary per language.
+    decision: |
+      typify (Rust), datamodel-code-generator (Python, pydantic v2 mode),
+      json-schema-to-typescript (TypeScript), oapi-codegen (Go),
+      kotlinx-serialization codegen (Kotlin),
+      Microsoft.Json.Schema.ToDotNet (C#).
+    rationale: Spec-coverage breadth and active maintenance.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/01-spec-codegen-conformance.md
+      - xtask/codegen-tools.lock.toml
+
+  - id: continuous-fuzzing-path
+    milestone: M02
+    question: Continuous-fuzzing path.
+    decision: |
+      OSS-Fuzz primary, ClusterFuzzLite bridge running on GitHub Actions
+      until OSS-Fuzz acceptance lands. ClusterFuzzLite stays as the
+      permanent fallback. Budget cap: 2,000 GHA runner-min/month for
+      ClusterFuzzLite (with a 1,800 min/30d hard halt before the cap).
+    rationale: Free continuous fuzzing at scale once accepted; bridge avoids gating M02 P2 on application timeline.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/02-fuzzing-post-pr13.md
+      - .planning/trajectory/EXECUTION-BOARD.md
+
+  - id: npm-namespace
+    milestone: M08
+    question: npm scope for browser/edge SDK packages.
+    decision: "@chio-protocol/* is the org scope. Do not attempt to provision @chio."
+    rationale: User-confirmed; @chio-protocol is the existing organization.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: user
+    reopen_path:
+      - .planning/trajectory/08-browser-edge-sdk.md
+
+  - id: conformance-crate-publish
+    milestone: M01
+    question: Conformance crate publish target.
+    decision: Publish to crates.io as chio-conformance at 0.1.0, ratcheting through 0.x until the wire protocol stabilizes at v1.
+    rationale: Standard crates.io path; the 0.x ratchet matches the protocol's pre-1.0 state.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/01-spec-codegen-conformance.md
+      - crates/chio-conformance/Cargo.toml
+
+  - id: cpp-peer-scenario-coverage
+    milestone: M01
+    question: Which scenarios must the C++ peer pass for M01?
+    decision: P0 = mcp_core and auth. Defer chio-extensions, tasks, nested_callbacks, notifications to a follow-on milestone.
+    rationale: Smallest credible coverage that proves cross-implementation conformance without blocking M01.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/01-spec-codegen-conformance.md
+      - tests/conformance/peers/cpp/
+
+  - id: apalache-vs-tlc
+    milestone: M03
+    question: Apalache or TLC for the TLA+ lane.
+    decision: Apalache 0.50.x primary. TLC available as a manual debug target only (no CI lane). Single CI runner image.
+    rationale: Apalache's symbolic engine is stronger for capability-algebra invariants; one tool keeps CI simple.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/03-capability-algebra-properties.md
+
+  - id: formal-ownership
+    milestone: M03
+    question: Who owns formal/?
+    decision: Placeholder formal/OWNERS.md lands in M03 P1 with TBD-primary / TBD-backup slots. Assignment is the only Wave-1 decision deferred to the user, due before M03 closes.
+    rationale: Owner identity does not block Wave 1 start; it blocks M03 close.
+    status: deferred
+    decided_at: "2026-04-25"
+    decided_by: user
+    reopen_path:
+      - formal/OWNERS.md
+      - .planning/trajectory/03-capability-algebra-properties.md
+
+  - id: wasm-guard-registry
+    milestone: M06
+    question: Which OCI/registry crate.
+    decision: oci-distribution. Already in the sigstore-rs dependency tree; no new top-level dep.
+    rationale: Reuses existing transitive dep; minimizes audit surface.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/06-wasm-guard-platform.md
+      - crates/chio-wasm-guards/Cargo.toml
+
+  - id: provider-adapter-order
+    milestone: M07
+    question: Provider adapter sequence.
+    decision: OpenAI Responses first (extends existing chio-openai), Anthropic second, Bedrock last.
+    rationale: Largest deployment surface descending; API-stability ascending.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/07-provider-native-adapters.md
+
+  - id: replay-corpus-storage
+    milestone: M10
+    question: Where do replay captures live.
+    decision: |
+      In-tree NDJSON under tests/replay/fixtures/ with a 5 MB per-fixture
+      cap. Oversize captures land in a separate chio-tee-corpus GitHub
+      release artifact that CI pulls on demand via sha256 pin.
+    rationale: Keeps the common-case fixture path inside the repo without bloating it.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/10-tee-replay-harness.md
+      - tests/replay/fixtures/
+
+  - id: demo-deployment-surface
+    milestone: M08
+    question: Where does the browser demo live.
+    decision: GitHub Pages on the same repo, served from docs/demo/. Framed as engineering output, not a release artifact.
+    rationale: Avoids an external service-of-record dependency (Cloudflare Pages, Vercel rejected).
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/08-browser-edge-sdk.md
+      - docs/demo/
+
+  - id: mutation-testing-gate-posture
+    milestone: M02
+    question: Mutation-testing gate is advisory or blocking.
+    decision: Advisory for one release cycle, blocking thereafter. Cycle counted in releases tagged after the M02 P3 merge, not in calendar time.
+    rationale: Flips at a defined event (release-tag count) so the schedule is predictable but earned.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: recommendation
+    reopen_path:
+      - .planning/trajectory/02-fuzzing-post-pr13.md
+      - releases.toml
+
+  - id: m02-pr13-shepherd
+    milestone: M02
+    question: Who shepherds PR #13 to merge.
+    decision: "@bb-connor"
+    rationale: |
+      Single-owner trajectory; locked by user in foundational Wave 0 commit
+      per AUTONOMOUS-PROMPT.md section 4 standing instruction. Resolves
+      EXECUTION-BOARD.md preflight checklist row 15.
+    status: locked
+    decided_at: "2026-04-25"
+    decided_by: user
+    reopen_path:
+      - .planning/trajectory/EXECUTION-BOARD.md

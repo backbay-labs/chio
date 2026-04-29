@@ -1,0 +1,170 @@
+# M07 Phase 3 - Anthropic Tools adapter including server-tools allowlist.
+# Source of truth: .planning/trajectory/07-provider-native-adapters.md
+# (Phase 3, lines 393-420; fixture matrix lines 405-420).
+# Wave-3 milestone: P3 runs in parallel with P2 (OpenAI) and P4 (Bedrock)
+# once P1 lands. P3 reuses the conformance harness scaffolded in P2.T6 so
+# T5 here only adds anthropic fixtures + per-provider feature flag wiring.
+# computer-use beta is gated behind a cargo feature plus the chio-manifest
+# `server_tools` allowlist (doc lines 50, 399-402, 470).
+# Six atomic tasks: T1 scaffold, T2 batch lift/lower, T3 SSE streaming,
+# T4 server-tools allowlist (touches chio-manifest), T5 fixtures, T6 the
+# error-taxonomy doctest table per Round-2 NEW addition (line 456).
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M07.P3.T1
+  milestone: M07
+  phase: 3
+  title: Scaffold chio-anthropic-tools-adapter with anthropic-version 2023-06-01 pin
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-anthropic-tools-adapter/Cargo.toml
+    - crates/chio-anthropic-tools-adapter/src/lib.rs
+    - crates/chio-anthropic-tools-adapter/src/transport.rs
+    - crates/chio-anthropic-tools-adapter/src/native.rs
+    - crates/chio-anthropic-tools-adapter/README.md
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+  depends_on:
+    - M07.P1.T6
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-anthropic-tools-adapter && cargo build -p chio-anthropic-tools-adapter --features computer-use
+  worktree_branch: wave/W3/m07/p3.t1-anthropic-adapter-scaffold
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P3.T2
+  milestone: M07
+  phase: 3
+  title: Implement Anthropic batch lift/lower for messages.create tool_use blocks
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-anthropic-tools-adapter/src/adapter.rs
+    - crates/chio-anthropic-tools-adapter/src/lib.rs
+    - crates/chio-anthropic-tools-adapter/tests/batch.rs
+  shared_paths: []
+  depends_on:
+    - M07.P3.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-anthropic-tools-adapter --test batch
+  worktree_branch: wave/W3/m07/p3.t2-anthropic-batch-lift-lower
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P3.T3
+  milestone: M07
+  phase: 3
+  title: Anthropic SSE streaming with verdict at content_block_start tool_use
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-anthropic-tools-adapter/src/streaming.rs
+    - crates/chio-anthropic-tools-adapter/src/adapter.rs
+    - crates/chio-anthropic-tools-adapter/tests/streaming.rs
+  shared_paths: []
+  depends_on:
+    - M07.P3.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-anthropic-tools-adapter --test streaming
+  worktree_branch: wave/W3/m07/p3.t3-anthropic-sse-streaming
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P3.T4
+  milestone: M07
+  phase: 3
+  title: Extend chio-manifest with server_tools allowlist gating computer_use/bash/text_editor
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-manifest/src/lib.rs
+    - crates/chio-manifest/tests/server_tools.rs
+    - crates/chio-anthropic-tools-adapter/src/server_tools.rs
+    - crates/chio-anthropic-tools-adapter/README.md
+  shared_paths:
+    - crates/chio-manifest/src/lib.rs
+  depends_on:
+    - M07.P3.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-manifest --test server_tools && cargo test -p chio-anthropic-tools-adapter --features computer-use server_tools
+  worktree_branch: wave/W3/m07/p3.t4-anthropic-server-tools-allowlist
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P3.T5
+  milestone: M07
+  phase: 3
+  title: Record 12 Anthropic conformance fixtures incl. 2 server-tool sessions
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-provider-conformance/fixtures/anthropic/**
+    - crates/chio-provider-conformance/Cargo.toml
+    - crates/chio-provider-conformance/tests/replay_anthropic.rs
+  shared_paths:
+    - crates/chio-provider-conformance/Cargo.toml
+  depends_on:
+    - M07.P3.T3
+    - M07.P3.T4
+    - M07.P2.T6
+  soft_deps: []
+  gate_check:
+    cmd: ls crates/chio-provider-conformance/fixtures/anthropic/*.ndjson | wc -l | grep -qE '^\s*12\s*$' && cargo test -p chio-provider-conformance --features fixtures-anthropic
+  worktree_branch: wave/W3/m07/p3.t5-anthropic-fixtures-12
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P3.T6
+  milestone: M07
+  phase: 3
+  title: Land Anthropic error-taxonomy doctest table mapping native envelopes
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-anthropic-tools-adapter/README.md
+    - crates/chio-anthropic-tools-adapter/tests/error_taxonomy_doctest.rs
+  shared_paths: []
+  depends_on:
+    - M07.P3.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-anthropic-tools-adapter --test error_taxonomy_doctest
+  worktree_branch: wave/W3/m07/p3.t6-anthropic-error-taxonomy
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

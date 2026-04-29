@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_metered",
+  "fixed_nonce_seed_index": 18,
+  "intent": "Allow metered call whose cost is satisfied by drawing from multiple credit buckets, exercising the credit-split accounting branch.",
+  "name": "allow_metered/05_quote_credit_split",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "metering", "credit-split"]
+}

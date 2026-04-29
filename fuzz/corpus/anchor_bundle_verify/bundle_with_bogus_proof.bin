@@ -1,0 +1,1 @@
+{"schema":"chio.anchor-proof-bundle.v1","primary_proof":{"schema":"chio.anchor-inclusion-proof.v1","merkle_proof":["0000000000000000000000000000000000000000000000000000000000000000","deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"],"leaf_index":9999999},"secondary_lanes":["bitcoin_ots"]}

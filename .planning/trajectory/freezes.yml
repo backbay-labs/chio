@@ -1,0 +1,75 @@
+# freezes.yml - Active and scheduled file-path freezes.
+#
+# Each entry locks a set of paths to a single review team for a bounded
+# window. The `m05-freeze-guard` GitHub Actions workflow reads this file
+# on every PR and fails the required check if a frozen path is touched
+# outside the named team without the documented exception.
+#
+# Schema:
+#   - id: kebab-case unique identifier
+#     reason: short human-readable rationale
+#     review_team: GitHub team that may merge changes (CODEOWNERS-equivalent)
+#     paths: gitignore-style globs
+#     starts_at_milestone: when the freeze takes effect
+#     ends_at_milestone: when the freeze releases
+#     start_phase: optional ticket id that activates the freeze (e.g. M05.P0.T4)
+#     state: scheduled | active | released
+#     bypass_label: optional PR label that bypasses (must be approved by review_team)
+
+freezes:
+  - id: m05-kernel-async-pivot
+    reason: |
+      The async kernel pivot (M05 P1-P3) makes load-bearing changes to
+      kernel/mod.rs and session.rs. Concurrent edits would corrupt the
+      sequenced refactor. Freeze releases at M05 close.
+    review_team: "@bb-connor"
+    paths:
+      - "crates/chio-kernel/src/kernel/mod.rs"
+      - "crates/chio-kernel/src/kernel/session_ops.rs"
+      - "crates/chio-kernel/src/session.rs"
+    starts_at_milestone: M05.P1
+    ends_at_milestone: M05.P3
+    start_phase: M05.P0.T4
+    state: released
+    bypass_label: "[M05]"
+
+  - id: rust-toolchain-pin
+    reason: |
+      Workspace toolchain bumps require Sequencer + Security x2 review.
+      Permanent freeze; not tied to a milestone window. Single-owner
+      trajectory: Security x2 keeps its model-side independence (two LLM
+      reviewer instances, different seeds, no shared scratchpad); the
+      human-side gate routes to @bb-connor.
+    review_team: "@bb-connor"
+    paths:
+      - "rust-toolchain.toml"
+    starts_at_milestone: M00
+    ends_at_milestone: never
+    state: active
+    bypass_label: null
+
+  - id: trust-boundary-set
+    reason: |
+      Trust-boundary crates require Security x2 routing on every
+      substantive diff. The freeze itself does not block merges; it ensures
+      classification (substantive vs cosmetic) by the classify-trust-diff
+      workflow before merging.
+    review_team: "@bb-connor"
+    paths:
+      - "crates/chio-kernel/**"
+      - "crates/chio-kernel-core/**"
+      - "crates/chio-credentials/**"
+      - "crates/chio-policy/**"
+      - "crates/chio-guards/**"
+      - "crates/chio-data-guards/**"
+      - "crates/chio-wasm-guards/**"
+      - "crates/chio-api-protect/**"
+      - "crates/chio-did/**"
+      - "crates/chio-anchor/**"
+      - "crates/chio-envoy-ext-authz/**"
+      - "crates/chio-attest-verify/**"
+      - "crates/chio-store-sqlite/src/**"
+    starts_at_milestone: M00
+    ends_at_milestone: never
+    state: active
+    bypass_label: null

@@ -20,6 +20,9 @@ use chio_core::crypto::PublicKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[cfg(feature = "otel")]
+pub mod otel;
+
 // ---------- source files (include! pattern) ----------
 
 include!("protocol.rs");

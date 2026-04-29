@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "scan_payload",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 28,
+      "verdict": "allow",
+      "fuel": "just_under"
+    },
+    "scopes": [
+      "example-server:scan_payload"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

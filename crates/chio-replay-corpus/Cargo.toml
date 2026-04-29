@@ -1,0 +1,29 @@
+[package]
+name = "chio-replay-corpus"
+description = "Replay corpus helpers for Chio TEE captures: canonical invocation dedupe and default re-redaction."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_replay_corpus"
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-tee = { path = "../chio-tee" }
+chio-tee-frame = { path = "../chio-tee-frame" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

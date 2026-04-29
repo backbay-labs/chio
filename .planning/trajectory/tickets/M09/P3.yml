@@ -1,0 +1,174 @@
+# M09 Phase 3 - chio-attest-verify crate plus Sigstore keyless cosign signing
+# for every release artifact class (sidecar OCI images, native release archives,
+# Python sdist/wheel, npm tarball), the M02-owned fuzz target wired against
+# the trait surface, and the M06 migration tracking issue.
+# Source of truth: .planning/trajectory/09-supply-chain-attestation.md
+# (Phase 3, starts ~line 222; trait surface and impl contract ~line 237).
+# Trust-boundary policy reference: EXECUTION-BOARD.md section
+# "No verifier or trust-boundary stubs" (line 497). The crate ships its
+# trait surface AND the real fail-closed SigstoreVerifier in a single PR;
+# splitting trait-only and impl into separate tickets is forbidden.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M09.P3.T1
+  milestone: M09
+  phase: 3
+  title: "Stand up crates/chio-attest-verify with trait surface and real SigstoreVerifier in one PR"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-attest-verify/Cargo.toml"
+    - "crates/chio-attest-verify/build.rs"
+    - "crates/chio-attest-verify/src/lib.rs"
+    - "crates/chio-attest-verify/src/sigstore.rs"
+    - "crates/chio-attest-verify/sigstore-root/**"
+    - "crates/chio-attest-verify/tests/integration.rs"
+    - "crates/chio-attest-verify/README.md"
+  shared_paths:
+    - "Cargo.lock"
+    - "Cargo.toml"
+  depends_on:
+    - M09.P2.T3
+    - M01.P1.T6
+  soft_deps:
+    - "M06.P2 chio-wasm-guards consumes AttestVerifier (see M09.P3.T6 tracking issue)"
+    - "M02 fuzz harness consumes the trait via M09.P3.T5"
+  gate_check:
+    cmd: "cargo test -p chio-attest-verify"
+  worktree_branch: "wave/W1/m09/p3.t1-attest-verify-crate"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P3.T2
+  milestone: M09
+  phase: 3
+  title: "Wire cosign sign --yes for sidecar OCI image digest in sidecar-image.yml"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/sidecar-image.yml"
+    - "docs/install/PUBLISHING.md"
+  shared_paths:
+    - ".github/workflows/sidecar-image.yml"
+  depends_on:
+    - M09.P3.T1
+  soft_deps: []
+  gate_check:
+    cmd: "actionlint .github/workflows/sidecar-image.yml"
+  worktree_branch: "wave/W1/m09/p3.t2-cosign-sign-sidecar-image"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P3.T3
+  milestone: M09
+  phase: 3
+  title: "Wire cosign sign-blob --yes for release-binaries archives and attach sig/crt"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - ".github/workflows/release-binaries.yml"
+    - "docs/install/PUBLISHING.md"
+  shared_paths:
+    - ".github/workflows/release-binaries.yml"
+  depends_on:
+    - M09.P3.T1
+  soft_deps: []
+  gate_check:
+    cmd: "actionlint .github/workflows/release-binaries.yml"
+  worktree_branch: "wave/W1/m09/p3.t3-cosign-sign-release-archives"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P3.T4
+  milestone: M09
+  phase: 3
+  title: "Wire cosign sign-blob into release-pypi.yml and release-npm.yml with VERIFY.md cross-references"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - ".github/workflows/release-pypi.yml"
+    - ".github/workflows/release-npm.yml"
+    - "docs/install/VERIFY.md"
+  shared_paths:
+    - ".github/workflows/release-pypi.yml"
+    - ".github/workflows/release-npm.yml"
+  depends_on:
+    - M09.P3.T1
+  soft_deps: []
+  gate_check:
+    cmd: "actionlint .github/workflows/release-pypi.yml && actionlint .github/workflows/release-npm.yml"
+  worktree_branch: "wave/W1/m09/p3.t4-cosign-sign-pypi-npm"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P3.T5
+  milestone: M09
+  phase: 3
+  title: "Land fuzz/fuzz_targets/attest_verify.rs target plus empty.bin corpus seed and README note"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "fuzz/fuzz_targets/attest_verify.rs"
+    - "fuzz/Cargo.toml"
+    - "fuzz/corpus/attest_verify/empty.bin"
+    - "fuzz/README.md"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M09.P3.T1
+  soft_deps:
+    - "M02 owns the fuzz lane; this ticket lands the verifier-specific target"
+  gate_check:
+    cmd: "cargo +nightly fuzz build attest_verify"
+  worktree_branch: "wave/W1/m09/p3.t5-fuzz-target-attest-verify"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P3.T6
+  milestone: M09
+  phase: 3
+  title: "Open M06 tracking issue for chio-wasm-guards migration off raw sigstore-rs"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "docs/coordination/m06-attest-verify-migration.md"
+  shared_paths: []
+  depends_on:
+    - M09.P3.T1
+  soft_deps:
+    - "M06.P2 chio-wasm-guards is the consumer that closes the issue"
+  gate_check:
+    cmd: "test -f docs/coordination/m06-attest-verify-migration.md && grep -q 'chio_attest_verify::AttestVerifier' docs/coordination/m06-attest-verify-migration.md"
+  worktree_branch: "wave/W1/m09/p3.t6-m06-migration-tracking-issue"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

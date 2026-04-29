@@ -5,6 +5,9 @@ pub enum RevocationStoreError {
 
     #[error("failed to prepare revocation store directory: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("revocation store synchronization error: {0}")]
+    Sync(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

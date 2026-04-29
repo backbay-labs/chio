@@ -1,0 +1,11 @@
+kernel:
+  signing_key: "generate"
+  mystery_key: "should be rejected by deny_unknown_fields"
+  another_unknown:
+    nested: 42
+
+adapters:
+  - id: "petstore"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+    bogus_field: true

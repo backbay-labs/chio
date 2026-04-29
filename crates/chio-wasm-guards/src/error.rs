@@ -67,6 +67,14 @@ pub enum WasmGuardError {
     #[error("unsupported abi_version \"{version}\" (supported: {supported})")]
     UnsupportedAbiVersion { version: String, supported: String },
 
+    /// The manifest declares a WIT world that this loader does not support.
+    #[error("unsupported wit_world {declared}; required \"{required}\". See {migration}")]
+    UnsupportedWitWorld {
+        declared: String,
+        required: String,
+        migration: &'static str,
+    },
+
     /// The .wasm binary is neither a valid core module nor a Component Model component.
     #[error("unrecognized WASM format: neither core module nor component")]
     UnrecognizedFormat,

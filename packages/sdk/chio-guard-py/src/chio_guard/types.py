@@ -1,4 +1,4 @@
-"""Ergonomic Python dataclasses wrapping the WIT guard types.
+"""Ergonomic Python dataclasses wrapping the chio:guard@0.2.0 WIT types.
 
 These are hand-written wrappers for developer ergonomics. The generated
 componentize-py bindings live in a gitignored directory and are

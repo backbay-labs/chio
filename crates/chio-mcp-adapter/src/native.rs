@@ -329,6 +329,7 @@ impl NativeChioServiceBuilder {
                 .iter()
                 .map(|registration| registration.definition.clone())
                 .collect(),
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: self.public_key,
         };

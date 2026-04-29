@@ -1,0 +1,26 @@
+# iam_principals.example.toml
+# Maps IAM ARN patterns to Chio principal owners.
+# Order matters: first match wins. Unmatched ARNs deny by default.
+#
+# Production startup requires a Sigstore bundle next to the active config:
+#   config/iam_principals.toml.sigstore-bundle.json
+
+default_action = "deny"
+config_version = 1
+
+[[mapping]]
+# Exact IAM role match.
+match = "arn:aws:iam::123456789012:role/ChioAgentRole"
+owner = "team-alpha"
+notes = "alpha cluster trading agents"
+
+[[mapping]]
+# Account-wide production rule.
+match = "arn:aws:iam::987654321098:*"
+owner = "team-providence"
+
+[[mapping]]
+# Assumed-role session pattern. The adapter preserves this STS session ARN
+# separately from the canonical IAM role ARN in provenance.
+match = "arn:aws:sts::123456789012:assumed-role/ChioAgentRole/*"
+owner = "team-alpha"

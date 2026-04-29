@@ -91,8 +91,8 @@ fn sqlite_capability_authority_rejects_snapshot_with_invalid_public_key() {
 fn sqlite_budget_and_revocation_paths_cover_limits_and_ordering() {
     let budget_path = unique_db_path("chio-budget-store");
     let revocation_path = unique_db_path("chio-revocation-store");
-    let mut budget_store = SqliteBudgetStore::open(&budget_path).expect("open budget store");
-    let mut revocation_store =
+    let budget_store = SqliteBudgetStore::open(&budget_path).expect("open budget store");
+    let revocation_store =
         SqliteRevocationStore::open(&revocation_path).expect("open revocation store");
 
     assert!(budget_store
@@ -177,7 +177,7 @@ fn sqlite_budget_hold_authority_metadata_persists_across_reopen() {
     let advanced = authority("budget-primary", "lease-7", 8);
 
     {
-        let mut store = SqliteBudgetStore::open(&path).expect("open budget store");
+        let store = SqliteBudgetStore::open(&path).expect("open budget store");
         assert!(store
             .try_charge_cost_with_ids_and_authority(
                 "cap-lease",
@@ -194,7 +194,7 @@ fn sqlite_budget_hold_authority_metadata_persists_across_reopen() {
     }
 
     {
-        let mut store = SqliteBudgetStore::open(&path).expect("reopen budget store");
+        let store = SqliteBudgetStore::open(&path).expect("reopen budget store");
         let events = store
             .list_mutation_events(10, Some("cap-lease"), Some(0))
             .expect("load events after reopen");
@@ -266,7 +266,7 @@ fn sqlite_budget_authorize_idempotency_persists_across_reopen() {
     let authority = authority("budget-primary", "lease-12", 12);
 
     {
-        let mut store = SqliteBudgetStore::open(&path).expect("open budget store");
+        let store = SqliteBudgetStore::open(&path).expect("open budget store");
         assert!(store
             .try_charge_cost_with_ids_and_authority(
                 "cap-idempotent",
@@ -283,7 +283,7 @@ fn sqlite_budget_authorize_idempotency_persists_across_reopen() {
     }
 
     {
-        let mut store = SqliteBudgetStore::open(&path).expect("reopen budget store");
+        let store = SqliteBudgetStore::open(&path).expect("reopen budget store");
         assert!(store
             .try_charge_cost_with_ids_and_authority(
                 "cap-idempotent",

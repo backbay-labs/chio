@@ -12,6 +12,12 @@ publish = false
 [lib]
 name = "chio_kernel"
 
+[features]
+default = ["legacy-sync"]
+legacy-sync = []
+otel = ["dep:opentelemetry-semantic-conventions"]
+tokio-console-smoke = ["tokio/tracing"]
+
 [dependencies]
 chio-appraisal = { path = "../chio-appraisal" }
 chio-core = { path = "../chio-core" }
@@ -21,16 +27,20 @@ chio-credit = { path = "../chio-credit" }
 chio-federation = { path = "../chio-federation" }
 chio-governance = { path = "../chio-governance" }
 chio-link = { path = "../chio-link", default-features = false }
+chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
 lru = "0.16.3"
 chio-listing = { path = "../chio-listing" }
 chio-market = { path = "../chio-market" }
 chio-open-market = { path = "../chio-open-market" }
+arc-swap = { workspace = true }
+dashmap = { workspace = true }
 regex = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true, optional = true }
 rusqlite = { workspace = true }
 chio-underwriting = { path = "../chio-underwriting" }
 uuid = { workspace = true, features = ["v7"] }
@@ -38,8 +48,82 @@ ureq = { version = "2.10", features = ["json"] }
 
 [dev-dependencies]
 chio-store-sqlite = { path = "../chio-store-sqlite" }
+criterion = { workspace = true }
+loom = { workspace = true }
+# proptest = "1.10" (via workspace.dependencies). Used by:
+# - tests/property_budget_store.rs
+# - tests/replay_proptest.rs (replay-invariance suite)
 proptest = { workspace = true }
+
+[[bench]]
+name = "cap_verify_ed25519"
+harness = false
+
+[[bench]]
+name = "scope_match"
+harness = false
+
+[[bench]]
+name = "time_bound"
+harness = false
+
+[[bench]]
+name = "revocation_lookup"
+harness = false
+
+[[bench]]
+name = "budget_decrement"
+harness = false
+
+[[bench]]
+name = "single_guard"
+harness = false
+
+[[bench]]
+name = "guard_pipeline_5"
+harness = false
+
+[[bench]]
+name = "receipt_sign"
+harness = false
+
+[[bench]]
+name = "receipt_append"
+harness = false
+
+[[bench]]
+name = "session_lookup"
+harness = false
+
+[[bench]]
+name = "dispatch_allow"
+harness = false
+
+[[bench]]
+name = "dispatch_deny"
+harness = false
+
+# Property-based replay-invariance suite (signing-is-a-function,
+# replay-root-is-idempotent, shuffle-preserves-bytes). Cargo would auto-
+# discover this test target from `tests/replay_proptest.rs`; the explicit
+# block exists so the CI gate can refer to the test by canonical name.
+[[test]]
+name = "replay_proptest"
+path = "tests/replay_proptest.rs"
+
+# Dual-track async/sync receipt byte-identity gate.
+[[test]]
+name = "dual_track_receipt_identity"
+path = "tests/dual_track_receipt_identity.rs"
+
+[[test]]
+name = "tokio_console_smoke"
+path = "tests/tokio_console_smoke.rs"
+required-features = ["tokio-console-smoke"]
 
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)", "cfg(chio_kernel_loom)"] }

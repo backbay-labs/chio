@@ -1,0 +1,68 @@
+[package]
+name = "chio-replay-gate"
+description = "Deterministic-replay corpus driver and golden infrastructure for the Chio kernel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_replay_gate"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chio-replay-gate"
+path = "src/main.rs"
+
+[dependencies]
+# `cross_version::reverify` deserializes receipts as `ChioReceipt` values and
+# calls `verify_signature()` over them. The path-dep keeps the replay-gate's
+# verifier wired to the real kernel surface (rather than a hand-rolled stub),
+# so a future change to receipt signing surfaces here.
+chio-core-types = { path = "../../crates/chio-core-types" }
+chrono = { workspace = true, features = ["clock"] }
+ed25519-dalek = { workspace = true }
+# `cross_version::reverify` decompresses the release bundle's .tgz layer with
+# flate2 before feeding the inner tarball to `tar`. Both crates are added
+# directly here (not via `[workspace.dependencies]`).
+flate2 = "1"
+hex = { workspace = true }
+# `cross_version::fetch` downloads release bundles over HTTPS and pins them by
+# sha256. `blocking` keeps the call sites synchronous; `rustls` matches the
+# rest of the workspace and avoids a system-OpenSSL dependency.
+reqwest = { workspace = true, features = ["blocking", "rustls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# `cross_version::fetch` uses sha256 at runtime to verify cached +
+# freshly-downloaded bundles against the `bundle_sha256` pin in
+# `release_compat_matrix.toml`.
+sha2 = { workspace = true }
+# `cross_version::reverify` extracts `replay-bundle/{receipts.ndjson,
+# checkpoint.json,root.hex}` from the tarball produced by historical tagged
+# releases.
+tar = "0.4"
+thiserror = { workspace = true }
+# `toml` is added directly here (not via [workspace.dependencies]). Used by
+# `cross_version::CompatMatrix` to parse `tests/replay/release_compat_matrix.toml`.
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[test]]
+name = "corpus_smoke"
+path = "tests/corpus_smoke.rs"
+
+[[test]]
+name = "golden_byte_equivalence"
+path = "tests/golden_byte_equivalence.rs"
+
+[[test]]
+name = "cross_version_replay"
+path = "tests/cross_version_replay.rs"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

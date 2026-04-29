@@ -1,0 +1,68 @@
+// chio:guards/redact world (M10 Phase 1 Task 5).
+//
+// M06 Phase 1 reserves the chio:guards/redact@0.1.0 namespace with
+// a package + reserved comment only. M10 Phase 1 ships the concrete
+// interface bodies and redactor world below.
+//
+// Source of truth: .planning/trajectory/10-tee-replay-harness.md
+// (Phase 1 Task 5; "Redactor host call shape: chio:guards/redact@0.1.0").
+//
+// Errors are fail-closed: an Err return from the guest MUST cause the
+// tee to refuse persistence and write `tee.redact_failed` to the
+// receipt log.
+
+package chio:guards@0.1.0;
+
+/// The interface a redactor component implements.
+interface redact {
+    /// Classes of content the host wants the guest to redact.
+    /// Multiple classes compose; the guest applies all selected redactors.
+    flags redact-class {
+        /// API keys, tokens, high-entropy strings.
+        secrets,
+        /// email, phone, SSN, credit-card.
+        pii-basic,
+        /// addresses, names, DOB.
+        pii-extended,
+        /// Authorization: Bearer <...>.
+        bearer-tokens,
+        /// tenant-supplied module.
+        custom,
+    }
+
+    /// One match the redactor produced.
+    record redaction-match {
+        /// e.g. "secrets.aws-key", "pii.email".
+        class: string,
+        /// byte offset in the original payload.
+        offset: u32,
+        /// byte length of the match.
+        length: u32,
+        /// canonical replacement string written into the redacted output.
+        replacement: string,
+    }
+
+    /// Manifest summarizing a redaction pass; signed into the frame.
+    record redaction-manifest {
+        /// e.g. "m06-redactors@1.4.0+default".
+        pass-id: string,
+        matches: list<redaction-match>,
+        elapsed-micros: u64,
+    }
+
+    /// Output of the host call.
+    record redacted-payload {
+        /// post-redaction bytes (UTF-8 if input was UTF-8).
+        bytes: list<u8>,
+        manifest: redaction-manifest,
+    }
+
+    /// The single host-imported function.
+    /// Errors fail closed: an Err return MUST cause the tee to refuse persistence.
+    redact-payload: func(payload: list<u8>, classes: redact-class) -> result<redacted-payload, string>;
+}
+
+/// The world a redactor component targets.
+world redactor {
+    import redact;
+}

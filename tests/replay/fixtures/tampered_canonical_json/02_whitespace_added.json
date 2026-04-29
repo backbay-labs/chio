@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "tampered_canonical_json",
+  "expected_verdict": "deny",
+  "family": "tampered_canonical_json",
+  "fixed_nonce_seed_index": 48,
+  "intent": "Deny because the receipt-input contains insignificant whitespace, violating canonical-JSON's no-whitespace rule and breaking byte equivalence.",
+  "name": "tampered_canonical_json/02_whitespace_added",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "tampering", "whitespace"]
+}

@@ -1,0 +1,12 @@
+# Cargo aliases for workspace tasks.
+#
+# `cargo xtask <subcommand>` dispatches into the xtask crate (xtask/),
+# which currently exposes:
+#   trajectory regen-manifest [--check]
+#
+# The alias keeps the orchestrator's invocation stable across local and
+# CI hosts; both forms (`cargo xtask ...` and `cargo run -p xtask -- ...`)
+# resolve to the same binary.
+
+[alias]
+xtask = "run --quiet --package xtask --"

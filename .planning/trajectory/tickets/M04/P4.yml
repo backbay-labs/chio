@@ -1,0 +1,185 @@
+# M04 Phase 4 - chio replay subcommand for receipt-log re-evaluation.
+# Source of truth: .planning/trajectory/04-deterministic-replay.md (Phase 4,
+# lines 285-323) plus "chio replay subcommand surface" (lines 402-472).
+# Seven atomic tasks map 1:1 to T1-T7 in doc order.
+# Wave 2b per EXECUTION-BOARD section 2 (uses wave/W2/...). M04 P4 lands in
+# parallel with M05/M06 sub-waves provided it touches no shared paths.
+# Phase scope: add Replay variant to crates/chio-cli/src/cli/dispatch.rs;
+# implement NDJSON and directory log readers; signature re-verify; incremental
+# Merkle root recompute; verdict re-derive (drives exit 10); structured JSON
+# output (--json) with the chio.replay.report/v1 schema; six integration tests
+# (one per canonical exit code: 0/10/20/30/40/50). M04 owns the canonical
+# exit-code registry; M10 consumes it verbatim.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M04.P4.T1
+  milestone: M04
+  phase: 4
+  title: Add Replay variant to chio-cli Commands enum and clap parser
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-cli/src/cli/dispatch.rs
+    - crates/chio-cli/src/cli/replay.rs
+    - crates/chio-cli/src/main.rs
+    - crates/chio-cli/Cargo.toml
+  shared_paths:
+    - crates/chio-cli/src/cli/dispatch.rs
+    - crates/chio-cli/Cargo.toml
+  depends_on:
+    - M04.P3.T6
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-cli && cargo run -p chio-cli -- replay --help | grep -q 'expect-root'
+  worktree_branch: wave/W2/m04/p4.t1-replay-variant-clap
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P4.T2
+  milestone: M04
+  phase: 4
+  title: Implement log reader supporting NDJSON stream and directory mode (auto-detect)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-cli/src/cli/replay/reader.rs
+    - crates/chio-cli/src/cli/replay.rs
+  shared_paths: []
+  depends_on:
+    - M04.P4.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-cli --lib cli::replay::reader::tests
+  worktree_branch: wave/W2/m04/p4.t2-log-reader-ndjson-and-dir
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P4.T3
+  milestone: M04
+  phase: 4
+  title: Implement signature re-verify and incremental Merkle root recompute
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-cli/src/cli/replay/verify.rs
+    - crates/chio-cli/src/cli/replay/merkle.rs
+    - crates/chio-cli/src/cli/replay.rs
+  shared_paths: []
+  depends_on:
+    - M04.P4.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-cli --lib cli::replay::verify::tests
+  worktree_branch: wave/W2/m04/p4.t3-replay-verify-and-merkle
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P4.T4
+  milestone: M04
+  phase: 4
+  title: Implement verdict re-derive against current build (drives exit code 10)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-cli/src/cli/replay/verdict.rs
+    - crates/chio-cli/src/cli/replay.rs
+  shared_paths: []
+  depends_on:
+    - M04.P4.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-cli --lib cli::replay::verdict::tests
+  worktree_branch: wave/W2/m04/p4.t4-verdict-rederive-drift
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P4.T5
+  milestone: M04
+  phase: 4
+  title: Implement --json structured output emitting chio.replay.report/v1 schema
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-cli/src/cli/replay/report.rs
+    - crates/chio-cli/src/cli/replay.rs
+    - spec/schemas/chio-replay-report/v1.schema.json
+  shared_paths: []
+  depends_on:
+    - M04.P4.T4
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-cli --lib cli::replay::report::tests
+  worktree_branch: wave/W2/m04/p4.t5-replay-json-report-schema
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P4.T6
+  milestone: M04
+  phase: 4
+  title: Author six replay integration tests covering exit codes 0/10/20/30/40/50
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-cli/tests/replay.rs
+    - crates/chio-cli/tests/fixtures/replay/**
+  shared_paths: []
+  depends_on:
+    - M04.P4.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-cli --test replay -- replay::clean_log_exits_zero replay::verdict_drift_exits_ten replay::bad_signature_exits_twenty replay::malformed_json_exits_thirty replay::schema_mismatch_exits_forty replay::redaction_mismatch_exits_fifty
+  worktree_branch: wave/W2/m04/p4.t6-replay-exit-code-tests
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P4.T7
+  milestone: M04
+  phase: 4
+  title: Document chio replay surface and --from-tee interplay with M10
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - docs/cli/replay.md
+  shared_paths: []
+  depends_on:
+    - M04.P4.T6
+  soft_deps: []
+  gate_check:
+    cmd: test -f docs/cli/replay.md && grep -q 'from-tee' docs/cli/replay.md && grep -q 'expect-root' docs/cli/replay.md && grep -q 'chio.replay.report/v1' docs/cli/replay.md
+  worktree_branch: wave/W2/m04/p4.t7-replay-cli-docs
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

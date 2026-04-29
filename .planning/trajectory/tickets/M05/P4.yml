@@ -1,0 +1,141 @@
+# M05 Phase 4 - Cleanup, SDK breakage migration, and signer crash recovery.
+# Source of truth: .planning/trajectory/05-async-kernel-real.md
+# (Phase 4, lines 413-421 + SDK deprecation timeline lines 616-642 +
+# Round-2 addendum NEW P4.T4 at lines 677-682).
+#
+# Milestone scope (from EXECUTION-BOARD.md sections 2 and 5): M05 lands in
+# Wave 2b on `wave/W2/m05/...` worktrees. P0 -> P1 -> P2 -> P3 -> P4 are
+# atomic and serial. P4 runs AFTER the freeze releases (the freeze ended
+# at the close of P3 per freezes.yml id m05-kernel-async-pivot,
+# `ends_at_milestone: M05.P3`). P4.T3 explicitly removes the M05 entries
+# from `.github/CODEOWNERS` and flips the freeze state to `released`.
+#
+# Deprecation timeline is RELEASE-COUPLED, not phase-coupled:
+#   Release N (M05 ships): legacy-sync default-on, *_blocking deprecated.
+#   Release N+1: legacy-sync default-off (P4.T1 lands this flip).
+#   Release N+2: legacy-sync deleted (out of scope for this milestone;
+#                tracked separately).
+#
+# Crash-recovery (P4.T4) is a tokio integration test, not a Loom test:
+# Loom does not model the tokio scheduler, so the receipt-signer task
+# crash path lives as a runtime test that aborts the JoinHandle mid-flight
+# and asserts producers fail closed within the channel-bounded deadline
+# rather than hanging forever.
+#
+# M05 is a TRUST-BOUNDARY milestone: the SDK migration changes the public
+# API contract for every downstream consumer of `evaluate_tool_call` and
+# the store traits. Security x2 review applies to every M05 PR (two
+# independent LLM reviewer instances with different seeds and no shared
+# scratchpad), in addition to the human-side reviewer @bb-connor.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M05.P4.T1
+  milestone: M05
+  phase: 4
+  title: Remove legacy-sync from default features (sync path now requires opt-in)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel/Cargo.toml
+    - CHANGELOG.md
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M05.P3.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-kernel --quiet && (! cargo build -p chio-kernel --quiet 2>&1 | grep -q evaluate_tool_call_blocking) && cargo build -p chio-kernel --features legacy-sync --quiet
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p4.t1-legacy-sync-default-off
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P4.T2
+  milestone: M05
+  phase: 4
+  title: Migrate SDK consumers (chio-cli, chio-mcp-edge, chio-a2a-edge, sdks/) to async paths
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-cli/**
+    - crates/chio-mcp-edge/**
+    - crates/chio-mcp-adapter/**
+    - crates/chio-a2a-edge/**
+    - crates/chio-acp-edge/**
+    - crates/chio-acp-proxy/**
+    - sdks/**
+    - docs/migrations/M05-async-kernel.md
+  shared_paths: []
+  depends_on:
+    - M05.P4.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test --workspace --quiet && cargo clippy --workspace -- -D warnings && test -f docs/migrations/M05-async-kernel.md
+    timeout_seconds: 1800
+  worktree_branch: wave/W2/m05/p4.t2-sdk-consumers-async-migration
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P4.T3
+  milestone: M05
+  phase: 4
+  title: Release kernel/session freeze, attach flamegraph artifact, and finalize audit doc
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - .github/CODEOWNERS
+    - .planning/trajectory/freezes.yml
+    - .planning/audits/M05-async-kernel.md
+    - .planning/audits/M05-flamegraph-dispatch-allow.svg
+  shared_paths:
+    - .github/CODEOWNERS
+    - .planning/trajectory/freezes.yml
+  depends_on:
+    - M05.P4.T2
+  soft_deps: []
+  gate_check:
+    cmd: |-
+      (! grep -E 'crates/chio-kernel/src/(kernel/mod\.rs|session\.rs).*@bb-connor' .github/CODEOWNERS) && grep -q 'state: released' .planning/trajectory/freezes.yml && test -f .planning/audits/M05-flamegraph-dispatch-allow.svg && grep -qE 'zero.*&mut self' .planning/audits/M05-async-kernel.md && grep -qE 'zero.*std::sync::Mutex' .planning/audits/M05-async-kernel.md
+  worktree_branch: wave/W2/m05/p4.t3-release-freeze-flamegraph-audit-final
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P4.T4
+  milestone: M05
+  phase: 4
+  title: Add receipt-signer task crash-recovery integration test asserting producers fail closed (NEW)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel/tests/signer_crash.rs
+  shared_paths: []
+  depends_on:
+    - M05.P4.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --test signer_crash
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m05/p4.t4-signer-crash-recovery-test
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

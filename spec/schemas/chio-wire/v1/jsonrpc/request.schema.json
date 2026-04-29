@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/jsonrpc/request/v1",
+  "title": "Chio JSON-RPC 2.0 Request",
+  "description": "JSON-RPC 2.0 request envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/chio-mcp-adapter/src/transport.rs::send_request` (lines 643-648) and the typed `A2aJsonRpcRequest<T>` in `crates/chio-a2a-adapter/src/protocol.rs` (lines 234-241). The `id` may be an integer, a string, or null; null is permitted on the wire because Chio relays peers that originate ids upstream and forward them verbatim. `params` is optional per JSON-RPC 2.0 (notifications and parameterless calls omit it), but most Chio call sites supply at least an empty object.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["jsonrpc", "id", "method"],
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0",
+      "description": "Protocol version literal. Always the string '2.0'."
+    },
+    "id": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Request correlation id. Chio adapters originate monotonic integer ids; relayed peer ids may be strings. Null is permitted per JSON-RPC 2.0 but discouraged for new requests because it is indistinguishable from a server-side parse failure response."
+    },
+    "method": {
+      "type": "string",
+      "minLength": 1,
+      "description": "RPC method name (for example 'tools/call', 'initialize', 'sampling/createMessage')."
+    },
+    "params": {
+      "description": "Method parameters. JSON-RPC 2.0 allows omission for parameterless methods; structured params are typically an object, occasionally an array.",
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "array"
+        }
+      ]
+    }
+  }
+}

@@ -40,6 +40,9 @@ use chio_mcp_edge::McpTargetExecutor;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+#[cfg(feature = "otel")]
+pub mod otel;
+
 /// Errors produced by the A2A edge.
 #[derive(Debug, thiserror::Error)]
 pub enum A2aEdgeError {
@@ -1618,6 +1621,7 @@ mod tests {
                     latency_hint: None,
                 },
             ],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "aabbccdd".to_string(),
         }
@@ -1651,6 +1655,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "stream".to_string(),
         }
@@ -1675,6 +1680,7 @@ mod tests {
                 has_side_effects: true,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "approve".to_string(),
         }
@@ -1699,6 +1705,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "cancel".to_string(),
         }
@@ -1723,6 +1730,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Fast),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "mcp-target".to_string(),
         }
@@ -1747,6 +1755,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Fast),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "openai-target".to_string(),
         }
@@ -1771,6 +1780,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Fast),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "invalid-target".to_string(),
         }
@@ -1795,6 +1805,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "hidden".to_string(),
         }
@@ -2088,6 +2099,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "aabb".to_string(),
         };
@@ -2260,6 +2272,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "aabb".to_string(),
         };

@@ -1,5 +1,15 @@
 @PACKAGE_INIT@
 
+if(@CHIO_CPP_KERNEL_ENABLE_FFI@)
+  if(NOT TARGET chio_cpp_kernel_ffi)
+    add_library(chio_cpp_kernel_ffi STATIC IMPORTED)
+    set_target_properties(chio_cpp_kernel_ffi PROPERTIES
+      IMPORTED_LOCATION "@PACKAGE_CMAKE_INSTALL_LIBDIR@/@CMAKE_STATIC_LIBRARY_PREFIX@chio_cpp_kernel_ffi@CMAKE_STATIC_LIBRARY_SUFFIX@"
+      INTERFACE_INCLUDE_DIRECTORIES "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@"
+    )
+  endif()
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/ChioCppKernelTargets.cmake")
 
 check_required_components(ChioCppKernel)

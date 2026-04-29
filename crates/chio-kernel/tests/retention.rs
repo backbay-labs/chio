@@ -178,6 +178,44 @@ mod retention {
     }
 
     #[test]
+    fn retention_retry_deletes_rows_already_present_in_archive() {
+        let live_path = unique_db_path("retention-retry-live");
+        let archive_path = unique_db_path("retention-retry-archive");
+
+        let mut store = SqliteReceiptStore::open(&live_path).unwrap();
+        let archive_store = SqliteReceiptStore::open(&archive_path).unwrap();
+        let receipts: Vec<_> = (0..3usize)
+            .map(|i| receipt_with_ts(&format!("rcpt-retry-{i}"), 100 + i as u64))
+            .collect();
+        for receipt in &receipts {
+            store.append_chio_receipt_returning_seq(receipt).unwrap();
+            archive_store
+                .append_chio_receipt_returning_seq(receipt)
+                .unwrap();
+        }
+        drop(archive_store);
+
+        let archived = store
+            .archive_receipts_before(150, archive_path.to_str().unwrap())
+            .unwrap();
+        assert_eq!(
+            archived, 0,
+            "retry should not count rows already present in the archive"
+        );
+        assert_eq!(
+            store.tool_receipt_count().unwrap(),
+            0,
+            "retry must still delete live rows that already exist in archive"
+        );
+
+        let archive_store = SqliteReceiptStore::open(&archive_path).unwrap();
+        assert_eq!(archive_store.tool_receipt_count().unwrap(), 3);
+
+        let _ = fs::remove_file(&live_path);
+        let _ = fs::remove_file(&archive_path);
+    }
+
+    #[test]
     fn retention_archive_for_tenant_preserves_other_tenants() {
         let live_path = unique_db_path("retention-tenant-live");
         let archive_path = unique_db_path("retention-tenant-archive");
@@ -204,6 +242,49 @@ mod retention {
             archive_store.tool_receipt_count().unwrap(),
             1,
             "archive should only contain tenant-a evidence selected by the scoped cutoff"
+        );
+
+        let _ = fs::remove_file(&live_path);
+        let _ = fs::remove_file(&archive_path);
+    }
+
+    #[test]
+    fn tenant_archive_does_not_copy_global_batch_checkpoints() {
+        let live_path = unique_db_path("retention-tenant-checkpoint-live");
+        let archive_path = unique_db_path("retention-tenant-checkpoint-archive");
+
+        let mut store = SqliteReceiptStore::open(&live_path).unwrap();
+        let checkpoint_key = Keypair::generate();
+        let tenant_a_seq = store
+            .append_chio_receipt_returning_seq(&receipt_with_tenant("rcpt-a-old", 100, "tenant-a"))
+            .unwrap();
+        let tenant_b_seq = store
+            .append_chio_receipt_returning_seq(&receipt_with_tenant("rcpt-b-old", 100, "tenant-b"))
+            .unwrap();
+        let canonical = store
+            .receipts_canonical_bytes_range(tenant_a_seq, tenant_b_seq)
+            .unwrap();
+        let checkpoint_bytes: Vec<Vec<u8>> =
+            canonical.iter().map(|(_, bytes)| bytes.clone()).collect();
+        let checkpoint = build_checkpoint(
+            1,
+            tenant_a_seq,
+            tenant_b_seq,
+            &checkpoint_bytes,
+            &checkpoint_key,
+        )
+        .unwrap();
+        store.store_checkpoint(&checkpoint).unwrap();
+
+        let archived = store
+            .archive_receipts_before_for_tenant(150, archive_path.to_str().unwrap(), "tenant-a")
+            .unwrap();
+        assert_eq!(archived, 1);
+
+        let archive_store = SqliteReceiptStore::open(&archive_path).unwrap();
+        assert!(
+            archive_store.load_checkpoint_by_seq(1).unwrap().is_none(),
+            "tenant-scoped archive must not copy a checkpoint over a mixed-tenant batch"
         );
 
         let _ = fs::remove_file(&live_path);

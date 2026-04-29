@@ -101,6 +101,7 @@ fn make_edge() -> ChioMcpEdge {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: manifest_key.public_key().to_hex(),
         }],

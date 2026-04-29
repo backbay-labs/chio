@@ -2227,12 +2227,78 @@ fn main() {
             GuardCommands::Test { wasm, fixtures, fuel_limit } => guard::cmd_guard_test(&wasm, &fixtures, fuel_limit),
             GuardCommands::Bench { path, iterations, fuel_limit } => guard::cmd_guard_bench(&path, iterations, fuel_limit),
             GuardCommands::Pack => guard::cmd_guard_pack(),
+            GuardCommands::Publish {
+                project,
+                reference,
+                wit,
+                signer_public_key,
+                signer_subject,
+                fuel_limit,
+                memory_limit_bytes,
+                epoch_id_seed,
+                username,
+                password,
+                allow_http_registry,
+            } => guard::cmd_guard_publish(guard::GuardPublishCommand {
+                project_dir: &project,
+                reference: &reference,
+                wit_path: &wit,
+                signer_public_key: signer_public_key.as_deref(),
+                signer_subject: signer_subject.as_deref(),
+                fuel_limit,
+                memory_limit_bytes,
+                epoch_id_seed: &epoch_id_seed,
+                username: username.as_deref(),
+                password: password.as_deref(),
+                allow_http_registry: allow_http_registry.clone(),
+            }),
+            GuardCommands::Pull {
+                reference,
+                username,
+                password,
+                allow_http_registry,
+            } => guard::cmd_guard_pull(guard::GuardPullCommand {
+                reference: &reference,
+                username: username.as_deref(),
+                password: password.as_deref(),
+                allow_http_registry: allow_http_registry.clone(),
+            }),
+            GuardCommands::Blocklist { command } => match command {
+                GuardBlocklistCommands::Remove { digest } => {
+                    commands::guard_blocklist::cmd_guard_blocklist_remove(&digest)
+                }
+            },
             GuardCommands::Install { path, target_dir } => guard::cmd_guard_install(&path, &target_dir),
             GuardCommands::Sign { wasm, key, name, version } => {
                 guards::sign::cmd_guard_sign(&wasm, &key, &name, &version)
             }
             GuardCommands::Verify { wasm } => guards::sign::cmd_guard_verify(&wasm),
         },
+        Commands::Conformance { command } => match command {
+            ConformanceCommands::Run {
+                peer,
+                report,
+                scenario,
+                output,
+            } => cmd_conformance_run(
+                &peer,
+                report.as_deref(),
+                scenario.as_deref(),
+                output.as_deref(),
+            ),
+            ConformanceCommands::FetchPeers {
+                check,
+                out,
+                language,
+                lockfile,
+            } => cmd_conformance_fetch_peers(
+                check,
+                &out,
+                language.as_deref(),
+                lockfile.as_deref(),
+            ),
+        },
+        Commands::Replay(args) => cmd_replay(&args),
     };
 
     if let Err(e) = result {

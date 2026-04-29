@@ -1335,68 +1335,127 @@ impl ChioKernel {
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
+        let _receipt_store_write = self
+            .receipt_store_write_lock
+            .lock()
+            .map_err(|_| KernelError::Internal("receipt store write lock poisoned".to_string()))?;
         if let Some(seq) = self
             .with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?))?
             .flatten()
         {
-            let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
-            if seq > 0
-                && self.checkpoint_batch_size > 0
-                && (seq - last_checkpoint_seq) >= self.checkpoint_batch_size
-            {
-                self.maybe_trigger_checkpoint(seq)?;
+            if self.should_checkpoint_after_seq(seq) {
+                self.maybe_trigger_checkpoint_locked(seq)?;
             }
         }
-        self.receipt_log
-            .lock()
-            .map_err(|_| KernelError::Internal("receipt log lock poisoned".to_string()))?
-            .append(receipt.clone());
+        self.append_chio_receipt_to_local_log(receipt.clone());
         Ok(())
     }
 
     /// Trigger a Merkle checkpoint for all receipts in [last_checkpoint_seq+1, batch_end_seq].
     pub(crate) fn maybe_trigger_checkpoint(&self, batch_end_seq: u64) -> Result<(), KernelError> {
-        let batch_start_seq = self.last_checkpoint_seq.load(Ordering::SeqCst) + 1;
+        let _receipt_store_write = self
+            .receipt_store_write_lock
+            .lock()
+            .map_err(|_| KernelError::Internal("receipt store write lock poisoned".to_string()))?;
+        self.maybe_trigger_checkpoint_locked(batch_end_seq)
+    }
 
-        let Some(receipt_bytes_with_seqs) = self.with_receipt_store(|store| {
-            Ok(store.receipts_canonical_bytes_range(batch_start_seq, batch_end_seq)?)
-        })?
-        else {
-            return Ok(());
-        };
+    pub(crate) fn should_checkpoint_after_seq(&self, seq: u64) -> bool {
+        let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
+        seq > 0
+            && self.checkpoint_batch_size > 0
+            && seq > last_checkpoint_seq
+            && (seq - last_checkpoint_seq) >= self.checkpoint_batch_size
+    }
 
-        if receipt_bytes_with_seqs.is_empty() {
-            return Ok(());
+    pub(crate) fn maybe_trigger_checkpoint_locked(
+        &self,
+        batch_end_seq: u64,
+    ) -> Result<(), KernelError> {
+        const CHECKPOINT_CONFLICT_RETRIES: usize = 8;
+
+        for attempt in 0..=CHECKPOINT_CONFLICT_RETRIES {
+            let previous_checkpoint = self.refresh_checkpoint_counters_from_store()?;
+            let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
+            if batch_end_seq <= last_checkpoint_seq {
+                return Ok(());
+            }
+            let batch_start_seq = last_checkpoint_seq + 1;
+
+            let Some(receipt_bytes_with_seqs) = self.with_receipt_store(|store| {
+                Ok(store.receipts_canonical_bytes_range(batch_start_seq, batch_end_seq)?)
+            })?
+            else {
+                return Ok(());
+            };
+
+            if receipt_bytes_with_seqs.is_empty() {
+                return Ok(());
+            }
+
+            let receipt_bytes: Vec<Vec<u8>> = receipt_bytes_with_seqs
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect();
+
+            let checkpoint_seq = self.checkpoint_seq_counter.load(Ordering::SeqCst) + 1;
+            let checkpoint = checkpoint::build_checkpoint_with_previous(
+                checkpoint_seq,
+                batch_start_seq,
+                batch_end_seq,
+                &receipt_bytes,
+                &self.config.keypair,
+                previous_checkpoint.as_ref(),
+            )
+            .map_err(|e| KernelError::Internal(format!("checkpoint build failed: {e}")))?;
+
+            match self.with_receipt_store(|store| Ok(store.store_checkpoint(&checkpoint)?)) {
+                Ok(_) => {
+                    self.checkpoint_seq_counter
+                        .store(checkpoint_seq, Ordering::SeqCst);
+                    self.last_checkpoint_seq
+                        .store(batch_end_seq, Ordering::SeqCst);
+                    return Ok(());
+                }
+                Err(KernelError::ReceiptPersistence(ReceiptStoreError::Conflict(_)))
+                    if attempt < CHECKPOINT_CONFLICT_RETRIES =>
+                {
+                    let latest = self.refresh_checkpoint_counters_from_store()?;
+                    if latest
+                        .as_ref()
+                        .is_some_and(|checkpoint| checkpoint.body.batch_end_seq >= batch_end_seq)
+                    {
+                        return Ok(());
+                    }
+                }
+                Err(err) => return Err(err),
+            }
         }
 
-        let receipt_bytes: Vec<Vec<u8>> = receipt_bytes_with_seqs
-            .into_iter()
-            .map(|(_, bytes)| bytes)
-            .collect();
+        Err(KernelError::Internal(
+            "checkpoint store conflict retry budget exhausted".to_string(),
+        ))
+    }
 
-        let checkpoint_seq = self.checkpoint_seq_counter.fetch_add(1, Ordering::SeqCst) + 1;
-
-        let previous_checkpoint = if checkpoint_seq > 1 {
-            self.with_receipt_store(|store| Ok(store.load_checkpoint_by_seq(checkpoint_seq - 1)?))?
-                .flatten()
-        } else {
-            None
-        };
-
-        let checkpoint = checkpoint::build_checkpoint_with_previous(
-            checkpoint_seq,
-            batch_start_seq,
-            batch_end_seq,
-            &receipt_bytes,
-            &self.config.keypair,
-            previous_checkpoint.as_ref(),
-        )
-        .map_err(|e| KernelError::Internal(format!("checkpoint build failed: {e}")))?;
-
-        let _ = self.with_receipt_store(|store| Ok(store.store_checkpoint(&checkpoint)?))?;
-        self.last_checkpoint_seq
-            .store(batch_end_seq, Ordering::SeqCst);
-        Ok(())
+    fn refresh_checkpoint_counters_from_store(
+        &self,
+    ) -> Result<Option<KernelCheckpoint>, KernelError> {
+        let latest = self
+            .with_receipt_store(|store| Ok(store.load_latest_checkpoint()?))?
+            .flatten();
+        match latest.as_ref() {
+            Some(checkpoint) => {
+                self.checkpoint_seq_counter
+                    .store(checkpoint.body.checkpoint_seq, Ordering::SeqCst);
+                self.last_checkpoint_seq
+                    .store(checkpoint.body.batch_end_seq, Ordering::SeqCst);
+            }
+            None => {
+                self.checkpoint_seq_counter.store(0, Ordering::SeqCst);
+                self.last_checkpoint_seq.store(0, Ordering::SeqCst);
+            }
+        }
+        Ok(latest)
     }
 }
 

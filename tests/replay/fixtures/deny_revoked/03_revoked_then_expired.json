@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "revoked",
+  "expected_verdict": "deny",
+  "family": "deny_revoked",
+  "fixed_nonce_seed_index": 32,
+  "intent": "Deny a capability that was revoked while still inside its validity window, asserting that revocation takes precedence over not-yet-expired status.",
+  "name": "deny_revoked/03_revoked_then_expired",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "revocation", "ordering"]
+}

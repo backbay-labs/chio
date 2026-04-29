@@ -1,0 +1,13 @@
+# proptest regression archive (M04 Phase 5).
+#
+# Source-doc anchor:
+# `.planning/trajectory/04-deterministic-replay.md`, Phase 5.
+#
+# When a property check in `crates/chio-kernel/tests/replay_proptest.rs`
+# fails, proptest writes the shrunk seed to `replay_proptest.txt` in this
+# directory. Future runs replay that seed first so regressions stay caught
+# even after the underlying RNG state changes.
+#
+# This directory must remain checked in even when empty so proptest's
+# `FileFailurePersistence::Direct` target path is creatable on clean
+# checkouts. The `.gitkeep` is a placeholder; do not delete it.

@@ -1,38 +1,22 @@
 //! Component Model backend for WASM guard evaluation.
 //!
-//! Uses `wasmtime::component::bindgen!` to generate type-safe Rust bindings
-//! from the `wit/chio-guard/world.wit` definition. The [`ComponentBackend`]
-//! implements [`WasmGuardAbi`] and evaluates Component Model guards through
-//! the generated bindings -- no manual ABI glue required.
+//! The [`ComponentBackend`] evaluates Component Model guards through bindings
+//! generated in [`crate::host`] from `wit/chio-guard/world.wit`. Host imports
+//! are registered with the same generated bindings, including async host calls.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use wasmtime::component::{Component, Linker};
-use wasmtime::{Engine, Store, StoreLimits, StoreLimitsBuilder};
+use wasmtime::{Engine, Store};
 
 use crate::abi::{GuardVerdict, WasmGuardAbi};
+use crate::bundle_store::{BundleStore, InMemoryBundleStore};
 use crate::error::WasmGuardError;
-use crate::host::MAX_MEMORY_BYTES;
-
-// ---------------------------------------------------------------------------
-// bindgen!-generated types from the WIT definition
-// ---------------------------------------------------------------------------
-
-wasmtime::component::bindgen!({
-    path: "../../wit/chio-guard",
-    world: "guard",
-});
-
-// ---------------------------------------------------------------------------
-// Store state for Component Model evaluation
-// ---------------------------------------------------------------------------
-
-/// Wrapper state held in the component `Store`.
-///
-/// The guard world has no imports so we only need `StoreLimits` for memory
-/// capping. This is separate from `WasmHostState` which carries config and
-/// log buffers for core-module guards.
-struct ComponentState(StoreLimits);
+use crate::host::{
+    register_component_host_functions, Guard, GuardRequest, Verdict, WasmHostState,
+    MAX_MEMORY_BYTES,
+};
 
 // ---------------------------------------------------------------------------
 // ComponentBackend
@@ -46,6 +30,8 @@ pub struct ComponentBackend {
     engine: Arc<Engine>,
     component: Option<Component>,
     fuel_limit: u64,
+    config: HashMap<String, String>,
+    bundle_store: Arc<dyn BundleStore>,
     max_memory_bytes: usize,
     max_module_size: usize,
     last_fuel_consumed: Option<u64>,
@@ -60,10 +46,33 @@ impl ComponentBackend {
             engine,
             component: None,
             fuel_limit: 1_000_000,
+            config: HashMap::new(),
+            bundle_store: Arc::new(InMemoryBundleStore::new()),
             max_memory_bytes: MAX_MEMORY_BYTES,
             max_module_size: 10 * 1024 * 1024,
             last_fuel_consumed: None,
         }
+    }
+
+    /// Create a new `ComponentBackend` with guard-specific host config.
+    pub fn with_engine_and_config(engine: Arc<Engine>, config: HashMap<String, String>) -> Self {
+        Self {
+            engine,
+            component: None,
+            fuel_limit: 1_000_000,
+            config,
+            bundle_store: Arc::new(InMemoryBundleStore::new()),
+            max_memory_bytes: MAX_MEMORY_BYTES,
+            max_module_size: 10 * 1024 * 1024,
+            last_fuel_consumed: None,
+        }
+    }
+
+    /// Builder method to set the content bundle store used by host calls.
+    #[must_use]
+    pub fn with_bundle_store(mut self, bundle_store: Arc<dyn BundleStore>) -> Self {
+        self.bundle_store = bundle_store;
+        self
     }
 
     /// Builder method to set custom memory and module size limits.
@@ -101,30 +110,28 @@ impl WasmGuardAbi for ComponentBackend {
             .as_ref()
             .ok_or(WasmGuardError::BackendUnavailable)?;
 
-        // Build StoreLimits for memory capping (fail-closed on grow failure)
-        let limits = StoreLimitsBuilder::new()
-            .memory_size(self.max_memory_bytes)
-            .trap_on_grow_failure(true)
-            .build();
-        let mut store = Store::new(&self.engine, ComponentState(limits));
-        store.limiter(|s| &mut s.0);
+        let host_state = WasmHostState::with_memory_limit_and_bundle_store(
+            self.config.clone(),
+            self.max_memory_bytes,
+            Arc::clone(&self.bundle_store),
+        );
+        let mut store = Store::new(&self.engine, host_state);
+        store.limiter(|state| &mut state.limits);
         store
             .set_fuel(self.fuel_limit)
             .map_err(|e| WasmGuardError::Trap(e.to_string()))?;
 
-        // Empty linker -- the guard world has no imports
-        let linker = Linker::<ComponentState>::new(&self.engine);
+        let mut linker = Linker::<WasmHostState>::new(&self.engine);
+        register_component_host_functions(&mut linker, |state| state)?;
 
-        // Instantiate the component
-        let bindings = Guard::instantiate(&mut store, component, &linker)
+        let bindings = pollster::block_on(Guard::instantiate_async(&mut store, component, &linker))
             .map_err(|e: wasmtime::Error| WasmGuardError::Trap(e.to_string()))?;
 
         // Convert request to WIT-generated type
         let wit_request = to_wit_request(request);
 
         // Call the exported evaluate function
-        let wit_verdict = bindings
-            .call_evaluate(&mut store, &wit_request)
+        let wit_verdict = pollster::block_on(bindings.call_evaluate(&mut store, &wit_request))
             .map_err(|e: wasmtime::Error| WasmGuardError::Trap(e.to_string()))?;
 
         // Track fuel consumed

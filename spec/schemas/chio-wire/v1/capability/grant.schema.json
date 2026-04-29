@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/grant/v1",
+  "title": "Chio Capability Grant",
+  "description": "A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/chio-core-types/src/capability.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/toolGrant"
+    },
+    {
+      "$ref": "#/$defs/resourceGrant"
+    },
+    {
+      "$ref": "#/$defs/promptGrant"
+    }
+  ],
+  "$defs": {
+    "toolGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["server_id", "tool_name", "operations"],
+      "description": "Authorization to invoke a single tool. Mirrors `ToolGrant`.",
+      "properties": {
+        "server_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation)."
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation)."
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/constraint"
+          }
+        },
+        "max_invocations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_cost_per_invocation": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "max_total_cost": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "dpop_required": {
+          "type": "boolean",
+          "description": "If true, the kernel requires a valid DPoP proof for every invocation under this grant."
+        }
+      }
+    },
+    "resourceGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri_pattern", "operations"],
+      "description": "Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.",
+      "properties": {
+        "uri_pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        }
+      }
+    },
+    "promptGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt_name", "operations"],
+      "description": "Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.",
+      "properties": {
+        "prompt_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        }
+      }
+    },
+    "operation": {
+      "enum": [
+        "invoke",
+        "read_result",
+        "read",
+        "subscribe",
+        "get",
+        "delegate"
+      ]
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "description": "A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.",
+      "properties": {
+        "units": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "required": ["type"],
+      "description": "Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": true
+      }
+    }
+  }
+}

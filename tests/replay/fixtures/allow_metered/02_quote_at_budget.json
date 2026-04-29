@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_metered",
+  "fixed_nonce_seed_index": 15,
+  "intent": "Allow metered call whose quoted cost equals the remaining budget exactly, exercising the inclusive upper bound of the metering check.",
+  "name": "allow_metered/02_quote_at_budget",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "metering", "budget-edge"]
+}

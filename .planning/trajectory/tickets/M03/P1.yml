@@ -1,0 +1,185 @@
+# M03 Phase 1 - Proptest expansion across the four algebra crates.
+# Source of truth: .planning/trajectory/03-capability-algebra-properties.md
+# (Phase 1, lines 54-89). Seven atomic tasks map 1:1 to T1-T7 in doc order.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M03.P1.T1
+  milestone: M03
+  phase: 1
+  title: Enable proptest dev-dep across the four algebra crates and seed regression dirs
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-core-types/Cargo.toml
+    - crates/chio-kernel-core/Cargo.toml
+    - crates/chio-credentials/Cargo.toml
+    - crates/chio-policy/Cargo.toml
+    - crates/chio-core-types/proptest-regressions/.gitkeep
+    - crates/chio-kernel-core/proptest-regressions/.gitkeep
+    - crates/chio-credentials/proptest-regressions/.gitkeep
+    - crates/chio-policy/proptest-regressions/.gitkeep
+  shared_paths:
+    - Cargo.lock
+  depends_on: []
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-core-types -p chio-kernel-core -p chio-credentials -p chio-policy --tests
+  worktree_branch: wave/W1/m03/p1.t1-proptest-devdep
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P1.T2
+  milestone: M03
+  phase: 1
+  title: Land five capability algebra proptest invariants in chio-core-types
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-core-types/tests/property_capability_algebra.rs
+    - crates/chio-core-types/Cargo.toml
+  shared_paths: []
+  depends_on:
+    - M03.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-core-types --test property_capability_algebra
+  worktree_branch: wave/W1/m03/p1.t2-core-types-algebra-invariants
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P1.T3
+  milestone: M03
+  phase: 1
+  title: Land five evaluate proptest invariants in chio-kernel-core
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-kernel-core/tests/property_evaluate.rs
+    - crates/chio-kernel-core/Cargo.toml
+  shared_paths: []
+  depends_on:
+    - M03.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel-core --test property_evaluate
+  worktree_branch: wave/W1/m03/p1.t3-kernel-core-evaluate-invariants
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P1.T4
+  milestone: M03
+  phase: 1
+  title: Land four passport lifecycle proptest invariants in chio-credentials
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-credentials/tests/property_passport.rs
+    - crates/chio-credentials/Cargo.toml
+  shared_paths: []
+  depends_on:
+    - M03.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-credentials --test property_passport
+  worktree_branch: wave/W1/m03/p1.t4-credentials-passport-invariants
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P1.T5
+  milestone: M03
+  phase: 1
+  title: Land four merge/evaluate proptest invariants in chio-policy
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-policy/tests/property_evaluate.rs
+    - crates/chio-policy/Cargo.toml
+  shared_paths: []
+  depends_on:
+    - M03.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-policy --test property_evaluate
+  worktree_branch: wave/W1/m03/p1.t5-policy-evaluate-invariants
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P1.T6
+  milestone: M03
+  phase: 1
+  title: Tier proptest case count by lane (PR=256, nightly=4096)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - .github/workflows/ci.yml
+    - .github/workflows/nightly.yml
+  shared_paths:
+    - .github/workflows/ci.yml
+  depends_on:
+    - M03.P1.T2
+    - M03.P1.T3
+    - M03.P1.T4
+    - M03.P1.T5
+  soft_deps: []
+  gate_check:
+    cmd: actionlint .github/workflows/ci.yml .github/workflows/nightly.yml || true; grep -q PROPTEST_CASES .github/workflows/ci.yml
+  worktree_branch: wave/W1/m03/p1.t6-tier-proptest-cases
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P1.T7
+  milestone: M03
+  phase: 1
+  title: Gate proptest invariant inventory via check-proptest-coverage script
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - scripts/check-proptest-coverage.sh
+    - .github/workflows/ci.yml
+  shared_paths:
+    - .github/workflows/ci.yml
+  depends_on:
+    - M03.P1.T2
+    - M03.P1.T3
+    - M03.P1.T4
+    - M03.P1.T5
+  soft_deps: []
+  gate_check:
+    cmd: bash scripts/check-proptest-coverage.sh
+  worktree_branch: wave/W1/m03/p1.t7-proptest-coverage-gate
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

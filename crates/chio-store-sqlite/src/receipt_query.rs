@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn test_query_no_filters() {
         let path = unique_db_path("rq-no-filters");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         for i in 0..5usize {
             let r = make_receipt(
@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn test_query_filter_capability_id() {
         let path = unique_db_path("rq-cap-id");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn test_query_filter_tool_server() {
         let path = unique_db_path("rq-tool-server");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn test_query_filter_tool_name() {
         let path = unique_db_path("rq-tool-name");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn test_query_filter_outcome() {
         let path = unique_db_path("rq-outcome");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn test_query_filter_time_range_since() {
         let path = unique_db_path("rq-since");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn test_query_filter_time_range_until() {
         let path = unique_db_path("rq-until");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn test_query_filter_time_range_both() {
         let path = unique_db_path("rq-time-both");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -565,7 +565,7 @@ mod tests {
     #[test]
     fn test_query_filter_cost_range_min() {
         let path = unique_db_path("rq-min-cost");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         // No cost (no financial metadata).
         store
@@ -626,7 +626,7 @@ mod tests {
     #[test]
     fn test_query_filter_cost_range_max() {
         let path = unique_db_path("rq-max-cost");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         // No cost (no financial metadata).
         store
@@ -687,7 +687,7 @@ mod tests {
     #[test]
     fn test_query_filter_cost_range_both() {
         let path = unique_db_path("rq-cost-both");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -757,7 +757,7 @@ mod tests {
     #[test]
     fn test_query_cursor_pagination() {
         let path = unique_db_path("rq-cursor");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         for i in 0..5usize {
             let r = make_receipt(
@@ -809,7 +809,7 @@ mod tests {
     #[test]
     fn test_query_cursor_pagination_pages() {
         let path = unique_db_path("rq-cursor-pages");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         for i in 0..7usize {
             let r = make_receipt(
@@ -864,7 +864,7 @@ mod tests {
     #[test]
     fn test_query_next_cursor_some_when_more() {
         let path = unique_db_path("rq-next-cursor-some");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         for i in 0..5usize {
             let r = make_receipt(
@@ -900,7 +900,7 @@ mod tests {
     #[test]
     fn test_query_next_cursor_none_when_last_page() {
         let path = unique_db_path("rq-next-cursor-none");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         for i in 0..3usize {
             let r = make_receipt(
@@ -935,7 +935,7 @@ mod tests {
     #[test]
     fn test_query_total_count() {
         let path = unique_db_path("rq-total-count");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         for i in 0..10usize {
             let r = make_receipt(
@@ -970,7 +970,7 @@ mod tests {
     #[test]
     fn test_query_limit_capped() {
         let path = unique_db_path("rq-limit-capped");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         // Insert MAX_QUERY_LIMIT + 10 receipts.
         for i in 0..(MAX_QUERY_LIMIT + 10) {
@@ -1010,7 +1010,7 @@ mod tests {
     #[test]
     fn test_query_agent_subject_filter() {
         let path = unique_db_path("rq-agent-subject");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         use chio_core::capability::{
             CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
@@ -1113,7 +1113,7 @@ mod tests {
     #[test]
     fn test_query_agent_subject_none_returns_all() {
         let path = unique_db_path("rq-agent-none");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         use chio_core::capability::{
             CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
@@ -1212,7 +1212,7 @@ mod tests {
     #[test]
     fn test_query_agent_subject_no_match() {
         let path = unique_db_path("rq-agent-no-match");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         store
             .append_chio_receipt(&make_receipt(
@@ -1244,7 +1244,7 @@ mod tests {
     #[test]
     fn test_query_agent_subject_with_outcome_filter() {
         let path = unique_db_path("rq-agent-outcome");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         use chio_core::capability::{
             CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
@@ -1331,7 +1331,7 @@ mod tests {
     #[test]
     fn test_query_agent_subject_cursor_pagination() {
         let path = unique_db_path("rq-agent-cursor");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         use chio_core::capability::{
             CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
@@ -1426,7 +1426,7 @@ mod tests {
         // Querying with cursor=u64::MAX means "return receipts with seq > u64::MAX",
         // which is impossible -- the result must always be empty.
         let path = unique_db_path("rq-cursor-u64max");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         // Insert a few receipts so the store is non-empty.
         for i in 0..5usize {
@@ -1466,7 +1466,7 @@ mod tests {
     #[test]
     fn test_query_combined_filters() {
         let path = unique_db_path("rq-combined");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
 
         // cap-A, allow, ts=200
         store

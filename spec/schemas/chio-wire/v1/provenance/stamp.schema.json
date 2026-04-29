@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/provenance/stamp/v1",
+  "title": "Chio Provenance Stamp",
+  "description": "One provenance stamp attached by a Chio provider adapter to every tool-call response. Names the upstream `provider`, the upstream `request_id`, the wire `api_version`, the `principal` Chio resolved as the calling subject, and the unix-second `received_at` timestamp. Field names are snake_case to match `RuntimeAttestationEvidence`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "request_id",
+    "api_version",
+    "principal",
+    "received_at"
+  ],
+  "properties": {
+    "provider": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier of the upstream provider adapter that handled the tool call (for example `openai`, `anthropic`, `google-vertex`). M07 owns the canonical adapter identifier registry."
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Upstream request identifier returned by the provider for this call. Opaque to Chio; preserved verbatim so operators can correlate Chio receipts with provider-side logs."
+    },
+    "api_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Wire version of the upstream provider API that served the call. Free-form per provider (for example `2024-08-01-preview` for Azure OpenAI, `v1` for Anthropic). Frozen per stamp; bumps require a new stamp."
+    },
+    "principal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Calling subject Chio resolved at the kernel boundary, in the same canonical form used by capability tokens (subject public key or normalized workload identity). Bound into the provenance graph alongside the receipt principal."
+    },
+    "received_at": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix timestamp (seconds) at which Chio observed the provider response. Monotonic with respect to receipts emitted from the same kernel; M07 fails closed if the value is in the future relative to the kernel clock."
+    }
+  }
+}

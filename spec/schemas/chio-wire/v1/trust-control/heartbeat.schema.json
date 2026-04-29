@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/trust-control/heartbeat/v1",
+  "title": "Chio Trust-Control Lease Heartbeat",
+  "description": "One trust-control heartbeat used to refresh a held authority lease before it expires. The heartbeat names the lease being refreshed (`leaseId` plus `leaseEpoch`), the leader URL claiming continued ownership, and the unix-millisecond observation timestamp at which the heartbeat was issued. Drafted from `spec/PROTOCOL.md` section 9 prose around `/v1/internal/cluster/status` and the cluster lease lifecycle described in `crates/chio-cli/src/trust_control/cluster_and_reports.rs` (lines 832-877). NOTE: this schema is drafted from prose plus the `ClusterAuthorityLeaseView` shape; there is no dedicated `LeaseHeartbeatRequest` Rust struct in the live trust-control surface yet, so wire field names follow the same `serde(rename_all = camelCase)` convention used by the lease projection. The dedicated request/response struct is expected to land alongside the cluster RPC formalization in M09 P3.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "leaseId",
+    "leaseEpoch",
+    "leaderUrl",
+    "observedAt"
+  ],
+  "properties": {
+    "leaseId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Lease identifier being refreshed. Must match the `leaseId` previously projected by the lease schema."
+    },
+    "leaseEpoch": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Lease epoch carried alongside `leaseId`. Trust-control fails closed if the heartbeat targets a stale epoch."
+    },
+    "leaderUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Normalized URL of the leader claiming continued ownership of the lease."
+    },
+    "observedAt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix-millisecond timestamp at which the leader observed the cluster state that motivated this heartbeat."
+    },
+    "proposedExpiresAt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Optional unix-millisecond timestamp the leader proposes for the refreshed `leaseExpiresAt`. Trust-control may clamp this to the policy-bounded TTL."
+    }
+  }
+}

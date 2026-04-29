@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "scope_mismatch",
+  "expected_verdict": "deny",
+  "family": "deny_scope_mismatch",
+  "fixed_nonce_seed_index": 29,
+  "intent": "Deny because the delegated scope is narrower than the requested operation, exercising attenuation-undershoot rejection in the delegation chain.",
+  "name": "deny_scope_mismatch/06_attenuation_undershoot",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "scope-mismatch", "delegation", "attenuation"]
+}

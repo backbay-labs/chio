@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "http_request",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 18,
+      "verdict": "deny",
+      "reason": "network egress target denied"
+    },
+    "scopes": [
+      "example-server:http_request"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"network egress target denied\"}"
+}

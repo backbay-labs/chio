@@ -101,8 +101,8 @@ impl ToolServerConnection for EchoServer {
     }
 }
 
-#[test]
-fn forbidden_path_blocks_etc_shadow() {
+#[tokio::test]
+async fn forbidden_path_blocks_etc_shadow() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ForbiddenPathGuard::new()));
 
@@ -114,12 +114,12 @@ fn forbidden_path_blocks_etc_shadow() {
         serde_json::json!({"path": "/etc/shadow"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Deny);
 }
 
-#[test]
-fn forbidden_path_allows_normal_file() {
+#[tokio::test]
+async fn forbidden_path_allows_normal_file() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ForbiddenPathGuard::new()));
 
@@ -131,12 +131,12 @@ fn forbidden_path_allows_normal_file() {
         serde_json::json!({"path": "/home/user/project/src/main.rs"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Allow);
 }
 
-#[test]
-fn shell_command_blocks_rm_rf() {
+#[tokio::test]
+async fn shell_command_blocks_rm_rf() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ShellCommandGuard::new()));
 
@@ -148,12 +148,12 @@ fn shell_command_blocks_rm_rf() {
         serde_json::json!({"command": "rm -rf /"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Deny);
 }
 
-#[test]
-fn shell_command_allows_git_status() {
+#[tokio::test]
+async fn shell_command_allows_git_status() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ShellCommandGuard::new()));
 
@@ -165,12 +165,12 @@ fn shell_command_allows_git_status() {
         serde_json::json!({"command": "git status"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Allow);
 }
 
-#[test]
-fn egress_allowlist_blocks_evil_com() {
+#[tokio::test]
+async fn egress_allowlist_blocks_evil_com() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(EgressAllowlistGuard::new()));
 
@@ -182,12 +182,12 @@ fn egress_allowlist_blocks_evil_com() {
         serde_json::json!({"url": "https://evil.com/steal"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Deny);
 }
 
-#[test]
-fn egress_allowlist_allows_github_api() {
+#[tokio::test]
+async fn egress_allowlist_allows_github_api() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(EgressAllowlistGuard::new()));
 
@@ -199,12 +199,12 @@ fn egress_allowlist_allows_github_api() {
         serde_json::json!({"url": "https://api.github.com/repos"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Allow);
 }
 
-#[test]
-fn pipeline_one_deny_means_overall_deny() {
+#[tokio::test]
+async fn pipeline_one_deny_means_overall_deny() {
     let (mut kernel, _kp) = make_kernel();
 
     let mut pipeline = GuardPipeline::new();
@@ -222,12 +222,12 @@ fn pipeline_one_deny_means_overall_deny() {
         serde_json::json!({"path": "/home/user/.ssh/id_rsa"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Deny);
 }
 
-#[test]
-fn pipeline_all_allow_means_overall_allow() {
+#[tokio::test]
+async fn pipeline_all_allow_means_overall_allow() {
     let (mut kernel, _kp) = make_kernel();
 
     let mut pipeline = GuardPipeline::new();
@@ -245,7 +245,7 @@ fn pipeline_all_allow_means_overall_allow() {
         serde_json::json!({"path": "/home/user/project/src/main.rs"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Allow);
 }
 
@@ -253,8 +253,8 @@ fn pipeline_all_allow_means_overall_allow() {
 // previously returned ALLOW because "filesystem" was not recognized as a file
 // tool, so the action fell through to McpTool and the ForbiddenPathGuard
 // did not fire.
-#[test]
-fn filesystem_tool_blocks_etc_shadow() {
+#[tokio::test]
+async fn filesystem_tool_blocks_etc_shadow() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ForbiddenPathGuard::new()));
 
@@ -266,12 +266,12 @@ fn filesystem_tool_blocks_etc_shadow() {
         serde_json::json!({"path": "/etc/shadow"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Deny);
 }
 
-#[test]
-fn filesystem_tool_allows_normal_path() {
+#[tokio::test]
+async fn filesystem_tool_allows_normal_path() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ForbiddenPathGuard::new()));
 
@@ -283,12 +283,12 @@ fn filesystem_tool_allows_normal_path() {
         serde_json::json!({"path": "/home/user/project/src/main.rs"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Allow);
 }
 
-#[test]
-fn filesystem_tool_with_action_read_blocks_forbidden() {
+#[tokio::test]
+async fn filesystem_tool_with_action_read_blocks_forbidden() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(ForbiddenPathGuard::new()));
 
@@ -300,12 +300,12 @@ fn filesystem_tool_with_action_read_blocks_forbidden() {
         serde_json::json!({"path": "/etc/shadow", "action": "read"}),
     );
 
-    let resp = kernel.evaluate_tool_call_blocking(&req).unwrap();
+    let resp = kernel.evaluate_tool_call(&req).await.unwrap();
     assert_eq!(resp.verdict, Verdict::Deny);
 }
 
-#[test]
-fn filesystem_tool_session_roots_allow_in_root_path() {
+#[tokio::test]
+async fn filesystem_tool_session_roots_allow_in_root_path() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(PathAllowlistGuard::new()));
 
@@ -362,8 +362,8 @@ fn filesystem_tool_session_roots_allow_in_root_path() {
     }
 }
 
-#[test]
-fn filesystem_tool_session_roots_deny_out_of_root_path() {
+#[tokio::test]
+async fn filesystem_tool_session_roots_deny_out_of_root_path() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(PathAllowlistGuard::new()));
 
@@ -420,8 +420,8 @@ fn filesystem_tool_session_roots_deny_out_of_root_path() {
     }
 }
 
-#[test]
-fn filesystem_tool_session_roots_fail_closed_when_missing() {
+#[tokio::test]
+async fn filesystem_tool_session_roots_fail_closed_when_missing() {
     let (mut kernel, _kp) = make_kernel();
     kernel.add_guard(Box::new(PathAllowlistGuard::new()));
 

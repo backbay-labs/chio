@@ -514,7 +514,7 @@ mod tests {
     #[test]
     fn builds_bundle_with_receipts_lineage_and_proofs() {
         let path = unique_db_path("evidence-export");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let root = capability_with_id("cap-root", &subject, &issuer, None);
@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn omits_child_receipts_for_capability_scoped_export_without_time_window() {
         let path = unique_db_path("evidence-export-scope");
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let capability = capability_with_id("cap-scoped", &subject, &issuer, None);

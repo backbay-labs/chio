@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Optional image tag override (defaults to git ref / SHA)."
+        description: "Ignored for manual smoke builds. Pushes and signing run only on push events."
         required: false
         type: string
 
@@ -36,18 +36,31 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          semver_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'
+          if [[ ! "${tag}" =~ ${semver_re} ]]; then
+            echo "sidecar-image refuses non-semver release tag: ${tag}" >&2
+            exit 1
+          fi
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
         with:
           platforms: linux/amd64,linux/arm64
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
       - name: Log in to ghcr.io
-        uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -63,7 +76,7 @@ jobs:
 
       - name: Compute image metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
@@ -79,7 +92,6 @@ jobs:
             # Versioned tags (v0.1.1, 0.1, etc.) still ship via the
             # semver patterns above, so operators can pin to them and
             # `:latest` only tracks the default branch.
-            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
           labels: |
             org.opencontainers.image.title=chio-sidecar
             org.opencontainers.image.description=Chio sidecar runtime
@@ -88,12 +100,12 @@ jobs:
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
           file: Dockerfile.sidecar
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: mode=max
@@ -102,5 +114,34 @@ jobs:
           cache-to: type=gha,scope=sidecar,mode=max
 
       - name: Export image digest
+        if: github.event_name == 'push'
         run: |
           echo "Pushed image digest: ${{ steps.build.outputs.digest }}"
+
+      # Sigstore keyless cosign signing of the multi-arch image manifest by
+      # digest. Signing the digest covers every tag (semver, sha, latest)
+      # because all point at the same content-addressed manifest. The OIDC
+      # token from `id-token: write` is exchanged with Fulcio; no long-lived
+      # signing key is held in secrets. Verification recipe:
+      # docs/install/PUBLISHING.md, section "Sidecar image signing".
+      - name: Install cosign
+        if: github.event_name == 'push'
+        uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
+        with:
+          cosign-release: v2.4.1
+
+      - name: Cosign sign image by digest
+        if: github.event_name == 'push'
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          if [ -z "${IMAGE_DIGEST}" ]; then
+            echo "::error::build-push-action did not emit a digest; refusing to sign" >&2
+            exit 1
+          fi
+          ref="${IMAGE_NAME}@${IMAGE_DIGEST}"
+          echo "Signing ${ref} (covers every tag pointing at this manifest)"
+          cosign sign --yes "${ref}"

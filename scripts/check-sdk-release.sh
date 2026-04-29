@@ -13,7 +13,7 @@ set -euo pipefail
 # invocations and release runbooks stay source-compatible.
 
 if [[ $# -lt 1 ]]; then
-  echo "usage: $(basename "$0") <cpp|go|py|ts> [extra args]" >&2
+  echo "usage: $(basename "$0") <cpp|cpp-kernel|guard-cpp|drogon|go|py|ts> [extra args]" >&2
   exit 2
 fi
 
@@ -23,7 +23,7 @@ shift || true
 case "${lang}" in
   -h|--help)
     cat <<'HELP'
-check-sdk-release.sh <cpp|go|py|ts>
+check-sdk-release.sh <cpp|cpp-kernel|guard-cpp|drogon|go|py|ts>
 
 Runs the release qualification smoke for one Chio SDK. The driver handles
 shared setup (temp dir, cleanup trap, PATH probes) and delegates to a
@@ -41,54 +41,114 @@ cleanup() {
 }
 trap cleanup EXIT
 
-case "${lang}" in
-  cpp)
-    sdk_dir="${repo_root}/packages/sdk/chio-cpp"
-    require_cpp_packagers="${CHIO_CPP_REQUIRE_PACKAGERS:-${CI:-}}"
+# Run the Conan + vcpkg manifest smoke for a C++ SDK.
+#   $1: package directory (containing conanfile.py and vcpkg.json)
+#   $2: expected vcpkg.json "name" field
+#   $3: optional space-separated list of conan references to "conan create" first
+chio_cpp_packager_smoke() {
+  local sdk_dir="$1"
+  local expected_name="$2"
+  local prereq_recipes="${3:-}"
+  local require_packagers="${CHIO_CPP_REQUIRE_PACKAGERS:-${CI:-}}"
 
-    "${repo_root}/scripts/check-chio-cpp.sh"
-
-    if command -v conan >/dev/null 2>&1; then
-      (
-        cd "${sdk_dir}"
-        if ! conan profile path default >/dev/null 2>&1; then
-          conan profile detect --force
-        fi
-        conan create . --build=missing
-      )
-    elif [[ -n "${require_cpp_packagers}" && "${require_cpp_packagers}" != "0" ]]; then
-      echo "Conan package smoke is required but conan is not on PATH" >&2
-      exit 1
-    else
-      echo "skipping Conan package smoke because conan is not on PATH"
+  if command -v conan >/dev/null 2>&1; then
+    if ! conan profile path default >/dev/null 2>&1; then
+      conan profile detect --force
     fi
-
-    vcpkg_cmd=""
-    if command -v vcpkg >/dev/null 2>&1; then
-      vcpkg_cmd="$(command -v vcpkg)"
-    elif [[ -n "${VCPKG_ROOT:-}" && -x "${VCPKG_ROOT}/vcpkg" ]]; then
-      vcpkg_cmd="${VCPKG_ROOT}/vcpkg"
+    if [[ -n "${prereq_recipes}" ]]; then
+      for prereq_dir in ${prereq_recipes}; do
+        (
+          cd "${prereq_dir}"
+          conan create . --build=missing
+        )
+      done
     fi
+    (
+      cd "${sdk_dir}"
+      conan create . --build=missing
+    )
+  elif [[ -n "${require_packagers}" && "${require_packagers}" != "0" ]]; then
+    echo "Conan package smoke is required but conan is not on PATH" >&2
+    exit 1
+  else
+    echo "skipping Conan package smoke for ${expected_name} because conan is not on PATH"
+  fi
 
-    if [[ -n "${vcpkg_cmd}" ]]; then
-      "${vcpkg_cmd}" install --x-manifest-root="${sdk_dir}" --dry-run
-    elif [[ -n "${require_cpp_packagers}" && "${require_cpp_packagers}" != "0" ]]; then
-      echo "vcpkg manifest build is required but vcpkg is not on PATH" >&2
-      exit 1
-    else
-      python3 - "${sdk_dir}/vcpkg.json" <<'PY'
+  local vcpkg_cmd=""
+  if command -v vcpkg >/dev/null 2>&1; then
+    vcpkg_cmd="$(command -v vcpkg)"
+  elif [[ -n "${VCPKG_ROOT:-}" && -x "${VCPKG_ROOT}/vcpkg" ]]; then
+    vcpkg_cmd="${VCPKG_ROOT}/vcpkg"
+  fi
+
+  if [[ -n "${vcpkg_cmd}" ]]; then
+    # Layer the in-tree staging overlay so SDKs whose dependencies live in
+    # our private overlay registry (e.g. chio-drogon -> chio-cpp) can
+    # resolve those deps from local port files. The same port files are
+    # later mirrored to backbay-labs/chio-vcpkg-registry by the publish
+    # workflow, so the dry-run shape matches what consumers see.
+    local overlay_ports_dir="${repo_root}/tools/vcpkg-overlay/ports"
+    local vcpkg_args=(install "--x-manifest-root=${sdk_dir}" --dry-run)
+    if [[ -d "${overlay_ports_dir}" ]]; then
+      vcpkg_args+=("--overlay-ports=${overlay_ports_dir}")
+    fi
+    "${vcpkg_cmd}" "${vcpkg_args[@]}"
+  elif [[ -n "${require_packagers}" && "${require_packagers}" != "0" ]]; then
+    echo "vcpkg manifest build is required but vcpkg is not on PATH" >&2
+    exit 1
+  else
+    python3 - "${sdk_dir}/vcpkg.json" "${expected_name}" <<'PY'
 import json
 import sys
 
-with open(sys.argv[1], "r", encoding="utf-8") as handle:
+manifest_path, expected_name = sys.argv[1], sys.argv[2]
+with open(manifest_path, "r", encoding="utf-8") as handle:
     manifest = json.load(handle)
-if manifest.get("name") != "chio-cpp":
-    raise SystemExit("unexpected vcpkg package name")
-print("vcpkg manifest syntax verified")
+if manifest.get("name") != expected_name:
+    raise SystemExit(
+        f"unexpected vcpkg package name: {manifest.get('name')!r} != {expected_name!r}"
+    )
+print(f"vcpkg manifest syntax verified for {expected_name}")
 PY
-    fi
+  fi
+}
+
+case "${lang}" in
+  cpp)
+    sdk_dir="${repo_root}/packages/sdk/chio-cpp"
+
+    "${repo_root}/scripts/check-chio-cpp.sh"
+    chio_cpp_packager_smoke "${sdk_dir}" "chio-cpp"
 
     echo "chio-cpp release qualification passed"
+    ;;
+
+  cpp-kernel)
+    sdk_dir="${repo_root}/packages/sdk/chio-cpp-kernel"
+
+    "${sdk_dir}/scripts/check-with-ffi.sh"
+    chio_cpp_packager_smoke "${sdk_dir}" "chio-cpp-kernel"
+
+    echo "chio-cpp-kernel release qualification passed"
+    ;;
+
+  guard-cpp)
+    sdk_dir="${repo_root}/packages/sdk/chio-guard-cpp"
+
+    "${sdk_dir}/scripts/check-native.sh"
+    chio_cpp_packager_smoke "${sdk_dir}" "chio-guard-cpp"
+
+    echo "chio-guard-cpp release qualification passed"
+    ;;
+
+  drogon)
+    sdk_dir="${repo_root}/packages/sdk/chio-drogon"
+    chio_cpp_dir="${repo_root}/packages/sdk/chio-cpp"
+
+    "${repo_root}/scripts/check-chio-drogon.sh"
+    chio_cpp_packager_smoke "${sdk_dir}" "chio-drogon" "${chio_cpp_dir}"
+
+    echo "chio-drogon release qualification passed"
     ;;
 
   go)
@@ -350,7 +410,7 @@ EOF
     ;;
 
   *)
-    echo "unknown SDK language: ${lang} (expected cpp, go, py, or ts)" >&2
+    echo "unknown SDK language: ${lang} (expected cpp, cpp-kernel, guard-cpp, drogon, go, py, or ts)" >&2
     exit 2
     ;;
 esac

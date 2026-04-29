@@ -1,0 +1,25 @@
+[package]
+name = "chio-tee-frame"
+description = "Wire format for Chio TEE replay frames (kernel decision capture)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_tee_frame"
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

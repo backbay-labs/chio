@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-tee-frame/v1.json",
+  "title": "chio-tee-frame.v1",
+  "description": "Capture frame emitted by the chio-tee shadow runner per kernel evaluation. Mirrors the Rust types in crates/chio-tee-frame.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "ts",
+    "tee_id",
+    "upstream",
+    "invocation",
+    "provenance",
+    "request_blob_sha256",
+    "response_blob_sha256",
+    "redaction_pass_id",
+    "verdict",
+    "would_have_blocked",
+    "tenant_sig"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "Frame schema major version. Pinned to \"1\" for chio-tee-frame.v1."
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "ULID. Crockford base32, 26 chars."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "description": "RFC3339 UTC timestamp with millisecond precision and trailing Z."
+    },
+    "tee_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
+      "description": "Stable tee identifier per deployment."
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "operation", "api_version"],
+      "properties": {
+        "system": {
+          "type": "string",
+          "enum": ["openai", "anthropic", "aws.bedrock", "mcp", "a2a", "acp"]
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_.]*$",
+          "description": "Provider-specific operation, e.g. responses.create, messages.create, tool.call."
+        },
+        "api_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Provider API version string, e.g. 2025-10-01."
+        }
+      }
+    },
+    "invocation": {
+      "type": "object",
+      "description": "Canonical-JSON ToolInvocation per the M01 schema. Validated by the M01 validator; opaque here."
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["otel"],
+      "properties": {
+        "otel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trace_id", "span_id"],
+          "properties": {
+            "trace_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$",
+              "description": "W3C trace-id, 32 lowercase hex."
+            },
+            "span_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16}$",
+              "description": "W3C span-id, 16 lowercase hex."
+            }
+          }
+        },
+        "supply_chain": {
+          "type": "object",
+          "description": "Optional M09 SBOM-style provenance superset; opaque here."
+        }
+      }
+    },
+    "request_blob_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex SHA-256 of the redacted request blob."
+    },
+    "response_blob_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex SHA-256 of the redacted response blob."
+    },
+    "redaction_pass_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._@+-]*$",
+      "description": "Identifier for the redactor pipeline that produced this frame, e.g. m06-redactors@1.4.0+default."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["allow", "deny", "rewrite"]
+    },
+    "deny_reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[a-z][a-z0-9_]*(:[a-z][a-z0-9_.]*)*$",
+      "description": "Required iff verdict is deny or rewrite. Namespaced reason code, e.g. guard:pii.email_in_response."
+    },
+    "would_have_blocked": {
+      "type": "boolean",
+      "description": "True iff the kernel would have denied or rewritten under the resolved policy. Always present; equals (verdict != allow) in shadow/enforce, always false in verdict-only."
+    },
+    "tenant_sig": {
+      "type": "string",
+      "pattern": "^ed25519:[A-Za-z0-9+/=]{86,88}$",
+      "description": "Ed25519 signature over the canonical-JSON encoding of all other fields, base64-standard."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verdict": { "const": "allow" } } },
+      "then": { "not": { "required": ["deny_reason"] } }
+    },
+    {
+      "if": { "properties": { "verdict": { "enum": ["deny", "rewrite"] } } },
+      "then": { "required": ["deny_reason"] }
+    }
+  ]
+}

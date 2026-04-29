@@ -11,15 +11,37 @@ publish = false
 [lib]
 name = "chio_openai"
 
+[package.metadata.chio]
+# OpenAI Responses API snapshot pin. Bumping this is a deliberate PR with a
+# fixture re-record. Source: https://platform.openai.com/docs/api-reference/responses
+openai_responses_api_snapshot = "2026-04-25"
+
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }
 chio-kernel = { path = "../chio-kernel" }
 chio-manifest = { path = "../chio-manifest" }
+chio-tool-call-fabric = { path = "../chio-tool-call-fabric", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[features]
+# Default features keep the existing public surface compiling unchanged.
+default = []
+
+# `provider-adapter` opts into the ProviderAdapter surface (lift/lower into
+# the chio-tool-call-fabric ToolInvocation shape). Pinned to OpenAI Responses
+# API snapshot 2026-04-25 (see package.metadata).
+provider-adapter = ["dep:chio-tool-call-fabric"]
+
+[[bench]]
+name = "verdict_latency"
+harness = false
 
 [lints.clippy]
 unwrap_used = "deny"

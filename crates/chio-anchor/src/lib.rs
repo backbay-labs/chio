@@ -19,6 +19,9 @@ mod functions;
 mod ops;
 mod solana;
 
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
+
 use chio_core::web3::{
     validate_anchor_inclusion_proof, verify_anchor_inclusion_proof, AnchorInclusionProof,
     SignedWeb3IdentityBinding, Web3ChainAnchorRecord, Web3CheckpointStatement,

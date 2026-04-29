@@ -1,0 +1,30 @@
+# Wave-opener Cargo.lock bump for M03 (second in the wave-opener chain).
+# Order: M09 -> M03 -> M01 -> M02 per EXECUTION-BOARD.md section 2.
+# Lands before M03 P1 proptest dev-dep enable so the four algebra crates
+# baseline against a fresh resolver run.
+
+- id: M03.P0.T1
+  milestone: M03
+  phase: 0
+  title: "Wave-opener: refresh Cargo.lock for M03 capability-algebra phase"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "Cargo.lock"
+    - "Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - M09.P0.T1
+  soft_deps:
+    - "Second in the Wave-1 lock-bump chain; M03 P1 proptest dev-dep enable baselines against this."
+  gate_check:
+    cmd: "cargo update --workspace --quiet && cargo metadata --locked --no-deps --format-version 1 >/dev/null && cargo build --workspace --quiet"
+  worktree_branch: "wave/W1/m03/p0.t1-wave-opener-lock-bump"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

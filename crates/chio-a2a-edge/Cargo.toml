@@ -14,6 +14,7 @@ name = "chio_a2a_edge"
 [features]
 default = []
 compatibility-surface = []
+otel = ["chio-kernel/otel", "chio-mcp-edge/otel"]
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }

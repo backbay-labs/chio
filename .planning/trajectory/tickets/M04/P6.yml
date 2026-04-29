@@ -1,0 +1,139 @@
+# M04 Phase 6 - Differential anchored-root verification (Rust kernel vs TS SDK).
+# Source of truth: .planning/trajectory/04-deterministic-replay.md (Phase 6,
+# lines 361-400). Five atomic tasks map 1:1 to T1-T5 in doc order.
+# Wave 3 per EXECUTION-BOARD section 2 (uses wave/W3/...).
+# Phase scope: TS-side scenario runner under
+# sdks/typescript/packages/conformance that consumes the same Phase 1 fixture
+# manifests; both implementations emit (receipt_id, leaf_hash,
+# inclusion_proof, root) tuples; diff harness asserts byte equality on root
+# and structural equality on proof path; tamper test mutates a leaf byte and
+# expects AnchorError::Verification(_) on both sides; differential CI job in
+# chio-replay-gate.yml pulls both Rust and TS toolchains.
+# Cross-milestone deps: relies on M04 P1 corpus (P5.T4 ensures invariance
+# suite green first), and reuses the inclusion-proof schema landed in M01 P3
+# (chio-wire/v1/receipt/inclusion-proof, MERGED).
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M04.P6.T1
+  milestone: M04
+  phase: 6
+  title: Add TS-side scenario runner consuming Phase 1 fixture manifests
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - sdks/typescript/packages/conformance/src/replay.ts
+    - sdks/typescript/packages/conformance/package.json
+    - sdks/typescript/packages/conformance/tsconfig.json
+  shared_paths:
+    - sdks/typescript/packages/conformance/package.json
+  depends_on:
+    - M04.P5.T5
+  soft_deps:
+    - "Reuses M01 P3 inclusion-proof schema (chio-wire/v1/receipt/inclusion-proof.schema.json, MERGED)."
+  gate_check:
+    cmd: cd sdks/typescript/packages/conformance && bun run build
+  worktree_branch: wave/W3/m04/p6.t1-ts-scenario-runner
+  agent_role: spec-typescript
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P6.T2
+  milestone: M04
+  phase: 6
+  title: Emit (receipt_id, leaf_hash, inclusion_proof, root) tuples from both impls
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - formal/diff-tests/anchored_root.rs
+    - sdks/typescript/packages/conformance/src/replay.ts
+    - sdks/typescript/packages/conformance/test/replay.spec.ts
+  shared_paths: []
+  depends_on:
+    - M04.P6.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo build --test anchored_root && cd sdks/typescript/packages/conformance && bun test test/replay.spec.ts --timeout 60000
+  worktree_branch: wave/W3/m04/p6.t2-tuple-emit-both-impls
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P6.T3
+  milestone: M04
+  phase: 6
+  title: Implement diff harness asserting byte equality on root and structural equality on proof path
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - formal/diff-tests/anchored_root.rs
+  shared_paths: []
+  depends_on:
+    - M04.P6.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test --test anchored_root
+    timeout_seconds: 600
+  worktree_branch: wave/W3/m04/p6.t3-diff-harness-byte-and-structural
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P6.T4
+  milestone: M04
+  phase: 6
+  title: Author tamper test mutating a leaf byte and asserting AnchorError on both impls
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - formal/diff-tests/anchored_root_tamper.rs
+    - sdks/typescript/packages/conformance/test/replay.spec.ts
+  shared_paths: []
+  depends_on:
+    - M04.P6.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test --test anchored_root_tamper -- formal::anchored_root_tamper::single_byte_flip_fails_closed_on_both
+    timeout_seconds: 600
+  worktree_branch: wave/W3/m04/p6.t4-leaf-byte-tamper-fails-closed
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P6.T5
+  milestone: M04
+  phase: 6
+  title: Wire differential CI job (Linux, Rust + TS toolchains) in chio-replay-gate.yml
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .github/workflows/chio-replay-gate.yml
+  shared_paths:
+    - .github/workflows/chio-replay-gate.yml
+  depends_on:
+    - M04.P6.T4
+  soft_deps: []
+  gate_check:
+    cmd: actionlint .github/workflows/chio-replay-gate.yml || true; grep -q 'differential' .github/workflows/chio-replay-gate.yml && grep -q 'bun' .github/workflows/chio-replay-gate.yml
+  worktree_branch: wave/W3/m04/p6.t5-differential-ci-job
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

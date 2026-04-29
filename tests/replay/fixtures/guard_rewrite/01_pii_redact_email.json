@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "none",
+  "expected_verdict": "allow",
+  "family": "guard_rewrite",
+  "fixed_nonce_seed_index": 34,
+  "intent": "Allow with a guard that redacts an email address in the request payload before forwarding, exercising the PII-redaction rewrite path.",
+  "name": "guard_rewrite/01_pii_redact_email",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "pii-redact", "guard-rewrite"]
+}

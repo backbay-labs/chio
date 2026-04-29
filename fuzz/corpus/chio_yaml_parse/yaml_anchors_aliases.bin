@@ -1,0 +1,14 @@
+defaults: &defaults
+  signing_key: "generate"
+  log_level: "info"
+
+kernel:
+  <<: *defaults
+
+adapters:
+  - id: &petstore_id "petstore"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+  - id: *petstore_id
+    protocol: "openapi"
+    upstream: "http://localhost:8001"

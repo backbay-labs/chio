@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "expired",
+  "expected_verdict": "deny",
+  "family": "deny_expired",
+  "fixed_nonce_seed_index": 19,
+  "intent": "Deny because the clock evaluates exactly one second past the capability's notAfter, exercising the exclusive upper bound of the validity window.",
+  "name": "deny_expired/01_one_second_past",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "clock-edge", "expired"]
+}

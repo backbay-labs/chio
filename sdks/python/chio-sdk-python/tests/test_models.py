@@ -5,6 +5,16 @@ from __future__ import annotations
 import json
 import time
 
+import pytest
+from pydantic import ValidationError
+
+from chio_sdk._generated import (
+    CapabilityToken as GeneratedCapabilityToken,
+    ChioCapabilitytoken,
+)
+from chio_sdk._generated.capability import Constraint as GeneratedConstraint
+from chio_sdk._generated.jsonrpc import ChioJsonRpc20Response
+from chio_sdk._generated.provenance import ChioProvenanceVerdictLink
 from chio_sdk.models import (
     ChioReceipt,
     ChioScope,
@@ -35,9 +45,126 @@ from chio_sdk.models import (
 
 class TestOperation:
     def test_values(self) -> None:
-        assert Operation.INVOKE.value == "Invoke"
-        assert Operation.READ_RESULT.value == "ReadResult"
-        assert Operation.DELEGATE.value == "Delegate"
+        assert Operation.INVOKE.value == "invoke"
+        assert Operation.READ_RESULT.value == "read_result"
+        assert Operation.DELEGATE.value == "delegate"
+
+    def test_legacy_input_aliases_serialize_snake_case(self) -> None:
+        grant = ToolGrant.model_validate(
+            {
+                "server_id": "s",
+                "tool_name": "t",
+                "operations": ["Invoke", "ReadResult"],
+            }
+        )
+        assert grant.operations == [Operation.INVOKE, Operation.READ_RESULT]
+        data = json.loads(grant.model_dump_json())
+        assert data["operations"] == ["invoke", "read_result"]
+
+
+class TestGeneratedWireModels:
+    def test_top_level_capability_token_alias_is_canonical(self) -> None:
+        assert GeneratedCapabilityToken is ChioCapabilitytoken
+
+    def test_constraint_value_payload_round_trips(self) -> None:
+        constraint = GeneratedConstraint.model_validate(
+            {"type": "path_prefix", "value": "/safe"}
+        )
+        assert constraint.value == "/safe"
+        assert constraint.model_dump(exclude_none=True) == {
+            "type": "path_prefix",
+            "value": "/safe",
+        }
+
+    def test_jsonrpc_response_rejects_result_and_error_together(self) -> None:
+        with pytest.raises(ValidationError):
+            ChioJsonRpc20Response.model_validate(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {"ok": True},
+                    "error": {"code": -32603, "message": "internal"},
+                }
+            )
+        with pytest.raises(ValidationError):
+            ChioJsonRpc20Response.model_validate(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {"ok": True},
+                    "error": None,
+                }
+            )
+        with pytest.raises(ValidationError):
+            ChioJsonRpc20Response.model_validate(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": None,
+                    "error": {"code": -32603, "message": "internal"},
+                }
+            )
+
+    def test_jsonrpc_response_accepts_one_branch(self) -> None:
+        success = ChioJsonRpc20Response.model_validate(
+            {"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}
+        )
+        failure = ChioJsonRpc20Response.model_validate(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {"code": -32603, "message": "internal"},
+            }
+        )
+        assert success.root.jsonrpc == "2.0"
+        assert failure.root.jsonrpc == "2.0"
+
+    def test_provenance_verdict_link_rejects_forbidden_fields(self) -> None:
+        base = {"requestId": "req-1", "chainId": "chain-1", "renderedAt": 1}
+        with pytest.raises(ValidationError):
+            ChioProvenanceVerdictLink.model_validate(
+                {**base, "verdict": "allow", "reason": "not allowed"}
+            )
+        with pytest.raises(ValidationError):
+            ChioProvenanceVerdictLink.model_validate(
+                {**base, "verdict": "allow", "reason": None}
+            )
+        with pytest.raises(ValidationError):
+            ChioProvenanceVerdictLink.model_validate(
+                {
+                    **base,
+                    "verdict": "cancel",
+                    "reason": "operator cancelled",
+                    "guard": "pii_guard",
+                }
+            )
+        with pytest.raises(ValidationError):
+            ChioProvenanceVerdictLink.model_validate(
+                {
+                    **base,
+                    "verdict": "cancel",
+                    "reason": "operator cancelled",
+                    "guard": None,
+                }
+            )
+        with pytest.raises(ValidationError):
+            ChioProvenanceVerdictLink.model_validate(
+                {
+                    **base,
+                    "verdict": "incomplete",
+                    "reason": "upstream interrupted",
+                    "guard": "pii_guard",
+                }
+            )
+        with pytest.raises(ValidationError):
+            ChioProvenanceVerdictLink.model_validate(
+                {
+                    **base,
+                    "verdict": "incomplete",
+                    "reason": "upstream interrupted",
+                    "guard": None,
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +204,12 @@ class TestConstraint:
     def test_max_length(self) -> None:
         c = Constraint.max_length(256)
         assert c.value == 256
+
+    def test_json_value_payloads(self) -> None:
+        object_constraint = Constraint(type="structured", value={"path": "/safe"})
+        array_constraint = Constraint(type="one_of", value=["read", "list"])
+        assert object_constraint.value == {"path": "/safe"}
+        assert array_constraint.value == ["read", "list"]
 
 
 # ---------------------------------------------------------------------------

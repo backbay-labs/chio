@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_metered",
+  "fixed_nonce_seed_index": 14,
+  "intent": "Allow metered call whose quoted cost is strictly under the remaining budget, exercising the typical metering happy path.",
+  "name": "allow_metered/01_quote_under_budget",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "metering"]
+}

@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "truncate_output",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 24,
+      "verdict": "allow",
+      "rewrite": "truncated"
+    },
+    "scopes": [
+      "example-server:truncate_output"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

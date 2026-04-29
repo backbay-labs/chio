@@ -17,6 +17,108 @@
       "id": "unicode_utf8",
       "input_utf8": "chio 🔐",
       "sha256_hex": "5c57c7deea3998c13730797e592abe72cae55130e8da2923de6374b75b83101b"
+    },
+    {
+      "description": "SHA-256 of a single ASCII letter `a` (one-byte input).",
+      "id": "single_byte_a",
+      "input_utf8": "a",
+      "sha256_hex": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+    },
+    {
+      "description": "SHA-256 of the canonical NIST FIPS-180 example string `abc`.",
+      "id": "abc_lowercase",
+      "input_utf8": "abc",
+      "sha256_hex": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    {
+      "description": "SHA-256 of the 26-letter lowercase ASCII alphabet (no separators).",
+      "id": "alphabet_lowercase",
+      "input_utf8": "abcdefghijklmnopqrstuvwxyz",
+      "sha256_hex": "71c480df93d6ae2f1efad1447c66c9525e316218cf51fc8d9ed832f2daf18b73"
+    },
+    {
+      "description": "SHA-256 of the 56-byte FIPS-180 example, exactly one byte short of the 64-byte SHA-256 block (forces a two-block compression).",
+      "id": "fips_56_byte_block",
+      "input_utf8": "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+      "sha256_hex": "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+    },
+    {
+      "description": "SHA-256 of the FIPS-180 long example (112 ASCII bytes), forcing a multi-block compression.",
+      "id": "fips_112_byte_block",
+      "input_utf8": "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu",
+      "sha256_hex": "cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1"
+    },
+    {
+      "description": "SHA-256 of the classic English pangram (RFC 4634 example).",
+      "id": "fox_pangram",
+      "input_utf8": "The quick brown fox jumps over the lazy dog",
+      "sha256_hex": "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"
+    },
+    {
+      "description": "A trailing period changes a single byte and must produce a different digest from the bare pangram.",
+      "id": "fox_pangram_with_period",
+      "input_utf8": "The quick brown fox jumps over the lazy dog.",
+      "sha256_hex": "ef537f25c895bfa782526529a9b63d97aa631564d5d789c2b765448c8635fb6c"
+    },
+    {
+      "description": "SHA-256 of a single ASCII space byte (0x20).",
+      "id": "single_space",
+      "input_utf8": " ",
+      "sha256_hex": "36a9e7f1c95b82ffb99743e0c5c4ce95d83c9a430aac59f84ef3cbfab6145068"
+    },
+    {
+      "description": "SHA-256 of a single LF byte (0x0a).",
+      "id": "single_newline",
+      "input_utf8": "\n",
+      "sha256_hex": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "description": "SHA-256 hashes raw bytes; an embedded NUL (0x00) must not terminate the input.",
+      "id": "embedded_null",
+      "input_utf8": "before\u0000after",
+      "sha256_hex": "92e7bd379d664df834acaff3d7abcf375095bc5cafa5ebc76309307386deab95"
+    },
+    {
+      "description": "SHA-256 of exactly 64 ASCII bytes (one full SHA-256 message block before padding).",
+      "id": "ascii_64_bytes_block_aligned",
+      "input_utf8": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "sha256_hex": "a8ae6e6ee929abea3afcfc5258c8ccd6f85273e0d4626d26c7279f3250f77c8e"
+    },
+    {
+      "description": "SHA-256 of 1000 repetitions of ASCII `a` (large-ish input across many SHA-256 blocks).",
+      "id": "thousand_a_bytes",
+      "input_utf8": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sha256_hex": "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3"
+    },
+    {
+      "description": "SHA-256 of a Basic Multilingual Plane Cyrillic phrase, encoded as UTF-8.",
+      "id": "unicode_bmp_cyrillic",
+      "input_utf8": "Привет, мир",
+      "sha256_hex": "2a2e76364df5ab8f0441d9c88bf7688f7f565f0f6b92a877cc94263e123021e3"
+    },
+    {
+      "description": "SHA-256 of a CJK ideograph string, encoded as UTF-8 (multi-byte sequences).",
+      "id": "unicode_cjk",
+      "input_utf8": "你好,世界",
+      "sha256_hex": "8ea4a56cfed13fd0f621a12615075c9192186c5b675313f741ed36ef99f803d0"
+    },
+    {
+      "description": "SHA-256 of a supplementary-plane emoji (U+1F510), encoded as four UTF-8 bytes.",
+      "id": "unicode_supplementary_emoji",
+      "input_utf8": "🔐",
+      "sha256_hex": "2b402c90e9b15d9c3ef65c432c4111108f54ee544cda5424db46f6ac974928e4"
+    },
+    {
+      "description": "SHA-256 of the precomposed character e-acute (U+00E9), encoded as two UTF-8 bytes.",
+      "id": "unicode_combining_mark",
+      "input_utf8": "é",
+      "sha256_hex": "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c"
+    },
+    {
+      "description": "SHA-256 of a canonical-JSON-shaped string (the byte form a binding feeds into hash-of-canonical-encoding flows).",
+      "id": "json_canonical_form",
+      "input_utf8": "{\"a\":1,\"b\":[2,3]}",
+      "sha256_hex": "efbd0040190fb0871831e606c581f8a66db79d8e2bb836745a70051306956070"
     }
   ],
   "generated_by": "chio-binding-helpers",

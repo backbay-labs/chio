@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/jsonrpc/response/v1",
+  "title": "Chio JSON-RPC 2.0 Response",
+  "description": "JSON-RPC 2.0 response envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shapes constructed in `crates/chio-mcp-adapter/src/transport.rs::json_rpc_result` and `json_rpc_error` (lines 1299-1316) and the typed `A2aJsonRpcResponse<T>` / `A2aJsonRpcError` in `crates/chio-a2a-adapter/src/protocol.rs` (lines 243-255). Exactly one of `result` or `error` MUST be present, enforced via `oneOf`. The `error.code` field is an integer (Chio uses standard JSON-RPC reserved codes -32600 through -32603, MCP's -32800 for cancellation, and Chio extension codes such as -32002 for nested-flow policy denials and -32042 for URL elicitations required - see `map_nested_flow_error_code` in transport.rs lines 1280-1297). The `id` is null only when the server cannot determine the request id (parse error before the id was readable).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["jsonrpc", "id"],
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0",
+      "description": "Protocol version literal. Always the string '2.0'."
+    },
+    "id": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Echoes the request id. Null only for error responses where the server failed to parse the request id (parse error or invalid request, per JSON-RPC 2.0 section 5)."
+    },
+    "result": {
+      "description": "Method-specific success payload. Present only on success. Mutually exclusive with `error`. Shape is method-defined; commonly an object."
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "description": "Error payload. Present only on failure. Mutually exclusive with `result`.",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "description": "JSON-RPC 2.0 error code. Reserved range -32768..-32000 is implementation-defined; Chio uses -32600 (Invalid Request), -32601 (Method not found), -32602 (Invalid params), -32603 (Internal error), -32800 (request cancelled, MCP), -32002 (nested-flow policy denial, Chio), -32042 (URL elicitations required, Chio)."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short human-readable error description."
+        },
+        "data": {
+          "description": "Optional structured detail. Shape is method- or code-specific."
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["result"],
+      "not": {
+        "required": ["error"]
+      }
+    },
+    {
+      "required": ["error"],
+      "not": {
+        "required": ["result"]
+      }
+    }
+  ]
+}

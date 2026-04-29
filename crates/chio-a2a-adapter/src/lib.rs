@@ -38,3 +38,5 @@ include!("discovery.rs");
 include!("auth.rs");
 include!("transport.rs");
 include!("tests.rs");
+#[cfg(feature = "fuzz")]
+include!("fuzz.rs");

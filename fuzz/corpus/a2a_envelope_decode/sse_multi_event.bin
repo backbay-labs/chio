@@ -1,0 +1,6 @@
+event: message
+data: {"jsonrpc":"2.0","result":{"statusUpdate":{"taskId":"t-1","status":{"state":"working"}}}}
+
+event: message
+data: {"artifactUpdate":{"taskId":"t-1","artifact":{"name":"out"}}}
+

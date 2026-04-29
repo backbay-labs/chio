@@ -1,0 +1,12 @@
+# Cargo.lock merge driver: regenerates the lockfile from the (already
+# merged) Cargo.toml tree on conflict. See scripts/cargo-lock-merge.sh
+# for the driver contract.
+#
+# Driver registration is per-clone in .git/config and is not committed.
+# Authors should run `scripts/setup-git-merge-drivers.sh` once after
+# cloning to register the driver locally.
+Cargo.lock merge=cargo-lock-regen
+
+# Treat the EXECUTION-LOG audit trail as append-only NDJSON so
+# whitespace-aware merges do not coalesce events.
+.planning/trajectory/EXECUTION-LOG.ndjson  merge=union  text=auto

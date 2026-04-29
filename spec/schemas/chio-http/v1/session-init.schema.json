@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chio HTTP Session Init",
+  "description": "Initial session-establishment payload exchanged over the chio-http edge when a remote MCP client begins a Streamable-HTTP session. NOTE: As of M01 there is no single serde-derived `SessionInit` struct; the wire shape is assembled inline by the edge from the JSON-RPC `initialize` request (`crates/chio-mcp-edge/src/runtime.rs` around the `negotiate_protocol_version` and initialize-result paths near lines 287-1077) and the in-process construction value object `RemoteSessionInit` in `crates/chio-cli/src/remote_mcp/session_core.rs` lines 497-517 (no serde derive; not on the wire). This schema captures the externally-observable fields the edge accepts at session creation time. Re-pinning is expected once M07/M10 lock the cross-cluster session contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["session_id", "agent_id", "auth_context", "initialize_params"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique session identifier assigned to the new session. Mirrors `RemoteSessionInit::session_id`."
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Agent identifier the session is bound to. Mirrors `RemoteSessionInit::agent_id`."
+    },
+    "auth_context": {
+      "type": "object",
+      "description": "Authentication context captured at session creation. Mirrors `chio_core::session::SessionAuthContext` (transport, method, origin). Sub-shape pinned by chio-core; treated as opaque object here pending dedicated chio-http schema."
+    },
+    "auth_mode_fingerprint": {
+      "type": ["string", "null"],
+      "description": "Optional opaque fingerprint of the auth-mode configuration used to establish this session. Mirrors `RemoteSessionInit::auth_mode_fingerprint` (Option<String>)."
+    },
+    "policy_fingerprint": {
+      "type": ["string", "null"],
+      "description": "Optional fingerprint of the policy bundle in force when the session was created. Mirrors `RemoteSessionInit::policy_fingerprint` (Option<String>)."
+    },
+    "hosted_isolation": {
+      "type": "string",
+      "enum": ["dedicated_per_session", "shared_hosted_owner_compatibility"],
+      "default": "dedicated_per_session",
+      "description": "Hosted-isolation mode for the session. Mirrors the serde-rename_all=snake_case enum `RemoteHostedIsolationMode` in `crates/chio-cli/src/remote_mcp/session_core.rs` lines 366-372."
+    },
+    "protocol_version": {
+      "type": ["string", "null"],
+      "description": "Negotiated MCP protocol version returned by `negotiate_protocol_version`. Mirrors `RemoteSessionInit::protocol_version`."
+    },
+    "peer_capabilities": {
+      "description": "Capabilities advertised by the peer during the JSON-RPC `initialize` exchange. Mirrors `chio_core::session::PeerCapabilities`; treated as opaque object here pending dedicated peer-capabilities schema.",
+      "type": ["object", "null"]
+    },
+    "initialize_params": {
+      "description": "Verbatim JSON-RPC `initialize` params object as supplied by the client. Mirrors `RemoteSessionInit::initialize_params` (Option<serde_json::Value>); required at session-init time on the wire.",
+      "type": "object"
+    },
+    "capabilities": {
+      "type": "array",
+      "default": [],
+      "description": "Capabilities granted to the session at creation. Mirrors `RemoteSessionInit::capabilities` (Vec<RemoteSessionCapability>); element shape pinned by chio-core.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "issued_capabilities": {
+      "type": "array",
+      "default": [],
+      "description": "Capability tokens issued to the session at creation. Mirrors `RemoteSessionInit::issued_capabilities` (Vec<chio_core::capability::CapabilityToken>); element shape pinned by chio-wire/v1/capability/token.schema.json.",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

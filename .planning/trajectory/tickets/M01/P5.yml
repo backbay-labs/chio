@@ -1,0 +1,166 @@
+# M01 Phase 5: Differential and CI hardening
+#
+# Source: .planning/trajectory/01-spec-codegen-conformance.md
+#         "Phase 5: Differential and CI hardening" (size M, 5-7 days).
+# Goal: extend formal/diff-tests/ with canonical-JSON and receipt-encoding
+# differentials, lock the spec-drift CI gate to five jobs, land the nightly
+# conformance-matrix workflow, and ship the advisory schema-breaking-change
+# PR bot.
+# Owner: M01 (single-owner trajectory routes to @bb-connor).
+# Wave: 2. Branch prefix wave/W2/m01/p5.t*.
+#
+# Phase doc enumerates 5 tasks (P5.T1-T5). Each fits the 2 engineer-day cap
+# without splitting. Hard dep chain:
+#   T1 first (canonical_json_diff.rs proves the proptest harness works
+#       against the Rust canonicalizer; smallest standalone delta and the
+#       doc's "first commit").
+#   T2 receipt_encoding_diff.rs drives subprocess encoders across Rust /
+#       Python / TS, so it depends on M01.P3.T2 (Python codegen) and
+#       M01.P3.T3 (TS codegen) being merged plus T1 establishing the
+#       proptest crate wiring.
+#   T3 spec-drift workflow extension lands three new jobs on top of the
+#       codegen-no-diff and header-stamp-untouched jobs from M01.P3.T5;
+#       depends on M01.P2.T8 (vectors_schema_pair) for the schema-coverage
+#       job and on T1 for cross-lang-bytes invocations.
+#   T4 conformance-matrix.yml has two jobs: vectors-byte-stable (re-runs
+#       P2.T7 freeze-vectors --check nightly) and external-consumer-smoke
+#       (re-runs the P4.T5 docs flow nightly), so it depends on M01.P4.T5.
+#   T5 advisory schema-breaking-change PR bot; depends on T3 so the
+#       spec-drift workflow file exists when the bot job is appended.
+#
+# Cross-phase soft dep: M01.P3.T5 owns the spec-drift.yml file and the doc
+# explicitly notes Phase 5 extends it. T3 shares the workflow file with
+# M01.P3.T5 via shared_paths.
+
+- id: M01.P5.T1
+  milestone: M01
+  phase: 5
+  title: "Land canonical_json_diff.rs proptest with at least 6 RFC 8785 invariants"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "formal/diff-tests/tests/canonical_json_diff.rs"
+    - "formal/diff-tests/Cargo.toml"
+    - "Cargo.lock"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - "M01.P2.T1"
+  soft_deps:
+    - "M08 browser-edge SDK adds formal/diff-tests/tests/browser_canonical_json_diff.rs as an additional differential target on top of this file"
+  gate_check:
+    cmd: "cargo test -p chio-formal-diff-tests --test canonical_json_diff"
+  worktree_branch: "wave/W2/m01/p5.t1-canonical-json-diff-proptest"
+  agent_role: formal-kani
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P5.T2
+  milestone: M01
+  phase: 5
+  title: "Land receipt_encoding_diff.rs differential across Rust, Python, TS encoders"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "formal/diff-tests/tests/receipt_encoding_diff.rs"
+    - "formal/diff-tests/Cargo.toml"
+    - "Cargo.lock"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - "M01.P5.T1"
+    - "M01.P3.T2"
+    - "M01.P3.T3"
+    - "M01.P2.T5"
+  soft_deps:
+    - "M07 cross-provider signed-bytes equivalence reuses this differential as a regression gate"
+    - "M08 browser receipt verifier rides on the same subprocess encoder fixture pattern"
+  gate_check:
+    cmd: "cargo test -p chio-formal-diff-tests --test receipt_encoding_diff"
+  worktree_branch: "wave/W2/m01/p5.t2-receipt-encoding-diff-cross-lang"
+  agent_role: formal-kani
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P5.T3
+  milestone: M01
+  phase: 5
+  title: "Extend spec-drift.yml with vectors-byte-stable, schema-coverage, cross-lang-bytes jobs"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - ".github/workflows/spec-drift.yml"
+  shared_paths:
+    - ".github/workflows/spec-drift.yml"
+  depends_on:
+    - "M01.P3.T5"
+    - "M01.P2.T8"
+    - "M01.P5.T1"
+  soft_deps:
+    - "M01.P3.T5 owns the initial spec-drift.yml file with codegen-no-diff and header-stamp-untouched jobs; this ticket appends the remaining three jobs"
+  gate_check:
+    cmd: "yamllint .github/workflows/spec-drift.yml && grep -q 'vectors-byte-stable' .github/workflows/spec-drift.yml && grep -q 'schema-coverage' .github/workflows/spec-drift.yml && grep -q 'cross-lang-bytes' .github/workflows/spec-drift.yml"
+  worktree_branch: "wave/W2/m01/p5.t3-spec-drift-three-more-jobs"
+  agent_role: infra-yaml
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P5.T4
+  milestone: M01
+  phase: 5
+  title: "Land conformance-matrix.yml with vectors-byte-stable and external-consumer-smoke nightly jobs"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - ".github/workflows/conformance-matrix.yml"
+    - ".github/workflows/vectors-staleness.yml"
+  shared_paths: []
+  depends_on:
+    - "M01.P4.T5"
+    - "M01.P2.T7"
+  soft_deps:
+    - "Alarm thresholds match Phase 2 / Phase 3: 1 failed nightly opens an issue, 3 consecutive pages the protocol owner"
+    - "Static dashboard at docs/conformance-dashboard/ updated by the nightly job"
+  gate_check:
+    cmd: "yamllint .github/workflows/conformance-matrix.yml && yamllint .github/workflows/vectors-staleness.yml && grep -q 'external-consumer-smoke' .github/workflows/conformance-matrix.yml && grep -q 'vectors-byte-stable' .github/workflows/conformance-matrix.yml"
+  worktree_branch: "wave/W2/m01/p5.t4-conformance-matrix-nightly"
+  agent_role: infra-yaml
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P5.T5
+  milestone: M01
+  phase: 5
+  title: "Wire advisory schema-breaking-change PR comment job using json-schema-diff against main"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/spec-drift.yml"
+    - ".github/workflows/schema-breaking-change.yml"
+  shared_paths:
+    - ".github/workflows/spec-drift.yml"
+  depends_on:
+    - "M01.P5.T3"
+  soft_deps:
+    - "Advisory only until M01+1; flips to blocking once tagged BREAKING: convention is documented in CONTRIBUTING.md"
+  gate_check:
+    cmd: "yamllint .github/workflows/schema-breaking-change.yml && grep -q 'json-schema-diff' .github/workflows/schema-breaking-change.yml"
+  worktree_branch: "wave/W2/m01/p5.t5-schema-breaking-change-bot"
+  agent_role: infra-yaml
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

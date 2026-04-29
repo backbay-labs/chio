@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_with_delegation",
+  "fixed_nonce_seed_index": 13,
+  "intent": "Allow path with a delegation that crosses authority boundaries, exercising cross-authority signature verification and trust-anchor lookup.",
+  "name": "allow_with_delegation/06_cross_authority",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "delegation", "cross-authority"]
+}

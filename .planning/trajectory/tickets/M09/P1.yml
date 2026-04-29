@@ -1,0 +1,262 @@
+# M09 Phase 1: cargo-vet baseline and deny.toml hardening.
+# Source of truth: .planning/trajectory/09-supply-chain-attestation.md (Phase 1).
+# First commit message (across the phase, applied to T1):
+#   chore(supply-chain): seed cargo-vet baseline and lock deny.toml
+
+- id: M09.P1.T1
+  milestone: M09
+  phase: 1
+  title: "Bootstrap cargo-vet workspace and seed supply-chain/ skeleton"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "supply-chain/audits.toml"
+    - "supply-chain/config.toml"
+    - "supply-chain/imports.lock"
+    - "Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on: []
+  soft_deps:
+    - "M02 fuzz CI consumes cargo-vet metadata (fuzz/fuzz_targets/**)"
+  gate_check:
+    cmd: "cargo vet --locked"
+  worktree_branch: "wave/W1/m09/p1.t1-cargo-vet-bootstrap"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T2
+  milestone: M09
+  phase: 1
+  title: "Import upstream cargo-vet audit feeds (Mozilla, Bytecode Alliance, Google, ZcashFoundation)"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "supply-chain/config.toml"
+    - "supply-chain/imports.lock"
+  shared_paths: []
+  depends_on:
+    - M09.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: "cargo vet --locked && grep -q 'imports.mozilla' supply-chain/config.toml && grep -q 'imports.bytecode-alliance' supply-chain/config.toml && grep -q 'imports.google' supply-chain/config.toml && grep -q 'imports.zcash' supply-chain/config.toml"
+  worktree_branch: "wave/W1/m09/p1.t2-import-upstream-feeds"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T3
+  milestone: M09
+  phase: 1
+  title: "Run cargo vet suggest and certify residual unaudited crates with safe-to-deploy entries"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "supply-chain/audits.toml"
+  shared_paths: []
+  depends_on:
+    - M09.P1.T2
+  soft_deps: []
+  gate_check:
+    cmd: "cargo vet --locked && cargo vet check"
+  worktree_branch: "wave/W1/m09/p1.t3-residual-audit-certifications"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T4
+  milestone: M09
+  phase: 1
+  title: "Replace deny.toml wholesale with the Phase 1 verbatim hardened configuration"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "deny.toml"
+  shared_paths:
+    - "deny.toml"
+  depends_on:
+    - M09.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: "cargo deny check"
+  worktree_branch: "wave/W1/m09/p1.t4-deny-toml-verbatim-replacement"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T5
+  milestone: M09
+  phase: 1
+  title: "Audit and document [bans.skip] allow-list entries (windows-sys, syn 1, bitflags 1)"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "deny.toml"
+  shared_paths:
+    - "deny.toml"
+  depends_on:
+    - M09.P1.T4
+  soft_deps: []
+  gate_check:
+    cmd: "cargo deny check bans"
+  worktree_branch: "wave/W1/m09/p1.t5-bans-skip-allowlist-audit"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T6
+  milestone: M09
+  phase: 1
+  title: "Audit [advisories] ignore-list and seed RUSTSEC override entries with rationale"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "deny.toml"
+  shared_paths:
+    - "deny.toml"
+  depends_on:
+    - M09.P1.T4
+  soft_deps: []
+  gate_check:
+    cmd: "cargo deny check advisories"
+  worktree_branch: "wave/W1/m09/p1.t6-advisories-ignore-audit"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T7
+  milestone: M09
+  phase: 1
+  title: "Audit license allow-list and pin [[licenses.exceptions]] for ring and webpki-roots"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "deny.toml"
+  shared_paths:
+    - "deny.toml"
+  depends_on:
+    - M09.P1.T4
+  soft_deps: []
+  gate_check:
+    cmd: "cargo deny check licenses"
+  worktree_branch: "wave/W1/m09/p1.t7-license-exceptions-audit"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T8
+  milestone: M09
+  phase: 1
+  title: "Wire cargo-vet check job into .github/workflows/ci.yml supply-chain lane"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/ci.yml"
+  shared_paths:
+    - ".github/workflows/ci.yml"
+  depends_on:
+    - M09.P1.T3
+  soft_deps: []
+  gate_check:
+    cmd: "actionlint .github/workflows/ci.yml"
+  worktree_branch: "wave/W1/m09/p1.t8-ci-cargo-vet-job"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T9
+  milestone: M09
+  phase: 1
+  title: "Wire cargo-deny check job into .github/workflows/ci.yml supply-chain lane"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/ci.yml"
+  shared_paths:
+    - ".github/workflows/ci.yml"
+  depends_on:
+    - M09.P1.T4
+    - M09.P1.T5
+    - M09.P1.T6
+    - M09.P1.T7
+  soft_deps: []
+  gate_check:
+    cmd: "actionlint .github/workflows/ci.yml"
+  worktree_branch: "wave/W1/m09/p1.t9-ci-cargo-deny-job"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T10
+  milestone: M09
+  phase: 1
+  title: "Document the cargo vet certify ritual in supply-chain/README.md"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "supply-chain/README.md"
+  shared_paths: []
+  depends_on:
+    - M09.P1.T3
+  soft_deps: []
+  gate_check:
+    cmd: "test -f supply-chain/README.md && grep -q 'cargo vet certify' supply-chain/README.md"
+  worktree_branch: "wave/W1/m09/p1.t10-supply-chain-readme"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T11
+  milestone: M09
+  phase: 1
+  title: "Promote cargo-vet and cargo-deny lanes to required checks on main via branch ruleset"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - ".github/workflows/ci.yml"
+  shared_paths:
+    - ".github/workflows/ci.yml"
+  depends_on:
+    - M09.P1.T8
+    - M09.P1.T9
+  soft_deps: []
+  gate_check:
+    cmd: "actionlint .github/workflows/ci.yml"
+  worktree_branch: "wave/W1/m09/p1.t11-required-checks-promotion"
+  agent_role: supply-chain
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

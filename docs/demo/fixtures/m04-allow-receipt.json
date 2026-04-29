@@ -1,0 +1,48 @@
+{
+  "description": "Valid allow receipt with matching signature and parameter hash.",
+  "expected": {
+    "decision": "allow",
+    "parameter_hash_valid": true,
+    "signature_valid": true
+  },
+  "receipt": {
+    "action": {
+      "parameter_hash": "035350b0e6a021a4c924a149111944945e94d12f6d8a5e24e4461e7009ebf929",
+      "parameters": {
+        "mode": "read",
+        "path": "/workspace/docs/roadmap.md"
+      }
+    },
+    "capability_id": "cap-bindings-001",
+    "content_hash": "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+    "decision": {
+      "verdict": "allow"
+    },
+    "evidence": [
+      {
+        "details": "path allowed",
+        "guard_name": "ForbiddenPathGuard",
+        "verdict": true
+      },
+      {
+        "details": "no secrets detected",
+        "guard_name": "SecretLeakGuard",
+        "verdict": true
+      }
+    ],
+    "id": "rcpt-bindings-allow",
+    "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+    "metadata": {
+      "surface": "bindings-vectors",
+      "version": 1
+    },
+    "policy_hash": "policy-bindings-v1",
+    "signature": "c1420914fa6a85a668ba2bf79d8a3fcc6b0f467c6fe5f419a1efb64e81b3b2bd56de534c8c56f758eaaa72565889278288e4fa3c0a97a03f42acca86d915c30c",
+    "timestamp": 1710000200,
+    "tool_name": "file_read",
+    "tool_server": "srv-files"
+  },
+  "source": "tests/bindings/vectors/receipt/v1.json",
+  "source_case_id": "allow_receipt",
+  "verify_only": true
+}

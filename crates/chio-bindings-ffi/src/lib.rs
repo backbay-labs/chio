@@ -41,6 +41,7 @@ pub const CHIO_FFI_ERROR_EMPTY_MANIFEST: i32 = 18;
 pub const CHIO_FFI_ERROR_DUPLICATE_TOOL_NAME: i32 = 19;
 pub const CHIO_FFI_ERROR_UNSUPPORTED_SCHEMA: i32 = 20;
 pub const CHIO_FFI_ERROR_MANIFEST_VERIFICATION_FAILED: i32 = 21;
+pub const CHIO_FFI_ERROR_DUPLICATE_SERVER_TOOL: i32 = 22;
 pub const CHIO_FFI_ERROR_INTERNAL: i32 = 255;
 
 #[repr(C)]
@@ -129,6 +130,7 @@ fn helper_error_code(error: &Error) -> i32 {
         ErrorCode::InvalidProofIndex => CHIO_FFI_ERROR_INVALID_PROOF_INDEX,
         ErrorCode::EmptyManifest => CHIO_FFI_ERROR_EMPTY_MANIFEST,
         ErrorCode::DuplicateToolName => CHIO_FFI_ERROR_DUPLICATE_TOOL_NAME,
+        ErrorCode::DuplicateServerTool => CHIO_FFI_ERROR_DUPLICATE_SERVER_TOOL,
         ErrorCode::UnsupportedSchema => CHIO_FFI_ERROR_UNSUPPORTED_SCHEMA,
         ErrorCode::ManifestVerificationFailed => CHIO_FFI_ERROR_MANIFEST_VERIFICATION_FAILED,
     }

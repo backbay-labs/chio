@@ -1,0 +1,31 @@
+[package]
+name = "chio-tool-call-fabric"
+description = "Provider-agnostic tool-call fabric for Chio LLM adapter integrations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = "0.1"
+anyhow = "1"
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[features]
+# When the canonical `chio-tool-call-fabric.v1` schema is present, enabling
+# this feature turns invariant (h) "schema subsumption" into a hard assertion
+# via the `jsonschema` crate. Without it the property runs as a structural
+# self-check over the canonical-JSON pipeline.
+m01-schema-subsumption = []
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

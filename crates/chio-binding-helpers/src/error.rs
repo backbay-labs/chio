@@ -22,6 +22,7 @@ pub enum ErrorCode {
     InvalidProofIndex,
     EmptyManifest,
     DuplicateToolName,
+    DuplicateServerTool,
     UnsupportedSchema,
     ManifestVerificationFailed,
 }
@@ -48,6 +49,9 @@ impl Error {
                 chio_manifest::ManifestError::Signing(source) => core_error_code(source),
                 chio_manifest::ManifestError::EmptyManifest => ErrorCode::EmptyManifest,
                 chio_manifest::ManifestError::DuplicateToolName(_) => ErrorCode::DuplicateToolName,
+                chio_manifest::ManifestError::DuplicateServerTool(_) => {
+                    ErrorCode::DuplicateServerTool
+                }
                 chio_manifest::ManifestError::UnsupportedSchema(_) => ErrorCode::UnsupportedSchema,
                 chio_manifest::ManifestError::VerificationFailed => {
                     ErrorCode::ManifestVerificationFailed

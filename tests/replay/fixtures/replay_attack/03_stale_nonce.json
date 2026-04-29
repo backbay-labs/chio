@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "replay",
+  "expected_verdict": "deny",
+  "family": "replay_attack",
+  "fixed_nonce_seed_index": 42,
+  "intent": "Deny because the supplied nonce is older than the configured freshness horizon, exercising the stale-nonce rejection path.",
+  "name": "replay_attack/03_stale_nonce",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "replay", "stale-nonce"]
+}

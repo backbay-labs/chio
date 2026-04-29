@@ -8,7 +8,7 @@
 import type {
   GuardRequest,
   Verdict,
-} from "../../src/types/interfaces/chio-guard-types.js";
+} from "../../src/index.js";
 
 const BLOCKED_TOOLS: ReadonlySet<string> = new Set([
   "dangerous_tool",

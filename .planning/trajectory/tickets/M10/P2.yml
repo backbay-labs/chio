@@ -1,0 +1,134 @@
+# M10 Phase 2 - chio-replay runner exposed as `chio replay <capture.ndjson>
+# --against <policy-ref>` in chio-cli, with NDJSON validation, signature
+# verification, M01 invocation validation, re-execution against named
+# policy refs, diff rendering, and one integration test per canonical
+# M04 exit code (0/10/20/30/40/50). Wave 4 milestone.
+# Source of truth: .planning/trajectory/10-tee-replay-harness.md
+# (Phase 2 lines 239-251; doc tasks T1-T5).
+#
+# Four atomic tickets. Doc T1 (0.5d dispatch wiring) is folded into T1
+# alongside doc T2 (NDJSON iterator + validators) since dispatch wiring
+# is too small to ship alone and lands in the same chio-cli module tree.
+# Doc T3 -> T2; doc T4 -> T3; doc T5 -> T4.
+#
+# Exit codes are the M04 canonical registry (04-deterministic-replay.md
+# "EXIT CODES" block); M10 consumes them verbatim and does not define
+# new codes.
+#
+# Wave 4 worktree branches: wave/W4/m10/p2.t{n}-...
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M10.P2.T1
+  milestone: M10
+  phase: 2
+  title: "Add chio-cli replay arm with NDJSON iterator, schema-version gate, tenant-sig verifier, and M01 invocation validator"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-cli/src/cli/dispatch.rs"
+    - "crates/chio-cli/src/cli/replay.rs"
+    - "crates/chio-cli/src/cli/replay/ndjson.rs"
+    - "crates/chio-cli/src/cli/replay/validate.rs"
+    - "crates/chio-cli/Cargo.toml"
+  shared_paths:
+    - "crates/chio-cli/src/cli/dispatch.rs"
+  depends_on:
+    - M10.P1.T3
+  soft_deps:
+    - "Reuses M01 canonical-JSON ToolInvocation validator and M04's existing chio replay <log> module (extends with traffic-mode entrypoint per code touchpoint at line 588)."
+  gate_check:
+    cmd: "cargo build -p chio-cli && cargo test -p chio-cli --lib cli::replay::"
+  worktree_branch: "wave/W4/m10/p2.t1-replay-ndjson-validate-arm"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P2.T2
+  milestone: M10
+  phase: 2
+  title: "Implement re-execution against --against <policy-ref> with namespaced replay receipt ids"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-cli/src/cli/replay/execute.rs"
+    - "crates/chio-cli/src/cli/replay/policy_ref.rs"
+    - "crates/chio-cli/src/cli/replay/receipt_partition.rs"
+    - "crates/chio-cli/Cargo.toml"
+  shared_paths: []
+  depends_on:
+    - M10.P2.T1
+  soft_deps:
+    - "Receipt-id collision mitigation (10-tee-replay-harness.md lines 567-568): replay receipts use namespaced prefix replay:<run_id>:<frame_id> and live in a logical partition flagged replay; chio-store-sqlite enforces bidirectional refusal between replay-flagged and production-flagged stores."
+    - "policy-ref accepts manifest hash, package version, or workspace path."
+  gate_check:
+    cmd: "cargo test -p chio-cli --lib cli::replay::execute::"
+  worktree_branch: "wave/W4/m10/p2.t2-replay-execute-policy-ref"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P2.T3
+  milestone: M10
+  phase: 2
+  title: "Implement diff renderer grouped by drift class with --json and human formats"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "crates/chio-cli/src/cli/replay/diff.rs"
+    - "crates/chio-cli/src/cli/replay/diff/json.rs"
+    - "crates/chio-cli/src/cli/replay/diff/human.rs"
+    - "crates/chio-cli/Cargo.toml"
+  shared_paths: []
+  depends_on:
+    - M10.P2.T2
+  soft_deps:
+    - "Drift classes: allow/deny flip, guard delta, reason delta. Human format defaults to TTY; --json for machine consumption."
+  gate_check:
+    cmd: "cargo test -p chio-cli --lib cli::replay::diff::"
+  worktree_branch: "wave/W4/m10/p2.t3-replay-diff-renderer"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P2.T4
+  milestone: M10
+  phase: 2
+  title: "Land replay_traffic.rs integration tests covering one case per M04 exit code (0/10/20/30/40/50)"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-cli/tests/replay_traffic.rs"
+    - "crates/chio-cli/tests/replay_traffic/fixtures/clean_match.ndjson"
+    - "crates/chio-cli/tests/replay_traffic/fixtures/verdict_drift.ndjson"
+    - "crates/chio-cli/tests/replay_traffic/fixtures/sig_mismatch.ndjson"
+    - "crates/chio-cli/tests/replay_traffic/fixtures/parse_error.ndjson"
+    - "crates/chio-cli/tests/replay_traffic/fixtures/schema_mismatch.ndjson"
+    - "crates/chio-cli/tests/replay_traffic/fixtures/redaction_mismatch.ndjson"
+    - "crates/chio-cli/Cargo.toml"
+  shared_paths: []
+  depends_on:
+    - M10.P2.T3
+  soft_deps:
+    - "Exit codes: 0 clean, 10 verdict drift, 20 sig mismatch, 30 parse error, 40 schema mismatch, 50 redaction mismatch (M04 canonical registry)."
+  gate_check:
+    cmd: "cargo test -p chio-cli --test replay_traffic"
+  worktree_branch: "wave/W4/m10/p2.t4-replay-exit-code-integration-tests"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

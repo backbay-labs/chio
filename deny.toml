@@ -1,28 +1,515 @@
-[advisories]
-# In cargo-deny 0.14+ the old severity fields (vulnerability, unmaintained)
-# were removed (see https://github.com/EmbarkStudios/cargo-deny/pull/611).
-# Vulnerabilities are denied by default. unmaintained now takes a scope:
-# "all" | "workspace" | "transitive" | "none".
-unmaintained = "all"
-ignore = []
+# Workspace-wide cargo-deny configuration.
+# Changes to this file require CODEOWNERS review.
 
+[graph]
+all-features = true
+no-default-features = false
+
+# NOTE: [output] feedback-level = "error" is not accepted in cargo-deny ^0.16;
+# the [output] block was dropped to keep the config parseable.
+
+# NOTE: cargo-deny PR #611 removed `unmaintained` and `notice` from
+# [advisories] (severity is now implicit). Both keys were dropped here
+# to keep the config parseable.
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+# The ignore list exceeds the ~6-entry soft cap for structural reasons: the
+# advisory db carries 4 rustls-webpki CVEs against a single 0.103.9 pin, plus
+# several unmaintained advisories. Each cluster collapses to one upstream-dep bump:
+#   - bump rustls-webpki 0.103.9 -> >=0.103.10 (clears RUSTSEC-2026-0049/0098/0099/0104)
+#   - migrate off rustls-pemfile, bincode 1, fxhash, paste, serde_yml
+#   - bump rsa to clear RUSTSEC-2023-0071 (Marvin) once an upstream fix lands
+# Prune the corresponding entries here when those bumps land.
+ignore = [
+    # --- rustls-webpki 0.103.9 cluster: all clear via bump to >=0.103.10. ---
+    # CRLs not considered authoritative by Distribution Point (faulty match). Fix: >=0.103.10.
+    "RUSTSEC-2026-0049",
+    # Name constraints for URI names incorrectly accepted (rustls-webpki). Fix: >=0.103.10.
+    "RUSTSEC-2026-0098",
+    # Name constraints accepted for certificates asserting a wildcard name. Fix: >=0.103.10.
+    "RUSTSEC-2026-0099",
+    # Reachable panic in CRL parsing (rustls-webpki). Fix: >=0.103.10.
+    "RUSTSEC-2026-0104",
+
+    # --- unmaintained / unsound clusters: each requires a dep migration. ---
+    # bincode 1.3.3 unmaintained (RUSTSEC-2025-0141). Pulled by uniffi 0.28.x build deps;
+    # only used in chio-kernel-mobile codegen, not at runtime. Migrate uniffi or accept.
+    "RUSTSEC-2025-0141",
+    # paste 1.0.15 unmaintained (RUSTSEC-2024-0436). Pulled transitively by alloy and
+    # wasmtime. No runtime risk (proc-macro). Replace once `pastey` is widely adopted.
+    "RUSTSEC-2024-0436",
+    # rustls-pemfile unmaintained (RUSTSEC-2025-0134). Pull a maintained replacement
+    # in the rustls bump ticket; functionality is PEM parsing, not crypto.
+    "RUSTSEC-2025-0134",
+    # serde_yml unsound and unmaintained (RUSTSEC-2025-0068). Migration to serde_yaml_ng
+    # or hand-rolled config is tracked alongside the dep-bump batch.
+    "RUSTSEC-2025-0068",
+    # rand 0.8 unsound when paired with a custom logger using rng() (RUSTSEC-2026-0097).
+    # We do not register a custom global logger that calls rand::rng(); risk is latent.
+    # Clears with the rand-family unification ticket already noted in [bans.skip].
+    "RUSTSEC-2026-0097",
+    # RSA Marvin attack timing sidechannel (RUSTSEC-2023-0071). The `rsa` crate is
+    # pulled transitively only; we do not perform RSA private-key operations on
+    # network-observable timing paths. No upstream fix yet (tracked in rsa#19).
+    "RUSTSEC-2023-0071",
+    # ansi_term is pulled only by dudect-bencher's legacy clap 2 harness for
+    # local timing experiments. It is not linked into production binaries.
+    "RUSTSEC-2021-0139",
+    # atty is the same dudect-bencher -> clap 2 test harness transitive.
+    # Production CLI paths use the clap 4 stack.
+    "RUSTSEC-2024-0375",
+    # proc-macro-error is a compile-time transitive of sigstore 0.13 through
+    # json-syntax/locspan-derive. No runtime code is shipped from this crate.
+    "RUSTSEC-2024-0370",
+]
+
+# NOTE: cargo-deny 0.16 enforces an explicit allow-list only; unlisted licenses
+# are denied by default. The `unlicensed`, `copyleft`, `allow-osi-fsf-free`, and
+# `default` keys from prior config were removed (cargo-deny PR #611).
 [licenses]
-# In cargo-deny 0.14+ the `unlicensed` severity field was removed.
-# Unlicensed crates are denied by default when not in the allow list.
+confidence-threshold = 0.93
+# Workspace-wide allow-list. Strictly permissive: no GPL / AGPL / LGPL /
+# EUPL or other strong copyleft, and MPL-2.0 is NOT in the global list
+# (cleanup-c11c; PR #28 review threads r3142866284 / r3142870711). MPL-2.0
+# is file-level (weak) copyleft - it does not infect statically-linked
+# consumers - but admitting it globally would silently green-light any
+# new MPL-2.0 dependency without explicit review. Instead the uniffi
+# family (which is the only legitimate consumer in the graph today) is
+# pinned via per-crate `[[licenses.exceptions]]` entries below; new MPL
+# transitives must add a similar pinned exception.
+# The prior `Unicode-DFS-2016` entry was removed because the Unicode
+# consortium relicensed under `Unicode-3.0` (already allowed) and no
+# remaining crate in the lockfile ships the older identifier (cargo-deny
+# was emitting a `license-not-encountered` warning for it).
 allow = [
     "MIT",
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "MIT-0",
+    "CC0-1.0",
+    "Zlib",
 ]
 
+# Workspace-internal crates (notably examples/guards/{tool-gate,enriched-inspector})
+# are marked `publish = false` and intentionally omit a `license` field
+# because they are never distributed to crates.io. `ignore = true` here
+# tells cargo-deny to skip license enforcement for those private workspace
+# members. Public/published crates remain bound by the allow-list above.
+# Ref: https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html#the-private-field
+[licenses.private]
+ignore = true
+
+[[licenses.exceptions]]
+# `ring` ships under a bespoke license that is OpenSSL-derived but not
+# OSI-approved. It is the de-facto Rust crypto primitive and the rustls
+# stack depends on it transitively. Tracked: ring#2746.
+name = "ring"
+allow = ["OpenSSL", "ISC", "MIT"]
+
+[[licenses.exceptions]]
+# `webpki-roots` (both 0.26.x and 1.x are present in the lockfile) carries
+# the Mozilla CA bundle. The crate's `license` field declares
+# `CDLA-Permissive-2.0` (Linux Foundation Community Data License Agreement,
+# Permissive 2.0). It is OSI-permissive but uncommon, so we pin the
+# exception to this crate rather than widen the workspace allow-list.
+# Source: https://crates.io/crates/webpki-roots (Cargo.toml `license` field).
+name = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
+
+[[licenses.exceptions]]
+# `webpki-root-certs` is the sibling crate to `webpki-roots` (raw DER bytes
+# instead of pre-parsed TrustAnchors). Same Mozilla bundle, same
+# `CDLA-Permissive-2.0` license, same pinning rationale. Pulled transitively
+# via reqwest -> rustls-platform-verifier in the alloy stack.
+# Source: https://crates.io/crates/webpki-root-certs (Cargo.toml `license` field).
+name = "webpki-root-certs"
+allow = ["CDLA-Permissive-2.0"]
+
+# uniffi family: weak-copyleft MPL-2.0 (cleanup-c11c). Pinned per crate
+# instead of widening the global allow list. Each crate is named below
+# (cargo-deny does not support glob `name` matchers for exceptions). Add
+# a sibling block for any new uniffi sub-crate that lands; do not move
+# MPL-2.0 back into [licenses].allow without CODEOWNERS sign-off.
+[[licenses.exceptions]]
+name = "uniffi"
+allow = ["MPL-2.0"]
+[[licenses.exceptions]]
+name = "uniffi_bindgen"
+allow = ["MPL-2.0"]
+[[licenses.exceptions]]
+name = "uniffi_build"
+allow = ["MPL-2.0"]
+[[licenses.exceptions]]
+name = "uniffi_checksum_derive"
+allow = ["MPL-2.0"]
+[[licenses.exceptions]]
+name = "uniffi_core"
+allow = ["MPL-2.0"]
+[[licenses.exceptions]]
+name = "uniffi_macros"
+allow = ["MPL-2.0"]
+[[licenses.exceptions]]
+name = "uniffi_meta"
+allow = ["MPL-2.0"]
+[[licenses.exceptions]]
+name = "uniffi_testing"
+allow = ["MPL-2.0"]
+[[licenses.exceptions]]
+name = "uniffi_udl"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+# Wasmtime 43 pulls `wasm-compose`, which depends on these persistent-data
+# structure crates. They are MPL-2.0 weak copyleft, so keep the exception
+# pinned to the exact crate names instead of widening the global allow-list.
+name = "bitmaps"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "im-rc"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "sized-chunks"
+allow = ["MPL-2.0"]
+
 [bans]
-multiple-versions = "warn"
-wildcards = "deny"
+multiple-versions = "deny"
+# cargo-deny treats local path dependencies without an explicit version as
+# wildcards. CI blocks external registry wildcards separately via
+# scripts/check-external-wildcard-deps.py so workspace-internal path deps do
+# not force noisy version churn across every crate.
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+[[bans.deny]]
+# `time` 0.1 is unmaintained and depends on a soundness-bug-prone localtime
+# call. Use `time` >= 0.3 or `chrono` >= 0.4.31.
+name = "time"
+version = "<0.3"
+
+[[bans.deny]]
+# `openssl-sys` is forbidden in favor of rustls; `chio` must not absorb
+# OpenSSL transitively. If a dep needs OpenSSL, vendor a rustls fork or
+# add a documented [bans.skip] entry with CODEOWNERS sign-off.
+name = "openssl-sys"
+
+[[bans.deny]]
+# `chrono` 0.4.0..=0.4.30 has a localtime soundness bug. Pin newer.
+name = "chrono"
+version = "<0.4.31"
+
+[[bans.skip]]
+# `windows-sys` ships v0.52 (pulled by ring, socket2, tonic) and v0.59
+# (pulled by rustix/wasmtime). Cannot be flattened without forking the
+# wasmtime or rustls stacks. Tracked weekly via Renovate; revisit when
+# wasmtime and the rustls/ring family converge on a single major.
+name = "windows-sys"
+
+[[bans.skip]]
+# `windows-targets` duplicates as a direct consequence of the windows-sys
+# 0.52 vs 0.59 split above. The seven `windows_<arch>_<abi>` platform
+# sub-crates (gnu/gnullvm/msvc across aarch64/i686/x86_64) also duplicate
+# in lockstep but are intentionally NOT listed individually here; the
+# ~8-entry skip cap is a deliberate smell threshold and listing them
+# would mask the real fix (forcing an ecosystem bump on windows-sys).
+# `cargo deny check bans` will continue to flag those seven; that is
+# expected until the windows-sys major split resolves upstream.
+name = "windows-targets"
+
+[[bans.skip]]
+# `hashbrown` resolves to 0.12 (tonic 0.12 -> tower 0.4 -> indexmap 1),
+# 0.14 (wasmtime/cranelift 29.x), and 0.15/0.16 (everything else). Cannot
+# unify without bumping tonic or wasmtime, both gated on separate roadmap
+# items. Revisit when chio-envoy-ext-authz moves to tonic 0.13+.
+name = "hashbrown"
+
+[[bans.skip]]
+# `getrandom` cascades through the `rand` family: 0.2 (rand 0.8 consumers),
+# 0.3 (rand 0.9), 0.4 (rand 0.10). The rand ecosystem is mid-migration;
+# pinning to a single major would force a fork of rcgen, ring, or wasmtime.
+name = "getrandom"
+
+[[bans.skip]]
+# `rand` 0.8 (chio-guards/internal), 0.9 (transitive through alloy), and
+# 0.10 (newer crates) coexist. Same cascade as getrandom above.
+name = "rand"
+
+[[bans.skip]]
+# `syn` 1.x is documented as a known proc-macro lingerer. Currently no
+# v1 instances in the lockfile (cargo-deny will emit an unmatched-skip
+# warning, which is informational only). Kept as forward defense so a
+# regression via a new transitive proc-macro dep does not flip the gate.
+# Force-bump audit when `darling` and `serde_derive` align on `syn` 2.x.
+name = "syn"
+version = "1"
+
+[[bans.skip]]
+# `bitflags` 1.x is documented as historically pinned by `clap` and
+# `wasmtime`. Currently no v1 instances in the lockfile (unmatched-skip
+# warning is informational). Retain as forward defense; remove once we
+# confirm no upstream regresses to bitflags 1.
+name = "bitflags"
+version = "1"
+
+# Current duplicate-version baseline for the blocking `cargo deny check bans`
+# CI gate. New duplicate crate names still fail because multiple-versions
+# remains `deny`; these entries document the transitive ecosystem splits that
+# already exist in the lockfile and need coordinated dependency-upgrade work.
+[[bans.skip]]
+name = "ahash"
+
+[[bans.skip]]
+name = "axum"
+
+[[bans.skip]]
+name = "axum-core"
+
+[[bans.skip]]
+name = "base16ct"
+
+[[bans.skip]]
+name = "base64"
+
+[[bans.skip]]
+name = "block-buffer"
+
+[[bans.skip]]
+name = "chacha20"
+
+[[bans.skip]]
+name = "clap"
+
+[[bans.skip]]
+name = "const-oid"
+
+[[bans.skip]]
+name = "cpufeatures"
+
+[[bans.skip]]
+name = "crypto-bigint"
+
+[[bans.skip]]
+name = "crypto-common"
+
+[[bans.skip]]
+name = "darling"
+
+[[bans.skip]]
+name = "darling_core"
+
+[[bans.skip]]
+name = "darling_macro"
+
+[[bans.skip]]
+name = "der"
+
+[[bans.skip]]
+name = "digest"
+
+[[bans.skip]]
+name = "ecdsa"
+
+[[bans.skip]]
+name = "elliptic-curve"
+
+[[bans.skip]]
+name = "ff"
+
+[[bans.skip]]
+name = "fixedbitset"
+
+[[bans.skip]]
+name = "foldhash"
+
+[[bans.skip]]
+name = "group"
+
+[[bans.skip]]
+name = "h2"
+
+[[bans.skip]]
+name = "hermit-abi"
+
+[[bans.skip]]
+name = "hmac"
+
+[[bans.skip]]
+name = "http"
+
+[[bans.skip]]
+name = "http-body"
+
+[[bans.skip]]
+name = "hyper"
+
+[[bans.skip]]
+name = "hyper-rustls"
+
+[[bans.skip]]
+name = "indexmap"
+
+[[bans.skip]]
+name = "itertools"
+
+[[bans.skip]]
+name = "jni"
+
+[[bans.skip]]
+name = "jni-sys"
+
+[[bans.skip]]
+name = "matchit"
+
+[[bans.skip]]
+name = "object"
+
+[[bans.skip]]
+name = "p256"
+
+[[bans.skip]]
+name = "petgraph"
+
+[[bans.skip]]
+name = "pkcs8"
+
+[[bans.skip]]
+name = "prost"
+
+[[bans.skip]]
+name = "prost-build"
+
+[[bans.skip]]
+name = "prost-derive"
+
+[[bans.skip]]
+name = "prost-types"
+
+[[bans.skip]]
+name = "r-efi"
+
+[[bans.skip]]
+name = "rand_chacha"
+
+[[bans.skip]]
+name = "rand_core"
+
+[[bans.skip]]
+name = "redox_syscall"
+
+[[bans.skip]]
+name = "reqwest"
+
+[[bans.skip]]
+name = "rfc6979"
+
+[[bans.skip]]
+name = "rustls"
+
+[[bans.skip]]
+name = "rustls-webpki"
+
+[[bans.skip]]
+name = "sec1"
+
+[[bans.skip]]
+name = "serde_spanned"
+
+[[bans.skip]]
+name = "sha2"
+
+[[bans.skip]]
+name = "signature"
+
+[[bans.skip]]
+name = "siphasher"
+
+[[bans.skip]]
+name = "socket2"
+
+[[bans.skip]]
+name = "spki"
+
+[[bans.skip]]
+name = "strsim"
+
+[[bans.skip]]
+name = "textwrap"
+
+[[bans.skip]]
+name = "thiserror"
+
+[[bans.skip]]
+name = "thiserror-impl"
+
+[[bans.skip]]
+name = "tokio-rustls"
+
+[[bans.skip]]
+name = "toml"
+
+[[bans.skip]]
+name = "toml_datetime"
+
+[[bans.skip]]
+name = "tower"
+
+[[bans.skip]]
+name = "unicode-width"
+
+[[bans.skip]]
+name = "untrusted"
+
+[[bans.skip]]
+name = "wasm-encoder"
+
+[[bans.skip]]
+name = "wasmparser"
+
+[[bans.skip]]
+name = "webpki-roots"
+
+[[bans.skip]]
+name = "winnow"
+
+[[bans.skip]]
+name = "windows_aarch64_gnullvm"
+
+[[bans.skip]]
+name = "windows_aarch64_msvc"
+
+[[bans.skip]]
+name = "windows_i686_gnu"
+
+[[bans.skip]]
+name = "windows_i686_gnullvm"
+
+[[bans.skip]]
+name = "windows_i686_msvc"
+
+[[bans.skip]]
+name = "windows_x86_64_gnu"
+
+[[bans.skip]]
+name = "windows_x86_64_gnullvm"
+
+[[bans.skip]]
+name = "windows_x86_64_msvc"
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    # Every git dep is enumerated here with a comment naming the upstream
+    # crate, the reason a registry version cannot be used, and the tracking
+    # issue. Empty at baseline; new entries require CODEOWNERS review.
+]

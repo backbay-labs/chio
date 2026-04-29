@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "none",
+  "expected_verdict": "allow",
+  "family": "guard_rewrite",
+  "fixed_nonce_seed_index": 39,
+  "intent": "Allow with a rewrite applied to input that is already in canonical form, asserting that the guard is idempotent and produces no observable change.",
+  "name": "guard_rewrite/06_idempotent_rewrite",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "guard-rewrite", "idempotent"]
+}

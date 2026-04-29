@@ -1,0 +1,38 @@
+{
+  "name": "@chio-protocol/deno",
+  "version": "0.1.0",
+  "description": "Chio Protocol Deno SDK using import.meta.url-resolved wasm-pack web artifacts",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "deno": "./dist/index.js",
+      "import": "./dist/index.js"
+    },
+    "./web/*": "./dist/web/*"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "deno.json"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "bun run build:wasm && tsc -p tsconfig.json",
+    "build:wasm": "../../scripts/build-wasm.sh --package deno --target web",
+    "test:deno": "deno test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

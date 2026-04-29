@@ -142,5 +142,21 @@ int main() {
     assert(first.result_json == second.result_json);
   }
 
+  {
+    chio::kernel::KernelOptions options;
+    options.policy_json = "{\"guards\":[]}";
+    chio::kernel::Kernel policy_kernel(options);
+    chio::kernel::EvaluateRequest request;
+    request.request_json = "{\"request_id\":\"req-policy\",\"tool_name\":\"echo\"}";
+    request.capability_json = "{\"id\":\"cap-policy\"}";
+    request.trusted_issuers_hex.push_back("00");
+
+    auto result = policy_kernel.evaluate(request);
+    assert(!result.ok);
+    assert(result.verdict == "deny");
+    assert(result.error_code == "unsupported_policy");
+    assert(result.error_message.find("policy_json") != std::string::npos);
+  }
+
   return 0;
 }

@@ -1,0 +1,8 @@
+name = "chio-workers-smoke"
+main = "dist/index.js"
+compatibility_date = "2026-04-27"
+
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
+fallthrough = true

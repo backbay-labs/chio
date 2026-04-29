@@ -14,6 +14,11 @@ name = "chio_acp_edge"
 [features]
 default = []
 compatibility-surface = []
+# Enables `chio_acp_edge::fuzz`, the libFuzzer entry-point module driving
+# the decode-then-handle_jsonrpc pipeline. Off by default; turned on only
+# by the `chio-fuzz` standalone workspace at `../../fuzz`. Production builds
+# never pull in `arbitrary` and never expose `fuzz` symbols.
+fuzz = ["dep:arbitrary"]
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
@@ -25,6 +30,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+# `arbitrary` is gated behind the `fuzz` feature so production builds stay
+# free of fuzz instrumentation.
+arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [lints.clippy]
 unwrap_used = "deny"

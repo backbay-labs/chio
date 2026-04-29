@@ -1,4 +1,8 @@
 {
+  "alt_seed_1_hex": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+  "alt_seed_2_hex": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+  "alt_seed_3_hex": "1010101010101010101010101010101010101010101010101010101010101010",
+  "alt_seed_4_hex": "1111111111111111111111111111111111111111111111111111111111111111",
   "cases": [
     {
       "capability": {
@@ -46,7 +50,8 @@
         "time_valid": true
       },
       "id": "valid_delegated_capability",
-      "verify_at": 1710000400
+      "verify_at": 1710000400,
+      "verify_only": true
     },
     {
       "capability": {
@@ -85,7 +90,8 @@
         "time_valid": false
       },
       "id": "expired_capability",
-      "verify_at": 1710000400
+      "verify_at": 1710000400,
+      "verify_only": true
     },
     {
       "capability": {
@@ -124,7 +130,8 @@
         "time_valid": false
       },
       "id": "not_yet_valid_capability",
-      "verify_at": 1710000400
+      "verify_at": 1710000400,
+      "verify_only": true
     },
     {
       "capability": {
@@ -212,6 +219,752 @@
       },
       "id": "broken_delegation_chain_signature",
       "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-direct",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 3,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "7e2f74c23aab4f31a98a02407ad9fbcbc71ed43abcfd68225f7b9ecd0b7728272047de40ccc8e0a592993acafe257ffb48f150cf70df243d37fb6f32cd0f3c06",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-direct\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Direct issuance capability with no delegation chain. Signature and time bounds both valid.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_no_delegation_chain",
+      "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-multi-tool",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 5,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            },
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 20,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_stat"
+            },
+            {
+              "constraints": [
+                {
+                  "type": "max_args_size",
+                  "value": 8192
+                },
+                {
+                  "type": "max_length",
+                  "value": 2048
+                }
+              ],
+              "dpop_required": true,
+              "max_invocations": 2,
+              "operations": [
+                "invoke"
+              ],
+              "server_id": "srv-shell",
+              "tool_name": "exec"
+            }
+          ]
+        },
+        "signature": "1e13434916ae30aa48944d520dc6c69fdaaf3be547d1038333fb08316771b6d6dcd722112ad9888b540c72b64c3dc3b5a10498a0bf0582790c2f8b15009e0604",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-multi-tool\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":5,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"},{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":20,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_stat\"},{\"constraints\":[{\"type\":\"max_args_size\",\"value\":8192},{\"type\":\"max_length\",\"value\":2048}],\"dpop_required\":true,\"max_invocations\":2,\"operations\":[\"invoke\"],\"server_id\":\"srv-shell\",\"tool_name\":\"exec\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability with three ToolGrants spanning two tool servers and varied constraints.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_with_multiple_tool_grants",
+      "verify_at": 1710000400,
+      "verify_only": true
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-resources",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "resource_grants": [
+            {
+              "operations": [
+                "read",
+                "subscribe"
+              ],
+              "uri_pattern": "file:///workspace/*"
+            },
+            {
+              "operations": [
+                "read"
+              ],
+              "uri_pattern": "https://docs.chio-protocol.dev/*"
+            }
+          ]
+        },
+        "signature": "86bb3e0753d2305f2f2624e471311b479b7946e16dbeb14b6ad33f6a713371634385f6bb57fe3efe499b025e1010e9080e6336652ab1a05bc868be6dbbe3f00b",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-resources\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"resource_grants\":[{\"operations\":[\"read\",\"subscribe\"],\"uri_pattern\":\"file:///workspace/*\"},{\"operations\":[\"read\"],\"uri_pattern\":\"https://docs.chio-protocol.dev/*\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability whose scope carries only ResourceGrants (no tool grants), targeting file and HTTPS URIs.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_with_resource_grants",
+      "verify_at": 1710000400,
+      "verify_only": true
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-prompts",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "prompt_grants": [
+            {
+              "operations": [
+                "get"
+              ],
+              "prompt_name": "summarize"
+            },
+            {
+              "operations": [
+                "get"
+              ],
+              "prompt_name": "review-*"
+            }
+          ]
+        },
+        "signature": "c55c7235c10ce64b2888589306a42ed61e67fbdc11eeabefe4278325db25eda94121c858831c6d5ba9bf0d17be9ffd3a76169c27d3b3ea0afe35909771ac2f06",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-prompts\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"prompt_grants\":[{\"operations\":[\"get\"],\"prompt_name\":\"summarize\"},{\"operations\":[\"get\"],\"prompt_name\":\"review-*\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability scoped exclusively to PromptGrants (exact and wildcard prompt names).",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_with_prompt_grants",
+      "verify_at": 1710000400,
+      "verify_only": true
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-mixed",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 10,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ],
+          "prompt_grants": [
+            {
+              "operations": [
+                "get"
+              ],
+              "prompt_name": "summarize"
+            }
+          ],
+          "resource_grants": [
+            {
+              "operations": [
+                "read"
+              ],
+              "uri_pattern": "file:///workspace/*"
+            }
+          ]
+        },
+        "signature": "c5397f1efbcacc393f10b400a4a9fb6d783a5970bc9ba323839281f6b972ffcf239f6d2542586a057f8ff1e81ffc53f15438af00cf6c6082eb673aedc935490b",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-mixed\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":10,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}],\"prompt_grants\":[{\"operations\":[\"get\"],\"prompt_name\":\"summarize\"}],\"resource_grants\":[{\"operations\":[\"read\"],\"uri_pattern\":\"file:///workspace/*\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability whose scope contains all three grant kinds: tool, resource, and prompt.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_with_mixed_grants",
+      "verify_at": 1710000400,
+      "verify_only": true
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-empty-constraints",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "2996337da97fd05f6a360cb95952bd9ddab2122266434523f22d141946dd022034dc1475a89b0184fbc90b7c723504731d567fbfaa43fac9a84264456a46580b",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-empty-constraints\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability with an unconstrained tool grant: no constraints, no invocation cap, no cost cap.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_empty_constraints",
+      "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-cost-caps",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/payments/"
+                },
+                {
+                  "type": "governed_intent_required"
+                }
+              ],
+              "dpop_required": true,
+              "max_cost_per_invocation": {
+                "currency": "USD",
+                "units": 5000
+              },
+              "max_invocations": 1,
+              "max_total_cost": {
+                "currency": "USD",
+                "units": 5000
+              },
+              "operations": [
+                "invoke"
+              ],
+              "server_id": "srv-payments",
+              "tool_name": "transfer"
+            }
+          ]
+        },
+        "signature": "d1d9fad413fea06f0f5dee527d2456e4ac4f15e1e021f3d8bf0ffaffd8f8b330e879b4cb9e3b8bfef503d40c888861677da849c4934f70b86e7917b04fdde50a",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-cost-caps\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/payments/\"},{\"type\":\"governed_intent_required\"}],\"dpop_required\":true,\"max_cost_per_invocation\":{\"currency\":\"USD\",\"units\":5000},\"max_invocations\":1,\"max_total_cost\":{\"currency\":\"USD\",\"units\":5000},\"operations\":[\"invoke\"],\"server_id\":\"srv-payments\",\"tool_name\":\"transfer\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability with monetary caps (max_cost_per_invocation and max_total_cost) plus DPoP requirement and governed-intent constraint.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_with_max_costs",
+      "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "delegation_chain": [
+          {
+            "capability_id": "cap-bindings-depth4",
+            "delegatee": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc",
+            "delegator": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+            "signature": "41c64f6376703a7fc09d51d0a115fa5f399ab5c6b3117809351c805469454b42f6ca35fc5bd60de07ad1f3be1decdfcb760c955f319e6960557a28f2494fbf04",
+            "timestamp": 1710000210
+          },
+          {
+            "capability_id": "cap-bindings-depth4",
+            "delegatee": "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+            "delegator": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc",
+            "signature": "664f6e658c3f5b2df495c9986cdc200da41d494783eb13ddfd376fa740120e5beb61d839104fcf511424d148a028f6ff5ca1db5a41cb33394125798ff5c40906",
+            "timestamp": 1710000220
+          },
+          {
+            "capability_id": "cap-bindings-depth4",
+            "delegatee": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+            "delegator": "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+            "signature": "4fcb28eec68b0e39fc8c65eee003eda6b3cb20ea03630cf99494a3a89d45060e9a52c499c8a471acbec71ed3a8b2439e30aa50843d6e2cf850cef484eb76bd0c",
+            "timestamp": 1710000230
+          },
+          {
+            "capability_id": "cap-bindings-depth4",
+            "delegatee": "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a",
+            "delegator": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+            "signature": "0082423786e0aaae5a27b40783040b233f0bdc9853ebdd80b6b9ad806183d9d4e21c2b140099189e83504b59958b948078b89baf0d4d32bfbe24c3baa267400d",
+            "timestamp": 1710000240
+          }
+        ],
+        "expires_at": 1710000800,
+        "id": "cap-bindings-depth4",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 3,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "f1df9b1b03bde58c45542a2fd850e06f9bea6fb837470d0fdbc824f3a618a9f50d352d6582bc311c32708b7ed8e4fc8288673d09391a1298ac926d1a9f65360a",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"delegation_chain\":[{\"capability_id\":\"cap-bindings-depth4\",\"delegatee\":\"0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc\",\"delegator\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"signature\":\"41c64f6376703a7fc09d51d0a115fa5f399ab5c6b3117809351c805469454b42f6ca35fc5bd60de07ad1f3be1decdfcb760c955f319e6960557a28f2494fbf04\",\"timestamp\":1710000210},{\"capability_id\":\"cap-bindings-depth4\",\"delegatee\":\"d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c\",\"delegator\":\"0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc\",\"signature\":\"664f6e658c3f5b2df495c9986cdc200da41d494783eb13ddfd376fa740120e5beb61d839104fcf511424d148a028f6ff5ca1db5a41cb33394125798ff5c40906\",\"timestamp\":1710000220},{\"capability_id\":\"cap-bindings-depth4\",\"delegatee\":\"5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84\",\"delegator\":\"d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c\",\"signature\":\"4fcb28eec68b0e39fc8c65eee003eda6b3cb20ea03630cf99494a3a89d45060e9a52c499c8a471acbec71ed3a8b2439e30aa50843d6e2cf850cef484eb76bd0c\",\"timestamp\":1710000230},{\"capability_id\":\"cap-bindings-depth4\",\"delegatee\":\"91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a\",\"delegator\":\"5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84\",\"signature\":\"0082423786e0aaae5a27b40783040b233f0bdc9853ebdd80b6b9ad806183d9d4e21c2b140099189e83504b59958b948078b89baf0d4d32bfbe24c3baa267400d\",\"timestamp\":1710000240}],\"expires_at\":1710000800,\"id\":\"cap-bindings-depth4\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability whose chain has exactly four links, equal to the verifier's max_delegation_depth.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_at_delegation_depth_limit",
+      "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "delegation_chain": [
+          {
+            "capability_id": "cap-bindings-depth5",
+            "delegatee": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc",
+            "delegator": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+            "signature": "e62d65c68b60518d6f7fc7cbd37a2b9e7fe2b65582ddec9ba2e0666e4f0cf0a25ae7b14866384a66bc0da779ce8f8d826c283e0fd2c974e7c2e5ba27d5c0eb0f",
+            "timestamp": 1710000210
+          },
+          {
+            "capability_id": "cap-bindings-depth5",
+            "delegatee": "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+            "delegator": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc",
+            "signature": "f56da5e0938b3de0222c131462ed9e31ed63424f2301ebdb79f42cfe8ea03873afa85b8ed45a0abb5f81ca3a886e968f57d24af55e8106cbf771b902ee134002",
+            "timestamp": 1710000220
+          },
+          {
+            "capability_id": "cap-bindings-depth5",
+            "delegatee": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+            "delegator": "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+            "signature": "ecb23499591122d3f068a132cd6ff4e117078560e7b77319166a3941523ce1a558396f702bc93732252ef0641c022dfe568c390433ef79726104095cd8777a06",
+            "timestamp": 1710000230
+          },
+          {
+            "capability_id": "cap-bindings-depth5",
+            "delegatee": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "delegator": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+            "signature": "bbb83fa5b2f1e030c0f3931c64333381f0dd00acbf01c0f90b879dc7ab756d2c004fbbd4326a21798d01917eb3069155af8ac57aa1519970b0ea25c721009706",
+            "timestamp": 1710000240
+          },
+          {
+            "capability_id": "cap-bindings-depth5",
+            "delegatee": "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a",
+            "delegator": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "signature": "1042727c4eb4255f955164d941b758eb63551641c27c708bececd9da4d5d48db0cfe3bd0ecec75d2471cecc5a57e0a02a8c25fe568ff6f2e062ed29bbe36780b",
+            "timestamp": 1710000250
+          }
+        ],
+        "expires_at": 1710000800,
+        "id": "cap-bindings-depth5",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 3,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "1e95594ed95fd7c592ab02859df5b4da87ddd2995d6464965bab6aca0eeb8d505c7b81356e8634d035a4bb2ecc9550a7905b7614dbe4ebe50498ab3239ac4a00",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"delegation_chain\":[{\"capability_id\":\"cap-bindings-depth5\",\"delegatee\":\"0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc\",\"delegator\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"signature\":\"e62d65c68b60518d6f7fc7cbd37a2b9e7fe2b65582ddec9ba2e0666e4f0cf0a25ae7b14866384a66bc0da779ce8f8d826c283e0fd2c974e7c2e5ba27d5c0eb0f\",\"timestamp\":1710000210},{\"capability_id\":\"cap-bindings-depth5\",\"delegatee\":\"d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c\",\"delegator\":\"0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc\",\"signature\":\"f56da5e0938b3de0222c131462ed9e31ed63424f2301ebdb79f42cfe8ea03873afa85b8ed45a0abb5f81ca3a886e968f57d24af55e8106cbf771b902ee134002\",\"timestamp\":1710000220},{\"capability_id\":\"cap-bindings-depth5\",\"delegatee\":\"5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84\",\"delegator\":\"d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c\",\"signature\":\"ecb23499591122d3f068a132cd6ff4e117078560e7b77319166a3941523ce1a558396f702bc93732252ef0641c022dfe568c390433ef79726104095cd8777a06\",\"timestamp\":1710000230},{\"capability_id\":\"cap-bindings-depth5\",\"delegatee\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"delegator\":\"5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84\",\"signature\":\"bbb83fa5b2f1e030c0f3931c64333381f0dd00acbf01c0f90b879dc7ab756d2c004fbbd4326a21798d01917eb3069155af8ac57aa1519970b0ea25c721009706\",\"timestamp\":1710000240},{\"capability_id\":\"cap-bindings-depth5\",\"delegatee\":\"91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a\",\"delegator\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"signature\":\"1042727c4eb4255f955164d941b758eb63551641c27c708bececd9da4d5d48db0cfe3bd0ecec75d2471cecc5a57e0a02a8c25fe568ff6f2e062ed29bbe36780b\",\"timestamp\":1710000250}],\"expires_at\":1710000800,\"id\":\"cap-bindings-depth5\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability whose chain has five links, exceeding the verifier's max_delegation_depth of four. Token signature is valid but chain validation fails.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "delegation_depth_exceeded",
+      "verify_at": 1710000400,
+      "verify_only": true,
+      "max_delegation_depth": 4,
+      "expected_with_max_delegation_depth": {
+        "delegation_chain_valid": false,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      }
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-edge-issued",
+        "issued_at": 1710000400,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 3,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "a03610b0d2a87e5059faacae161b83fb44ff88b82b3db4a3ed9730602974f8415430e2f978fc501d949ade023496652aa3103b6179d0807adc65b709395c3e09",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-edge-issued\",\"issued_at\":1710000400,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability evaluated at exactly issued_at. Lower bound is inclusive, so the token is valid.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_at_exact_issued_at_boundary",
+      "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "expires_at": 1710000400,
+        "id": "cap-bindings-edge-expires",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 3,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "5d32568e86ecd8ce970af3be305e8d13beb85621feb585baad64a6ce45abd52c139d0ed0e8de9c42d0ef8fcc3082ca0fa0d740439ab51208ec76f4f6adc7ec02",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000400,\"id\":\"cap-bindings-edge-expires\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability evaluated at exactly expires_at. Upper bound is exclusive, so the token has just expired.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "expired",
+        "time_valid": false
+      },
+      "id": "expired_at_exact_expires_at_boundary",
+      "verify_at": 1710000400,
+      "verify_only": true
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-complex-constraints",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "domain_glob",
+                  "value": "*.chio-protocol.dev"
+                },
+                {
+                  "type": "max_length",
+                  "value": 1024
+                },
+                {
+                  "type": "max_args_size",
+                  "value": 4096
+                },
+                {
+                  "type": "custom",
+                  "value": [
+                    "rate_limit",
+                    "10/min"
+                  ]
+                }
+              ],
+              "max_invocations": 50,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-net",
+              "tool_name": "http_get"
+            }
+          ]
+        },
+        "signature": "ae7794667c71a3fc5a3c37148a83d718bcd46f8225b52edd685639c5a4d6cbf34bb58b396014b738522188ada5cd9f94ed591ffd90d94bc87f64d305508a8a00",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-complex-constraints\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"domain_glob\",\"value\":\"*.chio-protocol.dev\"},{\"type\":\"max_length\",\"value\":1024},{\"type\":\"max_args_size\",\"value\":4096},{\"type\":\"custom\",\"value\":[\"rate_limit\",\"10/min\"]}],\"max_invocations\":50,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-net\",\"tool_name\":\"http_get\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability whose grant carries four heterogeneous constraints (DomainGlob, MaxLength, MaxArgsSize, Custom).",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_with_complex_constraints",
+      "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "delegation_chain": [
+          {
+            "capability_id": "cap-bindings-dual",
+            "delegatee": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc",
+            "delegator": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+            "signature": "5d18c8a790e448882a822361f3f3d68a2d699acfab42fc8568ff00e90149bebd16a3fd61670a7f0344dd0424f4633c9ca8d53e9c086669e6c70264f2e7705804",
+            "timestamp": 1710000220
+          },
+          {
+            "capability_id": "cap-bindings-dual",
+            "delegatee": "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a",
+            "delegator": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc",
+            "signature": "16c627c76531b8e6ae181d00bb5bef3fd1c452ff436a6ffdcd5d5ee83a2f0ff68d2c2f6e811e6ddc66e63459ccf33fba1144c400841f63d5ae6a265812d1f108",
+            "timestamp": 1710000240
+          }
+        ],
+        "expires_at": 1710000800,
+        "id": "cap-bindings-dual",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 3,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "e8fd58e07c0c6058cd95f9414df7333692cf7af0a1067cad50e467eef8e472583531af6beb0cfa5d885795892ba4c56ca96b855aead8bad1fe6c57b4ae940908",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"delegation_chain\":[{\"capability_id\":\"cap-bindings-dual\",\"delegatee\":\"0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc\",\"delegator\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"signature\":\"5d18c8a790e448882a822361f3f3d68a2d699acfab42fc8568ff00e90149bebd16a3fd61670a7f0344dd0424f4633c9ca8d53e9c086669e6c70264f2e7705804\",\"timestamp\":1710000220},{\"capability_id\":\"cap-bindings-dual\",\"delegatee\":\"91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a\",\"delegator\":\"0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc\",\"signature\":\"16c627c76531b8e6ae181d00bb5bef3fd1c452ff436a6ffdcd5d5ee83a2f0ff68d2c2f6e811e6ddc66e63459ccf33fba1144c400841f63d5ae6a265812d1f108\",\"timestamp\":1710000240}],\"expires_at\":1710000800,\"id\":\"cap-bindings-dual\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability with a two-link delegation chain where each link's delegatee matches the next link's delegator and timestamps are monotonic.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "valid_capability_with_dual_link_chain",
+      "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-tampered-subject",
+        "issued_at": 1710000200,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 3,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "74e5ba13bc02c448ba4fa5f8c3dcdc4e47b37464b67ea1e3220a3043917f7fa221f7dd613884a06c11c230c7bb839b47a8b42537702c5fdd7c214ed2d56c7407",
+        "subject": "0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-tampered-subject\",\"issued_at\":1710000200,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0beef5a9e679e6a3e134fe27837bff32c7cb5f5d44ea09bcb0e542bad6a4c0cc\"}",
+      "description": "Capability whose subject public key was swapped after signing. Body hash drifts, so signature verification fails.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": false,
+        "time_status": "valid",
+        "time_valid": true
+      },
+      "id": "tampered_subject_capability",
+      "verify_at": 1710000400
+    },
+    {
+      "capability": {
+        "expires_at": 1710000800,
+        "id": "cap-bindings-edge-not-yet",
+        "issued_at": 1710000401,
+        "issuer": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+        "scope": {
+          "grants": [
+            {
+              "constraints": [
+                {
+                  "type": "path_prefix",
+                  "value": "/workspace/"
+                }
+              ],
+              "max_invocations": 3,
+              "operations": [
+                "invoke",
+                "read_result"
+              ],
+              "server_id": "srv-files",
+              "tool_name": "file_read"
+            }
+          ]
+        },
+        "signature": "0148954d68d71b65b3a6a5653fd3e26efc2398ba5dd368c6073e70b339cd16402021af58c88cbcbeabbd6f83ffe3e15d87eb3780c2404f903fa0dd0c2766e209",
+        "subject": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d"
+      },
+      "capability_body_canonical_json": "{\"expires_at\":1710000800,\"id\":\"cap-bindings-edge-not-yet\",\"issued_at\":1710000401,\"issuer\":\"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a\",\"scope\":{\"grants\":[{\"constraints\":[{\"type\":\"path_prefix\",\"value\":\"/workspace/\"}],\"max_invocations\":3,\"operations\":[\"invoke\",\"read_result\"],\"server_id\":\"srv-files\",\"tool_name\":\"file_read\"}]},\"subject\":\"0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d\"}",
+      "description": "Capability evaluated one second before issued_at. The lower bound is inclusive, so one second earlier is not yet valid.",
+      "expected": {
+        "delegation_chain_valid": true,
+        "signature_valid": true,
+        "time_status": "not_yet_valid",
+        "time_valid": false
+      },
+      "id": "not_yet_valid_at_issued_at_minus_one",
+      "verify_at": 1710000400,
+      "verify_only": true
     }
   ],
   "delegatee_seed_hex": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",

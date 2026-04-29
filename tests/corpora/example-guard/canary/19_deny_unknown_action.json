@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "unknown",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 19,
+      "verdict": "deny",
+      "reason": "unknown action denied"
+    },
+    "scopes": [
+      "example-server:unknown"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"unknown action denied\"}"
+}

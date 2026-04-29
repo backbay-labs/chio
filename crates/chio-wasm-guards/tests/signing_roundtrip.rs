@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use chio_wasm_guards::manifest::{
     signed_module_message, write_signature_sidecar, GuardManifest, SignedWasmModule,
-    SIGNATURE_SUFFIX,
+    REQUIRED_WIT_WORLD, SIGNATURE_SUFFIX,
 };
 use chio_wasm_guards::{load_signed_guard, WasmGuardError};
 use ed25519_dalek::{Signer, SigningKey};
@@ -50,6 +50,7 @@ fn make_manifest(
         name: name.to_string(),
         version: version.to_string(),
         abi_version: "1".to_string(),
+        wit_world: Some(REQUIRED_WIT_WORLD.to_string()),
         wasm_path: wasm_filename.to_string(),
         wasm_sha256: wasm_sha256.to_string(),
         config: HashMap::new(),

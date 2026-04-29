@@ -1,0 +1,140 @@
+---
+source: crates/chio-cli/tests/conformance_cli.rs
+expression: report
+---
+{
+  "listen": "[listen-addr]",
+  "peerResultFiles": "[peer-result-files]",
+  "reportOutput": "[report-output]",
+  "results": [
+    {
+      "artifacts": {
+        "transcript": "[transcript-path]"
+      },
+      "assertions": [
+        {
+          "message": null,
+          "name": "initialize_succeeds",
+          "status": "pass"
+        }
+      ],
+      "category": "mcp-core",
+      "deploymentMode": "remote_http",
+      "durationMs": "[duration-ms]",
+      "expectedFailure": false,
+      "failureKind": null,
+      "failureMessage": null,
+      "notes": null,
+      "peer": "python",
+      "peerRole": "client_to_chio_server",
+      "scenarioId": "initialize",
+      "specVersion": "2025-11-25",
+      "status": "pass",
+      "transport": "streamable-http"
+    },
+    {
+      "artifacts": {
+        "transcript": "[transcript-path]"
+      },
+      "assertions": [
+        {
+          "message": null,
+          "name": "prompts_list_contains_fixture_prompt",
+          "status": "pass"
+        }
+      ],
+      "category": "mcp-core",
+      "deploymentMode": "remote_http",
+      "durationMs": "[duration-ms]",
+      "expectedFailure": false,
+      "failureKind": null,
+      "failureMessage": null,
+      "notes": null,
+      "peer": "python",
+      "peerRole": "client_to_chio_server",
+      "scenarioId": "prompts-list",
+      "specVersion": "2025-11-25",
+      "status": "pass",
+      "transport": "streamable-http"
+    },
+    {
+      "artifacts": {
+        "transcript": "[transcript-path]"
+      },
+      "assertions": [
+        {
+          "message": null,
+          "name": "resources_list_contains_fixture_uri",
+          "status": "pass"
+        }
+      ],
+      "category": "mcp-core",
+      "deploymentMode": "remote_http",
+      "durationMs": "[duration-ms]",
+      "expectedFailure": false,
+      "failureKind": null,
+      "failureMessage": null,
+      "notes": null,
+      "peer": "python",
+      "peerRole": "client_to_chio_server",
+      "scenarioId": "resources-list",
+      "specVersion": "2025-11-25",
+      "status": "pass",
+      "transport": "streamable-http"
+    },
+    {
+      "artifacts": {
+        "transcript": "[transcript-path]"
+      },
+      "assertions": [
+        {
+          "message": null,
+          "name": "tool_result_matches_input_text",
+          "status": "pass"
+        }
+      ],
+      "category": "mcp-core",
+      "deploymentMode": "remote_http",
+      "durationMs": "[duration-ms]",
+      "expectedFailure": false,
+      "failureKind": null,
+      "failureMessage": null,
+      "notes": null,
+      "peer": "python",
+      "peerRole": "client_to_chio_server",
+      "scenarioId": "tools-call-simple-text",
+      "specVersion": "2025-11-25",
+      "status": "pass",
+      "transport": "streamable-http"
+    },
+    {
+      "artifacts": {
+        "transcript": "[transcript-path]"
+      },
+      "assertions": [
+        {
+          "message": null,
+          "name": "tools_list_contains_echo_text",
+          "status": "pass"
+        }
+      ],
+      "category": "mcp-core",
+      "deploymentMode": "remote_http",
+      "durationMs": "[duration-ms]",
+      "expectedFailure": false,
+      "failureKind": null,
+      "failureMessage": null,
+      "notes": null,
+      "peer": "python",
+      "peerRole": "client_to_chio_server",
+      "scenarioId": "tools-list",
+      "specVersion": "2025-11-25",
+      "status": "pass",
+      "transport": "streamable-http"
+    }
+  ],
+  "resultsDir": "[results-dir]",
+  "scenarioCount": 5,
+  "scenarioFilter": null,
+  "schemaVersion": "chio-conformance-run/v1"
+}

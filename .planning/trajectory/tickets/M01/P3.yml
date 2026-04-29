@@ -1,0 +1,215 @@
+# M01 Phase 3: Codegen pipeline (Rust + Python + TS)
+#
+# Source: .planning/trajectory/01-spec-codegen-conformance.md
+#         "Phase 3: Codegen pipeline (Rust + Python + TS)" (size L, 12-15 days).
+# Goal: produce generated bindings from schemas; wire CI drift detection.
+# Owner: M01 (single-owner trajectory routes to @bb-connor).
+# Wave: 1b. Branch prefix wave/W1/m01/p3.t*.
+#
+# Toolchain pins (decisions.yml: codegen-toolchain-per-language):
+#   Rust   -> typify =0.4.3
+#   Python -> datamodel-code-generator ==0.34.0 (pydantic v2)
+#   TS     -> json-schema-to-typescript 15.0.4
+#   Go     -> oapi-codegen v2.4.1 (checked-in regen, not live pipeline)
+#
+# Phase doc enumerates 6 tasks (P3.T1-T6). Each fits the 2 engineer-day cap
+# without splitting. Hard dep chain: T1 first (scaffolds the crate and the
+# xtask entry point all later language tasks extend); T2/T3/T4 each add one
+# language target on top of the T1 dispatch surface and serialize on the
+# shared xtask/main.rs and Cargo.lock; T5 lands CI gates after every language
+# target exists; T6 runs the 17 Python framework adapters last to confirm
+# the regenerated chio-sdk-python types do not break downstream.
+#
+# Cross-phase dep: T1 depends on M01.P2.T8 (last P2 ticket merged) so the
+# vector corpus is frozen before codegen consumes the schemas.
+
+- id: M01.P3.T1
+  milestone: M01
+  phase: 3
+  title: "Scaffold chio-spec-codegen crate with typify Rust target and xtask wiring"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-spec-codegen/Cargo.toml"
+    - "crates/chio-spec-codegen/src/main.rs"
+    - "crates/chio-spec-codegen/src/lib.rs"
+    - "crates/chio-spec-codegen/README.md"
+    - "crates/chio-core-types/src/_generated/mod.rs"
+    - "crates/chio-core-types/src/_generated_check.rs"
+    - "xtask/src/main.rs"
+    - "xtask/codegen-tools.lock.toml"
+    - "spec/schemas/VERSION"
+    - "Cargo.toml"
+    - "Cargo.lock"
+  shared_paths:
+    - "Cargo.toml"
+    - "Cargo.lock"
+    - "xtask/src/main.rs"
+  depends_on:
+    - "M01.P2.T8"
+  soft_deps:
+    - "M07 tool-call fabric consumes generated ProvenanceStamp Rust type (crates/chio-tool-call-fabric/**)"
+    - "M08 browser-edge SDK reuses _generated/ Rust types via wasm-bindgen"
+  gate_check:
+    cmd: "cargo xtask codegen --lang rust --check && cargo build -p chio-core-types && cargo test -p chio-core-types --test _generated_check"
+  worktree_branch: "wave/W1/m01/p3.t1-spec-codegen-rust-typify"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P3.T2
+  milestone: M01
+  phase: 3
+  title: "Wire cargo xtask codegen --lang python via datamodel-code-generator (pydantic v2)"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "xtask/src/main.rs"
+    - "xtask/codegen-tools.lock.toml"
+    - "sdks/python/chio-sdk-python/src/chio_sdk/_generated/__init__.py"
+    - "sdks/python/chio-sdk-python/src/chio_sdk/models.py"
+    - "sdks/python/chio-sdk-python/src/chio_sdk/models_legacy.py"
+    - "sdks/python/chio-sdk-python/pyproject.toml"
+    - "sdks/python/scripts/codegen-requirements.txt"
+  shared_paths:
+    - "xtask/src/main.rs"
+    - "xtask/codegen-tools.lock.toml"
+  depends_on:
+    - "M01.P3.T1"
+  soft_deps:
+    - "17 Python framework adapters under sdks/python/* re-export from chio_sdk.models and inherit the regenerated types transitively"
+  gate_check:
+    cmd: "cargo xtask codegen --lang python --check && uv run --package chio-sdk-python pytest sdks/python/chio-sdk-python/tests"
+  worktree_branch: "wave/W1/m01/p3.t2-codegen-python-pydantic-v2"
+  agent_role: spec-python
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P3.T3
+  milestone: M01
+  phase: 3
+  title: "Wire cargo xtask codegen --lang ts via json-schema-to-typescript"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "xtask/src/main.rs"
+    - "xtask/codegen-tools.lock.toml"
+    - "sdks/typescript/packages/conformance/src/_generated/index.ts"
+    - "sdks/typescript/packages/conformance/src/index.ts"
+    - "sdks/typescript/packages/conformance/package.json"
+    - "sdks/typescript/scripts/package-lock.json"
+  shared_paths:
+    - "xtask/src/main.rs"
+    - "xtask/codegen-tools.lock.toml"
+  depends_on:
+    - "M01.P3.T1"
+  soft_deps:
+    - "M08 browser-edge SDK consumes the same _generated/ TS types via re-export"
+  gate_check:
+    cmd: "cargo xtask codegen --lang ts --check && pnpm --filter @chio-protocol/conformance test"
+  worktree_branch: "wave/W1/m01/p3.t3-codegen-ts-jsonschema"
+  agent_role: spec-typescript
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P3.T4
+  milestone: M01
+  phase: 3
+  title: "Wire cargo xtask codegen --lang go via oapi-codegen with checked-in regen script"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "xtask/src/main.rs"
+    - "xtask/codegen-tools.lock.toml"
+    - "sdks/go/chio-go-http/types.go"
+    - "sdks/go/chio-go-http/types_helpers.go"
+    - "sdks/go/chio-go-http/scripts/regen-types.sh"
+  shared_paths:
+    - "xtask/src/main.rs"
+    - "xtask/codegen-tools.lock.toml"
+  depends_on:
+    - "M01.P3.T1"
+  soft_deps: []
+  gate_check:
+    cmd: "bash sdks/go/chio-go-http/scripts/regen-types.sh && git diff --exit-code sdks/go/chio-go-http/types.go && (cd sdks/go/chio-go-http && go build ./... && go test ./...)"
+  worktree_branch: "wave/W1/m01/p3.t4-codegen-go-oapi"
+  agent_role: spec-go
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P3.T5
+  milestone: M01
+  phase: 3
+  title: "Land make codegen-check plus spec-drift CI jobs codegen-no-diff and header-stamp-untouched"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "Makefile"
+    - ".github/workflows/spec-drift.yml"
+  shared_paths: []
+  depends_on:
+    - "M01.P3.T2"
+    - "M01.P3.T3"
+    - "M01.P3.T4"
+  soft_deps:
+    - "M01 P5 spec-drift workflow extends this file with vectors-byte-stable, schema-coverage, cross-lang-bytes jobs"
+  gate_check:
+    cmd: "make codegen-check && yamllint .github/workflows/spec-drift.yml"
+  worktree_branch: "wave/W1/m01/p3.t5-codegen-check-and-ci"
+  agent_role: infra-yaml
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P3.T6
+  milestone: M01
+  phase: 3
+  title: "Verify 17 Python framework adapters build and test against regenerated chio-sdk-python"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "sdks/python/chio-airflow/**"
+    - "sdks/python/chio-langchain/**"
+    - "sdks/python/chio-fastapi/**"
+    - "sdks/python/chio-django/**"
+    - "sdks/python/chio-langgraph/**"
+    - "sdks/python/chio-llamaindex/**"
+    - "sdks/python/chio-temporal/**"
+    - "sdks/python/chio-prefect/**"
+    - "sdks/python/chio-dagster/**"
+    - "sdks/python/chio-ray/**"
+    - "sdks/python/chio-crewai/**"
+    - "sdks/python/chio-autogen/**"
+    - "sdks/python/chio-asgi/**"
+    - "sdks/python/chio-streaming/**"
+    - "sdks/python/chio-observability/**"
+    - "sdks/python/chio-iac/**"
+    - "sdks/python/chio-code-agent/**"
+  shared_paths: []
+  depends_on:
+    - "M01.P3.T2"
+  soft_deps: []
+  gate_check:
+    cmd: "uv sync --workspace && uv run --workspace pytest sdks/python"
+    timeout_seconds: 1800
+  worktree_branch: "wave/W1/m01/p3.t6-python-adapter-regression"
+  agent_role: spec-python
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

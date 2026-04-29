@@ -1,274 +1,220 @@
-name: Fuzz
+# fuzz.yml - Native cargo-fuzz scheduled matrix.
+#
+# In-tree `cargo +nightly fuzz` scheduled matrix. Complements the
+# ClusterFuzzLite workflows:
+#   - cflite_pr.yml    : PR-time changed-target sampling (60s/target)
+#   - cflite_batch.yml : nightly ClusterFuzzLite rotation (1,800s/target)
+#   - fuzz.yml (this)  : nightly native libFuzzer matrix (30 min/target, ASan)
+#
+# Per-target wall-time: 1,800s via `--max_total_time=1800` plus
+# `timeout-minutes: 45`. Budget guard (`scripts/check-fuzz-budget.sh`)
+# counts cflite + this workflow toward the 1,800 min/30d cap and refuses
+# to fan out the matrix when the trailing total would breach it.
+#
+# Matrix entries must stay in lockstep with fuzz/Cargo.toml,
+# .clusterfuzzlite/build.sh, and fuzz/target-map.toml.
+
+name: fuzz
 
 on:
-  pull_request:
-    branches: [main]
-  merge_group: {}
+  schedule:
+    # 03:23 UTC nightly. 23 minutes past the hour to dodge the cron
+    # storm; 03:23 sits between cflite_batch (02:17) and the existing
+    # nightly proptest lane (04:23) so the GHA runner pool is not
+    # over-subscribed.
+    - cron: "23 3 * * *"
   workflow_dispatch:
     inputs:
       target:
-        description: Fuzz target to run
-        required: true
-        default: all
-        type: choice
-        options:
-          - all
-          - fuzz_canonical_json
-          - fuzz_policy_parse_compile
-          - fuzz_sql_parser
-          - fuzz_merkle_checkpoint
-          - fuzz_capability_receipt
-          - fuzz_manifest_roundtrip
-          - fuzz_tool_action
-      max_total_time:
-        description: Per-target libFuzzer max_total_time in seconds
-        required: true
-        default: "120"
+        description: "Force a single fuzz target (default: full matrix)"
+        required: false
         type: string
-  schedule:
-    - cron: "17 3 * * *"
+      max_total_time:
+        description: "Override per-target wall-time budget in seconds (default 1800)"
+        required: false
+        type: string
+        default: "1800"
 
 permissions:
   contents: read
+  actions: read
+  security-events: write
+
+concurrency:
+  group: fuzz-scheduled
+  cancel-in-progress: false
 
 env:
-  CARGO_TERM_COLOR: always
-  CARGO_FUZZ_VERSION: 0.13.1
-  RUST_BACKTRACE: 1
-  RUST_NIGHTLY: nightly-2026-04-24
+  # Per-target wall-time budget in seconds. 30 minutes by default; the
+  # workflow_dispatch override path lets operators dial down for a
+  # smoke run without editing the file.
+  CHIO_FUZZ_MAX_TOTAL_TIME: ${{ inputs.max_total_time || '1800' }}
 
 jobs:
-  pr-fuzz:
-    name: PR fuzz build and smoke
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+  validate-dispatch-target:
+    name: validate-dispatch-target
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - name: Install pinned Rust nightly
-        run: rustup toolchain install "${RUST_NIGHTLY}" --profile minimal
-
-      - name: Cache Rust fuzz builds
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            . -> target
-            fuzz -> fuzz/target
-          shared-key: fuzz-${{ runner.os }}-${{ env.RUST_NIGHTLY }}-${{ env.CARGO_FUZZ_VERSION }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.lock') }}
-
-      - name: Install cargo-fuzz
+      - name: Validate forced fuzz target
+        env:
+          FORCED_TARGET: ${{ inputs.target || '' }}
         run: |
-          installed_version="$(cargo fuzz --version 2>/dev/null | awk '{print $2}' || true)"
-          if [ "${installed_version}" != "${CARGO_FUZZ_VERSION}" ]; then
-            cargo install cargo-fuzz --locked --version "=${CARGO_FUZZ_VERSION}"
+          set -euo pipefail
+          if [[ -z "${FORCED_TARGET}" ]]; then
+            echo "no forced fuzz target requested"
+            exit 0
+          fi
+          if awk '
+            /^\[\[bin\]\]/ { in_bin = 1; next }
+            in_bin && /^name = "/ {
+              gsub(/^name = "/, "")
+              gsub(/"$/, "")
+              print
+              in_bin = 0
+            }
+          ' fuzz/Cargo.toml | grep -Fxq -- "${FORCED_TARGET}"; then
+            echo "forced fuzz target exists: ${FORCED_TARGET}"
+          else
+            echo "unknown forced fuzz target: ${FORCED_TARGET}" >&2
+            exit 1
           fi
 
-      - name: Check fuzz lockfile
-        run: cargo +"${RUST_NIGHTLY}" metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1 > /dev/null
-
-      - name: Build all fuzz targets
-        run: |
-          cd fuzz
-          cargo +"${RUST_NIGHTLY}" fuzz build
-
-      - name: Run PR fuzz smoke targets
-        run: |
-          cd fuzz
-          for target in fuzz_canonical_json fuzz_policy_parse_compile fuzz_sql_parser; do
-            mkdir -p "/tmp/chio-fuzz/${target}"
-            cargo +"${RUST_NIGHTLY}" fuzz run "${target}" \
-              "/tmp/chio-fuzz/${target}" \
-              "corpus/${target}" \
-              -- -max_total_time=30
-          done
-
-      - name: Enforce fuzz lockfile stability
-        if: always()
-        run: git diff --exit-code -- fuzz/Cargo.lock
-
-      - name: Print repro command
-        if: failure()
-        run: |
-          echo "Download the fuzz-artifacts-pr-${{ github.sha }} artifact from this run."
-          echo "unzip fuzz-artifacts-pr-${{ github.sha }}.zip -d /tmp/chio-fuzz-artifacts"
-          echo "find /tmp/chio-fuzz-artifacts -type f -exec shasum -a 256 {} \\;"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz run <target> /tmp/chio-fuzz-artifacts/<target>/<artifact> -- -runs=1"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz tmin <target> /tmp/chio-fuzz-artifacts/<target>/<artifact>"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz cmin <target> corpus/<target>"
-
-      - name: Upload fuzz artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fuzz-artifacts-pr-${{ github.sha }}
-          path: fuzz/artifacts
-          if-no-files-found: ignore
-          retention-days: 14
-
-  scheduled-all-target-fuzz-smoke:
-    name: Scheduled all-target fuzz smoke (${{ matrix.fuzz_target }})
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'all')
+  fuzz-budget:
+    name: fuzz-budget
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Verify 30-day fuzz budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Reuse the cflite budget guard; its WORKFLOWS array enumerates
+          # every fuzz workflow (cflite_pr.yml, cflite_batch.yml, fuzz.yml)
+          # against the 1,800-min/30-day cap.
+          scripts/check-fuzz-budget.sh "${{ github.repository }}"
+
+  fuzz-scheduled:
+    name: fuzz-scheduled (${{ matrix.target }})
+    needs:
+      - validate-dispatch-target
+      - fuzz-budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        fuzz_target:
-          - fuzz_canonical_json
+        target:
+          - canonical_json
+          - capability_receipt
+          - manifest_roundtrip
+          - attest_verify
+          - jwt_vc_verify
+          - oid4vp_presentation
+          - did_resolve
+          - anchor_bundle_verify
+          - mcp_envelope_decode
+          - a2a_envelope_decode
+          - acp_envelope_decode
+          - wasm_preinstantiate_validate
+          - wit_host_call_boundary
+          - chio_yaml_parse
+          - openapi_ingest
+          - receipt_log_replay
           - fuzz_policy_parse_compile
           - fuzz_sql_parser
           - fuzz_merkle_checkpoint
-          - fuzz_capability_receipt
-          - fuzz_manifest_roundtrip
           - fuzz_tool_action
     steps:
-      - uses: actions/checkout@v4
+      # Cleanup C6: GHA `exit 0` only marks the step successful; it does
+      # not skip subsequent steps in the same job. Set a `selected` step
+      # output that every later step gates on so a `workflow_dispatch`
+      # with `inputs.target` set short-circuits all the non-matching
+      # matrix entries instead of running the full toolchain-install
+      # plus fuzz-run pipeline 13 times.
+      - name: Resolve forced-target selection
+        id: select
+        env:
+          FORCED_TARGET: ${{ inputs.target || '' }}
+        run: |
+          set -euo pipefail
+          forced="${FORCED_TARGET}"
+          if [[ -n "${forced}" && "${forced}" != "${{ matrix.target }}" ]]; then
+            echo "skipping ${{ matrix.target }} (forced=${forced})"
+            echo "selected=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "selected=true" >> "${GITHUB_OUTPUT}"
+          fi
 
-      - name: Install pinned Rust nightly
-        run: rustup toolchain install "${RUST_NIGHTLY}" --profile minimal
+      - name: Checkout
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - name: Cache Rust fuzz builds
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            . -> target
-            fuzz -> fuzz/target
-          shared-key: fuzz-${{ runner.os }}-${{ env.RUST_NIGHTLY }}-${{ env.CARGO_FUZZ_VERSION }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.lock') }}
+      - name: Install nightly Rust toolchain
+        if: steps.select.outputs.selected == 'true'
+        run: |
+          set -euo pipefail
+          rustup toolchain install nightly --profile minimal --component rust-src
+          rustup default nightly
 
       - name: Install cargo-fuzz
+        if: steps.select.outputs.selected == 'true'
         run: |
-          installed_version="$(cargo fuzz --version 2>/dev/null | awk '{print $2}' || true)"
-          if [ "${installed_version}" != "${CARGO_FUZZ_VERSION}" ]; then
-            cargo install cargo-fuzz --locked --version "=${CARGO_FUZZ_VERSION}"
+          set -euo pipefail
+          cargo install cargo-fuzz --locked --version 0.13.1
+
+      - name: Confirm fuzz target binary exists
+        id: confirm
+        if: steps.select.outputs.selected == 'true'
+        run: |
+          set -euo pipefail
+          if grep -qE "^name = \"${{ matrix.target }}\"" fuzz/Cargo.toml; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "fuzz target ${{ matrix.target }} is missing from fuzz/Cargo.toml" >&2
+            exit 1
           fi
 
-      - name: Check fuzz lockfile
-        run: cargo +"${RUST_NIGHTLY}" metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1 > /dev/null
-
-      - name: Run scheduled fuzz target
+      - name: Build fuzz target with ASan
+        if: steps.select.outputs.selected == 'true' && steps.confirm.outputs.exists == 'true'
         env:
-          FUZZ_MAX_TOTAL_TIME: ${{ github.event.inputs.max_total_time }}
-          FUZZ_TARGET: ${{ matrix.fuzz_target }}
+          RUSTFLAGS: "-Z sanitizer=address"
         run: |
-          max_total_time="${FUZZ_MAX_TOTAL_TIME}"
-          if [ -z "${max_total_time}" ]; then
-            max_total_time=120
-          fi
-          case "${max_total_time}" in
-            *[!0-9]*)
-              echo "max_total_time must be an integer number of seconds"
-              exit 1
-              ;;
-          esac
-          mkdir -p "/tmp/chio-fuzz/${FUZZ_TARGET}"
+          set -euo pipefail
           cd fuzz
-          cargo +"${RUST_NIGHTLY}" fuzz run "${FUZZ_TARGET}" \
-            "/tmp/chio-fuzz/${FUZZ_TARGET}" \
-            "corpus/${FUZZ_TARGET}" \
-            -- -max_total_time="${max_total_time}"
+          cargo +nightly fuzz build --sanitizer address ${{ matrix.target }}
 
-      - name: Enforce fuzz lockfile stability
-        if: always()
-        run: git diff --exit-code -- fuzz/Cargo.lock
-
-      - name: Print repro command
-        if: failure()
-        env:
-          FUZZ_TARGET: ${{ matrix.fuzz_target }}
+      - name: Run fuzz target (ASan, max_total_time = ${{ env.CHIO_FUZZ_MAX_TOTAL_TIME }}s)
+        if: steps.select.outputs.selected == 'true' && steps.confirm.outputs.exists == 'true'
         run: |
-          echo "Download the fuzz-artifacts-${FUZZ_TARGET}-${{ github.sha }} artifact from this run."
-          echo "unzip fuzz-artifacts-${FUZZ_TARGET}-${{ github.sha }}.zip -d /tmp/chio-fuzz-artifacts"
-          echo "find /tmp/chio-fuzz-artifacts -type f -exec shasum -a 256 {} \\;"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz run ${FUZZ_TARGET} /tmp/chio-fuzz-artifacts/<artifact> -- -runs=1"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz tmin ${FUZZ_TARGET} /tmp/chio-fuzz-artifacts/<artifact>"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz cmin ${FUZZ_TARGET} corpus/${FUZZ_TARGET}"
-
-      - name: Upload fuzz artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fuzz-artifacts-${{ matrix.fuzz_target }}-${{ github.sha }}
-          path: fuzz/artifacts/${{ matrix.fuzz_target }}
-          if-no-files-found: ignore
-          retention-days: 30
-
-  manual-single-fuzz:
-    name: Manual single-target fuzz
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target != 'all'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pinned Rust nightly
-        run: rustup toolchain install "${RUST_NIGHTLY}" --profile minimal
-
-      - name: Cache Rust fuzz builds
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            . -> target
-            fuzz -> fuzz/target
-          shared-key: fuzz-${{ runner.os }}-${{ env.RUST_NIGHTLY }}-${{ env.CARGO_FUZZ_VERSION }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.lock') }}
-
-      - name: Install cargo-fuzz
-        run: |
-          installed_version="$(cargo fuzz --version 2>/dev/null | awk '{print $2}' || true)"
-          if [ "${installed_version}" != "${CARGO_FUZZ_VERSION}" ]; then
-            cargo install cargo-fuzz --locked --version "=${CARGO_FUZZ_VERSION}"
-          fi
-
-      - name: Check fuzz lockfile
-        run: cargo +"${RUST_NIGHTLY}" metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1 > /dev/null
-
-      - name: Run manual fuzz target
-        env:
-          FUZZ_MAX_TOTAL_TIME: ${{ github.event.inputs.max_total_time }}
-          FUZZ_TARGET: ${{ github.event.inputs.target }}
-        run: |
-          case "${FUZZ_TARGET}" in
-            fuzz_canonical_json|fuzz_policy_parse_compile|fuzz_sql_parser|fuzz_merkle_checkpoint|fuzz_capability_receipt|fuzz_manifest_roundtrip|fuzz_tool_action)
-              ;;
-            *)
-              echo "Unknown fuzz target: ${FUZZ_TARGET}"
-              exit 1
-              ;;
-          esac
-          case "${FUZZ_MAX_TOTAL_TIME}" in
-            ''|*[!0-9]*)
-              echo "max_total_time must be an integer number of seconds"
-              exit 1
-              ;;
-          esac
-          mkdir -p "/tmp/chio-fuzz/${FUZZ_TARGET}"
+          set -euo pipefail
           cd fuzz
-          cargo +"${RUST_NIGHTLY}" fuzz run "${FUZZ_TARGET}" \
-            "/tmp/chio-fuzz/${FUZZ_TARGET}" \
-            "corpus/${FUZZ_TARGET}" \
-            -- -max_total_time="${FUZZ_MAX_TOTAL_TIME}"
+          # libFuzzer flags:
+          #   -max_total_time : per-target wall-time budget
+          #   -timeout=25     : per-input timeout (matches PR #13 profile)
+          #   -rss_limit_mb=2048 : per-target RSS ceiling
+          # The corpus dir under fuzz/corpus/<target>/ seeds the run; if
+          # the dir is empty libFuzzer starts from scratch.
+          cargo +nightly fuzz run \
+            --sanitizer address \
+            ${{ matrix.target }} \
+            -- \
+            -max_total_time=${{ env.CHIO_FUZZ_MAX_TOTAL_TIME }} \
+            -timeout=25 \
+            -rss_limit_mb=2048
 
-      - name: Enforce fuzz lockfile stability
-        if: always()
-        run: git diff --exit-code -- fuzz/Cargo.lock
-
-      - name: Print repro command
-        if: failure()
-        env:
-          FUZZ_TARGET: ${{ github.event.inputs.target }}
-        run: |
-          echo "Download the fuzz-artifacts-manual-${{ github.sha }} artifact from this run."
-          echo "unzip fuzz-artifacts-manual-${{ github.sha }}.zip -d /tmp/chio-fuzz-artifacts"
-          echo "find /tmp/chio-fuzz-artifacts -type f -exec shasum -a 256 {} \\;"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz run ${FUZZ_TARGET} /tmp/chio-fuzz-artifacts/${FUZZ_TARGET}/<artifact> -- -runs=1"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz tmin ${FUZZ_TARGET} /tmp/chio-fuzz-artifacts/${FUZZ_TARGET}/<artifact>"
-          echo "cd fuzz && cargo +${RUST_NIGHTLY} fuzz cmin ${FUZZ_TARGET} corpus/${FUZZ_TARGET}"
-
-      - name: Upload fuzz artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Upload crash artifacts
+        if: failure() && steps.select.outputs.selected == 'true' && steps.confirm.outputs.exists == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: fuzz-artifacts-manual-${{ github.sha }}
-          path: fuzz/artifacts
+          name: fuzz-crash-${{ matrix.target }}-${{ github.run_id }}
+          path: |
+            fuzz/artifacts/${{ matrix.target }}/
+            fuzz/corpus/${{ matrix.target }}/
           if-no-files-found: ignore
           retention-days: 30

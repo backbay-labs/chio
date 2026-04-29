@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "tampered_signature",
+  "expected_verdict": "deny",
+  "family": "tampered_signature",
+  "fixed_nonce_seed_index": 46,
+  "intent": "Deny because the signature byte string is shorter than the expected 64-byte Ed25519 length, exercising structural signature-length validation.",
+  "name": "tampered_signature/03_truncated_sig",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "signature-tampering", "truncated"]
+}

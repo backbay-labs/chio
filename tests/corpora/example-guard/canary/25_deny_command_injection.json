@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "build_command",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 25,
+      "verdict": "deny",
+      "reason": "command injection pattern denied"
+    },
+    "scopes": [
+      "example-server:build_command"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"command injection pattern denied\"}"
+}

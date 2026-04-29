@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "preview_patch",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 10,
+      "verdict": "allow",
+      "op": "test"
+    },
+    "scopes": [
+      "example-server:preview_patch"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

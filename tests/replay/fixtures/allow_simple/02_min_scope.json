@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_simple",
+  "fixed_nonce_seed_index": 1,
+  "intent": "Allow path with the minimal possible capability scope (single resource, single action) to exercise the narrow-scope decision branch.",
+  "name": "allow_simple/02_min_scope",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "scope-minimal"]
+}

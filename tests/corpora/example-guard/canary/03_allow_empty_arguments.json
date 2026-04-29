@@ -1,0 +1,15 @@
+{
+  "request": {
+    "tool_name": "ping",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 3,
+      "verdict": "allow"
+    },
+    "scopes": [
+      "example-server:ping"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

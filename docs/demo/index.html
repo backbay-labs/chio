@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chio Browser SDK demo (engineering output)</title>
+    <meta
+      name="description"
+      content="Engineering demo: verifies an M04 receipt fixture in the browser via @chio-protocol/browser."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!--
+      Banner contract: see .planning/trajectory/08-browser-edge-sdk.md, "Demo
+      path lock". Text and DOM shape are normative; do not paraphrase. Playwright
+      asserts the banner is visible above the fold on a 1080p viewport.
+    -->
+    <div role="note" class="engineering-output-banner" data-testid="engineering-output-banner">
+      This page is engineering output, not a release. It demonstrates the
+      @chio-protocol/browser verify path against a fixture from the M04 replay
+      corpus. It is not a substitute for an audited release of the SDK.
+    </div>
+
+    <main class="demo">
+      <header>
+        <h1>Chio receipt verify (browser)</h1>
+        <p class="subtitle">
+          Loads a public-key-only signed receipt from
+          <code>tests/bindings/vectors/receipt/v1.json</code> and verifies it
+          against the embedded kernel key. Verify runs entirely in this tab;
+          no server round trip.
+        </p>
+      </header>
+
+      <section class="result" aria-label="Verify result">
+        <dl>
+          <dt>Fixture</dt>
+          <dd id="fixture-id" data-testid="fixture-id">(loading)</dd>
+
+          <dt>Verdict</dt>
+          <dd id="verdict" data-testid="verdict">(pending)</dd>
+
+          <dt>Signature valid</dt>
+          <dd id="signature-valid" data-testid="signature-valid">(pending)</dd>
+
+          <dt>Signer key (hex)</dt>
+          <dd id="signer-key" data-testid="signer-key" class="mono">(pending)</dd>
+
+          <dt>Elapsed</dt>
+          <dd id="elapsed" data-testid="elapsed">(pending)</dd>
+        </dl>
+
+        <pre id="raw-result" data-testid="raw-result" class="mono raw">(pending)</pre>
+      </section>
+
+      <footer>
+        <p class="footnote">
+          Source:
+          <a href="https://github.com/bb-connor/arc/tree/main/docs/demo">docs/demo/</a>.
+          Wasm artifact: <code>@chio-protocol/browser</code> (M08 Phase 1).
+        </p>
+      </footer>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

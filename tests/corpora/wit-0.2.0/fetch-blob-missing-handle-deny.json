@@ -1,0 +1,32 @@
+{
+  "schema": "chio.guard.wit.fixture.v1",
+  "id": "fetch_blob_missing_handle_deny",
+  "title": "host.fetch-blob fails closed for a missing handle",
+  "description": "Fail-closed fixture for an absent blob handle in the host blob store.",
+  "witWorld": "chio:guard/guard@0.2.0",
+  "imports": [
+    "host.fetch-blob"
+  ],
+  "blobStore": {
+    "handles": [
+      {
+        "handle": 7,
+        "bytes": [
+          111,
+          107
+        ]
+      }
+    ],
+    "bundles": []
+  },
+  "input": {
+    "operation": "host.fetch-blob",
+    "handle": 99,
+    "offset": 0,
+    "len": 1
+  },
+  "expected": {
+    "status": "deny",
+    "errorKind": "missing-blob"
+  }
+}

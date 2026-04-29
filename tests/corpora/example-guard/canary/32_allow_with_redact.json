@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "finalize_redaction",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 32,
+      "verdict": "allow",
+      "event": "redact"
+    },
+    "scopes": [
+      "example-server:finalize_redaction"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

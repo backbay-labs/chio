@@ -17,33 +17,34 @@ use chio_kernel::{
     ReceiptStoreError, ToolCallOutput, ToolCallRequest, ToolServerConnection, Verdict,
 };
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 struct InMemoryReceiptStore {
-    snapshots: HashMap<String, CapabilitySnapshot>,
+    snapshots: Mutex<HashMap<String, CapabilitySnapshot>>,
 }
 
 impl InMemoryReceiptStore {
     fn new() -> Self {
         Self {
-            snapshots: HashMap::new(),
+            snapshots: Mutex::new(HashMap::new()),
         }
     }
 }
 
 impl ReceiptStore for InMemoryReceiptStore {
-    fn append_chio_receipt(&mut self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         Ok(())
     }
 
     fn append_child_receipt(
-        &mut self,
+        &self,
         _receipt: &ChildRequestReceipt,
     ) -> Result<(), ReceiptStoreError> {
         Ok(())
     }
 
     fn record_capability_snapshot(
-        &mut self,
+        &self,
         token: &CapabilityToken,
         parent_capability_id: Option<&str>,
     ) -> Result<(), ReceiptStoreError> {
@@ -58,6 +59,8 @@ impl ReceiptStore for InMemoryReceiptStore {
             parent_capability_id: parent_capability_id.map(ToOwned::to_owned),
         };
         self.snapshots
+            .lock()
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?
             .insert(snapshot.capability_id.clone(), snapshot);
         Ok(())
     }
@@ -66,7 +69,12 @@ impl ReceiptStore for InMemoryReceiptStore {
         &self,
         capability_id: &str,
     ) -> Result<Option<CapabilitySnapshot>, ReceiptStoreError> {
-        Ok(self.snapshots.get(capability_id).cloned())
+        Ok(self
+            .snapshots
+            .lock()
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?
+            .get(capability_id)
+            .cloned())
     }
 }
 

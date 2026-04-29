@@ -1,0 +1,35 @@
+# Wave-opener Cargo.lock bump for M02 (last in the wave-opener chain).
+# Order: M09 -> M03 -> M01 -> M02 per EXECUTION-BOARD.md section 2.
+# Lands before M02 P1 fuzz-target additions so cargo-fuzz harness deps
+# baseline against a fresh resolver run.
+#
+# Wave-1b execution gate: M02 P0 may not enter in_progress until PR #13
+# merges (decisions.yml + EXECUTION-BOARD section 1 row 11). The ticket
+# is authored in Wave 0 alongside the other three lock-bumps but its
+# orchestrator-side scheduling is deferred.
+
+- id: M02.P0.T1
+  milestone: M02
+  phase: 0
+  title: "Wave-opener: refresh Cargo.lock for M02 fuzzing-expansion phase"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "Cargo.lock"
+    - "Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - M01.P0.T1
+  soft_deps:
+    - "Last in the Wave-1 lock-bump chain. Scheduling gated on PR #13 merge per EXECUTION-BOARD.md section 1 row 11."
+  gate_check:
+    cmd: "cargo update --workspace --quiet && cargo metadata --locked --no-deps --format-version 1 >/dev/null && cargo build --workspace --quiet"
+  worktree_branch: "wave/W1/m02/p0.t1-wave-opener-lock-bump"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

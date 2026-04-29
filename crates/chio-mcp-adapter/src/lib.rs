@@ -36,6 +36,15 @@ pub mod edge {
 pub mod native;
 pub mod transport;
 
+/// libFuzzer entry-point module for `chio-mcp-adapter`.
+///
+/// Gated behind the `fuzz` Cargo feature so it only compiles into the
+/// standalone `chio-fuzz` workspace at `../../fuzz`. Production builds never
+/// pull in `arbitrary`, never expose these symbols, and never get recompiled
+/// with libFuzzer instrumentation.
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
+
 pub use chio_mcp_edge::{
     AdapterError, ChioMcpEdge, McpEdgeConfig, McpExposedTool, McpServerCapabilities, McpToolInfo,
     McpToolResult, McpTransport,
@@ -252,6 +261,7 @@ impl McpAdapter {
             description: Some("MCP server adapted to Chio protocol".into()),
             version: self.config.server_version.clone(),
             tools,
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: self.config.public_key.clone(),
         };

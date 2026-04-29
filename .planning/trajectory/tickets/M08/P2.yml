@@ -1,0 +1,197 @@
+# M08 Phase 2 - Edge runtime targets (@chio-protocol/{workers,edge,deno}).
+# Source of truth: .planning/trajectory/08-browser-edge-sdk.md
+# (Phase 2, lines 76-101). Seven atomic tasks map 1:1 to T1-T7 in doc order.
+# Wave 3 ticket (per EXECUTION-BOARD section 2): all branches under wave/W3/m08/.
+# M08 ships at the close of Phase 2; P3 is a decision-only ticket.
+# Round-2 additions for `engines`/`exports` per package are folded into the
+# package-scaffolding tickets (T2, T3, T4) via owner_glob.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M08.P2.T1
+  milestone: M08
+  phase: 2
+  title: Extend build-wasm.sh to emit web, bundler, and nodejs targets per-package
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - sdks/typescript/scripts/build-wasm.sh
+  shared_paths: []
+  depends_on:
+    - M08.P1.T5
+  soft_deps: []
+  gate_check:
+    cmd: bash -n sdks/typescript/scripts/build-wasm.sh && bash sdks/typescript/scripts/build-wasm.sh --all-targets
+    timeout_seconds: 1800
+  worktree_branch: wave/W3/m08/p2.t1-build-wasm-multi-target
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P2.T2
+  milestone: M08
+  phase: 2
+  title: Scaffold @chio-protocol/workers with bundler wasm import (no nodejs_compat)
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - sdks/typescript/packages/workers/package.json
+    - sdks/typescript/packages/workers/tsconfig.json
+    - sdks/typescript/packages/workers/src/index.ts
+    - sdks/typescript/packages/workers/wrangler.toml
+    - sdks/typescript/package.json
+  shared_paths:
+    - sdks/typescript/package.json
+  depends_on:
+    - M08.P2.T1
+  soft_deps: []
+  gate_check:
+    cmd: bun install --frozen-lockfile && bun run --filter @chio-protocol/workers build && bun run --filter @chio-protocol/workers test:miniflare
+    timeout_seconds: 1800
+  worktree_branch: wave/W3/m08/p2.t2-workers-package-scaffold
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P2.T3
+  milestone: M08
+  phase: 2
+  title: Scaffold @chio-protocol/edge with runtime=edge config and wasm-pack web artifact
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - sdks/typescript/packages/edge/package.json
+    - sdks/typescript/packages/edge/tsconfig.json
+    - sdks/typescript/packages/edge/src/index.ts
+    - sdks/typescript/package.json
+  shared_paths:
+    - sdks/typescript/package.json
+  depends_on:
+    - M08.P2.T1
+  soft_deps: []
+  gate_check:
+    cmd: bun install --frozen-lockfile && bun run --filter @chio-protocol/edge build && bun run --filter @chio-protocol/edge test:vercel-edge-sim
+    timeout_seconds: 1800
+  worktree_branch: wave/W3/m08/p2.t3-edge-package-scaffold
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P2.T4
+  milestone: M08
+  phase: 2
+  title: Scaffold @chio-protocol/deno with import.meta.url-resolved wasm
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - sdks/typescript/packages/deno/package.json
+    - sdks/typescript/packages/deno/deno.json
+    - sdks/typescript/packages/deno/src/index.ts
+    - sdks/typescript/package.json
+  shared_paths:
+    - sdks/typescript/package.json
+  depends_on:
+    - M08.P2.T1
+  soft_deps: []
+  gate_check:
+    cmd: deno test sdks/typescript/packages/deno/
+    timeout_seconds: 1800
+  worktree_branch: wave/W3/m08/p2.t4-deno-package-scaffold
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P2.T5
+  milestone: M08
+  phase: 2
+  title: Land conformance browser-subset.ts enumerating BROWSER_SUBSET_V1 vector selector
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - sdks/typescript/packages/conformance/src/browser-subset.ts
+    - sdks/typescript/packages/conformance/src/index.ts
+  shared_paths: []
+  depends_on:
+    - M08.P1.T3
+  soft_deps:
+    - "M01 conformance manifest references this subset selector; coordinated v2 bump requires both milestones."
+  gate_check:
+    cmd: bun run --filter @chio-protocol/conformance build && bun run --filter @chio-protocol/conformance test
+  worktree_branch: wave/W3/m08/p2.t5-conformance-browser-subset
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P2.T6
+  milestone: M08
+  phase: 2
+  title: Wire web-sdk.yml GHA matrix invoking conformance subset on browser, workers, edge, deno
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - .github/workflows/web-sdk.yml
+  shared_paths:
+    - .github/workflows/web-sdk.yml
+  depends_on:
+    - M08.P2.T2
+    - M08.P2.T3
+    - M08.P2.T4
+    - M08.P2.T5
+  soft_deps: []
+  gate_check:
+    cmd: actionlint .github/workflows/web-sdk.yml
+  worktree_branch: wave/W3/m08/p2.t6-web-sdk-ci-matrix
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P2.T7
+  milestone: M08
+  phase: 2
+  title: Land browser_canonical_json_diff differential test (oracle vs wasm byte-equality)
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - formal/diff-tests/tests/browser_canonical_json_diff.rs
+    - formal/diff-tests/Cargo.toml
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M08.P2.T1
+    - M08.P2.T5
+  soft_deps:
+    - "Gated on M01 Phase 2 vector corpus freeze; consumes tests/bindings/vectors/canonical/v1.json directly."
+  gate_check:
+    cmd: cargo test -p chio-formal-diff-tests --test browser_canonical_json_diff
+    timeout_seconds: 1800
+  worktree_branch: wave/W3/m08/p2.t7-canonical-json-diff
+  agent_role: formal-kani
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

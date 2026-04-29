@@ -1,0 +1,170 @@
+# cargo-mutants workspace config
+#
+# Decision 12: cargo-mutants pinned at 25.x; do not float.
+#
+# THIS IS THE ONLY mutants.toml CARGO-MUTANTS LOADS.
+# cargo-mutants 25.x reads its configuration exclusively from the workspace-root
+# `.cargo/mutants.toml`. It does NOT auto-discover per-crate `crates/<name>/mutants.toml`
+# files, and even if those were loaded via `--config`, glob entries containing
+# path separators are matched relative to the source-tree root rather than the
+# per-crate root. Per-crate scoping must therefore be expressed here as globs
+# rooted at the workspace (e.g. `crates/chio-kernel-core/src/evaluate.rs`).
+#
+# Additional cargo-mutants discovery rule that constrains this config:
+#   cargo-mutants discovers source files by walking `mod` declarations.
+#   Files pulled in via `include!` are NOT separate source files for the
+#   purposes of glob matching - they become part of the `mod` that included
+#   them. Two crates in this workspace use `include!`:
+#     * chio-credentials/src/lib.rs   `include!`s 13 files (artifact, passport,
+#       cross_issuer, portable_sd_jwt, portable_jwt_vc, challenge, registry,
+#       presentation, policy, oid4vci, oid4vp, discovery, portable_reputation).
+#       Only `trust_tier.rs` is exposed as a real `mod`.
+#     * chio-policy/src/evaluate.rs   `include!`s {context,engine,matchers,
+#       outcomes,tests}.rs from `evaluate/`.
+#   Globs targeting those `include!`d filenames would never match. The lane
+#   therefore mutates the umbrella file (`lib.rs` for credentials,
+#   `evaluate.rs` for policy) which carries all of the included source
+#   for cargo-mutants discovery purposes.
+#
+# CI lane: .github/workflows/mutants.yml
+#   - mutants-pr      : runs `cargo mutants --in-diff <diff-file>` on PRs
+#   - mutants-nightly : full sweep on a 4-hour-per-crate budget
+#
+# Local-dev usage:
+#   cargo install cargo-mutants --version '~25' --locked
+#   git diff origin/main...HEAD > /tmp/diff.patch
+#   cargo mutants --in-diff /tmp/diff.patch
+#
+# Catch-ratio target per crate: >= 80%.
+# Advisory for one release cycle, then blocking (see releases.toml).
+
+# Run the workspace test suite per mutant, but exclude the C++ FFI crate.
+# That crate ships through a separate vcpkg/conan release lane and is not
+# built or tested by the default `cargo test --workspace` invocation in
+# the mutation-testing workflow.
+additional_cargo_test_args = ["--workspace", "--exclude", "chio-cpp-kernel-ffi"]
+
+# cargo-mutants reruns the full test suite once per generated mutant.
+# A 3x multiplier on the baseline test wall-clock is the documented guard
+# against slow-test flakes masquerading as surviving mutants. Tuned per
+# the "Mutation-testing CI shape" section of the source doc.
+timeout_multiplier = 3.0
+
+# Floor on per-mutant test timeout in seconds. Prevents the multiplier
+# from collapsing to a sub-second value on very fast suites and giving
+# false "TIMEOUT" verdicts on cold caches.
+minimum_test_timeout = 60
+
+# Trust-boundary modules to mutate, by crate. Globs are workspace-rooted.
+#
+# Scope priority (from source doc Phase 3 deliverable):
+#   1. chio-kernel-core (capability validation, guard pipeline, receipts)
+#   2. chio-policy      (HushSpec parse/compile, evaluator)
+#   3. chio-guards      (native guard set including ShellCommandGuard)
+#   4. chio-credentials (JWT VC verify, OID4VP, SD-JWT)
+#
+# chio-kernel-core: real `mod` declarations exist for every entry below,
+# so per-file scoping is precise.
+#
+# chio-policy: `evaluate.rs` is the umbrella that `include!`s the
+# context/engine/matchers/outcomes/tests sub-files; mutating it is
+# equivalent to mutating the whole evaluator state machine. The other
+# entries (`compiler.rs` etc.) are real `mod`s.
+#
+# chio-guards: every entry below is a real `mod` (some `pub mod`, some
+# `mod`); the boundary-enforcing guards are the priority and advisory
+# guards / pure helpers / external bridges are deliberately omitted.
+#
+# chio-credentials: only `lib.rs` and `trust_tier.rs` are real Rust files
+# the mutator can target. The other 13 trust-boundary files are pulled
+# into `lib.rs` via `include!`, so mutating `lib.rs` is the correct way
+# to exercise them. `fuzz.rs` is a real `mod` but is gated on a `cfg`
+# feature and is excluded below.
+examine_globs = [
+    # chio-kernel-core - pure-compute verdict path.
+    "crates/chio-kernel-core/src/evaluate.rs",
+    "crates/chio-kernel-core/src/capability_verify.rs",
+    "crates/chio-kernel-core/src/scope.rs",
+    "crates/chio-kernel-core/src/receipts.rs",
+    "crates/chio-kernel-core/src/passport_verify.rs",
+    "crates/chio-kernel-core/src/guard.rs",
+    "crates/chio-kernel-core/src/normalized.rs",
+
+    # chio-policy - evaluator + compiler + validators.
+    "crates/chio-policy/src/evaluate.rs",
+    "crates/chio-policy/src/compiler.rs",
+    "crates/chio-policy/src/conditions.rs",
+    "crates/chio-policy/src/detection.rs",
+    "crates/chio-policy/src/merge.rs",
+    "crates/chio-policy/src/resolve.rs",
+    "crates/chio-policy/src/validate.rs",
+    "crates/chio-policy/src/regex_safety.rs",
+    "crates/chio-policy/src/receipt.rs",
+
+    # chio-guards - boundary-enforcing native guard set.
+    "crates/chio-guards/src/pipeline.rs",
+    "crates/chio-guards/src/shell_command.rs",
+    "crates/chio-guards/src/forbidden_path.rs",
+    "crates/chio-guards/src/path_allowlist.rs",
+    "crates/chio-guards/src/path_normalization.rs",
+    "crates/chio-guards/src/egress_allowlist.rs",
+    "crates/chio-guards/src/internal_network.rs",
+    "crates/chio-guards/src/secret_leak.rs",
+    "crates/chio-guards/src/patch_integrity.rs",
+    "crates/chio-guards/src/mcp_tool.rs",
+    "crates/chio-guards/src/prompt_injection.rs",
+    "crates/chio-guards/src/jailbreak.rs",
+    "crates/chio-guards/src/jailbreak_detector.rs",
+    "crates/chio-guards/src/input_injection.rs",
+    "crates/chio-guards/src/response_sanitization.rs",
+    "crates/chio-guards/src/data_flow.rs",
+    "crates/chio-guards/src/behavioral_sequence.rs",
+    "crates/chio-guards/src/behavioral_profile.rs",
+    "crates/chio-guards/src/agent_velocity.rs",
+    "crates/chio-guards/src/velocity.rs",
+    "crates/chio-guards/src/code_execution.rs",
+    "crates/chio-guards/src/browser_automation.rs",
+    "crates/chio-guards/src/computer_use.rs",
+    "crates/chio-guards/src/remote_desktop.rs",
+    "crates/chio-guards/src/content_review.rs",
+    "crates/chio-guards/src/memory_governance.rs",
+    "crates/chio-guards/src/post_invocation.rs",
+
+    # chio-credentials - lib.rs is the only entry that survives cargo-mutants
+    # discovery; the other 13 trust-boundary files are `include!`d into it
+    # (see header). trust_tier.rs is a real `mod`.
+    "crates/chio-credentials/src/lib.rs",
+    "crates/chio-credentials/src/trust_tier.rs",
+]
+
+# Workspace-wide skip list. Pure plumbing, generated code, test/bench
+# scaffolding, formal-methods harnesses (Aeneas / Kani), platform clock /
+# rng adapters, and libFuzzer entry points.
+exclude_globs = [
+    "**/tests.rs",
+    "**/test_*.rs",
+    "**/*_test.rs",
+    "**/tests/**",
+    "**/benches/**",
+    "**/build.rs",
+    "**/fuzz.rs",
+    # chio-kernel-core: platform adapters + formal-methods scaffolding.
+    "crates/chio-kernel-core/src/clock.rs",
+    "crates/chio-kernel-core/src/rng.rs",
+    "crates/chio-kernel-core/src/formal_aeneas.rs",
+    "crates/chio-kernel-core/src/formal_core.rs",
+    "crates/chio-kernel-core/src/kani_harnesses.rs",
+    "crates/chio-kernel-core/src/kani_public_harnesses.rs",
+    # chio-policy: pure data + version constants + embedded YAML rulesets.
+    "crates/chio-policy/src/models.rs",
+    "crates/chio-policy/src/version.rs",
+    "crates/chio-policy/src/rulesets/**",
+    # chio-guards: pure types, pure helpers, advisory-by-design guards,
+    # and the external/ adapter tree (remote-process bridges, integration-
+    # tested rather than mutation-tested).
+    "crates/chio-guards/src/action.rs",
+    "crates/chio-guards/src/text_utils.rs",
+    "crates/chio-guards/src/advisory.rs",
+    "crates/chio-guards/src/spider_sense.rs",
+    "crates/chio-guards/src/external/**",
+]

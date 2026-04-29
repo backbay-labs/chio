@@ -18,6 +18,62 @@
       "input_json": "{\"z\":2,\"a\":2}",
       "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
       "signature_hex": "0b656434a9cf4f1d2f5cd0a2e008d69789251ecde8373781ee24d22f36abe53abf9fd51ee04df5c090143a5d49e14324a2d52f628472f02719bd405d2567590e"
+    },
+    {
+      "canonical_json": "{}",
+      "description": "An empty JSON object canonicalizes to {} and signs deterministically.",
+      "expected_verify": true,
+      "id": "empty_object_canonical_json",
+      "input_json": "{}",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "dd6d1bf3737042f2092518381a625ea4a1b99092a5e3bc26cf49995c66b8ddaac34765c282162424785f1d7fc93f2f596520de4e2a5ad52e606195ab0458af05"
+    },
+    {
+      "canonical_json": "[]",
+      "description": "An empty JSON array canonicalizes to [] and signs deterministically.",
+      "expected_verify": true,
+      "id": "empty_array_canonical_json",
+      "input_json": "[]",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "efbda3c607dd71f842cbc32e831c76e60914f893cfcb6745cefff006892f1c2f3ef348db46644686d6d70c53d02da131da6ed09a5df0aae07eeff62fb061cb0b"
+    },
+    {
+      "canonical_json": "{\"alpha\":[3,2,1],\"outer\":{\"a\":2,\"z\":1}}",
+      "description": "A nested object canonicalizes its inner keys before signing.",
+      "expected_verify": true,
+      "id": "nested_object_canonical_json",
+      "input_json": "{\"outer\":{\"z\":1,\"a\":2},\"alpha\":[3,2,1]}",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "9df50d16ede380b19dd1a404cb23a16aef1783afe32660a54fd9eb2a0b52191096dbb499a3385f312a3f34de0885c89a7f95c70e074e8215de1dee077ccc9003"
+    },
+    {
+      "canonical_json": "{\"a\":\"latin\",\"中\":\"zh\"}",
+      "description": "Unicode keys are sorted by their UTF-16 code-unit ordering before signing.",
+      "expected_verify": true,
+      "id": "unicode_keys_canonical_json",
+      "input_json": "{\"中\":\"zh\",\"a\":\"latin\"}",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "96b7e758eebf3f6b5c99e32cee7795121c12b22e8bea24e62ac7090f96ff2c297e6d3747b517e16254881c51573a2afe9fde37ad039ff28b07387a96ee920006"
+    },
+    {
+      "canonical_json": "{\"k\":\"v\"}",
+      "description": "A canonical-JSON message signed under a second seed produces a distinct public key.",
+      "expected_verify": true,
+      "id": "alt_seed_canonical_json",
+      "input_json": "{\"k\":\"v\"}",
+      "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "signature_hex": "7713ff7d9387e99a931bc5c753c5bc27cbf54d59a2b27b1e5d03b198f5018cabed0c276cf0b4d665837bba1da5af0c8d74d0a0317f89acb3b34d6f4a62d5ac01",
+      "signing_key_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "canonical_json": "{\"k\":\"v\"}",
+      "description": "A third seed (alternating a5/5a) signs the same payload to yet another key.",
+      "expected_verify": true,
+      "id": "alt_seed_canonical_json_pattern_a55a",
+      "input_json": "{\"k\":\"v\"}",
+      "public_key_hex": "b1daad377fddd4028bb5c780809fd40141ad0e6dae1d2c5427b5540aa7ce65b9",
+      "signature_hex": "36ced170461a180044a21aafb575806e668296440b8f03e1b6067be4a9b65b5038451b2d559a3879c589a812fe8be95c6239038e9444f13ef7d97a20e9689a09",
+      "signing_key_seed_hex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a55a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
     }
   ],
   "signing_key_seed_hex": "0909090909090909090909090909090909090909090909090909090909090909",
@@ -37,6 +93,106 @@
       "input_utf8": "hello chio!",
       "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
       "signature_hex": "4b134ccad3c684ef462bf085ea2e87c416557980e01da869703d18016f3811a0f0310f38075e2019480f8c1abc06c7d823ef1776eb95687785e5eacdbe57250c"
+    },
+    {
+      "description": "An empty UTF-8 payload still produces a deterministic Ed25519 signature.",
+      "expected_verify": true,
+      "id": "empty_utf8_payload",
+      "input_utf8": "",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "bf1ed642eeec1f68440bfb5dfeb2666d94aef7f9dfa9018fcc47a5083952fbefe5d17b21cf908129f7f7cb979e1b83c0153de4f591e5897cb42c9163e6771c0e"
+    },
+    {
+      "description": "A single-byte ASCII payload signs and verifies.",
+      "expected_verify": true,
+      "id": "single_byte_utf8_payload",
+      "input_utf8": "x",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "b841ee7c3ce35338739a44807432bdaeabef318e669bcf798582d2fd49fcc5ed1968b16b59d756d5fda9cf532c578d8c2ae0bf2d682af9b4924d6882d8599800"
+    },
+    {
+      "description": "A multi-byte Unicode payload signs and verifies over its UTF-8 byte form.",
+      "expected_verify": true,
+      "id": "unicode_utf8_payload",
+      "input_utf8": "chio 🔐 中文",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "f9847fc0648ea02112baaf9997ba52d663cd6e97180d670149e3cc60d6fc91d60cc3f9356f5a7360e7abffe532fd6099f8df7831195df003a6dc63ba144eac00"
+    },
+    {
+      "description": "A 64-byte payload exercises the SHA-512 block boundary inside Ed25519.",
+      "expected_verify": true,
+      "id": "utf8_payload_at_64_byte_block_boundary",
+      "input_utf8": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "c0d27a12930a292f8e593c4c8b763149f341fd4f1125c06e750fbf1188f4167580f9852e03cf9d21782cef17eb316f1fe5ba7bb7f6b56c3b2bbaf877a8bba104"
+    },
+    {
+      "description": "A 128-byte payload spans two SHA-512 blocks inside Ed25519.",
+      "expected_verify": true,
+      "id": "utf8_payload_at_128_byte_block_boundary",
+      "input_utf8": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "b4288afa9cec21dd7c9cca1916e4e054d970b2e0e848a62a0a24e1186978756cee9e327473b2bd4fd6ebc9365981aba2924060605e7b812121c01c80d2cebd06"
+    },
+    {
+      "description": "A 1 KiB UTF-8 payload signs and verifies; large messages stay deterministic.",
+      "expected_verify": true,
+      "id": "large_utf8_payload_1024_bytes",
+      "input_utf8": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "9784fe5cc97be2fda1165803bd0bf4a4a68352ce3585410c97cd67fe1cb374d1cec66bd113891671722f06f42ff82ec98f05e0dd9272e87c1abe6d297b6e2a0a"
+    },
+    {
+      "description": "An all-zero Ed25519 seed is a valid (though degenerate) key; signing stays deterministic.",
+      "expected_verify": true,
+      "id": "utf8_payload_with_all_zero_seed",
+      "input_utf8": "boundary seed payload",
+      "public_key_hex": "3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+      "signature_hex": "df27d17d385f442c57aa1a1a4e70bd24644274621c8b91d0c25713610c8e04e28a82011b8de359075f12f713c7b35e31951c15cb6509d6c38287c2e88b66070c",
+      "signing_key_seed_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "description": "An all-FF Ed25519 seed is also a valid scalar; the corpus pins its public key and signature.",
+      "expected_verify": true,
+      "id": "utf8_payload_with_all_ff_seed",
+      "input_utf8": "boundary seed payload",
+      "public_key_hex": "76a1592044a6e4f511265bca73a604d90b0529d1df602be30a19a9257660d1f5",
+      "signature_hex": "dd57f36e136be615f2c35781c688933992aadd9b7112c3b68eabd2a3366d1eac3bdc6562a3770e524b4e93a220bde332217f6dee8647e912adf8b219354ea90c",
+      "signing_key_seed_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "description": "A second deterministic seed (0x11..) ensures the corpus exercises more than one key.",
+      "expected_verify": true,
+      "id": "utf8_payload_with_alt_seed_pattern_11",
+      "input_utf8": "second key payload",
+      "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "signature_hex": "1bcb58e3fc54ac8a864fafcd9853b8aa665a6add96be7091fb8096d2155cfc219ae3b6f16bae776ca4702feafdb40577c5fa452e4aef6281f8f8c0d4d123350c",
+      "signing_key_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "description": "A 'deadbeefcafe' prefix seed signs the same payload to a distinct public key.",
+      "expected_verify": true,
+      "id": "utf8_payload_with_alt_seed_pattern_deadbeef",
+      "input_utf8": "second key payload",
+      "public_key_hex": "534fd15039009a338a7a4957fe8a10b04d1eec6678f92d4539a56c923ead6137",
+      "signature_hex": "7da05736eb5ff3ef933fd9e07cb11bf8e70707234ce44f77cde3f4ca853dd7313901c948366ed9f8f0297914db93a3a324a46b18fb4b2761d12dbae681d96904",
+      "signing_key_seed_hex": "deadbeefcafe0000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "description": "Flipping a single byte in the verifier payload causes signature rejection.",
+      "expected_verify": false,
+      "id": "utf8_payload_tampered_off_by_one_byte",
+      "input_utf8": "Off-by-one",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "9191249430d8b04fd811623444f9477266c497bd34d49a9c1f713cb37a04af46dc5d6dc0f3ee3efed9a17824809383da4e4b423805d198c70ee14f99163d6a09"
+    },
+    {
+      "description": "A payload containing newline and NUL bytes signs and verifies.",
+      "expected_verify": true,
+      "id": "utf8_payload_with_newline_and_null",
+      "input_utf8": "line one\nline two\u0000tail",
+      "public_key_hex": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+      "signature_hex": "4148c7e5f00c1c092cc8ae8ec017f39745e6abd4bca1f219ed0d94cb051c276c7b31b9106ad607c1dacf19e335ee07c0e69ae46ea28f685ad02b804cf7a7260b"
     }
   ],
   "version": 1

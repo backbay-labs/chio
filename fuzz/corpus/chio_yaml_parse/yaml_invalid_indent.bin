@@ -1,0 +1,7 @@
+kernel:
+  signing_key: "generate"
+   bad_indent: true
+adapters:
+- id: "petstore"
+   protocol: "openapi"
+  upstream: "http://localhost:8000"

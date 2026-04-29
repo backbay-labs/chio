@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "policy_context",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 9,
+      "verdict": "allow",
+      "context": "baseline"
+    },
+    "scopes": [
+      "example-server:policy_context"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

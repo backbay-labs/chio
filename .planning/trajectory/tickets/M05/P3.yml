@@ -1,0 +1,161 @@
+# M05 Phase 3 - Tower middleware and observability.
+# Source of truth: .planning/trajectory/05-async-kernel-real.md
+# (Phase 3, lines 401-411 + tower service shape lines 534-614 + Round-2
+# addendum NEW P3.T5 at lines 673-676).
+#
+# Milestone scope (from EXECUTION-BOARD.md sections 2 and 5): M05 lands in
+# Wave 2b on `wave/W2/m05/...` worktrees. P0 -> P1 -> P2 -> P3 -> P4 are
+# atomic and serial. P3 is the last phase under the freeze; the freeze
+# releases at the END of P3 (per freezes.yml id m05-kernel-async-pivot,
+# `ends_at_milestone: M05.P3`).
+#
+# Middleware composition (outer-to-inner) per the doc:
+#   TraceLayer -> TimeoutLayer -> ConcurrencyLimitLayer (per-tenant) ->
+#   LoadShedLayer -> AuthLayer -> KernelService.
+# AuthLayer is a precheck only (capability presence + signature shape);
+# the kernel remains the trust boundary for capability semantics. M03
+# properties guard the inner validation.
+#
+# Bench gate flips advisory -> required in P3.T4: PRs that regress any
+# tracked metric by more than 10% (lower bound of the 95% CI on the median
+# of 100 samples) fail on the reference 4-core Linux runner. Macos runs
+# are local-only.
+#
+# M05 is a TRUST-BOUNDARY milestone: the tower middleware now sits in
+# front of every kernel evaluation. Security x2 review applies to every
+# M05 PR (two independent LLM reviewer instances with different seeds and
+# no shared scratchpad), in addition to the human-side reviewer
+# @bb-connor.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M05.P3.T1
+  milestone: M05
+  phase: 3
+  title: Add KernelService tower::Service to chio-tower with TraceLayer + TimeoutLayer
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-tower/src/kernel_service.rs
+    - crates/chio-tower/src/lib.rs
+    - crates/chio-tower/Cargo.toml
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M05.P2.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-tower --quiet && cargo test -p chio-tower --quiet && cargo clippy -p chio-tower -- -D warnings
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p3.t1-kernel-service-skeleton-trace-timeout
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P3.T2
+  milestone: M05
+  phase: 3
+  title: Wire per-tenant ConcurrencyLimitLayer keyed by capability-derived tenant_id
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-tower/src/kernel_service.rs
+    - crates/chio-tower/src/auth.rs
+  shared_paths: []
+  depends_on:
+    - M05.P3.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-tower --test per_tenant_concurrency_limit
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m05/p3.t2-per-tenant-concurrency-limit
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P3.T3
+  milestone: M05
+  phase: 3
+  title: Wire LoadShedLayer to return Overloaded (HTTP 503 at edge) under saturation
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-tower/src/kernel_service.rs
+  shared_paths: []
+  depends_on:
+    - M05.P3.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-tower --test load_shed_overloaded
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m05/p3.t3-load-shed-overloaded
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P3.T4
+  milestone: M05
+  phase: 3
+  title: Flip kernel bench regression gate from advisory to required on PRs (>10% p99 fails)
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - .github/workflows/ci.yml
+    - .github/workflows/bench-regression.yml
+    - scripts/criterion-compare.sh
+  shared_paths:
+    - .github/workflows/ci.yml
+  depends_on:
+    - M05.P3.T3
+  soft_deps:
+    - M05.P0.T1
+  gate_check:
+    cmd: actionlint .github/workflows/ci.yml .github/workflows/bench-regression.yml || true; grep -q 'bench-regression' .github/workflows/ci.yml && grep -qE 'required|gate' .github/workflows/bench-regression.yml && bash scripts/criterion-compare.sh --dry-run
+    timeout_seconds: 300
+  worktree_branch: wave/W2/m05/p3.t4-bench-gate-required
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P3.T5
+  milestone: M05
+  phase: 3
+  title: Add tokio-console integration smoke test asserting no idle>1s starvation under dispatch_allow bench (NEW)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel/tests/tokio_console_smoke.rs
+    - crates/chio-kernel/Cargo.toml
+    - .github/workflows/ci.yml
+  shared_paths:
+    - .github/workflows/ci.yml
+  depends_on:
+    - M05.P3.T4
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --features tokio-console-smoke --test tokio_console_smoke
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p3.t5-tokio-console-smoke
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

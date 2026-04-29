@@ -20,10 +20,25 @@ assumptions = [
   "ASSUME-SHA256|audited_crypto|SHA-256 and Merkle hash collision resistance are assumed for concrete receipt and checkpoint evidence.|P4,P7",
   "ASSUME-CANONICAL-JSON|audited_serialization|RFC 8785 canonical JSON serialization is assumed to be deterministic and byte-stable for signed Chio payloads.|P4,P7,P10",
   "ASSUME-OS-CLOCK|audited_platform|The injected clock is assumed to report operator-accepted Unix time within the deployment tolerance.|P2,P3,P8",
-  "ASSUME-SQLITE-ATOMICITY|audited_storage|SQLite transactions are assumed to provide atomic committed updates for revocation, budget, receipt, and registry state.|P2,P4,P6,P7",
+  "ASSUME-SQLITE-ATOMICITY|audited_storage|SQLite transactions are assumed to provide atomic committed updates for revocation, budget, receipt, and registry state per single-row write. Cross-row atomicity is NOT assumed: see retired_assumptions RETIRED-SQLITE-CROSS-ROW for the discharge.|P2,P4,P6,P7",
   "ASSUME-TLS|audited_transport|TLS endpoint authentication and channel confidentiality are assumed for configured remote control and hosted HTTP surfaces.|P8,P9",
   "ASSUME-NETWORK-TRANSPORT|audited_transport|Network delivery is not assumed reliable, but authenticated messages received by Chio are assumed not to be silently rewritten below TLS or signature checks.|P8,P9",
   "ASSUME-EXTERNAL-REGISTRIES|audited_service|Hosted package, certification, DID, and registry services are assumed to return state they have durably accepted or else fail closed.|P9,P10",
   "ASSUME-SUBPROCESS-ISOLATION|audited_platform|Tool-server subprocess isolation and OS process boundaries are assumed for effects outside the pure kernel decision core.|P3,P6",
   "ASSUME-CHAIN-FINALITY|audited_external|External chain and oracle finality are assumed only after the configured confirmation/finality policy accepts the evidence.|P4,P7",
+]
+
+# Retired assumptions are prior audited assumptions that have been formally
+# discharged by a property in the proof-manifest. They are kept in this file
+# (rather than deleted) so that historical claims, MAPPING.md rows, and audit
+# trails remain resolvable. A retired assumption MUST NOT appear in
+# `required_assumption_ids` and MUST cite the discharging artifact in
+# `discharged_by`. New retirements land via a P3 ticket and are mirrored in
+# `formal/proof-manifest.toml` `discharged_assumptions`.
+retired_assumption_ids = [
+  "RETIRED-SQLITE-CROSS-ROW",
+]
+
+retired_assumptions = [
+  "RETIRED-SQLITE-CROSS-ROW|prior_audited_storage|Prior assumption: cross-row SQLite atomicity was assumed for the kernel audit-log append plus the budget-state update happening as a single atomic pair across the receipt-log row and the budget row. This is RETIRED. The kernel relies only on per single-row write atomicity (the surviving ASSUME-SQLITE-ATOMICITY scope) plus the conjunction of the MonotoneLog TLA invariant (formal/tla/RevocationPropagation.tla append-only, strictly-increasing receipt-log timestamps) and the per-row budget invariant enforced in crates/chio-kernel/src/budget_store.rs (the BudgetUsageRecord seq/total_cost monotone update). Together these discharge the cross-row guarantee: a partially-applied pair leaves either an unappended receipt (denied at evaluation) or an unupdated budget row (denied by the per-row invariant on the next read), so no allow can outrun its log entry.|MonotoneLog,budget_per_row_invariant|P2,P4,P6,P7",
 ]

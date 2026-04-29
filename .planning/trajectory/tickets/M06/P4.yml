@@ -1,0 +1,185 @@
+# M06 Phase 4 - Per-guard observability.
+# Source of truth: .planning/trajectory/06-wasm-guard-platform.md
+# (Phase 4, lines 312-358). Five atomic tasks plus one phase-boundary
+# end-to-end integration test (phase doc lines 380-383) map to P4.T1-P4.T6.
+# T6 is the e2e gate that MUST pass before M06 closes.
+#
+# Trust-boundary status: M06 is a TRUST-BOUNDARY milestone. Observability
+# surfaces (spans, metrics) are part of the audit story; cardinality caps
+# and label semantics are normative. Security x2 review applies on the
+# touched paths (EXECUTION-BOARD section 7).
+#
+# Dep gating:
+#   - P4 chains after P3 (atomic phase order).
+#   - chio-tower/src/host_call.rs is owned by M06 (EXECUTION-BOARD section
+#     ownership map line 374); kernel-rust agent_role applies on tickets
+#     touching it.
+#   - Prometheus exporter wires into chio-kernel's existing observability
+#     surface (P4.T4); phase doc line 337.
+#
+# Wave: all P4 tickets land in Wave 2b under wave/W2/m06/p4.* branches.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M06.P4.T1
+  milestone: M06
+  phase: 4
+  title: Emit five chio.guard.* spans with exact field sets
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-wasm-guards/src/runtime.rs"
+    - "crates/chio-wasm-guards/src/observability.rs"
+    - "crates/chio-wasm-guards/Cargo.toml"
+    - "crates/chio-wasm-guards/tests/spans_emitted.rs"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - M06.P3.T7
+  soft_deps:
+    - "Five span names are normative (consumers ingest by exact name match): chio.guard.evaluate (root), chio.guard.host_call, chio.guard.fetch_blob, chio.guard.reload, chio.guard.verify (phase doc lines 315-321)."
+    - "OpenTelemetry-compatible via tracing-opentelemetry feature."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test spans_emitted"
+  worktree_branch: "wave/W2/m06/p4.t1-five-span-tree"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P4.T2
+  milestone: M06
+  phase: 4
+  title: Register seven Prometheus metric families with locked names and buckets
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-wasm-guards/src/observability.rs"
+    - "crates/chio-wasm-guards/src/metrics.rs"
+    - "crates/chio-wasm-guards/tests/metrics_registration.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P4.T1
+  soft_deps:
+    - "Seven metric families with locked names, units in name per metrics-crate convention (phase doc lines 323-334): chio_guard_eval_duration_seconds, chio_guard_fuel_consumed_total, chio_guard_verdict_total, chio_guard_deny_total, chio_guard_reload_total, chio_guard_host_call_duration_seconds, chio_guard_module_bytes."
+    - "Label semantics are normative: guard_id is 12-char digest prefix; reason_class enum has exactly seven values (policy/pii/secret/prompt_injection/oversize/fuel/trap)."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test metrics_registration"
+  worktree_branch: "wave/W2/m06/p4.t2-seven-metric-families"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P4.T3
+  milestone: M06
+  phase: 4
+  title: Enforce 1024-guard cardinality cap on metrics registration
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "crates/chio-wasm-guards/src/metrics.rs"
+    - "crates/chio-wasm-guards/tests/cardinality_cap.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P4.T2
+  soft_deps:
+    - "Reject 1025th guard registration with structured error (phase doc line 337); 1024 * |verdict|=4 = 4096 active series for chio_guard_verdict_total stays under any reasonable Prom budget."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test cardinality_cap"
+  worktree_branch: "wave/W2/m06/p4.t3-cardinality-cap-1024"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P4.T4
+  milestone: M06
+  phase: 4
+  title: Expose guard metrics on /metrics endpoint via existing kernel exporter
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "crates/chio-kernel/src/observability/metrics.rs"
+    - "crates/chio-tower/src/host_call.rs"
+    - "crates/chio-kernel/tests/metrics_endpoint.rs"
+  shared_paths:
+    - "crates/chio-tower/src/host_call.rs"
+  depends_on:
+    - M06.P4.T3
+  soft_deps:
+    - "Wires the Prometheus exporter into chio-kernel's existing observability surface (phase doc line 337)."
+    - "chio-tower/src/host_call.rs is M06-owned per EXECUTION-BOARD ownership map line 374; the kernel-rust agent role applies because this ticket also touches chio-kernel."
+  gate_check:
+    cmd: "cargo test -p chio-kernel --test metrics_endpoint"
+  worktree_branch: "wave/W2/m06/p4.t4-kernel-metrics-endpoint-wiring"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P4.T5
+  milestone: M06
+  phase: 4
+  title: Grafana dashboard for guard platform with four-row layout
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "docs/guards/dashboards/guard-platform.json"
+    - "docs/guards/dashboards/README.md"
+  shared_paths: []
+  depends_on:
+    - M06.P4.T4
+  soft_deps:
+    - "Four rows: deny rate + p50/p99 eval latency; fuel heatmap + top-10 deny; reload outcomes timeline + host-call latency; verification mode breakdown + module size by epoch (phase doc lines 339-344)."
+  gate_check:
+    cmd: "test -f docs/guards/dashboards/guard-platform.json && python3 -c 'import json; json.load(open(\"docs/guards/dashboards/guard-platform.json\"))'"
+  worktree_branch: "wave/W2/m06/p4.t5-grafana-dashboard"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P4.T6
+  milestone: M06
+  phase: 4
+  title: End-to-end guard platform integration test (publish, pull, verify, swap, rollback, metrics)
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "tests/integration/guard_platform_e2e.rs"
+    - "Cargo.toml"
+  shared_paths:
+    - "Cargo.toml"
+  depends_on:
+    - M06.P4.T5
+  soft_deps:
+    - "Phase-boundary gate: MUST pass before M06 closes (phase doc lines 380-383)."
+    - "Single test exercises: build against chio:guard@0.2.0, chio guard publish to zot via testcontainers, pull through cache on second runtime, verify Ed25519 + Sigstore (Fulcio staging trust root), hot-swap under 100rps with 32 canary fixtures, fail a follow-up swap canary and assert rollback, then assert Prometheus exposes non-zero values for all seven metric families and receipts carry guard.epoch."
+    - "Pass criteria: zero dropped requests during swap, byte-identical verdicts on canary corpus, rolled-back epoch matches pre-swap epoch id, p99 latency < 50ms on CI hardware, fuel counter monotonic, receipts validate against existing schema."
+  gate_check:
+    cmd: "cargo test --test guard_platform_e2e -- --ignored"
+    timeout_seconds: 1800
+  worktree_branch: "wave/W2/m06/p4.t6-guard-platform-e2e"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

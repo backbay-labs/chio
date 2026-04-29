@@ -1,0 +1,1481 @@
+{
+  "schema_version": "1",
+  "started_at": "2026-04-25T23:20:18.372Z",
+  "last_checkpoint_at": "2026-04-27T02:30:00Z",
+  "current_wave": "2a+2b-partial (M01 P4+P5 + M04 P2+P3 closed; M04 P4+ pending; M05/M06/M07/M08/M10 not started)",
+  "halt": {
+    "halted": false,
+    "reason": null,
+    "trigger_event_id": null,
+    "halted_at": null
+  },
+  "milestones": {
+    "M01": {
+      "status": "MILESTONE COMPLETE (P0+P1+P2+P3+P4+P5 all merged)",
+      "phase": "complete",
+      "p0_status": "merged",
+      "p1_status": "all 9 merged",
+      "p2_status": "all 8 merged",
+      "p3_status": "T1-T5 merged + T6 verified-clean (M01.P3.T2 shim covers all 17 adapters; 511 pytest pass)",
+      "p4_status": "all 6 merged (T1 #118, T2 #122, T3 #131, T4 #127, T5 #130, T6 #124)",
+      "p5_status": "all 5 merged (T1 #125, T2 #137, T3 #132, T4 #134, T5 #136)"
+    },
+    "M02": {
+      "status": "P0+P1+P2+P4 COMPLETE (30/30 tickets merged); P3 (mutation gate flip blocking) is Wave 4 work, deferred",
+      "phase": "P4_complete",
+      "owner_branch": null,
+      "scheduled_in_wave": "1b+2a",
+      "p0_status": "merged (orchestrator-direct no-op cascade-gate baseline)",
+      "p1_status": "all 14 merged (T1.a #79, T1.b #83, T1.c #87, T2 #88, T3.a #89, T3.b #90, T3.c #91, T4.a #92, T4.b #93, T5.a #95, T5.b #96, T6 #98, T7 #99, T8 #101)",
+      "p2_status": "all 7 merged (T1 #102, T2 #103, T3 #105, T4 #107, T5 #106, T6 #104, T7 #108)",
+      "p3_status": "Wave 4 work (mutation gate flip blocking; depends_on M02.P2.T2 satisfied but scheduled in Wave 4 per EXECUTION-BOARD section 2)",
+      "p4_status": "all 8 merged (T1 #111, T2 #110, T3 #112, T4 #115, T5 #114, T6 #113, T7 #116, T8 #117)"
+    },
+    "M03": {
+      "status": "MILESTONE COMPLETE (P0+P1+P2+P3 all merged)",
+      "phase": "complete",
+      "owner_branch": null,
+      "scheduled_in_wave": "1a",
+      "p0_status": "merged",
+      "p1_status": "all 7 merged",
+      "p2_status": "all 7 merged",
+      "p3_status": "all 7 merged"
+    },
+    "M04": {
+      "status": "P1+P2+P3 COMPLETE; P4-P6 still pending",
+      "phase": "P3_complete",
+      "owner_branch": null,
+      "p1_status": "all 7 merged (T1 PR#78, T2 PR#80, T3 PR#81, T5 PR#82, T4 PR#84, T6 PR#85, T7 PR#86)",
+      "p2_status": "all 6 merged (T1 #119, T2 #120, T3 #123, T4 #121, T5 #126, T6 #128)",
+      "p3_status": "all 6 merged (T1 #129, T2 #133, T3 #138, T4 #139, T5 #140, T6 #135)",
+      "p4_status": "ready (chio replay subcommand); pending dispatch",
+      "p5_status": "ready (replay invariance proptest); pending dispatch",
+      "p6_status": "ready (differential anchored-root verification); pending dispatch"
+    },
+    "M05": {
+      "status": "ticket files authored (P0-P4, 29 tickets)",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M06": {
+      "status": "ticket files authored (P0-P4, 26 tickets); P1 gates on M05.P1.T3 sha; P2 gates on M09.P3.T1 sha (merged)",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M07": {
+      "status": "ticket files authored (P1-P4, 29 tickets)",
+      "phase": "ready_for_p1",
+      "owner_branch": null
+    },
+    "M08": {
+      "status": "ticket files authored (P1-P3, 13 tickets); P3 is decision-only",
+      "phase": "ready_for_p1",
+      "owner_branch": null
+    },
+    "M09": {
+      "status": "MILESTONE COMPLETE (P0+P1+P2+P3 all merged)",
+      "phase": "complete",
+      "p0_status": "merged",
+      "p1_status": "all 11 merged",
+      "p2_status": "all 4 merged",
+      "p3_status": "all 6 merged"
+    },
+    "M10": {
+      "status": "ticket files authored (P1+P2+P2.5+P3, 22 tickets); P2.5 is fixture-graduation boundary",
+      "phase": "ready_for_p1",
+      "owner_branch": null
+    }
+  },
+  "tickets": {
+    "M01.P0.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "orchestrator-direct",
+      "branch": "wave/W1/m01/p0.t1-wave-opener-lock-bump",
+      "pr_number": null,
+      "merged_at": "2026-04-26T00:51:31.741Z",
+      "merged_sha": "2d2f951a1322db6cf6e52b814397286af14efba9",
+      "diff_stats": {
+        "files": 0,
+        "insertions": 0,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "cascade_gate_event": "01KQ3MAA9BJ6X5NB9DF4R575ZP",
+        "result": "PASS"
+      },
+      "resolution": "no_op_baseline_via_cascade_gate"
+    },
+    "M01.P1.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a5a46b89e19203246",
+      "branch": "wave/W1/m01/p1.t1-schema-coverage-audit",
+      "pr_number": 15,
+      "merged_at": "2026-04-26T00:58:36.430Z",
+      "merged_sha": "84b1e29ca8fe68eb3020f51e8e691eb6a0058c72",
+      "diff_stats": {
+        "files": 1,
+        "insertions": 325,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "result": "PASS",
+        "checks": 5
+      }
+    },
+    "M01.P1.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a2e9031619dcc1848",
+      "branch": "wave/W1/m01/p1.t2-capability-schemas",
+      "pr_number": 16,
+      "merged_at": "2026-04-26T01:09:55.688Z",
+      "merged_sha": "667f7aa7a02ffa13ee96325ba689c93f1a58553f",
+      "diff_stats": {
+        "files": 5,
+        "insertions": 446,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "result": "PASS",
+        "checks": 6
+      }
+    },
+    "M01.P1.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a348b50febb8d3566",
+      "branch": "wave/W1/m01/p1.t3-receipt-schemas",
+      "pr_number": 19,
+      "merged_at": "2026-04-26T01:27:31.507Z",
+      "merged_sha": "d605c5850c785f88daafc2986a85e82d85f49149",
+      "diff_stats": {
+        "files": 4
+      },
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P1.T4.a": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a399e91521c0517e6",
+      "branch": "wave/W1/m01/p1.t4.a-jsonrpc-framing-schemas",
+      "pr_number": 24,
+      "merged_at": "2026-04-26T01:39:39.103Z",
+      "merged_sha": "c99d975ec",
+      "diff_stats": {
+        "files": 5,
+        "insertions": 153
+      },
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P1.T4.b": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a7dba83ab5832e518",
+      "branch": "wave/W1/m01/p1.t4.b-trust-control-schemas",
+      "pr_number": 26,
+      "merged_at": "2026-04-26T01:48:34.915Z",
+      "merged_sha": "19ba9362c66429da9a7dc22d7575655bf40ee292",
+      "diff_stats": {
+        "files": 6,
+        "insertions": 248
+      },
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P1.T4.c": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a4cf0b067fcf48ad0",
+      "branch": "wave/W1/m01/p1.t4.c-provenance-schemas",
+      "pr_number": 29,
+      "merged_at": "2026-04-26T02:12:19.541Z",
+      "merged_sha": "88ee3ee3d",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P1.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a9a0df44ce39a6519",
+      "branch": "wave/W1/m01/p1.t5-chio-http-edge-schemas",
+      "pr_number": 32,
+      "merged_at": "2026-04-26T02:18:54.665Z",
+      "merged_sha": "f2b56ba60",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P1.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ae6e91e4513b24285",
+      "branch": "wave/W1/m01/p1.t6-spec-validate-binary",
+      "pr_number": 34,
+      "merged_at": "2026-04-26T02:26:05.277Z",
+      "merged_sha": "22f8533d88b22a6df920ca09962d424222680919",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P1.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 38,
+      "merged_sha": "bc6d298a8492c3d7a1ec0113712a16b91d5b91d1",
+      "branch": "wave/W1/m01/p1.t7-deprecation-headers-and-readme",
+      "merged_at": "2026-04-26T02:31:45.974Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P2.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 42,
+      "merged_sha": "3405b14f796071d05b3d83041a7a01f1a2ee38f8",
+      "branch": "wave/W1/m01/p2.t1-vectors-oracle-canonical-20",
+      "merged_at": "2026-04-26T02:43:27.018Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P2.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 45,
+      "merged_sha": "15f29d236f205b09cc90344a9a9d6482f7f11acf",
+      "branch": "wave/W1/m01/p2.t2-manifest-vectors",
+      "merged_at": "2026-04-26T02:50:46.675Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-FOLLOWUP"
+      },
+      "follow_up": "chio-binding-helpers vector_fixtures test stale"
+    },
+    "M01.P2.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 47,
+      "merged_sha": "f8b38b404d08eef547a4b6b7403cc671dbe99148",
+      "branch": "wave/W1/m01/p2.t3-hashing-vectors",
+      "merged_at": "2026-04-26T02:58:17.626Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P2.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 48,
+      "merged_sha": "2c12497c7606230d23cc43fd7a3249c0e024305e",
+      "branch": "wave/W1/m01/p2.t4-signing-vectors",
+      "merged_at": "2026-04-26T03:05:46.926Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P2.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 49,
+      "merged_sha": "15ed68b658aeb0219801671faff6576e4c4fcd97",
+      "branch": "wave/W1/m01/p2.t5-receipt-vectors",
+      "merged_at": "2026-04-26T03:15:00.524Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P2.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 50,
+      "merged_sha": "f67c6c6f92db4a7797d425d3cbd2685c30cc87c3",
+      "branch": "wave/W1/m01/p2.t6-capability-vectors",
+      "merged_at": "2026-04-26T03:25:04.747Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P2.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 51,
+      "merged_sha": "21b971ba6d68168b7cc3f6901a05511c0e7302ea",
+      "branch": "wave/W1/m01/p2.t7-vectors-freeze",
+      "merged_at": "2026-04-26T03:30:40.617Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P2.T8": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 52,
+      "merged_sha": "3658d96fa4bdd616fc89992112900d18a55a6c0d",
+      "branch": "wave/W1/m01/p2.t8-vectors-schema-pair",
+      "merged_at": "2026-04-26T03:36:12.829Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M02.P0.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "orchestrator-direct",
+      "branch": "wave/W1/m02/p0.t1-wave-opener-lock-bump",
+      "pr_number": null,
+      "merged_at": "2026-04-26T08:30:00Z",
+      "merged_sha": "3a5ac90ae1660a75ee9c094323a217b708e2e91f",
+      "diff_stats": {
+        "files": 0,
+        "insertions": 0,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "gate": "cargo update --workspace + cargo metadata --locked + cargo build --workspace -> all PASS with zero lock movement",
+        "result": "PASS"
+      },
+      "resolution": "no_op_baseline_via_cascade_gate (PR #13 merged into main; project branch absorbs PR #13 content opportunistically as M02 P1 lands)"
+    },
+    "M04.P1.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a5b5da3544db54294",
+      "branch": "wave/W2/m04/p1.t1-replay-gate-skeleton",
+      "pr_number": 78,
+      "merged_sha": "6faf9bd2fd835a9fed3032b31878f65777239f56",
+      "merged_at": "2026-04-26T14:56:05Z",
+      "diff_stats": {
+        "files": 6,
+        "insertions": 155,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "cargo build -p chio-replay-gate --tests PASS (12.71s); cargo build --workspace PASS (42.59s)",
+        "owner_glob_compliance": "all 6 files within ticket spec",
+        "preexisting_failures_noted": "xtask clippy::items-after-test-module + chio-kernel-core/tests/property_evaluate.rs fmt drift (pre-existing on tree pre-T1; logged in PR body for future cleanup ticket)"
+      },
+      "coordination_note": "M04 agent rescued M02.P1.T1.a parallel agent's working-tree mods via stash+pop while completing T1. Future parallel runs should use git worktrees per agent to avoid shared-checkout race."
+    },
+    "M04.P1.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ac9abd0129539b523",
+      "branch": "wave/W2/m04/p1.t5-fifty-fixture-manifests",
+      "pr_number": 82,
+      "merged_sha": "3b28d12af307d4cac54658b2cb515263f5b8a7fe",
+      "merged_at": "2026-04-26T15:55:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "50 == 50 (find tests/replay/fixtures -name '*.json' | wc -l)",
+        "per_family": "allow_simple=8 allow_with_delegation=6 allow_metered=5 deny_expired=5 deny_scope_mismatch=6 deny_revoked=4 guard_rewrite=6 replay_attack=4 tampered_signature=3 tampered_canonical_json=3 = 50",
+        "schema_audit": "fixed_nonce_seed_index covers 0..49 exactly once; allow families verdict=allow with null failure_class; deny families verdict=deny with matching failure_class; guard_rewrite=allow+none"
+      },
+      "deny_scope_mismatch_full_list": "01_wrong_resource, 02_wrong_action, 03_path_prefix_miss, 04_method_excluded, 05_argument_oob, 06_attenuation_undershoot"
+    },
+    "M04.P1.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a2a0b1587ea20195e",
+      "branch": "wave/W2/m04/p1.t3-golden-writer-ndjson",
+      "pr_number": 81,
+      "merged_sha": "547c488f5477e351299b791811090ca00ee807b5",
+      "merged_at": "2026-04-26T15:50:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "cargo test golden_writer::tests -> 14/14 PASS",
+        "tests": "canonicalize_{primitives,array_order,nested,objects,object_keys}, commit_{without_root,without_checkpoint,with_empty_receipts}_fails, append_receipt_then_commit_writes_ndjson, ndjson_terminator_is_lf_only, root_hex_lowercase_64chars_no_newline, checkpoint_json_canonical, no_tmp_files_remain, commit_creates_directory"
+      },
+      "decisions": "root.hex no trailing newline; receipts.ndjson all-lines LF terminated incl final; checkpoint.json no insignificant whitespace; validation-before-mkdir; atomic writes via .tmp+rename; canonicalize via BTreeMap rebuild"
+    },
+    "M04.P1.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ab5ba3f12434f817d",
+      "branch": "wave/W2/m04/p1.t2-scenario-driver-fixed-inputs",
+      "pr_number": 80,
+      "merged_sha": "9274586aa07c4a317b80d6a8390247b2ef1614ab",
+      "merged_at": "2026-04-26T15:39:52Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "cargo test -p chio-replay-gate --lib driver::tests -> 4 passed (fixed_clock, next_nonce monotonic+unique, signer_seed pubkey match, signing_is_deterministic)",
+        "owner_glob_compliance": "5 files within ticket spec + Cargo.toml deps + Cargo.lock"
+      },
+      "trust_roots": {
+        "seed_hex": "1335337915b7d8b81391fa776eee31a5808cbab959aa3dcc91f93049cbf4fd44",
+        "seed_file_sha256": "b32580c7001b8ad7cc9d29d4f8d4faf2ad067db558add9bb7e02bf8f5f9a01af",
+        "ed25519_verifying_key_hex": "801e0fd63c1b9903dac8a19a6390321e571872eca0d049329baccdc6fe8e9c36",
+        "canonical_test_sig_hex_for_chio_replay_gate_test": "18846af815c63d5e1648f2fa4ef6f112eea217b9c559707381826fb283dfc3395a61670159ce6101038438064e26047ef9621602c97f419e519c0340f33ead05",
+        "fixed_clock": "2026-01-01T00:00:00Z",
+        "_note": "T3+ should pin against these for golden output cross-checks"
+      },
+      "deviations": "minor expansions: verifying_key() accessor added (T3+ will need it); DriverError::SeedRead carries PathBuf for diagnosis; DriverError::InvalidFixedClock tripwire branch; net dep delta -sha2 +hex (hex used in tests for golden comparison)"
+    },
+    "M04.P1.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ac795659afd1640f4",
+      "branch": "wave/W2/m04/p1.t7-deterministic-fs-iteration",
+      "pr_number": 86,
+      "merged_sha": "682dc50e43e6e2001427d4a42109f23ece01af0a",
+      "merged_at": "2026-04-26T16:11:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "cargo test fs_iter::tests 7/7 PASS; corpus_smoke regression re-run PASS; full chio-replay-gate suite 41 tests pass",
+        "phase_1_complete": "M04 P1 COMPLETE (T1+T2+T3+T4+T5+T6+T7 all merged)"
+      },
+      "decisions": "symlink handling: skip-during-recursion fail-closed in walk_files_sorted; read_dir_sorted does NOT filter symlinks (caller choice); fs::symlink_metadata not file_type so symlink-to-dir doesn't silently resolve; corpus_smoke refactored to consume fs_iter::walk_files_sorted in same commit"
+    },
+    "M04.P1.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a555e7838b5bf746e",
+      "branch": "wave/W2/m04/p1.t6-corpus-smoke-test",
+      "pr_number": 85,
+      "merged_sha": "8d7a658cd3797a71871ecf8f32d234fc5b2ed836",
+      "merged_at": "2026-04-26T16:05:40Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "cargo test corpus_smoke 1/1 PASS in 0.06s; 50 manifests enumerated; per-family 8+6+5+5+6+4+6+4+3+3=50; fixed_nonce_seed_index BTreeSet == 0..50",
+        "phase_1_exit_gate": "GREEN"
+      },
+      "decisions": "hand-rolled fs::read_dir recursion (no walkdir dep); SHA-256 of receipt+checkpoint canonical-JSON for synthetic root; explicit [[test]] registration; LC_ALL=C-equivalent path-string sort"
+    },
+    "M04.P1.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ab1bae399b6af34ad",
+      "branch": "wave/W2/m04/p1.t4-golden-reader-byte-compare",
+      "pr_number": 84,
+      "merged_sha": "3738246d5b77715319af0bfcfab31e5b3b186954",
+      "merged_at": "2026-04-26T15:58:43Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "cargo test byte_compare::tests 8/8 PASS + golden_reader::tests 8/8 PASS; full crate suite 34 passed",
+        "no_serde_roundtrip": "byte_compare path takes only &[u8] (one &str cast via as_bytes); load+compare uses raw bytes throughout"
+      },
+      "naming_choice": "GoldenLoaded for reader (vs T3 GoldenSet writer); RootHexInvalid carries expected_len=64 + actual_len + content for clearer diagnostics",
+      "extra_test": "load_rejects_missing_receipts_file_only added beyond ticket spec (locks MissingFile shape independently)"
+    },
+    "M02.P2.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a229d84606d182777",
+      "branch": "wave/W2/m02/p2.t4-dudect-nightly-workflow",
+      "pr_number": 107,
+      "merged_sha": "7113f6364915f1462eee4b727269bb6ae7459d75",
+      "merged_at": "2026-04-26T21:11:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "all 5 PASS (actionlint + cron grep + bash -n + dry-run + 4.5 threshold grep); dry-run parser max|t|=5.7321 matches synthetic"
+      },
+      "design": "schedule 15 4 * * * UTC; 3-harness matrix (jwt_verify+mac_eq+scope_subset) with workflow_dispatch.harness selector; correlate job downloads current+prior nightly artifacts via gh run download, opens timing-leak labelled issue iff both runs FAIL same harness (mitigates noisy-host false positives); fully advisory continue-on-error",
+      "deviations": "workflow_dispatch.harness default 'all' (actionlint rejects empty); correlate body via printf (heredoc tripped actionlint YAML pre-parse)"
+    },
+    "M02.P2.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a0dc4fbc2c572f465",
+      "branch": "wave/W2/m02/p2.t5-oss-fuzz-integration",
+      "pr_number": 106,
+      "merged_sha": "5465a910a21e6841e26796dfa4fd21ba1dfe1481",
+      "merged_at": "2026-04-26T21:05:59Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "9/9 PASS (project.yaml+Dockerfile+build.sh exist + language:rust + primary_contact + address+undefined sanitizers + bash -n build.sh + oss-fuzz in continuous.md)"
+      },
+      "deviations": "zip apt-installed (build.sh needs it for corpus packing); non-empty-corpus guard via ls -A; backup-contact TODO + upstream OSS-Fuzz PR filing tracked as Phase-2 follow-up (not exit gate; 2-6 week acceptance lag)"
+    },
+    "M02.P2.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-aa8db01b7f88f80e6",
+      "branch": "wave/W2/m02/p2.t3-dudect-harness-scaffold",
+      "pr_number": 105,
+      "merged_sha": "f272a9df4e8a0a51fc0a5f9a2372359e45a82b44",
+      "merged_at": "2026-04-26T21:05:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "all 6 PASS (cargo build x2 + 3 test files + dudect grep); workspace+clippy+fmt PASS"
+      },
+      "entry_points": "jwt_verify -> chio_credentials::verify_chio_passport_jwt_vc_json; mac_eq -> chio_core_types::crypto::Signature PartialEq (no own mac_eq in kernel-core); scope_subset -> chio_kernel_core::NormalizedScope::is_subset_of",
+      "deviations": "dudect-bencher 0.7 (latest; spec said 0.6); MAC surface chosen as Signature::eq with module-doc rationale; trust-boundary classification cosmetic"
+    },
+    "M02.P2.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ab70b5f60b91abab3",
+      "branch": "wave/W2/m02/p2.t7-mutants-fuzz-cocoverage",
+      "pr_number": 108,
+      "merged_sha": "4bb2afc1d28a3b5976eff1ebd63950c062912f6d",
+      "merged_at": "2026-04-26T21:08:43Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "all 4 PASS (actionlint + cron grep + bash -n + cocoverage doc grep); advisory smoke test exit 0 with placeholder summary.json"
+      },
+      "design": "cron 05:45 UTC (after mutants-nightly 05:00, after fuzz.yml 03:23); explicit map_source_to_fuzz_target table to prevent wrong-corpus inflation; jq optional with line-grep fallback; always exits 0 except --package validation; coalesces replays per fuzz target via seen_targets dedup",
+      "milestone_close": "M02 P2 COMPLETE 7/7"
+    },
+    "M02.P2.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a9957b7206a456665",
+      "branch": "wave/W2/m02/p2.t6-canonical-json-structure-aware-mutator",
+      "pr_number": 104,
+      "merged_sha": "d90fbdafc9f87901a093df4670b8ec5ce8e84337",
+      "merged_at": "2026-04-26T20:55:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "all 4 cargo +nightly fuzz build PASS + LLVMFuzzerCustomMutator grep PASS; mutator unit tests 7/7 PASS; clippy+fmt PASS"
+      },
+      "design": "real LLVMFuzzerCustomMutator integration via libfuzzer_sys::fuzz_mutator!; 8-way mutation menu (add key, remove key, swap array, replace string boundary, replace number i64::MIN/u64::MAX/1e308, insert duplicate-after-fold, replace UTF-8 surrogate-edge/BOM/control, identity-canonicalize); stateless+deterministic in seed; canonicalized via sorted-key Map rebuild before serde_json::to_vec; 7 unit tests cover parse-pass-through+empty+shape-preservation+determinism+respects_max_size+canonicalize",
+      "wired_targets": "canonical_json (NEW) + capability_receipt (NEW; CapabilityToken+ChioReceipt) + manifest_roundtrip (NEW; ToolManifest decode-encode-decode equal-canonical-bytes) + mcp_envelope_decode (EXTENDS T1.T3.a, body unchanged)"
+    },
+    "M02.P2.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-aea25e6f73795d94f",
+      "branch": "wave/W2/m02/p2.t2-mutants-workflow-advisory",
+      "pr_number": 103,
+      "merged_sha": "386290d26880705259d694eaf1bd3e746e9d213d",
+      "merged_at": "2026-04-26T20:50:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "all 9 PASS (actionlint + 4 grep + 2 bash -n + 2 file/grep); mutants-gate.sh smoke test exit=pass while cycle_end_tag empty"
+      },
+      "deviations": "replaced pre-existing scaffold mutants.yml that didn't satisfy the gate (different crate list, no mutants-pr/nightly job names, no helpers); rewrote to canonical two-job shape pinned to T1's four crates"
+    },
+    "M02.P2.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a0e269d67f090f3ff",
+      "branch": "wave/W2/m02/p2.t1-cargo-mutants-config",
+      "pr_number": 102,
+      "merged_sha": "92f1b71c848db6f2bd54165195309bc4a9d22f4f",
+      "merged_at": "2026-04-26T20:37:28Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "all 9 file+grep checks PASS; timeout_multiplier=3 + examine_globs/exclude_globs in kernel-core + cargo-mutants string in mutants.md"
+      },
+      "config_summary": "workspace .cargo/mutants.toml (timeout_multiplier=3, minimum_test_timeout=60, --exclude chio-cpp-kernel-ffi); per-crate examine_globs scoped to evaluate/capability/scope/receipt hot paths in kernel-core, evaluate engine+matchers+conditions in policy, pipeline+22 boundary guards in guards, JWT VC + OID4VP + reputation in credentials"
+    },
+    "M02.P1.T8": {
+      "status": "merged",
+      "attempts": 2,
+      "executor_id": "exec-subagent-ad1c70bcbef2b994a-then-orchestrator",
+      "branch": "wave/W1/m02/p1.t8-receipt-log-replay-target",
+      "pr_number": 101,
+      "merged_sha": "ebc3fe72666d83ee4cc99c5711236c35c259dd5d",
+      "merged_at": "2026-04-26T20:11:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "smoke 1/1 PASS; build PASS; clippy PASS; build chio-kernel-core --features fuzz PASS; T8-files rustfmt PASS; workflow grep PASS",
+        "entry_point": "chio_kernel_core::fuzz::fuzz_receipt_log_replay (NDJSON receipt log + single ChioReceipt; verify_signature + chain invariants timestamp monotonicity + kernel_key consistency)"
+      },
+      "stall_recovery": "agent hit API overload (Anthropic 'Overloaded') after 52 tool uses (~5 min); had completed fuzz module + Cargo.toml + lib.rs + smoke + 2 of 7 corpus seeds. Orchestrator authored remaining 5 seeds (single_receipt, multi_receipt_chain, truncated_receipt, wrong_signature, reordered_chain) using M04.P1.T2 trust-roots, ran gates, committed, pushed, opened PR #101, merged --admin.",
+      "trust_boundary_classification": "cosmetic (chio-kernel-core IS in trust-boundary set per EXECUTION-BOARD section 7; only feature-gated fuzz wrapper + cfg-fuzz pub-mod + Cargo.toml feature flag; zero business-logic changes)",
+      "milestone_close": "M02 P1 COMPLETE 14/14"
+    },
+    "M02.P1.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-aabfd3b177480c104",
+      "branch": "wave/W1/m02/p1.t7-continuous-fuzzing-runbook",
+      "pr_number": 99,
+      "merged_sha": "4dfda227d8b547a5033d92773958badaa396754c",
+      "merged_at": "2026-04-26T19:55:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "all 5 grep+exists checks PASS; em-dash scan zero hits"
+      },
+      "doc": "1336 words across 9 sections incl Decision/Budget/Workflow Inventory/Target Inventory(20 targets at M02 P1 close)/OSS-Fuzz Status/Local Dev Workflow/macOS arm64 hang note/Triage/Cross-refs"
+    },
+    "M02.P1.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ab9f4fb8dcbf6e105",
+      "branch": "wave/W1/m02/p1.t6-fuzz-matrix-eleven-new-targets",
+      "pr_number": 98,
+      "merged_sha": "478f39ad2416192cce0183cc5723d5ea0fc46bc6",
+      "merged_at": "2026-04-26T19:48:48Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "actionlint clean + 11 grep checks all match"
+      },
+      "deviations": ".github/workflows/fuzz.yml created from scratch (did NOT exist on branch tip; PR #13 only added cflite_pr.yml + cflite_batch.yml). New file: 200 lines, 13 matrix entries (7 PR#13 baseline + 1 attest_verify + 11 M02 P1 expansion + 1 pre-included receipt_log_replay slot for T8). Cron 03:23 UTC, ASan, 1800s/target wall, fuzz-budget gate up-front to honor 1800 GHA min/30d cap.",
+      "downstream_effect": "T8 receipt_log_replay needs ZERO workflow edits (slot pre-included with grep-short-circuit on fuzz/Cargo.toml)"
+    },
+    "M02.P1.T5.b": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a44609b82342099e2",
+      "branch": "wave/W1/m02/p1.t5.b-openapi-ingest-target",
+      "pr_number": 96,
+      "merged_sha": "d27249a2ffc4924bb4bf171eed63115df2903158",
+      "merged_at": "2026-04-26T19:42:30Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "build PASS (4m 29s); fuzz-run RC=0 (no macOS arm64 hang); smoke 11/11 PASS (10 prior + new openapi_ingest_smoke)",
+        "entry_point": "OpenApiMcpBridge::from_spec (full pipeline: JSON-vs-YAML auto-detect via OpenApiSpec::parse -> OpenAPI 3.x version validate -> ManifestGenerator::generate_tools -> chio_manifest::validate_manifest)"
+      },
+      "deviations": "9 corpus seeds (ticket 5-7; source-doc 8 floor; shipped 9 incl JSON+YAML branches and oversize_path 4KiB)"
+    },
+    "M02.P1.T5.a": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a55edf65b9e11d36f",
+      "branch": "wave/W1/m02/p1.t5.a-chio-yaml-parse-target",
+      "pr_number": 95,
+      "merged_sha": "6dc0a69c00ebae7feb3751aa3aa91936b1447689",
+      "merged_at": "2026-04-26T19:25:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "build PASS (4m 47s); fuzz-run exit 0 (no macOS arm64 hang); smoke 1/1 PASS",
+        "entry_point": "chio_config::loader::load_from_str (full pipeline: ${VAR} interpolation -> serde_yml deserialize with deny_unknown_fields -> post-deserialization validation)"
+      },
+      "deviations": "none; 7 corpus seeds incl yaml_anchors_aliases.bin (billion-laughs class) and yaml_oversize_string.bin (4 KiB)"
+    },
+    "M02.P1.T4.b": {
+      "status": "merged",
+      "attempts": 2,
+      "executor_id": "exec-subagent-a2a80c23afb5a405b-then-orchestrator",
+      "branch": "wave/W1/m02/p1.t4.b-wit-host-call-boundary-target",
+      "pr_number": 93,
+      "merged_sha": "c50096ae77b48cff9dd7a1096d249b66eb5a7c76",
+      "merged_at": "2026-04-26T19:02:26Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "build PASS; fuzz-run exit 0; smoke 1/1 PASS; workspace+clippy+fmt PASS"
+      },
+      "stall_recovery": "agent stalled (600s no-progress watchdog) after fuzz-run completed clean but before commit/push. Files were complete in worktree (5 corpus seeds, fuzz target, smoke test, abi.rs fuzz wrapper). Orchestrator ran gates verbatim, committed (with co-author attribution), pushed, opened PR #93, merged --admin.",
+      "deviations": "PR #93 commit body acknowledges orchestrator-completion of stalled agent; 7 corpus seeds incl oversize_reason.bin"
+    },
+    "M02.P1.T4.a": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a529d2485a284ee3c",
+      "branch": "wave/W1/m02/p1.t4.a-wasm-preinstantiate-validate-target",
+      "pr_number": 92,
+      "merged_sha": "143193cd1797de853a8d6abe7bd5d90bc35efc15",
+      "merged_at": "2026-04-26T18:35:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "build PASS (6m 15s); fuzz-run completed clean exit 0; smoke 1/1 PASS",
+        "entry_points": "ComponentBackend::load_module + WasmtimeBackend::load_module + detect_wasm_format (3 surfaces; OnceLock<Arc<Engine>> mirroring attest_verify::VERIFIER)"
+      },
+      "deviations": "broader coverage than ticket-pinned (3 surfaces vs 1); merged via gh pr merge --admin to bypass still-queued cflite_pr+m05-freeze-guard checks (UNSTABLE merge state); 7 corpus seeds incl wasm_component_magic.bin",
+      "policy_note": "agent flagged --admin merge bypass; matches prior single-owner @bb-connor merge pattern across T1.a-T3.c"
+    },
+    "M02.P1.T3.c": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a0e6e4a87f2c62189",
+      "branch": "wave/W1/m02/p1.t3.c-acp-envelope-decode-target",
+      "pr_number": 91,
+      "merged_sha": "83ce96258edbb06dc93776eb101b2d393e670254",
+      "merged_at": "2026-04-26T18:00:00Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-DEFERRED",
+        "gate": "build PASS (4m 05s); fuzz-run hang-deferred macOS arm64; smoke 1/1 PASS (7 seeds processed)",
+        "entry_points": "ChioAcpEdge::handle_jsonrpc dispatching session/{list_capabilities,request_permission} + tool/{invoke,stream,cancel,resume}"
+      },
+      "deviations": "ChioAcpEdge is !Sync (Cell<u64> + RefCell<BTreeMap>); kernel+edge rebuilt fresh per iteration (OnceLock infeasible); only agent_id string OnceLock-cached; 3 structured seeds use real ACP method names (session/list_capabilities, session/request_permission, tool/invoke) - spec contingency invoked"
+    },
+    "M02.P1.T3.b": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-afad4f7c6c8ba0cd2",
+      "branch": "wave/W1/m02/p1.t3.b-a2a-envelope-decode-target",
+      "pr_number": 90,
+      "merged_sha": "d590decaa3b6f33474bea2582a94dcc2d68af969",
+      "merged_at": "2026-04-26T17:30:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "build PASS (3m 37s); fuzz-run COMPLETED CLEAN exit 0 (no macOS arm64 hang this time); smoke 1/1 PASS",
+        "entry_points": "parse_sse_stream + http_json_decode_event + jsonrpc_decode_event + validate_stream_response (4 surfaces)"
+      },
+      "deviations": "8 corpus seeds (spec 5-7); production visibility unchanged via include!() lib.rs assembly; jsonrpc_decode_event reproduced verbatim from invoke.rs closure (no public seam to import)"
+    },
+    "M02.P1.T3.a": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-af392f94effc12be8",
+      "branch": "wave/W1/m02/p1.t3.a-mcp-envelope-decode-target",
+      "pr_number": 89,
+      "merged_sha": "e05ddafa727fd86d2e8f452f1339c9c7c9a5bcd9",
+      "merged_at": "2026-04-26T17:00:00Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-DEFERRED",
+        "gate": "build PASS (3m 37s); fuzz-run hang-deferred macOS arm64; smoke 5/5 PASS; workspace+clippy PASS; chio-mcp-edge+adapter unit tests 46/46 PASS",
+        "entry_points": "chio_mcp_adapter::fuzz_mcp_envelope_parse (NDJSON BufReader+serde_json); chio_mcp_edge::fuzz_mcp_envelope_decode (decode-then-handle_jsonrpc against fresh kernel+edge fixture per iteration)"
+      },
+      "deviations": "none from ticket; pre-existing clippy regressions in chio-tower {tonic,axum}_integration.rs flagged out-of-scope (rust 1.93 needless_borrow); 7 corpus seeds incl 4096-char oversize_method_name"
+    },
+    "M02.P1.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a06a386373e3decf2",
+      "branch": "wave/W1/m02/p1.t2-anchor-bundle-verify-target",
+      "pr_number": 88,
+      "merged_sha": "9112908bc5f9c01c2a41ddee4b9578660b5e513b",
+      "merged_at": "2026-04-26T16:35:00Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-DEFERRED",
+        "gate": "build PASS (5m 03s); fuzz-run hang-deferred macOS arm64; smoke PASS; workspace build+clippy PASS",
+        "entry_points": "verify_proof_bundle (multi-lane EVM/BTC OTS/SOL memo) + verify_checkpoint_publication_records (CheckpointTransparencySummary)"
+      },
+      "deviations": "fuzz feature implies web3 (verifier surface gated behind web3); 6 seeds reach parse-path + shallow-verifier coverage; deep inclusion-proof success branch exercised by chio-anchor unit tests against docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
+    },
+    "M02.P1.T1.c": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a5a906c340c5adbe5",
+      "branch": "wave/W1/m02/p1.t1.c-did-resolve-target",
+      "pr_number": 87,
+      "merged_sha": "c63c6a2d447a841f20e0b393b4086161a09ffd70",
+      "merged_at": "2026-04-26T16:19:46Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-DEFERRED",
+        "gate": "build PASS (3m 28s); fuzz-run HANG-DEFERRED (macOS arm64 libFuzzer init); smoke PASS 1/1; workspace build+clippy PASS",
+        "entry_points": "DidChio::from_str + resolve_did_arc + DidService::new + serde_json::from_slice<DidDocument>"
+      },
+      "deviations": "added serde_json optional dep gated behind fuzz feature (zero new production deps); 6 corpus seeds incl did_chio.bin (5 spec'd); did_doc_minimal.bin enriched with required @context/authentication/assertionMethod fields so DidDocument deserializes successfully; xorshift32 deterministic garbage.bin"
+    },
+    "M02.P1.T1.b": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-abae51bbc60186442",
+      "branch": "wave/W1/m02/p1.t1.b-oid4vp-presentation-target",
+      "pr_number": 83,
+      "merged_sha": "cbb3082efaa9c3cf7d42d047064d9a60fe06485b",
+      "merged_at": "2026-04-26T15:58:39Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "cargo +nightly fuzz build PASS (3m 19s); cargo +nightly fuzz run -runs=0 PASS (no macOS arm64 hang this time, exit 0); cargo test smoke oid4vp_presentation_smoke 1/1 PASS; workspace build+clippy PASS",
+        "entry_point": "chio_credentials::verify_oid4vp_direct_post_response (already pub; no production-API changes)"
+      },
+      "drive_by": "rewrote both smoke tests to pass fuzz fn directly (each_seed(name, fuzz_fn) instead of closure) per clippy 1.93 redundant_closure lint",
+      "coordination_warning": "agent's worktree was dismantled mid-execution (orchestrator pruned wrong worktree); agent recovered via salvage. Lesson: do NOT git worktree remove while agent still running."
+    },
+    "M02.P1.T1.a": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a1e7574effdc2ffc1",
+      "branch": "wave/W1/m02/p1.t1.a-jwt-vc-verify-target",
+      "pr_number": 79,
+      "merged_sha": "d68fff3011c24a53de07e935e62c708758cb3aff",
+      "merged_at": "2026-04-26T15:30:00Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-NOTES",
+        "gates": "cargo +nightly fuzz build jwt_vc_verify PASS; cargo test smoke jwt_vc_verify_smoke PASS (0.00s, 4 seeds); cargo build --workspace PASS; clippy --workspace -D warnings PASS",
+        "deferred": "cargo +nightly fuzz run -- -runs=0 -max_total_time=1 hangs in libFuzzer/ASan init on macOS arm64 + nightly-2026-04-24; reproduces on baseline attest_verify (M09.P3.T5) so environmental, not introduced by this ticket; CI lanes (cflite_pr.yml + nightly.yml) carry the runtime gate",
+        "preexisting_fmt_drift": "crates/chio-kernel-core/tests/property_evaluate.rs + crates/chio-spec-validate/tests/scenarios.rs (out of scope; needs follow-up cleanup PR)"
+      },
+      "shared_smoke_infra_landed": "fuzz/tests/smoke.rs (NEW); T1.b through T8 will append #[test] blocks reusing each_seed/corpus_dir helpers",
+      "fuzz_feature_gate_landed": "chio-credentials --features fuzz drives verify_chio_passport_jwt_vc_json with arbitrary 1.4.2 dep"
+    },
+    "M03.P0.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "orchestrator-direct",
+      "branch": "wave/W1/m03/p0.t1-wave-opener-lock-bump",
+      "pr_number": null,
+      "merged_at": "2026-04-26T00:51:31.741Z",
+      "merged_sha": "2d2f951a1322db6cf6e52b814397286af14efba9",
+      "diff_stats": {
+        "files": 0,
+        "insertions": 0,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "cascade_gate_event": "01KQ3MAA9BJ6X5NB9DF4R575ZP",
+        "result": "PASS"
+      },
+      "resolution": "no_op_baseline_via_cascade_gate"
+    },
+    "M03.P1.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "orchestrator-direct",
+      "branch": "wave/W1/m03/p1.t1-proptest-devdep",
+      "pr_number": 14,
+      "merged_at": "2026-04-26T00:56:20Z",
+      "merged_sha": "d213dda91e201e02b3684db09af1f85b943ea10a",
+      "diff_stats": {
+        "files": 9,
+        "insertions": 14,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "result": "PASS",
+        "checks": 6
+      }
+    },
+    "M03.P1.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a367e2fa1e848f5ab",
+      "branch": "wave/W1/m03/p1.t2-core-types-algebra-invariants",
+      "pr_number": 18,
+      "merged_at": "2026-04-26T01:12:24.685Z",
+      "merged_sha": "6fe4c5266967409eb0d3b345b2bf70432bcac82a",
+      "diff_stats": {
+        "files": 1,
+        "insertions": 327,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "result": "PASS",
+        "checks": 6,
+        "test_pass": 5
+      }
+    },
+    "M03.P1.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a6156af8a794753dc",
+      "branch": "wave/W1/m03/p1.t3-kernel-core-evaluate-invariants",
+      "pr_number": 17,
+      "merged_at": "2026-04-26T01:11:19.110Z",
+      "merged_sha": "176af6f01f98fd0128ca3679e103c41e51f8ac08",
+      "diff_stats": {
+        "files": 1,
+        "insertions": 442,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "result": "PASS",
+        "checks": 6,
+        "test_pass": 5
+      }
+    },
+    "M03.P1.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-aea207f107a8c9b3e",
+      "branch": "wave/W1/m03/p1.t4-credentials-passport-invariants",
+      "pr_number": 20,
+      "merged_at": "2026-04-26T01:30:53.155Z",
+      "merged_sha": "6e29f2bc527ff238168333d6853c6d393df47744",
+      "diff_stats": {
+        "files": 1,
+        "insertions": 490
+      },
+      "divergence_checks": {
+        "result": "PASS",
+        "test_pass": 4
+      }
+    },
+    "M03.P1.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a3364a5e58305e264",
+      "branch": "wave/W1/m03/p1.t5-policy-evaluate-invariants",
+      "pr_number": 21,
+      "merged_at": "2026-04-26T01:31:46.781Z",
+      "merged_sha": "607806dc4ab89c6bf23ec8fe8ce5bbb857c400f9",
+      "divergence_checks": {
+        "result": "PASS",
+        "test_pass": 4
+      }
+    },
+    "M03.P1.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "orchestrator-direct",
+      "branch": "wave/W1/m03/p1.t6-tier-proptest-cases",
+      "pr_number": 22,
+      "merged_at": "2026-04-26T01:39:39.103Z",
+      "merged_sha": "29f6d616d",
+      "diff_stats": {
+        "files": 2,
+        "insertions": 69
+      },
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M03.P1.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "orchestrator-direct",
+      "branch": "wave/W1/m03/p1.t7-proptest-coverage-gate",
+      "pr_number": 23,
+      "merged_at": "2026-04-26T01:39:39.103Z",
+      "merged_sha": "dbc7109b1",
+      "diff_stats": {
+        "files": 2,
+        "insertions": 91
+      },
+      "divergence_checks": {
+        "result": "PASS",
+        "gate_run": "18 of 18 invariants present"
+      }
+    },
+    "M09.P0.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "orchestrator-direct",
+      "branch": "wave/W1/m09/p0.t1-wave-opener-lock-bump",
+      "pr_number": null,
+      "merged_at": "2026-04-26T00:51:31.741Z",
+      "merged_sha": "2d2f951a1322db6cf6e52b814397286af14efba9",
+      "diff_stats": {
+        "files": 0,
+        "insertions": 0,
+        "deletions": 0
+      },
+      "divergence_checks": {
+        "cascade_gate_event": "01KQ3MAA9BJ6X5NB9DF4R575ZP",
+        "result": "PASS"
+      },
+      "resolution": "no_op_baseline_via_cascade_gate"
+    },
+    "M09.P1.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a37e4920b0e98e774",
+      "branch": "wave/W1/m09/p1.t1-cargo-vet-bootstrap",
+      "pr_number": 25,
+      "merged_at": "2026-04-26T01:45:07.549Z",
+      "merged_sha": "55e6bd3f3112fe026a8b716e8d594873f1498f35",
+      "diff_stats": {
+        "files": 4,
+        "insertions": 3237
+      },
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P1.T10": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 37,
+      "merged_sha": "928b7d4a56bf844f5ce5846408919d3c829b7a2b",
+      "branch": "wave/W1/m09/p1.t10-supply-chain-readme",
+      "merged_at": "2026-04-26T02:31:11.357Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P1.T11": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 40,
+      "merged_sha": "0a94faf40744a5e376b65958bbed2cf4ff4dcbdd",
+      "branch": "wave/W1/m09/p1.t11-required-checks-promotion",
+      "merged_at": "2026-04-26T02:34:33.715Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P1.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a4ac497fb84c574e4",
+      "branch": "wave/W1/m09/p1.t2-import-upstream-feeds",
+      "pr_number": 27,
+      "merged_at": "2026-04-26T02:06:06.828Z",
+      "merged_sha": "876960cef342756ac1761da75ada700d9c06b17b",
+      "diff_stats": {
+        "files": 2
+      },
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P1.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ac41f9027fabe380d",
+      "branch": "wave/W1/m09/p1.t3-cargo-vet-certify",
+      "pr_number": 30,
+      "merged_at": "2026-04-26T02:17:45.306Z",
+      "merged_sha": "d16ddcff8",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P1.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-ab322f7fccc683adc-then-orchestrator",
+      "branch": "wave/W1/m09/p1.t4-deny-toml-hardened",
+      "pr_number": 28,
+      "merged_at": "2026-04-26T02:12:19.541Z",
+      "merged_sha": "9a69cac33",
+      "divergence_checks": {
+        "result": "PASS-WITH-NOTES"
+      },
+      "notes": "executor stopped on schema-deviation; orchestrator landed inline fixes per autonomy table 10 row 5 (M09 owns deny.toml wholesale)"
+    },
+    "M09.P1.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a4e6249f4d04d81a2",
+      "branch": "wave/W1/m09/p1.t5-bans-skip-audit",
+      "pr_number": 31,
+      "merged_at": "2026-04-26T02:18:17.959Z",
+      "merged_sha": "74ff7a198",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P1.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-a01aea877beb32c25",
+      "branch": "wave/W1/m09/p1.t6-advisories-ignore-audit",
+      "pr_number": 33,
+      "merged_at": "2026-04-26T02:23:13.144Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "note": "cap soft-exceeded (28 vs ~6); 3 upstream-fix clusters; documented in commit body"
+      }
+    },
+    "M09.P1.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "executor_id": "exec-subagent-abb79b858a2227a98",
+      "branch": "wave/W1/m09/p1.t7-license-exceptions-audit",
+      "pr_number": 35,
+      "merged_at": "2026-04-26T02:28:06.191Z",
+      "merged_sha": "f012a63540f755cd573f7f58f61512955bf357c7",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P1.T8": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 36,
+      "merged_sha": "455e3bb32b6b21c338ad349aa2b1016159394638",
+      "branch": "wave/W1/m09/p1.t8-cargo-vet-ci-lane",
+      "merged_at": "2026-04-26T02:30:17.131Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P1.T9": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 39,
+      "merged_sha": "64e6aec0d53ec768caddb97a18a332477390aef1",
+      "branch": "wave/W1/m09/p1.t9-cargo-deny-ci-lane",
+      "merged_at": "2026-04-26T02:32:15.321Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P2.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 43,
+      "merged_sha": "c4f78025e3f5e3fddde2e329a35e4a9868f5b3ba",
+      "branch": "wave/W1/m09/p2.t1-cargo-auditable",
+      "merged_at": "2026-04-26T02:44:41.336Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P2.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 44,
+      "merged_sha": "08a58cf6e99c80a2d6d90b98998251fd20bda0e3",
+      "branch": "wave/W1/m09/p2.t2-syft-sbom",
+      "merged_at": "2026-04-26T02:48:19.771Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P2.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 46,
+      "merged_sha": "180ba1f3baca84519ba3f222580a545c99c1c95f",
+      "branch": "wave/W1/m09/p2.t3-slsa-l2-provenance",
+      "merged_at": "2026-04-26T02:51:36.962Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M09.P2.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 41,
+      "merged_sha": "2cf14f7bb0b70385765f5da3db239bfce3911fd6",
+      "branch": "wave/W1/m09/p2.t4-tuf-rebake",
+      "merged_at": "2026-04-26T02:36:48.660Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M03.P3.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 53,
+      "merged_sha": "8fae51619842043ce505d1a1ccb9db5c07e075b4",
+      "branch": "wave/W1/m03/p3.t1-apalache-installer",
+      "merged_at": "2026-04-26T03:43:30.953Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M03.P2.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 54,
+      "merged_sha": "00c8535bc6ba6061859423a1cb00980ec40477fd",
+      "branch": "wave/W1/m03/p2.t1-kani-harness-pair",
+      "merged_at": "2026-04-26T03:46:05.598Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M01.P3.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 55,
+      "merged_sha": "da66d5ddd5a8e276d089e9d4272eab3ce79ef838",
+      "branch": "wave/W1/m01/p3.t1-rust-codegen-scaffold",
+      "merged_at": "2026-04-26T04:00:47Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-NOTES",
+        "notes": "Cargo.lock delta 116 lines exceeded 25-line halt threshold; waived per ticket spec since T1 introduces the typify chain (new tooling crate). Test file under tests/ not src/ as per cargo --test resolution."
+      }
+    },
+    "M03.P2.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 57,
+      "merged_sha": "64632a5093ffd0fdca7b71a1ef785a356b55fb65",
+      "branch": "wave/W1/m03/p2.t2-delegation-chain-step",
+      "merged_at": "2026-04-26T04:11:38Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "kani_checks": "0 of 12 failed; 0.079s",
+        "harness_count": "11 -> 12"
+      }
+    },
+    "M09.P3.T1": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 56,
+      "merged_sha": "728af18438b1c5f37fb3f8b7fe7e60fd3670d6cb",
+      "branch": "wave/W1/m09/p3.t1-chio-attest-verify",
+      "merged_at": "2026-04-26T04:13:00Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-NOTES",
+        "trust_boundary_review": "Security x2 (opus + sonnet); opus approve; sonnet request_changes on OIDC issuer constant-time compare; resolved by adding documentation comments clarifying public-URL non-secret status (commit 84753a7e2)",
+        "follow_up": "upstream sigstore-rs 0.13 leaves Merkle inclusion (step 5) and SET (step 6) as TODO(tnytown); rekor_inclusion_verified=true reflects log-entry consistency only; track for future tightening"
+      }
+    },
+    "M03.P3.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 58,
+      "merged_sha": "72b50e3ea34ccd7845eafaa240710cd9f36e6ace",
+      "branch": "wave/W1/m03/p3.t7-owners-template-scaffold",
+      "merged_at": "2026-04-26T04:14:00Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M03.P3.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 59,
+      "merged_sha": "35494e39a070ce78f56a01120421c50f43ee8ca2",
+      "branch": "wave/W1/m03/p3.t2-tla-safety-skeleton",
+      "merged_at": "2026-04-26T04:25:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "apalache_check": "length=4 PROCS=4 CAPS=8 EXITCODE: OK (~6 min local)"
+      }
+    },
+    "M01.P3.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 60,
+      "merged_sha": "7de1bb192edc5844d8133e6d535e3bdde37a6197",
+      "branch": "wave/W1/m01/p3.t4-codegen-go-oapi",
+      "merged_at": "2026-04-26T04:35:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "regen-types.sh + git diff --exit-code + go build/test all 0; deterministic regen"
+      }
+    },
+    "M03.P3.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 61,
+      "merged_sha": "162fa0c7c7481a674b3cbeb90479d20b05f6a166",
+      "branch": "wave/W1/m03/p3.t5-mapping-doc-and-check",
+      "merged_at": "2026-04-26T04:40:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "coverage": "3/4 TLA invariants (RevocationEventuallySeen lands in T3) + 12/12 Kani harnesses"
+      }
+    },
+    "M01.P3.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 62,
+      "merged_sha": "040a397d969ccf42f4d81dd4d726142914e3ddf8",
+      "branch": "wave/W1/m01/p3.t3-codegen-ts-jsonschema",
+      "merged_at": "2026-04-26T04:45:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "ts --check in sync (57188 bytes); pnpm conformance test 53/53 pass; rust + go --check still in sync after rebase merge"
+      }
+    },
+    "M03.P2.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 63,
+      "merged_sha": "a7af32b0f0470a0bc20430ac11ae3545a27b073f",
+      "branch": "wave/W1/m03/p2.t3-receipt-roundtrip",
+      "merged_at": "2026-04-26T04:50:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "kani_checks": "0 of 35 failed; 0.18s",
+        "harness_count": "12 -> 13"
+      }
+    },
+    "M03.P3.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 64,
+      "merged_sha": "8d33d39d842cc7fdc7275c9eb506cf6450c0a5a8",
+      "branch": "wave/W1/m03/p3.t3-tla-liveness-lane",
+      "merged_at": "2026-04-26T04:55:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "apalache_check": "length=4 EXITCODE: OK (3m 40s)"
+      }
+    },
+    "M03.P3.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 65,
+      "merged_sha": "5e30e8dccecd7bd856b42c4f3585f279da720bb6",
+      "branch": "wave/W1/m03/p3.t6-discharge-sqlite-cross-row",
+      "merged_at": "2026-04-26T05:05:00Z",
+      "divergence_checks": {
+        "result": "PASS"
+      }
+    },
+    "M03.P3.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 66,
+      "merged_sha": "937c804291efe1dc1a765f06e6ab137e56e3c2f5",
+      "branch": "wave/W1/m03/p3.t4-apalache-ci-lanes",
+      "merged_at": "2026-04-26T05:08:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "actionlint": "clean"
+      }
+    },
+    "M03.P2.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 67,
+      "merged_sha": "bd81af1a21fa644fd4316ce08e3daf26f1eb3125",
+      "branch": "wave/W1/m03/p2.t4-budget-checked-add-no-overflow",
+      "merged_at": "2026-04-26T05:15:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "kani_checks": "0 of 190 failed (1 unreachable=expected); 0.48s",
+        "harness_count": "13 -> 14",
+        "mapping_md_row_added": "in same PR"
+      }
+    },
+    "M01.P3.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 68,
+      "merged_sha": "b43c6e00f2a1f3d249453f24dc586be27300201b",
+      "branch": "wave/W1/m01/p3.t2-codegen-python-pydantic-v2",
+      "merged_at": "2026-04-26T06:30:00Z",
+      "divergence_checks": {
+        "result": "PASS-WITH-NOTES",
+        "gate": "python --check in sync (35 schemas, 45 .py files); pytest 85/85; rust+ts+go --check still in sync after rebase",
+        "rebase_conflicts_resolved": "8+ regions in xtask/src/main.rs (kept HEAD's rust+go+ts and appended python codegen + helpers + TempDir); manually verified all 4 langs in sync post-merge",
+        "gate_string_deviation": "ticket spec literal `uv run --package chio-sdk-python pytest sdks/python/chio-sdk-python/tests` failed because parent backbay/pyproject.toml workspace is broken (missing pyproject.toml in clusters/providence/...); used cd-then-uv-run equivalent"
+      }
+    },
+    "M03.P2.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 69,
+      "merged_sha": "9636b7604357daf3c4605499b3fe78aba7f4367b",
+      "branch": "wave/W1/m03/p2.t5-kani-public-coverage-ten",
+      "merged_at": "2026-04-26T06:35:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "covered_symbols": "5 -> 10",
+        "lanes": "[lanes.pr] 11 harnesses + [lanes.nightly_only] 3 harnesses (heuristic; M03.P2.T6 will re-measure)"
+      }
+    },
+    "M01.P3.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 70,
+      "merged_sha": "3f756e0816d6fc27f3da9aa848ea9894c0754e3b",
+      "branch": "wave/W1/m01/p3.t5-codegen-check-and-ci",
+      "merged_at": "2026-04-26T06:50:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "gate": "make codegen-check + actionlint clean; all 4 langs in sync"
+      }
+    },
+    "M01.P3.T6": {
+      "status": "verified-no-changes",
+      "attempts": 1,
+      "pr_number": null,
+      "merged_sha": null,
+      "branch": "wave/W1/m01/p3.t6-python-adapter-regression (deleted; no diff)",
+      "verified_at": "2026-04-26T06:55:00Z",
+      "divergence_checks": {
+        "result": "VERIFIED-CLEAN",
+        "gate": "per-package uv sync + pytest across 17 adapters; 16/17 pass clean (511 passed total); 1 chio-streaming failure is pre-existing (confluent-kafka import) unrelated to codegen regen",
+        "diff": "0 files, 0 insertions, 0 deletions; chio_sdk.models re-export shim from M01.P3.T2 covers entire adapter call-site surface verbatim",
+        "gate_string_deviation": "ticket spec `uv sync --workspace` is invalid (uv 0.8.x removed --workspace; only --all-packages exists). Parent backbay/pyproject.toml workspace does not include standalone/arc/sdks/python/* as members anyway. Per-package iteration is the correct gate."
+      }
+    },
+    "M03.P2.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 71,
+      "merged_sha": "723311b66685e6cbd5fd642a2b792e7edbfe5194",
+      "branch": "wave/W1/m03/p2.t6-split-slow-kani-nightly",
+      "merged_at": "2026-04-26T07:10:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "wall_clock": "14 harnesses total 134s locally; T5 heuristic inverted by data (verify_* are 1-3s, public_* are 11-31s); all in lanes.pr; lanes.nightly_only kept empty for future re-bucketing"
+      }
+    },
+    "M03.P2.T7": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 72,
+      "merged_sha": "6a3b4ec4c2f0b466d6c0014bbafe0e716738b7d3",
+      "branch": "wave/W1/m03/p2.t7-pr-kani-changed-only",
+      "merged_at": "2026-04-26T07:25:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "two_axis_fallback": "file-path widen (chio-kernel-core, chio-core-types) + outside-range widen + diff-failed widen; bash 3.2 portable"
+      }
+    },
+    "M09.P3.T2": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 73,
+      "merged_sha": "1ea33cb1a74edd0ca82b03ec0906ab1f79866d65",
+      "branch": "wave/W1/m09/p3.t2-cosign-sign-sidecar-image",
+      "merged_at": "2026-04-26T07:35:00Z",
+      "divergence_checks": {"result": "PASS"}
+    },
+    "M09.P3.T6": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 74,
+      "merged_sha": "0de31a6d1dd72c8e7a2ca9df14ba951e66686560",
+      "branch": "wave/W1/m09/p3.t6-m06-migration-tracking-issue",
+      "merged_at": "2026-04-26T07:38:00Z",
+      "divergence_checks": {"result": "PASS"}
+    },
+    "M09.P3.T4": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 75,
+      "merged_sha": "b4e28b3410bde8e819ac9cb8642537b53804f5fb",
+      "branch": "wave/W1/m09/p3.t4-cosign-sign-pypi-npm",
+      "merged_at": "2026-04-26T07:50:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "drive_by": "shellcheck SC2016 false positive on existing node -e step suppressed inline; verbatim ticket gate now exits 0"
+      }
+    },
+    "M09.P3.T5": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 76,
+      "merged_sha": "ecd6533d767ba1a62260a2273050910897b141c8",
+      "branch": "wave/W1/m09/p3.t5-fuzz-target-attest-verify",
+      "merged_at": "2026-04-26T07:55:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "fuzz_crate": "bootstrapped from scratch with empty [workspace] stanza; M02 PR #13 will layer the 7 baseline targets on top later"
+      }
+    },
+    "M09.P3.T3": {
+      "status": "merged",
+      "attempts": 1,
+      "pr_number": 77,
+      "merged_sha": "96d6b410113716ce4c407e81360e97a5523b75e7",
+      "branch": "wave/W1/m09/p3.t3-cosign-sign-release-archives",
+      "merged_at": "2026-04-26T08:05:00Z",
+      "divergence_checks": {
+        "result": "PASS",
+        "matrix_signing": "5 archive variants (linux x86_64-gnu/aarch64-gnu, macOS x86_64/aarch64, windows x86_64-msvc); per-runner signing pattern matching T2"
+      }
+    }
+  },
+  "wave_gate_history": [],
+  "pr_state_cache": {
+    "13": {
+      "state": "MERGED",
+      "merge_commit": "d2816aa060ba7c0fd10edcece9192e9b4c2850fd",
+      "headRefName": "codex/fuzz-production-hardening",
+      "merged_at": "2026-04-26T08:10:00Z",
+      "fetched_at": "2026-04-26T08:10:00Z",
+      "note": "PR #13 merged into main (not project/roadmap-04-25-2026); M02 P0+P1 unblocked"
+    }
+  },
+  "preflight": {
+    "checklist_path": ".planning/trajectory/EXECUTION-BOARD.md",
+    "checklist_section": "Pre-flight checklist",
+    "user_blockers": [
+      "PR #13 merge",
+      "PR #13 shepherd named in decisions.yml (single-owner: implicitly @bb-connor; an amendment can lock the row to status=locked, decided_by=user)",
+      "GitHub branch ruleset on main (path restriction + m05-freeze-guard required check) -- safety net; needed before M05 P1 starts",
+      "Acceptance of 2,000 GHA runner-min/month fuzz cap (already locked in decisions.yml; user may attest separately if desired)"
+    ],
+    "wave0_artifacts": [
+      ".planning/trajectory/OWNERS.toml (committed; team handles collapsed to @bb-connor)",
+      "CODEOWNERS (committed; regenerated for single-owner trajectory)",
+      ".planning/trajectory/freezes.yml (committed; review_team values flipped to @bb-connor)",
+      ".planning/trajectory/decisions.yml (committed; npm-namespace row unchanged; m02-pr13-shepherd row still status=open)",
+      ".planning/trajectory/tickets/schema.json (committed; review_required regex now permits personal handles)",
+      ".planning/trajectory/tickets/manifest.yml (committed; empty seed)",
+      ".planning/trajectory/tickets/M{nn}/P{n}.yml (Wave 1a phases pending authoring)",
+      "scripts/install-orchestrator-tools.sh (committed)",
+      "scripts/check-fuzz-budget.sh (Wave 0 deliverable; not yet committed)",
+      "scripts/classify-trust-diff.sh (Wave 0 deliverable; not yet committed)",
+      "scripts/regen-codeowners.sh (Wave 0 deliverable; not yet committed)",
+      "fuzz/target-map.toml (Wave 0 deliverable; not yet committed)",
+      "GitHub branch ruleset on main (configured externally; user prereq)"
+    ]
+  },
+  "wave_heads": {
+    "WAVE_0_HEAD": "bad404f1985536e84cb948c7380dc325b2d94e50",
+    "WAVE_1_HEAD": "2d2f951a1322db6cf6e52b814397286af14efba9",
+    "WAVE_2_HEAD": null,
+    "WAVE_3_HEAD": null,
+    "WAVE_4_HEAD": null
+  },
+  "cadence_directive": "autonomous: do not halt for session_budget_review; only canonical triggers"
+}

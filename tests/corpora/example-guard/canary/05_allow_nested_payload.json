@@ -1,0 +1,22 @@
+{
+  "request": {
+    "tool_name": "inspect_payload",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 5,
+      "verdict": "allow",
+      "payload": {
+        "items": [
+          "alpha",
+          "beta"
+        ],
+        "depth": 2
+      }
+    },
+    "scopes": [
+      "example-server:inspect_payload"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

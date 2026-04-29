@@ -1,0 +1,262 @@
+# M02 Phase 4 - Triage + corpus operations + ClusterFuzzLite continuous-fuzzing bridge.
+#
+# Source of truth: .planning/trajectory/02-fuzzing-post-pr13.md
+# - Phase 4 (lines 201-218): triage automation, seed promotion, regression
+#   guard, CODEOWNERS, runbook (T1-T5).
+# - Crash-triage automation section (lines 322-341): workflow shape,
+#   issue template fields, CODEOWNERS lines, deletion guard.
+# - ClusterFuzzLite implementation section (lines 277-289): three workflow
+#   files (cflite_pr.yml + cflite_batch.yml; cflite_cron.yml deleted per
+#   the doc Hosting model paragraph), Dockerfile, project.yaml, target-map,
+#   budget self-cap script.
+#
+# Naming reconciliation: per EXECUTION-BOARD.md section 2 Wave 2a row 110
+# ("M02 P4 = triage + corpus operations") and the user prompt, this phase
+# absorbs the ClusterFuzzLite + corpus-sync + upstream-skips work that the
+# source-doc Phase 2 enumerated (P2.T1-T4). Doc Phase 2's OSS-Fuzz +
+# mutator + cargo-mutants/dudect scaffolding live in this milestone's P2.
+# All source-doc atomic-task IDs are preserved in soft_deps for traceability.
+#
+# Wave 2a execution gate (EXECUTION-BOARD.md section 2): P4 runs concurrent
+# with P2 and P3 per the source doc Phase 4 header ("runs concurrent with
+# phases 2-3") and EXECUTION-BOARD row "M02 P4 runs concurrent with P2-P3".
+# Hard dep is M02.P1.T8 (eleven new fuzz targets + receipt_log_replay all
+# merged) so the matrix and target-map are populated before CFLite samples
+# them. P4 does NOT depend on P2 tickets except where transitively noted.
+#
+# fuzz/owners.toml maps each fuzz target to the crate that owns its
+# regression tests; consumed by promote_fuzz_seed.sh.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M02.P4.T1
+  milestone: M02
+  phase: 4
+  title: "Add fuzz_crash_triage.yml with download/minimize/dedupe/issue-open flow"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - ".github/workflows/fuzz_crash_triage.yml"
+    - ".github/ISSUE_TEMPLATE/fuzz_crash.yml"
+  shared_paths: []
+  depends_on:
+    - M02.P1.T8
+  soft_deps:
+    - "Source-doc anchor: Phase 4 P4.T1 + Crash-triage automation section"
+    - "Triggers on workflow_run of fuzz.yml + cflite_*.yml with conclusion=failure"
+    - "Dedupe by sha256 substring match on minimized input; issue template includes target dropdown over the 18 fuzz target names"
+  gate_check:
+    cmd: "actionlint .github/workflows/fuzz_crash_triage.yml && grep -q 'workflow_run' .github/workflows/fuzz_crash_triage.yml && grep -q 'cargo fuzz tmin' .github/workflows/fuzz_crash_triage.yml && grep -q 'fuzz-crash' .github/workflows/fuzz_crash_triage.yml && test -f .github/ISSUE_TEMPLATE/fuzz_crash.yml && grep -q 'input_sha256' .github/ISSUE_TEMPLATE/fuzz_crash.yml && grep -q 'severity' .github/ISSUE_TEMPLATE/fuzz_crash.yml"
+    timeout_seconds: 180
+  worktree_branch: "wave/W2/m02/p4.t1-crash-to-issue-action"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P4.T2
+  milestone: M02
+  phase: 4
+  title: "Add scripts/promote_fuzz_seed.sh with libfuzzer/proptest dual-mode and fuzz/owners.toml"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "scripts/promote_fuzz_seed.sh"
+    - "fuzz/owners.toml"
+  shared_paths: []
+  depends_on:
+    - M02.P1.T8
+  soft_deps:
+    - "Source-doc anchor: Phase 4 P4.T2 + Crash-triage automation > Regression-test promotion path"
+    - "proptest mode opens a sibling M03 invariant under crates/<owner>/tests/property_*.rs (cross-doc with M03 oracle ownership)"
+    - "Writes to crates/<owner>/tests/regression_<sha8>.rs and moves the seed into fuzz/corpus/<target>/<sha>.bin"
+  gate_check:
+    cmd: "bash -n scripts/promote_fuzz_seed.sh && bash scripts/promote_fuzz_seed.sh --help | grep -q -- '--mode' && bash scripts/promote_fuzz_seed.sh --help | grep -q 'libfuzzer' && bash scripts/promote_fuzz_seed.sh --help | grep -q 'proptest' && test -f fuzz/owners.toml && grep -q 'jwt_vc_verify' fuzz/owners.toml && grep -q 'receipt_log_replay' fuzz/owners.toml"
+    timeout_seconds: 120
+  worktree_branch: "wave/W2/m02/p4.t2-promote-fuzz-seed-script"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P4.T3
+  milestone: M02
+  phase: 4
+  title: "Add scripts/check-regression-tests.sh and wire into ci.yml as deletion guard"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "scripts/check-regression-tests.sh"
+    - ".github/workflows/ci.yml"
+    - "tests/ci_guards/regression_deletion_test.sh"
+  shared_paths:
+    - ".github/workflows/ci.yml"
+  depends_on:
+    - M02.P4.T2
+  soft_deps:
+    - "Source-doc anchor: Phase 4 P4.T3 + Crash-triage automation > CODEOWNERS gate paragraph"
+    - "git diff --diff-filter=D check against merge-base; fails if any tests/regression_*.rs disappeared without a paired issue link in PR body"
+  gate_check:
+    cmd: "actionlint .github/workflows/ci.yml && bash -n scripts/check-regression-tests.sh && bash scripts/check-regression-tests.sh --dry-run && grep -q 'check-regression-tests' .github/workflows/ci.yml && bash -n tests/ci_guards/regression_deletion_test.sh && bash tests/ci_guards/regression_deletion_test.sh --dry-run"
+    timeout_seconds: 120
+  worktree_branch: "wave/W2/m02/p4.t3-regression-deletion-guard"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P4.T4
+  milestone: M02
+  phase: 4
+  title: "Add CODEOWNERS file with regression-test + corpus path gates"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "CODEOWNERS"
+  shared_paths:
+    - "CODEOWNERS"
+  depends_on:
+    - M02.P4.T3
+  soft_deps:
+    - "Source-doc anchor: Phase 4 P4.T4 + Crash-triage automation > CODEOWNERS gate"
+    - "Single-owner trajectory: all entries point at @bb-connor; combined with branch-protection requiring CODEOWNERS review on main"
+    - "M02 P3.T2 may append the releases.toml line if this file already exists; co-evolution coordinated via shared_paths"
+  gate_check:
+    cmd: "test -f CODEOWNERS && grep -qE '^/?crates/\\*/tests/regression_\\*\\.rs.*@bb-connor' CODEOWNERS && grep -qE '^/?tests/regression_\\*\\.rs.*@bb-connor' CODEOWNERS && grep -qE '^/?fuzz/corpus/.*@bb-connor' CODEOWNERS"
+    timeout_seconds: 60
+  worktree_branch: "wave/W2/m02/p4.t4-codeowners-regression-corpus-gate"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P4.T5
+  milestone: M02
+  phase: 4
+  title: "Author docs/fuzzing/triage.md runbook with severity bands, dedupe rules, time-to-fix SLOs"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "docs/fuzzing/triage.md"
+    - "docs/README.md"
+  shared_paths: []
+  depends_on:
+    - M02.P4.T1
+  soft_deps:
+    - "Source-doc anchor: Phase 4 P4.T5 + OSS-Fuzz application steps > Triage SLO commitment (item 10)"
+    - "SLOs: 24h acknowledgement, 7d fix-or-defer for Critical, 30d for High; documented for OSS-Fuzz upstream"
+  gate_check:
+    cmd: "test -f docs/fuzzing/triage.md && grep -qE 'severity' docs/fuzzing/triage.md && grep -qE 'critical' docs/fuzzing/triage.md && grep -qE '24h' docs/fuzzing/triage.md && grep -qE '7d' docs/fuzzing/triage.md && grep -qE 'dedupe' docs/fuzzing/triage.md && grep -q 'triage.md' docs/README.md"
+    timeout_seconds: 60
+  worktree_branch: "wave/W2/m02/p4.t5-triage-runbook"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P4.T6
+  milestone: M02
+  phase: 4
+  title: "Stand up ClusterFuzzLite bridge: cflite_pr.yml + cflite_batch.yml + Dockerfile + target-map + budget self-cap"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - ".github/workflows/cflite_pr.yml"
+    - ".github/workflows/cflite_batch.yml"
+    - ".clusterfuzzlite/Dockerfile"
+    - ".clusterfuzzlite/build.sh"
+    - ".clusterfuzzlite/project.yaml"
+    - "fuzz/target-map.toml"
+    - "scripts/check-fuzz-budget.sh"
+    - "docs/fuzzing/continuous.md"
+  shared_paths: []
+  depends_on:
+    - M02.P1.T8
+  soft_deps:
+    - "Source-doc anchor: doc Phase 2 P2.T1 + ClusterFuzzLite implementation section"
+    - "Hosting model: GHA hosted only; 1,800 min/30d self-cap (200 min headroom under 2,000 public-repo cap)"
+    - "Storage backend: bb-connor/arc-fuzz-corpus sibling private repo (no GCS)"
+    - "cflite_pr.yml default = changed-target sampling per fuzz/target-map.toml; opt-in 'fuzz: full' label for release-cut PRs"
+    - "cflite_batch.yml = sampled nightly cron (one rotated target/night, 30 min, 18-day rotation)"
+    - "cflite_cron.yml is intentionally NOT created (the earlier weekly-soak Tier-A plan was dropped)"
+  gate_check:
+    cmd: "actionlint .github/workflows/cflite_pr.yml .github/workflows/cflite_batch.yml && test -f .clusterfuzzlite/Dockerfile && test -f .clusterfuzzlite/build.sh && test -f .clusterfuzzlite/project.yaml && test -f fuzz/target-map.toml && bash -n scripts/check-fuzz-budget.sh && grep -qE '1800|1,800' scripts/check-fuzz-budget.sh && grep -q 'storage-repo' .clusterfuzzlite/project.yaml && grep -q 'cflite_' docs/fuzzing/continuous.md && ! test -f .github/workflows/cflite_cron.yml"
+    timeout_seconds: 300
+  worktree_branch: "wave/W2/m02/p4.t6-clusterfuzzlite-bridge"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P4.T7
+  milestone: M02
+  phase: 4
+  title: "Add fuzz_corpus_sync.yml weekly cron with gitleaks scan and maintainer-review gate"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/fuzz_corpus_sync.yml"
+  shared_paths: []
+  depends_on:
+    - M02.P4.T6
+  soft_deps:
+    - "Source-doc anchor: doc Phase 2 P2.T3"
+    - "Corpus-exfil risk mitigation: gitleaks scan attached to PR, no production-issued JWTs or DIDs in seeds, written rule in docs/fuzzing/triage.md"
+  gate_check:
+    cmd: "actionlint .github/workflows/fuzz_corpus_sync.yml && grep -qE 'cron:' .github/workflows/fuzz_corpus_sync.yml && grep -q 'gitleaks' .github/workflows/fuzz_corpus_sync.yml && grep -q 'chore(fuzz): sync minimized corpus' .github/workflows/fuzz_corpus_sync.yml"
+    timeout_seconds: 120
+  worktree_branch: "wave/W2/m02/p4.t7-fuzz-corpus-sync-workflow"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P4.T8
+  milestone: M02
+  phase: 4
+  title: "Add fuzz/upstream_skips.toml with sunset dates and CI-fail-on-past-sunset lane"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "fuzz/upstream_skips.toml"
+    - ".github/workflows/fuzz_corpus_sync.yml"
+    - "scripts/check-upstream-skips.sh"
+  shared_paths:
+    - ".github/workflows/fuzz_corpus_sync.yml"
+  depends_on:
+    - M02.P4.T7
+  soft_deps:
+    - "Source-doc anchor: doc Phase 2 P2.T4"
+    - "Mitigates false-positive crashes from unstable upstream deps (per Risks and mitigations)"
+  gate_check:
+    cmd: "test -f fuzz/upstream_skips.toml && bash -n scripts/check-upstream-skips.sh && bash scripts/check-upstream-skips.sh --dry-run && grep -q 'check-upstream-skips' .github/workflows/fuzz_corpus_sync.yml"
+    timeout_seconds: 120
+  worktree_branch: "wave/W2/m02/p4.t8-upstream-skips-sunset-gate"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

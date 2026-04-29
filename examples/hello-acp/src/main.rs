@@ -97,6 +97,7 @@ fn demo_manifest() -> ToolManifest {
             has_side_effects: false,
             latency_hint: None,
         }],
+        server_tools: Vec::new(),
         required_permissions: None,
         public_key: "hello-acp-manifest".to_string(),
     }

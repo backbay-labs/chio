@@ -138,4 +138,16 @@ notes = [
   "Creusot and Kani are required strict-CI lanes for production implementation linkage; public Kani harnesses target verify_capability, NormalizedScope::is_subset_of, resolve_matching_grants, evaluate, and sign_receipt.",
   "Aeneas production extraction covers the pure numeric/boolean core and is paired with tracked Lean equivalence theorems.",
   "Release-facing formal claims must name this manifest, the theorem inventory, and the audited assumptions.",
+  "RETIRED-SQLITE-CROSS-ROW is a discharged assumption: prior cross-row SQLite atomicity is now reduced to per single-row write atomicity (ASSUME-SQLITE-ATOMICITY) plus the MonotoneLog TLA invariant on the audit log and the per-row budget invariant in crates/chio-kernel/src/budget_store.rs. See discharged_assumptions below.",
+]
+
+# Discharged assumptions: prior audited assumptions that are no longer
+# load-bearing because a named property in this manifest now establishes
+# the same guarantee. Each row cites (a) the retired assumption ID in
+# `formal/assumptions.toml` retired_assumptions, (b) the discharging
+# artifacts (TLA invariants, Kani harnesses, Lean theorems, runtime
+# invariants), and (c) the Rust call sites the discharge constrains.
+# Format: id|discharging_artifacts|rust_call_sites|prose
+discharged_assumptions = [
+  "RETIRED-SQLITE-CROSS-ROW|MonotoneLog (formal/tla/RevocationPropagation.tla),budget_per_row_invariant (crates/chio-kernel/src/budget_store.rs::BudgetUsageRecord)|crates/chio-kernel/src/receipt_store.rs,crates/chio-kernel/src/budget_store.rs,crates/chio-kernel-core/src/evaluate.rs::evaluate|Cross-row SQLite atomicity for the audit-log append plus budget-state update is no longer assumed. The MonotoneLog TLA invariant proves the per-authority receipt log is append-only and strictly time-monotone, and the per single-row write budget invariant proves BudgetUsageRecord updates are individually atomic and monotone in seq/total_cost. Their conjunction means a partial-pair crash is observable: the next evaluate either sees no receipt (deny) or sees an inconsistent budget row that the per-row invariant rejects (deny). Therefore no allow can outrun its log entry without violating one of two named properties, and the prior cross-row assumption is retired.",
 ]

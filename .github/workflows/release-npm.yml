@@ -10,8 +10,8 @@ name: Release npm
 #                                  (e.g. ts/express-v1.2.0 publishes
 #                                  @chio-protocol/express)
 #
-# workflow_dispatch exposes a `dry_run` input that builds and lints every
-# matrix leg without uploading to npm. No stored NPM_TOKEN is required;
+# workflow_dispatch always builds and lints only; package publishing is
+# restricted to tag pushes. No stored NPM_TOKEN is required;
 # authentication is via GitHub's OIDC token and npm's Trusted Publisher
 # configuration (`--provenance`).
 
@@ -28,7 +28,7 @@ on:
         type: string
         default: ""
       dry_run:
-        description: "Build and lint only -- skip npm publish."
+        description: "Build and lint only. Manual dispatch never publishes."
         required: false
         type: boolean
         default: true
@@ -48,7 +48,7 @@ jobs:
       packages: ${{ steps.select.outputs.packages }}
       dry_run: ${{ steps.select.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Determine packages to publish
         id: select
@@ -57,7 +57,6 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_PACKAGE: ${{ github.event.inputs.package }}
-          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           set -euo pipefail
 
@@ -95,26 +94,25 @@ jobs:
 
           dry_run="false"
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            if [[ "$INPUT_DRY_RUN" == "true" ]]; then
-              dry_run="true"
-            fi
+            dry_run="true"
             if [[ -n "$INPUT_PACKAGE" ]]; then
               selected+=("$(resolve_slug "$INPUT_PACKAGE")")
             else
               selected=("${all_packages[@]}")
             fi
           else
+            semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
             # Slug-specific tags are matched by iterating the known
             # `all_packages` list rather than a greedy `.+-v` capture
             # - the greedy regex would misparse slugs that themselves
             # contain `-v` (e.g. a hypothetical `ai-sdk-v2-preview`).
-            if [[ "$REF_NAME" =~ ^ts/v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+            if [[ "$REF_NAME" =~ ^ts/v${semver_re}$ ]]; then
               selected=("${all_packages[@]}")
             else
               matched=""
               for candidate in "${all_packages[@]}"; do
                 slug="$(basename "$candidate")"
-                if [[ "$REF_NAME" =~ ^ts/${slug}-v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+                if [[ "$REF_NAME" =~ ^ts/${slug}-v${semver_re}$ ]]; then
                   matched="$candidate"
                   break
                 fi
@@ -122,7 +120,7 @@ jobs:
               if [[ -n "$matched" ]]; then
                 selected+=("$matched")
               else
-                echo "Tag $REF_NAME does not match ts/v*.*.* or ts/<slug>-v*.*.* for any known slug" >&2
+                echo "Tag $REF_NAME does not match ts/v<semver> or ts/<slug>-v<semver> for any known slug" >&2
                 exit 1
               fi
             fi
@@ -144,6 +142,10 @@ jobs:
     name: Build ${{ matrix.package }}
     needs: plan
     runs-on: ubuntu-latest
+    permissions:
+      # Required for cosign keyless signing via Sigstore Fulcio.
+      id-token: write
+      contents: read
     strategy:
       fail-fast: false
       # Keep publishes deterministic; node-http must build before
@@ -154,9 +156,9 @@ jobs:
     outputs:
       dry_run: ${{ needs.plan.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
           # `registry-url` must be set here so that later `npm publish`
@@ -190,12 +192,13 @@ jobs:
           SLUG: ${{ steps.meta.outputs.slug }}
         run: |
           set -euo pipefail
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
           # Non-greedy leading strip so pre-release tags whose suffix
           # contains `v` (e.g. ts/v1.2.3-preview.1) are extracted
           # correctly. See release-pypi.yml for the same fix.
-          if [[ "$REF_NAME" =~ ^ts/v(.+)$ ]]; then
+          if [[ "$REF_NAME" =~ ^ts/v(${semver_re})$ ]]; then
             tag_version="${BASH_REMATCH[1]}"
-          elif [[ "$REF_NAME" =~ ^ts/$SLUG-v(.+)$ ]]; then
+          elif [[ "$REF_NAME" =~ ^ts/$SLUG-v(${semver_re})$ ]]; then
             # Anchor against the known package slug instead of a greedy
             # `.+-v`. Without this anchor, a valid semver prerelease
             # containing `-v` (e.g. `ts/ai-sdk-v1.2.3-preview-v1`)
@@ -203,7 +206,7 @@ jobs:
             # suffix and capture `1` instead of `1.2.3-preview-v1`.
             tag_version="${BASH_REMATCH[1]}"
           else
-            echo "Tag $REF_NAME does not match ts/v* or ts/$SLUG-v*" >&2
+            echo "Tag $REF_NAME does not match ts/v<semver> or ts/$SLUG-v<semver>" >&2
             exit 1
           fi
           if [[ "$REF_NAME" == ts/v* ]] && [[ "$tag_version" != "$EXPECTED" ]]; then
@@ -279,6 +282,11 @@ jobs:
           # published tarball, so every `file:../<pkg>` dep is rewritten
           # to `^<pkg.version>` before `npm pack`. The rewrite is
           # in-place on the working copy for this matrix leg only.
+          # The single-quoted heredoc below is a JS program with template
+          # literals (`${name}`); the `${...}` are JS, not bash, so the
+          # SC2016 "expressions don't expand in single quotes" diagnostic
+          # is a false positive here.
+          # shellcheck disable=SC2016
           node -e '
             const fs = require("fs");
             const path = require("path");
@@ -316,18 +324,65 @@ jobs:
           mv "$tarball" "${GITHUB_WORKSPACE}/npm-dist/"
           echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
 
+      - name: Install cosign
+        # Pinned to a tagged release of sigstore/cosign-installer so the
+        # signing-side toolchain version is auditable. The Renovate config
+        # in .github/renovate.json (M09 NEW sub-task) tracks upstream
+        # cosign-installer releases for review.
+        uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign npm tarball with cosign keyless
+        # Produces a detached `.sig` and Fulcio leaf cert `.pem` for
+        # the npm tarball. npm provenance (--provenance) and cosign keyless
+        # are complementary; cosign is verified client-side via the recipe
+        # in docs/install/VERIFY.md.
+        shell: bash
+        env:
+          COSIGN_YES: "true"
+          COSIGN_EXPERIMENTAL: "1"
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}/npm-dist"
+          if [[ ! -f "${TARBALL}" ]]; then
+            echo "::error::expected npm tarball ${TARBALL} not found in npm-dist" >&2
+            ls -la
+            exit 1
+          fi
+          echo "Signing ${TARBALL}"
+          cosign sign-blob --yes \
+            --output-signature "${TARBALL}.sig" \
+            --output-certificate "${TARBALL}.pem" \
+            "${TARBALL}"
+          # Sanity-check both sidecars exist and are non-empty so a silent
+          # cosign success that produced no files fails the job.
+          for ext in sig pem; do
+            if [[ ! -s "${TARBALL}.${ext}" ]]; then
+              echo "::error::cosign produced empty ${TARBALL}.${ext}" >&2
+              exit 1
+            fi
+          done
+          ls -la
+
       - name: Upload tarball artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: npm-dist-${{ steps.meta.outputs.slug }}
-          path: npm-dist/*
+          # Include .sig + .pem so the release-attest job can attach
+          # them to the GitHub Release alongside each tarball.
+          path: |
+            npm-dist/*.tgz
+            npm-dist/*.sig
+            npm-dist/*.pem
           retention-days: 7
           if-no-files-found: error
 
   publish:
     name: Publish ${{ matrix.package }}
     needs: [plan, build]
-    if: needs.plan.outputs.dry_run != 'true'
+    if: needs.plan.outputs.dry_run != 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -352,9 +407,9 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
@@ -371,7 +426,7 @@ jobs:
           echo "slug=$(basename "$PACKAGE_DIR")" >> "$GITHUB_OUTPUT"
 
       - name: Download tarball artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: npm-dist-${{ steps.meta.outputs.slug }}
           path: npm-dist
@@ -389,5 +444,59 @@ jobs:
           tarball=$(find npm-dist -maxdepth 1 -name '*.tgz' -print -quit)
           echo "Publishing $tarball"
           # `--access public` is required for scoped packages (@chio-protocol/*)
-          # to be accessible without auth.
+          # to be accessible without auth. Only the .tgz is uploaded; the
+          # cosign `.sig`/`.pem` sidecars in the same directory ride to
+          # the GitHub Release via the release-attest job, not to npm.
           npm publish "$tarball" --access public --provenance
+
+  release-attest:
+    name: Attach cosign signatures to GitHub Release
+    # Attaches `.sig` + `.pem` for every npm tarball to the GitHub Release.
+    # Verification recipe: docs/install/VERIFY.md.
+    # Gates on `publish` so signed artifacts only attach after the
+    # npm-environment-protected publish job has actually succeeded.
+    needs: [plan, build, publish]
+    # Skip on workflow_dispatch dry runs; only attach on real tag pushes.
+    if: needs.plan.outputs.dry_run != 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download all tarball artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: artifacts
+          pattern: npm-dist-*
+          merge-multiple: true
+
+      - name: Stage release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          # Copy tarballs and their cosign sidecars. The tarball itself
+          # is also attached so consumers can fetch the exact byte-for-byte
+          # artifact registry-side copies of npm differ across mirrors;
+          # `cosign verify-blob` requires the original file alongside its
+          # `.sig` + `.pem`.
+          find artifacts -maxdepth 2 -type f \
+            \( -name '*.tgz' -o -name '*.sig' -o -name '*.pem' \) \
+            -exec cp {} release/ \;
+          (cd release && ls -la)
+
+      - name: Attach signatures to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          tag_name: ${{ github.ref_name }}
+          # release-npm.yml fires from either a meta tag (ts/v0.2.0) or
+          # a slug-specific tag (ts/express-v1.2.0); the GitHub Release
+          # for that tag may not exist yet, so let action-gh-release
+          # create it on first run. Subsequent re-runs append rather
+          # than fail the upload.
+          fail_on_unmatched_files: true
+          files: |
+            release/*.tgz
+            release/*.sig
+            release/*.pem

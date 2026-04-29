@@ -1,19 +1,57 @@
-//! Host state and host function registration for WASM guards.
+//! Host state and WIT-generated host import wiring for WASM guards.
 //!
-//! Provides [`WasmHostState`] which carries per-guard configuration and a
-//! bounded log buffer, plus three host functions importable by WASM guests:
-//!
-//! - `chio.log(level, ptr, len)` -- structured logging to the host
-//! - `chio.get_config(key_ptr, key_len, val_out_ptr, val_out_len) -> i32` -- read config values
-//! - `chio.get_time_unix_secs() -> i64` -- wall-clock time
+//! Core-module guards still use [`WasmHostState`] for per-invocation limits and
+//! configuration. Component-model guards use the same state through bindings
+//! generated from `wit/chio-guard/world.wit`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use wasmtime::{Caller, Engine, Linker, StoreLimits, StoreLimitsBuilder};
+use wasmtime::component::{
+    Linker as ComponentLinker, Resource as ComponentResource, ResourceTable, ResourceTableError,
+};
+use wasmtime::{
+    Caller, Engine, FuncType, Linker as CoreLinker, StoreLimits, StoreLimitsBuilder, Val, ValType,
+};
 
+use crate::bundle_store::{parse_sha256_digest, BundleStore, InMemoryBundleStore};
 use crate::error::WasmGuardError;
+use crate::observability::{
+    guard_fetch_blob_span, guard_host_call_span, HOST_FETCH_BLOB, HOST_GET_CONFIG,
+    HOST_GET_TIME_UNIX_SECS, HOST_LOG,
+};
+
+// ---------------------------------------------------------------------------
+// bindgen-generated component bindings
+// ---------------------------------------------------------------------------
+
+/// Host-side representation for the `policy-context` bundle resource.
+#[derive(Debug, Clone)]
+pub struct BundleHandle {
+    sha256: [u8; 32],
+}
+
+impl BundleHandle {
+    #[must_use]
+    pub fn id_hex(&self) -> String {
+        hex::encode(self.sha256)
+    }
+}
+
+pub mod bindings {
+    wasmtime::component::bindgen!({
+        path: "../../wit/chio-guard",
+        world: "guard",
+        imports: { default: async | trappable },
+        exports: { default: async },
+        with: {
+            "chio:guard/policy-context.bundle-handle": super::BundleHandle,
+        },
+    });
+}
+
+pub use self::bindings::{Guard, GuardRequest, Verdict};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -28,24 +66,27 @@ pub const MAX_MEMORY_BYTES: usize = 16 * 1024 * 1024;
 /// Maximum length of a single log message in bytes.
 pub const MAX_LOG_MESSAGE_LEN: usize = 4096;
 
+/// Maximum length of a config key in bytes.
+pub const MAX_CONFIG_KEY_LEN: usize = 1024;
+
 // ---------------------------------------------------------------------------
 // WasmHostState
 // ---------------------------------------------------------------------------
 
 /// Per-invocation host state stored in the wasmtime `Store`.
-///
-/// Each `evaluate()` call creates a fresh `WasmHostState` with the guard's
-/// config map and an empty log buffer. Host functions access this state via
-/// `Caller::data()` / `Caller::data_mut()`.
 pub struct WasmHostState {
     /// Guard-specific configuration key-value pairs from the manifest.
     pub config: HashMap<String, String>,
-    /// Captured log entries from `chio.log` calls: `(level, message)`.
+    /// Captured log entries from `host.log` calls: `(level, message)`.
     pub logs: Vec<(i32, String)>,
-    /// Maximum log entries per invocation (bounded at [`MAX_LOG_ENTRIES`]).
+    /// Maximum log entries per invocation, bounded at [`MAX_LOG_ENTRIES`].
     pub max_log_entries: usize,
     /// Resource limits for memory and table growth.
     pub limits: StoreLimits,
+    /// Content-addressed policy bundle storage.
+    pub bundle_store: Arc<dyn BundleStore>,
+    /// Host-owned component resource table.
+    pub resources: ResourceTable,
 }
 
 impl WasmHostState {
@@ -56,9 +97,30 @@ impl WasmHostState {
 
     /// Create a new host state with a custom memory limit.
     ///
-    /// `trap_on_grow_failure(true)` is set so that any `memory.grow` beyond
-    /// the configured cap causes a trap (fail-closed) instead of returning -1.
+    /// `trap_on_grow_failure(true)` causes `memory.grow` beyond the configured
+    /// cap to trap, preserving fail-closed behavior.
     pub fn with_memory_limit(config: HashMap<String, String>, max_memory: usize) -> Self {
+        Self::with_memory_limit_and_bundle_store(
+            config,
+            max_memory,
+            Arc::new(InMemoryBundleStore::new()),
+        )
+    }
+
+    /// Create host state with a custom in-process content bundle store.
+    pub fn with_bundle_store(
+        config: HashMap<String, String>,
+        bundle_store: Arc<dyn BundleStore>,
+    ) -> Self {
+        Self::with_memory_limit_and_bundle_store(config, MAX_MEMORY_BYTES, bundle_store)
+    }
+
+    /// Create host state with custom memory and content bundle limits.
+    pub fn with_memory_limit_and_bundle_store(
+        config: HashMap<String, String>,
+        max_memory: usize,
+        bundle_store: Arc<dyn BundleStore>,
+    ) -> Self {
         let limits = StoreLimitsBuilder::new()
             .memory_size(max_memory)
             .trap_on_grow_failure(true)
@@ -68,169 +130,372 @@ impl WasmHostState {
             logs: Vec::new(),
             max_log_entries: MAX_LOG_ENTRIES,
             limits,
+            bundle_store,
+            resources: ResourceTable::new(),
         }
     }
+
+    fn record_log(&mut self, level: u32, msg: String) {
+        let span = guard_host_call_span(HOST_LOG);
+        let _span_guard = span.enter();
+        if level > 4 || msg.len() > MAX_LOG_MESSAGE_LEN {
+            return;
+        }
+
+        match level {
+            0 => tracing::trace!(target: "wasm_guard", "{msg}"),
+            1 => tracing::debug!(target: "wasm_guard", "{msg}"),
+            2 => tracing::info!(target: "wasm_guard", "{msg}"),
+            3 => tracing::warn!(target: "wasm_guard", "{msg}"),
+            4 => tracing::error!(target: "wasm_guard", "{msg}"),
+            _ => {}
+        }
+
+        if self.logs.len() < self.max_log_entries {
+            self.logs.push((level as i32, msg));
+        }
+    }
+
+    fn read_bundle_blob(
+        &self,
+        handle: &BundleHandle,
+        offset: u64,
+        len: u32,
+    ) -> Result<Vec<u8>, String> {
+        let blob = self
+            .bundle_store
+            .fetch_blob(&handle.sha256)
+            .map_err(|e| e.to_string())?;
+        slice_blob(&blob, offset, len)
+    }
+
+    fn read_bundle_blob_with_spans(
+        &self,
+        handle: &BundleHandle,
+        offset: u64,
+        len: u32,
+    ) -> Result<Vec<u8>, String> {
+        let host_span = guard_host_call_span(HOST_FETCH_BLOB);
+        let _host_guard = host_span.enter();
+        let bundle_id = handle.id_hex();
+        let fetch_span = guard_fetch_blob_span(&bundle_id, 0);
+        let _fetch_guard = fetch_span.enter();
+        let result = self.read_bundle_blob(handle, offset, len);
+        let bytes = result.as_ref().map_or(0, Vec::len) as u64;
+        fetch_span.record("bytes", bytes);
+        result
+    }
+}
+
+fn slice_blob(blob: &[u8], offset: u64, len: u32) -> Result<Vec<u8>, String> {
+    let start =
+        usize::try_from(offset).map_err(|_| "bundle blob offset exceeds host usize".to_string())?;
+    let length =
+        usize::try_from(len).map_err(|_| "bundle blob length exceeds host usize".to_string())?;
+    if start > blob.len() {
+        return Err(format!(
+            "bundle blob offset {offset} is beyond blob length {}",
+            blob.len()
+        ));
+    }
+
+    let end = start.saturating_add(length).min(blob.len());
+    Ok(blob[start..end].to_vec())
+}
+
+fn resource_table_error(err: ResourceTableError) -> wasmtime::Error {
+    wasmtime::Error::msg(format!("bundle handle resource table error: {err}"))
+}
+
+fn resource_table_error_string(err: ResourceTableError) -> String {
+    format!("bundle handle resource table error: {err}")
 }
 
 // ---------------------------------------------------------------------------
 // Shared Engine constructor
 // ---------------------------------------------------------------------------
 
-/// Create a shared wasmtime [`Engine`] with fuel consumption enabled.
-///
-/// Returns `Arc<Engine>` suitable for sharing across multiple
-/// `WasmtimeBackend` instances. Maps construction errors to
-/// `WasmGuardError::Compilation`.
+/// Create a shared wasmtime [`Engine`] with fuel and async component support.
 pub fn create_shared_engine() -> Result<Arc<Engine>, WasmGuardError> {
     let mut config = wasmtime::Config::new();
     config.consume_fuel(true);
     config.wasm_component_model(true);
+    config.wasm_component_model_async(true);
     let engine = Engine::new(&config).map_err(|e| WasmGuardError::Compilation(e.to_string()))?;
     Ok(Arc::new(engine))
 }
 
 // ---------------------------------------------------------------------------
-// Host function registration
+// Component host import wiring
 // ---------------------------------------------------------------------------
 
-/// Register the `chio.*` host functions on the given [`Linker`].
+/// Register WIT-generated `chio:guard/guard@0.2.0` host imports.
+pub fn register_component_host_functions<T>(
+    linker: &mut ComponentLinker<T>,
+    get: fn(&mut T) -> &mut WasmHostState,
+) -> Result<(), WasmGuardError>
+where
+    T: Send,
+{
+    Guard::add_to_linker::<T, wasmtime::component::HasSelf<WasmHostState>>(linker, get)
+        .map_err(|e| WasmGuardError::HostFunction(e.to_string()))
+}
+
+/// Register legacy raw-ABI core-module imports.
 ///
-/// Registers:
-/// - `chio.log(level: i32, ptr: i32, len: i32)` -- guest logging
-/// - `chio.get_config(key_ptr: i32, key_len: i32, val_out_ptr: i32, val_out_len: i32) -> i32`
-/// - `chio.get_time_unix_secs() -> i64`
-///
-/// All host function closures are safe: they never panic, never call
-/// `unwrap()` or `expect()`, and return graceful sentinel values on error.
-pub fn register_host_functions(linker: &mut Linker<WasmHostState>) -> Result<(), WasmGuardError> {
-    // -----------------------------------------------------------------------
-    // chio.log(level: i32, ptr: i32, len: i32)
-    // -----------------------------------------------------------------------
+/// Component guards use [`register_component_host_functions`]. This path remains
+/// for older core modules and is implemented without the old linker shortcut.
+pub fn register_host_functions(
+    linker: &mut CoreLinker<WasmHostState>,
+) -> Result<(), WasmGuardError> {
+    let engine = linker.engine().clone();
+
     linker
-        .func_wrap(
+        .func_new(
             "chio",
             "log",
-            |mut caller: Caller<'_, WasmHostState>, level: i32, ptr: i32, len: i32| {
-                // Validate level range (0=trace, 1=debug, 2=info, 3=warn, 4=error)
-                if !(0..=4).contains(&level) {
-                    return;
-                }
-                // Validate length is non-negative and within bounds
-                if len < 0 || len as usize > MAX_LOG_MESSAGE_LEN {
-                    return;
-                }
-                let len_usize = len as usize;
-
-                let memory = match caller.get_export("memory").and_then(|e| e.into_memory()) {
-                    Some(m) => m,
-                    None => return,
-                };
-
-                let mut buf = vec![0u8; len_usize];
-                if memory.read(&caller, ptr as usize, &mut buf).is_err() {
-                    return;
-                }
-
-                let msg = String::from_utf8_lossy(&buf).to_string();
-
-                // Emit via tracing at the appropriate level
-                match level {
-                    0 => tracing::trace!(target: "wasm_guard", "{msg}"),
-                    1 => tracing::debug!(target: "wasm_guard", "{msg}"),
-                    2 => tracing::info!(target: "wasm_guard", "{msg}"),
-                    3 => tracing::warn!(target: "wasm_guard", "{msg}"),
-                    4 => tracing::error!(target: "wasm_guard", "{msg}"),
-                    _ => {} // unreachable due to range check above
-                }
-
-                // Buffer in host state (bounded)
-                let state = caller.data_mut();
-                if state.logs.len() < state.max_log_entries {
-                    state.logs.push((level, msg));
-                }
-            },
+            FuncType::new(&engine, [ValType::I32, ValType::I32, ValType::I32], []),
+            legacy_log,
         )
         .map_err(|e| WasmGuardError::HostFunction(e.to_string()))?;
 
-    // -----------------------------------------------------------------------
-    // chio.get_config(key_ptr: i32, key_len: i32, val_out_ptr: i32, val_out_len: i32) -> i32
-    // -----------------------------------------------------------------------
     linker
-        .func_wrap(
+        .func_new(
             "chio",
             "get_config",
-            |mut caller: Caller<'_, WasmHostState>,
-             key_ptr: i32,
-             key_len: i32,
-             val_out_ptr: i32,
-             val_out_len: i32|
-             -> i32 {
-                // Validate key length
-                if key_len < 0 || key_len as usize > 1024 {
-                    return -1;
-                }
-                let key_len_usize = key_len as usize;
-
-                let memory = match caller.get_export("memory").and_then(|e| e.into_memory()) {
-                    Some(m) => m,
-                    None => return -1,
-                };
-
-                // Read the key from guest memory
-                let mut key_buf = vec![0u8; key_len_usize];
-                if memory
-                    .read(&caller, key_ptr as usize, &mut key_buf)
-                    .is_err()
-                {
-                    return -1;
-                }
-
-                let key = match std::str::from_utf8(&key_buf) {
-                    Ok(s) => s.to_string(),
-                    Err(_) => return -1,
-                };
-
-                // Split borrow: get memory data and store state simultaneously
-                let (mem_data, state) = memory.data_and_store_mut(&mut caller);
-                let value = match state.config.get(&key) {
-                    Some(v) => v.clone(),
-                    None => return -1,
-                };
-
-                let value_bytes = value.as_bytes();
-                let actual_len = value_bytes.len();
-                let out_len = val_out_len as usize;
-                let out_ptr = val_out_ptr as usize;
-
-                // Write as much as fits into the output buffer
-                let copy_len = actual_len.min(out_len);
-                if out_ptr.saturating_add(copy_len) <= mem_data.len() {
-                    mem_data[out_ptr..out_ptr + copy_len].copy_from_slice(&value_bytes[..copy_len]);
-                }
-
-                // Return actual value length so guest can detect truncation
-                actual_len as i32
-            },
+            FuncType::new(
+                &engine,
+                [ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+                [ValType::I32],
+            ),
+            legacy_get_config,
         )
         .map_err(|e| WasmGuardError::HostFunction(e.to_string()))?;
 
-    // -----------------------------------------------------------------------
-    // chio.get_time_unix_secs() -> i64
-    // -----------------------------------------------------------------------
     linker
-        .func_wrap(
+        .func_new(
             "chio",
             "get_time_unix_secs",
-            |_caller: Caller<'_, WasmHostState>| -> i64 {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0)
-            },
+            FuncType::new(&engine, [], [ValType::I64]),
+            legacy_get_time_unix_secs,
         )
         .map_err(|e| WasmGuardError::HostFunction(e.to_string()))?;
 
     Ok(())
+}
+
+fn i32_param(params: &[Val], index: usize) -> Option<i32> {
+    match params.get(index) {
+        Some(Val::I32(value)) => Some(*value),
+        _ => None,
+    }
+}
+
+fn set_i32_result(results: &mut [Val], value: i32) -> wasmtime::Result<()> {
+    match results.get_mut(0) {
+        Some(slot) => {
+            *slot = Val::I32(value);
+            Ok(())
+        }
+        None => Err(wasmtime::Error::msg("missing i32 result slot")),
+    }
+}
+
+fn set_i64_result(results: &mut [Val], value: i64) -> wasmtime::Result<()> {
+    match results.get_mut(0) {
+        Some(slot) => {
+            *slot = Val::I64(value);
+            Ok(())
+        }
+        None => Err(wasmtime::Error::msg("missing i64 result slot")),
+    }
+}
+
+fn legacy_log(
+    mut caller: Caller<'_, WasmHostState>,
+    params: &[Val],
+    _results: &mut [Val],
+) -> wasmtime::Result<()> {
+    let level = match i32_param(params, 0) {
+        Some(value) if (0..=4).contains(&value) => value as u32,
+        _ => return Ok(()),
+    };
+    let ptr = match i32_param(params, 1) {
+        Some(value) if value >= 0 => value as usize,
+        _ => return Ok(()),
+    };
+    let len = match i32_param(params, 2) {
+        Some(value) if value >= 0 => value as usize,
+        _ => return Ok(()),
+    };
+    if len > MAX_LOG_MESSAGE_LEN {
+        return Ok(());
+    }
+
+    let memory = match caller.get_export("memory").and_then(|e| e.into_memory()) {
+        Some(memory) => memory,
+        None => return Ok(()),
+    };
+
+    let mut buf = vec![0u8; len];
+    if memory.read(&caller, ptr, &mut buf).is_err() {
+        return Ok(());
+    }
+
+    let msg = String::from_utf8_lossy(&buf).to_string();
+    caller.data_mut().record_log(level, msg);
+    Ok(())
+}
+
+fn legacy_get_config(
+    mut caller: Caller<'_, WasmHostState>,
+    params: &[Val],
+    results: &mut [Val],
+) -> wasmtime::Result<()> {
+    let span = guard_host_call_span(HOST_GET_CONFIG);
+    let _span_guard = span.enter();
+    let key_ptr = match i32_param(params, 0) {
+        Some(value) if value >= 0 => value as usize,
+        _ => return set_i32_result(results, -1),
+    };
+    let key_len = match i32_param(params, 1) {
+        Some(value) if value >= 0 && value as usize <= MAX_CONFIG_KEY_LEN => value as usize,
+        _ => return set_i32_result(results, -1),
+    };
+    let val_out_ptr = match i32_param(params, 2) {
+        Some(value) if value >= 0 => value as usize,
+        _ => return set_i32_result(results, -1),
+    };
+    let val_out_len = match i32_param(params, 3) {
+        Some(value) if value >= 0 => value as usize,
+        _ => return set_i32_result(results, -1),
+    };
+
+    let memory = match caller.get_export("memory").and_then(|e| e.into_memory()) {
+        Some(memory) => memory,
+        None => return set_i32_result(results, -1),
+    };
+
+    let mut key_buf = vec![0u8; key_len];
+    if memory.read(&caller, key_ptr, &mut key_buf).is_err() {
+        return set_i32_result(results, -1);
+    }
+
+    let key = match std::str::from_utf8(&key_buf) {
+        Ok(value) => value,
+        Err(_) => return set_i32_result(results, -1),
+    };
+
+    let value = match caller.data().config.get(key) {
+        Some(value) => value.clone(),
+        None => return set_i32_result(results, -1),
+    };
+    let value_bytes = value.as_bytes();
+    let copy_len = value_bytes.len().min(val_out_len);
+    let mem_data = memory.data_mut(&mut caller);
+    if val_out_ptr.saturating_add(copy_len) <= mem_data.len() {
+        mem_data[val_out_ptr..val_out_ptr + copy_len].copy_from_slice(&value_bytes[..copy_len]);
+    }
+
+    let actual_len = i32::try_from(value_bytes.len()).unwrap_or(i32::MAX);
+    set_i32_result(results, actual_len)
+}
+
+fn legacy_get_time_unix_secs(
+    _caller: Caller<'_, WasmHostState>,
+    _params: &[Val],
+    results: &mut [Val],
+) -> wasmtime::Result<()> {
+    let span = guard_host_call_span(HOST_GET_TIME_UNIX_SECS);
+    let _span_guard = span.enter();
+    let secs = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs(),
+        Err(_) => 0,
+    };
+    let secs = i64::try_from(secs).unwrap_or(i64::MAX);
+    set_i64_result(results, secs)
+}
+
+impl bindings::chio::guard::host::Host for WasmHostState {
+    async fn log(&mut self, level: u32, msg: String) -> wasmtime::Result<()> {
+        self.record_log(level, msg);
+        Ok(())
+    }
+
+    async fn get_config(&mut self, key: String) -> wasmtime::Result<Option<String>> {
+        let span = guard_host_call_span(HOST_GET_CONFIG);
+        let _span_guard = span.enter();
+        if key.len() > MAX_CONFIG_KEY_LEN {
+            return Ok(None);
+        }
+        Ok(self.config.get(&key).cloned())
+    }
+
+    async fn get_time_unix_secs(&mut self) -> wasmtime::Result<u64> {
+        let span = guard_host_call_span(HOST_GET_TIME_UNIX_SECS);
+        let _span_guard = span.enter();
+        let secs = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_secs(),
+            Err(_) => 0,
+        };
+        Ok(secs)
+    }
+
+    async fn fetch_blob(
+        &mut self,
+        handle: u32,
+        offset: u64,
+        len: u32,
+    ) -> wasmtime::Result<Result<Vec<u8>, String>> {
+        let resource = ComponentResource::<BundleHandle>::new_borrow(handle);
+        let handle = match self.resources.get(&resource) {
+            Ok(handle) => handle,
+            Err(err) => return Ok(Err(resource_table_error_string(err))),
+        };
+        Ok(self.read_bundle_blob_with_spans(handle, offset, len))
+    }
+}
+
+impl bindings::chio::guard::types::Host for WasmHostState {}
+
+impl bindings::chio::guard::policy_context::Host for WasmHostState {}
+
+impl bindings::chio::guard::policy_context::HostBundleHandle for WasmHostState {
+    async fn new(&mut self, id: String) -> wasmtime::Result<ComponentResource<BundleHandle>> {
+        let sha256 = parse_sha256_digest(&id).map_err(|e| wasmtime::Error::msg(e.to_string()))?;
+        self.resources
+            .push(BundleHandle { sha256 })
+            .map_err(resource_table_error)
+    }
+
+    async fn read(
+        &mut self,
+        self_: ComponentResource<BundleHandle>,
+        offset: u64,
+        len: u32,
+    ) -> wasmtime::Result<Result<Vec<u8>, String>> {
+        let handle = match self.resources.get(&self_) {
+            Ok(handle) => handle,
+            Err(err) => return Ok(Err(resource_table_error_string(err))),
+        };
+        Ok(self.read_bundle_blob_with_spans(handle, offset, len))
+    }
+
+    async fn close(&mut self, self_: ComponentResource<BundleHandle>) -> wasmtime::Result<()> {
+        let owned = ComponentResource::<BundleHandle>::new_own(self_.rep());
+        self.resources
+            .delete(owned)
+            .map(|_| ())
+            .map_err(resource_table_error)
+    }
+
+    async fn drop(&mut self, rep: ComponentResource<BundleHandle>) -> wasmtime::Result<()> {
+        let owned = ComponentResource::<BundleHandle>::new_own(rep.rep());
+        match self.resources.delete(owned) {
+            Ok(_) | Err(ResourceTableError::NotPresent) => Ok(()),
+            Err(err) => Err(resource_table_error(err)),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -240,26 +505,26 @@ pub fn register_host_functions(linker: &mut Linker<WasmHostState>) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wasmtime::{Module, Store};
+    use std::future::Future;
+    use std::pin::pin;
+    use std::task::{Context, Poll, Wake, Waker};
 
-    /// Helper: create a shared engine, linker with host functions, and store
-    /// with the given config. Returns (store, linker, engine) for test use.
-    fn setup_test_env(
-        config: HashMap<String, String>,
-    ) -> (Store<WasmHostState>, Linker<WasmHostState>, Arc<Engine>) {
-        let engine = create_shared_engine().expect("create engine");
-        let mut linker = Linker::new(&engine);
-        register_host_functions(&mut linker).expect("register host functions");
-        let host_state = WasmHostState::new(config);
-        let mut store = Store::new(&engine, host_state);
-        store.limiter(|state| &mut state.limits);
-        store.set_fuel(1_000_000).expect("set fuel");
-        (store, linker, engine)
+    struct NoopWaker;
+
+    impl Wake for NoopWaker {
+        fn wake(self: Arc<Self>) {}
     }
 
-    // -----------------------------------------------------------------------
-    // WasmHostState unit tests
-    // -----------------------------------------------------------------------
+    fn block_on_ready<F: Future>(future: F) -> F::Output {
+        let waker = Waker::from(Arc::new(NoopWaker));
+        let mut cx = Context::from_waker(&waker);
+        let mut future = pin!(future);
+
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(output) => output,
+            Poll::Pending => panic!("host future should complete without suspension"),
+        }
+    }
 
     #[test]
     fn host_state_new_creates_empty_logs_with_config() {
@@ -274,313 +539,112 @@ mod tests {
     #[test]
     fn host_state_with_memory_limit_uses_custom_limit() {
         let config = HashMap::new();
-        let custom_limit = 4 * 1024 * 1024; // 4 MiB
+        let custom_limit = 4 * 1024 * 1024;
         let state = WasmHostState::with_memory_limit(config, custom_limit);
         assert!(state.logs.is_empty());
         assert_eq!(state.max_log_entries, MAX_LOG_ENTRIES);
-        // We verify the state was created with the custom limit by checking
-        // it is usable (the actual enforcement is tested in runtime.rs)
     }
-
-    #[test]
-    fn host_state_new_uses_default_max_memory() {
-        // WasmHostState::new() should use MAX_MEMORY_BYTES (16 MiB)
-        let state = WasmHostState::new(HashMap::new());
-        assert!(state.logs.is_empty());
-        // The default limit is MAX_MEMORY_BYTES; we confirm construction works.
-        // Actual enforcement tested via the wasmtime runtime integration tests.
-    }
-
-    // -----------------------------------------------------------------------
-    // Shared engine tests
-    // -----------------------------------------------------------------------
 
     #[test]
     fn host_create_shared_engine_returns_arc() {
         let engine = create_shared_engine();
         assert!(engine.is_ok());
         let engine = engine.unwrap();
-        // Verify it is clonable (Arc)
         let _clone = engine.clone();
     }
 
-    // -----------------------------------------------------------------------
-    // chio.log tests
-    // -----------------------------------------------------------------------
-
     #[test]
     fn host_log_captures_message() {
-        let (mut store, linker, engine) = setup_test_env(HashMap::new());
+        let mut state = WasmHostState::new(HashMap::new());
+        block_on_ready(bindings::chio::guard::host::Host::log(
+            &mut state,
+            2,
+            "hello".to_string(),
+        ))
+        .expect("log");
 
-        // WAT module that stores "hello" in memory and calls chio.log(2, 0, 5)
-        let wat = r#"
-            (module
-                (import "chio" "log" (func $log (param i32 i32 i32)))
-                (memory (export "memory") 1)
-                (data (i32.const 0) "hello")
-                (func (export "evaluate") (param i32 i32) (result i32)
-                    (call $log (i32.const 2) (i32.const 0) (i32.const 5))
-                    (i32.const 0)
-                )
-            )
-        "#;
-
-        let module = Module::new(&engine, wat).expect("compile WAT");
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .expect("instantiate");
-
-        let evaluate = instance
-            .get_typed_func::<(i32, i32), i32>(&mut store, "evaluate")
-            .expect("get evaluate");
-        let _result = evaluate.call(&mut store, (0, 0)).expect("call evaluate");
-
-        assert_eq!(store.data().logs, vec![(2, "hello".to_string())]);
+        assert_eq!(state.logs, vec![(2, "hello".to_string())]);
     }
 
     #[test]
     fn host_log_buffer_respects_max_entries() {
-        let (mut store, linker, engine) = setup_test_env(HashMap::new());
+        let mut state = WasmHostState::new(HashMap::new());
 
-        // WAT module that calls chio.log 257 times in a loop
-        // We use a local counter and br_if to loop
-        let wat = r#"
-            (module
-                (import "chio" "log" (func $log (param i32 i32 i32)))
-                (memory (export "memory") 1)
-                (data (i32.const 0) "x")
-                (func (export "evaluate") (param i32 i32) (result i32)
-                    (local $i i32)
-                    (local.set $i (i32.const 0))
-                    (block $break
-                        (loop $loop
-                            (br_if $break (i32.ge_u (local.get $i) (i32.const 257)))
-                            (call $log (i32.const 2) (i32.const 0) (i32.const 1))
-                            (local.set $i (i32.add (local.get $i) (i32.const 1)))
-                            (br $loop)
-                        )
-                    )
-                    (i32.const 0)
-                )
-            )
-        "#;
+        for _ in 0..=MAX_LOG_ENTRIES {
+            block_on_ready(bindings::chio::guard::host::Host::log(
+                &mut state,
+                2,
+                "x".to_string(),
+            ))
+            .expect("log");
+        }
 
-        let module = Module::new(&engine, wat).expect("compile WAT");
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .expect("instantiate");
-
-        let evaluate = instance
-            .get_typed_func::<(i32, i32), i32>(&mut store, "evaluate")
-            .expect("get evaluate");
-        let _result = evaluate.call(&mut store, (0, 0)).expect("call evaluate");
-
-        assert_eq!(store.data().logs.len(), MAX_LOG_ENTRIES);
+        assert_eq!(state.logs.len(), MAX_LOG_ENTRIES);
     }
 
     #[test]
     fn host_log_invalid_level_is_silently_ignored() {
-        let (mut store, linker, engine) = setup_test_env(HashMap::new());
+        let mut state = WasmHostState::new(HashMap::new());
+        block_on_ready(bindings::chio::guard::host::Host::log(
+            &mut state,
+            99,
+            "bad".to_string(),
+        ))
+        .expect("log");
 
-        // WAT module that calls chio.log with level=99
-        let wat = r#"
-            (module
-                (import "chio" "log" (func $log (param i32 i32 i32)))
-                (memory (export "memory") 1)
-                (data (i32.const 0) "bad")
-                (func (export "evaluate") (param i32 i32) (result i32)
-                    (call $log (i32.const 99) (i32.const 0) (i32.const 3))
-                    (i32.const 0)
-                )
-            )
-        "#;
-
-        let module = Module::new(&engine, wat).expect("compile WAT");
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .expect("instantiate");
-
-        let evaluate = instance
-            .get_typed_func::<(i32, i32), i32>(&mut store, "evaluate")
-            .expect("get evaluate");
-        let _result = evaluate.call(&mut store, (0, 0)).expect("call evaluate");
-
-        assert!(store.data().logs.is_empty());
+        assert!(state.logs.is_empty());
     }
 
     #[test]
     fn host_log_oversized_message_is_silently_ignored() {
-        let (mut store, linker, engine) = setup_test_env(HashMap::new());
+        let mut state = WasmHostState::new(HashMap::new());
+        block_on_ready(bindings::chio::guard::host::Host::log(
+            &mut state,
+            2,
+            "x".repeat(MAX_LOG_MESSAGE_LEN + 1),
+        ))
+        .expect("log");
 
-        // WAT module that calls chio.log with len > 4096
-        let wat = r#"
-            (module
-                (import "chio" "log" (func $log (param i32 i32 i32)))
-                (memory (export "memory") 1)
-                (func (export "evaluate") (param i32 i32) (result i32)
-                    (call $log (i32.const 2) (i32.const 0) (i32.const 4097))
-                    (i32.const 0)
-                )
-            )
-        "#;
-
-        let module = Module::new(&engine, wat).expect("compile WAT");
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .expect("instantiate");
-
-        let evaluate = instance
-            .get_typed_func::<(i32, i32), i32>(&mut store, "evaluate")
-            .expect("get evaluate");
-        let _result = evaluate.call(&mut store, (0, 0)).expect("call evaluate");
-
-        assert!(store.data().logs.is_empty());
+        assert!(state.logs.is_empty());
     }
-
-    // -----------------------------------------------------------------------
-    // chio.get_config tests
-    // -----------------------------------------------------------------------
 
     #[test]
     fn host_get_config_reads_value() {
         let mut config = HashMap::new();
         config.insert("timeout".to_string(), "30".to_string());
-        let (mut store, linker, engine) = setup_test_env(config);
+        let mut state = WasmHostState::new(config);
 
-        // WAT module that:
-        // 1. Stores key "timeout" at offset 0 in memory
-        // 2. Calls chio.get_config(0, 7, 100, 64) to read value into offset 100
-        // 3. Stores the return value (actual length) at offset 200
-        let wat = r#"
-            (module
-                (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
-                (memory (export "memory") 1)
-                (data (i32.const 0) "timeout")
-                (func (export "evaluate") (param i32 i32) (result i32)
-                    (i32.store
-                        (i32.const 200)
-                        (call $get_config
-                            (i32.const 0)   ;; key_ptr
-                            (i32.const 7)   ;; key_len ("timeout" = 7 bytes)
-                            (i32.const 100) ;; val_out_ptr
-                            (i32.const 64)  ;; val_out_len
-                        )
-                    )
-                    (i32.const 0)
-                )
-            )
-        "#;
+        let value = block_on_ready(bindings::chio::guard::host::Host::get_config(
+            &mut state,
+            "timeout".to_string(),
+        ))
+        .expect("get config");
 
-        let module = Module::new(&engine, wat).expect("compile WAT");
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .expect("instantiate");
-
-        let evaluate = instance
-            .get_typed_func::<(i32, i32), i32>(&mut store, "evaluate")
-            .expect("get evaluate");
-        let _result = evaluate.call(&mut store, (0, 0)).expect("call evaluate");
-
-        // Read the return value from offset 200
-        let memory = instance
-            .get_memory(&mut store, "memory")
-            .expect("get memory");
-        let mut ret_buf = [0u8; 4];
-        memory.read(&store, 200, &mut ret_buf).expect("read ret");
-        let ret_val = i32::from_le_bytes(ret_buf);
-        assert_eq!(ret_val, 2); // "30" has length 2
-
-        // Read the value from offset 100
-        let mut val_buf = [0u8; 2];
-        memory.read(&store, 100, &mut val_buf).expect("read val");
-        assert_eq!(&val_buf, b"30");
+        assert_eq!(value, Some("30".to_string()));
     }
 
     #[test]
-    fn host_get_config_missing_key_returns_negative_one() {
-        let (mut store, linker, engine) = setup_test_env(HashMap::new());
+    fn host_get_config_missing_key_returns_none() {
+        let mut state = WasmHostState::new(HashMap::new());
 
-        // WAT module that looks up a nonexistent key and stores result
-        let wat = r#"
-            (module
-                (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
-                (memory (export "memory") 1)
-                (data (i32.const 0) "missing")
-                (func (export "evaluate") (param i32 i32) (result i32)
-                    (i32.store
-                        (i32.const 200)
-                        (call $get_config
-                            (i32.const 0)   ;; key_ptr
-                            (i32.const 7)   ;; key_len ("missing" = 7 bytes)
-                            (i32.const 100) ;; val_out_ptr
-                            (i32.const 64)  ;; val_out_len
-                        )
-                    )
-                    (i32.const 0)
-                )
-            )
-        "#;
+        let value = block_on_ready(bindings::chio::guard::host::Host::get_config(
+            &mut state,
+            "missing".to_string(),
+        ))
+        .expect("get config");
 
-        let module = Module::new(&engine, wat).expect("compile WAT");
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .expect("instantiate");
-
-        let evaluate = instance
-            .get_typed_func::<(i32, i32), i32>(&mut store, "evaluate")
-            .expect("get evaluate");
-        let _result = evaluate.call(&mut store, (0, 0)).expect("call evaluate");
-
-        // Read the return value -- should be -1
-        let memory = instance
-            .get_memory(&mut store, "memory")
-            .expect("get memory");
-        let mut ret_buf = [0u8; 4];
-        memory.read(&store, 200, &mut ret_buf).expect("read ret");
-        let ret_val = i32::from_le_bytes(ret_buf);
-        assert_eq!(ret_val, -1);
+        assert_eq!(value, None);
     }
-
-    // -----------------------------------------------------------------------
-    // chio.get_time_unix_secs tests
-    // -----------------------------------------------------------------------
 
     #[test]
     fn host_get_time_returns_positive_value() {
-        let (mut store, linker, engine) = setup_test_env(HashMap::new());
+        let mut state = WasmHostState::new(HashMap::new());
 
-        // WAT module that calls chio.get_time_unix_secs and stores result as i64 at offset 0
-        let wat = r#"
-            (module
-                (import "chio" "get_time_unix_secs" (func $get_time (result i64)))
-                (memory (export "memory") 1)
-                (func (export "evaluate") (param i32 i32) (result i32)
-                    (i64.store
-                        (i32.const 0)
-                        (call $get_time)
-                    )
-                    (i32.const 0)
-                )
-            )
-        "#;
+        let time_val = block_on_ready(bindings::chio::guard::host::Host::get_time_unix_secs(
+            &mut state,
+        ))
+        .expect("get time");
 
-        let module = Module::new(&engine, wat).expect("compile WAT");
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .expect("instantiate");
-
-        let evaluate = instance
-            .get_typed_func::<(i32, i32), i32>(&mut store, "evaluate")
-            .expect("get evaluate");
-        let _result = evaluate.call(&mut store, (0, 0)).expect("call evaluate");
-
-        // Read the i64 stored at offset 0
-        let memory = instance
-            .get_memory(&mut store, "memory")
-            .expect("get memory");
-        let mut time_buf = [0u8; 8];
-        memory.read(&store, 0, &mut time_buf).expect("read time");
-        let time_val = i64::from_le_bytes(time_buf);
         assert!(time_val > 0, "expected positive timestamp, got {time_val}");
     }
 }

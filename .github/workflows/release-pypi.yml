@@ -9,8 +9,8 @@ name: Release PyPI
 #   py/<package-slug>-v<X.Y.Z>        -> publishes only that package
 #                                        (e.g. py/chio-crewai-v1.2.0)
 #
-# workflow_dispatch exposes a `dry_run` input that builds and smoke-tests
-# every matrix leg without uploading to PyPI. No stored API tokens are used
+# workflow_dispatch always builds and smoke-tests only; package publishing is
+# restricted to tag pushes. No stored API tokens are used
 # anywhere in this workflow; all uploads rely on `id-token: write` + PyPI
 # Trusted Publishing.
 
@@ -27,7 +27,7 @@ on:
         type: string
         default: ""
       dry_run:
-        description: "Build and smoke-test only -- skip PyPI upload."
+        description: "Build and smoke-test only. Manual dispatch never publishes."
         required: false
         type: boolean
         default: true
@@ -47,7 +47,7 @@ jobs:
       packages: ${{ steps.select.outputs.packages }}
       dry_run: ${{ steps.select.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Determine packages to publish
         id: select
@@ -56,7 +56,6 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_PACKAGE: ${{ github.event.inputs.package }}
-          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           set -euo pipefail
 
@@ -104,15 +103,14 @@ jobs:
 
           dry_run="false"
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            if [[ "$INPUT_DRY_RUN" == "true" ]]; then
-              dry_run="true"
-            fi
+            dry_run="true"
             if [[ -n "$INPUT_PACKAGE" ]]; then
               selected+=("$(resolve_slug "$INPUT_PACKAGE")")
             else
               selected=("${all_packages[@]}")
             fi
           else
+            semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
             # Tag push. Parse ref name. Slug-specific tags are matched
             # by iterating the known `all_packages` list and testing
             # each candidate slug explicitly, rather than a greedy
@@ -120,13 +118,13 @@ jobs:
             # that themselves contain `-v` (e.g. a hypothetical
             # `chio-v2-client`), selecting the wrong package from
             # `resolve_slug`.
-            if [[ "$REF_NAME" =~ ^py/v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+            if [[ "$REF_NAME" =~ ^py/v${semver_re}$ ]]; then
               selected=("${all_packages[@]}")
             else
               matched=""
               for candidate in "${all_packages[@]}"; do
                 slug="$(basename "$candidate")"
-                if [[ "$REF_NAME" =~ ^py/${slug}-v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+                if [[ "$REF_NAME" =~ ^py/${slug}-v${semver_re}$ ]]; then
                   matched="$candidate"
                   break
                 fi
@@ -134,7 +132,7 @@ jobs:
               if [[ -n "$matched" ]]; then
                 selected+=("$matched")
               else
-                echo "Tag $REF_NAME does not match py/v*.*.* or py/<slug>-v*.*.* for any known slug" >&2
+                echo "Tag $REF_NAME does not match py/v<semver> or py/<slug>-v<semver> for any known slug" >&2
                 exit 1
               fi
             fi
@@ -157,6 +155,10 @@ jobs:
     name: Build ${{ matrix.package }}
     needs: plan
     runs-on: ubuntu-latest
+    permissions:
+      # Required for cosign keyless signing via Sigstore Fulcio.
+      id-token: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -164,14 +166,14 @@ jobs:
     outputs:
       dry_run: ${{ needs.plan.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@8d55fbecc275b1c35dbe060458839f8d30439ccf
         with:
           version: "0.5.11"
 
@@ -200,6 +202,7 @@ jobs:
           SLUG: ${{ steps.meta.outputs.name }}
         run: |
           set -euo pipefail
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
           # Extract version with a non-greedy leading strip so
           # pre-release tags whose suffix contains the letter "v" (e.g.
           # py/v1.2.3-dev1, py/v1.0.0-preview.1) round-trip correctly.
@@ -207,9 +210,9 @@ jobs:
           # in the string, yielding `1` instead of `1.2.3-dev1` for
           # `py/v1.2.3-dev1` and breaking legitimate pre-release
           # publishes. Match release-binaries.yml's `${tag#v}` shape.
-          if [[ "$REF_NAME" =~ ^py/v(.+)$ ]]; then
+          if [[ "$REF_NAME" =~ ^py/v(${semver_re})$ ]]; then
             tag_version="${BASH_REMATCH[1]}"
-          elif [[ "$REF_NAME" =~ ^py/$SLUG-v(.+)$ ]]; then
+          elif [[ "$REF_NAME" =~ ^py/$SLUG-v(${semver_re})$ ]]; then
             # Anchor against the known package slug rather than
             # `^py/.+-v(.+)$`. Greedy `.+` on a valid semver prerelease
             # that contains `-v` (e.g. `py/chio-crewai-v1.2.3-preview-v1`)
@@ -217,7 +220,7 @@ jobs:
             # `1` instead of `1.2.3-preview-v1`.
             tag_version="${BASH_REMATCH[1]}"
           else
-            echo "Tag $REF_NAME does not match py/v* or py/$SLUG-v*" >&2
+            echo "Tag $REF_NAME does not match py/v<semver> or py/$SLUG-v<semver>" >&2
             exit 1
           fi
           if [[ "$tag_version" != "$EXPECTED" ]]; then
@@ -272,18 +275,68 @@ jobs:
           python3 -c "import importlib, sys; m = importlib.import_module('$import_name'); print('imported', m.__name__, 'from', getattr(m, '__file__', '?'))"
           deactivate
 
+      - name: Install cosign
+        # Pinned to a tagged release of sigstore/cosign-installer so the
+        # signing-side toolchain version is auditable. The Renovate config
+        # in .github/renovate.json (M09 NEW sub-task) tracks upstream
+        # cosign-installer releases for review.
+        uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign sdist and wheel with cosign keyless
+        # Produces a detached `.sig` and Fulcio leaf cert `.pem` for
+        # every sdist + wheel. Signatures and certs are uploaded and
+        # attached to the GitHub Release in the release-attest job.
+        # Verification recipe: docs/install/VERIFY.md.
+        shell: bash
+        env:
+          COSIGN_YES: "true"
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd "${GITHUB_WORKSPACE}/dist-out"
+          artifacts=( *.tar.gz *.whl )
+          if [[ "${#artifacts[@]}" -eq 0 ]]; then
+            echo "::error::no sdist/wheel artifacts found in dist-out to sign" >&2
+            exit 1
+          fi
+          for artifact in "${artifacts[@]}"; do
+            echo "Signing ${artifact}"
+            cosign sign-blob --yes \
+              --output-signature "${artifact}.sig" \
+              --output-certificate "${artifact}.pem" \
+              "${artifact}"
+            # Sanity-check both sidecars exist and are non-empty so a
+            # silent cosign success that produced no files fails the job.
+            for ext in sig pem; do
+              if [[ ! -s "${artifact}.${ext}" ]]; then
+                echo "::error::cosign produced empty ${artifact}.${ext}" >&2
+                exit 1
+              fi
+            done
+          done
+          ls -la
+
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: pypi-dist-${{ steps.meta.outputs.name }}
-          path: dist-out/*
+          # Include .sig + .pem so the release-attest job can attach
+          # them to the GitHub Release alongside each sdist/wheel.
+          path: |
+            dist-out/*.tar.gz
+            dist-out/*.whl
+            dist-out/*.sig
+            dist-out/*.pem
           retention-days: 7
           if-no-files-found: error
 
   publish:
     name: Publish ${{ matrix.package }}
     needs: [plan, build]
-    if: needs.plan.outputs.dry_run != 'true'
+    if: needs.plan.outputs.dry_run != 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -300,7 +353,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Read package name
         id: meta
@@ -317,17 +370,88 @@ jobs:
           python3 -c "$py_script" "$PACKAGE_DIR/pyproject.toml" | tee -a "$GITHUB_OUTPUT"
 
       - name: Download dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: pypi-dist-${{ steps.meta.outputs.name }}
           path: dist-out
 
+      - name: Separate cosign sidecars from upload set
+        # twine refuses unknown file extensions; the cosign `.sig`/`.pem`
+        # sidecars produced in the build job ride along to the GitHub
+        # Release in the release-attest job, not to PyPI. Move them out
+        # of dist-out before pypa/gh-action-pypi-publish runs.
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-sigs
+          shopt -s nullglob
+          for f in dist-out/*.sig dist-out/*.pem; do
+            mv "$f" dist-sigs/
+          done
+          echo "Files staged for PyPI upload:"
+          ls -la dist-out
+          echo "Cosign sidecars staged for GitHub Release:"
+          ls -la dist-sigs
+
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
         with:
           packages-dir: dist-out
           # No `password:` -- OIDC Trusted Publishing is used. A Trusted
           # Publisher must be pre-configured on PyPI per package. See
           # docs/install/PUBLISHING.md.
-          skip-existing: true
           print-hash: true
+
+  release-attest:
+    name: Attach cosign signatures to GitHub Release
+    # Attaches `.sig` + `.pem` for every sdist + wheel to the GitHub Release.
+    # Verification recipe: docs/install/VERIFY.md.
+    # Gates on `publish` so signed artifacts only attach after the
+    # PyPI-environment-protected publish job has actually succeeded.
+    needs: [plan, build, publish]
+    # Skip on workflow_dispatch dry runs; only attach on real tag pushes.
+    if: needs.plan.outputs.dry_run != 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download all dist artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: artifacts
+          pattern: pypi-dist-*
+          merge-multiple: true
+
+      - name: Stage release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          # Copy sdists, wheels, and their cosign sidecars. The wheel
+          # itself is also attached to the GitHub Release so consumers
+          # can fetch the exact byte-for-byte artifact that PyPI hosts;
+          # `cosign verify-blob` requires the original file alongside
+          # its `.sig` + `.pem`.
+          find artifacts -maxdepth 2 -type f \
+            \( -name '*.tar.gz' -o -name '*.whl' \
+               -o -name '*.sig' -o -name '*.pem' \) \
+            -exec cp {} release/ \;
+          (cd release && ls -la)
+
+      - name: Attach signatures to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          tag_name: ${{ github.ref_name }}
+          # The release-pypi.yml workflow can fire from either a meta
+          # tag (py/v0.2.0) or a slug-specific tag (py/chio-crewai-v1.2.0)
+          # and a Release for that tag may not exist yet; let
+          # action-gh-release create it on first run. Subsequent re-runs
+          # for the same tag append rather than fail the upload.
+          fail_on_unmatched_files: true
+          files: |
+            release/*.tar.gz
+            release/*.whl
+            release/*.sig
+            release/*.pem

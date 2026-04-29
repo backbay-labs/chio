@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_with_delegation",
+  "fixed_nonce_seed_index": 12,
+  "intent": "Allow path where the delegate's TTL is strictly shorter than the authority's TTL, exercising temporal attenuation along the chain.",
+  "name": "allow_with_delegation/05_attenuated_ttl",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "delegation", "attenuation"]
+}

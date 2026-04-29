@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_simple",
+  "fixed_nonce_seed_index": 3,
+  "intent": "Allow path with an empty argument vector to exercise canonical-JSON serialization of empty arrays and the empty-input boundary.",
+  "name": "allow_simple/04_empty_args",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "empty-input"]
+}

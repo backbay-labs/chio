@@ -1,0 +1,34 @@
+# Upstream-bug skip table for fuzz targets.
+#
+# When an upstream dep (e.g. wasmtime nightly, libfuzzer-sys release,
+# arbitrary, regex-syntax) produces spurious crashes that aren't real
+# Chio bugs, add a temporary skip with a sunset date (max 90 days from
+# the day the entry lands). Once the sunset passes,
+# scripts/check-upstream-skips.sh fails CI until the entry is removed
+# and the issue is re-evaluated (expired entries fail CI).
+#
+# Schema (per [[skips]] entry):
+#   target         = "<fuzz target name from fuzz/fuzz_targets/>"
+#   reason         = "<one-sentence summary of the upstream bug>"
+#   upstream_issue = "<URL to upstream tracker>"
+#   sunset         = "YYYY-MM-DD"  # max 90 days from the day it lands
+#
+# Example (do NOT uncomment without a real upstream issue):
+#
+#   [[skips]]
+#   target         = "wit_host_call_boundary"
+#   reason         = "wasmtime nightly panics on imported func with zero results"
+#   upstream_issue = "https://github.com/bytecodealliance/wasmtime/issues/00000"
+#   sunset         = "2026-07-01"
+#
+# Validation:
+#   bash scripts/check-upstream-skips.sh
+#
+# House rules:
+#   - sunset must be a real ISO-8601 date (YYYY-MM-DD)
+#   - sunset must be in the future (>= today UTC); expired entries fail CI
+#   - sunset must be within 90 days of today (no long-lived skips)
+#   - upstream_issue must be an http(s):// URL
+
+# No active skips. Table is intentionally empty.
+skips = []

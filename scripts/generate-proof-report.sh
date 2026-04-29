@@ -253,6 +253,10 @@ report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", enco
 failed = [result for result in gate_results if result["status"] == "failed"]
 if failed:
     print(f"Proof report written to {report_path}")
+    output_tail = failed[0].get("outputTail", "").strip()
+    if output_tail:
+        print("Failing proof gate output tail:")
+        print(output_tail)
     raise SystemExit(f"proof report gate failed: {failed[0]['command']}")
 
 print(f"Proof report written to {report_path}")

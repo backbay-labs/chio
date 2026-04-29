@@ -1,0 +1,16 @@
+{
+  "name": "@chio-protocol/codegen-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned codegen toolchain for cargo xtask codegen --lang ts. Source of truth: xtask/codegen-tools.lock.toml ([typescript] block) and .planning/trajectory/decisions.yml (codegen-toolchain-per-language).",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "json2ts": "json2ts"
+  },
+  "dependencies": {
+    "json-schema-to-typescript": "15.0.4"
+  }
+}

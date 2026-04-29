@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "bundle_handle",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 31,
+      "verdict": "deny",
+      "reason": "bundle handle missing"
+    },
+    "scopes": [
+      "example-server:bundle_handle"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"bundle handle missing\"}"
+}

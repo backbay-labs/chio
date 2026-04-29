@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "run_shell",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 17,
+      "verdict": "deny",
+      "reason": "shell command denied"
+    },
+    "scopes": [
+      "example-server:run_shell"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"shell command denied\"}"
+}

@@ -1,0 +1,24 @@
+# mutants-overrides.log - audit trail for M02.P3.T2 escape hatch.
+#
+# Source: .planning/trajectory/02-fuzzing-post-pr13.md
+#   "Mutation-testing CI shape (Phase 3) > Override paragraph"
+# Ticket: .planning/trajectory/tickets/M02/P3.yml#M02.P3.T2.
+#
+# Append-only log. scripts/mutants-gate.sh writes one row each time
+# MUTANTS_GATE_OVERRIDE_REASON is set and the gate would otherwise block.
+#
+# Row format (pipe-separated):
+#   <ISO-8601 UTC timestamp> | package=<crate> | exit=<cargo-mutants exit> |
+#   cycle_end_tag=<tag> | actor=<GITHUB_ACTOR or $USER> | reason=<text>
+#
+# The label-based override path (PR titled / labelled
+# `mutants-gate-override` that clears cycle_end_tag in releases.toml)
+# does not write to this log; CODEOWNERS review on releases.toml is the
+# audit trail for that path. This log only records the env-var escape
+# hatch used in single CI runs where waiting on a CODEOWNERS-reviewed
+# PR is not feasible.
+#
+# House rule: do not delete rows; rotate by archiving the entire file
+# under docs/fuzzing/archive/ if it grows past a release cycle.
+#
+# --- begin entries ---

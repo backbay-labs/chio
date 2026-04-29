@@ -1,0 +1,20 @@
+{
+  "name": "chio-drogon",
+  "version": "0.1.0",
+  "port-version": 0,
+  "description": "Drogon middleware for Chio sidecar enforcement",
+  "homepage": "https://github.com/backbay-labs/chio",
+  "license": "Apache-2.0",
+  "dependencies": [
+    "chio-cpp",
+    "drogon",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}

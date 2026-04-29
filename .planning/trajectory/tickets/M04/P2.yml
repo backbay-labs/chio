@@ -1,0 +1,158 @@
+# M04 Phase 2 - CI gate and bless workflow.
+# Source of truth: .planning/trajectory/04-deterministic-replay.md (Phase 2,
+# lines 206-244). Six atomic tasks map 1:1 to T1-T6 in doc order.
+# Wave 2a per EXECUTION-BOARD section 2 (uses wave/W2/...).
+# Phase scope: --bless flag with the seven-clause CHIO_BLESS gate; PR-required
+# replay-gate workflow on Linux with macOS smoke; one-time bless of all 50
+# goldens; CODEOWNERS lock on tests/replay/goldens/**.
+# Hard deps: M04 P1 (corpus + driver). Cross-milestone: schema validation
+# leans on M01 P3 (canonical JSON schema set, MERGED) per the Cross-doc
+# references section of the M04 doc.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M04.P2.T1
+  milestone: M04
+  phase: 2
+  title: Implement --bless flag with the seven-clause CHIO_BLESS gate logic
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - tests/replay/src/bless.rs
+    - tests/replay/src/lib.rs
+    - tests/replay/.bless-audit.log
+  shared_paths: []
+  depends_on:
+    - M04.P1.T7
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --lib bless::tests
+  worktree_branch: wave/W2/m04/p2.t1-bless-gate-logic
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P2.T2
+  milestone: M04
+  phase: 2
+  title: Author chio-replay-gate.yml workflow (Linux replay-gate, required-on-main)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - .github/workflows/chio-replay-gate.yml
+  shared_paths:
+    - .github/workflows/chio-replay-gate.yml
+  depends_on:
+    - M04.P2.T1
+  soft_deps: []
+  gate_check:
+    cmd: "actionlint .github/workflows/chio-replay-gate.yml || true; grep -q 'LC_ALL: C' .github/workflows/chio-replay-gate.yml && grep -q 'replay-gate' .github/workflows/chio-replay-gate.yml"
+  worktree_branch: wave/W2/m04/p2.t2-replay-gate-workflow
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P2.T3
+  milestone: M04
+  phase: 2
+  title: Add macOS read-only smoke job and seed-immutable guard to replay-gate workflow
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .github/workflows/chio-replay-gate.yml
+  shared_paths:
+    - .github/workflows/chio-replay-gate.yml
+  depends_on:
+    - M04.P2.T2
+  soft_deps: []
+  gate_check:
+    cmd: actionlint .github/workflows/chio-replay-gate.yml || true; grep -q 'macos-' .github/workflows/chio-replay-gate.yml && grep -q 'seed-immutable' .github/workflows/chio-replay-gate.yml
+  worktree_branch: wave/W2/m04/p2.t3-macos-smoke-and-seed-guard
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P2.T4
+  milestone: M04
+  phase: 2
+  title: Author scripts/bless-replay-goldens.sh wrapper with dirty-tree refusal
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - scripts/bless-replay-goldens.sh
+  shared_paths: []
+  depends_on:
+    - M04.P2.T1
+  soft_deps: []
+  gate_check:
+    cmd: bash -n scripts/bless-replay-goldens.sh && grep -q 'docs/replay-compat.md' scripts/bless-replay-goldens.sh && grep -q 'CHIO_BLESS' scripts/bless-replay-goldens.sh
+  worktree_branch: wave/W2/m04/p2.t4-bless-helper-script
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P2.T5
+  milestone: M04
+  phase: 2
+  title: Bless all 50 goldens once and add docs/replay-compat.md bootstrap entry
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - tests/replay/goldens/**
+    - docs/replay-compat.md
+  shared_paths:
+    - tests/replay/goldens
+  depends_on:
+    - M04.P2.T3
+    - M04.P2.T4
+  soft_deps:
+    - "Schema-validates against M01 P3 canonical receipt schemas (chio spec-validate over goldens NDJSON and checkpoint.json) before byte comparison; M01 P3 is MERGED."
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --test golden_byte_equivalence
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m04/p2.t5-initial-fifty-goldens-bless
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P2.T6
+  milestone: M04
+  phase: 2
+  title: Add CODEOWNERS lock on tests/replay/goldens/** and tests/replay/test-key.seed
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .github/CODEOWNERS
+  shared_paths:
+    - .github/CODEOWNERS
+  depends_on:
+    - M04.P2.T5
+  soft_deps: []
+  gate_check:
+    cmd: grep -q 'tests/replay/goldens' .github/CODEOWNERS && grep -q 'tests/replay/test-key.seed' .github/CODEOWNERS
+  worktree_branch: wave/W2/m04/p2.t6-codeowners-goldens-lock
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

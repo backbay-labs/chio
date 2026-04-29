@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "drop_database",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 14,
+      "verdict": "deny",
+      "reason": "tool id is not allowlisted"
+    },
+    "scopes": [
+      "example-server:drop_database"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"tool id is not allowlisted\"}"
+}

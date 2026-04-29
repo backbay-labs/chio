@@ -1,0 +1,243 @@
+# M02 Phase 2 - Mutation testing scaffold (advisory) + OSS-Fuzz integration infra
+# + dudect timing-leak harness scaffolding + structure-aware canonical-JSON mutator.
+#
+# Source of truth: .planning/trajectory/02-fuzzing-post-pr13.md
+# - Mutation-testing approach (lines 97-108)
+# - Mutation-testing CI shape (lines 291-320)
+# - Timing-leak (dudect) harness (lines 110-118)
+# - OSS-Fuzz application steps (lines 220-275; user prompt locks infra path
+#   to infra/oss-fuzz/)
+# - Round-2 (NEW) P2.T6 structure-aware canonical-JSON mutator (lines 379-385)
+# - Doc Phase 3 atomic tasks (lines 181-199) which the user prompt re-homes
+#   to Phase 2 per EXECUTION-BOARD section 2 Wave 2a row "P2 (mutation
+#   testing scaffold, advisory)"
+#
+# Wave 2a execution gate (EXECUTION-BOARD.md section 2): P2 may not enter
+# in_progress until M02 P1 has merged its eleven new fuzz targets + T8
+# receipt_log_replay. Mutation lane needs the deterministic test surface;
+# dudect harness builds against chio-credentials and chio-kernel-core which
+# P1 already touches via fuzz-feature shims.
+#
+# Naming reconciliation: the doc's Phase 2 heading is "Continuous fuzzing
+# fleet" and its Phase 3 heading is "Mutation testing and timing harness".
+# The user prompt and EXECUTION-BOARD adopt a different per-phase labeling
+# where P2 carries the mutation-testing scaffold (advisory) and OSS-Fuzz
+# infra, while ClusterFuzzLite/corpus-sync land in P4 alongside triage.
+# This file follows the user/EXECUTION-BOARD labeling; per-task source-doc
+# anchors are noted in soft_deps.
+#
+# releases.toml at repo root is the gate-flip source of truth; written here
+# in T2 with phase3_merge_tag set and cycle_end_tag empty (advisory state).
+# The flip-to-blocking PR is owned by Phase 3.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M02.P2.T1
+  milestone: M02
+  phase: 2
+  title: "Add cargo-mutants 25.x workspace + per-crate config (kernel-core, policy, guards, credentials)"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".cargo/mutants.toml"
+    - "crates/chio-kernel-core/mutants.toml"
+    - "crates/chio-policy/mutants.toml"
+    - "crates/chio-guards/mutants.toml"
+    - "crates/chio-credentials/mutants.toml"
+    - "docs/fuzzing/mutants.md"
+  shared_paths: []
+  depends_on:
+    - M02.P1.T8
+  soft_deps:
+    - "Source-doc anchor: Phase 3 atomic task P3.T1 + Mutation-testing CI shape section"
+    - "cargo-mutants pinned at 25.x; do not float (decision 12 in source doc)"
+  gate_check:
+    cmd: "test -f .cargo/mutants.toml && test -f crates/chio-kernel-core/mutants.toml && test -f crates/chio-policy/mutants.toml && test -f crates/chio-guards/mutants.toml && test -f crates/chio-credentials/mutants.toml && grep -q 'examine_globs' crates/chio-kernel-core/mutants.toml && grep -q 'exclude_globs' crates/chio-kernel-core/mutants.toml && grep -q 'cargo-mutants' docs/fuzzing/mutants.md && grep -qE 'timeout_multiplier *= *3' .cargo/mutants.toml"
+    timeout_seconds: 120
+  worktree_branch: "wave/W2/m02/p2.t1-cargo-mutants-config"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P2.T2
+  milestone: M02
+  phase: 2
+  title: "Add mutants.yml workflow with mutants-pr (in-diff) and mutants-nightly (full sweep) jobs"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - ".github/workflows/mutants.yml"
+    - "scripts/mutants-comment.sh"
+    - "scripts/mutants-gate.sh"
+    - "releases.toml"
+  shared_paths:
+    - "releases.toml"
+  depends_on:
+    - M02.P2.T1
+  soft_deps:
+    - "Source-doc anchor: Phase 3 atomic tasks P3.T2-T4 + Mutation-testing CI shape section"
+    - "releases.toml seeded with cycle_end_tag empty (advisory state); blocking flip is M02 P3"
+  gate_check:
+    cmd: "actionlint .github/workflows/mutants.yml && grep -q 'mutants-pr' .github/workflows/mutants.yml && grep -q 'mutants-nightly' .github/workflows/mutants.yml && grep -q -- '--in-diff' .github/workflows/mutants.yml && bash -n scripts/mutants-comment.sh && bash -n scripts/mutants-gate.sh && test -f releases.toml && grep -q 'phase3_merge_tag' releases.toml && grep -qE 'cycle_end_tag *= *\"\"' releases.toml"
+    timeout_seconds: 180
+  worktree_branch: "wave/W2/m02/p2.t2-mutants-workflow-advisory"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P2.T3
+  milestone: M02
+  phase: 2
+  title: "Scaffold dudect harness for jwt_verify, mac_eq, scope_subset behind dudect feature"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-credentials/Cargo.toml"
+    - "crates/chio-credentials/tests/dudect/jwt_verify.rs"
+    - "crates/chio-kernel-core/Cargo.toml"
+    - "crates/chio-kernel-core/tests/dudect/mac_eq.rs"
+    - "crates/chio-kernel-core/tests/dudect/scope_subset.rs"
+    - "docs/fuzzing/continuous.md"
+  shared_paths: []
+  depends_on:
+    - M02.P1.T8
+  soft_deps:
+    - "Source-doc anchor: Phase 3 atomic task P3.T5 + Timing-leak (dudect) harness section"
+    - "dudect-bencher latest 0.x; gated behind dudect feature so default cargo test is unaffected"
+  gate_check:
+    cmd: "cargo build -p chio-credentials --features dudect && cargo build -p chio-kernel-core --features dudect && test -f crates/chio-credentials/tests/dudect/jwt_verify.rs && test -f crates/chio-kernel-core/tests/dudect/mac_eq.rs && test -f crates/chio-kernel-core/tests/dudect/scope_subset.rs && grep -q 'dudect' docs/fuzzing/continuous.md"
+    timeout_seconds: 600
+  worktree_branch: "wave/W2/m02/p2.t3-dudect-harness-scaffold"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P2.T4
+  milestone: M02
+  phase: 2
+  title: "Add dudect.yml nightly workflow with two-consecutive-run pass rule (t < 4.5)"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/dudect.yml"
+    - "scripts/check-dudect-threshold.sh"
+  shared_paths: []
+  depends_on:
+    - M02.P2.T3
+  soft_deps:
+    - "Source-doc anchor: Phase 3 atomic task P3.T6"
+    - "False-positive-on-noisy-host risk mitigated by two-consecutive-run rule"
+  gate_check:
+    cmd: "actionlint .github/workflows/dudect.yml && grep -qE 'cron:' .github/workflows/dudect.yml && bash -n scripts/check-dudect-threshold.sh && bash scripts/check-dudect-threshold.sh --dry-run && grep -qE '4\\.5' scripts/check-dudect-threshold.sh"
+    timeout_seconds: 120
+  worktree_branch: "wave/W2/m02/p2.t4-dudect-nightly-workflow"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P2.T5
+  milestone: M02
+  phase: 2
+  title: "Land OSS-Fuzz integration files in infra/oss-fuzz/ and open upstream PR"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "infra/oss-fuzz/project.yaml"
+    - "infra/oss-fuzz/Dockerfile"
+    - "infra/oss-fuzz/build.sh"
+    - "docs/fuzzing/continuous.md"
+  shared_paths: []
+  depends_on:
+    - M02.P1.T8
+  soft_deps:
+    - "Source-doc anchor: OSS-Fuzz application steps (lines 220-275)"
+    - "Acceptance lag is 2-6 weeks; not a Phase-2 exit gate. ClusterFuzzLite bridge in P4 carries continuous coverage in the meantime."
+    - "Backup contact slot tracked in Phase-2 follow-up issue (TBD-backup)"
+  gate_check:
+    cmd: "test -f infra/oss-fuzz/project.yaml && test -f infra/oss-fuzz/Dockerfile && test -f infra/oss-fuzz/build.sh && grep -q 'language: rust' infra/oss-fuzz/project.yaml && grep -q 'whelan.connor11@gmail.com' infra/oss-fuzz/project.yaml && grep -q 'address' infra/oss-fuzz/project.yaml && grep -q 'undefined' infra/oss-fuzz/project.yaml && bash -n infra/oss-fuzz/build.sh && grep -q 'oss-fuzz' docs/fuzzing/continuous.md"
+    timeout_seconds: 120
+  worktree_branch: "wave/W2/m02/p2.t5-oss-fuzz-integration"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P2.T6
+  milestone: M02
+  phase: 2
+  title: "Land structure-aware canonical-JSON mutator and wire to four canonical-JSON-decoding targets"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "fuzz/mutators/canonical_json.rs"
+    - "fuzz/Cargo.toml"
+    - "fuzz/fuzz_targets/canonical_json.rs"
+    - "fuzz/fuzz_targets/capability_receipt.rs"
+    - "fuzz/fuzz_targets/manifest_roundtrip.rs"
+    - "fuzz/fuzz_targets/mcp_envelope_decode.rs"
+  shared_paths:
+    - "fuzz/Cargo.toml"
+  depends_on:
+    - M02.P1.T8
+  soft_deps:
+    - "Round-2 (NEW) P2.T6; pre-empts M03/M04 cross-doc question on shape-valid mutation"
+    - "Dashboard target: >= 2x distinct-coverage-edges per CPU-second on the four wired targets"
+  gate_check:
+    cmd: "cargo +nightly fuzz build canonical_json && cargo +nightly fuzz build capability_receipt && cargo +nightly fuzz build manifest_roundtrip && cargo +nightly fuzz build mcp_envelope_decode && grep -q 'LLVMFuzzerCustomMutator' fuzz/mutators/canonical_json.rs"
+    timeout_seconds: 900
+  worktree_branch: "wave/W2/m02/p2.t6-canonical-json-structure-aware-mutator"
+  agent_role: fuzz-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M02.P2.T7
+  milestone: M02
+  phase: 2
+  title: "Add nightly mutants-fuzz-cocoverage workflow replaying corpus against surviving mutants"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - ".github/workflows/mutants-fuzz-cocoverage.yml"
+    - "scripts/mutants-fuzz-cocoverage.sh"
+    - "docs/fuzzing/mutants.md"
+  shared_paths: []
+  depends_on:
+    - M02.P2.T2
+    - M02.P2.T6
+  soft_deps:
+    - "Round-2 (NEW) P3.T7 re-homed to Phase 2 alongside the rest of the mutation-scaffold work; nightly only, never on PR lane"
+    - "Expected effect: 5-15% reduction in missed-mutant count + audit-ready cross-oracle story"
+  gate_check:
+    cmd: "actionlint .github/workflows/mutants-fuzz-cocoverage.yml && grep -qE 'cron:' .github/workflows/mutants-fuzz-cocoverage.yml && bash -n scripts/mutants-fuzz-cocoverage.sh && grep -q 'cocoverage' docs/fuzzing/mutants.md"
+    timeout_seconds: 120
+  worktree_branch: "wave/W2/m02/p2.t7-mutants-fuzz-cocoverage"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

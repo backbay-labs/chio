@@ -33,9 +33,14 @@ if(CHIO_CPP_KERNEL_ENABLE_FFI)
   if(NOT CHIO_CPP_KERNEL_FFI_LIBRARY)
     message(FATAL_ERROR "CHIO_CPP_KERNEL_FFI_LIBRARY is required when CHIO_CPP_KERNEL_ENABLE_FFI=ON")
   endif()
+  add_library(chio_cpp_kernel_ffi STATIC IMPORTED GLOBAL)
+  set_target_properties(chio_cpp_kernel_ffi PROPERTIES
+    IMPORTED_LOCATION "${CHIO_CPP_KERNEL_FFI_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${CHIO_CPP_KERNEL_FFI_INCLUDE_DIR}>"
+  )
   target_compile_definitions(chio_cpp_kernel PRIVATE CHIO_CPP_KERNEL_ENABLE_FFI=1)
   target_include_directories(chio_cpp_kernel PRIVATE "${CHIO_CPP_KERNEL_FFI_INCLUDE_DIR}")
-  target_link_libraries(chio_cpp_kernel PUBLIC "${CHIO_CPP_KERNEL_FFI_LIBRARY}")
+  target_link_libraries(chio_cpp_kernel PUBLIC chio_cpp_kernel_ffi)
   if(APPLE)
     target_link_libraries(chio_cpp_kernel PUBLIC "-framework Security" "-framework CoreFoundation")
   elseif(UNIX)
@@ -46,7 +51,7 @@ if(CHIO_CPP_KERNEL_ENABLE_FFI)
   get_filename_component(CHIO_CPP_KERNEL_FFI_LIBRARY_DIR "${CHIO_CPP_KERNEL_FFI_LIBRARY}" DIRECTORY)
   set_target_properties(chio_cpp_kernel PROPERTIES
     BUILD_RPATH "${CHIO_CPP_KERNEL_FFI_LIBRARY_DIR}"
-    INSTALL_RPATH "${CHIO_CPP_KERNEL_FFI_LIBRARY_DIR}"
+    INSTALL_RPATH ""
   )
 endif()
 
@@ -81,6 +86,11 @@ install(TARGETS chio_cpp_kernel
 
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
+if(CHIO_CPP_KERNEL_ENABLE_FFI)
+  install(FILES "${CHIO_CPP_KERNEL_FFI_LIBRARY}" DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  install(DIRECTORY "${CHIO_CPP_KERNEL_FFI_INCLUDE_DIR}/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
+
 write_basic_package_version_file(
   "${CMAKE_CURRENT_BINARY_DIR}/ChioCppKernelConfigVersion.cmake"
   VERSION ${PROJECT_VERSION}
@@ -91,6 +101,7 @@ configure_package_config_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ChioCppKernelConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/ChioCppKernelConfig.cmake"
   INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ChioCppKernel
+  PATH_VARS CMAKE_INSTALL_LIBDIR CMAKE_INSTALL_INCLUDEDIR
 )
 
 install(FILES

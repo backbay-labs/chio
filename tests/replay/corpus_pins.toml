@@ -1,0 +1,24 @@
+# Pinned chio-tee-corpus artifacts. CI refuses to download any published
+# artifact whose computed sha256 differs from the pinned value.
+#
+# `published = false` is a pre-publication placeholder: the artifact must keep
+# the all-zero sha256 and the puller skips the release download only when the
+# workflow passes --allow-unpublished-placeholders. Flip to true only after the
+# release asset and signed MANIFEST.toml are published and this sha256 is real.
+schema_version = "1"
+
+[[artifacts]]
+name = "openai-responses-shadow-2026-04-25.ndjson.zst"
+release_tag = "tee-corpus-2026-04-25"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+size_bytes = 7340032
+min_schema_version = "1"
+published = false
+
+[[artifacts]]
+name = "anthropic-messages-shadow-2026-04-25.ndjson.zst"
+release_tag = "tee-corpus-2026-04-25"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+size_bytes = 6291456
+min_schema_version = "1"
+published = false

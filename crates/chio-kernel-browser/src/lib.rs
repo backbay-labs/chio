@@ -56,7 +56,7 @@ use alloc::vec::Vec;
 
 use chio_core_types::capability::CapabilityToken;
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, SigningBackend};
-use chio_core_types::receipt::ChioReceiptBody;
+use chio_core_types::receipt::{ChioReceipt, ChioReceiptBody, Decision};
 use chio_kernel_core::{
     evaluate as core_evaluate, sign_receipt as core_sign_receipt,
     verify_capability as core_verify_capability, EvaluateInput, PortableToolCallRequest,
@@ -215,6 +215,40 @@ impl From<VerifiedCapability> for VerifiedCapabilityJson {
     }
 }
 
+/// Wire shape for [`verify_receipt_pure`] outputs.
+///
+/// Carries a structured outcome rather than a bare `bool` so the JS
+/// caller can discriminate between "signature verified, decision is
+/// `allow`", "signature verified, decision is `deny`", and "signature
+/// did not verify". The receipt envelope is round-tripped on the way
+/// out so the browser does not need to re-parse it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifyReceiptResultJson {
+    /// `true` when the receipt's Ed25519 signature verifies against the
+    /// embedded `kernel_key`, the parameter hash is valid, and the
+    /// `kernel_key` appears in the supplied trusted issuer set. Callers
+    /// must provide at least one trusted issuer before a receipt can be
+    /// marked trusted.
+    pub ok: bool,
+    /// Lowercase hex of the receipt's `kernel_key`.
+    pub signer_key_hex: String,
+    /// Receipt id, surfaced for telemetry / dedup.
+    pub receipt_id: String,
+    /// Snake_case decision verdict: `"allow"`, `"deny"`, `"cancelled"`,
+    /// or `"incomplete"`.
+    pub decision: String,
+    /// `true` when the parameter hash on the embedded `ToolCallAction`
+    /// matches the canonical hash of the parameters.
+    pub parameter_hash_valid: bool,
+    /// `true` when the signature math verified. Distinct from `ok`
+    /// because `ok` also requires explicit issuer pinning.
+    pub signature_valid: bool,
+    /// `true` when the signer appears in a non-empty trusted issuer
+    /// set. Empty trusted issuer sets report signature status only and
+    /// never mark the signer trusted.
+    pub signer_trusted: bool,
+}
+
 /// Structured error returned across the wasm boundary when an entry
 /// point fails. Carries both a machine-readable `code` and a
 /// human-readable `message` so the browser caller can route errors.
@@ -347,6 +381,72 @@ pub fn verify_capability_pure(
             capability_error_message(&error),
         )),
     }
+}
+
+/// Pure receipt-verification helper. Parses a canonical-JSON receipt
+/// envelope, runs the embedded-key signature check, optionally pins the
+/// signer to a trusted-issuer set, and returns a structured outcome.
+///
+/// `trusted_issuers` must contain the signer before `ok` can be true.
+/// An empty slice means "signature-only verification": the signature
+/// and parameter hash fields still report their mathematical status,
+/// but the receipt is not marked trusted.
+///
+/// Verification is fail-closed in the sense that a malformed envelope,
+/// a parameter-hash mismatch, or a signature that does not verify
+/// produces an `ok: false` result. The function never panics on
+/// malformed input; it returns a structured error instead.
+pub fn verify_receipt_pure(
+    envelope: &[u8],
+    trusted_issuers: &[PublicKey],
+) -> Result<VerifyReceiptResultJson, BindingError> {
+    let receipt: ChioReceipt = serde_json::from_slice(envelope).map_err(|error| {
+        BindingError::new(
+            "invalid_receipt_envelope",
+            format!("could not parse receipt envelope as JSON: {error}"),
+        )
+    })?;
+
+    let signer_key_hex = receipt.kernel_key.to_hex();
+    let receipt_id = receipt.id.clone();
+    let decision_str = match &receipt.decision {
+        Decision::Allow => "allow",
+        Decision::Deny { .. } => "deny",
+        Decision::Cancelled { .. } => "cancelled",
+        Decision::Incomplete { .. } => "incomplete",
+    }
+    .to_string();
+
+    let parameter_hash_valid = receipt.action.verify_hash().map_err(|error| {
+        BindingError::new(
+            "parameter_hash_check_failed",
+            format!("parameter hash check could not run: {error}"),
+        )
+    })?;
+
+    let signature_valid = receipt.verify_signature().map_err(|error| {
+        BindingError::new(
+            "signature_check_failed",
+            format!("signature verification could not run: {error}"),
+        )
+    })?;
+
+    let signer_trusted = !trusted_issuers.is_empty()
+        && trusted_issuers
+            .iter()
+            .any(|issuer| issuer == &receipt.kernel_key);
+
+    let ok = signature_valid && parameter_hash_valid && signer_trusted;
+
+    Ok(VerifyReceiptResultJson {
+        ok,
+        signer_key_hex,
+        receipt_id,
+        decision: decision_str,
+        parameter_hash_valid,
+        signature_valid,
+        signer_trusted,
+    })
 }
 
 /// Produce a human-readable message for a
@@ -556,6 +656,53 @@ pub mod wasm {
         let clock = BrowserClock::new();
         let verified = verify_capability_pure(request, &clock).map_err(|err| to_js_error(&err))?;
         encode_result(&verified)
+    }
+
+    /// Verify a Chio receipt envelope.
+    ///
+    /// `envelope` is the canonical-JSON serialization of a
+    /// `ChioReceipt`. `trusted_issuers` is a JS value that the browser
+    /// caller may pass as:
+    ///
+    /// - `undefined` / `null` -- run signature and parameter-hash checks
+    ///   only; `ok` remains `false` because no trusted issuer was pinned.
+    /// - a JS string -- a single hex-encoded Ed25519 public key.
+    /// - a JS array of strings -- multiple hex-encoded keys; the
+    ///   receipt's `kernel_key` MUST appear in the set for `ok` to be
+    ///   `true`.
+    ///
+    /// The function returns a [`VerifyReceiptResultJson`] on success
+    /// (with `ok` differentiating the verified path from the
+    /// signature-bad path) and a [`BindingError`] (`Err(JsValue)`) when
+    /// the envelope itself could not be parsed as a receipt.
+    #[wasm_bindgen]
+    pub fn verify_receipt(envelope: &[u8], trusted_issuers: &JsValue) -> Result<JsValue, JsValue> {
+        let trusted_hex = parse_trusted_issuers_jsvalue(trusted_issuers)?;
+        let trusted = decode_trusted_issuers(&trusted_hex).map_err(|err| to_js_error(&err))?;
+        let result = verify_receipt_pure(envelope, &trusted).map_err(|err| to_js_error(&err))?;
+        encode_result(&result)
+    }
+
+    /// Decode the `trusted_issuers` argument of [`verify_receipt`] into
+    /// a `Vec<String>` of hex-encoded keys.
+    fn parse_trusted_issuers_jsvalue(value: &JsValue) -> Result<Vec<String>, JsValue> {
+        if value.is_undefined() || value.is_null() {
+            return Ok(Vec::new());
+        }
+        if let Some(single) = value.as_string() {
+            return Ok(alloc::vec![single]);
+        }
+        // Anything else: try to round-trip through serde-wasm-bindgen
+        // as a `Vec<String>`. `serde_wasm_bindgen::from_value` accepts
+        // both JS arrays and ES2017 iterables produced by Web APIs.
+        serde_wasm_bindgen::from_value::<Vec<String>>(value.clone()).map_err(|error| {
+            to_js_error(&BindingError::new(
+                "invalid_trusted_issuers",
+                format!(
+                    "trusted_issuers must be undefined, a hex string, or an array of hex strings: {error}"
+                ),
+            ))
+        })
     }
 
     /// Mint a fresh 32-byte signing seed using the browser's Web Crypto
@@ -785,5 +932,92 @@ mod tests {
         assert_eq!(multi, std::vec!["aa".to_string(), "bb".to_string()]);
 
         assert!(parse_authority_input("").is_err());
+    }
+
+    fn make_signed_receipt(seed: [u8; 32]) -> chio_core_types::receipt::ChioReceipt {
+        let body = ChioReceiptBody {
+            id: "rcpt-verify-pure".to_string(),
+            timestamp: ISSUED_AT,
+            capability_id: "cap-1".to_string(),
+            tool_server: "srv-a".to_string(),
+            tool_name: "echo".to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({"msg": "verify"})).unwrap(),
+            decision: Decision::Allow,
+            content_hash: "0".repeat(64),
+            policy_hash: "0".repeat(64),
+            evidence: std::vec![],
+            metadata: None,
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: Keypair::generate().public_key(),
+        };
+        sign_receipt_pure(SignReceiptRequestJson { body }, &seed).unwrap()
+    }
+
+    #[test]
+    fn verify_receipt_pure_signature_only_without_trust_pinning() {
+        let receipt = make_signed_receipt([7u8; 32]);
+        let envelope = serde_json::to_vec(&receipt).unwrap();
+
+        let result = verify_receipt_pure(&envelope, &[]).expect("verify_receipt_pure");
+        assert!(!result.ok);
+        assert!(result.signature_valid);
+        assert!(result.parameter_hash_valid);
+        assert!(!result.signer_trusted);
+        assert_eq!(result.decision, "allow");
+        assert_eq!(result.receipt_id, "rcpt-verify-pure");
+        assert_eq!(result.signer_key_hex, receipt.kernel_key.to_hex());
+    }
+
+    #[test]
+    fn verify_receipt_pure_allow_path_with_pinned_trusted_signer() {
+        let receipt = make_signed_receipt([9u8; 32]);
+        let envelope = serde_json::to_vec(&receipt).unwrap();
+
+        let result = verify_receipt_pure(&envelope, core::slice::from_ref(&receipt.kernel_key))
+            .expect("verify_receipt_pure");
+        assert!(result.ok);
+        assert!(result.signer_trusted);
+    }
+
+    #[test]
+    fn verify_receipt_pure_rejects_untrusted_signer() {
+        let receipt = make_signed_receipt([11u8; 32]);
+        let envelope = serde_json::to_vec(&receipt).unwrap();
+        let other = Keypair::generate().public_key();
+
+        let result = verify_receipt_pure(&envelope, std::slice::from_ref(&other))
+            .expect("verify_receipt_pure");
+        assert!(!result.ok);
+        assert!(result.signature_valid);
+        assert!(!result.signer_trusted);
+    }
+
+    #[test]
+    fn verify_receipt_pure_rejects_tampered_signature() {
+        let receipt = make_signed_receipt([13u8; 32]);
+        let mut envelope: serde_json::Value = serde_json::to_value(&receipt).unwrap();
+        // Flip the first hex character of the signature so the math fails.
+        let sig = envelope["signature"].as_str().unwrap().to_string();
+        let mut tampered = sig.clone();
+        let first = if tampered.as_bytes()[0] == b'a' {
+            '0'
+        } else {
+            'a'
+        };
+        tampered.replace_range(0..1, &first.to_string());
+        envelope["signature"] = serde_json::Value::String(tampered);
+        let bytes = serde_json::to_vec(&envelope).unwrap();
+
+        let result = verify_receipt_pure(&bytes, &[]).expect("verify_receipt_pure");
+        assert!(!result.ok);
+        assert!(!result.signature_valid);
+    }
+
+    #[test]
+    fn verify_receipt_pure_rejects_malformed_envelope() {
+        let err = verify_receipt_pure(b"not a receipt", &[])
+            .expect_err("malformed envelope must surface as an error");
+        assert_eq!(err.code, "invalid_receipt_envelope");
     }
 }

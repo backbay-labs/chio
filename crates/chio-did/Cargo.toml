@@ -17,6 +17,19 @@ serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 bs58 = { workspace = true }
 url = { workspace = true }
+# `arbitrary` and `serde_json` are gated behind the `fuzz` feature so
+# production builds stay free of fuzz instrumentation. Pulled in by
+# `fuzz/fuzz_targets/did_resolve.rs` via `chio-did = { features = ["fuzz"] }`.
+# `serde_json` powers the `DidDocument` JSON parse-path exercised by the fuzz
+# target; production code paths in this crate render documents via
+# `serde::Serialize` only and never need `serde_json` at runtime.
+arbitrary = { version = "1", features = ["derive"], optional = true }
+serde_json = { workspace = true, optional = true }
+
+[features]
+# Enables `chio_did::fuzz`, the libFuzzer entry-point module.
+# Off by default; turned on only by the `chio-fuzz` standalone workspace.
+fuzz = ["dep:arbitrary", "dep:serde_json"]
 
 [lints.clippy]
 unwrap_used = "deny"

@@ -1,0 +1,36 @@
+# Syft configuration for Chio release SBOM generation.
+#
+# Pinned tool: anchore/syft v1.18.1 (see release-binaries.yml).
+# Output: CycloneDX JSON, schema version 1.6.
+# Consumed by the "Emit CycloneDX SBOM" step in
+# .github/workflows/release-binaries.yml; the per-target chio binary
+# path is supplied as a positional argument so this file stays
+# matrix-agnostic.
+
+# CycloneDX 1.6 JSON. Syft accepts the schema version as a suffix on
+# the format identifier; without it, syft picks its current default
+# which can drift across versions.
+output:
+  - "cyclonedx-json@1.6"
+
+# Skip vendored build outputs and language-package caches that should
+# never be treated as first-party components when scanning the
+# release binary.
+exclude:
+  - "./target/**"
+  - "./node_modules/**"
+  - "./.git/**"
+  - "./.worktrees/**"
+
+# Surface every package syft can identify; do not silently drop
+# components below an arbitrary confidence threshold.
+#
+# `scope` is a top-level syft config key (not nested under `package`),
+# and cataloger selection in v1.18.x uses top-level
+# `default-catalogers` / `select-catalogers`. The previous nested
+# `package.cataloger.{enabled,scope}` keys were not in syft's schema
+# and were silently ignored, so the stated intent here was never
+# applied (cleanup-c11d; PR #44 review thread r3142898746 - Low).
+scope: all-layers
+default-catalogers:
+  - all

@@ -1,0 +1,326 @@
+# mutants.yml - cargo-mutants advisory lane.
+#
+# Two jobs:
+#   mutants-pr      - pull_request trigger; runs `cargo mutants --in-diff`
+#                     against the PR base ref, four crates in parallel,
+#                     posts a Markdown summary via scripts/mutants-comment.sh,
+#                     and consults scripts/mutants-gate.sh for advisory-vs-blocking
+#                     posture (driven by releases.toml cycle_end_tag).
+#                     Wall budget: <= 30 min per crate.
+#
+#   mutants-nightly - schedule trigger (05:00 UTC); full-workspace sweep with
+#                     no --in-diff scope. Wall budget: <= 4 h per crate.
+#                     Uploads mutants.out/ as a workflow artifact.
+#
+# Both jobs share the 1,800 GHA runner-min/30d cap with the fuzz lanes;
+# scripts/check-fuzz-budget.sh is invoked first so the cap acts as a hard halt.
+#
+# continue-on-error policy:
+#   - mutants-pr: NOT set, so the gate script's exit code propagates.
+#     scripts/mutants-gate.sh reads releases.toml: cycle_end_tag empty ->
+#     advisory (exit 0); cycle_end_tag populated -> blocking (exit 1).
+#   - mutants-nightly: continue-on-error: true. Dashboard-only; never
+#     gates a PR merge.
+#
+# Override paths:
+#   1. Label-based (preferred): PR labelled `mutants-gate-override` clears
+#      cycle_end_tag in releases.toml (CODEOWNERS review required).
+#   2. Env-var escape hatch: set MUTANTS_GATE_OVERRIDE_REASON=<reason>; the
+#      gate script downgrades a blocking-fail to a loud advisory pass. See
+#      docs/fuzzing/mutants.md "Override paths".
+
+name: mutants
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-kernel-core/src/**"
+      - "crates/chio-policy/src/**"
+      - "crates/chio-guards/src/**"
+      - "crates/chio-credentials/src/**"
+      - "**/mutants.toml"
+      - ".github/workflows/mutants.yml"
+      - "scripts/mutants-comment.sh"
+      - "scripts/mutants-gate.sh"
+      - "releases.toml"
+  schedule:
+    # 05:00 UTC nightly. Sits after fuzz.yml (03:23) and the existing
+    # nightly proptest lane (04:23) so the GHA runner pool is not
+    # over-subscribed. Source doc cron: '0 5 * * *'.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Force a single crate (default: full matrix)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  # PR runs collapse on push; scheduled and dispatch runs do not collapse
+  # against each other so a manual sweep can race a cron sweep without
+  # cancellation surprises.
+  group: mutants-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  mutants-pr:
+    name: mutants-pr (${{ matrix.package }})
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # continue-on-error is intentionally absent: the lane's advisory-vs-
+    # blocking posture is driven by scripts/mutants-gate.sh (which reads
+    # releases.toml). Setting it here would mask a non-zero gate exit and
+    # silently keep the lane advisory after the release-cycle flip.
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - chio-kernel-core
+          - chio-policy
+          - chio-guards
+          - chio-credentials
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Skip when forced package does not match
+        id: forced
+        env:
+          FORCED_PACKAGE: ${{ inputs.package || '' }}
+        run: |
+          set -euo pipefail
+          forced="${FORCED_PACKAGE}"
+          if [[ -n "${forced}" && "${forced}" != '${{ matrix.package }}' ]]; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "skipping ${{ matrix.package }} (forced=${forced})"
+          else
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install Rust toolchain
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install cargo-mutants (pinned per Decision 12)
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          # Decision 12: cargo-mutants pinned exactly; do not float.
+          cargo install cargo-mutants --version 25.3.1 --locked
+
+      - name: Verify shared 30-day fuzz/mutants budget
+        if: steps.forced.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+        run: |
+          set -euo pipefail
+          # Mutation runs share the 1,800 min/30d envelope with fuzz.
+          # Budget failures stop this job even though mutation findings
+          # remain advisory.
+          if [[ -x scripts/check-fuzz-budget.sh ]]; then
+            scripts/check-fuzz-budget.sh "${{ github.repository }}"
+          else
+            echo "scripts/check-fuzz-budget.sh missing or non-executable" >&2
+            exit 2
+          fi
+
+      - name: Capture PR diff for --in-diff scoping
+        id: diff
+        if: steps.forced.outputs.skip == 'false'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'project/roadmap-04-25-2026' }}
+        run: |
+          set -euo pipefail
+          # cargo-mutants --in-diff expects a unified-diff TEXT FILE PATH,
+          # not a git ref. Capture the PR's three-dot diff against the base
+          # ref into a workspace-local file and forward the path.
+          # fetch-depth: 0 in the checkout above guarantees both refs are
+          # present locally for the diff.
+          diff_file="${RUNNER_TEMP}/mutants-pr-${{ matrix.package }}.diff"
+          git fetch --quiet origin "${BASE_REF}"
+          git diff "origin/${BASE_REF}...HEAD" > "${diff_file}"
+          wc -l "${diff_file}" || true
+          echo "diff_file=${diff_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run cargo-mutants --in-diff against PR base
+        id: mutate
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          mkdir -p mutants-out/${{ matrix.package }}
+          # --in-diff scopes mutation generation to lines changed against
+          # the PR base ref. cargo-mutants 25.x reads the supplied path as
+          # a unified-diff text file (not a git ref). --no-shuffle keeps
+          # reproducibility across runs; --timeout caps any single mutant
+          # under sensible wall-time per the source-doc CI shape.
+          mutants_exit=0
+          cargo mutants \
+            --package "${{ matrix.package }}" \
+            --in-diff "${{ steps.diff.outputs.diff_file }}" \
+            --no-shuffle \
+            --timeout 120 \
+            --jobs 2 \
+            --output mutants-out/${{ matrix.package }} \
+            --json \
+            || mutants_exit=$?
+          echo "exit=${mutants_exit}" >> "${GITHUB_OUTPUT}"
+          ls -la mutants-out/${{ matrix.package }} || true
+
+      - name: Apply gate posture (advisory or blocking per releases.toml)
+        if: steps.forced.outputs.skip == 'false'
+        env:
+          MUTANTS_PACKAGE: ${{ matrix.package }}
+          MUTANTS_OUTPUT_DIR: mutants-out/${{ matrix.package }}
+          MUTANTS_EXIT: ${{ steps.mutate.outputs.exit }}
+          # Env-var override (single CI run). Setting this variable downgrades
+          # a blocking-fail to a loud advisory pass. Label-based override is
+          # preferred; this env-var is for in-flight CI runs only.
+          MUTANTS_GATE_OVERRIDE_REASON: ${{ vars.MUTANTS_GATE_OVERRIDE_REASON }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          # mutants-gate.sh reads releases.toml and decides advisory
+          # (exit 0) or blocking (exit 1). Today releases.toml ships with
+          # cycle_end_tag empty, so the gate is advisory and exits 0.
+          # When M02 P3 lands and the next release populates
+          # cycle_end_tag, this step starts enforcing without any
+          # workflow edit.
+          bash scripts/mutants-gate.sh
+
+      - name: Post mutation summary as PR comment
+        if: steps.forced.outputs.skip == 'false' && github.event.pull_request.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MUTANTS_PACKAGE: ${{ matrix.package }}
+          MUTANTS_OUTPUT_DIR: mutants-out/${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          bash scripts/mutants-comment.sh \
+            "${{ github.event.pull_request.number }}" \
+            "mutants-out/${{ matrix.package }}"
+
+      - name: Upload mutation report
+        if: always() && steps.forced.outputs.skip == 'false'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mutants-pr-${{ matrix.package }}
+          path: mutants-out/${{ matrix.package }}
+          if-no-files-found: ignore
+          retention-days: 14
+
+  mutants-nightly:
+    name: mutants-nightly (${{ matrix.package }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # Source doc allots a 4-hour budget per crate; GitHub-hosted runners
+    # cap at 6 h. 240 min keeps headroom for setup steps.
+    timeout-minutes: 240
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - chio-kernel-core
+          - chio-policy
+          - chio-guards
+          - chio-credentials
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Skip when forced package does not match
+        id: forced
+        run: |
+          set -euo pipefail
+          forced='${{ inputs.package }}'
+          if [[ -n "${forced}" && "${forced}" != '${{ matrix.package }}' ]]; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "skipping ${{ matrix.package }} (forced=${forced})"
+          else
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install Rust toolchain
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install cargo-mutants (pinned per Decision 12)
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          cargo install cargo-mutants --version 25.3.1 --locked
+
+      - name: Verify shared 30-day fuzz/mutants budget
+        if: steps.forced.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+        run: |
+          set -euo pipefail
+          if [[ -x scripts/check-fuzz-budget.sh ]]; then
+            scripts/check-fuzz-budget.sh "${{ github.repository }}"
+          else
+            echo "scripts/check-fuzz-budget.sh missing or non-executable" >&2
+            exit 2
+          fi
+
+      - name: Run cargo-mutants full-workspace sweep
+        id: mutate
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          mkdir -p mutants-out/${{ matrix.package }}
+          # Full sweep, no --in-diff. examine_globs from .cargo/mutants.toml
+          # plus per-crate mutants.toml narrow scope to trust-boundary
+          # modules. --timeout 600 caps any single mutant at 10 minutes;
+          # the workspace timeout_multiplier = 3.0 still applies.
+          cargo mutants \
+            --package "${{ matrix.package }}" \
+            --no-shuffle \
+            --timeout 600 \
+            --jobs 2 \
+            --output mutants-out/${{ matrix.package }} \
+            --json \
+            || mutants_exit=$?
+          echo "exit=${mutants_exit:-0}" >> "${GITHUB_OUTPUT}"
+          ls -la mutants-out/${{ matrix.package }} || true
+
+      - name: Apply gate posture (advisory or blocking per releases.toml)
+        if: steps.forced.outputs.skip == 'false'
+        env:
+          MUTANTS_PACKAGE: ${{ matrix.package }}
+          MUTANTS_OUTPUT_DIR: mutants-out/${{ matrix.package }}
+          MUTANTS_EXIT: ${{ steps.mutate.outputs.exit }}
+          # Env-var override (nightly). Forward when the repository variable
+          # is set; the gate script downgrades a blocking-fail to advisory-pass
+          # for this run only.
+          MUTANTS_GATE_OVERRIDE_REASON: ${{ vars.MUTANTS_GATE_OVERRIDE_REASON }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          bash scripts/mutants-gate.sh
+
+      - name: Upload mutation report
+        if: always() && steps.forced.outputs.skip == 'false'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mutants-nightly-${{ matrix.package }}-${{ github.run_id }}
+          path: mutants-out/${{ matrix.package }}
+          if-no-files-found: ignore
+          retention-days: 30

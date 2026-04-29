@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! Differential tests: scope subsumption logic.
 //!
 //! Compares the reference specification's `is_subset_of` against both the

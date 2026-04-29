@@ -8,6 +8,9 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
+
 use std::fmt;
 use std::str::FromStr;
 

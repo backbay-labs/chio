@@ -197,6 +197,7 @@ fn build_manifest(
         )),
         version: server_version.to_string(),
         tools: agent_card.skills.iter().map(build_tool_definition).collect(),
+        server_tools: Vec::new(),
         required_permissions: None,
         public_key: public_key.to_string(),
     };

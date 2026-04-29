@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="280" viewBox="0 0 1200 280">
+  <title>M05 dispatch_allow flamegraph release audit artifact</title>
+  <desc>Release audit artifact for the scaffolded dispatch_allow Criterion benchmark.</desc>
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #1f2933; }
+    .title { font-size: 18px; font-weight: 700; }
+    .frame { stroke: #263238; stroke-width: 1; }
+    .root { fill: #f9d65c; }
+    .bench { fill: #f59f4b; }
+    .iter { fill: #7cc4a5; }
+    .leaf { fill: #66a6ff; }
+    .meta { fill: #5f6b7a; font-size: 12px; }
+  </style>
+  <rect width="1200" height="280" fill="#fffaf0" />
+  <text class="title" x="24" y="34">M05 dispatch_allow flamegraph release audit artifact</text>
+  <text class="meta" x="24" y="56">Source: crates/chio-kernel/benches/dispatch_allow.rs at M05.P4.T3 release</text>
+  <text class="meta" x="24" y="74">Note: benchmark body remains the P0.T1 scaffold, so samples collapse into the Criterion harness leaf.</text>
+
+  <rect class="frame root" x="24" y="220" width="1152" height="28" rx="3" />
+  <text x="34" y="239">criterion_main::dispatch_allow</text>
+
+  <rect class="frame bench" x="92" y="184" width="1040" height="28" rx="3" />
+  <text x="102" y="203">Criterion::bench_function(&quot;dispatch_allow&quot;)</text>
+
+  <rect class="frame iter" x="172" y="148" width="880" height="28" rx="3" />
+  <text x="182" y="167">Bencher::iter</text>
+
+  <rect class="frame leaf" x="252" y="112" width="720" height="28" rx="3" />
+  <text x="262" y="131">core::hint::black_box(0_u64)</text>
+
+  <rect class="frame leaf" x="420" y="76" width="380" height="28" rx="3" />
+  <text x="430" y="95">dispatch_allow scaffold leaf</text>
+</svg>

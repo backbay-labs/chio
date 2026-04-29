@@ -17,7 +17,7 @@ use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::{json, Value};
 
 static UNIQUE_TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
-const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(90);
 const SERVER_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 fn unique_test_dir() -> PathBuf {

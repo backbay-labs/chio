@@ -1,0 +1,42 @@
+{
+  "schema": "chio.guard.wit.fixture.v1",
+  "id": "fetch_blob_valid_slice",
+  "title": "host.fetch-blob returns the requested byte slice",
+  "description": "Positive fixture for the chio:guard@0.2.0 host.fetch-blob import.",
+  "witWorld": "chio:guard/guard@0.2.0",
+  "imports": [
+    "host.fetch-blob"
+  ],
+  "blobStore": {
+    "handles": [
+      {
+        "handle": 7,
+        "bytes": [
+          99,
+          104,
+          105,
+          111,
+          45,
+          48,
+          50
+        ]
+      }
+    ],
+    "bundles": []
+  },
+  "input": {
+    "operation": "host.fetch-blob",
+    "handle": 7,
+    "offset": 2,
+    "len": 4
+  },
+  "expected": {
+    "status": "ok",
+    "bytes": [
+      105,
+      111,
+      45,
+      48
+    ]
+  }
+}

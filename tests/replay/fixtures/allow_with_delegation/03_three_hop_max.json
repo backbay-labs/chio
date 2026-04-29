@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_with_delegation",
+  "fixed_nonce_seed_index": 10,
+  "intent": "Allow path at the maximum permitted delegation depth (three hops) to exercise the inclusive upper bound of chain length.",
+  "name": "allow_with_delegation/03_three_hop_max",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "delegation", "depth-edge"]
+}

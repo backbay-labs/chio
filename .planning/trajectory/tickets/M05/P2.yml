@@ -1,0 +1,235 @@
+# M05 Phase 2 - Interior mutability (Session, sessions map, stores, kernel struct).
+# Source of truth: .planning/trajectory/05-async-kernel-real.md
+# (Phase 2, lines 382-399 + Loom interleaving list lines 506-532 + Phase 2
+# rollback plan lines 644-664).
+#
+# Milestone scope (from EXECUTION-BOARD.md sections 2 and 5): M05 lands in
+# Wave 2b on `wave/W2/m05/...` worktrees. P0 -> P1 -> P2 -> P3 -> P4 are
+# atomic and serial.
+#
+# FREEZE WINDOW: P2 continues the kernel-mod / session.rs freeze
+# (id: m05-kernel-async-pivot in freezes.yml). The freeze stays in force
+# until the END of P3. P2 is the load-bearing concurrency rewrite under
+# the freeze; @bb-connor remains the sole CODEOWNER on the frozen paths
+# and `m05-freeze-guard` is required on every PR.
+#
+# Per the doc, P2.T1 is split into four PRs grouped by Session method
+# concern (state transitions, inflight, terminal marking, subscriptions);
+# the schema's `.k` suffix on the ticket id (T1.a/T1.b/T1.c/T1.d) keeps
+# each split as a discrete atomic ticket without renumbering siblings.
+# This split is also the unit of revert under the rollback plan: each
+# group reverts independently if the bench gate or Loom suite trips.
+#
+# M05 is a TRUST-BOUNDARY milestone: session lifecycle, in-flight
+# accounting, parent/child receipt lineage, and store concurrency all sit
+# on this surface. Security x2 review applies to every M05 PR (two
+# independent LLM reviewer instances with different seeds and no shared
+# scratchpad), in addition to the human-side reviewer @bb-connor.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M05.P2.T1.a
+  milestone: M05
+  phase: 2
+  title: Convert Session state transitions to &self with tokio::sync::RwLock<SessionInner>
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-kernel/src/session.rs
+  shared_paths:
+    - crates/chio-kernel/src/session.rs
+  depends_on:
+    - M05.P1.T7
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --quiet && cargo clippy -p chio-kernel -- -D warnings
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p2.t1.a-session-state-transitions-and-self
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P2.T1.b
+  milestone: M05
+  phase: 2
+  title: Convert Session inflight registry to &self with AtomicU64 counters
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-kernel/src/session.rs
+  shared_paths:
+    - crates/chio-kernel/src/session.rs
+  depends_on:
+    - M05.P2.T1.a
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --quiet && cargo clippy -p chio-kernel -- -D warnings
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p2.t1.b-session-inflight-atomic
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P2.T1.c
+  milestone: M05
+  phase: 2
+  title: Convert Session terminal marking to &self append-only registry
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel/src/session.rs
+  shared_paths:
+    - crates/chio-kernel/src/session.rs
+  depends_on:
+    - M05.P2.T1.b
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --quiet && cargo clippy -p chio-kernel -- -D warnings
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p2.t1.c-session-terminal-marking-and-self
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P2.T1.d
+  milestone: M05
+  phase: 2
+  title: Convert Session subscriptions to &self append-only structure keyed off Arc<Session>
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-kernel/src/session.rs
+  shared_paths:
+    - crates/chio-kernel/src/session.rs
+  depends_on:
+    - M05.P2.T1.c
+  soft_deps: []
+  gate_check:
+    cmd: (! grep -nE '&mut self' crates/chio-kernel/src/session.rs) && cargo test -p chio-kernel --quiet && cargo clippy -p chio-kernel -- -D warnings
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p2.t1.d-session-subscriptions-and-self
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P2.T2
+  milestone: M05
+  phase: 2
+  title: Migrate sessions map from RwLock<HashMap<_, Session>> to DashMap<SessionId, Arc<Session>>
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-kernel/src/kernel/mod.rs
+    - crates/chio-kernel/src/session.rs
+  shared_paths:
+    - crates/chio-kernel/src/kernel/mod.rs
+    - crates/chio-kernel/src/session.rs
+  depends_on:
+    - M05.P2.T1.d
+  soft_deps: []
+  gate_check:
+    cmd: grep -qE 'DashMap<SessionId,\s*Arc<Session>>' crates/chio-kernel/src/kernel/mod.rs && cargo test -p chio-kernel --quiet
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p2.t2-sessions-dashmap-arc-session
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P2.T3
+  milestone: M05
+  phase: 2
+  title: Replace store mutexes (Budget, Revocation, Receipt) with Arc<dyn Store> + per-store interior sync
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-kernel/src/kernel/mod.rs
+    - crates/chio-kernel/src/budget_store.rs
+    - crates/chio-kernel/src/receipt_support.rs
+  shared_paths:
+    - crates/chio-kernel/src/kernel/mod.rs
+  depends_on:
+    - M05.P2.T2
+  soft_deps: []
+  gate_check:
+    cmd: (! grep -nE 'Mutex<Box<dyn (BudgetStore|RevocationStore|ReceiptStore)>>' crates/chio-kernel/src/kernel/mod.rs) && cargo test -p chio-kernel --quiet
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p2.t3-store-arc-dyn-interior-sync
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P2.T4
+  milestone: M05
+  phase: 2
+  title: Drop remaining std::sync::Mutex fields on ChioKernel and move emergency_stop / federation_local_kernel_id to ArcSwap
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-kernel/src/kernel/mod.rs
+    - .planning/audits/M05-async-kernel.md
+  shared_paths:
+    - crates/chio-kernel/src/kernel/mod.rs
+  depends_on:
+    - M05.P2.T3
+  soft_deps: []
+  gate_check:
+    cmd: (! grep -nE 'std::sync::Mutex' crates/chio-kernel/src/kernel/mod.rs) && grep -q 'ArcSwap' crates/chio-kernel/src/kernel/mod.rs && cargo test -p chio-kernel --quiet
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p2.t4-drop-stdsync-mutex-arcswap
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P2.T5
+  milestone: M05
+  phase: 2
+  title: Add Loom suite under cfg(loom) covering eight session and channel interleavings
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-kernel/tests/loom_concurrency.rs
+    - crates/chio-kernel/Cargo.toml
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M05.P2.T4
+  soft_deps: []
+  gate_check:
+    cmd: RUSTFLAGS='--cfg loom' LOOM_MAX_PREEMPTIONS=3 cargo test -p chio-kernel --test loom_concurrency
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p2.t5-loom-suite-eight-interleavings
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

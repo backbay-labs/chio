@@ -1,0 +1,152 @@
+# m05-freeze-guard.yml - Required status check for the M05 kernel-pivot freeze.
+#
+# Owned by SEQUENCER per .planning/trajectory/OWNERS.toml. This workflow is
+# the server-side enforcement leg of the M05 freeze (CODEOWNERS supplies the
+# review-team leg). Behaviour:
+#
+#   1. On every PR, compute the changed file set against the merge base.
+#   2. Read the frozen paths from .planning/trajectory/freezes.yml entry
+#      id=m05-kernel-async-pivot.
+#   3. If the PR touches any frozen path, require the PR title to begin
+#      with either "[M05]" (in-milestone work) or "[M05-bypass]" (hotfix
+#      path; documented under Bypass log in the audit doc). Any other
+#      title fails the check.
+#   4. Independently, run the trust-boundary classifier and, on PRs that
+#      touch the trust-boundary set, require either trust-boundary/cosmetic
+#      or trust-boundary/substantive on the PR.
+#
+# Required status check name: m05-freeze-guard / freeze-guard
+# Branch ruleset on project/roadmap-04-25-2026 references this name.
+
+name: m05-freeze-guard
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: m05-freeze-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  freeze-guard:
+    name: freeze-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head with merge base
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Install yq + jq
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.local/bin"
+          curl -fsSL --retry 3 \
+            "https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64" \
+            -o "${HOME}/.local/bin/yq"
+          echo "a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7  ${HOME}/.local/bin/yq" | sha256sum -c -
+          chmod +x "${HOME}/.local/bin/yq"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          jq --version
+          "${HOME}/.local/bin/yq" --version
+
+      - name: Compute changed files
+        id: diff
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          head_sha="${{ github.event.pull_request.head.sha }}"
+          merge_base="$(git merge-base "${base_sha}" "${head_sha}")"
+          echo "merge_base=${merge_base}" >> "${GITHUB_OUTPUT}"
+          echo "merge-base: ${merge_base}"
+          git diff --name-only "${merge_base}" "${head_sha}" > changed.txt
+          printf 'changed file count: %d\n' "$(wc -l < changed.txt)"
+          cat changed.txt
+
+      - name: Enforce M05 freeze
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          frozen_paths="$(mktemp)"
+          if ! yq -r \
+            '.freezes[] | select(.id == "m05-kernel-async-pivot" and .state != "released") | .paths[]' \
+            .planning/trajectory/freezes.yml > "${frozen_paths}"; then
+            echo "ERROR: failed to read active M05 freeze paths from .planning/trajectory/freezes.yml" >&2
+            exit 1
+          fi
+          mapfile -t frozen < "${frozen_paths}"
+          rm -f "${frozen_paths}"
+          if ((${#frozen[@]} == 0)); then
+            echo "M05 freeze is released or has no active paths"
+          fi
+          touched_frozen=0
+          while IFS= read -r path; do
+            for pat in "${frozen[@]}"; do
+              # Glob-to-regex (gitignore subset).
+              regex="$(printf '%s' "${pat}" | sed -e 's|\.|\\.|g' \
+                -e 's|\*\*|__DSTAR__|g' -e 's|\*|[^/]*|g' \
+                -e 's|__DSTAR__|.*|g')"
+              if [[ "${path}" =~ ^${regex}$ ]]; then
+                touched_frozen=1
+                printf 'TOUCHED FROZEN: %s (matches %s)\n' "${path}" "${pat}"
+              fi
+            done
+          done < changed.txt
+
+          if (( touched_frozen == 1 )); then
+            if [[ "${PR_TITLE}" == \[M05\]* ]]; then
+              echo "freeze label [M05] present in PR title; allowing in-milestone work"
+            elif [[ "${PR_TITLE}" == \[M05-bypass\]* ]]; then
+              echo "freeze bypass label [M05-bypass] present in PR title; allowing hotfix path"
+              echo "Reminder: hotfix bypass requires @bb-connor review and a Bypass-log entry"
+              echo "in .planning/audits/M05-async-kernel.md."
+            else
+              echo "ERROR: PR touches M05-frozen paths but title does not begin with [M05] or [M05-bypass]" >&2
+              echo "PR title: ${PR_TITLE}" >&2
+              echo "Frozen path list: .planning/trajectory/freezes.yml id=m05-kernel-async-pivot" >&2
+              exit 1
+            fi
+          else
+            echo "no M05 frozen paths touched"
+          fi
+
+      - name: Classify trust-boundary diff
+        env:
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          diff_file="$(mktemp)"
+          git diff --no-color \
+            "${MERGE_BASE}" \
+            "${HEAD_SHA}" > "${diff_file}"
+          label="$(scripts/classify-trust-diff.sh "${diff_file}" || true)"
+          printf 'classifier verdict: %s\n' "${label}"
+          case "${label}" in
+            "trust-boundary/none")
+              echo "no trust-boundary path touched; nothing to enforce"
+              ;;
+            "trust-boundary/cosmetic"|"trust-boundary/substantive")
+              has_label="$(printf '%s' "${PR_LABELS}" \
+                | jq -r --arg want "${label}" \
+                  'any(. == $want)')"
+              if [[ "${has_label}" != "true" ]]; then
+                echo "ERROR: trust-boundary diff requires PR label: ${label}" >&2
+                echo "Add the label and re-run; the orchestrator does not auto-label" >&2
+                exit 1
+              fi
+              echo "label ${label} present on PR"
+              ;;
+            *)
+              echo "ERROR: classifier returned unexpected verdict: ${label}" >&2
+              exit 1
+              ;;
+          esac

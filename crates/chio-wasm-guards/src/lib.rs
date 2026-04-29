@@ -45,29 +45,72 @@
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 pub mod abi;
+pub mod blocklist;
+pub mod bundle_store;
 #[cfg(feature = "wasmtime-runtime")]
 pub mod component;
 pub mod config;
+pub mod epoch;
 pub mod error;
 #[cfg(feature = "wasmtime-runtime")]
 pub mod host;
+pub mod hot_reload;
+pub mod incident;
 pub mod manifest;
+pub mod metrics;
+pub mod observability;
 pub mod placeholders;
 pub mod runtime;
 #[cfg(feature = "wasmtime-runtime")]
 pub mod wiring;
 
+// libFuzzer entry-point module, enabled only when the `fuzz` feature is
+// turned on by the standalone `chio-fuzz` workspace at `../../fuzz`.
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
+
 pub use abi::{GuardRequest, GuardVerdict, WasmGuardAbi};
+pub use blocklist::{
+    normalize_digest, BlocklistError, GuardDigestBlocklist, E_GUARD_DIGEST_BLOCKLISTED,
+};
+pub use bundle_store::{BundleError, BundleStore, InMemoryBundleStore};
 #[cfg(feature = "wasmtime-runtime")]
 pub use component::ComponentBackend;
 pub use config::WasmGuardConfig;
+pub use epoch::EpochId;
 pub use error::WasmGuardError;
 #[cfg(feature = "wasmtime-runtime")]
 pub use host::WasmHostState;
+pub use hot_reload::{
+    CanaryCorpus, CanaryFixture, DebouncedReload, Engine, HotReloadError, RegistryDigestPoller,
+    ReloadBackendFactory, ReloadTrigger, ReloadTriggerSource, ReloadWatchdog, WatchdogConfig,
+    CANARY_FIXTURE_COUNT,
+};
+pub use incident::{EvalTrace, IncidentError, IncidentWriter, ReloadIncident};
 pub use manifest::{
     load_signature_sidecar, signature_sidecar_path, signed_module_message, verify_guard_signature,
     verify_signed_module, write_signature_sidecar, GuardManifest, SignedWasmModule,
     MANIFEST_FILENAME, SIGNATURE_SUFFIX, SUPPORTED_ABI_VERSIONS,
+};
+pub use metrics::{
+    epoch_label, guard_id_label_from_digest, register_guard_metric_families,
+    GuardMetricRegistrationError, GuardMetricRegistry, MetricFamilyDescriptor, MetricFamilyKind,
+    EVAL_DURATION_BUCKETS_SECONDS, E_GUARD_METRIC_CARDINALITY_EXCEEDED, GUARD_METRIC_FAMILIES,
+    HOST_CALL_DURATION_BUCKETS_SECONDS, HOST_FN_LABEL_VALUES, LABEL_EPOCH, LABEL_GUARD_ID,
+    LABEL_HOST_FN, LABEL_OUTCOME, LABEL_REASON_CLASS, LABEL_VERDICT, MAX_GUARD_METRIC_CARDINALITY,
+    METRIC_CHIO_GUARD_DENY_TOTAL, METRIC_CHIO_GUARD_EVAL_DURATION_SECONDS,
+    METRIC_CHIO_GUARD_FUEL_CONSUMED_TOTAL, METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS,
+    METRIC_CHIO_GUARD_MODULE_BYTES, METRIC_CHIO_GUARD_RELOAD_TOTAL,
+    METRIC_CHIO_GUARD_VERDICT_TOTAL, REASON_CLASS_LABEL_VALUES, RELOAD_OUTCOME_LABEL_VALUES,
+    VERDICT_LABEL_VALUES,
+};
+pub use observability::{
+    guard_digest_or_unknown, guard_evaluate_span, guard_fetch_blob_span, guard_host_call_span,
+    guard_reload_span, guard_verify_span, DEFAULT_GUARD_VERSION, HOST_FETCH_BLOB, HOST_GET_CONFIG,
+    HOST_GET_TIME_UNIX_SECS, HOST_LOG, RELOAD_APPLIED, RELOAD_CANARY_FAILED, RELOAD_ROLLED_BACK,
+    SPAN_GUARD_EVALUATE, SPAN_GUARD_FETCH_BLOB, SPAN_GUARD_HOST_CALL, SPAN_GUARD_RELOAD,
+    SPAN_GUARD_VERIFY, UNKNOWN_GUARD_DIGEST, VERDICT_ALLOW, VERDICT_DENY, VERDICT_ERROR,
+    VERDICT_REWRITE, VERIFY_MODE_ED25519, VERIFY_RESULT_FAIL, VERIFY_RESULT_OK,
 };
 pub use placeholders::{
     resolve_placeholders, resolve_placeholders_in_json, PlaceholderEnv, PlaceholderError,
@@ -79,6 +122,6 @@ pub use runtime::wasmtime_backend::{
     PolicyCustomGuard, PolicyCustomGuards, PolicyModuleSource, WasmFormat, WasmGuardHandle,
     KNOWN_HOST_FUNCTIONS,
 };
-pub use runtime::{WasmGuard, WasmGuardRuntime};
+pub use runtime::{LoadedModule, WasmGuard, WasmGuardRuntime};
 #[cfg(feature = "wasmtime-runtime")]
 pub use wiring::{build_guard_pipeline, load_wasm_guards};

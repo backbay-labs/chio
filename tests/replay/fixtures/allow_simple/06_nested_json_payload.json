@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_simple",
+  "fixed_nonce_seed_index": 5,
+  "intent": "Allow path whose payload is a deeply nested JSON object to exercise canonical-JSON recursive sorting and key-ordering invariants.",
+  "name": "allow_simple/06_nested_json_payload",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "nested-payload"]
+}

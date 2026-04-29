@@ -3,7 +3,8 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Mutex, MutexGuard};
 use std::thread;
 
 use chio_core::capability::{
@@ -38,8 +39,10 @@ use chio_link::{ExchangeRate, PriceOracle, PriceOracleError};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 struct SqliteReceiptStore {
-    connection: Connection,
+    connection: Mutex<Connection>,
 }
+
+static UNIQUE_RECEIPT_DB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 impl SqliteReceiptStore {
     fn open(path: impl AsRef<Path>) -> Result<Self, ReceiptStoreError> {
@@ -98,16 +101,34 @@ impl SqliteReceiptStore {
                     expires_at INTEGER NOT NULL,
                     raw_json TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS session_anchors (
+                    anchor_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    auth_context_fingerprint TEXT NOT NULL,
+                    issued_at INTEGER NOT NULL,
+                    supersedes_anchor_id TEXT,
+                    is_current INTEGER NOT NULL DEFAULT 1,
+                    raw_json TEXT NOT NULL
+                );
                 "#,
         )?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
+    }
+
+    fn connection(&self) -> Result<MutexGuard<'_, Connection>, ReceiptStoreError> {
+        self.connection.lock().map_err(|_| {
+            ReceiptStoreError::Conflict("sqlite receipt store lock poisoned".to_string())
+        })
     }
 
     fn load_checkpoint_by_seq(
         &self,
         checkpoint_seq: u64,
     ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
-        self.connection
+        self.connection()?
             .query_row(
                 "SELECT raw_json FROM kernel_checkpoints WHERE checkpoint_seq = ?1",
                 params![checkpoint_seq as i64],
@@ -141,7 +162,7 @@ impl SqliteReceiptStore {
 
         while let Some(current_id) = current.take() {
             let snapshot = self
-                .connection
+                .connection()?
                 .query_row(
                     r#"
                         SELECT
@@ -175,7 +196,7 @@ impl SqliteReceiptStore {
         &self,
         capability_id: &str,
     ) -> Result<Option<CapabilitySnapshot>, CapabilityLineageError> {
-        self.connection
+        self.connection()?
             .query_row(
                 r#"
                     SELECT
@@ -209,11 +230,11 @@ impl SqliteReceiptStore {
     }
 
     fn record_credit_bond(
-        &mut self,
+        &self,
         bond: &SignedCreditBond,
         lifecycle_state: CreditBondLifecycleState,
     ) -> Result<(), ReceiptStoreError> {
-        self.connection.execute(
+        self.connection()?.execute(
             "INSERT OR REPLACE INTO credit_bonds (bond_id, lifecycle_state, expires_at, raw_json)
                  VALUES (?1, ?2, ?3, ?4)",
             params![
@@ -234,7 +255,7 @@ impl SqliteReceiptStore {
 }
 
 impl ReceiptStore for SqliteReceiptStore {
-    fn append_chio_receipt(&mut self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+    fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         self.append_chio_receipt_returning_seq(receipt)?;
         Ok(())
     }
@@ -244,11 +265,12 @@ impl ReceiptStore for SqliteReceiptStore {
     }
 
     fn append_chio_receipt_returning_seq(
-        &mut self,
+        &self,
         receipt: &ChioReceipt,
     ) -> Result<Option<u64>, ReceiptStoreError> {
         let raw_json = serde_json::to_string(receipt)?;
-        let rows = self.connection.execute(
+        let connection = self.connection()?;
+        let rows = connection.execute(
             r#"
                 INSERT INTO chio_tool_receipts (
                     receipt_id,
@@ -265,15 +287,15 @@ impl ReceiptStore for SqliteReceiptStore {
                 raw_json,
             ],
         )?;
-        Ok((rows > 0).then(|| self.connection.last_insert_rowid().max(0) as u64))
+        Ok((rows > 0).then(|| connection.last_insert_rowid().max(0) as u64))
     }
 
     fn append_child_receipt(
-        &mut self,
+        &self,
         receipt: &ChildRequestReceipt,
     ) -> Result<(), ReceiptStoreError> {
         let raw_json = serde_json::to_string(receipt)?;
-        self.connection.execute(
+        self.connection()?.execute(
             r#"
                 INSERT INTO chio_child_receipts (
                     receipt_id,
@@ -314,7 +336,8 @@ impl ReceiptStore for SqliteReceiptStore {
         start_seq: u64,
         end_seq: u64,
     ) -> Result<Vec<(u64, Vec<u8>)>, ReceiptStoreError> {
-        let mut statement = self.connection.prepare(
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
             r#"
                 SELECT seq, raw_json
                 FROM chio_tool_receipts
@@ -336,9 +359,9 @@ impl ReceiptStore for SqliteReceiptStore {
         .collect()
     }
 
-    fn store_checkpoint(&mut self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
+    fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
         let raw_json = serde_json::to_string(checkpoint)?;
-        self.connection.execute(
+        self.connection()?.execute(
             r#"
                 INSERT INTO kernel_checkpoints (checkpoint_seq, raw_json)
                 VALUES (?1, ?2)
@@ -349,11 +372,18 @@ impl ReceiptStore for SqliteReceiptStore {
         Ok(())
     }
 
+    fn load_checkpoint_by_seq(
+        &self,
+        checkpoint_seq: u64,
+    ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        SqliteReceiptStore::load_checkpoint_by_seq(self, checkpoint_seq)
+    }
+
     fn resolve_credit_bond(
         &self,
         bond_id: &str,
     ) -> Result<Option<CreditBondRow>, ReceiptStoreError> {
-        self.connection
+        self.connection()?
             .query_row(
                 "SELECT raw_json, lifecycle_state FROM credit_bonds WHERE bond_id = ?1",
                 params![bond_id],
@@ -383,8 +413,91 @@ impl ReceiptStore for SqliteReceiptStore {
             .transpose()
     }
 
+    fn record_session_anchor(
+        &self,
+        session_id: &str,
+        anchor_id: &str,
+        auth_context_fingerprint: &str,
+        issued_at: u64,
+        supersedes_anchor_id: Option<&str>,
+        anchor_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        let connection = self.connection()?;
+        let replaces_current_anchor = match supersedes_anchor_id {
+            Some(supersedes_anchor_id) => connection
+                .query_row(
+                    r#"
+                    SELECT is_current
+                    FROM session_anchors
+                    WHERE session_id = ?1
+                      AND anchor_id = ?2
+                    "#,
+                    params![session_id, supersedes_anchor_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?
+                .map(|is_current| is_current != 0)
+                .unwrap_or(false),
+            None => false,
+        };
+        let existing_anchor = connection
+            .query_row(
+                r#"
+                    SELECT anchor_id
+                    FROM session_anchors
+                    WHERE session_id = ?1
+                      AND auth_context_fingerprint = ?2
+                      AND anchor_id <> ?3
+                    LIMIT 1
+                    "#,
+                params![session_id, auth_context_fingerprint, anchor_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if let Some(existing_anchor) = existing_anchor {
+            if !replaces_current_anchor {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "session anchor replay detected for session `{session_id}` auth_context_fingerprint `{auth_context_fingerprint}` existing `{existing_anchor}`"
+                )));
+            }
+        }
+
+        connection.execute(
+            "UPDATE session_anchors SET is_current = 0 WHERE session_id = ?1 AND anchor_id <> ?2",
+            params![session_id, anchor_id],
+        )?;
+        connection.execute(
+            r#"
+                INSERT INTO session_anchors (
+                    anchor_id,
+                    session_id,
+                    auth_context_fingerprint,
+                    issued_at,
+                    supersedes_anchor_id,
+                    is_current,
+                    raw_json
+                ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)
+                ON CONFLICT(anchor_id) DO UPDATE SET
+                    auth_context_fingerprint = excluded.auth_context_fingerprint,
+                    issued_at = excluded.issued_at,
+                    supersedes_anchor_id = COALESCE(excluded.supersedes_anchor_id, session_anchors.supersedes_anchor_id),
+                    is_current = 1,
+                    raw_json = excluded.raw_json
+                "#,
+            params![
+                anchor_id,
+                session_id,
+                auth_context_fingerprint,
+                issued_at as i64,
+                supersedes_anchor_id,
+                serde_json::to_string(anchor_json)?,
+            ],
+        )?;
+        Ok(())
+    }
+
     fn record_capability_snapshot(
-        &mut self,
+        &self,
         token: &CapabilityToken,
         parent_capability_id: Option<&str>,
     ) -> Result<(), ReceiptStoreError> {
@@ -392,7 +505,7 @@ impl ReceiptStore for SqliteReceiptStore {
         let subject_key = token.subject.to_hex();
         let issuer_key = token.issuer.to_hex();
         let delegation_depth = if let Some(parent_id) = parent_capability_id {
-            self.connection
+            self.connection()?
                 .query_row(
                     "SELECT delegation_depth FROM capability_lineage WHERE capability_id = ?1",
                     params![parent_id],
@@ -405,7 +518,7 @@ impl ReceiptStore for SqliteReceiptStore {
             0
         };
 
-        self.connection.execute(
+        self.connection()?.execute(
             r#"
                 INSERT OR REPLACE INTO capability_lineage (
                     capability_id,
@@ -499,7 +612,7 @@ impl RevocationStore for SqliteRevocationStore {
         Ok(exists != 0)
     }
 
-    fn revoke(&mut self, capability_id: &str) -> Result<bool, RevocationStoreError> {
+    fn revoke(&self, capability_id: &str) -> Result<bool, RevocationStoreError> {
         let connection = self.connection()?;
         let revoked_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -543,7 +656,9 @@ fn unique_receipt_db_path(prefix: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
+    let counter = UNIQUE_RECEIPT_DB_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir()
+        .join(format!("{prefix}-{}-{nonce}-{counter}.sqlite3", std::process::id()))
 }
 
 fn make_elicited_content() -> CreateElicitationResult {
@@ -1241,12 +1356,12 @@ impl ResourceProvider for DocsResourceProvider {
 struct AppendOnlyReceiptStore;
 
 impl ReceiptStore for AppendOnlyReceiptStore {
-    fn append_chio_receipt(&mut self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         Ok(())
     }
 
     fn append_child_receipt(
-        &mut self,
+        &self,
         _receipt: &ChildRequestReceipt,
     ) -> Result<(), ReceiptStoreError> {
         Ok(())
@@ -1254,22 +1369,44 @@ impl ReceiptStore for AppendOnlyReceiptStore {
 }
 
 #[derive(Default)]
-struct FailingSessionAnchorReceiptStore;
+struct FailingCheckpointHydrationReceiptStore;
 
-impl ReceiptStore for FailingSessionAnchorReceiptStore {
-    fn append_chio_receipt(&mut self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+impl ReceiptStore for FailingCheckpointHydrationReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         Ok(())
     }
 
     fn append_child_receipt(
-        &mut self,
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn load_latest_checkpoint(&self) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "checkpoint chain corrupted".to_string(),
+        ))
+    }
+}
+
+#[derive(Default)]
+struct FailingSessionAnchorReceiptStore;
+
+impl ReceiptStore for FailingSessionAnchorReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
         _receipt: &ChildRequestReceipt,
     ) -> Result<(), ReceiptStoreError> {
         Ok(())
     }
 
     fn record_session_anchor(
-        &mut self,
+        &self,
         _session_id: &str,
         _anchor_id: &str,
         _auth_context_fingerprint: &str,
@@ -1279,6 +1416,81 @@ impl ReceiptStore for FailingSessionAnchorReceiptStore {
     ) -> Result<(), ReceiptStoreError> {
         Err(ReceiptStoreError::Conflict(
             "session anchor write failed".to_string(),
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RecordedSessionAnchor {
+    anchor_id: String,
+    supersedes_anchor_id: Option<String>,
+}
+
+#[derive(Default)]
+struct RecordingSessionAnchorReceiptStore {
+    anchors: std::sync::Arc<Mutex<Vec<RecordedSessionAnchor>>>,
+}
+
+impl ReceiptStore for RecordingSessionAnchorReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn record_session_anchor(
+        &self,
+        _session_id: &str,
+        anchor_id: &str,
+        _auth_context_fingerprint: &str,
+        _issued_at: u64,
+        supersedes_anchor_id: Option<&str>,
+        _anchor_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        self.anchors
+            .lock()
+            .map_err(|_| ReceiptStoreError::Conflict("anchor recorder lock poisoned".to_string()))?
+            .push(RecordedSessionAnchor {
+                anchor_id: anchor_id.to_string(),
+                supersedes_anchor_id: supersedes_anchor_id.map(str::to_string),
+            });
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct FailingRequestLineageReceiptStore;
+
+impl ReceiptStore for FailingRequestLineageReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn record_request_lineage(
+        &self,
+        _session_id: &str,
+        _request_id: &str,
+        _parent_request_id: Option<&str>,
+        _session_anchor_id: Option<&str>,
+        _recorded_at: u64,
+        _request_fingerprint: Option<&str>,
+        _lineage_json: &serde_json::Value,
+    ) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "request lineage write failed".to_string(),
         ))
     }
 }
@@ -1971,7 +2183,7 @@ fn wildcard_server_grant_allows_real_server() {
 #[test]
 fn revoked_ancestor_capability_denies_descendant() {
     let path = unique_receipt_db_path("chio-kernel-revoked-ancestor-lineage");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
     let mut kernel = ChioKernel::new(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
@@ -2020,7 +2232,7 @@ fn revoked_ancestor_capability_denies_descendant() {
 #[test]
 fn delegated_tool_call_records_observed_capability_lineage() {
     let path = unique_receipt_db_path("chio-kernel-observed-lineage");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
     let mut kernel = ChioKernel::new(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
@@ -2126,7 +2338,7 @@ fn delegated_tool_call_without_parent_snapshot_denies() {
 #[test]
 fn delegated_tool_call_without_delegate_operation_denies() {
     let path = unique_receipt_db_path("chio-kernel-missing-delegate-op");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
     let mut kernel = ChioKernel::new(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
@@ -2179,7 +2391,7 @@ fn delegated_tool_call_without_delegate_operation_denies() {
 #[test]
 fn delegated_tool_call_with_scope_escalation_denies() {
     let path = unique_receipt_db_path("chio-kernel-scope-escalation");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
     let mut kernel = ChioKernel::new(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
@@ -2243,7 +2455,7 @@ fn delegated_tool_call_with_scope_escalation_denies() {
 #[test]
 fn delegated_tool_call_with_delegatee_subject_mismatch_denies() {
     let path = unique_receipt_db_path("chio-kernel-delegatee-mismatch");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
     let mut kernel = ChioKernel::new(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
@@ -2303,7 +2515,7 @@ fn delegated_tool_call_with_delegatee_subject_mismatch_denies() {
 #[test]
 fn delegated_tool_call_exceeding_configured_max_depth_denies() {
     let path = unique_receipt_db_path("chio-kernel-max-delegation-depth");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
     let mut config = make_config();
     config.max_delegation_depth = 1;
@@ -2375,7 +2587,7 @@ fn delegated_tool_call_exceeding_configured_max_depth_denies() {
 #[test]
 fn delegated_tool_call_with_truncated_ancestor_chain_denies() {
     let path = unique_receipt_db_path("chio-kernel-truncated-lineage");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
     let mut kernel = ChioKernel::new(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
@@ -2463,7 +2675,7 @@ fn wildcard_tool_grant_allows_any_tool() {
 
 #[test]
 fn in_memory_revocation_store() {
-    let mut store = InMemoryRevocationStore::default();
+    let store = InMemoryRevocationStore::default();
     assert!(!store.is_revoked("cap-1").unwrap());
     assert!(store.revoke("cap-1").unwrap());
     assert!(store.is_revoked("cap-1").unwrap());
@@ -2588,6 +2800,150 @@ fn open_session_with_id_rolls_back_insert_when_anchor_persistence_fails() {
         .unwrap();
     assert_eq!(opened, session_id);
     assert_eq!(kernel.session_count(), 1);
+}
+
+#[test]
+fn set_session_auth_context_rolls_back_when_anchor_persistence_fails() {
+    let mut kernel = ChioKernel::new(make_config());
+    let session_id =
+        kernel.open_session_with_id(SessionId::new("sess-auth-rollback"), "agent-a".to_string(), Vec::new())
+            .unwrap();
+    let initial_auth = kernel
+        .session(&session_id)
+        .map(|session| session.auth_context())
+        .unwrap();
+    let initial_anchor = kernel
+        .session(&session_id)
+        .map(|session| session.session_anchor())
+        .unwrap();
+
+    kernel.set_receipt_store(Box::new(FailingSessionAnchorReceiptStore));
+    let error = kernel
+        .set_session_auth_context(
+            &session_id,
+            SessionAuthContext::streamable_http_static_bearer(
+                "static-bearer:rollback",
+                "cafebabe",
+                Some("http://localhost:3000".to_string()),
+            ),
+        )
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        KernelError::ReceiptPersistence(ReceiptStoreError::Conflict(message))
+            if message == "session anchor write failed"
+    ));
+    let session = kernel.session(&session_id).unwrap();
+    assert_eq!(session.auth_context(), initial_auth);
+    assert_eq!(session.session_anchor(), initial_anchor);
+}
+
+#[test]
+fn close_session_persists_anonymous_anchor_and_rejects_late_auth_rotation() {
+    let store = RecordingSessionAnchorReceiptStore::default();
+    let anchors = std::sync::Arc::clone(&store.anchors);
+    let mut kernel = ChioKernel::new(make_config());
+    kernel.set_receipt_store(Box::new(store));
+    let session_id = kernel
+        .open_session_with_id(
+            SessionId::new("sess-auth-close"),
+            "agent-a".to_string(),
+            Vec::new(),
+        )
+        .unwrap();
+    kernel.activate_session(&session_id).unwrap();
+    let initial_anchor_id = kernel
+        .session(&session_id)
+        .map(|session| session.session_anchor().id().to_string())
+        .unwrap();
+
+    kernel
+        .set_session_auth_context(
+            &session_id,
+            SessionAuthContext::streamable_http_static_bearer(
+                "static-bearer:close",
+                "deadbeef",
+                Some("http://localhost:3000".to_string()),
+            ),
+        )
+        .unwrap();
+    let authenticated_anchor_id = kernel
+        .session(&session_id)
+        .map(|session| session.session_anchor().id().to_string())
+        .unwrap();
+
+    kernel.close_session(&session_id).unwrap();
+    let closed = kernel.session(&session_id).unwrap();
+    assert_eq!(closed.state(), SessionState::Closed);
+    assert!(!closed.auth_context().is_authenticated());
+
+    let closed_anchor_id = closed.session_anchor().id().to_string();
+    kernel.close_session(&session_id).unwrap();
+    let reclosed = kernel.session(&session_id).unwrap();
+    assert_eq!(reclosed.state(), SessionState::Closed);
+    assert_eq!(reclosed.session_anchor().id(), closed_anchor_id);
+
+    let records = anchors.lock().unwrap();
+    assert_eq!(records.len(), 3);
+    assert_eq!(records[2].anchor_id, closed_anchor_id);
+    assert_ne!(closed_anchor_id, initial_anchor_id);
+    assert_ne!(closed_anchor_id, authenticated_anchor_id);
+    assert_eq!(
+        records[2].supersedes_anchor_id.as_deref(),
+        Some(authenticated_anchor_id.as_str())
+    );
+    drop(records);
+
+    let error = kernel
+        .set_session_auth_context(
+            &session_id,
+            SessionAuthContext::streamable_http_static_bearer(
+                "static-bearer:late",
+                "cafebabe",
+                Some("http://localhost:3000".to_string()),
+            ),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        KernelError::Session(SessionError::OperationNotAllowed {
+            operation: "set_auth_context",
+            state: "closed",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn close_session_with_sqlite_store_reuses_initial_anonymous_anchor() {
+    let path = unique_receipt_db_path("session-close-anonymous-anchor");
+    let mut kernel = ChioKernel::new(make_config());
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    let session_id = kernel
+        .open_session_with_id(
+            SessionId::new("sess-auth-close-sqlite"),
+            "agent-a".to_string(),
+            Vec::new(),
+        )
+        .unwrap();
+    kernel.activate_session(&session_id).unwrap();
+
+    kernel
+        .set_session_auth_context(
+            &session_id,
+            SessionAuthContext::streamable_http_static_bearer(
+                "static-bearer:sqlite-close",
+                "deadbeef",
+                Some("http://localhost:3000".to_string()),
+            ),
+        )
+        .unwrap();
+
+    kernel.close_session(&session_id).unwrap();
+    let closed = kernel.session(&session_id).unwrap();
+    assert_eq!(closed.state(), SessionState::Closed);
+    assert!(!closed.auth_context().is_authenticated());
 }
 
 #[test]
@@ -2826,6 +3182,110 @@ fn begin_child_request_requires_parent_lineage() {
     let session = kernel.session(&session_id).unwrap();
     let child = session.inflight().get(&child_context.request_id).unwrap();
     assert_eq!(child.parent_request_id, Some(RequestId::new("parent-1")));
+}
+
+#[test]
+fn begin_session_request_clears_inflight_when_lineage_persistence_fails() {
+    let mut kernel = ChioKernel::new(make_config());
+    kernel.set_receipt_store(Box::new(FailingRequestLineageReceiptStore));
+    let agent_kp = make_keypair();
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    kernel.activate_session(&session_id).unwrap();
+
+    let context = make_operation_context(
+        &session_id,
+        "lineage-fail-root",
+        &agent_kp.public_key().to_hex(),
+    );
+    let error = kernel
+        .begin_session_request(&context, OperationKind::ToolCall, true)
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        KernelError::ReceiptPersistence(ReceiptStoreError::Conflict(message))
+            if message == "request lineage write failed"
+    ));
+    let session = kernel.session(&session_id).unwrap();
+    assert!(session.inflight().is_empty());
+    assert_eq!(
+        session.terminal().get(&context.request_id),
+        None,
+        "failed non-durable start does not leave terminal state"
+    );
+    assert_eq!(
+        session.request_lineage(&context.request_id),
+        None,
+        "failed non-durable start does not leave in-memory lineage"
+    );
+
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
+    kernel
+        .begin_session_request(&context, OperationKind::ToolCall, true)
+        .unwrap();
+}
+
+#[test]
+fn begin_child_request_clears_child_inflight_when_lineage_persistence_fails() {
+    let mut kernel = ChioKernel::new(make_config());
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
+    let agent_kp = make_keypair();
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
+    kernel.activate_session(&session_id).unwrap();
+
+    let parent_context =
+        make_operation_context(&session_id, "parent-ok", &agent_kp.public_key().to_hex());
+    kernel
+        .begin_session_request(&parent_context, OperationKind::ToolCall, true)
+        .unwrap();
+    kernel.set_receipt_store(Box::new(FailingRequestLineageReceiptStore));
+
+    let child_request_id = RequestId::new("lineage-fail-child");
+    let error = kernel
+        .begin_child_request(
+            &parent_context,
+            child_request_id.clone(),
+            OperationKind::CreateMessage,
+            None,
+            true,
+        )
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        KernelError::ReceiptPersistence(ReceiptStoreError::Conflict(message))
+            if message == "request lineage write failed"
+    ));
+    let session = kernel.session(&session_id).unwrap();
+    assert!(
+        session.inflight().get(&parent_context.request_id).is_some(),
+        "parent request remains active"
+    );
+    assert!(
+        session.inflight().get(&child_request_id).is_none(),
+        "failed child request is removed from active tracking"
+    );
+    assert_eq!(
+        session.terminal().get(&child_request_id),
+        None,
+        "failed child start does not leave terminal state"
+    );
+    assert_eq!(
+        session.request_lineage(&child_request_id),
+        None,
+        "failed child start does not leave in-memory lineage"
+    );
+
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
+    kernel
+        .begin_child_request(
+            &parent_context,
+            child_request_id,
+            OperationKind::CreateMessage,
+            None,
+            true,
+        )
+        .unwrap();
 }
 
 #[test]
@@ -3511,7 +3971,7 @@ fn tool_call_nested_flow_bridge_propagates_parent_cancellation() {
             .unwrap()
             .terminal()
             .get(&context.request_id),
-        Some(&OperationTerminalState::Cancelled {
+        Some(OperationTerminalState::Cancelled {
             reason: expected_reason,
         })
     );
@@ -3606,7 +4066,7 @@ fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
             .unwrap()
             .terminal()
             .get(&context.request_id),
-        Some(&OperationTerminalState::Cancelled {
+        Some(OperationTerminalState::Cancelled {
             reason: expected_reason,
         })
     );
@@ -3628,7 +4088,7 @@ fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
             .unwrap()
             .terminal()
             .get(&child_receipt.request_id),
-        Some(&OperationTerminalState::Cancelled {
+        Some(OperationTerminalState::Cancelled {
             reason: "client cancelled nested request".to_string(),
         })
     );
@@ -3688,7 +4148,7 @@ fn session_tool_call_records_incomplete_terminal_state() {
             .unwrap()
             .terminal()
             .get(&context.request_id),
-        Some(&OperationTerminalState::Incomplete {
+        Some(OperationTerminalState::Incomplete {
             reason: expected_reason,
         })
     );
@@ -5436,9 +5896,8 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
     assert_eq!(financial["attempted_cost"].as_u64(), Some(100));
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -5486,9 +5945,8 @@ fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
     assert_eq!(financial["cost_charged"].as_u64(), Some(100));
     assert_eq!(financial["budget_remaining"].as_u64(), Some(900));
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -5544,9 +6002,8 @@ fn monetary_allow_receipt_contains_financial_metadata() {
     assert_eq!(attribution["grant_index"].as_u64(), Some(0));
 
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -5588,9 +6045,8 @@ fn monetary_allow_records_budget_hold_and_append_only_events() {
     let authorize_event_id = format!("{hold_id}:authorize");
     let reconcile_event_id = format!("{hold_id}:reconcile");
     let events = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .list_mutation_events(10, Some(&cap.id), Some(0))
         .unwrap();
 
@@ -5804,9 +6260,8 @@ fn governed_request_rejects_empty_metered_billing_provider() {
         .is_some_and(|reason| reason.contains("metered billing provider must not be empty")));
 
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -5956,7 +6411,7 @@ fn governed_call_chain_receipt_observes_local_parent_receipt_linkage() {
 #[test]
 fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
     let path = unique_receipt_db_path("chio-kernel-call-chain-capability-lineage");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
     let mut kernel = ChioKernel::new(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
@@ -6045,7 +6500,7 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
 #[test]
 fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
     let path = unique_receipt_db_path("chio-kernel-call-chain-upstream-proof");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
     let mut kernel = ChioKernel::new(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
@@ -6264,7 +6719,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
     assert!(observed_governed["call_chain"]["upstreamProof"].is_null());
 
     let path = unique_receipt_db_path("chio-kernel-call-chain-execution-order");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
     let mut verified_kernel = ChioKernel::new(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
@@ -6369,7 +6824,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
 #[test]
 fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
     let path = unique_receipt_db_path("chio-kernel-call-chain-upstream-proof-subject-mismatch");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
     let mut kernel = ChioKernel::new(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
@@ -6457,7 +6912,7 @@ fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
 #[test]
 fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_capability_lineage() {
     let path = unique_receipt_db_path("chio-kernel-call-chain-delegator-mismatch");
-    let mut seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
     let mut kernel = ChioKernel::new(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
@@ -6650,6 +7105,7 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
                     "token-parent",
                     Some("https://parent.example".to_string()),
                 ))
+                .0
             );
             Ok(())
         })
@@ -6931,9 +7387,8 @@ fn governed_monetary_denial_without_required_runtime_assurance_releases_budget()
         .expect("deny receipt should carry financial metadata");
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -7518,7 +7973,7 @@ fn governed_request_denies_delegated_autonomy_with_expired_bond() {
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
     let path = unique_receipt_db_path("kernel-bond-expired");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
 
     let grant = with_minimum_autonomy_tier(
         make_governed_monetary_grant("cost-srv", "compute", 100, 1000, "USD", 50),
@@ -7598,7 +8053,7 @@ fn governed_request_allows_delegated_autonomy_with_active_bond_and_receipt_metad
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
     let path = unique_receipt_db_path("kernel-bond-active");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
 
     let grant = with_minimum_autonomy_tier(
         make_governed_monetary_grant("cost-srv", "compute", 100, 1000, "USD", 50),
@@ -7741,9 +8196,8 @@ fn governed_monetary_denial_without_approval_releases_budget_and_records_intent(
     assert_eq!(financial["settlement_status"], "not_applicable");
 
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -8043,9 +8497,8 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
     assert_eq!(governed["intent_id"], intent.id);
 
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -8274,9 +8727,8 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
     assert_eq!(governed["commerce"]["seller"], "wrong-merchant.example");
 
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -8397,9 +8849,8 @@ fn monetary_tool_server_error_releases_precharged_budget() {
 
     assert_eq!(response.verdict, Verdict::Deny);
     let usage = kernel
+        
         .budget_store
-        .lock()
-        .unwrap()
         .get_usage(&cap.id, 0)
         .unwrap()
         .unwrap();
@@ -8846,6 +9297,257 @@ fn checkpoint_triggers_at_100_receipts() {
     assert_eq!(cp.body.batch_end_seq, 10);
 
     let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn concurrent_receipt_checkpointing_keeps_contiguous_batches() {
+    let path = unique_receipt_db_path("chio-checkpoint-concurrent");
+    let mut config = make_monetary_config();
+    config.checkpoint_batch_size = 2;
+
+    let mut kernel = ChioKernel::new(config);
+    let agent_kp = Keypair::generate();
+    kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
+
+    let store = SqliteReceiptStore::open(&path).unwrap();
+    kernel.set_receipt_store(Box::new(store));
+
+    let grant = make_grant("srv", "echo");
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+    let kernel = std::sync::Arc::new(kernel);
+    let agent_id = agent_kp.public_key().to_hex();
+
+    let handles = (0..12)
+        .map(|i| {
+            let kernel = std::sync::Arc::clone(&kernel);
+            let cap = cap.clone();
+            let agent_id = agent_id.clone();
+            std::thread::spawn(move || {
+                kernel
+                    .evaluate_tool_call_blocking(&ToolCallRequest {
+                        request_id: format!("req-concurrent-{i}"),
+                        capability: cap,
+                        tool_name: "echo".to_string(),
+                        server_id: "srv".to_string(),
+                        agent_id,
+                        arguments: serde_json::json!({ "i": i }),
+                        dpop_proof: None,
+                        governed_intent: None,
+                        approval_token: None,
+                        model_metadata: None,
+                        federated_origin_kernel_id: None,
+                    })
+                    .unwrap();
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let store2 = SqliteReceiptStore::open(&path).unwrap();
+    for checkpoint_seq in 1..=6 {
+        let checkpoint = store2
+            .load_checkpoint_by_seq(checkpoint_seq)
+            .unwrap()
+            .unwrap_or_else(|| panic!("checkpoint {checkpoint_seq} should exist"));
+        assert_eq!(checkpoint.body.checkpoint_seq, checkpoint_seq);
+        assert_eq!(checkpoint.body.batch_start_seq, (checkpoint_seq - 1) * 2 + 1);
+        assert_eq!(checkpoint.body.batch_end_seq, checkpoint_seq * 2);
+    }
+    assert!(store2.load_checkpoint_by_seq(7).unwrap().is_none());
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn checkpoint_counters_restore_when_store_is_reattached() {
+    let path = unique_receipt_db_path("chio-checkpoint-restart");
+    let kernel_kp = make_keypair();
+    let mut first_config = make_monetary_config();
+    first_config.keypair = kernel_kp.clone();
+    first_config.checkpoint_batch_size = 2;
+    let mut second_config = make_monetary_config();
+    second_config.keypair = kernel_kp;
+    second_config.checkpoint_batch_size = 2;
+
+    let agent_kp = Keypair::generate();
+    let grant = make_grant("srv", "echo");
+    let mut first_kernel = ChioKernel::new(first_config);
+    first_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
+    first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    let cap = first_kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+    let agent_id = agent_kp.public_key().to_hex();
+
+    for i in 0..2 {
+        first_kernel
+            .evaluate_tool_call_blocking(&ToolCallRequest {
+                request_id: format!("req-before-restart-{i}"),
+                capability: cap.clone(),
+                tool_name: "echo".to_string(),
+                server_id: "srv".to_string(),
+                agent_id: agent_id.clone(),
+                arguments: serde_json::json!({ "i": i }),
+                dpop_proof: None,
+                governed_intent: None,
+                approval_token: None,
+                model_metadata: None,
+                federated_origin_kernel_id: None,
+            })
+            .unwrap();
+    }
+
+    let mut restarted_kernel = ChioKernel::new(second_config);
+    restarted_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
+    restarted_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    assert_eq!(
+        restarted_kernel
+            .checkpoint_seq_counter
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        restarted_kernel
+            .last_checkpoint_seq
+            .load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+
+    for i in 2..4 {
+        restarted_kernel
+            .evaluate_tool_call_blocking(&ToolCallRequest {
+                request_id: format!("req-after-restart-{i}"),
+                capability: cap.clone(),
+                tool_name: "echo".to_string(),
+                server_id: "srv".to_string(),
+                agent_id: agent_id.clone(),
+                arguments: serde_json::json!({ "i": i }),
+                dpop_proof: None,
+                governed_intent: None,
+                approval_token: None,
+                model_metadata: None,
+                federated_origin_kernel_id: None,
+            })
+            .unwrap();
+    }
+
+    let store = SqliteReceiptStore::open(&path).unwrap();
+    let first_checkpoint = store
+        .load_checkpoint_by_seq(1)
+        .unwrap()
+        .expect("checkpoint 1 should exist before restart");
+    let second_checkpoint = store
+        .load_checkpoint_by_seq(2)
+        .unwrap()
+        .expect("checkpoint 2 should exist after restart");
+    assert_eq!(first_checkpoint.body.batch_start_seq, 1);
+    assert_eq!(first_checkpoint.body.batch_end_seq, 2);
+    assert_eq!(second_checkpoint.body.batch_start_seq, 3);
+    assert_eq!(second_checkpoint.body.batch_end_seq, 4);
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn checkpoint_counters_refresh_across_kernels_sharing_store() {
+    let path = unique_receipt_db_path("chio-checkpoint-two-kernels");
+    let kernel_kp = make_keypair();
+    let mut first_config = make_monetary_config();
+    first_config.keypair = kernel_kp.clone();
+    first_config.checkpoint_batch_size = 1;
+    let mut second_config = make_monetary_config();
+    second_config.keypair = kernel_kp;
+    second_config.checkpoint_batch_size = 1;
+
+    let agent_kp = Keypair::generate();
+    let grant = make_grant("srv", "echo");
+    let mut first_kernel = ChioKernel::new(first_config);
+    let mut second_kernel = ChioKernel::new(second_config);
+    first_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
+    second_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
+    first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    second_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+
+    let cap = first_kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+    let agent_id = agent_kp.public_key().to_hex();
+
+    first_kernel
+        .evaluate_tool_call_blocking(&ToolCallRequest {
+            request_id: "req-two-kernels-1".to_string(),
+            capability: cap.clone(),
+            tool_name: "echo".to_string(),
+            server_id: "srv".to_string(),
+            agent_id: agent_id.clone(),
+            arguments: serde_json::json!({ "i": 1 }),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        })
+        .unwrap();
+    second_kernel
+        .evaluate_tool_call_blocking(&ToolCallRequest {
+            request_id: "req-two-kernels-2".to_string(),
+            capability: cap,
+            tool_name: "echo".to_string(),
+            server_id: "srv".to_string(),
+            agent_id,
+            arguments: serde_json::json!({ "i": 2 }),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        })
+        .unwrap();
+
+    let store = SqliteReceiptStore::open(&path).unwrap();
+    let first_checkpoint = store
+        .load_checkpoint_by_seq(1)
+        .unwrap()
+        .expect("first kernel checkpoint should exist");
+    let second_checkpoint = store
+        .load_checkpoint_by_seq(2)
+        .unwrap()
+        .expect("second kernel checkpoint should extend the chain");
+    assert_eq!(first_checkpoint.body.batch_start_seq, 1);
+    assert_eq!(first_checkpoint.body.batch_end_seq, 1);
+    assert_eq!(second_checkpoint.body.batch_start_seq, 2);
+    assert_eq!(second_checkpoint.body.batch_end_seq, 2);
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn receipt_store_install_fails_closed_on_checkpoint_hydration_error() {
+    let mut kernel = ChioKernel::new(make_monetary_config());
+    let result =
+        kernel.try_set_receipt_store_handle(std::sync::Arc::new(
+            FailingCheckpointHydrationReceiptStore,
+        ));
+
+    assert!(result.is_err());
+    assert!(kernel.receipt_store.is_none());
+    assert_eq!(
+        kernel
+            .checkpoint_seq_counter
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    assert_eq!(
+        kernel
+            .last_checkpoint_seq
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
 }
 
 #[test]

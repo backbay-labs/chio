@@ -370,6 +370,1099 @@
         "signature": "13c63c4d613f7c6fc0a4af73d805fe570faf0a75018f4bda0000b23daaed552a5ced79423bad5fa32288fe277a705a2890f0c917d6c32ec81453016ad0316a05",
         "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
       }
+    },
+    {
+      "description": "Server advertises four tools spanning every LatencyHint variant; signature and structure are valid.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "multi_tool_mixed_latency_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Manifest exposing several tools across the latency spectrum\",\"name\":\"Multi Tool Server\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-multi-tool\",\"tools\":[{\"description\":\"Tool definition for file_read\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"instant\",\"name\":\"file_read\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}},{\"description\":\"Tool definition for file_write\",\"has_side_effects\":true,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_write\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}},{\"description\":\"Tool definition for network_fetch\",\"has_side_effects\":true,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"moderate\",\"name\":\"network_fetch\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}},{\"description\":\"Tool definition for batch_process\",\"has_side_effects\":true,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"slow\",\"name\":\"batch_process\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"2.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Manifest exposing several tools across the latency spectrum",
+          "name": "Multi Tool Server",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-multi-tool",
+          "tools": [
+            {
+              "description": "Tool definition for file_read",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "instant",
+              "name": "file_read",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            {
+              "description": "Tool definition for file_write",
+              "has_side_effects": true,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_write",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            {
+              "description": "Tool definition for network_fetch",
+              "has_side_effects": true,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "moderate",
+              "name": "network_fetch",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            {
+              "description": "Tool definition for batch_process",
+              "has_side_effects": true,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "slow",
+              "name": "batch_process",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "2.0.0"
+        },
+        "signature": "859fe6d63b9f31f3746024b4ab06b7a50bc1d7eb286ebed6e338bc45e1615c003cbf4796a0b9400e109687bb850be5690c2ac54ba7af191a8815e86040140e07",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Manifest omits the optional description and required_permissions fields entirely.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "minimal_no_description_manifest",
+      "manifest_body_canonical_json": "{\"description\":null,\"name\":\"Minimal\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":null,\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-minimal\",\"tools\":[{\"description\":\"Tool definition for ping\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"instant\",\"name\":\"ping\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"0.1.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": null,
+          "name": "Minimal",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": null,
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-minimal",
+          "tools": [
+            {
+              "description": "Tool definition for ping",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "instant",
+              "name": "ping",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "0.1.0"
+        },
+        "signature": "1d07b472afa4218e213072ecd709482f35ca6c12680a011270e607cbbb84ad25921a7fd7d3e3381f8671e6286b7d259374e57ee3c7f9df21d7c6e2d902f26b08",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Required-permission arrays are present but empty; manifest remains structurally valid.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "empty_required_permissions_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"All required-permission lists are explicitly empty rather than omitted\",\"name\":\"Empty Perms\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[],\"network_hosts\":[],\"read_paths\":[],\"write_paths\":[]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-empty-perms\",\"tools\":[{\"description\":\"Tool definition for noop\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"instant\",\"name\":\"noop\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "All required-permission lists are explicitly empty rather than omitted",
+          "name": "Empty Perms",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [],
+            "network_hosts": [],
+            "read_paths": [],
+            "write_paths": []
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-empty-perms",
+          "tools": [
+            {
+              "description": "Tool definition for noop",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "instant",
+              "name": "noop",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "8d045bdfe8ad63a4d7915a1801374911c046359a0aa02f1df57eecbb56cede6a50ae5478c00e60a18d06fefa7aaa67b8406f42e819f9e90c511b6795dbf7f906",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Required-permissions object declares network_hosts only; other categories remain None.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "partial_required_permissions_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Only network_hosts is declared; other permission categories are absent\",\"name\":\"Partial Perms\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":null,\"network_hosts\":[\"api.first.example.com\",\"api.second.example.com\"],\"read_paths\":null,\"write_paths\":null},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-partial-perms\",\"tools\":[{\"description\":\"Tool definition for network_call\",\"has_side_effects\":true,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"moderate\",\"name\":\"network_call\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.2.3\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Only network_hosts is declared; other permission categories are absent",
+          "name": "Partial Perms",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": null,
+            "network_hosts": [
+              "api.first.example.com",
+              "api.second.example.com"
+            ],
+            "read_paths": null,
+            "write_paths": null
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-partial-perms",
+          "tools": [
+            {
+              "description": "Tool definition for network_call",
+              "has_side_effects": true,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "moderate",
+              "name": "network_call",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.2.3"
+        },
+        "signature": "1cf09adbeab4c72fda130b5d8c2b1c189be4f1d79957e07fbe89b9ba7a748591fd5e61e022a8ee0a5942a0f60cce244e0cb061d5254c6c3eaaf26b058867170a",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Manifest carries a tool with explicit per-invocation pricing metadata.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "priced_tool_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Tool advertises per-invocation pricing in USD\",\"name\":\"Priced Tool Server\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-priced\",\"tools\":[{\"description\":\"Tool definition for billable_summarize\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"billable_summarize\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"},\"pricing\":{\"billing_unit\":\"invocation\",\"pricing_model\":\"per_invocation\",\"unit_price\":{\"currency\":\"USD\",\"units\":250}}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Tool advertises per-invocation pricing in USD",
+          "name": "Priced Tool Server",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-priced",
+          "tools": [
+            {
+              "description": "Tool definition for billable_summarize",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "billable_summarize",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "pricing": {
+                "billing_unit": "invocation",
+                "pricing_model": "per_invocation",
+                "unit_price": {
+                  "currency": "USD",
+                  "units": 250
+                }
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "56929627b5197a11982ece3bc3f4d6b772ca5eeca7699dc344b9dff212ce9033bb865b2dddacdd9c2f40e1f53f847aef6550755be925396a120abb1730e5c800",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Server name and description contain accented Unicode and supplementary-plane emoji.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "unicode_server_name_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Server name and description carry non-ASCII characters and emoji\",\"name\":\"Servidor de árboles 🌳\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-unicode\",\"tools\":[{\"description\":\"Tool definition for buscar_arbol\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"buscar_arbol\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Server name and description carry non-ASCII characters and emoji",
+          "name": "Servidor de árboles 🌳",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-unicode",
+          "tools": [
+            {
+              "description": "Tool definition for buscar_arbol",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "buscar_arbol",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "7f7688f7403c3393316ce7dc133eca8cb712abb9ce3a1324e8b78d5dae5b9adc794e821c2f0a047559cdb3914c745496eddf1911a0571a8ea6b8a06685673305",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Manifest is signed by the alternate keypair and its embedded public_key matches that signer.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "signed_with_alternate_key_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Manifest signed by the alternate keypair; embedded public_key matches signer\",\"name\":\"Alternate Signer Demo\",\"public_key\":\"511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-alternate\",\"tools\":[{\"description\":\"Tool definition for file_read\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_read\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Manifest signed by the alternate keypair; embedded public_key matches signer",
+          "name": "Alternate Signer Demo",
+          "public_key": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-alternate",
+          "tools": [
+            {
+              "description": "Tool definition for file_read",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_read",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "36f519f6c45259b3b2da7b346f0c437d31240993f5c368cf3b07cd9468db8c0c90695fa2ca0388b8446668c4f05244586ace7ab1abe89462ff5aa3e64a835c07",
+        "signer_key": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a"
+      }
+    },
+    {
+      "description": "Manifest signature is valid but schema field is not chio.manifest.v1, so structure validation fails.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": false
+      },
+      "id": "unsupported_schema_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Manifest vector for bindings-core SDK fixtures\",\"name\":\"Bindings Demo\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v0\",\"server_id\":\"srv-bindings-demo\",\"tools\":[{\"description\":\"Tool definition for file_read\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_read\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Manifest vector for bindings-core SDK fixtures",
+          "name": "Bindings Demo",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v0",
+          "server_id": "srv-bindings-demo",
+          "tools": [
+            {
+              "description": "Tool definition for file_read",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_read",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "50f4f6b8e4536c699739363bbdd74b473cf4104bfac0c8c6e9f0a396826a3fdc1ea8ff9ce5feb70af0e8a8032f367b1d4ea73f5b46a70053b140244c4c7b400f",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Manifest signature is valid but the tools array is empty, so structure validation fails.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": false
+      },
+      "id": "empty_tools_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Manifest vector for bindings-core SDK fixtures\",\"name\":\"Bindings Demo\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-bindings-demo\",\"tools\":[],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Manifest vector for bindings-core SDK fixtures",
+          "name": "Bindings Demo",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-bindings-demo",
+          "tools": [],
+          "version": "1.0.0"
+        },
+        "signature": "3f67ba784c1b7020fbe21fb94018d1238f2b0be11fff5ec84669e9b34c95af353e4f93a689eb43b53bb6a871d23f1cb820b3856cac707046b90ff992ac2dad0b",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Manifest is signed by the alternate key but its embedded public_key advertises the server key, so the embedded key does not match the signer.",
+      "expected": {
+        "embedded_public_key_matches_signer": false,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "wrong_signer_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Manifest vector for bindings-core SDK fixtures\",\"name\":\"Bindings Demo\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-bindings-demo\",\"tools\":[{\"description\":\"Tool definition for file_read\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_read\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Manifest vector for bindings-core SDK fixtures",
+          "name": "Bindings Demo",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-bindings-demo",
+          "tools": [
+            {
+              "description": "Tool definition for file_read",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_read",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "94ba9d8b042959a16519fe03c95f58497ccc8d397eff44aee6d2d67bb8b8f3ca906c07b4a28da8da5aee863f031995c78a3d4788971a88b0c39c0deb2adc770c",
+        "signer_key": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a"
+      }
+    },
+    {
+      "description": "Tool name was changed after signing; signature verification fails while the manifest itself is structurally valid.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": false,
+        "structure_valid": true
+      },
+      "id": "tampered_tool_name_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Manifest vector for bindings-core SDK fixtures\",\"name\":\"Bindings Demo\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-bindings-demo\",\"tools\":[{\"description\":\"Tool definition for file_read\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_read_renamed\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Manifest vector for bindings-core SDK fixtures",
+          "name": "Bindings Demo",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-bindings-demo",
+          "tools": [
+            {
+              "description": "Tool definition for file_read",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_read_renamed",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "c50a7e75945ab77b6a8edb7e0262e46e4fb7b03f9bea852f23917d4bb03eabc71735ed37d0e9b58b06c56e33ca252ef1ee8774169b0a7a7da130b6c4e89b3d09",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Manifest exposes only side-effecting tools; structure and signature are valid.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "side_effect_only_tools_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Every tool has side effects; useful for write-path coverage\",\"name\":\"Side Effect Server\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-side-effects\",\"tools\":[{\"description\":\"Tool definition for file_write\",\"has_side_effects\":true,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_write\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}},{\"description\":\"Tool definition for network_post\",\"has_side_effects\":true,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"moderate\",\"name\":\"network_post\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}},{\"description\":\"Tool definition for queue_publish\",\"has_side_effects\":true,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"queue_publish\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Every tool has side effects; useful for write-path coverage",
+          "name": "Side Effect Server",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-side-effects",
+          "tools": [
+            {
+              "description": "Tool definition for file_write",
+              "has_side_effects": true,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_write",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            {
+              "description": "Tool definition for network_post",
+              "has_side_effects": true,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "moderate",
+              "name": "network_post",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            {
+              "description": "Tool definition for queue_publish",
+              "has_side_effects": true,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "queue_publish",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "af3b22ae00c86e956546bac0e27e1bd68483f98d8fa40e0f5b038fc6ff322eab5e10dc3c64a70d232aba7be54c632d1292cc31dbb8dd1c470b49f1a4197a3305",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Manifest exposes only read-only tools and only declares read_paths in required_permissions.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "read_only_tools_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"All tools are pure reads; useful for cacheable-tool coverage\",\"name\":\"Read Only Server\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":null,\"network_hosts\":null,\"read_paths\":[\"/data\"],\"write_paths\":null},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-read-only\",\"tools\":[{\"description\":\"Tool definition for file_read\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"instant\",\"name\":\"file_read\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}},{\"description\":\"Tool definition for metadata_lookup\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"metadata_lookup\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "All tools are pure reads; useful for cacheable-tool coverage",
+          "name": "Read Only Server",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": null,
+            "network_hosts": null,
+            "read_paths": [
+              "/data"
+            ],
+            "write_paths": null
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-read-only",
+          "tools": [
+            {
+              "description": "Tool definition for file_read",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "instant",
+              "name": "file_read",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            {
+              "description": "Tool definition for metadata_lookup",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "metadata_lookup",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "3dd13ae7d987b18641f07b72b33335fe6ca58e2f6e152391d014fa8d84a8b6fb7f4c2c09789559e8eb1ba8c535060161b546eb34c073b77daca8292c847e7204",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Server version is a prerelease semver string with build metadata; signature and structure are valid.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "prerelease_version_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Server advertises a prerelease semver string\",\"name\":\"Prerelease Server\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\"],\"network_hosts\":[\"api.example.com\"],\"read_paths\":[\"/workspace\"],\"write_paths\":[\"/workspace/output\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-prerelease\",\"tools\":[{\"description\":\"Tool definition for file_read\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_read\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"2.0.0-beta.3+build.42\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Server advertises a prerelease semver string",
+          "name": "Prerelease Server",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV"
+            ],
+            "network_hosts": [
+              "api.example.com"
+            ],
+            "read_paths": [
+              "/workspace"
+            ],
+            "write_paths": [
+              "/workspace/output"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-prerelease",
+          "tools": [
+            {
+              "description": "Tool definition for file_read",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_read",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "2.0.0-beta.3+build.42"
+        },
+        "signature": "311d016243efe3bceba06906ff473ee61473e7f513e6841fd7f2654b9506c3d532f0b0fcfa0843959e83a6fb6e2f644ee14ed5f5243f4a83c0557dabd2ecc008",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
+    },
+    {
+      "description": "Manifest enumerates many entries in every required_permissions category.",
+      "expected": {
+        "embedded_public_key_matches_signer": true,
+        "embedded_public_key_valid": true,
+        "signature_valid": true,
+        "structure_valid": true
+      },
+      "id": "large_permission_set_manifest",
+      "manifest_body_canonical_json": "{\"description\":\"Manifest declares many filesystem and network permissions\",\"name\":\"Broad Access Server\",\"public_key\":\"d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da\",\"required_permissions\":{\"environment_variables\":[\"CHIO_ENV\",\"CHIO_REGION\",\"CHIO_TENANT\"],\"network_hosts\":[\"api.alpha.example.com\",\"api.beta.example.com\",\"api.gamma.example.com\"],\"read_paths\":[\"/workspace\",\"/data/inputs\",\"/etc/chio/config\"],\"write_paths\":[\"/workspace/output\",\"/data/outputs\",\"/var/log/chio\"]},\"schema\":\"chio.manifest.v1\",\"server_id\":\"srv-broad-access\",\"tools\":[{\"description\":\"Tool definition for file_read\",\"has_side_effects\":false,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_read\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}},{\"description\":\"Tool definition for file_write\",\"has_side_effects\":true,\"input_schema\":{\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"type\":\"object\"},\"latency_hint\":\"fast\",\"name\":\"file_write\",\"output_schema\":{\"properties\":{\"ok\":{\"type\":\"boolean\"}},\"type\":\"object\"}}],\"version\":\"1.0.0\"}",
+      "signed_manifest": {
+        "manifest": {
+          "description": "Manifest declares many filesystem and network permissions",
+          "name": "Broad Access Server",
+          "public_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "required_permissions": {
+            "environment_variables": [
+              "CHIO_ENV",
+              "CHIO_REGION",
+              "CHIO_TENANT"
+            ],
+            "network_hosts": [
+              "api.alpha.example.com",
+              "api.beta.example.com",
+              "api.gamma.example.com"
+            ],
+            "read_paths": [
+              "/workspace",
+              "/data/inputs",
+              "/etc/chio/config"
+            ],
+            "write_paths": [
+              "/workspace/output",
+              "/data/outputs",
+              "/var/log/chio"
+            ]
+          },
+          "schema": "chio.manifest.v1",
+          "server_id": "srv-broad-access",
+          "tools": [
+            {
+              "description": "Tool definition for file_read",
+              "has_side_effects": false,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_read",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            {
+              "description": "Tool definition for file_write",
+              "has_side_effects": true,
+              "input_schema": {
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "type": "object"
+              },
+              "latency_hint": "fast",
+              "name": "file_write",
+              "output_schema": {
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          ],
+          "version": "1.0.0"
+        },
+        "signature": "dc8b6b8ebb232998093e79b2baaf3039878893822fc772faaff5a13dcd1513fbc2bbbf3cd445b47e3dea643279988778453ae72fd557adab2d7c69fb099bd20b",
+        "signer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+      }
     }
   ],
   "generated_by": "chio-binding-helpers",

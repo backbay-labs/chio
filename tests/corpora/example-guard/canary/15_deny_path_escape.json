@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "read_file",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 15,
+      "verdict": "deny",
+      "reason": "path escapes allowed roots"
+    },
+    "scopes": [
+      "example-server:read_file"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"path escapes allowed roots\"}"
+}

@@ -502,7 +502,7 @@ async fn handle_admin_revoke_capability(
             Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
         };
     }
-    let mut store = match open_revocation_store(&state) {
+    let store = match open_revocation_store(&state) {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -595,7 +595,7 @@ async fn handle_admin_revoke_session_trust(
                 .map(|response| response.newly_revoked)
                 .unwrap_or(false)
         } else {
-            let mut store = match open_revocation_store(&state) {
+            let store = match open_revocation_store(&state) {
                 Ok(store) => store,
                 Err(response) => return response,
             };

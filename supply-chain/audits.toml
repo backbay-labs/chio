@@ -1,0 +1,158 @@
+
+# cargo-vet audits file
+
+[[audits.anyhow]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.102"
+notes = "Widely used error type by dtolnay; pure Rust, no network IO or unsafe-heavy code."
+
+[[audits.bitflags]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "2.11.0"
+notes = "Macro for typed bitflag wrappers; pure Rust, no IO."
+
+[[audits.cfg-if]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.4"
+notes = "Conditional compilation helper macro; trivial code, no IO or unsafe."
+
+[[audits.darling_macro]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "0.23.0"
+notes = "Thin re-export shim for darling derive macros; no IO."
+
+[[audits.hashbrown]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "0.14.5"
+notes = "Backing implementation for std HashMap; well-audited swisstable port, no IO."
+
+[[audits.hashbrown]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "0.16.1"
+notes = "Backing implementation for std HashMap; well-audited swisstable port, no IO."
+
+[[audits.ident_case]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.1"
+notes = "Identifier case conversion helper for darling; pure string ops, no IO."
+
+[[audits.itertools]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "0.10.5"
+notes = "Iterator extension trait library; pure Rust, no IO or unsafe-heavy code."
+
+[[audits.itertools]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "0.13.0"
+notes = "Iterator extension trait library; pure Rust, no IO or unsafe-heavy code."
+
+[[audits.itoa]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.17"
+notes = "Integer-to-string formatting by dtolnay; pure Rust, no IO."
+
+[[audits.memchr]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "2.8.0"
+notes = "SIMD byte-search routines by BurntSushi; pure compute, no IO."
+
+[[audits.num_cpus]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.17.0"
+notes = "Reads CPU count from OS APIs only; no network IO or unsafe-heavy code."
+
+[[audits.once_cell]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.21.4"
+notes = "Lazy initialization primitives by matklad; widely used, no IO."
+
+[[audits.paste]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.15"
+notes = "Token-pasting macro by dtolnay; compile-time only, no IO."
+
+[[audits.pin-project-lite]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "0.2.17"
+notes = "Pin projection macros by taiki-e; pure macro expansion, no IO."
+
+[[audits.proc-macro2]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.106"
+notes = "Token tree wrapper by dtolnay; build-time dependency, no runtime IO."
+
+[[audits.quote]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.45"
+notes = "Macro quoting helper by dtolnay; build-time dependency, no runtime IO."
+
+[[audits.ryu]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.23"
+notes = "Float-to-string formatting by dtolnay; pure Rust, no IO."
+
+[[audits.scopeguard]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.2.0"
+notes = "RAII scope guard helper; trivial defer macro, no IO."
+
+[[audits.semver]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.27"
+notes = "Semver parser by dtolnay; pure parsing, no IO."
+
+[[audits.syn]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "2.0.117"
+notes = "Rust syntax tree parser by dtolnay; build-time dependency, no runtime IO."
+
+[[audits.thiserror]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.69"
+notes = "Error derive macro by dtolnay; compile-time only, no IO."
+
+[[audits.thiserror]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "2.0.18"
+notes = "Error derive macro by dtolnay; compile-time only, no IO."
+
+[[audits.typenum]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.19.0"
+notes = "Compile-time numeric types; build-time only, no IO."
+
+[[audits.unicode-ident]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "1.0.24"
+notes = "Unicode XID identifier tables by dtolnay; static lookup, no IO."
+
+[[audits.utf8parse]]
+who = "@bb-connor"
+criteria = "safe-to-deploy"
+version = "0.2.2"
+notes = "UTF-8 byte stream parser; pure compute, no IO."

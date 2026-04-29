@@ -1,0 +1,11 @@
+{
+  "name": "chio-drogon",
+  "version-string": "0.1.0",
+  "description": "Drogon middleware for Chio sidecar enforcement",
+  "homepage": "https://github.com/backbay-labs/chio",
+  "license": "Apache-2.0",
+  "dependencies": [
+    "chio-cpp",
+    "drogon"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "fetch_blob",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 30,
+      "verdict": "allow",
+      "blob": "sha256:example"
+    },
+    "scopes": [
+      "example-server:fetch_blob"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

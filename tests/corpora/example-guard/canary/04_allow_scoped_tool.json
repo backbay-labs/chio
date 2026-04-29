@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "list_files",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 4,
+      "verdict": "allow",
+      "path": "/workspace"
+    },
+    "scopes": [
+      "example-server:list_files"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

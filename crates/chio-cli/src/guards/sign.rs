@@ -292,6 +292,7 @@ mod tests {
             "name: g\n\
              version: \"0.1.0\"\n\
              abi_version: \"1\"\n\
+             wit_world: \"chio:guard/guard@0.2.0\"\n\
              wasm_path: g.wasm\n\
              wasm_sha256: {}\n\
              signer_public_key: \"{pk_hex}\"\n",
@@ -319,6 +320,7 @@ mod tests {
             "name: g\n\
              version: \"0.1.0\"\n\
              abi_version: \"1\"\n\
+             wit_world: \"chio:guard/guard@0.2.0\"\n\
              wasm_path: g.wasm\n\
              wasm_sha256: {}\n\
              signer_public_key: \"{other_pk_hex}\"\n",

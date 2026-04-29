@@ -1,0 +1,122 @@
+name: Fuzz Crash Triage
+description: Auto-filed crash report from a libFuzzer / ClusterFuzzLite run. Used by .github/workflows/fuzz_crash_triage.yml.
+title: "[fuzz-crash] <target>: <one-line summary>"
+labels:
+  - fuzz-crash
+  - triage
+projects: []
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # Fuzz crash triage report
+
+        This issue was opened automatically by `fuzz_crash_triage.yml` when a
+        nightly `fuzz.yml`, `cflite_pr.yml`, or `cflite_batch.yml` run produced
+        a libFuzzer crash artifact. The workflow has already minimized the
+        input via `cargo fuzz tmin` and computed its `sha256`; the fingerprint
+        is used by the dedupe pass before opening this issue.
+
+        Triage SLOs and the runbook live in `docs/fuzzing/triage.md`. Update
+        the dropdowns and notes below as the investigation progresses, and do
+        not delete the auto-filled fields - the workflow re-reads them on
+        subsequent runs to keep the dedupe table consistent.
+
+  - type: dropdown
+    id: target
+    attributes:
+      label: Fuzz target
+      description: Which `fuzz/fuzz_targets/*.rs` binary produced the crash.
+      options:
+        - attest_verify
+        - jwt_vc_verify
+        - oid4vp_presentation
+        - did_resolve
+        - anchor_bundle_verify
+        - mcp_envelope_decode
+        - a2a_envelope_decode
+        - acp_envelope_decode
+        - wasm_preinstantiate_validate
+        - wit_host_call_boundary
+        - chio_yaml_parse
+        - openapi_ingest
+        - receipt_log_replay
+        - canonical_json
+        - capability_receipt
+        - manifest_roundtrip
+        - fuzz_policy_parse_compile
+        - fuzz_sql_parser
+        - fuzz_merkle_checkpoint
+        - fuzz_tool_action
+    validations:
+      required: true
+
+  - type: input
+    id: input_sha256
+    attributes:
+      label: Minimized input SHA-256
+      description: |
+        Hex SHA-256 of the `cargo fuzz tmin` output. The triage workflow
+        searches existing open `fuzz-crash` issues for a substring match on
+        this value before opening a new report.
+      placeholder: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    validations:
+      required: true
+
+  - type: textarea
+    id: minimized_input_b64
+    attributes:
+      label: Minimized input (base64)
+      description: |
+        Base64 of the minimized crash artifact. Decode with `base64 -d` to
+        reproduce locally via `cargo fuzz run <target> <decoded-file>`.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: |
+        Default is Medium. Promote to High or Critical for memory safety,
+        cryptographic, or fail-open findings; demote to Low for cosmetic
+        panics behind debug assertions.
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+      default: 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: triage_notes
+    attributes:
+      label: Triage notes
+      description: |
+        Free-form analysis. Capture stack frame, suspected root cause,
+        affected crate, and any reproduction commands beyond the default
+        `cargo fuzz run <target> <input>` recipe.
+      placeholder: |
+        - Crash location: crates/<crate>/src/<file>.rs:<line>
+        - Suspected root cause:
+        - Reproduction:
+        - Owning component:
+    validations:
+      required: false
+
+  - type: input
+    id: assignee
+    attributes:
+      label: Assignee
+      description: |
+        GitHub handle of the engineer taking point. Leave blank to let the
+        triage rotation pick this up; the workflow will re-assign on the next
+        run if still unowned past the SLO window.
+      placeholder: "@bb-connor"
+    validations:
+      required: false

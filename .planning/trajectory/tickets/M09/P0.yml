@@ -1,0 +1,30 @@
+# Wave-opener Cargo.lock bump for M09 (first in the wave-opener chain).
+# Order: M09 -> M03 -> M01 -> M02 per EXECUTION-BOARD.md section 2
+# ("Cargo.lock merge protocol"). Lands before any feature work in M09 P1.
+# Schema: ../schema.json. Source-of-truth tickets file consumed by
+# `cargo xtask trajectory regen-manifest`.
+
+- id: M09.P0.T1
+  milestone: M09
+  phase: 0
+  title: "Wave-opener: refresh Cargo.lock for M09 supply-chain phase"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "Cargo.lock"
+    - "Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on: []
+  soft_deps:
+    - "Lands first in the Wave-1 lock-bump chain so M09 P1 cargo-vet bootstrap baselines against a fresh resolver run."
+  gate_check:
+    cmd: "cargo update --workspace --quiet && cargo metadata --locked --no-deps --format-version 1 >/dev/null && cargo build --workspace --quiet"
+  worktree_branch: "wave/W1/m09/p0.t1-wave-opener-lock-bump"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

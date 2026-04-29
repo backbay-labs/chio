@@ -1,0 +1,168 @@
+# M07 Phase 1 - Tool-call fabric and provenance contract.
+# Source of truth: .planning/trajectory/07-provider-native-adapters.md
+# (Phase 1, lines 340-353; trait surface lines 88-196).
+# Wave-3 milestone: M07 P1 sequences first; provider crates (P2 OpenAI,
+# P3 Anthropic, P4 Bedrock) parallelize after P1 lands. P1 also feeds M04
+# P5/P6 invariance work as a traffic source. M07 consumes M01.P3.T1's
+# generated `ProvenanceStamp` Rust type (soft dep where M01 ships it; P1
+# defines a provisional shape if M01 has not landed, per doc Dependencies).
+# Six atomic tasks map to T1-T6 (T6 is the doc's "(NEW)" lift_lower fixtures
+# task). Provenance-stamp signing helper (Round-2 NEW addition, line 455)
+# is folded into T2 alongside the trait surface, since both land in lib.rs.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M07.P1.T1
+  milestone: M07
+  phase: 1
+  title: Scaffold crates/chio-tool-call-fabric with workspace deps and lib.rs skeleton
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-tool-call-fabric/Cargo.toml
+    - crates/chio-tool-call-fabric/src/lib.rs
+    - crates/chio-tool-call-fabric/README.md
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+  depends_on: []
+  soft_deps:
+    - "M01.P3.T1 emits canonical ProvenanceStamp type the fabric consumes; provisional shape used until M01 lands"
+  gate_check:
+    cmd: cargo build -p chio-tool-call-fabric
+  worktree_branch: wave/W3/m07/p1.t1-fabric-crate-scaffold
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P1.T2
+  milestone: M07
+  phase: 1
+  title: Land verbatim ProviderAdapter trait surface plus sign_provenance helper
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-tool-call-fabric/src/lib.rs
+    - crates/chio-tool-call-fabric/src/provenance.rs
+    - crates/chio-tool-call-fabric/Cargo.toml
+  shared_paths: []
+  depends_on:
+    - M07.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-tool-call-fabric --tests && cargo clippy -p chio-tool-call-fabric -- -D warnings
+  worktree_branch: wave/W3/m07/p1.t2-provider-adapter-trait
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P1.T3
+  milestone: M07
+  phase: 1
+  title: Implement streaming state machine StreamPhase + BufferedBlock in src/stream.rs
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-tool-call-fabric/src/stream.rs
+    - crates/chio-tool-call-fabric/src/lib.rs
+    - crates/chio-tool-call-fabric/tests/stream_transitions.rs
+  shared_paths: []
+  depends_on:
+    - M07.P1.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-tool-call-fabric --test stream_transitions
+  worktree_branch: wave/W3/m07/p1.t3-stream-state-machine
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P1.T4
+  milestone: M07
+  phase: 1
+  title: Wire fabric into chio-kernel via verdict_for_provider_invocation shim
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel/src/lib.rs
+    - crates/chio-kernel/src/provider_verdict.rs
+    - crates/chio-kernel/Cargo.toml
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M07.P1.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --lib provider_verdict
+  worktree_branch: wave/W3/m07/p1.t4-kernel-fabric-shim
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P1.T5
+  milestone: M07
+  phase: 1
+  title: Land 8 proptest invariants for fabric round-trip and schema subsumption
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-tool-call-fabric/tests/invariants.rs
+    - crates/chio-tool-call-fabric/Cargo.toml
+    - crates/chio-tool-call-fabric/proptest-regressions/.gitkeep
+  shared_paths: []
+  depends_on:
+    - M07.P1.T2
+    - M07.P1.T3
+  soft_deps:
+    - "M01.P3.T1 schema subsumption proptest gates on M01 feature flag when available"
+  gate_check:
+    cmd: cargo test -p chio-tool-call-fabric --test invariants
+  worktree_branch: wave/W3/m07/p1.t5-fabric-proptest-invariants
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P1.T6
+  milestone: M07
+  phase: 1
+  title: Land 9 lift_lower canonical-JSON round-trip fixtures (3 per provider)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-tool-call-fabric/fixtures/lift_lower/openai/**
+    - crates/chio-tool-call-fabric/fixtures/lift_lower/anthropic/**
+    - crates/chio-tool-call-fabric/fixtures/lift_lower/bedrock/**
+    - crates/chio-tool-call-fabric/tests/lift_lower_fixtures.rs
+  shared_paths: []
+  depends_on:
+    - M07.P1.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-tool-call-fabric --test lift_lower_fixtures
+  worktree_branch: wave/W3/m07/p1.t6-lift-lower-fixtures
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

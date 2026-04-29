@@ -1,0 +1,19 @@
+{
+  "request": {
+    "tool_name": "read_metadata",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 2,
+      "verdict": "allow",
+      "metadata": {
+        "tenant": "tenant-a",
+        "policy": "default"
+      }
+    },
+    "scopes": [
+      "example-server:read_metadata"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

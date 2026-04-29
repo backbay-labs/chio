@@ -83,7 +83,7 @@ fn dpop_nonce_projection_rejects_replay() {
 
 #[test]
 fn revocation_snapshot_projection_denies_token_and_ancestor() {
-    let mut store = InMemoryRevocationStore::new();
+    let store = InMemoryRevocationStore::new();
     store.revoke("cap-child").unwrap();
     store.revoke("cap-parent").unwrap();
 
@@ -102,7 +102,7 @@ fn revocation_snapshot_projection_denies_token_and_ancestor() {
 
 #[test]
 fn budget_snapshot_projection_preserves_single_node_bounds() {
-    let mut store = InMemoryBudgetStore::new();
+    let store = InMemoryBudgetStore::new();
 
     assert!(store
         .try_charge_cost("cap-budget", 0, Some(2), 40, Some(50), Some(100))

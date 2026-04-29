@@ -1,10 +1,16 @@
 //! Typed host function bindings for the Chio WASM guard runtime.
 //!
-//! The host runtime registers three functions under the `chio` import module:
+//! The host runtime registers the 0.1 compatibility functions under the `chio`
+//! import module:
 //!
 //! - `chio.log(level, ptr, len)` -- structured logging
 //! - `chio.get_config(key_ptr, key_len, val_out_ptr, val_out_len) -> i32` -- config lookup
 //! - `chio.get_time_unix_secs() -> i64` -- wall clock
+//!
+//! The `chio:guard@0.2.0` WIT world adds host blob access:
+//!
+//! - `host.fetch-blob(handle, offset, len) -> result<list<u8>, string>`
+//! - `policy-context.bundle-handle` resource with `read` and `close`
 //!
 //! This module provides safe Rust wrappers for each. On `wasm32` targets the
 //! wrappers call into the host via the FFI declarations. On non-wasm targets
@@ -26,6 +32,13 @@ extern "C" {
 
     #[link_name = "get_time_unix_secs"]
     fn chio_get_time_raw() -> i64;
+}
+
+#[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "chio:guard/host@0.2.0")]
+extern "C" {
+    #[link_name = "fetch-blob"]
+    fn chio_fetch_blob_raw(handle: i32, offset: i64, len: i32, out_ptr: i32, out_len: i32) -> i32;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +152,87 @@ pub fn get_time() -> i64 {
     }
 }
 
+/// Read bytes from a host-owned content bundle blob.
+///
+/// This is the direct wrapper for the `chio:guard@0.2.0`
+/// `host.fetch-blob` import. The returned byte vector is truncated to the
+/// number of bytes reported by the host. On native targets the host import is
+/// unavailable and this returns an error.
+#[inline]
+pub fn fetch_blob(handle: u32, offset: u64, len: u32) -> Result<Vec<u8>, String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mut buf = vec![0_u8; len as usize];
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        let result = unsafe {
+            chio_fetch_blob_raw(
+                handle as i32,
+                offset as i64,
+                len as i32,
+                buf.as_mut_ptr() as i32,
+                len as i32,
+            )
+        };
+
+        if result < 0 {
+            return Err("host.fetch-blob denied by host".to_owned());
+        }
+
+        let actual_len = (result as usize).min(buf.len());
+        buf.truncate(actual_len);
+        Ok(buf)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = handle;
+        let _ = offset;
+        let _ = len;
+        Err("host.fetch-blob is unavailable on native targets".to_owned())
+    }
+}
+
+/// Guest-side handle for the `policy-context.bundle-handle` resource.
+///
+/// The host owns the underlying bundle resource. This wrapper keeps the
+/// handle id visible to existing Rust guard code and routes reads through the
+/// `host.fetch-blob` import added in `chio:guard@0.2.0`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PolicyContext {
+    handle: u32,
+}
+
+impl PolicyContext {
+    /// Create a policy context wrapper from a host-provided numeric handle.
+    #[must_use]
+    pub const fn from_handle(handle: u32) -> Self {
+        Self { handle }
+    }
+
+    /// Return the underlying host resource handle.
+    #[must_use]
+    pub const fn handle(&self) -> u32 {
+        self.handle
+    }
+
+    /// Read a byte range from this bundle handle.
+    ///
+    /// This preserves existing call sites by keeping blob reads separate from
+    /// request/verdict evaluation while exposing the 0.2.0 policy-context
+    /// resource.
+    pub fn read(&self, offset: u64, len: u32) -> Result<Vec<u8>, String> {
+        fetch_blob(self.handle, offset, len)
+    }
+
+    /// Close the policy context handle.
+    ///
+    /// The current guest SDK has no portable destructor import to call. Host
+    /// runtimes remain responsible for reclaiming bundle resources after
+    /// guard evaluation.
+    pub fn close(self) {}
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -169,6 +263,25 @@ mod tests {
         // On non-wasm32 targets the host import is not available, so the
         // fallback implementation returns 0.
         assert_eq!(get_time(), 0);
+    }
+
+    #[test]
+    fn fetch_blob_returns_error_on_native() {
+        assert_eq!(
+            fetch_blob(7, 0, 16),
+            Err("host.fetch-blob is unavailable on native targets".to_owned())
+        );
+    }
+
+    #[test]
+    fn policy_context_wraps_bundle_handle() {
+        let context = PolicyContext::from_handle(42);
+        assert_eq!(context.handle(), 42);
+        assert_eq!(
+            context.read(4, 8),
+            Err("host.fetch-blob is unavailable on native targets".to_owned())
+        );
+        context.close();
     }
 
     #[test]

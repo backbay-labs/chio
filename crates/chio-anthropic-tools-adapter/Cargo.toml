@@ -1,0 +1,38 @@
+[package]
+name = "chio-anthropic-tools-adapter"
+description = "Anthropic Messages tool-use adapter for Chio (pinned to anthropic-version 2023-06-01)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+publish = false
+
+[lib]
+name = "chio_anthropic_tools_adapter"
+
+# Pinned upstream API version. Bumping requires a deliberate PR with a fixture
+# re-record. The same string is exposed at `crate::transport::ANTHROPIC_VERSION`.
+[package.metadata.chio]
+anthropic_version = "2023-06-01"
+computer_use_beta = "computer-use-2025-01-24"
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-manifest = { path = "../chio-manifest" }
+chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+# Off by default. Enabling `computer-use` unlocks the Anthropic server-tool
+# variants and stamps the `anthropic-beta: computer-use-2025-01-24` header onto
+# outgoing requests. Default builds exclude the beta surface; the feature must
+# be combined with an explicit `chio-manifest` `server_tools` allowlist.
+computer-use = []
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

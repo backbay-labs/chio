@@ -31,6 +31,12 @@ use crate::error::WasmGuardError;
 /// ABI versions supported by this version of the WASM guard runtime.
 pub const SUPPORTED_ABI_VERSIONS: &[&str] = &["1"];
 
+/// WIT world supported by this version of the Component Model guard runtime.
+pub const REQUIRED_WIT_WORLD: &str = "chio:guard/guard@0.2.0";
+
+/// Operator-facing migration guide for 0.1.x WIT guard components.
+pub const WIT_WORLD_MIGRATION_GUIDE: &str = "docs/guards/MIGRATION-0.1-to-0.2.md";
+
 /// Well-known filename for the guard manifest.
 pub const MANIFEST_FILENAME: &str = "guard-manifest.yaml";
 
@@ -60,6 +66,12 @@ pub struct GuardManifest {
     /// ABI version the guard was compiled against (must be in
     /// [`SUPPORTED_ABI_VERSIONS`]).
     pub abi_version: String,
+    /// WIT world the guard component was compiled against.
+    ///
+    /// Loading enforces [`REQUIRED_WIT_WORLD`] fail-closed so 0.1.x components
+    /// cannot be admitted silently after the M06 WIT bump.
+    #[serde(default)]
+    pub wit_world: Option<String>,
     /// Relative or absolute path to the `.wasm` binary.
     pub wasm_path: String,
     /// Hex-encoded SHA-256 digest of the `.wasm` binary.
@@ -129,8 +141,10 @@ pub fn load_manifest(wasm_path: &str) -> Result<GuardManifest, WasmGuardError> {
             reason: e.to_string(),
         })?;
 
-    serde_yml::from_str::<GuardManifest>(&contents)
-        .map_err(|e| WasmGuardError::ManifestParse(e.to_string()))
+    let manifest = serde_yml::from_str::<GuardManifest>(&contents)
+        .map_err(|e| WasmGuardError::ManifestParse(e.to_string()))?;
+    verify_wit_world(manifest.wit_world.as_deref())?;
+    Ok(manifest)
 }
 
 /// Verify that the SHA-256 digest of `wasm_bytes` matches the
@@ -158,6 +172,23 @@ pub fn verify_abi_version(version: &str) -> Result<(), WasmGuardError> {
             version: version.to_string(),
             supported: SUPPORTED_ABI_VERSIONS.join(", "),
         })
+    }
+}
+
+/// Verify that the manifest declares the required WIT world.
+pub fn verify_wit_world(wit_world: Option<&str>) -> Result<(), WasmGuardError> {
+    match wit_world.map(str::trim).filter(|world| !world.is_empty()) {
+        Some(REQUIRED_WIT_WORLD) => Ok(()),
+        Some(world) => Err(WasmGuardError::UnsupportedWitWorld {
+            declared: format!("\"{world}\""),
+            required: REQUIRED_WIT_WORLD.to_string(),
+            migration: WIT_WORLD_MIGRATION_GUIDE,
+        }),
+        None => Err(WasmGuardError::UnsupportedWitWorld {
+            declared: "<missing>".to_string(),
+            required: REQUIRED_WIT_WORLD.to_string(),
+            migration: WIT_WORLD_MIGRATION_GUIDE,
+        }),
     }
 }
 
@@ -424,6 +455,7 @@ mod tests {
 name: pii-scanner
 version: "1.0.0"
 abi_version: "1"
+wit_world: "chio:guard/guard@0.2.0"
 wasm_path: pii.wasm
 wasm_sha256: abc123
 config:
@@ -434,6 +466,7 @@ config:
         assert_eq!(manifest.name, "pii-scanner");
         assert_eq!(manifest.version, "1.0.0");
         assert_eq!(manifest.abi_version, "1");
+        assert_eq!(manifest.wit_world.as_deref(), Some(REQUIRED_WIT_WORLD));
         assert_eq!(manifest.wasm_path, "pii.wasm");
         assert_eq!(manifest.wasm_sha256, "abc123");
         assert_eq!(manifest.config.len(), 2);
@@ -447,6 +480,7 @@ config:
 name: simple-guard
 version: "0.1.0"
 abi_version: "1"
+wit_world: "chio:guard/guard@0.2.0"
 wasm_path: simple.wasm
 wasm_sha256: deadbeef
 "#;
@@ -558,6 +592,7 @@ wasm_path: foo.wasm
 name: test-guard
 version: "0.1.0"
 abi_version: "1"
+wit_world: "chio:guard/guard@0.2.0"
 wasm_path: test.wasm
 wasm_sha256: abcdef0123456789
 config:
@@ -740,6 +775,7 @@ config:
             name: "g".to_string(),
             version: "0.1.0".to_string(),
             abi_version: "1".to_string(),
+            wit_world: Some(REQUIRED_WIT_WORLD.to_string()),
             wasm_path: "g.wasm".to_string(),
             wasm_sha256: hex::encode(Sha256::digest(SIGN_TEST_WASM)),
             config: HashMap::new(),
@@ -761,6 +797,7 @@ config:
             name: "g".to_string(),
             version: "0.1.0".to_string(),
             abi_version: "1".to_string(),
+            wit_world: Some(REQUIRED_WIT_WORLD.to_string()),
             wasm_path: "g.wasm".to_string(),
             wasm_sha256: hex::encode(Sha256::digest(SIGN_TEST_WASM)),
             config: HashMap::new(),
@@ -789,6 +826,7 @@ config:
             name: "g".to_string(),
             version: "0.1.0".to_string(),
             abi_version: "1".to_string(),
+            wit_world: Some(REQUIRED_WIT_WORLD.to_string()),
             wasm_path: "g.wasm".to_string(),
             wasm_sha256: hex::encode(Sha256::digest(SIGN_TEST_WASM)),
             config: HashMap::new(),
@@ -812,6 +850,7 @@ config:
             name: "g".to_string(),
             version: "0.1.0".to_string(),
             abi_version: "1".to_string(),
+            wit_world: Some(REQUIRED_WIT_WORLD.to_string()),
             wasm_path: "g.wasm".to_string(),
             wasm_sha256: hex::encode(Sha256::digest(SIGN_TEST_WASM)),
             config: HashMap::new(),
@@ -838,6 +877,7 @@ config:
             name: "g".to_string(),
             version: "0.1.0".to_string(),
             abi_version: "1".to_string(),
+            wit_world: Some(REQUIRED_WIT_WORLD.to_string()),
             wasm_path: "g.wasm".to_string(),
             wasm_sha256: hex::encode(Sha256::digest(SIGN_TEST_WASM)),
             config: HashMap::new(),
@@ -869,6 +909,7 @@ config:
             name: "g".to_string(),
             version: "0.1.0".to_string(),
             abi_version: "1".to_string(),
+            wit_world: Some(REQUIRED_WIT_WORLD.to_string()),
             wasm_path: "g.wasm".to_string(),
             wasm_sha256: hex::encode(Sha256::digest(SIGN_TEST_WASM)),
             config: HashMap::new(),

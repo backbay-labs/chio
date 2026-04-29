@@ -13,7 +13,9 @@ members = [
     #
     # Guards & policy
     "crates/chio-data-guards",
+    "crates/chio-data-guards/redactors/default",
     "crates/chio-external-guards",
+    "crates/chio-guard-registry",
     "crates/chio-guard-sdk",
     "crates/chio-guard-sdk-macros",
     "crates/chio-guards",
@@ -26,6 +28,8 @@ members = [
     "crates/chio-acp-edge",
     "crates/chio-acp-proxy",
     "crates/chio-ag-ui-proxy",
+    "crates/chio-anthropic-tools-adapter",
+    "crates/chio-bedrock-converse-adapter",
     "crates/chio-cross-protocol",
     "crates/chio-envoy-ext-authz",
     "crates/chio-mcp-adapter",
@@ -33,6 +37,8 @@ members = [
     "crates/chio-openai",
     "crates/chio-openapi",
     "crates/chio-openapi-mcp-bridge",
+    "crates/chio-provider-conformance",
+    "crates/chio-tool-call-fabric",
     "crates/chio-tower",
     #
     # Economics & settlement
@@ -49,6 +55,12 @@ members = [
     "crates/chio-web3",
     "crates/chio-web3-bindings",
     #
+    # Supply-chain attestation
+    "crates/chio-replay-corpus",
+    "crates/chio-attest-verify",
+    "crates/chio-tee",
+    "crates/chio-tee-frame",
+    #
     # Identity, credentials, federation
     "crates/chio-credentials",
     "crates/chio-did",
@@ -58,6 +70,7 @@ members = [
     #
     # Observability & ops
     "crates/chio-metering",
+    "crates/chio-otel-receipt-exporter",
     "crates/chio-siem",
     #
     # Control plane & storage
@@ -85,18 +98,26 @@ members = [
     "crates/chio-bindings-ffi",
     "crates/chio-cpp-kernel-ffi",
     "crates/chio-conformance",
+    "crates/chio-spec-codegen",
+    "crates/chio-spec-validate",
     #
     # Examples
+    "examples/cross-provider-policy",
     "examples/guards/enriched-inspector",
     "examples/guards/tool-gate",
     "examples/hello-a2a",
     "examples/hello-acp",
     "examples/hello-mcp",
     "examples/hello-tool",
+    "examples/otel-genai",
     #
     # Tests
     "formal/diff-tests",
     "tests/e2e",
+    "tests/replay",
+    #
+    # Tooling
+    "xtask",
 ]
 
 [workspace.package]
@@ -120,13 +141,24 @@ rust_public_entrypoints = [
     "chio-policy",
 ]
 
+[workspace.metadata.cargo-vet]
+
+[workspace.metadata.cargo-auditable]
+# release-binaries.yml wraps every release build with `cargo auditable build`,
+# embedding the workspace dependency graph (per RFC at
+# github.com/rust-secure-code/cargo-auditable) into each published binary.
+# Downstream consumers can extract the manifest with `cargo audit -f <binary>`
+# to scan for known vulnerabilities without needing the source tree.
+
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
 
 [workspace.dependencies]
+aws-sdk-bedrockruntime = "1.130.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 serde_yml = "0.0.12"
 tokio = { version = "1", features = ["full"] }
 thiserror = "1"
@@ -137,6 +169,7 @@ tracing = "0.1"
 hex = "0.4"
 base64 = "0.22"
 bs58 = "0.5"
+chacha20poly1305 = "0.10"
 ryu = "1"
 sha2 = "0.10"
 reqwest = { version = "0.13.2", default-features = false }
@@ -146,3 +179,13 @@ url = "2"
 proptest = "1.10"
 criterion = "0.5"
 tempfile = "3"
+testcontainers = { version = "0.27.3", default-features = false }
+jsonschema = { version = "0.46", default-features = false, features = ["resolve-file"] }
+# Pin concurrency primitives + tower feature set in the workspace so member
+# crates can share resolved versions.
+dashmap = "6"
+arc-swap = "1"
+loom = "0.7"
+parking_lot = "0.12"
+tower = { version = "0.5", features = ["util", "make", "buffer", "timeout", "load-shed", "limit", "retry"] }
+opentelemetry-semantic-conventions = { version = "=0.29.0", default-features = false, features = ["semconv_experimental"] }

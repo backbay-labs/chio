@@ -1,0 +1,11 @@
+{
+  "clock": "2025-12-31T23:59:59Z",
+  "expected_failure_class": "expired",
+  "expected_verdict": "deny",
+  "family": "deny_expired",
+  "fixed_nonce_seed_index": 21,
+  "intent": "Deny because the clock evaluates one second before the capability's notBefore (negative clock skew at the lower bound), which the corpus classifies under the catch-all `expired` failure class (collapsing every out-of-window verdict, whether pre-notBefore or post-notAfter, into a single deny path). Pairs with `01_one_second_past` (positive-side, post-notAfter) to exercise both edges of the validity window.",
+  "name": "deny_expired/03_clock_skew_neg",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "clock-edge", "expired"]
+}

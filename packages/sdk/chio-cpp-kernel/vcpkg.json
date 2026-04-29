@@ -1,0 +1,7 @@
+{
+  "name": "chio-cpp-kernel",
+  "version-string": "0.1.0",
+  "description": "C++17 SDK for the Chio offline policy kernel",
+  "homepage": "https://github.com/backbay-labs/chio",
+  "license": "Apache-2.0"
+}

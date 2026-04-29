@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/provenance/verdict-link/v1",
+  "title": "Chio Provenance Verdict Link",
+  "description": "One link binding a Chio policy verdict to the provenance graph. The link names the `verdict` decision that Chio's policy engine returned (`allow`, `deny`, `cancel`, `incomplete`), the `requestId` and optional `receiptId` the verdict applies to, and the `chainId` that ties the verdict back to a delegated call-chain context. Verdict-specific required fields are enforced via `oneOf` so the wire shape stays in lock-step with the HTTP verdict union in `spec/schemas/chio-http/v1/verdict.schema.json`: `deny` requires both `reason` and `guard`; `cancel` and `incomplete` require `reason`; `allow` rejects either. The verdict vocabulary mirrors the HTTP verdict tagged union and the per-step verdict family `StepVerdictKind` in `crates/chio-core-types/src/plan.rs` (lines 110-138). NOTE: there is no live `VerdictLink` Rust struct on this branch; the link is drafted as the wire form of the verdict-to-provenance edge that M07's tool-call fabric and the M01 receipt-record schema reference indirectly today. The dedicated Rust struct is expected to land alongside the M07 phase that wires the tool-call fabric to the provenance graph and the schema will be re-pinned to that serde shape at that time. Field names are camelCase to match the `GovernedCallChainContext` family this link binds to.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "requestId",
+    "chainId",
+    "renderedAt"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["allow", "deny", "cancel", "incomplete"],
+      "description": "Policy verdict decision Chio returned for the bound request. Vocabulary matches `spec/schemas/chio-http/v1/verdict.schema.json` and `StepVerdictKind` (Allowed, Denied) plus the cancel and incomplete terminal states defined under `spec/schemas/chio-wire/v1/result/`."
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768)."
+    },
+    "receiptId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional identifier of the Chio receipt the verdict was committed under. Omitted when the verdict was rendered before any receipt was minted (for example a pre-execution plan denial). When present, the receipt is the canonical artifact for downstream verification."
+    },
+    "chainId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier of the governed call chain this verdict ties back to. Matches the `chainId` carried by `provenance/context.schema.json` and `provenance/attestation-bundle.schema.json`."
+    },
+    "renderedAt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix timestamp (seconds) at which the policy engine rendered this verdict. Monotonic with respect to receipts emitted from the same kernel."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Policy reason string. Required by the HTTP verdict union (and by this schema's `oneOf`) for `deny`, `cancel`, and `incomplete` verdicts. Forbidden for `allow`."
+    },
+    "guard": {
+      "type": "string",
+      "description": "Policy guard identifier that produced a `deny` verdict. Required by the HTTP verdict union (and by this schema's `oneOf`) when `verdict` is `deny`. Forbidden for non-deny verdicts."
+    },
+    "evidenceClass": {
+      "type": "string",
+      "enum": ["asserted", "observed", "verified"],
+      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph."
+    }
+  },
+  "oneOf": [
+    {
+      "title": "allow",
+      "description": "Allow verdicts MUST NOT carry `reason` or `guard`; the policy engine emits these fields only on rejection.",
+      "properties": {
+        "verdict": { "const": "allow" }
+      },
+      "required": ["verdict"],
+      "not": {
+        "anyOf": [
+          { "required": ["reason"] },
+          { "required": ["guard"] }
+        ]
+      }
+    },
+    {
+      "title": "deny",
+      "description": "Deny verdicts MUST carry both a human-readable `reason` and the `guard` identifier that produced the denial. Mirrors the deny branch of `chio-http/v1/verdict.schema.json`.",
+      "properties": {
+        "verdict": { "const": "deny" }
+      },
+      "required": ["verdict", "reason", "guard"]
+    },
+    {
+      "title": "cancel",
+      "description": "Cancel verdicts MUST carry `reason` (operator or transport cancellation rationale) and MUST NOT carry `guard`.",
+      "properties": {
+        "verdict": { "const": "cancel" }
+      },
+      "required": ["verdict", "reason"],
+      "not": {
+        "required": ["guard"]
+      }
+    },
+    {
+      "title": "incomplete",
+      "description": "Incomplete verdicts MUST carry `reason` describing the terminal failure mode (for example interrupted upstream stream) and MUST NOT carry `guard`.",
+      "properties": {
+        "verdict": { "const": "incomplete" }
+      },
+      "required": ["verdict", "reason"],
+      "not": {
+        "required": ["guard"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+---
+source: crates/chio-cli/tests/conformance_cli.rs
+expression: help_text
+---
+Execute conformance scenarios against a peer language adapter
+
+Usage: chio conformance run [OPTIONS] --peer <PEER>
+
+Options:
+      --peer <PEER>
+          Peer language adapter to exercise (`js`, `python`, `go`, `cpp`, or `all`)
+      --report <REPORT>
+          Optional report format. Pass `json` to emit machine-readable JSON summarising the run; omit to print a human-readable summary
+      --scenario <SCENARIO>
+          Optional scenario id filter. When set, only scenarios with this id are surfaced in the printed/written report; the underlying harness still executes the full corpus
+      --output <OUTPUT>
+          Optional output file. When provided, the report is written to this path; otherwise the report is printed to stdout
+      --json
+          Backward-compatible alias for `--format json`
+      --format <FORMAT>
+          Output format for command results and terminal error reporting [default: human] [possible values: human, json]
+      --receipt-db <RECEIPT_DB>
+          Optional SQLite database path for durable receipt persistence
+      --revocation-db <REVOCATION_DB>
+          Optional SQLite database path for durable capability revocation persistence
+      --authority-seed-file <AUTHORITY_SEED_FILE>
+          Optional file path for a persistent capability-authority seed
+      --authority-db <AUTHORITY_DB>
+          Optional SQLite database path for shared capability-authority state
+      --budget-db <BUDGET_DB>
+          Optional SQLite database path for durable shared capability budget state
+      --session-db <SESSION_DB>
+          Optional SQLite database path for durable remote MCP session tombstones
+      --control-url <CONTROL_URL>
+          Optional shared trust-control service base URL
+      --control-token <CONTROL_TOKEN>
+          Bearer token used to authenticate to the shared trust-control service
+  -h, --help
+          Print help

@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "chat",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 16,
+      "verdict": "deny",
+      "reason": "prompt injection pattern denied"
+    },
+    "scopes": [
+      "example-server:chat"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"prompt injection pattern denied\"}"
+}

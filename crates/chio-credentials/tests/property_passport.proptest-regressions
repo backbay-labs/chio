@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 59ba0aef96603bd641f4cd373abb6e1951d1f01a9235f0ee1fb43453bed0707f # shrinks to subject_seed = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 105, 200, 87, 99, 233, 37], issuer_seed = [207, 141, 219, 174, 90, 220, 137, 247, 164, 15, 246, 45, 233, 99, 140, 33, 58, 221, 143, 225, 228, 189, 228, 132, 10, 157, 147, 27, 100, 111, 189, 134], state = Superseded, timestamp_offset = 19923

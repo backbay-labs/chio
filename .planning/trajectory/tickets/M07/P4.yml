@@ -1,0 +1,234 @@
+# M07 Phase 4 - Bedrock Converse adapter + cross-provider demo + audit.
+# Source of truth: .planning/trajectory/07-provider-native-adapters.md
+# (Phase 4, lines 422-451; fixture matrix lines 437-451; IAM principal
+# disambiguation lines 259-298).
+# Wave-3 milestone: P4 runs in parallel with P2 (OpenAI) and P3 (Anthropic)
+# once P1 lands; the cross-provider demo (T6) and RELEASE_AUDIT row (T7)
+# converge after all three adapters are mergeable. P4 v1 is us-east-1 only;
+# multi-region is a separate work item per doc Open Questions.
+# Eight atomic tasks: T1 scaffold + SDK pin, T2 batch Converse, T3 stream
+# ConverseStream, T4 IAM principal disambiguation (signed config), T5
+# fixtures + cold-init bench, T6 cross-provider demo, T7 RELEASE_AUDIT row,
+# T8 the Round-2 NEW conformance re-record CLI (line 457).
+# Bedrock error-taxonomy doctest table is folded into T7 alongside the
+# audit row (both touch RELEASE_AUDIT-adjacent docs).
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M07.P4.T1
+  milestone: M07
+  phase: 4
+  title: Scaffold chio-bedrock-converse-adapter pinned to single workspace SDK us-east-1
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-bedrock-converse-adapter/Cargo.toml
+    - crates/chio-bedrock-converse-adapter/src/lib.rs
+    - crates/chio-bedrock-converse-adapter/src/transport.rs
+    - crates/chio-bedrock-converse-adapter/src/native.rs
+    - crates/chio-bedrock-converse-adapter/README.md
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+  depends_on:
+    - M07.P1.T6
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-bedrock-converse-adapter
+  worktree_branch: wave/W3/m07/p4.t1-bedrock-adapter-scaffold
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P4.T2
+  milestone: M07
+  phase: 4
+  title: Implement Bedrock Converse batch lift/lower for toolUse and toolResult blocks
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-bedrock-converse-adapter/src/adapter.rs
+    - crates/chio-bedrock-converse-adapter/src/lib.rs
+    - crates/chio-bedrock-converse-adapter/tests/batch.rs
+  shared_paths: []
+  depends_on:
+    - M07.P4.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-bedrock-converse-adapter --test batch
+  worktree_branch: wave/W3/m07/p4.t2-bedrock-batch-lift-lower
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P4.T3
+  milestone: M07
+  phase: 4
+  title: Implement Bedrock ConverseStream HTTP/2 verdict at contentBlockStart toolUse
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-bedrock-converse-adapter/src/streaming.rs
+    - crates/chio-bedrock-converse-adapter/src/adapter.rs
+    - crates/chio-bedrock-converse-adapter/tests/streaming.rs
+  shared_paths: []
+  depends_on:
+    - M07.P4.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-bedrock-converse-adapter --test streaming
+  worktree_branch: wave/W3/m07/p4.t3-bedrock-converse-stream
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P4.T4
+  milestone: M07
+  phase: 4
+  title: Bedrock IAM principal disambiguation via signed config/iam_principals.toml
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-bedrock-converse-adapter/src/principal.rs
+    - crates/chio-bedrock-converse-adapter/tests/principal.rs
+    - crates/chio-bedrock-converse-adapter/config/iam_principals.example.toml
+    - crates/chio-bedrock-converse-adapter/README.md
+  shared_paths: []
+  depends_on:
+    - M07.P4.T2
+  soft_deps:
+    - "M09.P3.T1 SigstoreVerifier gates iam_principals.toml signature load"
+  gate_check:
+    cmd: cargo test -p chio-bedrock-converse-adapter --test principal
+  worktree_branch: wave/W3/m07/p4.t4-bedrock-iam-principal
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P4.T5
+  milestone: M07
+  phase: 4
+  title: Record 12 Bedrock fixtures and bench cold-init path against 500ms p99
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-provider-conformance/fixtures/bedrock/**
+    - crates/chio-provider-conformance/Cargo.toml
+    - crates/chio-provider-conformance/tests/replay_bedrock.rs
+    - crates/chio-bedrock-converse-adapter/benches/verdict_latency.rs
+  shared_paths:
+    - crates/chio-provider-conformance/Cargo.toml
+  depends_on:
+    - M07.P4.T3
+    - M07.P4.T4
+    - M07.P2.T6
+  soft_deps: []
+  gate_check:
+    cmd: ls crates/chio-provider-conformance/fixtures/bedrock/*.ndjson | wc -l | grep -qE '^\s*12\s*$' && cargo test -p chio-provider-conformance --features fixtures-bedrock
+  worktree_branch: wave/W3/m07/p4.t5-bedrock-fixtures-12
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P4.T6
+  milestone: M07
+  phase: 4
+  title: Cross-provider policy demo asserting verdict equality across all three adapters
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - examples/cross-provider-policy/Cargo.toml
+    - examples/cross-provider-policy/src/main.rs
+    - examples/cross-provider-policy/policy.yaml
+    - examples/cross-provider-policy/README.md
+    - crates/chio-provider-conformance/tests/cross_provider_equality.rs
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+  depends_on:
+    - M07.P2.T4
+    - M07.P3.T3
+    - M07.P4.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo run -p cross-provider-policy --quiet -- --dry-run && cargo test -p chio-provider-conformance --features fixtures-openai,fixtures-anthropic,fixtures-bedrock --test cross_provider_equality
+  worktree_branch: wave/W3/m07/p4.t6-cross-provider-demo
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P4.T7
+  milestone: M07
+  phase: 4
+  title: Land RELEASE_AUDIT row + Bedrock error-taxonomy doctest + providers.md
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - RELEASE_AUDIT.md
+    - docs/integrations/providers.md
+    - crates/chio-bedrock-converse-adapter/README.md
+    - crates/chio-bedrock-converse-adapter/tests/error_taxonomy_doctest.rs
+  shared_paths:
+    - RELEASE_AUDIT.md
+  depends_on:
+    - M07.P4.T6
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-bedrock-converse-adapter --test error_taxonomy_doctest && grep -q 'M07' RELEASE_AUDIT.md && grep -q 'iam_principals.toml' RELEASE_AUDIT.md && test -f docs/integrations/providers.md
+  worktree_branch: wave/W3/m07/p4.t7-release-audit-row
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P4.T8
+  milestone: M07
+  phase: 4
+  title: Land conformance fixture re-record CLI chio-provider-conformance record
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-provider-conformance/src/bin/record.rs
+    - crates/chio-provider-conformance/Cargo.toml
+    - crates/chio-provider-conformance/README.md
+  shared_paths:
+    - crates/chio-provider-conformance/Cargo.toml
+  depends_on:
+    - M07.P4.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-provider-conformance --bin record && cargo run -p chio-provider-conformance --bin record -- --help
+  worktree_branch: wave/W3/m07/p4.t8-conformance-record-cli
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

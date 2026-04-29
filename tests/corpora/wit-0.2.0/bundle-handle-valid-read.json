@@ -1,0 +1,44 @@
+{
+  "schema": "chio.guard.wit.fixture.v1",
+  "id": "bundle_handle_valid_read",
+  "title": "policy-context bundle-handle reads bundle bytes",
+  "description": "Positive fixture for constructing and reading a policy-context::bundle-handle resource.",
+  "witWorld": "chio:guard/guard@0.2.0",
+  "imports": [
+    "policy-context.bundle-handle"
+  ],
+  "blobStore": {
+    "handles": [],
+    "bundles": [
+      {
+        "id": "policy-bundle-alpha",
+        "bytes": [
+          112,
+          111,
+          108,
+          105,
+          99,
+          121,
+          45,
+          99,
+          116,
+          120
+        ]
+      }
+    ]
+  },
+  "input": {
+    "operation": "policy-context.bundle-handle.read",
+    "bundleId": "policy-bundle-alpha",
+    "offset": 7,
+    "len": 3
+  },
+  "expected": {
+    "status": "ok",
+    "bytes": [
+      99,
+      116,
+      120
+    ]
+  }
+}

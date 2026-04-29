@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_with_delegation",
+  "fixed_nonce_seed_index": 8,
+  "intent": "Allow path with a single delegation hop (authority -> delegate) to exercise the smallest non-trivial delegation chain.",
+  "name": "allow_with_delegation/01_single_hop",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "delegation"]
+}

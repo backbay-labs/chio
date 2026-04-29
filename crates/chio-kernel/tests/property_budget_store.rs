@@ -292,7 +292,7 @@ proptest! {
     fn budget_store_matches_reference_model_under_random_operation_sequences(
         operations in proptest::collection::vec(budget_op_strategy(), 1..64),
     ) {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let mut model = BudgetModel::default();
 
         for operation in operations {
@@ -343,7 +343,7 @@ proptest! {
         slack in 0u16..=1024,
         overflow_by in 1u16..=1024,
     ) {
-        let mut store = InMemoryBudgetStore::new();
+        let store = InMemoryBudgetStore::new();
         let first_charge = u64::MAX - u64::from(slack);
         let second_charge = u64::from(slack) + u64::from(overflow_by);
 

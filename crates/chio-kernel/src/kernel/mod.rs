@@ -1,7 +1,9 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
+use arc_swap::ArcSwap;
 use chio_appraisal::VerifiedRuntimeAttestationRecord;
+use dashmap::DashMap;
 
 use self::responses::FinalizeToolOutputCostContext;
 use crate::budget_store::{
@@ -876,16 +878,18 @@ pub struct ChioKernel {
     config: KernelConfig,
     guards: Vec<Box<dyn Guard>>,
     post_invocation_pipeline: crate::post_invocation::PostInvocationPipeline,
-    budget_store: Mutex<Box<dyn BudgetStore>>,
-    revocation_store: Mutex<Box<dyn RevocationStore>>,
+    budget_store: Arc<dyn BudgetStore>,
+    budget_store_lock: Mutex<()>,
+    revocation_store: Arc<dyn RevocationStore>,
     capability_authority: Box<dyn CapabilityAuthority>,
     tool_servers: HashMap<ServerId, Box<dyn ToolServerConnection>>,
     resource_providers: Vec<Box<dyn ResourceProvider>>,
     prompt_providers: Vec<Box<dyn PromptProvider>>,
-    sessions: RwLock<HashMap<SessionId, Session>>,
+    sessions: DashMap<SessionId, Arc<Session>>,
     receipt_log: Mutex<ReceiptLog>,
     child_receipt_log: Mutex<ChildReceiptLog>,
-    receipt_store: Option<Mutex<Box<dyn ReceiptStore>>>,
+    receipt_store: Option<Arc<dyn ReceiptStore>>,
+    receipt_store_write_lock: Mutex<()>,
     payment_adapter: Option<Box<dyn PaymentAdapter>>,
     price_oracle: Option<Box<dyn PriceOracle>>,
     attestation_trust_policy: Option<AttestationTrustPolicy>,
@@ -926,10 +930,9 @@ pub struct ChioKernel {
     /// after `emergency_stopped` is set to `false`.
     emergency_stopped_since: AtomicU64,
     /// Operator-supplied reason for the most recent emergency stop. Set on
-    /// `emergency_stop`, cleared on `emergency_resume`. Guarded by a mutex
-    /// because the payload is a heap-allocated `String`; callers that only
-    /// need presence information can read `emergency_stopped` instead.
-    emergency_stop_reason: Mutex<Option<String>>,
+    /// `emergency_stop`, cleared on `emergency_resume`. Stored behind
+    /// ArcSwap so health probes can read the current reason without blocking.
+    emergency_stop_reason: ArcSwap<Option<String>>,
     /// Phase 18.2 memory-provenance chain. When installed, every
     /// governed `MemoryWrite` action appends an entry after the allow
     /// receipt is signed, and every `MemoryRead` attaches the latest
@@ -943,7 +946,7 @@ pub struct ChioKernel {
     /// here (fresh), the kernel invokes `federation_cosigner` after
     /// locally signing the receipt to obtain the origin kernel's
     /// co-signature. Absent in non-federated deployments.
-    federation_peers: RwLock<HashMap<String, chio_federation::FederationPeer>>,
+    federation_peers: ArcSwap<HashMap<String, chio_federation::FederationPeer>>,
     /// Phase 20.3 bilateral co-signer. Separate from the peer set so
     /// runtime can install it independently -- for instance, a deployment
     /// can declare peers while still using a mock cosigner in tests.
@@ -952,12 +955,19 @@ pub struct ChioKernel {
     /// Populated only when the post-sign hook fires successfully. Kept
     /// in-memory; persistent storage plugs in via the federation-state
     /// APIs already in chio-federation.
-    federation_dual_receipts: Mutex<HashMap<String, chio_federation::DualSignedReceipt>>,
+    federation_dual_receipts: DashMap<String, chio_federation::DualSignedReceipt>,
     /// Phase 20.3 operator-declared kernel identifier used as the
     /// `org_b_kernel_id` in bilateral co-signing. Defaults to the hex
     /// encoding of the kernel's signing public key, but operators can
     /// override it to a stable DNS name via `with_federation_peers`.
-    federation_local_kernel_id: Mutex<Option<String>>,
+    federation_local_kernel_id: ArcSwap<Option<String>>,
+    /// Mpsc-backed signing task handle. Owns a clone of `config.keypair` and
+    /// pulls signing requests from a bounded channel; producers `.await` on
+    /// backpressure rather than on a mutex. Spawned at [`ChioKernel::new`] and
+    /// joined by [`ChioKernel::shutdown`]. Wrapped in `Arc` so shared kernel
+    /// handles can pass the signing handle to in-flight evaluators without
+    /// cloning the whole kernel.
+    signing_task: std::sync::Arc<signing_task::SigningTaskHandle>,
 }
 
 #[derive(Clone, Copy)]
@@ -992,7 +1002,7 @@ impl BudgetChargeResult {
 }
 
 struct SessionNestedFlowBridge<'a, C> {
-    sessions: &'a mut HashMap<SessionId, Session>,
+    sessions: &'a DashMap<SessionId, Arc<Session>>,
     child_receipts: &'a mut Vec<ChildRequestReceipt>,
     parent_context: &'a OperationContext,
     allow_sampling: bool,
@@ -1041,7 +1051,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
     }
 
     fn list_roots(&mut self) -> Result<Vec<RootDefinition>, KernelError> {
-        let child_context = begin_child_request_in_sessions(
+        let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
             nested_child_request_id(&self.parent_context.request_id, "roots"),
@@ -1061,7 +1071,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             let roots = self
                 .client
                 .list_roots(self.parent_context, &child_context)?;
-            session_mut_from_map(self.sessions, &child_context.session_id)?
+            session_from_map(self.sessions, &child_context.session_id)?
                 .replace_roots(roots.clone());
             Ok(roots)
         })();
@@ -1070,7 +1080,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             Err(KernelError::RequestCancelled { request_id, .. })
                 if request_id == &child_context.request_id
         ) {
-            session_mut_from_map(self.sessions, &child_context.session_id)?
+            session_from_map(self.sessions, &child_context.session_id)?
                 .request_cancellation(&child_context.request_id)?;
         }
         self.complete_child_request_with_receipt(
@@ -1086,7 +1096,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
         &mut self,
         operation: CreateMessageOperation,
     ) -> Result<CreateMessageResult, KernelError> {
-        let child_context = begin_child_request_in_sessions(
+        let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
             nested_child_request_id(&self.parent_context.request_id, "sample"),
@@ -1111,7 +1121,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             Err(KernelError::RequestCancelled { request_id, .. })
                 if request_id == &child_context.request_id
         ) {
-            session_mut_from_map(self.sessions, &child_context.session_id)?
+            session_from_map(self.sessions, &child_context.session_id)?
                 .request_cancellation(&child_context.request_id)?;
         }
         self.complete_child_request_with_receipt(
@@ -1127,7 +1137,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
         &mut self,
         operation: CreateElicitationOperation,
     ) -> Result<CreateElicitationResult, KernelError> {
-        let child_context = begin_child_request_in_sessions(
+        let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
             nested_child_request_id(&self.parent_context.request_id, "elicit"),
@@ -1151,7 +1161,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             Err(KernelError::RequestCancelled { request_id, .. })
                 if request_id == &child_context.request_id
         ) {
-            session_mut_from_map(self.sessions, &child_context.session_id)?
+            session_from_map(self.sessions, &child_context.session_id)?
                 .request_cancellation(&child_context.request_id)?;
         }
         self.complete_child_request_with_receipt(
@@ -1198,37 +1208,29 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
 impl ChioKernel {
     fn with_sessions_read<R>(
         &self,
-        f: impl FnOnce(&HashMap<SessionId, Session>) -> Result<R, KernelError>,
+        f: impl FnOnce(&DashMap<SessionId, Arc<Session>>) -> Result<R, KernelError>,
     ) -> Result<R, KernelError> {
-        let sessions = self
-            .sessions
-            .read()
-            .map_err(|_| KernelError::Internal("session state lock poisoned".to_string()))?;
-        f(&sessions)
+        f(&self.sessions)
     }
 
     fn with_sessions_write<R>(
         &self,
-        f: impl FnOnce(&mut HashMap<SessionId, Session>) -> Result<R, KernelError>,
+        f: impl FnOnce(&DashMap<SessionId, Arc<Session>>) -> Result<R, KernelError>,
     ) -> Result<R, KernelError> {
-        let mut sessions = self
-            .sessions
-            .write()
-            .map_err(|_| KernelError::Internal("session state lock poisoned".to_string()))?;
-        f(&mut sessions)
+        f(&self.sessions)
     }
 
     fn with_session<R>(
         &self,
         session_id: &SessionId,
-        f: impl FnOnce(&Session) -> Result<R, KernelError>,
+        f: impl FnOnce(&Arc<Session>) -> Result<R, KernelError>,
     ) -> Result<R, KernelError> {
-        self.with_sessions_read(|sessions| {
-            let session = sessions
-                .get(session_id)
-                .ok_or_else(|| KernelError::UnknownSession(session_id.clone()))?;
-            f(session)
-        })
+        let session = self
+            .sessions
+            .get(session_id)
+            .map(|entry| Arc::clone(entry.value()))
+            .ok_or_else(|| KernelError::UnknownSession(session_id.clone()))?;
+        f(&session)
     }
 
     /// Phase 1.5: resolve the tenant_id for a given session by walking its
@@ -1248,7 +1250,8 @@ impl ChioKernel {
     ) -> Option<String> {
         let id = session_id?;
         self.with_session(id, |session| {
-            Ok(extract_tenant_id_from_auth_context(session.auth_context()))
+            let auth_context = session.auth_context();
+            Ok(extract_tenant_id_from_auth_context(&auth_context))
         })
         .ok()
         .flatten()
@@ -1257,69 +1260,68 @@ impl ChioKernel {
     fn with_session_mut<R>(
         &self,
         session_id: &SessionId,
-        f: impl FnOnce(&mut Session) -> Result<R, KernelError>,
+        f: impl FnOnce(&Arc<Session>) -> Result<R, KernelError>,
     ) -> Result<R, KernelError> {
-        self.with_sessions_write(|sessions| {
-            let session = sessions
-                .get_mut(session_id)
-                .ok_or_else(|| KernelError::UnknownSession(session_id.clone()))?;
-            f(session)
-        })
+        self.with_session(session_id, f)
     }
 
     fn with_budget_store<R>(
         &self,
-        f: impl FnOnce(&mut dyn BudgetStore) -> Result<R, KernelError>,
+        f: impl FnOnce(&dyn BudgetStore) -> Result<R, KernelError>,
     ) -> Result<R, KernelError> {
-        let mut store = self
-            .budget_store
-            .lock()
-            .map_err(|_| KernelError::Internal("budget store lock poisoned".to_string()))?;
-        f(store.as_mut())
+        let _guard = match self.budget_store_lock.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        f(self.budget_store.as_ref())
     }
 
     fn with_revocation_store<R>(
         &self,
-        f: impl FnOnce(&mut dyn RevocationStore) -> Result<R, KernelError>,
+        f: impl FnOnce(&dyn RevocationStore) -> Result<R, KernelError>,
     ) -> Result<R, KernelError> {
-        let mut store = self
-            .revocation_store
-            .lock()
-            .map_err(|_| KernelError::Internal("revocation store lock poisoned".to_string()))?;
-        f(store.as_mut())
+        f(self.revocation_store.as_ref())
     }
 
     fn with_receipt_store<R>(
         &self,
-        f: impl FnOnce(&mut dyn ReceiptStore) -> Result<R, KernelError>,
+        f: impl FnOnce(&dyn ReceiptStore) -> Result<R, KernelError>,
     ) -> Result<Option<R>, KernelError> {
         let Some(store) = self.receipt_store.as_ref() else {
             return Ok(None);
         };
-        let mut store = store
-            .lock()
-            .map_err(|_| KernelError::Internal("receipt store lock poisoned".to_string()))?;
-        f(store.as_mut()).map(Some)
+        f(store.as_ref()).map(Some)
     }
 
     pub fn new(config: KernelConfig) -> Self {
         info!("initializing Chio kernel");
         let authority_keypair = config.keypair.clone();
         let checkpoint_batch_size = config.checkpoint_batch_size;
+        // Build the mpsc-backed signing-task handle. The handle clones the
+        // signing keypair so the receipt-signing critical path no longer borrows
+        // from `self.config.keypair` while the evaluate pipeline is mid-flight.
+        // The tokio task is spawned LAZILY on first `signing_task.sign(_)` call
+        // so `ChioKernel::new` remains constructible from sync contexts; by the
+        // time any caller reaches `sign`, a tokio runtime is necessarily active.
+        let signing_keypair = config.keypair.clone();
+        let signing_task =
+            std::sync::Arc::new(signing_task::SigningTaskHandle::spawn(signing_keypair));
         Self {
             config,
             guards: Vec::new(),
             post_invocation_pipeline: crate::post_invocation::PostInvocationPipeline::new(),
-            budget_store: Mutex::new(Box::new(InMemoryBudgetStore::new())),
-            revocation_store: Mutex::new(Box::new(InMemoryRevocationStore::new())),
+            budget_store: Arc::new(InMemoryBudgetStore::new()),
+            budget_store_lock: Mutex::new(()),
+            revocation_store: Arc::new(InMemoryRevocationStore::new()),
             capability_authority: Box::new(LocalCapabilityAuthority::new(authority_keypair)),
             tool_servers: HashMap::new(),
             resource_providers: Vec::new(),
             prompt_providers: Vec::new(),
-            sessions: RwLock::new(HashMap::new()),
+            sessions: DashMap::new(),
             receipt_log: Mutex::new(ReceiptLog::new()),
             child_receipt_log: Mutex::new(ChildReceiptLog::new()),
             receipt_store: None,
+            receipt_store_write_lock: Mutex::new(()),
             payment_adapter: None,
             price_oracle: None,
             attestation_trust_policy: None,
@@ -1336,17 +1338,105 @@ impl ChioKernel {
             )),
             emergency_stopped: AtomicBool::new(false),
             emergency_stopped_since: AtomicU64::new(0),
-            emergency_stop_reason: Mutex::new(None),
+            emergency_stop_reason: ArcSwap::from_pointee(Option::<String>::None),
             memory_provenance: None,
-            federation_peers: RwLock::new(HashMap::new()),
+            federation_peers: ArcSwap::from_pointee(HashMap::new()),
             federation_cosigner: None,
-            federation_dual_receipts: Mutex::new(HashMap::new()),
-            federation_local_kernel_id: Mutex::new(None),
+            federation_dual_receipts: DashMap::new(),
+            federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
+            signing_task,
         }
     }
 
+    /// Borrow the kernel's mpsc-backed signing-task handle.
+    ///
+    /// Internal callers submit `ChioReceiptBody` payloads through this handle
+    /// and `.await` the signed `ChioReceipt`. The underlying tokio task is
+    /// spawned lazily on the first call.
+    ///
+    /// Not exposed publicly: callers should go through
+    /// [`Self::sign_receipt_via_channel`] or the `ToolEvaluator` trait so the
+    /// channel boundary stays an implementation detail of the kernel crate.
+    /// Crash-recovery tests reach this directly.
+    #[allow(dead_code)]
+    pub(crate) fn signing_task_handle(&self) -> &signing_task::SigningTaskHandle {
+        &self.signing_task
+    }
+
+    /// Sign a [`ChioReceiptBody`] off the kernel critical path via the
+    /// mpsc-backed signing task.
+    ///
+    /// Producers `.await` on bounded backpressure rather than on a
+    /// receipt-log mutex. Returns
+    /// `Err(KernelError::ReceiptSigningFailed)` if the signing step
+    /// itself rejected the body (e.g. the body's `kernel_key` does not
+    /// match the kernel's signing public key) and
+    /// `Err(KernelError::Internal)` if the signing task is no longer
+    /// running.
+    ///
+    /// This method is async because it `.await`s on the channel send
+    /// (backpressure) and on the oneshot reply. The caller must run
+    /// inside a tokio runtime; every kernel-internal call site already
+    /// does (the `ToolEvaluator` trait methods are async, and so is
+    /// the public `evaluate_tool_call` entrypoint).
+    pub async fn sign_receipt_via_channel(
+        &self,
+        body: ChioReceiptBody,
+    ) -> Result<ChioReceipt, KernelError> {
+        self.signing_task.sign(body).await
+    }
+
+    /// Drain the in-flight signing-task queue and join the task. After this
+    /// call, every signing request that successfully `.send().await`-ed before
+    /// shutdown has been signed and replied to; new sends surface
+    /// `KernelError::Internal`.
+    ///
+    /// Idempotent: safe to call more than once. Safe to call on a
+    /// kernel whose signing task was never spawned (no signing
+    /// happened); in that case shutdown is a no-op.
+    ///
+    /// Note: shutdown does NOT mark the kernel as terminally stopped
+    /// for other paths (capability validation, guard pipeline, store
+    /// lookups). Operators that want a hard stop should call
+    /// [`Self::emergency_stop`] in addition.
+    pub async fn shutdown(&self) {
+        self.signing_task.shutdown().await;
+    }
+
     pub fn set_receipt_store(&mut self, receipt_store: Box<dyn ReceiptStore>) {
-        self.receipt_store = Some(Mutex::new(receipt_store));
+        self.set_receipt_store_handle(Arc::from(receipt_store));
+    }
+
+    pub fn set_receipt_store_handle(&mut self, receipt_store: Arc<dyn ReceiptStore>) {
+        self.try_set_receipt_store_handle(receipt_store)
+            .unwrap_or_else(|error| {
+                panic!("failed to install receipt store: {error}");
+            });
+    }
+
+    pub fn try_set_receipt_store_handle(
+        &mut self,
+        receipt_store: Arc<dyn ReceiptStore>,
+    ) -> Result<(), KernelError> {
+        match receipt_store.load_latest_checkpoint() {
+            Ok(Some(checkpoint)) => {
+                self.checkpoint_seq_counter
+                    .store(checkpoint.body.checkpoint_seq, Ordering::SeqCst);
+                self.last_checkpoint_seq
+                    .store(checkpoint.body.batch_end_seq, Ordering::SeqCst);
+            }
+            Ok(None) => {
+                self.checkpoint_seq_counter.store(0, Ordering::SeqCst);
+                self.last_checkpoint_seq.store(0, Ordering::SeqCst);
+            }
+            Err(error) => {
+                return Err(KernelError::Internal(format!(
+                    "failed to hydrate checkpoint counters from receipt store: {error}"
+                )));
+            }
+        }
+        self.receipt_store = Some(receipt_store);
+        Ok(())
     }
 
     pub fn set_payment_adapter(&mut self, payment_adapter: Box<dyn PaymentAdapter>) {
@@ -1365,7 +1455,11 @@ impl ChioKernel {
     }
 
     pub fn set_revocation_store(&mut self, revocation_store: Box<dyn RevocationStore>) {
-        self.revocation_store = Mutex::new(revocation_store);
+        self.set_revocation_store_handle(Arc::from(revocation_store));
+    }
+
+    pub fn set_revocation_store_handle(&mut self, revocation_store: Arc<dyn RevocationStore>) {
+        self.revocation_store = revocation_store;
     }
 
     pub fn set_capability_authority(&mut self, capability_authority: Box<dyn CapabilityAuthority>) {
@@ -1373,7 +1467,11 @@ impl ChioKernel {
     }
 
     pub fn set_budget_store(&mut self, budget_store: Box<dyn BudgetStore>) {
-        self.budget_store = Mutex::new(budget_store);
+        self.set_budget_store_handle(Arc::from(budget_store));
+    }
+
+    pub fn set_budget_store_handle(&mut self, budget_store: Arc<dyn BudgetStore>) {
+        self.budget_store = budget_store;
     }
 
     pub fn set_post_invocation_pipeline(
@@ -1434,12 +1532,11 @@ impl ChioKernel {
     /// onto `ChioKernel::new(config)`.
     #[must_use]
     pub fn with_federation_peers(self, peers: Vec<chio_federation::FederationPeer>) -> Self {
-        if let Ok(mut map) = self.federation_peers.write() {
-            map.clear();
-            for peer in peers {
-                map.insert(peer.kernel_id.clone(), peer);
-            }
+        let mut next = HashMap::new();
+        for peer in peers {
+            next.insert(peer.kernel_id.clone(), peer);
         }
+        self.federation_peers.store(Arc::new(next));
         self
     }
 
@@ -1459,9 +1556,8 @@ impl ChioKernel {
     /// signing public key is used. Setting this is recommended in
     /// production so receipts reference DNS names rather than raw keys.
     pub fn set_federation_local_kernel_id(&self, kernel_id: impl Into<String>) {
-        if let Ok(mut slot) = self.federation_local_kernel_id.lock() {
-            *slot = Some(kernel_id.into());
-        }
+        self.federation_local_kernel_id
+            .store(Arc::new(Some(kernel_id.into())));
     }
 
     /// Phase 20.3: resolve the active federation peer for
@@ -1471,8 +1567,8 @@ impl ChioKernel {
         remote_kernel_id: &str,
         now: u64,
     ) -> Option<chio_federation::FederationPeer> {
-        let map = self.federation_peers.read().ok()?;
-        let peer = map.get(remote_kernel_id)?.clone();
+        let peers = self.federation_peers.load();
+        let peer = peers.get(remote_kernel_id)?.clone();
         if peer.is_fresh(now) {
             Some(peer)
         } else {
@@ -1482,10 +1578,7 @@ impl ChioKernel {
 
     /// Phase 20.3: snapshot the currently-pinned federation peer set.
     pub fn federation_peers_snapshot(&self) -> Vec<chio_federation::FederationPeer> {
-        self.federation_peers
-            .read()
-            .map(|map| map.values().cloned().collect())
-            .unwrap_or_default()
+        self.federation_peers.load().values().cloned().collect()
     }
 
     /// Phase 20.3: look up a dual-signed receipt by the underlying
@@ -1498,19 +1591,15 @@ impl ChioKernel {
         receipt_id: &str,
     ) -> Option<chio_federation::DualSignedReceipt> {
         self.federation_dual_receipts
-            .lock()
-            .ok()?
             .get(receipt_id)
-            .cloned()
+            .map(|entry| entry.value().clone())
     }
 
     /// Local kernel identifier used in bilateral co-signing. Falls back
     /// to the hex encoding of the signing public key.
     pub fn federation_local_kernel_id(&self) -> String {
-        if let Ok(slot) = self.federation_local_kernel_id.lock() {
-            if let Some(id) = slot.as_ref() {
-                return id.clone();
-            }
+        if let Some(id) = self.federation_local_kernel_id.load_full().as_ref() {
+            return id.clone();
         }
         self.config.keypair.public_key().to_hex()
     }
@@ -1560,11 +1649,8 @@ impl ChioKernel {
         )
         .map_err(|e| KernelError::Internal(format!("bilateral co-sign failed: {e}")))?;
 
-        let mut map = self
-            .federation_dual_receipts
-            .lock()
-            .map_err(|_| KernelError::Internal("federation dual receipts lock poisoned".into()))?;
-        map.insert(receipt.id.clone(), dual);
+        self.federation_dual_receipts
+            .insert(receipt.id.clone(), dual);
         Ok(())
     }
 
@@ -1583,14 +1669,13 @@ impl ChioKernel {
     /// this method should call it; until then, capability revocation is
     /// delegated to natural expiration.
     ///
-    /// Fails closed: if the reason mutex is poisoned we still leave the
-    /// kernel in the stopped state (the flag is set before any fallible
-    /// step) and surface the poison to the caller.
     pub fn emergency_stop(&self, reason: &str) -> Result<(), KernelError> {
         let now = current_unix_timestamp();
         // Record the timestamp first so any concurrent reader that observes
         // `emergency_stopped == true` sees a non-zero `since` value.
         self.emergency_stopped_since.store(now, Ordering::SeqCst);
+        self.emergency_stop_reason
+            .store(Arc::new(Some(reason.to_string())));
         self.emergency_stopped.store(true, Ordering::SeqCst);
 
         warn!(
@@ -1598,11 +1683,6 @@ impl ChioKernel {
             timestamp = now,
             "emergency stop engaged -- all evaluations will be denied"
         );
-
-        let mut slot = self.emergency_stop_reason.lock().map_err(|_| {
-            KernelError::Internal("emergency stop reason mutex poisoned".to_string())
-        })?;
-        *slot = Some(reason.to_string());
         Ok(())
     }
 
@@ -1618,10 +1698,8 @@ impl ChioKernel {
 
         warn!("emergency stop disengaged -- evaluations will resume");
 
-        let mut slot = self.emergency_stop_reason.lock().map_err(|_| {
-            KernelError::Internal("emergency stop reason mutex poisoned".to_string())
-        })?;
-        *slot = None;
+        self.emergency_stop_reason
+            .store(Arc::new(Option::<String>::None));
         Ok(())
     }
 
@@ -1647,16 +1725,13 @@ impl ChioKernel {
     }
 
     /// Return the operator-supplied reason for the current emergency stop,
-    /// or `None` when the kernel is running normally or the mutex is
-    /// poisoned (fail-closed readers should treat `None` as "no reason
-    /// available").
+    /// or `None` when the kernel is running normally.
     #[must_use]
     pub fn emergency_stop_reason(&self) -> Option<String> {
         if !self.is_emergency_stopped() {
             return None;
         }
-        let guard = self.emergency_stop_reason.lock().ok()?;
-        guard.clone()
+        self.emergency_stop_reason.load_full().as_ref().clone()
     }
 
     /// Install a DPoP nonce replay store and verification config.
@@ -1916,14 +1991,63 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.evaluate_tool_call_sync_with_session_roots(request, None, None)
+        // Route through the ToolEvaluator trait so async-native step bodies
+        // can be swapped in without touching this call site. The default
+        // BlockingToolEvaluator delegates to the existing sync pipeline; semantics
+        // are byte-identical.
+        use crate::kernel::evaluator::{BlockingToolEvaluator, ToolEvaluator};
+        BlockingToolEvaluator.evaluate(self, request).await
     }
 
+    pub async fn evaluate_tool_call_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        use crate::kernel::evaluator::{BlockingToolEvaluator, ToolEvaluator};
+        BlockingToolEvaluator
+            .evaluate_with_metadata(self, request, extra_metadata)
+            .await
+    }
+
+    #[cfg(feature = "legacy-sync")]
+    #[deprecated(
+        since = "0.1.0",
+        note = "use evaluate_tool_call().await; gated under feature legacy-sync from next release"
+    )]
     pub fn evaluate_tool_call_blocking(
         &self,
         request: &ToolCallRequest,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.evaluate_tool_call_sync_with_session_roots(request, None, None)
+        self.evaluate_tool_call_sync_inner(request, None, None)
+    }
+
+    #[cfg(not(feature = "legacy-sync"))]
+    pub(crate) fn evaluate_tool_call_blocking(
+        &self,
+        request: &ToolCallRequest,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.evaluate_tool_call_sync_inner(request, None, None)
+    }
+
+    /// Crate-private sync entrypoint invoked by the
+    /// [`crate::kernel::evaluator::ToolEvaluator`] default
+    /// implementation. Wraps the long-form
+    /// `evaluate_tool_call_sync_inner` so the trait body does
+    /// not need to plumb the `session_filesystem_roots` /
+    /// `extra_metadata` parameters; both default to `None` on this path,
+    /// matching the previous direct delegation from
+    /// `evaluate_tool_call`.
+    ///
+    /// T2 renamed the long-form helper from
+    /// `evaluate_tool_call_sync_with_session_roots` to
+    /// `evaluate_tool_call_sync_inner` and marked it `#[doc(hidden)]`; this
+    /// shim continues to expose the crate-internal sync surface.
+    pub(crate) fn evaluate_tool_call_sync(
+        &self,
+        request: &ToolCallRequest,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.evaluate_tool_call_sync_inner(request, None, None)
     }
 
     pub fn evaluate_tool_call_blocking_with_metadata(
@@ -1931,7 +2055,7 @@ impl ChioKernel {
         request: &ToolCallRequest,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.evaluate_tool_call_sync_with_session_roots(request, None, extra_metadata)
+        self.evaluate_tool_call_sync_inner(request, None, extra_metadata)
     }
 
     pub fn sign_planned_deny_response(
@@ -2206,7 +2330,8 @@ impl ChioKernel {
         }
     }
 
-    fn evaluate_tool_call_sync_with_session_roots(
+    #[doc(hidden)]
+    fn evaluate_tool_call_sync_inner(
         &self,
         request: &ToolCallRequest,
         session_filesystem_roots: Option<&[String]>,
@@ -2571,7 +2696,7 @@ impl ChioKernel {
         let tool_started_at = Instant::now();
         let has_monetary = charge_result.is_some();
         let (tool_output, reported_cost) =
-            match self.dispatch_tool_call_with_cost(request, has_monetary) {
+            match self.dispatch_tool_call_with_cost_sync(request, has_monetary) {
                 Ok(result) => result,
                 Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
                     let _ = self.unwind_aborted_monetary_invocation(
@@ -2945,12 +3070,8 @@ impl ChioKernel {
                     request.server_id, request.tool_name
                 ))
             })?;
-            let mut sessions = self
-                .sessions
-                .write()
-                .map_err(|_| KernelError::Internal("session state lock poisoned".to_string()))?;
             let mut bridge = SessionNestedFlowBridge {
-                sessions: &mut sessions,
+                sessions: &self.sessions,
                 child_receipts: &mut child_receipts,
                 parent_context,
                 allow_sampling: self.config.allow_sampling,
@@ -3142,14 +3263,14 @@ impl ChioKernel {
     pub fn receipt_log(&self) -> ReceiptLog {
         match self.receipt_log.lock() {
             Ok(log) => log.clone(),
-            Err(_) => panic!("receipt log lock poisoned"),
+            Err(poisoned) => poisoned.into_inner().clone(),
         }
     }
 
     pub fn child_receipt_log(&self) -> ChildReceiptLog {
         match self.child_receipt_log.lock() {
             Ok(log) => log.clone(),
-            Err(_) => panic!("child receipt log lock poisoned"),
+            Err(poisoned) => poisoned.into_inner().clone(),
         }
     }
 
@@ -5287,20 +5408,69 @@ impl ChioKernel {
     }
 
     fn has_local_receipt_id(&self, receipt_id: &str) -> bool {
-        let chio_receipt_match = self.receipt_log.lock().ok().is_some_and(|log| {
-            log.receipts()
+        let chio_receipt_match = match self.receipt_log.lock() {
+            Ok(log) => log
+                .receipts()
                 .iter()
-                .any(|receipt| receipt.id == receipt_id)
-        });
+                .any(|receipt| receipt.id == receipt_id),
+            Err(poisoned) => poisoned
+                .into_inner()
+                .receipts()
+                .iter()
+                .any(|receipt| receipt.id == receipt_id),
+        };
         if chio_receipt_match {
             return true;
         }
 
-        self.child_receipt_log.lock().ok().is_some_and(|log| {
-            log.receipts()
+        match self.child_receipt_log.lock() {
+            Ok(log) => log
+                .receipts()
                 .iter()
-                .any(|receipt| receipt.id == receipt_id)
-        })
+                .any(|receipt| receipt.id == receipt_id),
+            Err(poisoned) => poisoned
+                .into_inner()
+                .receipts()
+                .iter()
+                .any(|receipt| receipt.id == receipt_id),
+        }
+    }
+
+    fn local_receipt_artifact(&self, receipt_id: &str) -> Option<LocalReceiptArtifact> {
+        let tool_match = match self.receipt_log.lock() {
+            Ok(log) => log
+                .receipts()
+                .iter()
+                .find(|receipt| receipt.id == receipt_id)
+                .cloned()
+                .map(LocalReceiptArtifact::Tool),
+            Err(poisoned) => poisoned
+                .into_inner()
+                .receipts()
+                .iter()
+                .find(|receipt| receipt.id == receipt_id)
+                .cloned()
+                .map(LocalReceiptArtifact::Tool),
+        };
+        if tool_match.is_some() {
+            return tool_match;
+        }
+
+        match self.child_receipt_log.lock() {
+            Ok(log) => log
+                .receipts()
+                .iter()
+                .find(|receipt| receipt.id == receipt_id)
+                .cloned()
+                .map(LocalReceiptArtifact::Child),
+            Err(poisoned) => poisoned
+                .into_inner()
+                .receipts()
+                .iter()
+                .find(|receipt| receipt.id == receipt_id)
+                .cloned()
+                .map(LocalReceiptArtifact::Child),
+        }
     }
 
     fn is_trusted_governed_continuation_signer(&self, signer: &chio_core::PublicKey) -> bool {
@@ -5319,27 +5489,6 @@ impl ChioKernel {
             .trusted_public_keys()
             .into_iter()
             .any(|candidate| candidate == *signer)
-    }
-
-    fn local_receipt_artifact(&self, receipt_id: &str) -> Option<LocalReceiptArtifact> {
-        let tool_match = self.receipt_log.lock().ok().and_then(|log| {
-            log.receipts()
-                .iter()
-                .find(|receipt| receipt.id == receipt_id)
-                .cloned()
-                .map(LocalReceiptArtifact::Tool)
-        });
-        if tool_match.is_some() {
-            return tool_match;
-        }
-
-        self.child_receipt_log.lock().ok().and_then(|log| {
-            log.receipts()
-                .iter()
-                .find(|receipt| receipt.id == receipt_id)
-                .cloned()
-                .map(LocalReceiptArtifact::Child)
-        })
     }
 
     fn unwind_aborted_monetary_invocation(
@@ -5492,10 +5641,23 @@ impl ChioKernel {
 
     /// Forward the validated request and optionally report actual invocation cost.
     ///
+    /// Async-native dispatch entrypoint used by `ToolEvaluator::dispatch`.
+    /// Delegates to the sync helper while the tool-server trait remains
+    /// sync-only, preserving the exact dispatch and cost-accounting semantics.
+    pub(crate) async fn dispatch_tool_call_with_cost(
+        &self,
+        request: &ToolCallRequest,
+        has_monetary_grant: bool,
+    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
+        self.dispatch_tool_call_with_cost_sync(request, has_monetary_grant)
+    }
+
+    /// Forward the validated request and optionally report actual invocation cost.
+    ///
     /// When `has_monetary_grant` is true, calls `invoke_with_cost` so the server
     /// can report the actual cost incurred. For non-monetary grants the standard
     /// dispatch path is used and cost is always None.
-    fn dispatch_tool_call_with_cost(
+    fn dispatch_tool_call_with_cost_sync(
         &self,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
@@ -5527,13 +5689,37 @@ impl ChioKernel {
     /// Build a denial response, including FinancialReceiptMetadata when the
     fn record_child_receipts(&self, receipts: Vec<ChildRequestReceipt>) -> Result<(), KernelError> {
         for receipt in receipts {
-            let _ = self.with_receipt_store(|store| Ok(store.append_child_receipt(&receipt)?))?;
-            self.child_receipt_log
-                .lock()
-                .map_err(|_| KernelError::Internal("child receipt log lock poisoned".to_string()))?
-                .append(receipt);
+            let receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
+                KernelError::Internal("receipt store write lock poisoned".to_string())
+            })?;
+            if let Some(seq) = self
+                .with_receipt_store(
+                    |store| Ok(store.append_child_receipt_returning_seq(&receipt)?),
+                )?
+                .flatten()
+            {
+                if self.should_checkpoint_after_seq(seq) {
+                    self.maybe_trigger_checkpoint_locked(seq)?;
+                }
+            }
+            drop(receipt_store_write);
+            self.append_child_receipt_to_local_log(receipt);
         }
         Ok(())
+    }
+
+    pub(crate) fn append_chio_receipt_to_local_log(&self, receipt: ChioReceipt) {
+        match self.receipt_log.lock() {
+            Ok(mut log) => log.append(receipt),
+            Err(poisoned) => poisoned.into_inner().append(receipt),
+        }
+    }
+
+    fn append_child_receipt_to_local_log(&self, receipt: ChildRequestReceipt) {
+        match self.child_receipt_log.lock() {
+            Ok(mut log) => log.append(receipt),
+            Err(poisoned) => poisoned.into_inner().append(receipt),
+        }
     }
 }
 
@@ -5790,11 +5976,18 @@ pub(crate) fn current_unix_timestamp() -> u64 {
         .unwrap_or(0)
 }
 
+#[path = "evaluator.rs"]
+pub mod evaluator;
 #[allow(dead_code)]
 #[path = "responses.rs"]
 mod responses;
 #[path = "session_ops.rs"]
 mod session_ops;
+// Mpsc-backed signing task. Owns a clone of the kernel signing keypair and
+// pulls signing requests from a bounded `tokio::sync::mpsc` channel so receipt
+// signing leaves the synchronous critical path.
+#[path = "signing_task.rs"]
+pub(crate) mod signing_task;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

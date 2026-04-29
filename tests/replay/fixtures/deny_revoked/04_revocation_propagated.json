@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "revoked",
+  "expected_verdict": "deny",
+  "family": "deny_revoked",
+  "fixed_nonce_seed_index": 33,
+  "intent": "Deny because revocation of an upstream link in the delegation chain has propagated to a downstream delegate, exercising recursive revocation propagation.",
+  "name": "deny_revoked/04_revocation_propagated",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "revocation", "delegation", "propagation"]
+}

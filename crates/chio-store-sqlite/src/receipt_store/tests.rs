@@ -97,7 +97,7 @@ fn sample_child_receipt() -> ChildRequestReceipt {
 fn sqlite_receipt_store_persists_across_reopen() {
     let path = unique_db_path("chio-receipts");
     {
-        let mut store = SqliteReceiptStore::open(&path).unwrap();
+        let store = SqliteReceiptStore::open(&path).unwrap();
         store.append_chio_receipt(&sample_receipt()).unwrap();
         store.append_child_receipt(&sample_child_receipt()).unwrap();
         assert_eq!(store.tool_receipt_count().unwrap(), 1);
@@ -114,7 +114,7 @@ fn sqlite_receipt_store_persists_across_reopen() {
 #[test]
 fn sqlite_receipt_store_lists_filtered_receipts() {
     let path = unique_db_path("chio-receipts-filtered");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
 
     store.append_chio_receipt(&sample_receipt()).unwrap();
     store.append_child_receipt(&sample_child_receipt()).unwrap();
@@ -346,6 +346,9 @@ fn tamper_persisted_tool_receipt(
     mutate: impl FnOnce(&mut ChioReceipt),
 ) {
     let connection = store.connection().unwrap();
+    connection
+        .execute_batch("DROP TRIGGER IF EXISTS chio_tool_receipts_reject_update;")
+        .unwrap();
     let raw_json = connection
         .query_row(
             "SELECT raw_json FROM chio_tool_receipts WHERE receipt_id = ?1",
@@ -729,7 +732,7 @@ fn append_chio_receipt_returning_seq_returns_seq() {
 #[test]
 fn append_chio_receipt_rejects_invalid_signature() {
     let path = unique_db_path("chio-receipts-invalid-signature");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let mut receipt = sample_receipt_with_id("rcpt-invalid-signature");
     receipt.tool_name = "sh".to_string();
 
@@ -746,7 +749,7 @@ fn append_chio_receipt_rejects_invalid_signature() {
 #[test]
 fn append_chio_receipt_rejects_mismatched_parameter_hash() {
     let path = unique_db_path("chio-receipts-invalid-parameter-hash");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let keypair = Keypair::generate();
     let receipt = ChioReceipt::sign(
         ChioReceiptBody {
@@ -838,7 +841,7 @@ fn list_tool_receipts_preserves_legacy_mismatched_parameter_hash_rows() {
 #[test]
 fn append_child_receipt_rejects_invalid_signature() {
     let path = unique_db_path("chio-child-receipts-invalid-signature");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let mut receipt = sample_child_receipt_with_id_and_timestamp("child-invalid-signature", 2);
     receipt.outcome_hash = "outcome-mutated".to_string();
 
@@ -856,7 +859,7 @@ fn append_child_receipt_rejects_invalid_signature() {
 #[test]
 fn evidence_export_rejects_tampered_persisted_tool_receipt() {
     let path = unique_db_path("chio-evidence-export-tamper");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let receipt = sample_receipt_with_id("tampered-export-receipt");
     store.append_chio_receipt(&receipt).unwrap();
     tamper_persisted_tool_receipt(&store, &receipt.id, |receipt| {
@@ -877,7 +880,7 @@ fn evidence_export_rejects_tampered_persisted_tool_receipt() {
 #[test]
 fn behavioral_feed_report_rejects_tampered_persisted_tool_receipt() {
     let path = unique_db_path("chio-behavioral-feed-tamper");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let receipt = sample_receipt_with_id("tampered-report-receipt");
     store.append_chio_receipt(&receipt).unwrap();
     tamper_persisted_tool_receipt(&store, &receipt.id, |receipt| {
@@ -915,9 +918,67 @@ fn claim_log_replay_rejects_tampered_persisted_tool_receipt() {
 }
 
 #[test]
+fn receipt_base_tables_reject_update_and_delete() {
+    let path = unique_db_path("chio-receipts-base-immutable");
+    let store = SqliteReceiptStore::open(&path).unwrap();
+
+    let tool = sample_receipt_with_id("base-immutable-tool");
+    let child = sample_child_receipt_with_id_and_timestamp("base-immutable-child", 2);
+    store.append_chio_receipt(&tool).unwrap();
+    store.append_child_receipt(&child).unwrap();
+
+    let connection = store.connection().unwrap();
+    let error = connection
+        .execute(
+            "UPDATE chio_tool_receipts SET raw_json = raw_json WHERE receipt_id = ?1",
+            rusqlite::params![tool.id],
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("tool receipts are immutable"),
+        "unexpected error: {error}"
+    );
+
+    let error = connection
+        .execute(
+            "DELETE FROM chio_tool_receipts WHERE receipt_id = ?1",
+            rusqlite::params![tool.id],
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("tool receipts are immutable"),
+        "unexpected error: {error}"
+    );
+
+    let error = connection
+        .execute(
+            "UPDATE chio_child_receipts SET raw_json = raw_json WHERE receipt_id = ?1",
+            rusqlite::params![child.id],
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("child receipts are immutable"),
+        "unexpected error: {error}"
+    );
+
+    let error = connection
+        .execute(
+            "DELETE FROM chio_child_receipts WHERE receipt_id = ?1",
+            rusqlite::params![child.id],
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("child receipts are immutable"),
+        "unexpected error: {error}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn claim_log_projection_uses_capability_lineage_when_receipt_lacks_attribution() {
     let path = unique_db_path("chio-claim-log-lineage-projection");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let subject_kp = Keypair::generate();
     let issuer_kp = Keypair::generate();
     let receipt_kp = Keypair::generate();
@@ -1370,7 +1431,7 @@ fn receipts_canonical_bytes_range_returns_correct_count() {
 #[test]
 fn receipt_log_includes_child_receipts_in_unified_surface() {
     let path = unique_db_path("chio-receipts-claim-log");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
 
     store
         .append_chio_receipt(&sample_receipt_with_id_and_timestamp("claim-tool-1", 10))
@@ -1420,9 +1481,52 @@ fn receipt_log_includes_child_receipts_in_unified_surface() {
 }
 
 #[test]
+fn append_receipt_sequences_follow_unified_claim_log() {
+    let path = unique_db_path("chio-receipts-claim-log-seq");
+    let store = SqliteReceiptStore::open(&path).unwrap();
+
+    let first_tool_seq = store
+        .append_chio_receipt_returning_seq(&sample_receipt_with_id_and_timestamp(
+            "claim-seq-tool-1",
+            10,
+        ))
+        .unwrap();
+    let child_seq = ReceiptStore::append_child_receipt_returning_seq(
+        &store,
+        &sample_child_receipt_with_id_and_timestamp("claim-seq-child-1", 11),
+    )
+    .unwrap()
+    .expect("sqlite store should return child claim-log seq");
+    let second_tool_seq = store
+        .append_chio_receipt_returning_seq(&sample_receipt_with_id_and_timestamp(
+            "claim-seq-tool-2",
+            12,
+        ))
+        .unwrap();
+
+    assert_eq!(first_tool_seq, 1);
+    assert_eq!(child_seq, 2);
+    assert_eq!(second_tool_seq, 3);
+
+    let rows = load_claim_log_rows(&store);
+    assert_eq!(
+        rows.into_iter()
+            .map(|(entry_seq, receipt_id, _, _, _)| (entry_seq, receipt_id))
+            .collect::<Vec<_>>(),
+        vec![
+            (1, "claim-seq-tool-1".to_string()),
+            (2, "claim-seq-child-1".to_string()),
+            (3, "claim-seq-tool-2".to_string()),
+        ]
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn receipt_log_includes_child_receipts_in_tree() {
     let path = unique_db_path("chio-receipts-claim-tree");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
 
     let tool_before = sample_receipt_with_id_and_timestamp("claim-tree-tool-1", 10);
     let child = sample_child_receipt_with_id_and_timestamp("claim-tree-child-1", 11);
@@ -1783,7 +1887,7 @@ fn record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_
 #[test]
 fn receipt_analytics_groups_by_agent_tool_and_time() {
     let path = unique_db_path("chio-receipts-analytics");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let keypair = Keypair::generate();
 
     let make_receipt = |id: &str,
@@ -1938,7 +2042,7 @@ fn receipt_analytics_groups_by_agent_tool_and_time() {
 #[test]
 fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
     let path = unique_db_path("chio-receipts-cost-attribution");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let issuer_kp = Keypair::generate();
     let root_kp = Keypair::generate();
     let leaf_kp = Keypair::generate();
@@ -2140,7 +2244,7 @@ fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
 #[test]
 fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_state() {
     let path = unique_db_path("chio-receipts-economic-projection");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let issuer_kp = Keypair::generate();
     let subject_kp = Keypair::generate();
     let receipt_kp = Keypair::generate();
@@ -2821,7 +2925,7 @@ fn compliance_report_counts_proof_and_lineage_coverage() {
 #[test]
 fn receipt_store_authorization_context_report_does_not_mark_asserted_call_chain_as_sender_bound() {
     let path = unique_db_path("chio-receipts-auth-asserted-call-chain");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let subject_kp = Keypair::generate();
     let issuer_kp = Keypair::generate();
     let receipt_kp = Keypair::generate();
@@ -2960,7 +3064,7 @@ fn receipt_store_authorization_context_report_does_not_mark_asserted_call_chain_
 #[test]
 fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
     let path = unique_db_path("chio-receipts-lineage-links");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let subject_kp = Keypair::generate();
     let issuer_kp = Keypair::generate();
     let parent_receipt_kp = Keypair::generate();
@@ -3257,7 +3361,7 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
 #[test]
 fn receipt_lineage_statement_links_parent_and_child_receipts() {
     let path = unique_db_path("chio-receipts-lineage-link");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let receipt_kp = Keypair::generate();
 
     let parent = ChioReceipt::sign(

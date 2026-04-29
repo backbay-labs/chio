@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "revoked",
+  "expected_verdict": "deny",
+  "family": "deny_revoked",
+  "fixed_nonce_seed_index": 30,
+  "intent": "Deny because the issuing authority has been revoked, exercising trust-anchor revocation propagating to all derived capabilities.",
+  "name": "deny_revoked/01_authority_revoked",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "revocation"]
+}

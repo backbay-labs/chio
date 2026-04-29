@@ -2295,7 +2295,7 @@ mod attestation_and_telemetry_tests {
     }
 
     impl ReceiptStore for MockReceiptStore {
-        fn append_chio_receipt(&mut self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
             assert!(receipt.action.verify_hash().unwrap());
             let mut state = self.state.lock().expect("mock store lock should hold");
             state.appended_receipts.push(receipt.clone());
@@ -2303,7 +2303,7 @@ mod attestation_and_telemetry_tests {
         }
 
         fn append_child_receipt(
-            &mut self,
+            &self,
             _receipt: &ChildRequestReceipt,
         ) -> Result<(), ReceiptStoreError> {
             Ok(())
@@ -2332,10 +2332,7 @@ mod attestation_and_telemetry_tests {
                 .collect())
         }
 
-        fn store_checkpoint(
-            &mut self,
-            checkpoint: &KernelCheckpoint,
-        ) -> Result<(), ReceiptStoreError> {
+        fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
             let mut state = self.state.lock().expect("mock store lock should hold");
             state.checkpoints.push(checkpoint.clone());
             Ok(())

@@ -1,0 +1,209 @@
+# M10 Phase 3 - OpenTelemetry GenAI fold-in. Pin opentelemetry-semantic-
+# conventions to v1.31.0 workspace-wide; emit gen_ai.tool.call spans with
+# the locked attribute set; extend chio-kernel receipt provenance with
+# otel.{trace_id, span_id}; ship chio-otel-receipt-exporter (OTLP gRPC
+# ingress -> receipt-store sink) with attribute deny-list for high-
+# cardinality keys; commit Loki/Tempo/Jaeger dashboards; demo + corpus
+# pin/CI gate. Wave 4 milestone.
+#
+# Source of truth: .planning/trajectory/10-tee-replay-harness.md
+# (Phase 3 lines 269-283; OTel attribute lock lines 284-315; chio-tee-
+# corpus GitHub release artifact lines 454-499).
+#
+# Six atomic tickets. Doc T1 (cargo feature + version pin, 0.5d) is
+# folded into T1 alongside doc T2 (gen_ai.* span emission + cardinality
+# proptest) since the feature flag is a prerequisite for the spans. Doc
+# T3 -> T2 (receipt provenance extension); doc T4 -> T3 (otel-receipt-
+# exporter crate); doc T5 -> T4 (dashboards); doc T6 -> T5 (demo).
+# T6 lands the chio-tee-corpus pin file + CI verify step (exit-criteria
+# line 551), which is operationally OTel-adjacent (replay corpus feeds
+# the Loki/Tempo/Jaeger demo).
+#
+# Wave 4 worktree branches: wave/W4/m10/p3.t{n}-...
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M10.P3.T1
+  milestone: M10
+  phase: 3
+  title: "Pin opentelemetry-semantic-conventions =1.31.0 workspace-wide and emit gen_ai.tool.call spans with locked attribute set"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "Cargo.toml"
+    - "crates/chio-mcp-edge/Cargo.toml"
+    - "crates/chio-mcp-edge/src/otel.rs"
+    - "crates/chio-a2a-edge/Cargo.toml"
+    - "crates/chio-a2a-edge/src/otel.rs"
+    - "crates/chio-acp-proxy/Cargo.toml"
+    - "crates/chio-acp-proxy/src/otel.rs"
+    - "crates/chio-kernel/Cargo.toml"
+    - "crates/chio-kernel/src/otel.rs"
+    - "crates/chio-kernel/tests/otel_cardinality.rs"
+  shared_paths:
+    - "Cargo.toml"
+    - "Cargo.lock"
+  depends_on:
+    - M10.P1.T7
+  soft_deps:
+    - "Attribute names locked at OTel attribute lock (10-tee-replay-harness.md lines 284-315): gen_ai.system, gen_ai.operation.name, gen_ai.request.model, gen_ai.tool.call.id, gen_ai.tool.name, gen_ai.response.finish_reasons, gen_ai.usage.{input,output}_tokens, plus chio.* namespace attributes."
+    - "Cardinality bounds enforced by cardinality_test proptest in crates/chio-kernel/tests/otel_cardinality.rs."
+    - "M07 provider adapters absorb the otel feature as they ship; if M07 lands first the tee inherits real adapters, otherwise M10 ships against MCP/A2A/ACP only."
+  gate_check:
+    cmd: "cargo build --workspace --features otel && cargo test -p chio-kernel --test otel_cardinality"
+  worktree_branch: "wave/W4/m10/p3.t1-otel-feature-pin-and-genai-spans"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P3.T2
+  milestone: M10
+  phase: 3
+  title: "Extend chio-kernel receipt_support.rs provenance block with otel.{trace_id, span_id}"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-kernel/src/receipt_support.rs"
+    - "crates/chio-kernel/tests/provenance_otel.rs"
+    - "spec/schemas/receipt-provenance-v1.json"
+  shared_paths:
+    - "crates/chio-kernel/src/receipt_support.rs"
+    - "spec/schemas/"
+  depends_on:
+    - M10.P3.T1
+  soft_deps:
+    - "trace_id is W3C 32-hex; span_id is W3C 16-hex (frame schema lock lines 152-160)."
+    - "Provenance block is a strict superset of M09 SBOM-style provenance so a single capture can attest to both the tool invocation and its supply chain."
+  gate_check:
+    cmd: "cargo test -p chio-kernel --test provenance_otel"
+  worktree_branch: "wave/W4/m10/p3.t2-receipt-provenance-otel-ids"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P3.T3
+  milestone: M10
+  phase: 3
+  title: "Land crates/chio-otel-receipt-exporter with OTLP gRPC ingress, receipt-store sink, and attribute deny-list filter"
+  status: pending
+  effort_days: 2.5
+  owner_glob:
+    - "crates/chio-otel-receipt-exporter/Cargo.toml"
+    - "crates/chio-otel-receipt-exporter/src/lib.rs"
+    - "crates/chio-otel-receipt-exporter/src/ingress.rs"
+    - "crates/chio-otel-receipt-exporter/src/sink.rs"
+    - "crates/chio-otel-receipt-exporter/src/denylist.rs"
+    - "crates/chio-otel-receipt-exporter/tests/denylist_strip.rs"
+    - "crates/chio-otel-receipt-exporter/tests/otlp_to_receipt.rs"
+  shared_paths:
+    - "Cargo.toml"
+    - "Cargo.lock"
+  depends_on:
+    - M10.P3.T2
+  soft_deps:
+    - "Deny-list of attribute keys forbidden from Prometheus-shaped sinks: gen_ai.tool.call.id, chio.receipt.id, chio.replay.run_id (10-tee-replay-harness.md line 315). The exporter strips them before forwarding."
+    - "Documented in docs/integrations/otel.md and enforced at the exporter layer."
+  gate_check:
+    cmd: "cargo test -p chio-otel-receipt-exporter"
+  worktree_branch: "wave/W4/m10/p3.t3-otel-receipt-exporter-crate"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P3.T4
+  milestone: M10
+  phase: 3
+  title: "Commit deploy/dashboards/{loki,tempo,jaeger}/*.json: span timeline, verdict drift heatmap, redaction-pass latency"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "deploy/dashboards/loki/chio-tee.json"
+    - "deploy/dashboards/loki/verdict-drift.json"
+    - "deploy/dashboards/tempo/span-timeline.json"
+    - "deploy/dashboards/tempo/redaction-latency.json"
+    - "deploy/dashboards/jaeger/receipt-span-lookup.json"
+    - "deploy/dashboards/README.md"
+  shared_paths: []
+  depends_on:
+    - M10.P3.T3
+  soft_deps:
+    - "Dashboards keyed on receipt id; verdict drift heatmap; redaction-pass latency. Importable as a one-command demo per deploy/dashboards/README.md."
+  gate_check:
+    cmd: "test -f deploy/dashboards/loki/chio-tee.json && test -f deploy/dashboards/tempo/span-timeline.json && test -f deploy/dashboards/jaeger/receipt-span-lookup.json && python3 -c 'import json; [json.load(open(p)) for p in [\"deploy/dashboards/loki/chio-tee.json\",\"deploy/dashboards/loki/verdict-drift.json\",\"deploy/dashboards/tempo/span-timeline.json\",\"deploy/dashboards/tempo/redaction-latency.json\",\"deploy/dashboards/jaeger/receipt-span-lookup.json\"]]'"
+  worktree_branch: "wave/W4/m10/p3.t4-loki-tempo-jaeger-dashboards"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P3.T5
+  milestone: M10
+  phase: 3
+  title: "Land examples/otel-genai end-to-end demo with bidirectional receipt-id <-> span-id lookup test"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "examples/otel-genai/README.md"
+    - "examples/otel-genai/docker-compose.yml"
+    - "examples/otel-genai/otel-collector-config.yaml"
+    - "examples/otel-genai/tests/bidirectional_lookup.rs"
+    - "docs/integrations/otel.md"
+  shared_paths: []
+  depends_on:
+    - M10.P3.T3
+    - M10.P3.T4
+  soft_deps:
+    - "Demonstrates: gen_ai.* spans visible in Jaeger for every adapter; receipt-id -> span-id and span-id -> receipt-id lookups (exit criteria line 549)."
+  gate_check:
+    cmd: "test -f examples/otel-genai/docker-compose.yml && cargo test --manifest-path examples/otel-genai/Cargo.toml --test bidirectional_lookup -- --ignored"
+  worktree_branch: "wave/W4/m10/p3.t5-otel-genai-demo-bidirectional"
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P3.T6
+  milestone: M10
+  phase: 3
+  title: "Land tests/replay/corpus_pins.toml + scripts/pull_tee_corpus.py and wire chio-replay-gate.yml verify step"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "tests/replay/corpus_pins.toml"
+    - "tests/replay/keys/chio-tee-corpus.pub"
+    - "scripts/pull_tee_corpus.py"
+    - ".github/workflows/chio-replay-gate.yml"
+  shared_paths:
+    - ".github/workflows/chio-replay-gate.yml"
+  depends_on:
+    - M10.P2.5.T3
+  soft_deps:
+    - "Pull script enforces three checks (10-tee-replay-harness.md lines 484-499): (1) GH release tag exists, (2) artifact sha256 matches the pin, (3) MANIFEST.toml.sig verifies under the integrations release public key. Any failure exits non-zero before tests run."
+    - "Release-tag pattern tee-corpus-YYYY-MM-DD; one release per weekly review cycle."
+  gate_check:
+    cmd: "actionlint .github/workflows/chio-replay-gate.yml && python3 -c 'import tomllib; tomllib.loads(open(\"tests/replay/corpus_pins.toml\").read())' && python3 scripts/pull_tee_corpus.py --help"
+  worktree_branch: "wave/W4/m10/p3.t6-tee-corpus-pin-and-pull-script"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

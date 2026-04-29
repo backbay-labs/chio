@@ -1,0 +1,217 @@
+# M05 Phase 1 - Async surface, dual-track migration.
+# Source of truth: .planning/trajectory/05-async-kernel-real.md
+# (Phase 1, lines 352-380 + migration tactic lines 423-456). Load-bearing
+# phase for the entire milestone.
+#
+# Milestone scope (from EXECUTION-BOARD.md sections 2 and 5): M05 lands in
+# Wave 2b on `wave/W2/m05/...` worktrees. P0 -> P1 -> P2 -> P3 -> P4 are
+# atomic and serial; P1 itself is a sub-wave with seven sequenced tickets.
+#
+# FREEZE WINDOW: P1 starts the kernel-mod / session.rs freeze
+# (id: m05-kernel-async-pivot in freezes.yml). The freeze is enforced via
+# CODEOWNERS hard-lock on @bb-connor + branch ruleset + the
+# `m05-freeze-guard` required check. The freeze releases at the END of P3.
+# Out-of-band production-blocking bug fixes route through the `hotfix/<slug>`
+# lane with the `[M05]` bypass label and a single-reviewer override
+# documented in the audit doc.
+#
+# CROSS-MILESTONE GATE: P1.T3's merged_sha gates M06 P1 start. M06 Phase 1
+# (`bindgen!` async = true host wiring) depends on the receipt-signing mpsc
+# channel landing first, AND on the guard host-call payload contract
+# (`level: u32`, `msg: string`, `key: string -> option<string>`, `() -> u64`)
+# remaining byte-for-byte stable across this PR. See M05 doc lines 690-703.
+#
+# M05 is a TRUST-BOUNDARY milestone: receipt signing, capability semantics,
+# and dispatch all sit on this surface. Security x2 review applies to every
+# M05 PR (two independent LLM reviewer instances with different seeds and no
+# shared scratchpad), in addition to the human-side reviewer @bb-connor.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M05.P1.T1
+  milestone: M05
+  phase: 1
+  title: Extract trait ToolEvaluator splitting evaluate_tool_call into async-capable steps
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-kernel/src/kernel/evaluator.rs
+    - crates/chio-kernel/src/kernel/mod.rs
+    - crates/chio-kernel/src/lib.rs
+  shared_paths: []
+  depends_on:
+    - M05.P0.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-kernel --quiet && cargo test -p chio-kernel --quiet && cargo clippy -p chio-kernel -- -D warnings
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p1.t1-tool-evaluator-trait-extract
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P1.T2
+  milestone: M05
+  phase: 1
+  title: Rename evaluate_tool_call_sync_with_session_roots to *_sync_inner and mark doc(hidden)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-kernel/src/kernel/mod.rs
+  shared_paths: []
+  depends_on:
+    - M05.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: grep -q 'evaluate_tool_call_sync_inner' crates/chio-kernel/src/kernel/mod.rs && grep -q 'doc(hidden)' crates/chio-kernel/src/kernel/mod.rs && cargo test -p chio-kernel --quiet
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m05/p1.t2-rename-sync-inner-doc-hidden
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P1.T3
+  milestone: M05
+  phase: 1
+  title: Move receipt signing onto mpsc-backed signing task
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-kernel/src/kernel/evaluator.rs
+    - crates/chio-kernel/src/kernel/mod.rs
+    - crates/chio-kernel/tests/receipt_signing_async.rs
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M05.P1.T2
+  soft_deps:
+    - M03.P1.T3
+    - M04.P1.T1
+  gate_check:
+    cmd: cargo test -p chio-kernel --test receipt_signing_async
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m05/p1.t3-mpsc-receipt-signing
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P1.T4
+  milestone: M05
+  phase: 1
+  title: Migrate dispatch_tool_call_with_cost to async-native ToolEvaluator path
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-kernel/src/kernel/evaluator.rs
+    - crates/chio-kernel/src/kernel/mod.rs
+  shared_paths: []
+  depends_on:
+    - M05.P1.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --quiet && cargo clippy -p chio-kernel -- -D warnings
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p1.t4-dispatch-with-cost-async
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P1.T5
+  milestone: M05
+  phase: 1
+  title: Add legacy-sync feature flag and deprecate evaluate_tool_call_blocking
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel/Cargo.toml
+    - crates/chio-kernel/src/lib.rs
+    - crates/chio-kernel/src/kernel/mod.rs
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M05.P1.T4
+  soft_deps: []
+  gate_check:
+    cmd: grep -q 'legacy-sync' crates/chio-kernel/Cargo.toml && grep -q 'deprecated' crates/chio-kernel/src/kernel/mod.rs && cargo build -p chio-kernel --no-default-features --quiet && cargo build -p chio-kernel --features legacy-sync --quiet
+    timeout_seconds: 900
+  worktree_branch: wave/W2/m05/p1.t5-legacy-sync-feature-deprecation
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P1.T6
+  milestone: M05
+  phase: 1
+  title: Update in-tree callers to async path and freeze pub use surface
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-kernel/src/lib.rs
+    - crates/chio-cli/**
+    - crates/chio-mcp-edge/**
+    - crates/chio-mcp-adapter/**
+    - crates/chio-a2a-edge/**
+    - crates/chio-acp-edge/**
+    - crates/chio-acp-proxy/**
+    - crates/chio-control-plane/**
+    - .planning/audits/M05-async-kernel.md
+  shared_paths: []
+  depends_on:
+    - M05.P1.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo test --workspace --quiet && cargo clippy --workspace -- -D warnings
+    timeout_seconds: 1800
+  worktree_branch: wave/W2/m05/p1.t6-intree-callers-async-and-pubuse-freeze
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P1.T7
+  milestone: M05
+  phase: 1
+  title: Add dual-track byte-identity test asserting async/sync paths produce identical receipts (M04 goldens)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel/tests/dual_track_receipt_identity.rs
+  shared_paths: []
+  depends_on:
+    - M05.P1.T6
+  soft_deps:
+    - M04.P1.T1
+  gate_check:
+    cmd: cargo test -p chio-kernel --features legacy-sync --test dual_track_receipt_identity
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m05/p1.t7-dual-track-byte-identity-test
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

@@ -28,12 +28,23 @@
 
 mod error;
 mod evaluator;
+mod host_call;
 mod identity;
+mod kernel_service;
 mod layer;
 mod service;
 
 pub use error::ChioTowerError;
 pub use evaluator::{ChioEvaluator, EvaluationResult};
+pub use host_call::{
+    normalize_host_call_metric_label, HOST_CALL_FETCH_BLOB, HOST_CALL_GET_CONFIG,
+    HOST_CALL_GET_TIME_UNIX_SECS, HOST_CALL_LOG, HOST_CALL_METRIC_LABEL_VALUES,
+};
 pub use identity::{extract_identity, IdentityExtractor};
+pub use kernel_service::{
+    build_layered, KernelRequest, KernelResponse, KernelService, KernelServiceError,
+    KernelTraceLayer, KernelTraceService, TenantConcurrencyLimitLayer,
+    TenantConcurrencyLimitService, TenantId,
+};
 pub use layer::ChioLayer;
 pub use service::ChioService;

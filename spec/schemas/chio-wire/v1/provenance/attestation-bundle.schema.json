@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/provenance/attestation-bundle/v1",
+  "title": "Chio Provenance Attestation Bundle",
+  "description": "One bundle of corroborating runtime attestation evidence statements that anchor a governed call-chain context to a verified runtime. Names the `chainId` it binds to (matching `provenance/context.schema.json`), the canonical evidence-class Chio resolved across the bundle, the unix-second `assembledAt` timestamp, and the ordered list of normalized statements. Each statement mirrors the `RuntimeAttestationEvidence` shape and is structurally identical to `chio-wire/v1/trust-control/attestation.schema.json`; the family is inlined rather than `$ref`'d. Field names are camelCase to match `GovernedCallChainContext`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "chainId",
+    "evidenceClass",
+    "assembledAt",
+    "statements"
+  ],
+  "properties": {
+    "chainId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier of the governed call chain this bundle attests. Matches the `chainId` carried by `provenance/context.schema.json`."
+    },
+    "evidenceClass": {
+      "type": "string",
+      "enum": ["asserted", "observed", "verified"],
+      "description": "Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it."
+    },
+    "assembledAt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix timestamp (seconds) at which the bundle was assembled. Used to bound bundle freshness and to establish ordering with respect to receipts emitted from the same kernel."
+    },
+    "statements": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of normalized runtime attestation evidence statements. Each statement is structurally identical to `chio-wire/v1/trust-control/attestation.schema.json` and mirrors `RuntimeAttestationEvidence` in `crates/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so the per-statement scalar fields are snake_case; the embedded `workload_identity` carries `serde(rename_all = camelCase)` so its inner fields are camelCase. Optional fields (`runtime_identity`, `workload_identity`, `claims`) are omitted from the wire when their underlying `Option<...>` is `None`.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "verifier",
+          "tier",
+          "issued_at",
+          "expires_at",
+          "evidence_sha256"
+        ],
+        "properties": {
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Schema or format identifier of the upstream attestation statement (for example `azure-maa-jwt`, `aws-nitro-cose-sign1`, `google-confidential-vm-jwt`)."
+          },
+          "verifier": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Attestation verifier or relying party that accepted the evidence."
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["none", "basic", "attested", "verified"],
+            "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240)."
+          },
+          "issued_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix timestamp (seconds) when this attestation was issued."
+          },
+          "expires_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unix timestamp (seconds) when this attestation expires. Bundle assembly fails closed when `assembledAt < issued_at` or `assembledAt >= expires_at`."
+          },
+          "evidence_sha256": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable SHA-256 digest of the attestation evidence payload. Used as the binding identifier for receipts and for sender-constrained continuity proofs."
+          },
+          "runtime_identity": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional runtime or workload identifier associated with the evidence. SPIFFE URIs are normalized into `workload_identity`; non-SPIFFE values are preserved as opaque verifier metadata. Omitted via `serde(skip_serializing_if = Option::is_none)` when absent."
+          },
+          "workload_identity": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scheme", "credentialKind", "uri", "trustDomain", "path"],
+            "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in capability.rs (lines 290-304) which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.",
+            "properties": {
+              "scheme": {
+                "type": "string",
+                "enum": ["spiffe"],
+                "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278)."
+              },
+              "credentialKind": {
+                "type": "string",
+                "enum": ["uri", "x509_svid", "jwt_svid"],
+                "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`."
+              },
+              "uri": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Canonical workload identifier URI."
+              },
+              "trustDomain": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Stable trust domain resolved from the identifier."
+              },
+              "path": {
+                "type": "string",
+                "description": "Canonical workload path within the trust domain."
+              }
+            }
+          },
+          "claims": {
+            "description": "Optional structured claims preserved for adapters or operator inspection. Verifier-family-specific (for example `claims.azureMaa`, `claims.awsNitro`, `claims.googleAttestation`) and validated by per-vendor bridges, not by this schema. Omitted when the verifier did not expose preserved claims. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/claims`."
+          }
+        }
+      }
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional identifier of the bundle assembler (kernel, gateway, or trust-control authority). Omitted when the bundle is locally assembled by the receiving kernel."
+    }
+  }
+}

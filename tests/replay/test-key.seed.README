@@ -1,0 +1,63 @@
+chio-replay-gate test signing seed
+==================================
+
+WARNING: NON-PRODUCTION TEST KEY MATERIAL.
+
+This file (`test-key.seed`) holds the 32 raw bytes of an Ed25519 signing
+seed used exclusively by the M04 deterministic-replay gate. It is NOT a
+secret and MUST NOT be reused for any production credential, capability
+issuer, or signing role.
+
+Derivation
+----------
+
+The seed is the SHA-256 digest of the literal ASCII byte string:
+
+    chio-replay-gate-non-production-test-seed-v1
+
+In Python (reference):
+
+    import hashlib
+    seed = hashlib.sha256(
+        b"chio-replay-gate-non-production-test-seed-v1"
+    ).digest()
+    assert len(seed) == 32
+
+This "nothing-up-my-sleeve" derivation lets any reviewer recompute the
+seed bytes from a single short ASCII string, so the test material has no
+hidden provenance.
+
+Hex (lowercase, no separators):
+
+    1335337915b7d8b81391fa776eee31a5808cbab959aa3dcc91f93049cbf4fd44
+
+Loader contract
+---------------
+
+`ScenarioDriver::new` (in `tests/replay/src/driver.rs`) reads
+`tests/replay/test-key.seed`, asserts the file is exactly 32 bytes, and
+constructs an `ed25519_dalek::SigningKey` via
+`SigningKey::from_bytes(&seed)`. The driver then uses that signing key
+together with a fixed clock and a deterministic nonce counter so that
+replayed receipts are byte-identical across machines and OSes.
+
+Integrity
+---------
+
+`test-key.seed.sha256` holds the lowercase hex SHA-256 of `test-key.seed`
+on a single line with no trailing newline:
+
+    b32580c7001b8ad7cc9d29d4f8d4faf2ad067db558add9bb7e02bf8f5f9a01af
+
+Future replay-gate CI lanes can reverify the seed by comparing
+`sha256(test-key.seed)` against the hex stored in
+`test-key.seed.sha256`. Any drift indicates either tampering or an
+accidental edit and MUST fail the gate.
+
+Do not reuse
+------------
+
+This signing seed is checked into source. Treat it like any other test
+fixture: do NOT issue real credentials with it, do NOT import it into a
+production HSM or KMS, and do NOT include the resulting verifying key in
+a production trust root.

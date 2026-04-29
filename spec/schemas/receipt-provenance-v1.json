@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/receipt-provenance-v1.json",
+  "title": "Chio receipt provenance v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["otel"],
+  "properties": {
+    "otel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace_id", "span_id"],
+      "properties": {
+        "trace_id": {
+          "type": "string",
+          "pattern": "^(?!0{32}$)[0-9a-f]{32}$"
+        },
+        "span_id": {
+          "type": "string",
+          "pattern": "^(?!0{16}$)[0-9a-f]{16}$"
+        }
+      }
+    },
+    "supply_chain": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

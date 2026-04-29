@@ -275,7 +275,7 @@ fn seed_subject_history(
         )
         .expect("issue capability");
 
-    let mut receipt_store = SqliteReceiptStore::open(receipt_db_path).expect("open receipt store");
+    let receipt_store = SqliteReceiptStore::open(receipt_db_path).expect("open receipt store");
     receipt_store
         .record_capability_snapshot(&capability, None)
         .expect("record capability snapshot");
@@ -301,7 +301,7 @@ fn seed_subject_history(
         ))
         .expect("append second receipt");
 
-    let mut budget_store = SqliteBudgetStore::open(budget_db_path).expect("open budget store");
+    let budget_store = SqliteBudgetStore::open(budget_db_path).expect("open budget store");
     assert!(
         budget_store
             .try_charge_cost(&capability.id, 0, Some(10), 25, Some(50), Some(500))

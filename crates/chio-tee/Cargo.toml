@@ -1,0 +1,49 @@
+[package]
+name = "chio-tee"
+description = "Chio TEE shadow runner: replays kernel decisions inside a TEE for attestation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+default = []
+# FIPS smoke builds route Chio signing surfaces through chio-core-types'
+# aws-lc-rs backed FIPS feature without changing default builds.
+fips = ["chio-core/fips"]
+
+[lib]
+name = "chio_tee"
+
+[[bin]]
+name = "chio-tee"
+path = "src/main.rs"
+
+[dependencies]
+chio-tee-frame = { path = "../chio-tee-frame" }
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-data-guards-redactors-default = { path = "../chio-data-guards/redactors/default" }
+chio-store-sqlite = { path = "../chio-store-sqlite" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+arc-swap = { workspace = true }
+toml = "0.8"
+# Pinned to 1.8.x; the derive feature provides the `Zeroize` + `ZeroizeOnDrop`
+# derives used by `RawPayloadBuffer` in `src/buffer.rs`.
+zeroize = { version = "1.8", features = ["derive"] }
+
+[target.'cfg(unix)'.dependencies]
+# Signal handling for SIGUSR1 hot-toggle. Linux/BSD/macOS only; the toggle
+# path is RPC-only on Windows.
+signal-hook = "0.3"
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

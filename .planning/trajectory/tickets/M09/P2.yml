@@ -1,0 +1,115 @@
+# M09 Phase 2 - SBOM, embedded auditable metadata, SLSA L2 provenance,
+# and the quarterly TUF re-bake workflow.
+# Source of truth: .planning/trajectory/09-supply-chain-attestation.md
+# (Phase 2, starts ~line 208) plus the round-2 README reconciliation that
+# adds the trust-root re-bake job.
+# Cosign keyless signing of release artifacts lands in M09 P3 (alongside
+# chio-attest-verify); reproducible-build CI lands in M09 P4. Both are
+# deliberately out of scope here.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M09.P2.T1
+  milestone: M09
+  phase: 2
+  title: "Embed cargo-auditable dependency graph into release-binaries.yml builds"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "Cargo.toml"
+    - ".github/workflows/release-binaries.yml"
+  shared_paths:
+    - "Cargo.toml"
+    - ".github/workflows/release-binaries.yml"
+  depends_on:
+    - M09.P1.T11
+  soft_deps:
+    - "M06 (chio-wasm-guards consumes attest-verify in M09 P3, not P2)"
+  gate_check:
+    cmd: "cargo install cargo-auditable --locked && cargo auditable build --release -p chio-cli && cargo audit -f /dev/null"
+  worktree_branch: "wave/W1/m09/p2.t1-cargo-auditable"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P2.T2
+  milestone: M09
+  phase: 2
+  title: "Emit CycloneDX 1.6 SBOM per release archive via pinned syft v1.18.1"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/release-binaries.yml"
+    - "infra/sbom/syft.yaml"
+    - "docs/install/PUBLISHING.md"
+  shared_paths:
+    - ".github/workflows/release-binaries.yml"
+  depends_on:
+    - M09.P1.T11
+    - M09.P2.T1
+  soft_deps: []
+  gate_check:
+    cmd: "syft -o cyclonedx-json target/release/chio | jq -e '.bomFormat == \"CycloneDX\" and .specVersion == \"1.6\"'"
+  worktree_branch: "wave/W1/m09/p2.t2-syft-cyclonedx-sbom"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P2.T3
+  milestone: M09
+  phase: 2
+  title: "Land slsa.yml wiring slsa-github-generator v2.1.0 for SLSA L2 provenance"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - ".github/workflows/slsa.yml"
+    - ".github/workflows/release-binaries.yml"
+    - "docs/install/PUBLISHING.md"
+  shared_paths:
+    - ".github/workflows/release-binaries.yml"
+  depends_on:
+    - M09.P1.T11
+    - M09.P2.T1
+  soft_deps:
+    - "M06 (consumes attest-verify in M09 P3, not P2)"
+  gate_check:
+    cmd: "actionlint .github/workflows/slsa.yml"
+  worktree_branch: "wave/W1/m09/p2.t3-slsa-l2-provenance"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P2.T4
+  milestone: M09
+  phase: 2
+  title: "Schedule quarterly TUF trust-root re-bake workflow (tuf-rebake.yml)"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - ".github/workflows/tuf-rebake.yml"
+  shared_paths: []
+  depends_on:
+    - M09.P1.T11
+  soft_deps:
+    - "M09.P3 (re-bake target lives inside chio-attest-verify; workflow is authored in P2 but lands its real diff against the crate once P3 merges)"
+  gate_check:
+    cmd: "actionlint .github/workflows/tuf-rebake.yml"
+  worktree_branch: "wave/W1/m09/p2.t4-quarterly-tuf-rebake"
+  agent_role: supply-chain
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

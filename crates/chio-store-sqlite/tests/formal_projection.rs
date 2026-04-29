@@ -70,7 +70,7 @@ fn receipt(id: &str, capability_id: &str) -> ChioReceipt {
 fn sqlite_revocation_projection_preserves_token_and_ancestor_membership() {
     let path = temp_path("formal-revocation-projection");
     {
-        let mut store = SqliteRevocationStore::open(&path).unwrap();
+        let store = SqliteRevocationStore::open(&path).unwrap();
         assert!(store.revoke("cap-token").unwrap());
         assert!(store.revoke("cap-ancestor").unwrap());
     }
@@ -84,7 +84,7 @@ fn sqlite_revocation_projection_preserves_token_and_ancestor_membership() {
 #[test]
 fn sqlite_budget_projection_atomic_commits_do_not_overspend() {
     let path = temp_path("formal-budget-projection");
-    let mut store = SqliteBudgetStore::open(&path).unwrap();
+    let store = SqliteBudgetStore::open(&path).unwrap();
 
     assert!(store
         .try_charge_cost("cap-budget", 0, None, 70, Some(100), Some(100))
@@ -101,7 +101,7 @@ fn sqlite_budget_projection_atomic_commits_do_not_overspend() {
 #[test]
 fn sqlite_budget_projection_idempotent_retry_does_not_double_charge() {
     let path = temp_path("formal-budget-idempotent");
-    let mut store = SqliteBudgetStore::open(&path).unwrap();
+    let store = SqliteBudgetStore::open(&path).unwrap();
 
     assert!(store
         .try_charge_cost_with_ids(
@@ -136,7 +136,7 @@ fn sqlite_budget_projection_idempotent_retry_does_not_double_charge() {
 #[test]
 fn sqlite_receipt_projection_persists_signed_receipts() {
     let path = temp_path("formal-receipt-projection");
-    let mut store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).unwrap();
     let receipt = receipt("rcpt-projection", "cap-projection");
 
     store.append_chio_receipt(&receipt).unwrap();

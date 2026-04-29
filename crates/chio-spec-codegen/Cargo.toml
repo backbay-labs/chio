@@ -1,0 +1,29 @@
+[package]
+name = "chio-spec-codegen"
+description = "Schema-to-Rust codegen pipeline for chio-wire (typify backend)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_spec_codegen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chio-spec-codegen"
+path = "src/main.rs"
+
+# typify =0.4.3 is pinned; see xtask/codegen-tools.lock.toml for the
+# cross-language pin set.
+[dependencies]
+typify = "=0.4.3"
+schemars = "0.8"
+serde_json = { workspace = true }
+prettyplease = "0.2"
+syn = { version = "2", features = ["full"] }
+
+[lints]
+workspace = true

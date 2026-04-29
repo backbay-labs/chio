@@ -13,10 +13,20 @@ name = "chio_wasm_guards"
 
 [features]
 default = []
-# Enable the wasmtime-based runtime backend.
-wasmtime-runtime = ["dep:wasmtime", "dep:wasmparser"]
+# Enable the wasmtime-based runtime backend. WIT contract: `chio:guard@0.2.0`
+# (see `wit/chio-guard/world.wit` and `docs/guards/MIGRATION-0.1-to-0.2.md`).
+wasmtime-runtime = ["dep:wasmtime", "dep:wasmparser", "dep:pollster"]
+# Declares that this crate's tracing spans are stable for exporters wired with
+# tracing-opentelemetry by the embedding binary.
+tracing-opentelemetry = []
+# Enables `chio_wasm_guards::fuzz`, the libFuzzer entry-point module.
+# Off by default; turned on only by the `chio-fuzz` standalone workspace
+# at `../../fuzz`. Pulls in `wasmtime-runtime` because the
+# preinstantiate-validate trust boundary lives in `ComponentBackend`.
+fuzz = ["dep:arbitrary", "wasmtime-runtime"]
 
 [dependencies]
+arc-swap = { workspace = true }
 chio-kernel = { path = "../chio-kernel" }
 chio-core = { path = "../chio-core" }
 chio-config = { path = "../chio-config" }
@@ -28,15 +38,24 @@ serde_json = { workspace = true }
 serde_yml = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+notify = "8"
+tokio = { workspace = true }
 tracing = { workspace = true }
 wasmparser = { version = "0.221", optional = true }
-wasmtime = { version = "29", optional = true }
+wasmtime = { version = "43.0.1", optional = true }
+pollster = { version = "0.4", optional = true }
+# `arbitrary` is gated behind the `fuzz` feature so production builds stay
+# free of fuzz instrumentation. Pulled in by
+# `fuzz/fuzz_targets/wasm_preinstantiate_validate.rs` via
+# `chio-wasm-guards = { features = ["fuzz"] }`.
+arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
 rand_core = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["registry"] }
 wat = "1.246"
 
 [[bench]]

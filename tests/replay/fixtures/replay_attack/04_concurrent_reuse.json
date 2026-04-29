@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "replay",
+  "expected_verdict": "deny",
+  "family": "replay_attack",
+  "fixed_nonce_seed_index": 43,
+  "intent": "Deny because two concurrent submissions share the same nonce, exercising the race-safe single-consumer guarantee on the nonce store.",
+  "name": "replay_attack/04_concurrent_reuse",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "replay", "nonce-reuse", "concurrency"]
+}

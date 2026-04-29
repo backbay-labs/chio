@@ -1,6 +1,7 @@
 mod load;
 mod model;
 mod native_suite;
+pub mod peers;
 mod report;
 mod runner;
 
@@ -15,6 +16,10 @@ pub use native_suite::{
     run_native_conformance_suite, NativeConformanceRunOptions, NativeConformanceRunSummary,
     NativeDriver, NativeFixtureRequest, NativeFixtureResponse, NativeScenarioCategory,
     NativeScenarioDescriptor, NativeScenarioResult, NativeStatus, NativeSuiteError,
+};
+pub use peers::{
+    default_peers_lock_path, sha256_hex, PeerEntry, PeersLock, PeersLockError, PEERS_LOCK_FILENAME,
+    PEERS_LOCK_SCHEMA, SUPPORTED_LANGUAGES,
 };
 pub use report::generate_markdown_report;
 pub use runner::{

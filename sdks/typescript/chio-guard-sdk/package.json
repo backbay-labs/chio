@@ -1,0 +1,18 @@
+{
+  "name": "@chio-protocol/guard-sdk",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "TypeScript SDK for writing chio:guard@0.2.0 components",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "generate-types": "jco types --world-name guard --out-dir ./src/types ../../../wit/chio-guard",
+    "transpile": "jco transpile ../../../wit/chio-guard --world-name guard --out-dir ./src/generated"
+  },
+  "devDependencies": {
+    "@bytecodealliance/jco": "1.17.6",
+    "typescript": "~5.7.0"
+  }
+}

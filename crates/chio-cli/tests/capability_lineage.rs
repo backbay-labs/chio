@@ -5,6 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -130,11 +131,18 @@ fn spawn_trust_service(
     ServerGuard { child }
 }
 
-fn wait_for_trust_service(client: &Client, base_url: &str) {
-    for _ in 0..50 {
+fn wait_for_trust_service(client: &Client, base_url: &str, service: &mut ServerGuard) {
+    for _ in 0..150 {
         match client.get(format!("{base_url}/health")).send() {
             Ok(response) if response.status() == reqwest::StatusCode::OK => return,
             Ok(_) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(100)),
+        }
+        if let Some(status) = service.child.try_wait().expect("poll trust service") {
+            let mut stderr = String::new();
+            if let Some(child_stderr) = service.child.stderr.as_mut() {
+                let _ = child_stderr.read_to_string(&mut stderr);
+            }
+            panic!("trust service exited before becoming ready (status {status}): {stderr}");
         }
     }
     panic!("trust service did not become ready");
@@ -153,7 +161,7 @@ fn issue_capability_records_lineage_snapshot() {
     let service_token = "lineage-test-token";
     let base_url = format!("http://{listen}");
 
-    let _service = spawn_trust_service(
+    let mut service = spawn_trust_service(
         listen,
         service_token,
         &receipt_db_path,
@@ -163,7 +171,7 @@ fn issue_capability_records_lineage_snapshot() {
     );
 
     let client = Client::builder().build().expect("build reqwest client");
-    wait_for_trust_service(&client, &base_url);
+    wait_for_trust_service(&client, &base_url, &mut service);
 
     // Generate a fresh Ed25519 keypair for the subject (agent).
     // We encode the public key as hex for the request body.
@@ -254,7 +262,7 @@ fn authority_endpoints_require_auth_and_rotate_generation() {
     let service_token = "authority-http-token";
     let base_url = format!("http://{listen}");
 
-    let _service = spawn_trust_service(
+    let mut service = spawn_trust_service(
         listen,
         service_token,
         &receipt_db_path,
@@ -264,7 +272,7 @@ fn authority_endpoints_require_auth_and_rotate_generation() {
     );
 
     let client = Client::builder().build().expect("build reqwest client");
-    wait_for_trust_service(&client, &base_url);
+    wait_for_trust_service(&client, &base_url, &mut service);
 
     let unauthorized = client
         .get(format!("{base_url}/v1/authority"))
@@ -330,7 +338,7 @@ fn issue_capability_rejects_invalid_public_key() {
     let service_token = "invalid-capability-key-token";
     let base_url = format!("http://{listen}");
 
-    let _service = spawn_trust_service(
+    let mut service = spawn_trust_service(
         listen,
         service_token,
         &receipt_db_path,
@@ -340,7 +348,7 @@ fn issue_capability_rejects_invalid_public_key() {
     );
 
     let client = Client::builder().build().expect("build reqwest client");
-    wait_for_trust_service(&client, &base_url);
+    wait_for_trust_service(&client, &base_url, &mut service);
 
     let response = client
         .post(format!("{base_url}/v1/capabilities/issue"))
@@ -375,7 +383,7 @@ fn issue_capability_rejects_conflicting_runtime_attestation_binding() {
     let service_token = "invalid-runtime-attestation-token";
     let base_url = format!("http://{listen}");
 
-    let _service = spawn_trust_service(
+    let mut service = spawn_trust_service(
         listen,
         service_token,
         &receipt_db_path,
@@ -385,7 +393,7 @@ fn issue_capability_rejects_conflicting_runtime_attestation_binding() {
     );
 
     let client = Client::builder().build().expect("build reqwest client");
-    wait_for_trust_service(&client, &base_url);
+    wait_for_trust_service(&client, &base_url, &mut service);
 
     let subject_kp = Keypair::generate();
     let response = client

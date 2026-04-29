@@ -1,0 +1,9 @@
+openapi: 3.0.3
+info:
+  title: truncated
+  version: "1.0.0"
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      par

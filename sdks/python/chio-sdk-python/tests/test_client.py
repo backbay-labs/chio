@@ -47,7 +47,7 @@ def _make_token_dict() -> dict:
                 {
                     "server_id": "s",
                     "tool_name": "t",
-                    "operations": ["Invoke"],
+                    "operations": ["invoke"],
                 }
             ]
         },

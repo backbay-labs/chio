@@ -1,0 +1,30 @@
+{
+  "schema": "chio.size-budget/v1",
+  "comment": "Per-runtime gzipped wasm size ceilings for the Chio TypeScript SDK. Numbers come from .planning/trajectory/08-browser-edge-sdk.md success criteria. The size-budget.sh wrapper iterates this table, gzips each declared wasm artifact, and fails the build if any entry exceeds its ceiling. Missing artifacts soft-skip when the wasm-pack output has not been generated yet.",
+  "budgets": {
+    "browser": {
+      "package": "@chio-protocol/browser",
+      "wasm_path": "sdks/typescript/packages/browser/pkg/chio_kernel_browser_bg.wasm",
+      "gzipped_kb": 300,
+      "rationale": "M08 success criterion: < 300 KB gzipped for the browser tarball; wasm artifact dominates the tarball size."
+    },
+    "workers": {
+      "package": "@chio-protocol/workers",
+      "wasm_path": "sdks/typescript/packages/workers/pkg/chio_kernel_browser_bg.wasm",
+      "gzipped_kb": 350,
+      "rationale": "Cloudflare Workers compressed bundle limit is 3 MB; we hold the SDK wasm contribution to 350 KB to leave 650 KB headroom inside the 1 MB self-imposed total."
+    },
+    "edge": {
+      "package": "@chio-protocol/edge",
+      "wasm_path": "sdks/typescript/packages/edge/pkg/chio_kernel_browser_bg.wasm",
+      "gzipped_kb": 350,
+      "rationale": "Vercel Edge Function bundle limit is 1 MB compressed; SDK wasm contribution capped at 350 KB to leave room for user code."
+    },
+    "deno": {
+      "package": "@chio-protocol/deno",
+      "wasm_path": "sdks/typescript/packages/deno/pkg/chio_kernel_browser_bg.wasm",
+      "gzipped_kb": 400,
+      "rationale": "Deno Deploy isolate limit is 50 MB; ceiling kept at 400 KB to bound cold-start cost rather than fit a hard limit."
+    }
+  }
+}

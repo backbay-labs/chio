@@ -128,8 +128,8 @@ fn route_constants_match_spec() {
     assert_eq!(EMERGENCY_ADMIN_TOKEN_HEADER, "X-Admin-Token");
 }
 
-#[test]
-fn stop_then_evaluate_returns_deny() {
+#[tokio::test]
+async fn stop_then_evaluate_returns_deny() {
     let admin = admin(build_kernel());
     let agent = Keypair::generate();
     let cap = issue_capability(&admin, &agent);
@@ -137,7 +137,8 @@ fn stop_then_evaluate_returns_deny() {
     // Baseline allow.
     let allow_response = admin
         .kernel()
-        .evaluate_tool_call_blocking(&make_request("baseline", &cap))
+        .evaluate_tool_call(&make_request("baseline", &cap))
+        .await
         .expect("baseline evaluate");
     assert_eq!(allow_response.verdict, KernelVerdict::Allow);
 
@@ -150,14 +151,15 @@ fn stop_then_evaluate_returns_deny() {
     // Now every evaluate must deny with the emergency reason.
     let denied = admin
         .kernel()
-        .evaluate_tool_call_blocking(&make_request("after-stop", &cap))
+        .evaluate_tool_call(&make_request("after-stop", &cap))
+        .await
         .expect("post-stop evaluate");
     assert_eq!(denied.verdict, KernelVerdict::Deny);
     assert_eq!(denied.reason.as_deref(), Some(EMERGENCY_STOP_DENY_REASON));
 }
 
-#[test]
-fn resume_restores_normal_operation() {
+#[tokio::test]
+async fn resume_restores_normal_operation() {
     let admin = admin(build_kernel());
     let agent = Keypair::generate();
     let cap = issue_capability(&admin, &agent);
@@ -166,7 +168,8 @@ fn resume_restores_normal_operation() {
     handle_emergency_stop(&admin, Some(ADMIN_TOKEN), &body).expect("stop");
     let denied = admin
         .kernel()
-        .evaluate_tool_call_blocking(&make_request("req-stopped", &cap))
+        .evaluate_tool_call(&make_request("req-stopped", &cap))
+        .await
         .expect("evaluate while stopped");
     assert_eq!(denied.verdict, KernelVerdict::Deny);
 
@@ -176,7 +179,8 @@ fn resume_restores_normal_operation() {
 
     let allow = admin
         .kernel()
-        .evaluate_tool_call_blocking(&make_request("req-resumed", &cap))
+        .evaluate_tool_call(&make_request("req-resumed", &cap))
+        .await
         .expect("evaluate after resume");
     assert_eq!(allow.verdict, KernelVerdict::Allow);
 }

@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "revoked",
+  "expected_verdict": "deny",
+  "family": "deny_revoked",
+  "fixed_nonce_seed_index": 31,
+  "intent": "Deny because a delegated capability mid-chain has been revoked, exercising per-delegate revocation independent of the authority.",
+  "name": "deny_revoked/02_delegate_revoked",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "revocation", "delegation"]
+}

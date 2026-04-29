@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "expired",
+  "expected_verdict": "deny",
+  "family": "deny_expired",
+  "fixed_nonce_seed_index": 23,
+  "intent": "Deny a capability that was revoked and has subsequently expired, exercising the precedence ordering between expiry and revocation when both apply.",
+  "name": "deny_expired/05_post_revocation_expiry",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "expired", "revocation"]
+}

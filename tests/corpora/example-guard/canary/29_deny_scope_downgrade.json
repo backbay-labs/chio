@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "write_file",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 29,
+      "verdict": "deny",
+      "reason": "scope downgrade denied"
+    },
+    "scopes": [
+      "example-server:read_file"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"scope downgrade denied\"}"
+}

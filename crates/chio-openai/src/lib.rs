@@ -24,6 +24,17 @@ use chio_manifest::{ToolDefinition, ToolManifest};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+#[cfg(feature = "provider-adapter")]
+pub mod adapter;
+
+#[cfg(feature = "provider-adapter")]
+pub use adapter::{
+    OpenAiAdapter, OpenAiAdapterConfig as OpenAiProviderAdapterConfig, OPENAI_RESPONSES_API_VERSION,
+};
+
+#[cfg(feature = "provider-adapter")]
+pub mod streaming;
+
 /// Errors produced by the OpenAI adapter.
 #[derive(Debug, thiserror::Error)]
 pub enum OpenAiAdapterError {
@@ -192,6 +203,7 @@ impl ChioOpenAiAdapter {
             description: Some("Chio tools exposed via OpenAI function calling".to_string()),
             version: config.server_version.clone(),
             tools: all_tools,
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: config.public_key.clone(),
         };
@@ -396,51 +408,112 @@ impl ChioOpenAiAdapter {
     }
 
     /// Extract tool calls from a Chat Completions response message.
-    pub fn extract_tool_calls(message: &Value) -> Vec<OpenAiToolCall> {
-        message
-            .get("tool_calls")
-            .and_then(Value::as_array)
-            .map(|calls| {
-                calls
-                    .iter()
-                    .filter_map(|call| serde_json::from_value::<OpenAiToolCall>(call.clone()).ok())
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
+    pub fn extract_tool_calls(message: &Value) -> Result<Vec<OpenAiToolCall>, OpenAiAdapterError> {
+        let Some(tool_calls) = message.get("tool_calls") else {
+            return Ok(Vec::new());
+        };
+        let calls = tool_calls.as_array().ok_or_else(|| {
+            OpenAiAdapterError::InvalidRequest("tool_calls must be an array".to_string())
+        })?;
 
-    /// Extract tool calls from a Responses API output.
-    pub fn extract_responses_api_calls(output: &Value) -> Vec<OpenAiToolCall> {
-        // Responses API uses a different format with "output" array
-        let items = output
-            .get("output")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-
-        items
+        calls
             .iter()
-            .filter(|item| {
-                item.get("type")
-                    .and_then(Value::as_str)
-                    .is_some_and(|t| t == "function_call")
-            })
-            .filter_map(|item| {
-                let name = item.get("name")?.as_str()?.to_string();
-                let arguments = item.get("arguments")?.as_str()?.to_string();
-                let call_id = item
-                    .get("call_id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
-                Some(OpenAiToolCall {
-                    id: call_id,
-                    call_type: "function".to_string(),
-                    function: OpenAiFunctionCall { name, arguments },
-                })
+            .enumerate()
+            .map(|(index, call)| {
+                let parsed =
+                    serde_json::from_value::<OpenAiToolCall>(call.clone()).map_err(|e| {
+                        OpenAiAdapterError::InvalidRequest(format!(
+                            "tool_calls[{index}] is malformed: {e}"
+                        ))
+                    })?;
+                validate_tool_call(parsed, &format!("tool_calls[{index}]"))
             })
             .collect()
     }
+
+    /// Extract tool calls from a Responses API output.
+    pub fn extract_responses_api_calls(
+        output: &Value,
+    ) -> Result<Vec<OpenAiToolCall>, OpenAiAdapterError> {
+        // Responses API uses a different format with "output" array
+        let Some(output_items) = output.get("output") else {
+            return Ok(Vec::new());
+        };
+        let items = output_items.as_array().ok_or_else(|| {
+            OpenAiAdapterError::InvalidRequest("output must be an array".to_string())
+        })?;
+
+        items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                let item_type = item.get("type").and_then(Value::as_str)?;
+                if item_type == "function_call" {
+                    Some((index, item))
+                } else {
+                    None
+                }
+            })
+            .map(|(index, item)| {
+                let context = format!("output[{index}] function_call");
+                let name = required_string_field(item, "name", &context)?;
+                let arguments = required_string_field(item, "arguments", &context)?;
+                let call_id = required_string_field(item, "call_id", &context)?;
+                validate_tool_call(
+                    OpenAiToolCall {
+                        id: call_id,
+                        call_type: "function".to_string(),
+                        function: OpenAiFunctionCall { name, arguments },
+                    },
+                    &context,
+                )
+            })
+            .collect()
+    }
+}
+
+fn required_string_field(
+    value: &Value,
+    field: &str,
+    context: &str,
+) -> Result<String, OpenAiAdapterError> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            OpenAiAdapterError::InvalidRequest(format!("{context} missing non-empty {field}"))
+        })
+}
+
+fn validate_tool_call(
+    call: OpenAiToolCall,
+    context: &str,
+) -> Result<OpenAiToolCall, OpenAiAdapterError> {
+    if call.id.trim().is_empty() {
+        return Err(OpenAiAdapterError::InvalidRequest(format!(
+            "{context} missing non-empty call_id"
+        )));
+    }
+    if call.call_type != "function" {
+        return Err(OpenAiAdapterError::InvalidRequest(format!(
+            "{context} has unsupported type `{}`",
+            call.call_type
+        )));
+    }
+    if call.function.name.trim().is_empty() {
+        return Err(OpenAiAdapterError::InvalidRequest(format!(
+            "{context} missing non-empty function.name"
+        )));
+    }
+    if call.function.arguments.trim().is_empty() {
+        return Err(OpenAiAdapterError::InvalidRequest(format!(
+            "{context} missing non-empty function.arguments"
+        )));
+    }
+    Ok(call)
 }
 
 fn render_response_content(output: &Option<ToolCallOutput>, reason: Option<&str>) -> String {
@@ -564,6 +637,7 @@ mod tests {
                     latency_hint: None,
                 },
             ],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "aabbccdd".to_string(),
         }
@@ -665,6 +739,7 @@ mod tests {
             description: None,
             version: "1.0.0".to_string(),
             tools: vec![],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "aabb".to_string(),
         };
@@ -922,6 +997,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "aabb".to_string(),
         };
@@ -1059,7 +1135,7 @@ mod tests {
                 }
             }]
         });
-        let calls = ChioOpenAiAdapter::extract_tool_calls(&message);
+        let calls = ChioOpenAiAdapter::extract_tool_calls(&message).unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].function.name, "get_weather");
         assert_eq!(calls[0].id, "call_abc");
@@ -1068,7 +1144,7 @@ mod tests {
     #[test]
     fn extract_tool_calls_empty_when_no_calls() {
         let message = json!({"role": "assistant", "content": "hello"});
-        let calls = ChioOpenAiAdapter::extract_tool_calls(&message);
+        let calls = ChioOpenAiAdapter::extract_tool_calls(&message).unwrap();
         assert!(calls.is_empty());
     }
 
@@ -1095,7 +1171,7 @@ mod tests {
                 }
             ]
         });
-        let calls = ChioOpenAiAdapter::extract_tool_calls(&message);
+        let calls = ChioOpenAiAdapter::extract_tool_calls(&message).unwrap();
         assert_eq!(calls.len(), 2);
     }
 
@@ -1113,7 +1189,7 @@ mod tests {
                 }
             ]
         });
-        let calls = ChioOpenAiAdapter::extract_responses_api_calls(&output);
+        let calls = ChioOpenAiAdapter::extract_responses_api_calls(&output).unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].function.name, "get_weather");
         assert_eq!(calls[0].id, "fc_123");
@@ -1135,7 +1211,7 @@ mod tests {
                 }
             ]
         });
-        let calls = ChioOpenAiAdapter::extract_responses_api_calls(&output);
+        let calls = ChioOpenAiAdapter::extract_responses_api_calls(&output).unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].function.name, "search");
     }
@@ -1143,8 +1219,51 @@ mod tests {
     #[test]
     fn extract_responses_api_empty_output() {
         let output = json!({"output": []});
-        let calls = ChioOpenAiAdapter::extract_responses_api_calls(&output);
+        let calls = ChioOpenAiAdapter::extract_responses_api_calls(&output).unwrap();
         assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn extract_responses_api_rejects_missing_call_id() {
+        let output = json!({
+            "output": [
+                {
+                    "type": "function_call",
+                    "name": "search",
+                    "arguments": "{}"
+                }
+            ]
+        });
+
+        let err = ChioOpenAiAdapter::extract_responses_api_calls(&output).unwrap_err();
+        assert!(err.to_string().contains("missing non-empty call_id"));
+    }
+
+    #[test]
+    fn extract_responses_api_rejects_malformed_function_call_in_mixed_output() {
+        let output = json!({
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "hello"}]
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "fc_valid",
+                    "name": "search",
+                    "arguments": "{}"
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "fc_bad",
+                    "name": "",
+                    "arguments": "{}"
+                }
+            ]
+        });
+
+        let err = ChioOpenAiAdapter::extract_responses_api_calls(&output).unwrap_err();
+        assert!(err.to_string().contains("missing non-empty name"));
     }
 
     // ---- Deduplication tests ----

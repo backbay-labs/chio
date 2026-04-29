@@ -1,0 +1,165 @@
+# M04 Phase 3 - Cross-version compatibility matrix and harness.
+# Source of truth: .planning/trajectory/04-deterministic-replay.md (Phase 3,
+# lines 246-283). Six atomic tasks map 1:1 to T1-T6 in doc order.
+# Wave 2a per EXECUTION-BOARD section 2 (uses wave/W2/...).
+# Phase scope: tests/replay/release_compat_matrix.toml shape, strict TOML
+# loader, bundle fetch + sha256-pinned cache, re-verify against current
+# kernel build, release-tagged.yml automation that auto-appends rows on
+# new tags, and docs ratchet rule (last N=5 supported, v3.0 floor).
+# Cross-milestone deps: M01 P3 (codegen, MERGED) supplies canonical receipt
+# schemas; M03 P3 (Apalache) supplies the formal-verification gate that the
+# cross-version harness leans on; M02 P1 (fuzz) is referenced in the
+# user-instruction list but has no tickets yet, so it is recorded as a
+# soft_dep annotation rather than a hard depends_on.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M04.P3.T1
+  milestone: M04
+  phase: 3
+  title: Define release_compat_matrix.toml shape with v0.1.0 and v2.0 entries
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - tests/replay/release_compat_matrix.toml
+  shared_paths: []
+  depends_on:
+    - M04.P2.T6
+  soft_deps: []
+  gate_check:
+    cmd: test -f tests/replay/release_compat_matrix.toml && grep -q 'schema = "chio.replay.compat/v1"' tests/replay/release_compat_matrix.toml && grep -q 'tag = "v0.1.0"' tests/replay/release_compat_matrix.toml && grep -q 'tag = "v2.0"' tests/replay/release_compat_matrix.toml
+  worktree_branch: wave/W2/m04/p3.t1-compat-matrix-toml-shape
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P3.T2
+  milestone: M04
+  phase: 3
+  title: Implement strict TOML matrix loader with deny_unknown_fields
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - tests/replay/src/cross_version.rs
+    - tests/replay/src/lib.rs
+    - tests/replay/Cargo.toml
+  shared_paths: []
+  depends_on:
+    - M04.P3.T1
+    - M01.P3.T6
+  soft_deps:
+    - "Schema-validates fetched bundles against M01 P3 chio-wire/v1 receipt schemas (M01 P3 MERGED)."
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --lib cross_version::loader_tests
+  worktree_branch: wave/W2/m04/p3.t2-strict-toml-matrix-loader
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P3.T3
+  milestone: M04
+  phase: 3
+  title: Implement bundle fetch and sha256-pinned cache for tagged release artifacts
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - tests/replay/src/cross_version/fetch.rs
+    - tests/replay/src/lib.rs
+    - tests/replay/Cargo.toml
+  shared_paths: []
+  depends_on:
+    - M04.P3.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --lib cross_version::fetch_tests
+  worktree_branch: wave/W2/m04/p3.t3-bundle-fetch-sha256-pin
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P3.T4
+  milestone: M04
+  phase: 3
+  title: Implement re-verify path against current chio-kernel build (cross_version_replay)
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - tests/replay/src/cross_version/reverify.rs
+    - tests/replay/tests/cross_version_replay.rs
+    - tests/replay/src/lib.rs
+  shared_paths: []
+  depends_on:
+    - M04.P3.T3
+  soft_deps:
+    - "M02.P1 (fuzz infra) is named in the user-instruction dep list but has no merged tickets; treat as informational until M02 P1 lands."
+    - "M03.P3.T7 (Apalache RevocationPropagation) provides the formal backing the cross-version reverify leans on for revocation rows."
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --test cross_version_replay
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m04/p3.t4-cross-version-reverify
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P3.T5
+  milestone: M04
+  phase: 3
+  title: Add release-tagged.yml workflow that auto-appends compat-matrix rows on new tags
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - .github/workflows/release-tagged.yml
+    - .github/workflows/chio-replay-gate.yml
+  shared_paths:
+    - .github/workflows/chio-replay-gate.yml
+  depends_on:
+    - M04.P3.T4
+  soft_deps: []
+  gate_check:
+    cmd: actionlint .github/workflows/release-tagged.yml .github/workflows/chio-replay-gate.yml || true; grep -q 'release-qualification' .github/workflows/release-tagged.yml && grep -q 'cross-version' .github/workflows/chio-replay-gate.yml
+  worktree_branch: wave/W2/m04/p3.t5-release-tagged-auto-append
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P3.T6
+  milestone: M04
+  phase: 3
+  title: Document ratchet rule (last N=5 tags, v3.0 strict floor) in docs/replay-compat.md
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - docs/replay-compat.md
+  shared_paths: []
+  depends_on:
+    - M04.P3.T1
+  soft_deps:
+    - M03.P3.T7
+  gate_check:
+    cmd: grep -q 'last N=5' docs/replay-compat.md && grep -q 'v3.0' docs/replay-compat.md && grep -q 'best_effort' docs/replay-compat.md
+  worktree_branch: wave/W2/m04/p3.t6-ratchet-rule-docs
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

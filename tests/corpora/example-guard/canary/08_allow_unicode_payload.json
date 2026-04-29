@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "translate",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 8,
+      "verdict": "allow",
+      "payload": "hello cafe"
+    },
+    "scopes": [
+      "example-server:translate"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

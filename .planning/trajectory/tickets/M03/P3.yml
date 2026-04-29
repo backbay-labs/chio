@@ -1,0 +1,180 @@
+# M03 Phase 3 - TLA+/Apalache revocation propagation + assumption discharge.
+# Source of truth: .planning/trajectory/03-capability-algebra-properties.md
+# (Phase 3, lines 123-345). Seven atomic tasks map 1:1 to T1-T7 in doc order.
+# Apalache pinned at 0.50.x; PR config PROCS=4, CAPS=8 (locked Wave-1 decision 6).
+# Phase 2 tickets do not exist yet; Phase 3 chains after M03.P1.T7 (proptest
+# coverage gate) per the no-hard-ordering fallback in the source doc.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M03.P3.T1
+  milestone: M03
+  phase: 3
+  title: Pin Apalache 0.50.x via tools/install-apalache.sh and write MC config
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - tools/install-apalache.sh
+    - formal/tla/MCRevocationPropagation.cfg
+  shared_paths: []
+  depends_on:
+    - M03.P1.T7
+  soft_deps: []
+  gate_check:
+    cmd: bash -n tools/install-apalache.sh && grep -q '0\.50' tools/install-apalache.sh && grep -qE 'PROCS\s*=\s*4' formal/tla/MCRevocationPropagation.cfg && grep -qE 'CAPS\s*=\s*8' formal/tla/MCRevocationPropagation.cfg
+  worktree_branch: wave/W1/m03/p3.t1-apalache-installer-pin
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P3.T2
+  milestone: M03
+  phase: 3
+  title: Scaffold RevocationPropagation.tla with three named safety invariants
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - formal/tla/RevocationPropagation.tla
+  shared_paths:
+    - formal/tla/
+  depends_on:
+    - M03.P3.T1
+  soft_deps: []
+  gate_check:
+    cmd: test -f formal/tla/RevocationPropagation.tla && grep -q 'NoAllowAfterRevoke' formal/tla/RevocationPropagation.tla && grep -q 'MonotoneLog' formal/tla/RevocationPropagation.tla && grep -q 'AttenuationPreserving' formal/tla/RevocationPropagation.tla
+  worktree_branch: wave/W1/m03/p3.t2-tla-safety-skeleton
+  agent_role: formal-tla
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P3.T3
+  milestone: M03
+  phase: 3
+  title: Add RevocationEventuallySeen liveness property with WF on Propagate
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - formal/tla/RevocationPropagation.tla
+    - formal/issue-templates/liveness-counterexample.md
+    - formal/tla/counterexamples/.gitkeep
+  shared_paths:
+    - formal/tla/
+  depends_on:
+    - M03.P3.T2
+  soft_deps: []
+  gate_check:
+    cmd: grep -q 'RevocationEventuallySeen' formal/tla/RevocationPropagation.tla && grep -q 'WF_vars' formal/tla/RevocationPropagation.tla && test -f formal/issue-templates/liveness-counterexample.md
+  worktree_branch: wave/W1/m03/p3.t3-tla-liveness-lane
+  agent_role: formal-tla
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P3.T4
+  milestone: M03
+  phase: 3
+  title: Wire formal-tla PR job and formal-tla-liveness nightly job in CI
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - .github/workflows/ci.yml
+    - .github/workflows/nightly.yml
+  shared_paths:
+    - .github/workflows/ci.yml
+  depends_on:
+    - M03.P3.T3
+  soft_deps: []
+  gate_check:
+    cmd: actionlint .github/workflows/ci.yml .github/workflows/nightly.yml || true; grep -q 'formal-tla' .github/workflows/ci.yml && grep -q 'formal-tla-liveness' .github/workflows/nightly.yml && grep -q 'apalache-mc check' .github/workflows/ci.yml
+  worktree_branch: wave/W1/m03/p3.t4-apalache-ci-lanes
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P3.T5
+  milestone: M03
+  phase: 3
+  title: Author formal/MAPPING.md and scripts/check-mapping.sh cross-ref gate
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - formal/MAPPING.md
+    - scripts/check-mapping.sh
+    - formal/issue-templates/property-counterexample.md
+  shared_paths: []
+  depends_on:
+    - M03.P3.T2
+  soft_deps:
+    - M03.P1.T7
+  gate_check:
+    cmd: test -f formal/MAPPING.md && bash scripts/check-mapping.sh
+  worktree_branch: wave/W1/m03/p3.t5-mapping-doc-and-check
+  agent_role: formal-tla
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P3.T6
+  milestone: M03
+  phase: 3
+  title: Discharge cross-row sqlite atomicity via budget invariant + MonotoneLog
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - formal/assumptions.toml
+    - formal/proof-manifest.toml
+  shared_paths: []
+  depends_on:
+    - M03.P3.T2
+    - M03.P3.T5
+  soft_deps: []
+  gate_check:
+    cmd: grep -q 'RETIRED-SQLITE-CROSS-ROW' formal/assumptions.toml && grep -q 'per single-row write' formal/assumptions.toml && grep -qE 'MonotoneLog|RETIRED-SQLITE-CROSS-ROW' formal/proof-manifest.toml
+  worktree_branch: wave/W1/m03/p3.t6-discharge-sqlite-cross-row
+  agent_role: formal-tla
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M03.P3.T7
+  milestone: M03
+  phase: 3
+  title: Scaffold formal/OWNERS.md template with TBD-primary and TBD-backup slots
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - formal/OWNERS.md
+  shared_paths: []
+  depends_on:
+    - M03.P1.T7
+  soft_deps:
+    - M03.P3.T5
+  gate_check:
+    cmd: test -f formal/OWNERS.md && grep -q 'TBD-primary' formal/OWNERS.md && grep -q 'TBD-backup' formal/OWNERS.md && grep -q 'Responsibilities' formal/OWNERS.md
+  worktree_branch: wave/W1/m03/p3.t7-owners-template-scaffold
+  agent_role: formal-tla
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

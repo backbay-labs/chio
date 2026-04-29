@@ -1,0 +1,238 @@
+# M01 Phase 2: Vector corpus expansion and freeze
+#
+# Source: .planning/trajectory/01-spec-codegen-conformance.md
+#         "Phase 2: Vector corpus expansion and freeze" (size M, 6-8 days).
+# Goal: lock canonical-JSON byte semantics for every shape that has a schema.
+# Owner: M01 (single-owner trajectory routes to @bb-connor).
+# Wave: 1a (no dependency on PR #13). Branch prefix wave/W1/m01/p2.t*.
+#
+# Phase doc enumerates 6 tasks (P2.T1-T6). Three of them bundle multiple
+# corpus expansions that exceed the 2 engineer-day cap, so they are split:
+#   doc P2.T3 (manifest + hashing + signing, +47 cases) -> tickets T2, T3, T4
+#   doc P2.T4 (receipt + capability, +22 cases)         -> tickets T5, T6
+#   doc P2.T5 (manifest + freeze-vectors xtask)         -> ticket  T7
+#   doc P2.T6 (vectors_schema_pair test)                -> ticket  T8
+# T1 matches the doc's "First commit" bundle: canonical 5 -> 20 plus the
+# vectors_oracle.rs test that pins byte-equivalence against the Rust oracle.
+
+- id: M01.P2.T1
+  milestone: M01
+  phase: 2
+  title: "Land vectors_oracle.rs and grow canonical corpus to 20 cases"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "tests/bindings/vectors/canonical/v1.json"
+    - "tests/bindings/vectors/MANIFEST.sha256"
+    - "crates/chio-conformance/tests/vectors_oracle.rs"
+  shared_paths:
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  depends_on: []
+  soft_deps:
+    - "M02 consumes canonical/v1.json as a libFuzzer seed corpus for canonical_roundtrip"
+    - "M04 consumes canonical/v1.json as the byte-freeze basis for replay fixtures"
+    - "M07 round-trip checks reuse canonical vectors for ProvenanceStamp wire shape"
+    - "M08 browser/Workers/Edge/Deno targets must produce byte-identical output to these vectors"
+  gate_check:
+    cmd: "cargo test -p chio-conformance --test vectors_oracle"
+  worktree_branch: "wave/W1/m01/p2.t1-vectors-oracle-canonical-20"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T2
+  milestone: M01
+  phase: 2
+  title: "Grow manifest vector corpus from 5 to 20 cases"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "tests/bindings/vectors/manifest/v1.json"
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  shared_paths:
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  depends_on:
+    - "M01.P2.T1"
+  soft_deps:
+    - "M02 consumes manifest/v1.json as a fuzz seed corpus"
+    - "M04 reuses manifest cases as canonical-JSON freeze basis"
+  gate_check:
+    cmd: "cargo test -p chio-conformance --test vectors_oracle"
+  worktree_branch: "wave/W1/m01/p2.t2-manifest-corpus-20"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T3
+  milestone: M01
+  phase: 2
+  title: "Grow hashing vector corpus from 3 to 20 cases"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "tests/bindings/vectors/hashing/v1.json"
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  shared_paths:
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  depends_on:
+    - "M01.P2.T1"
+  soft_deps:
+    - "M02 consumes hashing/v1.json as a fuzz seed corpus"
+    - "M08 browser hashing targets validate against these cases"
+  gate_check:
+    cmd: "cargo test -p chio-conformance --test vectors_oracle"
+  worktree_branch: "wave/W1/m01/p2.t3-hashing-corpus-20"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T4
+  milestone: M01
+  phase: 2
+  title: "Grow signing vector corpus from 4 to 20 cases with signed_bytes"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "tests/bindings/vectors/signing/v1.json"
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  shared_paths:
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  depends_on:
+    - "M01.P2.T1"
+  soft_deps:
+    - "M02 consumes signing/v1.json as a libFuzzer seed corpus"
+    - "M04 reuses signing cases for golden receipts"
+    - "M07 cross-provider signed-bytes equivalence depends on this corpus"
+  gate_check:
+    cmd: "cargo test -p chio-conformance --test vectors_oracle"
+  worktree_branch: "wave/W1/m01/p2.t4-signing-corpus-20"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T5
+  milestone: M01
+  phase: 2
+  title: "Grow receipt vector corpus from 8 to 20 cases incl. anchored proofs"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "tests/bindings/vectors/receipt/v1.json"
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  shared_paths:
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  depends_on:
+    - "M01.P2.T1"
+    - "M01.P1.T3"
+  soft_deps:
+    - "M04 consumes receipt vectors as the canonical-JSON freeze for tests/replay/fixtures and goldens"
+    - "M07 ProvenanceStamp round-trip reuses these vectors"
+    - "M08 browser receipt verifier validates against verify_only-tagged cases"
+  gate_check:
+    cmd: "cargo test -p chio-conformance --test vectors_oracle"
+  worktree_branch: "wave/W1/m01/p2.t5-receipt-corpus-20"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T6
+  milestone: M01
+  phase: 2
+  title: "Grow capability vector corpus from 10 to 20 cases"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "tests/bindings/vectors/capability/v1.json"
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  shared_paths:
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  depends_on:
+    - "M01.P2.T1"
+    - "M01.P1.T2"
+  soft_deps:
+    - "M02 consumes capability/v1.json as a fuzz seed corpus"
+    - "M08 browser capability verifier validates against verify_only-tagged cases"
+  gate_check:
+    cmd: "cargo test -p chio-conformance --test vectors_oracle"
+  worktree_branch: "wave/W1/m01/p2.t6-capability-corpus-20"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T7
+  milestone: M01
+  phase: 2
+  title: "Land cargo xtask freeze-vectors and finalize MANIFEST.sha256"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "tests/bindings/vectors/MANIFEST.sha256"
+    - "xtask/src/main.rs"
+  shared_paths:
+    - "tests/bindings/vectors/MANIFEST.sha256"
+  depends_on:
+    - "M01.P2.T1"
+    - "M01.P2.T2"
+    - "M01.P2.T3"
+    - "M01.P2.T4"
+    - "M01.P2.T5"
+    - "M01.P2.T6"
+  soft_deps:
+    - "M01 P5 spec-drift workflow runs freeze-vectors --check on every PR"
+    - "Nightly vectors-staleness.yml job invokes freeze-vectors --check"
+  gate_check:
+    cmd: "cargo xtask freeze-vectors --check"
+  worktree_branch: "wave/W1/m01/p2.t7-freeze-vectors-xtask"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T8
+  milestone: M01
+  phase: 2
+  title: "Land vectors_schema_pair.rs asserting domain-to-schema coverage"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-conformance/tests/vectors_schema_pair.rs"
+  shared_paths: []
+  depends_on:
+    - "M01.P2.T1"
+    - "M01.P2.T2"
+    - "M01.P2.T3"
+    - "M01.P2.T4"
+    - "M01.P2.T5"
+    - "M01.P2.T6"
+  soft_deps:
+    - "M01 P5 schema-coverage CI job reuses this test"
+    - "M04 golden gate adds chio-spec-validate on every receipt before byte comparison"
+  gate_check:
+    cmd: "cargo test -p chio-conformance --test vectors_schema_pair"
+  worktree_branch: "wave/W1/m01/p2.t8-vectors-schema-pair"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-02T00:00:00Z",
+  "expected_failure_class": "expired",
+  "expected_verdict": "deny",
+  "family": "deny_expired",
+  "fixed_nonce_seed_index": 20,
+  "intent": "Deny because the clock evaluates 24 hours past the capability's notAfter, exercising the typical clearly-expired path.",
+  "name": "deny_expired/02_one_day_past",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "expired"]
+}

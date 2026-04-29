@@ -1,0 +1,14 @@
+# Pinned codegen toolchain for the Python half of the Chio four-language pipeline.
+#
+# Source of truth: xtask/codegen-tools.lock.toml (id: codegen-toolchain-per-language).
+# Phase: M01.P3.T2 (wire `cargo xtask codegen --lang python`).
+#
+# This file is consumed by the xtask dispatcher when it shells out to
+# `uv tool run --from "datamodel-code-generator==<pin>" datamodel-codegen ...`.
+# Bumping any pin here is spec-affecting and must land in the same PR as the
+# regenerated Python output (under sdks/python/chio-sdk-python/src/chio_sdk/_generated/).
+#
+# Pydantic v2 is the only target. The 17 Python framework adapters under
+# sdks/python/* all pin `pydantic>=2.5,<3` so v1 has no surface in this repo.
+
+datamodel-code-generator==0.34.0

@@ -1,5 +1,9 @@
 name: Release Binaries
 
+# A successful run of this workflow triggers .github/workflows/slsa.yml
+# (workflow_run), which downloads the chio-<target> archive artifacts
+# and emits a SLSA L2 provenance attestation per release.
+
 on:
   push:
     tags:
@@ -23,6 +27,14 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
+    # `id-token: write` is required so `cosign sign-blob --yes` can
+    # exchange the GitHub-issued OIDC token for a short-lived Fulcio
+    # signing certificate. Per principle of least privilege, the per-job
+    # grant overrides the workflow-level `contents: read` only for this
+    # matrix job.
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -55,15 +67,54 @@ jobs:
             bin_suffix: ".exe"
             cross: false
     steps:
+      - name: Require dispatch to run from release tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          expected_ref="refs/tags/${INPUT_TAG}"
+          if [[ "${GITHUB_REF}" != "${expected_ref}" ]]; then
+            echo "::error::workflow_dispatch release builds must be launched from ${expected_ref}; got ${GITHUB_REF}" >&2
+            exit 1
+          fi
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if ! [[ "${INPUT_TAG}" =~ ^v${semver_re}$ ]]; then
+            echo "::error::tag '${INPUT_TAG}' does not match v<semver>" >&2
+            exit 1
+          fi
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          # When dispatched with a tag input (e.g. workflow_dispatch to
-          # rebuild v0.1.0 from main), check that tag out; otherwise
-          # the default GITHUB_REF is the triggering branch/ref, which
-          # would publish binaries built from the wrong commit under
-          # the requested tag name.
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          # Check out the immutable event commit, then verify the release
+          # tag resolves to this exact SHA. This prevents a moved tag from
+          # changing the signed build input between trigger and checkout.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify release tag target
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${INPUT_TAG}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if ! [[ "${tag}" =~ ^v${semver_re}$ ]]; then
+            echo "::error::tag '${tag}' does not match v<semver>" >&2
+            exit 1
+          fi
+          tag_sha="$(git rev-list -n 1 "refs/tags/${tag}")"
+          if [[ "${tag_sha}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::tag ${tag} resolves to ${tag_sha}, not workflow SHA ${GITHUB_SHA}" >&2
+            exit 1
+          fi
 
       - name: Install Rust toolchain
         shell: bash
@@ -80,37 +131,181 @@ jobs:
         # on Linux / macOS / Windows. `cross` images already bundle
         # protoc, so the step only runs on native rows.
         if: matrix.cross == false
-        uses: arduino/setup-protoc@v3
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b
         with:
-          version: "29.x"
+          version: "29.5"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache cargo registry and build
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
         with:
           key: release-${{ matrix.target }}
 
-      - name: Install cross (aarch64-linux only)
-        if: matrix.cross == true
-        run: cargo install cross --locked --version 0.2.5
+      - name: Install cargo-auditable (native)
+        # Embeds the workspace dependency graph into the release binary so
+        # downstream consumers can run `cargo audit -f <binary>` to scan for
+        # known vulnerabilities without the source tree. Native lanes install
+        # the tool directly; the cross lane installs it inside the container.
+        if: matrix.cross == false
+        shell: bash
+        run: cargo install cargo-auditable --locked --version 0.7.4
 
       - name: Build (native)
         if: matrix.cross == false
         shell: bash
         run: |
-          cargo build --release --locked \
+          cargo auditable build --release --locked \
             --package "${CARGO_PACKAGE}" \
             --bin "${BINARY_NAME}" \
             --target "${{ matrix.target }}"
 
       - name: Build (cross)
+        # cross v0.2.5 does NOT recognise `auditable` as a build
+        # subcommand; in upstream `src/cargo.rs` unknown subcommands map
+        # to `Subcommand::Other`, whose `needs_docker()` returns false,
+        # so the previous `cross auditable build` invocation silently
+        # fell back to the host (cleanup-c11a; PR #43 review threads
+        # r3142892200 / r3142894176). The host lacks the cross-compile
+        # linker + sysroot, so every aarch64-linux release build failed.
+        #
+        # The correct pattern is to drive the cross-rs container image
+        # directly: install `cargo-auditable` inside the container and
+        # then run `cargo auditable build` there. The image is pinned by
+        # digest so the release lane never signs bytes built inside a
+        # moved tag.
         if: matrix.cross == true
         shell: bash
+        env:
+          CHIO_TARGET: ${{ matrix.target }}
+          CROSS_IMAGE_DIGEST_AARCH64_UNKNOWN_LINUX_GNU: "sha256:7f8308a8734d9fcd2ebbe9a3e4bdea74af293f0799d80c3cc341e340cda49a4c"
         run: |
-          cross build --release --locked \
-            --package "${CARGO_PACKAGE}" \
-            --bin "${BINARY_NAME}" \
-            --target "${{ matrix.target }}"
+          set -euo pipefail
+          case "${CHIO_TARGET}" in
+            aarch64-unknown-linux-gnu)
+              image="ghcr.io/cross-rs/${CHIO_TARGET}@${CROSS_IMAGE_DIGEST_AARCH64_UNKNOWN_LINUX_GNU}"
+              ;;
+            *)
+              echo "::error::no pinned cross image digest for ${CHIO_TARGET}" >&2
+              exit 1
+              ;;
+          esac
+          docker pull "${image}"
+          docker run --rm \
+            -v "${PWD}:/project" \
+            -w /project \
+            -e CARGO_TERM_COLOR \
+            "${image}" \
+            bash -lc '
+              set -euo pipefail
+              cargo install cargo-auditable --locked --version 0.7.4
+              cargo auditable build --release --locked \
+                --package "'"${CARGO_PACKAGE}"'" \
+                --bin "'"${BINARY_NAME}"'" \
+                --target "'"${CHIO_TARGET}"'"
+            '
+
+      - name: Install syft
+        if: runner.os != 'Windows'
+        # Pinned to v1.18.1 with checked-in SHA-256 digests per runner
+        # platform. Avoid piping a remote installer into the release lane.
+        shell: bash
+        run: |
+          set -euo pipefail
+          SYFT_VERSION=1.18.1
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)
+              asset="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+              expected_sha256="066c251652221e4d44fcc4d115ce3df33a91769da38c830a8533199db2f65aab"
+              ;;
+            Darwin-x86_64)
+              asset="syft_${SYFT_VERSION}_darwin_amd64.tar.gz"
+              expected_sha256="223f5a97653e0bb0a96580a04328d41d515ee742bfbdd917f0583dc43e66f423"
+              ;;
+            Darwin-arm64 | Darwin-aarch64)
+              asset="syft_${SYFT_VERSION}_darwin_arm64.tar.gz"
+              expected_sha256="bc5ad238a7cc60f19459b6f358079847bff5f8e520c8239706730f3fc5c5edd5"
+              ;;
+            *)
+              echo "::error::unsupported syft runner platform $(uname -s)-$(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          archive="${RUNNER_TEMP}/${asset}"
+          extract_dir="${RUNNER_TEMP}/syft-${SYFT_VERSION}"
+          mkdir -p "${HOME}/.local/bin"
+          mkdir -p "${extract_dir}"
+          curl -fsSLo "${archive}" \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/${asset}"
+          printf '%s  %s\n' "${expected_sha256}" "${archive}" | shasum -a 256 -c -
+          tar -xzf "${archive}" -C "${extract_dir}"
+          install -m 0755 "${extract_dir}/syft" "${HOME}/.local/bin/syft"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Install syft (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $syftVersion = "1.18.1"
+          $expectedSha256 = "85476686b4eaaf4175a16c1cbef391c5396e06cdbef171ae8b7b2f7117e5b038"
+          $asset = "syft_${syftVersion}_windows_amd64.zip"
+          $url = "https://github.com/anchore/syft/releases/download/v$syftVersion/$asset"
+          $archive = Join-Path $env:RUNNER_TEMP $asset
+          $installDir = Join-Path $env:USERPROFILE ".local\bin"
+          New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actualSha256 = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            Write-Error "syft archive checksum mismatch: expected $expectedSha256, got $actualSha256"
+            exit 1
+          }
+          Expand-Archive -Path $archive -DestinationPath $installDir -Force
+          $installDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Emit CycloneDX 1.6 SBOM
+        if: runner.os != 'Windows'
+        # Generates a CycloneDX 1.6 JSON SBOM. The binary already carries the
+        # cargo-auditable dep graph; syft adds a standards-based external SBOM.
+        # The jq assertion fails loudly if syft changes its default schema version.
+        shell: bash
+        env:
+          CHIO_BIN_SUFFIX: ${{ matrix.bin_suffix }}
+          CHIO_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/sbom
+          out_file="out/sbom/chio-${CHIO_TARGET}.cyclonedx.json"
+          syft --config infra/sbom/syft.yaml \
+            -o "cyclonedx-json@1.6=${out_file}" \
+            "target/${CHIO_TARGET}/release/${BINARY_NAME}${CHIO_BIN_SUFFIX}"
+          jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6"' \
+            "${out_file}" > /dev/null
+
+      - name: Emit CycloneDX 1.6 SBOM (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CHIO_BIN_SUFFIX: ${{ matrix.bin_suffix }}
+          CHIO_TARGET: ${{ matrix.target }}
+        run: |
+          New-Item -ItemType Directory -Path "out/sbom" -Force | Out-Null
+          $outFile = "out/sbom/chio-$env:CHIO_TARGET.cyclonedx.json"
+          $binary = "target/$env:CHIO_TARGET/release/$env:BINARY_NAME$env:CHIO_BIN_SUFFIX"
+          syft --config infra/sbom/syft.yaml `
+            -o "cyclonedx-json@1.6=$outFile" `
+            "$binary"
+          $sbom = Get-Content -Raw $outFile | ConvertFrom-Json
+          if ($sbom.bomFormat -ne "CycloneDX" -or $sbom.specVersion -ne "1.6") {
+            Write-Error "Syft did not emit CycloneDX 1.6 SBOM at $outFile"
+            exit 1
+          }
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sbom-${{ matrix.target }}
+          path: out/sbom/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Resolve release version
         id: version
@@ -125,12 +320,13 @@ jobs:
             tag="${GITHUB_REF_NAME}"
           fi
           # Validate tag format: must be vMAJOR.MINOR.PATCH with optional
-          # pre-release suffix (e.g. v0.1.0, v1.2.3-rc.1). A malformed tag
+          # pre-release or build suffix (e.g. v0.1.0, v1.2.3-rc.1). A malformed tag
           # produces archive names like `chio--*.tar.gz` that never match
           # the Homebrew formula URL template and silently publish a
           # broken release.
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::tag '$tag' does not match vMAJOR.MINOR.PATCH[-prerelease]" >&2
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if ! [[ "$tag" =~ ^v${semver_re}$ ]]; then
+            echo "::error::tag '$tag' does not match v<semver>" >&2
             exit 1
           fi
           version="${tag#v}"
@@ -176,15 +372,110 @@ jobs:
             [System.Text.Encoding]::ASCII
           )
 
+      - name: Write release metadata
+        shell: bash
+        env:
+          CHIO_RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          CHIO_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          source_sha="$(git rev-parse HEAD)"
+          cat > dist/release-metadata.json <<JSON
+          {
+            "release_tag": "${CHIO_RELEASE_TAG}",
+            "source_ref": "refs/tags/${CHIO_RELEASE_TAG}",
+            "source_sha": "${source_sha}",
+            "version": "${CHIO_VERSION}",
+            "workflow_run_id": "${GITHUB_RUN_ID}"
+          }
+          JSON
+
+      # Sigstore keyless cosign signing of every release archive. Signing
+      # happens on the same runner that staged the archive. The OIDC token
+      # from `id-token: write` is exchanged with Fulcio for a short-lived
+      # certificate; no long-lived key is held in secrets. `.sig` and `.pem`
+      # siblings travel with the archive and allow consumers to run the
+      # `cosign verify-blob` recipe in `docs/install/PUBLISHING.md`.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
+        with:
+          cosign-release: v2.4.1
+
+      - name: Cosign sign-blob release archive
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          CHIO_ARCHIVE_KIND: ${{ matrix.archive }}
+          CHIO_TARGET: ${{ matrix.target }}
+          CHIO_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          stage_dir="chio-${CHIO_VERSION}-${CHIO_TARGET}"
+          archive="dist/${stage_dir}.${CHIO_ARCHIVE_KIND}"
+          if [ ! -f "${archive}" ]; then
+            echo "::error::expected release archive missing: ${archive}" >&2
+            exit 1
+          fi
+          sig="${archive}.sig"
+          pem="${archive}.pem"
+          echo "Signing ${archive} with cosign sign-blob"
+          cosign sign-blob --yes \
+            --output-signature "${sig}" \
+            --output-certificate "${pem}" \
+            "${archive}"
+          # Fail loudly if cosign somehow returned 0 without producing
+          # the sig/cert pair; downstream upload-artifact would otherwise
+          # silently publish an unsigned archive.
+          if [ ! -s "${sig}" ] || [ ! -s "${pem}" ]; then
+            echo "::error::cosign sign-blob did not produce non-empty ${sig} and ${pem}" >&2
+            exit 1
+          fi
+          echo "Signed ${archive}; sig=${sig} pem=${pem}"
+
+      - name: Cosign sign-blob release archive (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CHIO_ARCHIVE_KIND: ${{ matrix.archive }}
+          CHIO_TARGET: ${{ matrix.target }}
+          CHIO_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $stage = "chio-$env:CHIO_VERSION-$env:CHIO_TARGET"
+          $archive = "dist/$stage.$env:CHIO_ARCHIVE_KIND"
+          if (-not (Test-Path -Path $archive -PathType Leaf)) {
+            Write-Error "expected release archive missing: $archive"
+            exit 1
+          }
+          $sig = "$archive.sig"
+          $pem = "$archive.pem"
+          Write-Host "Signing $archive with cosign sign-blob"
+          cosign sign-blob --yes `
+            --output-signature "$sig" `
+            --output-certificate "$pem" `
+            "$archive"
+          $sig_ok = (Test-Path -Path $sig -PathType Leaf) -and ((Get-Item $sig).Length -gt 0)
+          $pem_ok = (Test-Path -Path $pem -PathType Leaf) -and ((Get-Item $pem).Length -gt 0)
+          if (-not $sig_ok -or -not $pem_ok) {
+            Write-Error "cosign sign-blob did not produce non-empty $sig and $pem"
+            exit 1
+          }
+          Write-Host "Signed $archive; sig=$sig pem=$pem"
+
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: chio-${{ matrix.target }}
           path: |
             dist/*.tar.gz
             dist/*.tar.gz.sha256
+            dist/*.tar.gz.sig
+            dist/*.tar.gz.pem
             dist/*.zip
             dist/*.zip.sha256
+            dist/*.zip.sig
+            dist/*.zip.pem
+            dist/release-metadata.json
           if-no-files-found: error
           retention-days: 7
 
@@ -195,13 +486,53 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Require dispatch to run from release tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          expected_ref="refs/tags/${INPUT_TAG}"
+          if [[ "${GITHUB_REF}" != "${expected_ref}" ]]; then
+            echo "::error::workflow_dispatch release publishes must be launched from ${expected_ref}; got ${GITHUB_REF}" >&2
+            exit 1
+          fi
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if ! [[ "${INPUT_TAG}" =~ ^v${semver_re}$ ]]; then
+            echo "::error::tag '${INPUT_TAG}' does not match v<semver>" >&2
+            exit 1
+          fi
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          # Match the build job: when dispatched with a tag input, check
-          # that tag out so the Homebrew formula template + release notes
-          # come from the same commit the binaries were built from.
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          # Match the build job: check out the immutable event commit,
+          # then verify the release tag still resolves to this SHA.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify release tag target
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${INPUT_TAG}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if ! [[ "${tag}" =~ ^v${semver_re}$ ]]; then
+            echo "::error::tag '${tag}' does not match v<semver>" >&2
+            exit 1
+          fi
+          tag_sha="$(git rev-list -n 1 "refs/tags/${tag}")"
+          if [[ "${tag_sha}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::tag ${tag} resolves to ${tag_sha}, not workflow SHA ${GITHUB_SHA}" >&2
+            exit 1
+          fi
 
       - name: Resolve release version
         id: version
@@ -216,12 +547,13 @@ jobs:
             tag="${GITHUB_REF_NAME}"
           fi
           # Validate tag format: must be vMAJOR.MINOR.PATCH with optional
-          # pre-release suffix (e.g. v0.1.0, v1.2.3-rc.1). A malformed tag
+          # pre-release or build suffix (e.g. v0.1.0, v1.2.3-rc.1). A malformed tag
           # produces archive names like `chio--*.tar.gz` that never match
           # the Homebrew formula URL template and silently publish a
           # broken release.
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::tag '$tag' does not match vMAJOR.MINOR.PATCH[-prerelease]" >&2
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if ! [[ "$tag" =~ ^v${semver_re}$ ]]; then
+            echo "::error::tag '$tag' does not match v<semver>" >&2
             exit 1
           fi
           version="${tag#v}"
@@ -229,7 +561,7 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: artifacts
           merge-multiple: true
@@ -246,6 +578,9 @@ jobs:
           # `fail_on_unmatched_files: true`, so missing per-archive files
           # would fail every release.
           find artifacts -type f -name "*.sha256" -exec cp {} release/ \;
+          # Carry the cosign sign-blob siblings (`.sig` and `.pem`) into
+          # `release/` so the `softprops/action-gh-release` step attaches them.
+          find artifacts -type f \( -name "*.sig" -o -name "*.pem" \) -exec cp {} release/ \;
           find release -type f -name "*.sha256" -exec perl -0pi -e 's/\r\n/\n/g; s/\r/\n/g' {} +
           # Concatenate the per-archive .sha256 files into the combined
           # SHA256SUMS for `shasum -a 256 -c`.
@@ -332,11 +667,13 @@ jobs:
             echo
             echo "### Verify"
             echo
-            echo "Every archive has a matching \`.sha256\` file, and a combined \`SHA256SUMS\` is attached to the release."
+            echo "Every archive has a matching \`.sha256\` file (combined \`SHA256SUMS\` is attached) and a Sigstore keyless signature pair (\`.sig\` + \`.pem\`) produced by \`cosign sign-blob\`."
             echo
             echo '```bash'
             echo "shasum -a 256 -c SHA256SUMS"
             echo '```'
+            echo
+            echo "See \`docs/install/PUBLISHING.md\` (section \"Release-binaries archive signing\") for the full \`cosign verify-blob\` recipe."
             echo
             echo "### Supported targets"
             echo
@@ -349,16 +686,153 @@ jobs:
           cat release/NOTES.md
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: chio ${{ steps.version.outputs.tag }}
           body_path: release/NOTES.md
           draft: false
           fail_on_unmatched_files: true
+          # `*.sig` and `*.pem` are the cosign sign-blob siblings; without them
+          # consumers could not run the `cosign verify-blob` recipe in
+          # `docs/install/PUBLISHING.md`.
           files: |
             release/*.tar.gz
             release/*.zip
             release/*.sha256
+            release/*.sig
+            release/*.pem
             release/SHA256SUMS
             release/chio.rb
+
+  mutants-gate-flip:
+    # Auto-flip the cargo-mutants gate from advisory to blocking on the first
+    # post-merge release. The gate posture is driven by
+    # `releases.toml::[mutants].cycle_end_tag`: empty -> advisory,
+    # non-empty -> blocking. Runs after `release` succeeds; if cycle_end_tag
+    # is still empty, writes the just-released tag and opens a PR.
+    name: Auto-flip mutants gate
+    needs: release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: write       # push the auto-flip branch
+      pull-requests: write  # open the PR
+    timeout-minutes: 10
+    steps:
+      - name: Checkout roadmap branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: project/roadmap-04-25-2026
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - name: Resolve release tag
+        id: tag
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          # Validate tag shape before it flows into shell strings, file
+          # contents, the PR title, and the auto-flip branch name. An
+          # unsanitised tag is a script-injection surface (CWE-94). The
+          # pattern matches the build job's tag validation (line 242).
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if ! [[ "${tag}" =~ ^v${semver_re}$ ]]; then
+            echo "::error::tag '${tag}' does not match v<semver>" >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Read current cycle_end_tag
+        id: cycle
+        run: |
+          set -euo pipefail
+          if [ ! -f releases.toml ]; then
+            echo "::error::releases.toml is missing on the roadmap branch" >&2
+            exit 1
+          fi
+          # Pure-bash extractor matching `scripts/mutants-gate.sh` so the
+          # two readers stay drift-free. Tolerates whitespace and quoting
+          # variants: `cycle_end_tag = ""` and `cycle_end_tag="vX.Y.Z"`.
+          current=""
+          while IFS= read -r line; do
+            trimmed="${line#"${line%%[![:space:]]*}"}"
+            trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+            if [[ "${trimmed}" =~ ^cycle_end_tag[[:space:]]*= ]]; then
+              value="${trimmed#*=}"
+              value="${value#"${value%%[![:space:]]*}"}"
+              value="${value#\"}"
+              value="${value%\"}"
+              current="${value}"
+              break
+            fi
+          done < releases.toml
+          echo "current=${current}" >> "$GITHUB_OUTPUT"
+          if [ -z "${current}" ]; then
+            echo "should_flip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_flip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write cycle_end_tag
+        if: steps.cycle.outputs.should_flip == 'true'
+        env:
+          NEW_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Replace the `cycle_end_tag = ""` line with the resolved tag.
+          # The pattern is anchored to the empty-string form so a re-run
+          # against an already-flipped file is a no-op even if the
+          # `should_flip` guard above misses (defense in depth).
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          tag = os.environ["NEW_TAG"]
+          path = pathlib.Path("releases.toml")
+          text = path.read_text()
+          pattern = re.compile(r'^(\s*cycle_end_tag\s*=\s*)""\s*$', re.MULTILINE)
+          new_text, count = pattern.subn(rf'\g<1>"{tag}"', text, count=1)
+          if count != 1:
+              raise SystemExit(
+                  f"refusing to flip: expected exactly one empty cycle_end_tag line, found {count}"
+              )
+          path.write_text(new_text)
+          PY
+          echo "Updated releases.toml:"
+          grep -n cycle_end_tag releases.toml
+
+      - name: Open mutants gate flip PR
+        if: steps.cycle.outputs.should_flip == 'true'
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c
+        with:
+          base: project/roadmap-04-25-2026
+          branch: chore/mutants-gate-flip-${{ steps.tag.outputs.tag }}
+          title: "chore(mutants): activate blocking gate after cycle ${{ steps.tag.outputs.tag }}"
+          body: |
+            Auto-opened by `release-binaries.yml::mutants-gate-flip` after release ${{ steps.tag.outputs.tag }}.
+
+            This PR writes `${{ steps.tag.outputs.tag }}` into
+            `releases.toml::[mutants].cycle_end_tag`, flipping the
+            cargo-mutants gate (`scripts/mutants-gate.sh`) from advisory
+            to blocking. After merge:
+
+            - `mutants-nightly` exits 1 on a per-crate catch-ratio miss.
+            - `mutants-pr` comments switch from `advisory` to `blocking` labels.
+
+            See `docs/fuzzing/mutants.md` (section "CI lane") for rationale.
+
+            Override path: clear `cycle_end_tag` in a follow-up PR
+            labelled `mutants-gate-override` with CODEOWNERS approval.
+          commit-message: "chore(mutants): activate blocking gate after cycle ${{ steps.tag.outputs.tag }}"
+          labels: mutants,release
+
+      - name: Skip flip (already activated)
+        if: steps.cycle.outputs.should_flip != 'true'
+        env:
+          CURRENT: ${{ steps.cycle.outputs.current }}
+        run: |
+          printf 'mutants-gate-flip: cycle_end_tag already set to %s; nothing to do\n' "${CURRENT}"

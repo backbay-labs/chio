@@ -1,0 +1,24 @@
+[package]
+name = "chio-otel-receipt-exporter"
+description = "OpenTelemetry trace ingress and receipt-store sink for Chio receipts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_otel_receipt_exporter"
+
+[dependencies]
+chio-core = { path = "../chio-core" }
+chio-kernel = { path = "../chio-kernel" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

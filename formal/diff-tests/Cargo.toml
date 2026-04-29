@@ -10,5 +10,15 @@ repository.workspace = true
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../../crates/chio-core-types" }
 chio-kernel-core = { path = "../../crates/chio-kernel-core" }
-proptest = "1.10"
+proptest = { version = "1.10", default-features = false, features = ["std", "bit-set"] }
 serde_json = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+chio-anchor = { path = "../../crates/chio-anchor" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]
+version = "0.3"
+features = ["wasm_js"]
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"

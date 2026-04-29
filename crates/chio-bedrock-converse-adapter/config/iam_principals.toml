@@ -1,0 +1,17 @@
+# iam_principals.toml
+# Default signed-config path for Bedrock IAM principal mapping.
+# Replace these sample mappings with operator-owned values and publish a
+# matching Sigstore bundle at iam_principals.toml.sigstore-bundle.json.
+
+default_action = "deny"
+config_version = 1
+
+[[mapping]]
+match = "arn:aws:iam::123456789012:role/ChioAgentRole"
+owner = "team-alpha"
+notes = "sample exact role mapping"
+
+[[mapping]]
+match = "arn:aws:sts::123456789012:assumed-role/ChioAgentRole/*"
+owner = "team-alpha"
+notes = "sample assumed-role session mapping"

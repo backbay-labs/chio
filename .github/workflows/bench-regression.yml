@@ -1,0 +1,187 @@
+name: bench-regression
+
+on:
+  pull_request:
+    branches: [main, project/roadmap-04-25-2026]
+  workflow_dispatch:
+
+concurrency:
+  group: bench-regression-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  bench-regression:
+    name: bench-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Resolve benchmark refs
+        id: refs
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" && -n "$PR_BASE_SHA" ]]; then
+            echo "baseline=$PR_BASE_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "baseline=HEAD^" >> "$GITHUB_OUTPUT"
+          fi
+          echo "current=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare benchmark worktrees
+        shell: bash
+        env:
+          BASELINE_REF: ${{ steps.refs.outputs.baseline }}
+          CURRENT_REF: ${{ steps.refs.outputs.current }}
+        run: |
+          set -euo pipefail
+          git worktree add "$RUNNER_TEMP/chio-bench-baseline" "$BASELINE_REF"
+          git worktree add "$RUNNER_TEMP/chio-bench-current" "$CURRENT_REF"
+
+      - name: Run baseline kernel benchmarks
+        working-directory: ${{ runner.temp }}/chio-bench-baseline
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/chio-bench-baseline-target
+          CARGO_BUILD_JOBS: "1"
+          CARGO_INCREMENTAL: "0"
+        run: |
+          set -euo pipefail
+          benches_file="$(mktemp)"
+          awk '
+            /^\[\[bench\]\]/ { in_bench = 1; next }
+            in_bench && /^name = / {
+              gsub(/"/, "", $3)
+              print $3
+              in_bench = 0
+            }
+          ' crates/chio-kernel/Cargo.toml > "${benches_file}"
+          bench_count="$(wc -l < "${benches_file}" | tr -d ' ')"
+          if [ "${bench_count}" = "0" ]; then
+            echo "::notice::baseline has no chio-kernel benchmarks; comparison will be skipped"
+            exit 0
+          fi
+          while IFS= read -r bench; do
+            cargo bench -p chio-kernel --bench "$bench" -- --noplot --sample-size 100
+          done < "${benches_file}"
+
+      - name: Run current kernel benchmarks
+        working-directory: ${{ runner.temp }}/chio-bench-current
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/chio-bench-current-target
+          CARGO_BUILD_JOBS: "1"
+          CARGO_INCREMENTAL: "0"
+        run: |
+          set -euo pipefail
+          benches_file="$(mktemp)"
+          awk '
+            /^\[\[bench\]\]/ { in_bench = 1; next }
+            in_bench && /^name = / {
+              gsub(/"/, "", $3)
+              print $3
+              in_bench = 0
+            }
+          ' crates/chio-kernel/Cargo.toml > "${benches_file}"
+          bench_count="$(wc -l < "${benches_file}" | tr -d ' ')"
+          if [ "${bench_count}" = "0" ]; then
+            echo "::error::no chio-kernel benchmarks found in Cargo.toml" >&2
+            exit 1
+          fi
+          while IFS= read -r bench; do
+            cargo bench -p chio-kernel --bench "$bench" -- --noplot --sample-size 100
+          done < "${benches_file}"
+
+      - name: Locate Criterion outputs
+        id: criterion
+        shell: bash
+        env:
+          BASELINE_TARGET_DIR: ${{ runner.temp }}/chio-bench-baseline-target
+          BASELINE_WORKTREE: ${{ runner.temp }}/chio-bench-baseline
+          CURRENT_TARGET_DIR: ${{ runner.temp }}/chio-bench-current-target
+          CURRENT_WORKTREE: ${{ runner.temp }}/chio-bench-current
+        run: |
+          set -euo pipefail
+
+          resolve_criterion_dir() {
+            local label="$1"
+            shift
+            local required="${1}"
+            shift
+            local dirs_file
+            dirs_file="$(mktemp)"
+            (
+              for root in "$@"; do
+                if [ -d "$root" ]; then
+                  find "$root" -type d -name criterion -prune -print
+                fi
+              done | while IFS= read -r dir; do
+                if find "$dir" -type f -path '*/new/estimates.json' -print -quit | grep -q .; then
+                  printf '%s\n' "$dir"
+                fi
+              done | sort -u
+            ) > "$dirs_file"
+
+            local count
+            count="$(wc -l < "$dirs_file" | tr -d ' ')"
+
+            case "$count" in
+              0)
+                if [ "$required" = "false" ]; then
+                  echo "::notice::no Criterion estimates found for ${label}; skipping comparison"
+                  printf '%s=\n' "$label" >> "$GITHUB_OUTPUT"
+                  rm -f "$dirs_file"
+                  return 0
+                fi
+                echo "::error::no Criterion estimates found for ${label}" >&2
+                rm -f "$dirs_file"
+                exit 1
+                ;;
+              1)
+                printf '%s=%s\n' "$label" "$(sed -n '1p' "$dirs_file")" >> "$GITHUB_OUTPUT"
+                rm -f "$dirs_file"
+                ;;
+              *)
+                echo "::error::multiple Criterion roots found for ${label}" >&2
+                cat "$dirs_file" >&2
+                rm -f "$dirs_file"
+                exit 1
+                ;;
+            esac
+          }
+
+          resolve_criterion_dir baseline false "$BASELINE_TARGET_DIR" "$BASELINE_WORKTREE"
+          resolve_criterion_dir current true "$CURRENT_TARGET_DIR" "$CURRENT_WORKTREE"
+
+      - name: Required kernel bench regression gate
+        if: steps.criterion.outputs.baseline != ''
+        run: |
+          bash scripts/criterion-compare.sh \
+            --baseline "${{ steps.criterion.outputs.baseline }}" \
+            --current "${{ steps.criterion.outputs.current }}" \
+            --threshold-percent 10
+
+      - name: Kernel bench baseline unavailable
+        if: steps.criterion.outputs.baseline == ''
+        run: |
+          echo "::notice::PR base has no chio-kernel Criterion baseline; current benchmarks ran successfully but comparison is skipped."

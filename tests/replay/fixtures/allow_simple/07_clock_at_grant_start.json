@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_simple",
+  "fixed_nonce_seed_index": 6,
+  "intent": "Allow path evaluated exactly at the capability's notBefore instant to exercise the inclusive lower bound of the validity window.",
+  "name": "allow_simple/07_clock_at_grant_start",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "clock-edge"]
+}

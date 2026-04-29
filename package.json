@@ -1,0 +1,21 @@
+{
+  "name": "chio-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Chio repo-root workspace. Top-level entry for Bun/npm package management. Houses the docs-demo (M08 GitHub Pages target) plus the TypeScript SDK workspaces nested under sdks/typescript/packages/.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "docs/demo",
+    "sdks/typescript/packages/browser",
+    "sdks/typescript/packages/workers",
+    "sdks/typescript/packages/edge",
+    "sdks/typescript/packages/deno"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

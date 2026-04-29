@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_simple",
+  "fixed_nonce_seed_index": 4,
+  "intent": "Allow path with a 64 KiB JSON payload to exercise canonical-JSON serializer scaling and large-receipt hashing.",
+  "name": "allow_simple/05_long_payload_64k",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "large-payload"]
+}

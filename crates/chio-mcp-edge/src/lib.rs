@@ -10,10 +10,22 @@ use serde::{Deserialize, Serialize};
 
 mod runtime;
 
+#[cfg(feature = "otel")]
+pub mod otel;
+
 pub use runtime::{
-    BridgeMcpToolCall, BridgeMcpToolCallRequest, ChioMcpEdge, McpEdgeConfig, McpExposedTool,
-    McpTargetExecutor,
+    execute_bridge_mcp_tool_call_async, BridgeMcpToolCall, BridgeMcpToolCallRequest, ChioMcpEdge,
+    McpEdgeConfig, McpExposedTool, McpTargetExecutor,
 };
+
+/// libFuzzer entry-point module for `chio-mcp-edge`.
+///
+/// Gated behind the `fuzz` Cargo feature so it only compiles into the
+/// standalone `chio-fuzz` workspace at `../../fuzz`. Production builds never
+/// pull in `arbitrary`, never expose these symbols, and never get recompiled
+/// with libFuzzer instrumentation.
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
 
 /// Minimal representation of an MCP tool listing response.
 /// This captures just enough to translate into Chio tool definitions.

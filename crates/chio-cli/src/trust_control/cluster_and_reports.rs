@@ -525,7 +525,7 @@ fn sync_peer_revocations(
     let Some(path) = state.config.revocation_db_path.as_deref() else {
         return Ok(0);
     };
-    let mut store = SqliteRevocationStore::open(path)?;
+    let store = SqliteRevocationStore::open(path)?;
     let mut applied = 0u64;
     loop {
         let cursor = peer_revocation_cursor(state, peer_url);
@@ -564,7 +564,7 @@ fn sync_peer_tool_receipts(
     let Some(path) = state.config.receipt_db_path.as_deref() else {
         return Ok(0);
     };
-    let mut store = SqliteReceiptStore::open(path)?;
+    let store = SqliteReceiptStore::open(path)?;
     let mut applied = 0u64;
     loop {
         let after_seq = peer_tool_seq(state, peer_url);
@@ -595,7 +595,7 @@ fn sync_peer_child_receipts(
     let Some(path) = state.config.receipt_db_path.as_deref() else {
         return Ok(0);
     };
-    let mut store = SqliteReceiptStore::open(path)?;
+    let store = SqliteReceiptStore::open(path)?;
     let mut applied = 0u64;
     loop {
         let after_seq = peer_child_seq(state, peer_url);
@@ -956,7 +956,7 @@ fn rollback_budget_authorize_exposure(
     payload: &TryChargeCostRequest,
     authority: Option<&BudgetEventAuthority>,
 ) -> Result<(), BudgetStoreError> {
-    let mut store = open_budget_store(&state.config).map_err(|response| {
+    let store = open_budget_store(&state.config).map_err(|response| {
         BudgetStoreError::Invariant(format!(
             "failed to reopen budget store for compensation: {}",
             response.status()
@@ -1738,7 +1738,7 @@ fn apply_cluster_snapshot(
     }
 
     if let Some(path) = state.config.revocation_db_path.as_deref() {
-        let mut store = SqliteRevocationStore::open(path)?;
+        let store = SqliteRevocationStore::open(path)?;
         for record in &revocations {
             store.upsert_revocation(&RevocationRecord {
                 capability_id: record.capability_id.clone(),
@@ -1766,7 +1766,7 @@ fn apply_cluster_snapshot(
 
     let mut budget_cursor = None;
     if let Some(path) = state.config.budget_db_path.as_deref() {
-        let mut store = SqliteBudgetStore::open(path)?;
+        let store = SqliteBudgetStore::open(path)?;
         let usage_records = budgets
             .iter()
             .map(budget_usage_record_from_view)
@@ -4559,7 +4559,7 @@ mod cluster_and_reports_tests {
         );
 
         {
-            let mut revocation_store = SqliteRevocationStore::open(&source_revocation_db)
+            let revocation_store = SqliteRevocationStore::open(&source_revocation_db)
                 .expect("open source revocation db");
             revocation_store
                 .upsert_revocation(&RevocationRecord {
@@ -4569,7 +4569,7 @@ mod cluster_and_reports_tests {
                 .expect("write revocation");
         }
         {
-            let mut receipt_store =
+            let receipt_store =
                 SqliteReceiptStore::open(&source_receipt_db).expect("open source receipt db");
             receipt_store
                 .append_chio_receipt(&sample_tool_receipt("tool-1", "cap-1"))
@@ -4582,7 +4582,7 @@ mod cluster_and_reports_tests {
                 .expect("record capability snapshot");
         }
         {
-            let mut budget_store =
+            let budget_store =
                 SqliteBudgetStore::open(&source_budget_db).expect("open source budget db");
             budget_store
                 .try_charge_cost_with_ids(
@@ -4728,7 +4728,7 @@ mod cluster_and_reports_tests {
         );
 
         {
-            let mut budget_store =
+            let budget_store =
                 SqliteBudgetStore::open(&source_budget_db).expect("open source budget db");
             let allowed = budget_store
                 .try_charge_cost_with_ids(
@@ -4826,7 +4826,7 @@ mod cluster_and_reports_tests {
         );
 
         {
-            let mut budget_store =
+            let budget_store =
                 SqliteBudgetStore::open(&source_budget_db).expect("open source budget db");
             budget_store
                 .upsert_usage(&chio_kernel::BudgetUsageRecord {

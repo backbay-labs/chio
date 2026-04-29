@@ -1,0 +1,346 @@
+# OWNERS.toml - load-bearing source of truth for path-to-milestone ownership.
+# CODEOWNERS is generated from this file. CI fails if CODEOWNERS has drifted.
+#
+# Schema:
+#   [[ownership]]
+#   glob   = "<path glob, gitignore-style>"
+#   owners = ["M01", "M07"]   # one or more milestones; first is primary
+#   notes  = "..."             # optional human-readable note
+#   frozen = false             # if true, requires the freeze-team review path
+#   frozen_until_milestone = "M05"   # optional; freeze ends when this closes
+#
+# Per-milestone GitHub team mapping (used to expand "M0X" to a CODEOWNERS line).
+# Single-owner trajectory: every label routes to @bb-connor. When the project
+# staffs up, replace personal handles with team handles and regenerate
+# CODEOWNERS:
+#   [teams]
+#   M01 = "@bb-connor"           # current single-owner form
+#   M01 = "@some-org/m01"        # future team form
+
+[teams]
+# Single-owner trajectory: every milestone slug, the sequencer, the freeze
+# team, and the security-reviewers role all route to the project owner.
+# CODEOWNERS regeneration deduplicates multi-owner paths to one entry.
+# Agent-team architecture (sub-agent reviewer roles, Security x2 via two
+# model instances) is unchanged; this block governs CODEOWNERS routing only.
+M01 = "@bb-connor"
+M02 = "@bb-connor"
+M03 = "@bb-connor"
+M04 = "@bb-connor"
+M05 = "@bb-connor"
+M06 = "@bb-connor"
+M07 = "@bb-connor"
+M08 = "@bb-connor"
+M09 = "@bb-connor"
+M10 = "@bb-connor"
+SEQUENCER = "@bb-connor"
+M05_FREEZE = "@bb-connor"
+SECURITY = "@bb-connor"
+
+# ---------- Spec / wire / corpus ----------
+
+[[ownership]]
+glob   = "spec/schemas/**/*.json"
+owners = ["M01"]
+
+[[ownership]]
+glob   = "tests/bindings/vectors/**"
+owners = ["M01"]
+
+[[ownership]]
+glob   = "tests/conformance/**"
+owners = ["M01", "M07", "M08"]
+
+[[ownership]]
+glob   = "tests/replay/fixtures/**"
+owners = ["M04", "M07", "M10"]
+notes  = "M04 owns the corpus; M07 adds per-provider scenarios; M10 graduates captures via chio replay --bless"
+
+[[ownership]]
+glob   = "tests/replay/goldens/**"
+owners = ["M04"]
+notes  = "Blessed corpus; only re-blessed via CHIO_BLESS gate (see 04-deterministic-replay.md)"
+
+[[ownership]]
+glob   = "tests/replay/test-key.seed"
+owners = ["M04"]
+notes  = "Test signing seed; seed-immutable enforced by chio-replay-gate.yml seed-immutable job"
+
+[[ownership]]
+glob   = "tests/replay/test-key.seed.sha256"
+owners = ["M04"]
+notes  = "SHA256 of test-key.seed; mismatch fails the replay-gate"
+
+[[ownership]]
+glob   = "tests/replay/test-key.seed.README"
+owners = ["M04"]
+notes  = "Public-seed warning README; coupled to test-key.seed"
+
+# ---------- Kernel - the contended crate ----------
+
+[[ownership]]
+glob   = "crates/chio-kernel/src/kernel/mod.rs"
+owners = ["M05"]
+codeowners = false
+notes  = "M05 freeze released after P3; normal ownership remains with @bb-connor"
+
+[[ownership]]
+glob   = "crates/chio-kernel/src/session.rs"
+owners = ["M05"]
+codeowners = false
+notes  = "M05 freeze released after P3; normal ownership remains with @bb-connor"
+
+[[ownership]]
+glob   = "crates/chio-kernel/src/kernel/session_ops.rs"
+owners = ["M05"]
+codeowners = false
+notes  = "M05 freeze released after P3; normal ownership remains with @bb-connor"
+
+[[ownership]]
+glob   = "crates/chio-kernel/src/receipt_*.rs"
+owners = ["M04", "M05"]
+notes  = "M04 owns golden basis; M05 owns signature shape"
+
+[[ownership]]
+glob   = "crates/chio-kernel-core/**"
+owners = ["M03", "M05"]
+notes  = "M03 owns algebra invariants; M05 owns async-shape"
+
+[[ownership]]
+glob   = "crates/chio-kernel-browser/**"
+owners = ["M08"]
+
+# ---------- Algebra and core ----------
+
+[[ownership]]
+glob   = "crates/chio-core-types/src/capability*.rs"
+owners = ["M03"]
+
+[[ownership]]
+glob   = "crates/chio-core-types/src/scope*.rs"
+owners = ["M03"]
+
+[[ownership]]
+glob   = "crates/chio-core-types/src/receipt*.rs"
+owners = ["M01", "M04"]
+notes  = "M01 owns wire schema; M04 owns golden corpus"
+
+[[ownership]]
+glob   = "crates/chio-core-types/src/provenance*.rs"
+owners = ["M01", "M07"]
+notes  = "M01 owns the schema; M07 is the primary consumer"
+
+# ---------- Tower / WASM / Anchor ----------
+
+[[ownership]]
+glob   = "crates/chio-tower/src/middleware/**"
+owners = ["M05"]
+
+[[ownership]]
+glob   = "crates/chio-tower/src/host_call.rs"
+owners = ["M06"]
+
+[[ownership]]
+glob   = "crates/chio-tower/src/adapter.rs"
+owners = ["M07"]
+
+[[ownership]]
+glob   = "crates/chio-wasm-guards/src/host.rs"
+owners = ["M06"]
+
+[[ownership]]
+glob   = "crates/chio-wasm-guards/src/registry.rs"
+owners = ["M06"]
+notes  = "NEW; lands in M06 P2"
+
+[[ownership]]
+glob   = "crates/chio-wasm-guards/src/hot_reload.rs"
+owners = ["M06"]
+notes  = "NEW; lands in M06 P3"
+
+[[ownership]]
+glob   = "wit/chio-guard/world.wit"
+owners = ["M06"]
+
+[[ownership]]
+glob   = "wit/chio-guards-redact/world.wit"
+owners = ["M10"]
+notes  = "M06 reserves the namespace placeholder; M10 ships the concrete redactor world"
+
+[[ownership]]
+glob   = "crates/chio-attest-verify/**"
+owners = ["M09"]
+notes  = "PLANNED-NEW; lands in M09 P3. Trust-boundary; Security x2 review mandatory once present."
+
+# ---------- Tee / replay / providers ----------
+
+[[ownership]]
+glob   = "crates/chio-tee/**"
+owners = ["M10"]
+notes  = "NEW; lands in M10 P1"
+
+[[ownership]]
+glob   = "crates/chio-tee-frame/**"
+owners = ["M10"]
+
+[[ownership]]
+glob   = "crates/chio-tool-call-fabric/**"
+owners = ["M07"]
+notes  = "NEW; lands in M07 P1"
+
+[[ownership]]
+glob   = "crates/chio-openai/**"
+owners = ["M07"]
+notes  = "Existing crate extended in-place behind provider-adapter feature"
+
+[[ownership]]
+glob   = "crates/chio-conformance/**"
+owners = ["M01"]
+
+# ---------- SDKs ----------
+
+[[ownership]]
+glob   = "sdks/typescript/packages/browser/**"
+owners = ["M08"]
+
+[[ownership]]
+glob   = "sdks/typescript/packages/workers/**"
+owners = ["M08"]
+
+[[ownership]]
+glob   = "sdks/typescript/packages/edge/**"
+owners = ["M08"]
+
+[[ownership]]
+glob   = "sdks/typescript/packages/conformance/src/browser-subset.ts"
+owners = ["M08"]
+
+[[ownership]]
+glob   = "sdks/typescript/packages/wire/**"
+owners = ["M01"]
+notes  = "Codegen target; M08 reads but does not own"
+
+[[ownership]]
+glob   = "sdks/python/**/_generated/**"
+owners = ["M01"]
+notes  = "Regenerate-only; do not hand-edit"
+
+[[ownership]]
+glob   = "sdks/python/**"
+owners = ["M01"]
+
+# ---------- Formal / fuzz ----------
+
+[[ownership]]
+glob   = "formal/lean4/**"
+owners = ["M03"]
+
+[[ownership]]
+glob   = "formal/tla/**"
+owners = ["M03"]
+
+[[ownership]]
+glob   = "formal/rust-verification/**"
+owners = ["M03"]
+
+[[ownership]]
+glob   = "fuzz/fuzz_targets/**"
+owners = ["M02"]
+
+[[ownership]]
+glob   = "fuzz/corpus/**"
+owners = ["M02"]
+notes  = "Crash-triage corpus gate from M02.P4.T4"
+
+[[ownership]]
+glob   = "fuzz/corpora/**"
+owners = ["M02"]
+notes  = "Seeded from M01 vectors"
+
+[[ownership]]
+glob   = "fuzz/target-map.toml"
+owners = ["M02"]
+notes  = "Wave-0 seed; maps fuzz targets to source-path globs for changed-target sampling"
+
+# ---------- Cross-cutting (sequencer) ----------
+
+[[ownership]]
+glob   = "Cargo.toml"
+owners = ["SEQUENCER"]
+notes  = "Workspace manifest; lock-bumps queued through sequencer"
+
+[[ownership]]
+glob   = "Cargo.lock"
+owners = ["SEQUENCER"]
+notes  = "Custom merge driver; concurrency=1 in merge queue"
+
+[[ownership]]
+glob   = "deny.toml"
+owners = ["M09"]
+
+[[ownership]]
+glob   = "rust-toolchain.toml"
+owners = ["SEQUENCER"]
+frozen = true
+notes  = "FROZEN; toolchain bumps require sequencer + Security x2"
+
+[[ownership]]
+glob   = ".github/workflows/ci.yml"
+owners = ["SEQUENCER"]
+notes  = "Lane-by-lane ownership; see EXECUTION-BOARD.md section 5 'Workflow lane ownership'"
+
+[[ownership]]
+glob   = "CODEOWNERS"
+owners = ["SEQUENCER"]
+notes  = "Generated from this file; do not hand-edit"
+
+[[ownership]]
+glob   = "README.md"
+owners = ["SEQUENCER"]
+
+[[ownership]]
+glob   = "AGENTS.md"
+owners = ["SEQUENCER"]
+
+[[ownership]]
+glob   = "CLAUDE.md"
+owners = ["SEQUENCER"]
+
+[[ownership]]
+glob   = ".planning/trajectory/**"
+owners = ["SEQUENCER"]
+
+# ---------- Wave-0 deliverables ----------
+
+[[ownership]]
+glob   = "scripts/install-orchestrator-tools.sh"
+owners = ["SEQUENCER"]
+
+[[ownership]]
+glob   = "scripts/check-fuzz-budget.sh"
+owners = ["M02"]
+notes  = "PLANNED-NEW; lands in M02 P0/P1"
+
+[[ownership]]
+glob   = "scripts/classify-trust-diff.sh"
+owners = ["SEQUENCER"]
+notes  = "PLANNED-NEW; lands in Wave 0 alongside trust-boundary policy enforcement"
+
+# ---------- M02 P4.T4 regression-test deletion gate ----------
+
+[[ownership]]
+glob   = "crates/*/tests/regression_*.rs"
+owners = ["M02"]
+notes  = "Crash-triage regression deletion gate from M02.P4.T4"
+
+[[ownership]]
+glob   = "tests/regression_*.rs"
+owners = ["M02"]
+notes  = "Crash-triage regression deletion gate from M02.P4.T4"
+
+# ---------- M02 P3.T2 mutants release-cycle gate ----------
+
+[[ownership]]
+glob   = "releases.toml"
+owners = ["M02"]
+notes  = "Mutation-testing advisory/blocking flip state (cycle_end_tag). Edits gated by CODEOWNERS so the override path (PR labelled 'mutants-gate-override' clearing cycle_end_tag) requires principal-engineer review. Source: 02-fuzzing-post-pr13.md Mutation-testing CI shape > Override paragraph; ticket M02.P3.T2."

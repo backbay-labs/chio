@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_metered",
+  "fixed_nonce_seed_index": 17,
+  "intent": "Allow metered call whose quoted cost is zero, exercising the no-op metering branch and ensuring zero-cost quotes still produce a receipt.",
+  "name": "allow_metered/04_quote_zero_cost",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "metering", "zero-cost"]
+}

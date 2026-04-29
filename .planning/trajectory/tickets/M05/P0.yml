@@ -1,0 +1,162 @@
+# M05 Phase 0 - Baselines and Freeze.
+# Source of truth: .planning/trajectory/05-async-kernel-real.md
+# (Phase 0, lines 336-351 + Round-2 addendum NEW P0.T5 at line 668).
+#
+# Milestone scope (from EXECUTION-BOARD.md section 5): M05 P0 -> P1 -> P2 -> P3
+# -> P4 are atomic and serial; one sub-wave per phase. M05 lands in Wave 2b on
+# `wave/W2/m05/...` worktrees. M05 OWNS the freeze on
+# `crates/chio-kernel/src/kernel/mod.rs` and `crates/chio-kernel/src/session.rs`
+# during P1-P3 (see freezes.yml id m05-kernel-async-pivot).
+#
+# Phase 0 is the prerequisite: it lands the bench scaffold (so the regression
+# gate is wired before any code moves), pins the new workspace deps, opens the
+# audit doc with starting counts, applies the freeze (CODEOWNERS + branch
+# ruleset + announcement template), and runs the cargo-mutants baseline so the
+# refactor is held to a non-regressing kill rate.
+#
+# M05 is a TRUST-BOUNDARY milestone: kernel evaluation, capability validation,
+# receipt signing, and concurrency primitives all sit on this surface.
+# Security x2 review applies to every M05 PR (two independent LLM reviewer
+# instances with different seeds and no shared scratchpad), in addition to
+# the human-side reviewer @bb-connor.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M05.P0.T1
+  milestone: M05
+  phase: 0
+  title: Land M05 baseline bench scaffold (12 criterion harnesses, placeholder bodies)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-kernel/Cargo.toml
+    - crates/chio-kernel/benches/cap_verify_ed25519.rs
+    - crates/chio-kernel/benches/scope_match.rs
+    - crates/chio-kernel/benches/time_bound.rs
+    - crates/chio-kernel/benches/revocation_lookup.rs
+    - crates/chio-kernel/benches/budget_decrement.rs
+    - crates/chio-kernel/benches/single_guard.rs
+    - crates/chio-kernel/benches/guard_pipeline_5.rs
+    - crates/chio-kernel/benches/receipt_sign.rs
+    - crates/chio-kernel/benches/receipt_append.rs
+    - crates/chio-kernel/benches/session_lookup.rs
+    - crates/chio-kernel/benches/dispatch_allow.rs
+    - crates/chio-kernel/benches/dispatch_deny.rs
+  shared_paths:
+    - Cargo.lock
+  depends_on: []
+  soft_deps: []
+  gate_check:
+    cmd: cargo bench -p chio-kernel --no-run
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m05/p0.t1-bench-scaffold-twelve-paths
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P0.T2
+  milestone: M05
+  phase: 0
+  title: Pin dashmap, arc-swap, loom, parking_lot, tower features in workspace deps
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - Cargo.toml
+    - Cargo.lock
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+  depends_on:
+    - M05.P0.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo tree -p chio-kernel -d --quiet | (! grep -E '^tokio v[^1]') && cargo build --workspace --quiet
+    timeout_seconds: 600
+  worktree_branch: wave/W2/m05/p0.t2-pin-async-deps
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P0.T3
+  milestone: M05
+  phase: 0
+  title: Open .planning/audits/M05-async-kernel.md with starting counts
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/audits/M05-async-kernel.md
+  shared_paths: []
+  depends_on:
+    - M05.P0.T1
+  soft_deps: []
+  gate_check:
+    cmd: test -f .planning/audits/M05-async-kernel.md && grep -q '1133' .planning/audits/M05-async-kernel.md && grep -qE '27.*&mut self' .planning/audits/M05-async-kernel.md && grep -qE '10.*sync.primitives' .planning/audits/M05-async-kernel.md
+  worktree_branch: wave/W2/m05/p0.t3-audit-doc-starting-counts
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P0.T4
+  milestone: M05
+  phase: 0
+  title: Apply M05 freeze on kernel/mod.rs and session.rs (CODEOWNERS + ruleset + announcement)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .github/CODEOWNERS
+    - .planning/trajectory/freezes.yml
+    - .github/workflows/m05-freeze-guard.yml
+    - .planning/audits/M05-async-kernel.md
+  shared_paths:
+    - .github/CODEOWNERS
+    - .planning/trajectory/freezes.yml
+  depends_on:
+    - M05.P0.T3
+  soft_deps: []
+  gate_check:
+    cmd: grep -q 'crates/chio-kernel/src/kernel/mod.rs.*@bb-connor' .github/CODEOWNERS && grep -q 'crates/chio-kernel/src/session.rs.*@bb-connor' .github/CODEOWNERS && grep -q 'm05-kernel-async-pivot' .planning/trajectory/freezes.yml && test -f .github/workflows/m05-freeze-guard.yml
+  worktree_branch: wave/W2/m05/p0.t4-apply-kernel-session-freeze
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M05.P0.T5
+  milestone: M05
+  phase: 0
+  title: Run cargo-mutants baseline on chio-kernel and record kill rate (NEW)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/audits/M05-async-kernel.md
+    - scripts/mutants-baseline-kernel.sh
+  shared_paths: []
+  depends_on:
+    - M05.P0.T4
+  soft_deps: []
+  gate_check:
+    cmd: test -f scripts/mutants-baseline-kernel.sh && grep -qE 'mutants.*baseline|kill.rate' .planning/audits/M05-async-kernel.md
+    timeout_seconds: 1800
+  worktree_branch: wave/W2/m05/p0.t5-cargo-mutants-baseline
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

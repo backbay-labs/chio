@@ -210,6 +210,189 @@ enum Commands {
         #[command(subcommand)]
         command: GuardCommands,
     },
+
+    /// Run the cross-language conformance harness against a peer adapter.
+    Conformance {
+        #[command(subcommand)]
+        command: ConformanceCommands,
+    },
+
+    /// Re-evaluate a captured receipt log against the current build.
+    ///
+    /// Reads a directory of signed receipts (or an NDJSON tee stream),
+    /// re-verifies every signature, recomputes the Merkle root incrementally,
+    /// and reports the first divergence by byte offset and JSON pointer.
+    /// Composes with `chio tee` output (see milestone M10).
+    ///
+    /// EXIT CODES:
+    ///   0  All receipts (or tee frames) verify and root matches expectation.
+    ///   10 Verdict drift: a receipt's allow/deny decision differs from the
+    ///      current build for the same input.
+    ///   20 Signature mismatch: Ed25519 verification failed on at least one
+    ///      receipt or frame `tenant_sig`.
+    ///   30 Parse error: malformed JSON or missing required field.
+    ///   40 Schema mismatch: unsupported `schema_version` or schema validation
+    ///      failed against the canonical-JSON schema set.
+    ///   50 Redaction mismatch: `redaction_pass_id` unavailable, or rerunning
+    ///      the redaction manifest produces a different result.
+    Replay(ReplayArgs),
+}
+
+/// Arguments for the `chio replay` subcommand.
+#[derive(clap::Args)]
+pub struct ReplayArgs {
+    /// Path to a receipt-log directory or NDJSON stream.
+    /// Required when no sub-subcommand is supplied.
+    pub log: Option<PathBuf>,
+
+    /// Treat `log` as a tee NDJSON stream. When omitted, the reader
+    /// auto-detects the input shape (directory vs. NDJSON file).
+    #[arg(long)]
+    pub from_tee: bool,
+
+    /// Ed25519 tenant public-key file required when `--from-tee` is used.
+    /// Raw 32-byte and 64-lowercase-hex files are accepted.
+    #[arg(long, value_name = "PATH")]
+    pub tenant_pubkey: Option<PathBuf>,
+
+    /// Trusted kernel public-key file required for receipt-log replay.
+    /// Raw 32-byte Ed25519 and algorithm-aware hex files are accepted.
+    #[arg(long, value_name = "PATH")]
+    pub trusted_kernel_pubkey: Option<PathBuf>,
+
+    /// Assert the recomputed Merkle root matches this hex string.
+    #[arg(long, value_name = "HEX")]
+    pub expect_root: Option<String>,
+
+    /// Emit a structured JSON report on stdout (instead of human text).
+    #[arg(long)]
+    pub json: bool,
+
+    /// (Restricted) Convert a TEE capture into a replay fixture directory.
+    /// Requires the local `chio:tee/bless@1` capability gate.
+    #[arg(long)]
+    pub bless: bool,
+
+    /// Destination fixture directory for `--bless`.
+    #[arg(long, value_name = "FIXTURE-DIR", requires = "bless")]
+    pub into: Option<PathBuf>,
+
+    /// Optional sub-subcommand. Currently the only variant is
+    /// `traffic`, which validates an NDJSON `chio-tee-frame.v1` capture.
+    #[command(subcommand)]
+    pub command: Option<ReplaySubcommand>,
+}
+
+/// Sub-subcommands under `chio replay`.
+#[derive(clap::Subcommand)]
+pub enum ReplaySubcommand {
+    /// Validate or re-execute an NDJSON `chio-tee-frame.v1` capture.
+    /// Supply `--against <policy-ref>` to re-execute against a policy with
+    /// namespaced replay receipts (`replay:<run_id>:<frame_id>`).
+    Traffic(TrafficArgs),
+}
+
+/// Arguments for `chio replay traffic`.
+#[derive(clap::Args)]
+pub struct TrafficArgs {
+    /// Path to an NDJSON file containing one `chio-tee-frame.v1` per
+    /// line.
+    #[arg(long, value_name = "NDJSON")]
+    pub from: PathBuf,
+
+    /// Pinned schema name. Defaults to `chio-tee-frame.v1`. The on-the-wire
+    /// `schema_version` field is the literal `"1"`; this flag lets callers
+    /// pin the schema name for diagnostic clarity. Frames whose
+    /// `schema_version` does not match the pinned literal are rejected
+    /// regardless of this value.
+    #[arg(long, default_value = "chio-tee-frame.v1")]
+    pub schema: String,
+
+    /// Optional path to an Ed25519 tenant public-key file (32 raw bytes
+    /// or 64 lowercase-hex characters). When supplied, every frame's
+    /// `tenant_sig` is verified against this key; mismatches fail
+    /// closed. When omitted, the verifier is skipped (frames are still
+    /// schema-validated).
+    #[arg(long, value_name = "PATH")]
+    pub tenant_pubkey: Option<PathBuf>,
+
+    /// Emit a structured JSON report on stdout instead of human text.
+    #[arg(long)]
+    pub json: bool,
+
+    /// Re-execute every frame against this policy reference.
+    ///
+    /// Three accepted shapes:
+    ///
+    /// 1. `<64-lower-hex>` or `sha256:<64-lower-hex>` -- manifest hash.
+    ///    Requires manifest registry (not yet wired); surfaces
+    ///    `NotResolvable` until then.
+    /// 2. `<name>@<semver>` or `version:<name>@<semver>` -- package
+    ///    coordinate. Same: `NotResolvable` until package registry lands.
+    /// 3. Any other shape (or `path:<file>`) -- workspace-local YAML
+    ///    policy file. Fully resolvable now.
+    ///
+    /// Replay receipts are namespaced `replay:<run_id>:<frame_id>` to
+    /// prevent collisions with production receipts.
+    #[arg(long, value_name = "POLICY-REF")]
+    pub against: Option<String>,
+
+    /// Optional caller-supplied replay run-id. When omitted a fresh
+    /// random UUID-v4 is generated per invocation. Useful for
+    /// deterministic fixture generation in tests; format is
+    /// `[A-Za-z0-9_-]+` (token-shaped so the resulting
+    /// `replay:<run_id>:<frame_id>` ids stay grep-friendly).
+    #[arg(long, value_name = "ID")]
+    pub run_id: Option<String>,
+}
+
+/// Conformance harness commands.
+#[derive(Subcommand)]
+enum ConformanceCommands {
+    /// Execute conformance scenarios against a peer language adapter.
+    Run {
+        /// Peer language adapter to exercise (`js`, `python`, `go`, `cpp`, or `all`).
+        #[arg(long)]
+        peer: String,
+
+        /// Optional report format. Pass `json` to emit machine-readable JSON
+        /// summarising the run; omit to print a human-readable summary.
+        #[arg(long)]
+        report: Option<String>,
+
+        /// Optional scenario id filter. When set, only scenarios with this id
+        /// are surfaced in the printed/written report; the underlying harness
+        /// still executes the full corpus.
+        #[arg(long)]
+        scenario: Option<String>,
+
+        /// Optional output file. When provided, the report is written to this
+        /// path; otherwise the report is printed to stdout.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Download pre-built peer-language adapter binaries pinned in
+    /// `crates/chio-conformance/peers.lock.toml`.
+    FetchPeers {
+        /// Verify the lockfile shape only; do not download anything.
+        #[arg(long)]
+        check: bool,
+
+        /// Output directory for fetched binaries.
+        #[arg(long, default_value = "./.chio-peers")]
+        out: PathBuf,
+
+        /// Optional language filter (`python`, `js`, `go`, `cpp`).
+        #[arg(long)]
+        language: Option<String>,
+
+        /// Optional explicit path to `peers.lock.toml`. When omitted the
+        /// CLI consults `$CHIO_PEERS_LOCK`, the XDG config dir, the
+        /// in-repo path, and the cwd in that order.
+        #[arg(long)]
+        lockfile: Option<PathBuf>,
+    },
 }
 
 /// Guard development lifecycle commands.
@@ -257,6 +440,64 @@ enum GuardCommands {
     /// Package a guard project into a distributable .arcguard archive.
     Pack,
 
+    /// Publish a guard project as a three-layer OCI artifact.
+    Publish {
+        /// Guard project directory containing guard-manifest.yaml.
+        project: PathBuf,
+        /// Tag-addressed OCI destination, for example oci://ghcr.io/chio/tool-gate:v1.
+        #[arg(long = "ref")]
+        reference: String,
+        /// WIT file to publish as the first layer.
+        #[arg(long, default_value = "wit/chio-guard/world.wit")]
+        wit: PathBuf,
+        /// Ed25519 signer public key as ed25519:<base64>. If omitted, guard-manifest.yaml is used.
+        #[arg(long)]
+        signer_public_key: Option<String>,
+        /// Optional Sigstore signer subject annotation.
+        #[arg(long)]
+        signer_subject: Option<String>,
+        /// Runtime fuel limit recorded in the config blob.
+        #[arg(long, default_value_t = 5_000_000)]
+        fuel_limit: u64,
+        /// Runtime memory limit in bytes recorded in the config blob.
+        #[arg(long, default_value_t = 16_777_216)]
+        memory_limit_bytes: u64,
+        /// Epoch seed recorded in the config blob.
+        #[arg(long)]
+        epoch_id_seed: String,
+        /// Registry username for HTTP basic auth.
+        #[arg(long)]
+        username: Option<String>,
+        /// Registry password or token for HTTP basic auth.
+        #[arg(long, requires = "username")]
+        password: Option<String>,
+        /// Registry host allowed to use HTTP instead of HTTPS.
+        #[arg(long = "allow-http-registry")]
+        allow_http_registry: Vec<String>,
+    },
+
+    /// Pull a digest-pinned guard OCI artifact into the local content-addressed cache.
+    Pull {
+        /// Digest-pinned OCI source, for example oci://ghcr.io/chio/tool-gate@sha256:<digest>.
+        #[arg(long = "ref")]
+        reference: String,
+        /// Registry username for HTTP basic auth.
+        #[arg(long)]
+        username: Option<String>,
+        /// Registry password or token for HTTP basic auth.
+        #[arg(long, requires = "username")]
+        password: Option<String>,
+        /// Registry host allowed to use HTTP instead of HTTPS.
+        #[arg(long = "allow-http-registry")]
+        allow_http_registry: Vec<String>,
+    },
+
+    /// Manage the local guard digest blocklist.
+    Blocklist {
+        #[command(subcommand)]
+        command: GuardBlocklistCommands,
+    },
+
     /// Install a .arcguard archive to the guard directory.
     Install {
         /// Path to the .arcguard archive file.
@@ -285,6 +526,15 @@ enum GuardCommands {
     Verify {
         /// Path to the `.wasm` file to verify.
         wasm: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum GuardBlocklistCommands {
+    /// Remove a digest from the local guard blocklist.
+    Remove {
+        /// Digest to remove, as sha256:<64-hex> or bare 64-hex.
+        digest: String,
     },
 }
 

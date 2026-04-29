@@ -1,0 +1,14 @@
+{
+  "request": {
+    "tool_name": "delete_file",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 13,
+      "verdict": "deny",
+      "reason": "required scope missing"
+    },
+    "scopes": []
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"required scope missing\"}"
+}

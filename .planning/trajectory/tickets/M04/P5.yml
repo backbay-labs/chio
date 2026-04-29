@@ -1,0 +1,138 @@
+# M04 Phase 5 - Property-based replay-invariance suite for the kernel.
+# Source of truth: .planning/trajectory/04-deterministic-replay.md (Phase 5,
+# lines 325-359). Five atomic tasks map 1:1 to T1-T5 in doc order.
+# Wave 3 per EXECUTION-BOARD section 2 (uses wave/W3/...).
+# Phase scope: crates/chio-kernel/tests/replay_proptest.rs using the workspace
+# proptest = "1.10" dep; arbitrary_receipt_tuple strategy; signing-as-function
+# property; replay-root-idempotent property; shuffle-independence property;
+# 30s CI budget; failure archival under tests/replay/proptest-regressions/;
+# (NEW sub-task: regression archive doubles as M02 libfuzzer seed corpus, but
+# the seed glue itself lives under M02 ownership and is out of scope here).
+# Cross-milestone deps: M03 P3 (Apalache) MERGED supplies the formal anchor
+# the property suite leans on; M04 P4 lands the replay subcommand the proptest
+# regressions are debugged with.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M04.P5.T1
+  milestone: M04
+  phase: 5
+  title: Define arbitrary_receipt_tuple proptest strategy in chio-kernel tests
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-kernel/tests/replay_proptest.rs
+    - crates/chio-kernel/Cargo.toml
+    - tests/replay/proptest-regressions/.gitkeep
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M04.P4.T7
+    - M03.P3.T7
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-kernel --tests
+  worktree_branch: wave/W3/m04/p5.t1-arbitrary-receipt-strategy
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P5.T2
+  milestone: M04
+  phase: 5
+  title: Land signing_is_a_function property (same inputs yield same bytes)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-kernel/tests/replay_proptest.rs
+  shared_paths: []
+  depends_on:
+    - M04.P5.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --test replay_proptest -- signing_is_a_function
+    timeout_seconds: 60
+  worktree_branch: wave/W3/m04/p5.t2-signing-is-a-function
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P5.T3
+  milestone: M04
+  phase: 5
+  title: Land replay_root_is_idempotent property (twice-replay yields same root)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-kernel/tests/replay_proptest.rs
+  shared_paths: []
+  depends_on:
+    - M04.P5.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --test replay_proptest -- replay_root_is_idempotent
+    timeout_seconds: 60
+  worktree_branch: wave/W3/m04/p5.t3-replay-root-idempotent
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P5.T4
+  milestone: M04
+  phase: 5
+  title: Land independent-receipt shuffle invariance property (no shared nonce)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-kernel/tests/replay_proptest.rs
+  shared_paths: []
+  depends_on:
+    - M04.P5.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-kernel --test replay_proptest -- shuffle_independent_receipts_preserves_bytes
+    timeout_seconds: 60
+  worktree_branch: wave/W3/m04/p5.t4-shuffle-independence
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P5.T5
+  milestone: M04
+  phase: 5
+  title: Wire 30s proptest CI budget and regression archival in replay-gate workflow
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .github/workflows/chio-replay-gate.yml
+    - tests/replay/proptest-regressions/README.md
+  shared_paths:
+    - .github/workflows/chio-replay-gate.yml
+  depends_on:
+    - M04.P5.T4
+  soft_deps:
+    - "Regression archive is wired as a seed source for M02 libfuzzer harness; the seed glue (crates/chio-kernel/fuzz/seeds/replay.rs) is owned by M02 and out of M04 scope."
+  gate_check:
+    cmd: actionlint .github/workflows/chio-replay-gate.yml || true; grep -q 'proptest' .github/workflows/chio-replay-gate.yml && grep -q 'PROPTEST_MAX_GLOBAL_REJECTS\|timeout-minutes' .github/workflows/chio-replay-gate.yml
+  worktree_branch: wave/W3/m04/p5.t5-proptest-ci-budget
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

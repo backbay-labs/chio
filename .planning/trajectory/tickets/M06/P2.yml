@@ -1,0 +1,194 @@
+# M06 Phase 2 - Guard registry, OCI distribution, Sigstore.
+# Source of truth: .planning/trajectory/06-wasm-guard-platform.md
+# (Phase 2, lines 118-223). Six atomic tasks map 1:1 to P2.T1-P2.T6 in doc
+# order.
+#
+# Trust-boundary status: M06 is a TRUST-BOUNDARY milestone. P2 wires Sigstore
+# keyless verification onto the guard load path; Security x2 review applies
+# (EXECUTION-BOARD section 7). Per EXECUTION-BOARD section 5 ("No verifier
+# or trust-boundary stubs", lines 497-521), M06 P2 MUST consume the real
+# chio_attest_verify::AttestVerifier from M09 P3 and may not merge before
+# M09 P3's integration tests pass on main.
+#
+# Dep gating:
+#   - P2 chains after P1 (atomic phase order per EXECUTION-BOARD section 2).
+#   - P2.T4 (cosign keyless verify wiring) hard-deps on M09.P3.T1
+#     (chio-attest-verify crate stand-up, MERGED). The migration coordination
+#     doc docs/coordination/m06-attest-verify-migration.md (M09.P3.T6) is
+#     the canonical pointer to the AttestVerifier::verify_bundle and
+#     AttestVerifier::verify_bytes signatures M06 consumes (phase doc line
+#     190).
+#   - P2.T2 (publish) and P2.T3 (pull) do NOT need M09 P3 because the verify
+#     stage is wired in P2.T4. Earlier tickets push/pull bytes; verification
+#     is layered on after.
+#
+# Wave: all P2 tickets land in Wave 2b under wave/W2/m06/p2.* branches.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M06.P2.T1
+  milestone: M06
+  phase: 2
+  title: Scaffold chio-guard-registry crate with oci-distribution client
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-guard-registry/Cargo.toml"
+    - "crates/chio-guard-registry/src/lib.rs"
+    - "crates/chio-guard-registry/src/oci.rs"
+    - "Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+    - "Cargo.toml"
+  depends_on:
+    - M06.P1.T6
+  soft_deps:
+    - "oci-distribution chosen per .planning/trajectory/README.md decision 8 (already in sigstore-rs dep tree; no second registry client)."
+  gate_check:
+    cmd: "cargo build -p chio-guard-registry && cargo test -p chio-guard-registry --lib"
+  worktree_branch: "wave/W2/m06/p2.t1-guard-registry-crate-scaffold"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P2.T2
+  milestone: M06
+  phase: 2
+  title: chio guard publish pushes three-layer OCI artifact with config blob
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-guard-registry/src/publish.rs"
+    - "crates/chio-cli/src/commands/guard_publish.rs"
+    - "crates/chio-guard-registry/tests/publish_layer_order.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P2.T1
+  soft_deps:
+    - "Layer ordering is normative: wit first, wasm second, manifest third (phase doc line 163)."
+    - "artifactType application/vnd.chio.guard.v2+wasm; config blob mediaType application/vnd.chio.guard.config.v2+json (phase doc lines 124-176)."
+  gate_check:
+    cmd: "cargo test -p chio-guard-registry --test publish_layer_order"
+  worktree_branch: "wave/W2/m06/p2.t2-guard-publish-three-layer"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P2.T3
+  milestone: M06
+  phase: 2
+  title: chio guard pull resolves and caches OCI artifacts by sha256
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-guard-registry/src/pull.rs"
+    - "crates/chio-guard-registry/src/cache.rs"
+    - "crates/chio-cli/src/commands/guard_pull.rs"
+    - "crates/chio-guard-registry/tests/pull_cache_layout.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P2.T2
+  soft_deps:
+    - "Cache layout: ${XDG_CACHE_HOME:-~/.cache}/chio/guards/<sha256-digest>/{manifest.json,config.json,wit.bin,module.wasm,sigstore-bundle.json} (phase doc lines 192-201)."
+  gate_check:
+    cmd: "cargo test -p chio-guard-registry --test pull_cache_layout"
+  worktree_branch: "wave/W2/m06/p2.t3-guard-pull-content-addressed-cache"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P2.T4
+  milestone: M06
+  phase: 2
+  title: Cosign keyless verify with Fulcio subject and Rekor proof gating
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-guard-registry/src/verify.rs"
+    - "crates/chio-guard-registry/Cargo.toml"
+    - "crates/chio-guard-registry/tests/cosign_verify_paths.rs"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - M06.P2.T3
+    - M09.P3.T1
+  soft_deps:
+    - "Consumes chio_attest_verify::AttestVerifier per docs/coordination/m06-attest-verify-migration.md (landed in M09.P3.T6)."
+    - "verify_bundle for on-disk loads, verify_bytes for streamed network loads; ExpectedIdentity is M09's single source of truth (phase doc line 190)."
+    - "EXECUTION-BOARD section 5: no parallel verifier; M06 P2 cannot merge before M09 P3 integration tests pass on main."
+  gate_check:
+    cmd: "cargo test -p chio-guard-registry --test cosign_verify_paths"
+  worktree_branch: "wave/W2/m06/p2.t4-cosign-keyless-verify"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P2.T5
+  milestone: M06
+  phase: 2
+  title: Fail-closed offline mode and dual-mode signature reconciliation
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-guard-registry/src/offline.rs"
+    - "crates/chio-guard-registry/src/verify.rs"
+    - "crates/chio-guard-registry/tests/offline_and_dual_mode.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P2.T4
+  soft_deps:
+    - "Failure modes (deny-by-default): network+sig-fail deny; offline+cached+verified allow; offline+uncached deny; Ed25519/Sigstore mismatch deny (phase doc lines 203-208)."
+    - "Every load emits structured event distinguishing ed25519-only / sigstore-only / dual-verified outcomes."
+  gate_check:
+    cmd: "cargo test -p chio-guard-registry --test offline_and_dual_mode"
+  worktree_branch: "wave/W2/m06/p2.t5-offline-and-dual-mode"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P2.T6
+  milestone: M06
+  phase: 2
+  title: zot integration suite for publish/pull/verify/offline paths
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "crates/chio-guard-registry/tests/zot_integration.rs"
+    - "crates/chio-guard-registry/Cargo.toml"
+  shared_paths:
+    - "Cargo.lock"
+  depends_on:
+    - M06.P2.T5
+  soft_deps:
+    - "testcontainers-spawned zot registry; covers publish, pull, tampered-artifact rejection, wrong-subject rejection, offline cache hit, offline cache miss (phase doc lines 221-222)."
+  gate_check:
+    cmd: "cargo test -p chio-guard-registry --test zot_integration -- --ignored"
+    timeout_seconds: 600
+  worktree_branch: "wave/W2/m06/p2.t6-zot-integration-suite"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

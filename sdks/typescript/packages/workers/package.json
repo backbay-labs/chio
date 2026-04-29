@@ -1,0 +1,38 @@
+{
+  "name": "@chio-protocol/workers",
+  "version": "0.1.0",
+  "description": "Chio Protocol Cloudflare Workers SDK using wasm-pack bundler artifacts",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./bundler/*": "./dist/bundler/*"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "bun run build:wasm && tsc -p tsconfig.json",
+    "build:wasm": "../../scripts/build-wasm.sh --package workers --target bundler",
+    "test:miniflare": "bun run build && bun -e \"import { Miniflare } from 'miniflare'; const mf = new Miniflare({ modules: true, scriptPath: 'dist/index.js', compatibilityDate: '2026-04-27', modulesRules: [{ type: 'ESModule', include: ['**/*.js'], fallthrough: true }, { type: 'CompiledWasm', include: ['**/*.wasm'], fallthrough: true }] }); const res = await mf.dispatchFetch('https://workers.test/__chio_workers_smoke'); const body = await res.json(); await mf.dispose(); if (!res.ok || body.package !== '@chio-protocol/workers' || body.wasmTarget !== 'bundler' || body.verifyReceipt !== true) throw new Error('Miniflare smoke failed: ' + JSON.stringify(body)); console.log('miniflare smoke: 1 passed');\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260426.1",
+    "miniflare": "^4.20260424.0",
+    "typescript": "~5.7.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

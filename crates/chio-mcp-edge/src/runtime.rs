@@ -158,38 +158,102 @@ impl TargetProtocolExecutor for McpTargetExecutor {
     }
 }
 
+pub async fn execute_bridge_mcp_tool_call_async(
+    kernel: &ChioKernel,
+    request: BridgeMcpToolCallRequest,
+) -> Result<BridgeMcpToolCall, AdapterError> {
+    let BridgeMcpToolCallRequest {
+        request_id,
+        capability,
+        server_id,
+        tool_name,
+        arguments,
+        agent_id,
+        model_metadata,
+        route_selection_metadata,
+        peer_supports_chio_tool_streaming,
+    } = request;
+    let kernel_request = ToolCallRequest {
+        request_id: request_id.clone(),
+        capability,
+        tool_name,
+        server_id,
+        agent_id,
+        arguments,
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata,
+        federated_origin_kernel_id: None,
+    };
+    let response = kernel
+        .evaluate_tool_call_with_metadata(&kernel_request, route_selection_metadata)
+        .await
+        .map_err(|error| AdapterError::KernelRuntime(error.to_string()))?;
+
+    bridge_mcp_tool_call_from_response(response, &request_id, peer_supports_chio_tool_streaming)
+}
+
 pub fn execute_bridge_mcp_tool_call(
     kernel: &ChioKernel,
     request: BridgeMcpToolCallRequest,
 ) -> Result<BridgeMcpToolCall, AdapterError> {
-    let response = kernel
-        .evaluate_tool_call_blocking_with_metadata(
-            &ToolCallRequest {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(|| {
+                handle.block_on(execute_bridge_mcp_tool_call_async(kernel, request))
+            })
+        }
+        Ok(_) => {
+            let kernel_request = ToolCallRequest {
                 request_id: request.request_id.clone(),
-                capability: request.capability,
-                tool_name: request.tool_name,
-                server_id: request.server_id,
-                agent_id: request.agent_id,
-                arguments: request.arguments,
+                capability: request.capability.clone(),
+                tool_name: request.tool_name.clone(),
+                server_id: request.server_id.clone(),
+                agent_id: request.agent_id.clone(),
+                arguments: request.arguments.clone(),
                 dpop_proof: None,
                 governed_intent: None,
                 approval_token: None,
-                model_metadata: request.model_metadata,
+                model_metadata: request.model_metadata.clone(),
                 federated_origin_kernel_id: None,
-            },
-            request.route_selection_metadata,
-        )
-        .map_err(|error| AdapterError::KernelRuntime(error.to_string()))?;
+            };
+            let response = kernel
+                .evaluate_tool_call_blocking_with_metadata(
+                    &kernel_request,
+                    request.route_selection_metadata.clone(),
+                )
+                .map_err(|error| AdapterError::KernelRuntime(error.to_string()))?;
+            bridge_mcp_tool_call_from_response(
+                response,
+                &request.request_id,
+                request.peer_supports_chio_tool_streaming,
+            )
+        }
+        Err(_) => {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| AdapterError::KernelRuntime(error.to_string()))?;
+            runtime.block_on(execute_bridge_mcp_tool_call_async(kernel, request))
+        }
+    }
+}
 
+fn bridge_mcp_tool_call_from_response(
+    response: ToolCallResponse,
+    request_id: &str,
+    peer_supports_chio_tool_streaming: bool,
+) -> Result<BridgeMcpToolCall, AdapterError> {
     let mut notifications = Vec::new();
     let mcp_result = kernel_response_to_tool_result(KernelResponseToToolResultArgs {
         pending_notifications: &mut notifications,
-        request_id: &json!(request.request_id),
+        request_id: &json!(request_id),
         output: response.output.clone(),
         reason: response.reason.clone(),
         verdict: response.verdict,
         terminal_state: &response.terminal_state,
-        peer_supports_chio_tool_streaming: request.peer_supports_chio_tool_streaming,
+        peer_supports_chio_tool_streaming,
         related_task_id: None,
     });
 

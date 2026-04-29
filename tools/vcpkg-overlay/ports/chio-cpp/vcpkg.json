@@ -1,0 +1,26 @@
+{
+  "name": "chio-cpp",
+  "version": "0.1.0",
+  "port-version": 0,
+  "description": "C++17 SDK for Chio hosted MCP sessions and security invariants",
+  "homepage": "https://github.com/backbay-labs/chio",
+  "license": "Apache-2.0",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ],
+  "features": {
+    "curl": {
+      "description": "Build the optional libcurl HTTP transport",
+      "dependencies": [
+        "curl"
+      ]
+    }
+  }
+}

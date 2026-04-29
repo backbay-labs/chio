@@ -552,8 +552,8 @@ capabilities:
         assert_eq!(kernel.guard_count(), 1); // pipeline counts as 1
     }
 
-    #[test]
-    fn configure_revocation_store_survives_restart() {
+    #[tokio::test]
+    async fn configure_revocation_store_survives_restart() {
         let yaml = r#"
 capabilities:
   default:
@@ -600,7 +600,7 @@ capabilities:
             federated_origin_kernel_id: None,
         };
 
-        let response = restarted.evaluate_tool_call_blocking(&request).unwrap();
+        let response = restarted.evaluate_tool_call(&request).await.unwrap();
         assert_eq!(response.verdict, chio_kernel::Verdict::Deny);
         assert!(response.reason.as_deref().unwrap_or("").contains("revoked"));
 
@@ -760,8 +760,8 @@ capabilities:
         let _ = std::fs::remove_file(authority_db_path);
     }
 
-    #[test]
-    fn check_command_allow() {
+    #[tokio::test]
+    async fn check_command_allow() {
         let yaml = r#"
 kernel:
   max_capability_ttl: 3600
@@ -800,12 +800,12 @@ capabilities:
             federated_origin_kernel_id: None,
         };
 
-        let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+        let response = kernel.evaluate_tool_call(&request).await.unwrap();
         assert_eq!(response.verdict, chio_kernel::Verdict::Allow);
     }
 
-    #[test]
-    fn check_command_deny_forbidden_path() {
+    #[tokio::test]
+    async fn check_command_deny_forbidden_path() {
         let yaml = r#"
 kernel:
   max_capability_ttl: 3600
@@ -844,7 +844,7 @@ capabilities:
             federated_origin_kernel_id: None,
         };
 
-        let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+        let response = kernel.evaluate_tool_call(&request).await.unwrap();
         assert_eq!(response.verdict, chio_kernel::Verdict::Deny);
     }
 

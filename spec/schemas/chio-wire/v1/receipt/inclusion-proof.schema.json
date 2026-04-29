@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/inclusion-proof/v1",
+  "title": "Chio Receipt Merkle Inclusion Proof",
+  "description": "Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. M04 deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tree_size", "leaf_index", "audit_path"],
+  "properties": {
+    "tree_size": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Total number of leaves in the Merkle tree at the time the proof was issued."
+    },
+    "leaf_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based index of the leaf being proved. MUST satisfy `leaf_index < tree_size`."
+    },
+    "audit_path": {
+      "type": "array",
+      "description": "Ordered sibling hashes from leaf-level up to (but not including) the root. Siblings that were carried upward without pairing on the right edge of an unbalanced level are omitted, so the path length is not strictly `ceil(log2(tree_size))`. Each entry is a `chio-core-types::Hash` serialized via its transparent serde adapter (32-byte SHA-256 digest, hex-encoded with a `0x` prefix).",
+      "items": {
+        "type": "string",
+        "pattern": "^0x[0-9a-f]{64}$",
+        "description": "Sibling hash. 32 bytes, lowercase hex with `0x` prefix."
+      }
+    }
+  }
+}

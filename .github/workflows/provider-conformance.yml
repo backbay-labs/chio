@@ -1,0 +1,54 @@
+name: Provider conformance
+
+on:
+  pull_request:
+    branches:
+      - project/roadmap-04-25-2026
+      - main
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/chio-provider-conformance/**
+      - crates/chio-openai/**
+      - crates/chio-tool-call-fabric/**
+      - .github/workflows/provider-conformance.yml
+  push:
+    branches:
+      - project/roadmap-04-25-2026
+      - main
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/chio-provider-conformance/**
+      - crates/chio-openai/**
+      - crates/chio-tool-call-fabric/**
+      - .github/workflows/provider-conformance.yml
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  openai-fixtures:
+    name: OpenAI provider replay fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - name: Replay OpenAI provider fixtures
+        run: cargo test -p chio-provider-conformance --features fixtures-openai
+
+  openai-verdict-latency:
+    name: OpenAI verdict latency budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - name: Enforce OpenAI verdict latency budget
+        run: cargo bench -p chio-openai-adapter --features provider-adapter --bench verdict_latency -- --test

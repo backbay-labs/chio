@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_metered",
+  "fixed_nonce_seed_index": 16,
+  "intent": "Allow metered call whose receipt includes redacted fields, exercising the interaction between metering quotes and redaction-aware canonical hashing.",
+  "name": "allow_metered/03_quote_with_redactions",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "metering", "redaction"]
+}

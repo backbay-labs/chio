@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "scope_mismatch",
+  "expected_verdict": "deny",
+  "family": "deny_scope_mismatch",
+  "fixed_nonce_seed_index": 27,
+  "intent": "Deny because the request HTTP method is explicitly excluded by the capability's method-list predicate, exercising negative-method-list scope rejection.",
+  "name": "deny_scope_mismatch/04_method_excluded",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "scope-mismatch", "method-excluded"]
+}

@@ -1,0 +1,193 @@
+# M04 Phase 1 - Replay corpus and golden infrastructure.
+# Source of truth: .planning/trajectory/04-deterministic-replay.md (Phase 1,
+# lines 160-204). Seven atomic tasks map 1:1 to T1-T7 in doc order.
+# Wave 2a per EXECUTION-BOARD section 2 (uses wave/W2/...).
+# Phase scope: scaffold tests/replay/ as a sibling of tests/conformance and
+# tests/e2e; introduce the Scenario driver (fixed clock, deterministic nonce,
+# Ed25519 signer from tests/replay/test-key.seed); land the 50-fixture manifest
+# tree; goldens themselves are blessed in P2.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+- id: M04.P1.T1
+  milestone: M04
+  phase: 1
+  title: Add chio-replay-gate workspace member skeleton with Cargo.toml and entrypoints
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - tests/replay/Cargo.toml
+    - tests/replay/src/main.rs
+    - tests/replay/src/lib.rs
+    - tests/replay/README.md
+    - Cargo.toml
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+  depends_on: []
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-replay-gate --tests
+  worktree_branch: wave/W2/m04/p1.t1-replay-gate-skeleton
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P1.T2
+  milestone: M04
+  phase: 1
+  title: Implement Scenario and ScenarioDriver with fixed clock, nonce, and signer seed
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - tests/replay/src/driver.rs
+    - tests/replay/src/lib.rs
+    - tests/replay/test-key.seed
+    - tests/replay/test-key.seed.README
+    - tests/replay/test-key.seed.sha256
+  shared_paths: []
+  depends_on:
+    - M04.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --lib driver::tests
+  worktree_branch: wave/W2/m04/p1.t2-scenario-driver-fixed-inputs
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P1.T3
+  milestone: M04
+  phase: 1
+  title: Implement golden writer for NDJSON receipts, JSON checkpoint, hex root
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - tests/replay/src/golden_writer.rs
+    - tests/replay/src/lib.rs
+  shared_paths: []
+  depends_on:
+    - M04.P1.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --lib golden_writer::tests
+  worktree_branch: wave/W2/m04/p1.t3-golden-writer-ndjson
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P1.T4
+  milestone: M04
+  phase: 1
+  title: Implement golden reader and raw byte-comparison harness (no serde roundtrip)
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - tests/replay/src/golden_reader.rs
+    - tests/replay/src/byte_compare.rs
+    - tests/replay/src/lib.rs
+  shared_paths: []
+  depends_on:
+    - M04.P1.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --lib byte_compare::tests
+  worktree_branch: wave/W2/m04/p1.t4-golden-reader-byte-compare
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P1.T5
+  milestone: M04
+  phase: 1
+  title: Author all 50 fixture manifests across the 10 named families (manifests only)
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - tests/replay/fixtures/allow_simple/**
+    - tests/replay/fixtures/allow_with_delegation/**
+    - tests/replay/fixtures/allow_metered/**
+    - tests/replay/fixtures/deny_expired/**
+    - tests/replay/fixtures/deny_scope_mismatch/**
+    - tests/replay/fixtures/deny_revoked/**
+    - tests/replay/fixtures/guard_rewrite/**
+    - tests/replay/fixtures/replay_attack/**
+    - tests/replay/fixtures/tampered_signature/**
+    - tests/replay/fixtures/tampered_canonical_json/**
+  shared_paths: []
+  depends_on:
+    - M04.P1.T2
+  soft_deps: []
+  gate_check:
+    cmd: bash -c 'count=$(find tests/replay/fixtures -name "*.json" -type f | wc -l | tr -d " "); [ "$count" = "50" ] || { echo "expected 50 manifests, found $count"; exit 1; }'
+  worktree_branch: wave/W2/m04/p1.t5-fifty-fixture-manifests
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P1.T6
+  milestone: M04
+  phase: 1
+  title: Wire cargo test glue and corpus_smoke integration test enumerating 50 fixtures
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - tests/replay/tests/corpus_smoke.rs
+    - tests/replay/Cargo.toml
+  shared_paths: []
+  depends_on:
+    - M04.P1.T4
+    - M04.P1.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --test corpus_smoke -- --nocapture
+  worktree_branch: wave/W2/m04/p1.t6-corpus-smoke-test
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M04.P1.T7
+  milestone: M04
+  phase: 1
+  title: Wire LC_ALL=C and explicit directory-listing sort into the scenario driver
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - tests/replay/src/driver.rs
+    - tests/replay/src/fs_iter.rs
+  shared_paths: []
+  depends_on:
+    - M04.P1.T6
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-replay-gate --lib fs_iter::tests
+  worktree_branch: wave/W2/m04/p1.t7-deterministic-fs-iteration
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

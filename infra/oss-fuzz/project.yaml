@@ -1,0 +1,20 @@
+homepage: "https://github.com/bb-connor/arc"
+language: rust
+primary_contact: "whelan.connor11@gmail.com"
+auto_ccs:
+  - "whelan.connor11@gmail.com"
+  # TODO: add backup contact before opening the upstream OSS-Fuzz PR.
+main_repo: "https://github.com/bb-connor/arc"
+sanitizers:
+  # OSS-Fuzz Rust integration only supports `address` for Rust
+  # projects; `cargo fuzz build --sanitizer undefined` fails with an
+  # unrecognised value (cargo-fuzz accepts address/leak/memory/thread
+  # but NOT undefined / UBSan). Listing `undefined` here would let
+  # OSS-Fuzz launch a build with `$SANITIZER=undefined` that always
+  # fails, breaking half the fuzzing configurations (cleanup-c11d;
+  # PR #106 review thread r3144176028 - High Severity).
+  - address
+architectures:
+  - x86_64
+fuzzing_engines:
+  - libfuzzer

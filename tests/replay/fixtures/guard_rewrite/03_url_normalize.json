@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "none",
+  "expected_verdict": "allow",
+  "family": "guard_rewrite",
+  "fixed_nonce_seed_index": 36,
+  "intent": "Allow with a guard that normalises a URL (case, trailing slash, default port) before evaluation, exercising URL-canonicalisation rewrites.",
+  "name": "guard_rewrite/03_url_normalize",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "url-normalize", "guard-rewrite"]
+}

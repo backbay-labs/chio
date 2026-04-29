@@ -28,6 +28,12 @@ web3 = [
     "dep:serde_json",
     "dep:thiserror",
 ]
+# Enables `chio_anchor::fuzz`, the libFuzzer entry-point module driving
+# `verify_proof_bundle` and `verify_checkpoint_publication_records`. Off by
+# default; turned on only by the `chio-fuzz` standalone workspace at
+# `../../fuzz`. The `fuzz` feature implies `web3` because the verifier
+# surface lives behind that gate.
+fuzz = ["web3", "dep:arbitrary"]
 
 [dependencies]
 chio-core = { path = "../chio-core", optional = true }
@@ -43,6 +49,8 @@ reqwest = { workspace = true, features = ["form", "json", "query", "rustls"], op
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
+# Gated behind the `fuzz` feature; production builds never see it.
+arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

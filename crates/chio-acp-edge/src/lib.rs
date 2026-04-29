@@ -19,6 +19,9 @@
 //! helpers remain available for compatibility and tests but are not sufficient
 //! for full cross-protocol attestation claims.
 
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
+
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -1510,6 +1513,7 @@ mod tests {
                     latency_hint: None,
                 },
             ],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "aabbccdd".to_string(),
         }
@@ -1531,6 +1535,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "browser".to_string(),
         }
@@ -1552,6 +1557,7 @@ mod tests {
                 has_side_effects: true,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "mutate".to_string(),
         }
@@ -1576,6 +1582,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "approval".to_string(),
         }
@@ -1602,6 +1609,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "streaming".to_string(),
         }
@@ -1626,6 +1634,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Fast),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "mcp-target".to_string(),
         }
@@ -1650,6 +1659,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Fast),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "openai-target".to_string(),
         }
@@ -1674,6 +1684,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Fast),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "invalid-target".to_string(),
         }
@@ -1698,6 +1709,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "hidden".to_string(),
         }
@@ -1719,6 +1731,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "other-search".to_string(),
         }
@@ -2095,6 +2108,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: None,
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: "aabb".to_string(),
         };

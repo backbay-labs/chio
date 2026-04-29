@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_simple",
+  "fixed_nonce_seed_index": 2,
+  "intent": "Allow path whose argv contains multi-byte Unicode (CJK and emoji) to exercise canonical-JSON UTF-8 handling and string escaping.",
+  "name": "allow_simple/03_unicode_argv",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "unicode"]
+}

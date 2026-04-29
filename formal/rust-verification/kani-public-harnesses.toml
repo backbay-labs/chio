@@ -2,18 +2,91 @@ schema = "chio.kani-public-harnesses.v1"
 crate = "chio-kernel-core"
 script = "scripts/check-kani-public-core.sh"
 
+# `harness_groups` is the flat-array catalog (one entry per logical edge or
+# algebraic property the harnesses exercise). Entries cover scope intersection
+# associativity, revocation idempotence, single-step delegation attenuation,
+# receipt sign/verify roundtrip, and the budget-checked-add overflow guard.
 harness_groups = [
   "public verify_capability fail-closed edges",
   "public NormalizedScope subset edges",
   "public resolve_matching_grants path-prefix edges",
   "public evaluate deny edges",
   "public sign_receipt kernel-key mismatch edge",
+  "verify scope intersection associativity (cap-subset transitivity)",
+  "verify revocation predicate idempotence",
+  "verify single-step delegation attenuation",
+  "verify receipt sign/verify roundtrip algebra",
+  "verify budget checked-add no partial commit on overflow",
 ]
 
+# Public Rust symbols witnessed by the harnesses above.
 covered_symbols = [
   "chio_kernel_core::verify_capability",
   "chio_kernel_core::NormalizedScope::is_subset_of",
   "chio_kernel_core::scope::resolve_matching_grants",
   "chio_kernel_core::evaluate",
   "chio_kernel_core::sign_receipt",
+  "chio_kernel_core::formal_core::optional_u32_cap_is_subset",
+  "chio_kernel_core::formal_core::revocation_snapshot_denies",
+  "chio_kernel_core::formal_core::monetary_cap_is_subset_by_parts",
+  "chio_kernel_core::formal_core::budget_commit",
+  "chio_core_types::crypto::PublicKey::verify_canonical",
 ]
+
+# Lane assignment.
+#
+# Wall-clocked each harness individually with
+# `cargo kani -p chio-kernel-core --lib --harness <h>
+# --default-unwind 8 --no-unwinding-checks` on aarch64-apple-darwin
+# (kani 0.67.0, 2026-04-26). The concrete-fixture harnesses dominate
+# because `public_verify_capability` and `public_evaluate` exercise the
+# full canonical-JSON serialise plus Ed25519/P-384 verify path, while the
+# algebraic harnesses model signatures with `model_sign`/`model_verify`
+# and finish in 1-3 seconds.
+#
+# Per-harness wall-clock (local Apple M-series, hot cargo cache):
+#   public_verify_capability_rejects_untrusted_issuer_before_signature  31s
+#   public_evaluate_rejects_untrusted_issuer_before_dispatch            28s
+#   public_resolve_matching_grants_rejects_out_of_scope_request         13s
+#   public_resolve_matching_grants_preserves_wildcard_matching          13s
+#   public_sign_receipt_rejects_kernel_key_mismatch_before_signing      12s
+#   public_sign_receipt_accepts_matching_kernel_key                     11s
+#   public_normalized_scope_subset_rejects_widened_child                 5s
+#   public_normalized_scope_subset_rejects_value_widened_child           5s
+#   public_normalized_scope_subset_rejects_identity_mismatch             4s
+#   verify_revocation_predicate_idempotent                               3s
+#   verify_receipt_roundtrip                                             3s
+#   verify_budget_checked_add_no_overflow                                3s
+#   verify_scope_intersection_associative                                2s
+#   verify_delegation_chain_step                                         1s
+#   total                                                              134s
+#
+# Sum is ~2.2 min locally; even the typical 2-3x ubuntu-latest CI
+# overhead leaves the full sweep within the 6-minute PR budget. All
+# fourteen harnesses land in `lanes.pr`. The `lanes.nightly_only` bucket
+# is preserved (empty) so future re-measurements can move slow harnesses
+# into it without a schema migration. The nightly Kani job runs the union
+# of `lanes.pr` and `lanes.nightly_only`, so moving a harness to
+# `nightly_only` strictly reduces PR coverage, never nightly coverage.
+[lanes.pr]
+description = "Fast Kani harnesses run on every pull request (full sweep)"
+harnesses = [
+  "public_verify_capability_rejects_untrusted_issuer_before_signature",
+  "public_normalized_scope_subset_rejects_widened_child",
+  "public_normalized_scope_subset_rejects_value_widened_child",
+  "public_normalized_scope_subset_rejects_identity_mismatch",
+  "public_resolve_matching_grants_rejects_out_of_scope_request",
+  "public_resolve_matching_grants_preserves_wildcard_matching",
+  "public_evaluate_rejects_untrusted_issuer_before_dispatch",
+  "public_sign_receipt_rejects_kernel_key_mismatch_before_signing",
+  "public_sign_receipt_accepts_matching_kernel_key",
+  "verify_scope_intersection_associative",
+  "verify_revocation_predicate_idempotent",
+  "verify_delegation_chain_step",
+  "verify_receipt_roundtrip",
+  "verify_budget_checked_add_no_overflow",
+]
+
+[lanes.nightly_only]
+description = "Slow Kani harnesses gated to the nightly lane (currently empty; reserved for future slow harnesses)"
+harnesses = []

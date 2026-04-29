@@ -16,7 +16,7 @@ chio-core-types = { path = "../chio-core-types" }
 chio-http-core = { path = "../chio-http-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yml = { workspace = true }
+serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 
 [lints.clippy]

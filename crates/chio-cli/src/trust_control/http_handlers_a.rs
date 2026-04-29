@@ -167,7 +167,7 @@ async fn handle_scim_delete_user(
         return scim_json_response(StatusCode::OK, &record.scim_user);
     }
     let now = unix_timestamp_now();
-    let mut revocation_store = match open_revocation_store(&state.config) {
+    let revocation_store = match open_revocation_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -189,7 +189,7 @@ async fn handle_scim_delete_user(
             }
         }
     }
-    let mut receipt_store = match open_receipt_store(&state.config) {
+    let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -2289,7 +2289,7 @@ async fn handle_revoke_capability(
         Ok(None) => {}
         Err(response) => return response,
     }
-    let mut store = match open_revocation_store(&state.config) {
+    let store = match open_revocation_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -2380,7 +2380,7 @@ async fn handle_append_tool_receipt(
         Ok(None) => {}
         Err(response) => return response,
     }
-    let mut store = match open_receipt_store(&state.config) {
+    let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };

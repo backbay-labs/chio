@@ -1011,7 +1011,7 @@ mod tests {
     #[test]
     fn strong_local_history_allows_trusted_invoke_scope() {
         let receipt_db_path = unique_path("issuance-policy-history", ".sqlite3");
-        let mut receipt_store = SqliteReceiptStore::open(&receipt_db_path).expect("receipt store");
+        let receipt_store = SqliteReceiptStore::open(&receipt_db_path).expect("receipt store");
         let subject_kp = Keypair::generate();
         let issuer_kp = Keypair::generate();
         let subject_hex = subject_kp.public_key().to_hex();

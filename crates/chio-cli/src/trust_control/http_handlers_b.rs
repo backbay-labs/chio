@@ -2077,7 +2077,7 @@ async fn handle_append_child_receipt(
         Ok(None) => {}
         Err(response) => return response,
     }
-    let mut store = match open_receipt_store(&state.config) {
+    let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -2168,7 +2168,7 @@ async fn handle_try_increment_budget(
         Ok(None) => {}
         Err(response) => return response,
     }
-    let mut store = match open_budget_store(&state.config) {
+    let store = match open_budget_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -2228,7 +2228,7 @@ async fn handle_try_charge_cost(
         Ok(authority) => authority,
         Err(response) => return response,
     };
-    let mut store = match open_budget_store(&state.config) {
+    let store = match open_budget_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };

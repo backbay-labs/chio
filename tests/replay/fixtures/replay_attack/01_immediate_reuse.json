@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "replay",
+  "expected_verdict": "deny",
+  "family": "replay_attack",
+  "fixed_nonce_seed_index": 40,
+  "intent": "Deny because the same nonce is presented twice back-to-back in a single batch, exercising the immediate replay-detection path.",
+  "name": "replay_attack/01_immediate_reuse",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "replay", "nonce-reuse"]
+}

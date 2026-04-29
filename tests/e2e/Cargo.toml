@@ -12,6 +12,7 @@ publish = false
 chio-core = { package = "chio-core-types", path = "../../crates/chio-core-types" }
 chio-kernel = { package = "chio-kernel", path = "../../crates/chio-kernel" }
 chio-guards = { package = "chio-guards", path = "../../crates/chio-guards" }
+chio-wasm-guards = { path = "../../crates/chio-wasm-guards" }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 

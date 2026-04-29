@@ -1,6 +1,6 @@
 {
   "name": "@chio-protocol/guard-ts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "TypeScript SDK for writing Chio guard components compiled to WASM",
   "engines": {

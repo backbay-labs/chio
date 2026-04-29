@@ -1,0 +1,278 @@
+# M10 Phase 1 - chio-tee sidecar crate, capture frame schema, mode
+# resolver, mandatory M06 redactor pass, BLOB-encrypted at-rest persistence,
+# and container image. Wave 4 milestone.
+# Source of truth: .planning/trajectory/10-tee-replay-harness.md
+# (Phase 1 lines 223-238; doc tasks T1-T7).
+#
+# Eight atomic tasks. T1-T7 map 1:1 to the doc Phase 1 task breakdown.
+# T8 lands two of the three (NEW) M10-scope sub-tasks (lines 608-616) that
+# are scoped to the chio-tee crate: spool-backpressure + redact-determinism
+# property tests. The third (NEW) sub-task (FIPS-mode build smoke) is
+# folded into T7 (container + CI smoke) since it is a workflow-level
+# build artifact, not a kernel test.
+#
+# M10 OWNS: crates/chio-tee/**, crates/chio-tee-frame/**, and the concrete
+# wit/chio-guards-redact/world.wit (M06 reserves the namespace placeholder
+# in its Phase 1; M10 lands the concrete world here in T5).
+#
+# Wave 4 worktree branches: wave/W4/m10/p1.t{n}-...
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M10.P1.T1
+  milestone: M10
+  phase: 1
+  title: "Scaffold crates/chio-tee and crates/chio-tee-frame; wire workspace + Dockerfile.tee"
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - "crates/chio-tee/Cargo.toml"
+    - "crates/chio-tee/src/lib.rs"
+    - "crates/chio-tee/src/main.rs"
+    - "crates/chio-tee-frame/Cargo.toml"
+    - "crates/chio-tee-frame/src/lib.rs"
+    - "Dockerfile.tee"
+  shared_paths:
+    - "Cargo.toml"
+    - "Cargo.lock"
+  depends_on: []
+  soft_deps:
+    - "Wave 4 milestone; depends on M01 canonical-JSON serializer (already merged) and M06 namespace reservation (M06.P1)."
+  gate_check:
+    cmd: "cargo build -p chio-tee -p chio-tee-frame"
+  worktree_branch: "wave/W4/m10/p1.t1-tee-scaffold-crates"
+  agent_role: tee-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P1.T2
+  milestone: M10
+  phase: 1
+  title: "Define TrafficTap trait with before_kernel and after_kernel hooks"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "crates/chio-tee/src/tap.rs"
+    - "crates/chio-tee/Cargo.toml"
+  shared_paths: []
+  depends_on:
+    - M10.P1.T1
+  soft_deps:
+    - "Mirrors the Exporter trait shape at crates/chio-siem/src/exporter.rs:35."
+  gate_check:
+    cmd: "cargo test -p chio-tee --lib tap::"
+  worktree_branch: "wave/W4/m10/p1.t2-traffictap-trait"
+  agent_role: tee-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P1.T3
+  milestone: M10
+  phase: 1
+  title: "Implement chio-tee-frame.v1 types with canonical-JSON serializer reuse and proptest round-trip"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-tee-frame/src/lib.rs"
+    - "crates/chio-tee-frame/src/frame.rs"
+    - "crates/chio-tee-frame/src/schema.rs"
+    - "crates/chio-tee-frame/tests/property_roundtrip.rs"
+    - "crates/chio-tee-frame/Cargo.toml"
+    - "crates/chio-tee/src/frame.rs"
+    - "spec/schemas/chio-tee-frame-v1.json"
+  shared_paths:
+    - "spec/schemas/"
+  depends_on:
+    - M10.P1.T1
+  soft_deps:
+    - "Frame schema lock pinned in 10-tee-replay-harness.md lines 64-219; schema_version is the literal string \"1\"."
+  gate_check:
+    cmd: "cargo test -p chio-tee-frame --test property_roundtrip"
+  worktree_branch: "wave/W4/m10/p1.t3-frame-v1-types-canonical-json"
+  agent_role: tee-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P1.T4
+  milestone: M10
+  phase: 1
+  title: "Implement mode resolver (env > sidecar TOML > tenant manifest) and SIGUSR1 hot-toggle handler"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-tee/src/mode.rs"
+    - "crates/chio-tee/src/config.rs"
+    - "crates/chio-tee/tests/mode_precedence.rs"
+    - "crates/chio-tee/Cargo.toml"
+  shared_paths: []
+  depends_on:
+    - M10.P1.T1
+  soft_deps:
+    - "Precedence rule and SIGUSR1 lattice locked in 10-tee-replay-harness.md lines 42-62."
+  gate_check:
+    cmd: "cargo test -p chio-tee --test mode_precedence env_overrides_toml_overrides_manifest"
+  worktree_branch: "wave/W4/m10/p1.t4-mode-resolver-sigusr1"
+  agent_role: tee-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P1.T5
+  milestone: M10
+  phase: 1
+  title: "Land concrete chio:guards/redact@0.1.0 world.wit and default redactor crate over M06 namespace"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "wit/chio-guards-redact/world.wit"
+    - "crates/chio-data-guards/redactors/default/Cargo.toml"
+    - "crates/chio-data-guards/redactors/default/src/lib.rs"
+    - "crates/chio-data-guards/redactors/default/tests/integration.rs"
+  shared_paths:
+    - "wit/chio-guards-redact/"
+    - "Cargo.toml"
+  depends_on:
+    - M10.P1.T1
+  soft_deps:
+    - "M06.P1 reserves the chio:guards/redact@0.1.0 namespace with package + reserved comment only; M10 ships the concrete interface bodies and redactor world here."
+    - "WIT shape locked in 10-tee-replay-harness.md lines 317-364; example regex-secret redactor at lines 366-450."
+  gate_check:
+    cmd: "cargo build -p chio-data-guards-redactors-default --target wasm32-wasip2 && cargo test -p chio-data-guards-redactors-default"
+  worktree_branch: "wave/W4/m10/p1.t5-redactor-wit-and-default-impl"
+  agent_role: tee-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P1.T6
+  milestone: M10
+  phase: 1
+  title: "Wire mandatory M06 redactor pass with zeroize-on-drop raw-payload buffers"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-tee/src/redact.rs"
+    - "crates/chio-tee/src/buffer.rs"
+    - "crates/chio-tee/tests/redact_failclosed.rs"
+    - "crates/chio-tee/Cargo.toml"
+  shared_paths: []
+  depends_on:
+    - M10.P1.T3
+    - M10.P1.T5
+  soft_deps:
+    - "Fail-closed semantics: an Err return from the guest MUST cause the tee to refuse persistence and write tee.redact_failed (10-tee-replay-harness.md line 452)."
+    - "--paranoid heuristic: refuse to persist any frame whose redaction manifest reports zero matches on a payload longer than 256 bytes."
+  gate_check:
+    cmd: "cargo test -p chio-tee --test redact_failclosed"
+  worktree_branch: "wave/W4/m10/p1.t6-redactor-pass-zeroize-buffers"
+  agent_role: tee-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P1.T7
+  milestone: M10
+  phase: 1
+  title: "Wire BLOB-encrypted at-rest persistence via chio-store-sqlite tenant-key hook with M07 fixture integration tests"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "crates/chio-tee/src/persist.rs"
+    - "crates/chio-tee/src/spool.rs"
+    - "crates/chio-tee/tests/persistence_blob_encryption.rs"
+    - "crates/chio-tee/Cargo.toml"
+  shared_paths: []
+  depends_on:
+    - M10.P1.T6
+  soft_deps:
+    - "Re-uses chio-store-sqlite's existing tenant-key BLOB encryption hook; integration fixtures sourced from M07's conformance corpus (soft dep on M07.P1)."
+  gate_check:
+    cmd: "cargo test -p chio-tee --test persistence_blob_encryption"
+  worktree_branch: "wave/W4/m10/p1.t7-blob-encrypted-spool-persist"
+  agent_role: tee-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P1.T8
+  milestone: M10
+  phase: 1
+  title: "Ship chio-tee container image, FIPS-mode build smoke workflow, and examples/tee-sidecar"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "Dockerfile.tee"
+    - ".github/workflows/chio-tee-image.yml"
+    - ".github/workflows/chio-tee-fips.yml"
+    - "examples/tee-sidecar/README.md"
+    - "examples/tee-sidecar/docker-compose.yml"
+    - "examples/tee-sidecar/chio-tee.toml"
+    - "crates/chio-tee/Cargo.toml"
+  shared_paths:
+    - ".github/workflows/"
+  depends_on:
+    - M10.P1.T7
+  soft_deps:
+    - "Folds (NEW) Tee FIPS-mode build smoke test (10-tee-replay-harness.md lines 610-612). Adds fips cargo feature on chio-tee that swaps in aws-lc-rs for ed25519; CI smoke runs mode_precedence test under the FIPS feature flag."
+  gate_check:
+    cmd: "actionlint .github/workflows/chio-tee-image.yml .github/workflows/chio-tee-fips.yml && docker build -f Dockerfile.tee -t chio-tee:smoke ."
+  worktree_branch: "wave/W4/m10/p1.t8-container-fips-and-sidecar-example"
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M10.P1.T9
+  milestone: M10
+  phase: 1
+  title: "Land spool-backpressure and redact-determinism property tests for chio-tee"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-tee/tests/spool_backpressure.rs"
+    - "crates/chio-tee/tests/redact_determinism.rs"
+    - "crates/chio-tee/proptest-regressions/.gitkeep"
+    - "crates/chio-tee/Cargo.toml"
+  shared_paths: []
+  depends_on:
+    - M10.P1.T6
+    - M10.P1.T7
+  soft_deps:
+    - "(NEW) Capture-spool disk-pressure backpressure test (10-tee-replay-harness.md lines 613-614): 64 MB tmpfs, 256 MB synthetic stream, asserts <=80% spool fill, drops emit tee.spool_full, no crash."
+    - "(NEW) Cross-frame redaction-determinism property test (10-tee-replay-harness.md lines 615-616): proptest = 1.10 (vendored); 16 KB random payloads, redact_payload(p,c) byte-identical across two invocations; bounded to 30s in CI."
+  gate_check:
+    cmd: "cargo test -p chio-tee --test spool_backpressure --test redact_determinism"
+  worktree_branch: "wave/W4/m10/p1.t9-spool-backpressure-and-redact-determinism"
+  agent_role: tee-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

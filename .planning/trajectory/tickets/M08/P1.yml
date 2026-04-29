@@ -1,0 +1,146 @@
+# M08 Phase 1 - @chio-protocol/browser verify-only package.
+# Source of truth: .planning/trajectory/08-browser-edge-sdk.md
+# (Phase 1, lines 51-74). Five atomic tasks map 1:1 to T1-T5 in doc order.
+# Wave 3 ticket (per EXECUTION-BOARD section 2): all branches under wave/W3/m08/.
+# Phase 0 is not applicable for M08; Wave 3 has no wave-opener lock-bump chain
+# (only Wave 1 carries the M09 -> M03 -> M01 -> M02 P0 chain).
+# Round-2 additions (`.tooling/wasm-*.version` pinning, `engines`/`exports` map,
+# Pages `.nojekyll`/CNAME, banner snapshot test) are folded into the doc's
+# atomic tickets via owner_glob rather than introduced as separate tickets so
+# Phase 1 stays close to the EXECUTION-BOARD ~11-ticket budget for M08.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M08.P1.T1
+  milestone: M08
+  phase: 1
+  title: Add verify_receipt wasm-bindgen entry to chio-kernel-browser with M04-fixture wasm-bindgen-test
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-kernel-browser/src/lib.rs
+    - crates/chio-kernel-browser/Cargo.toml
+    - crates/chio-kernel-browser/tests/wasm_bindings.rs
+  shared_paths:
+    - Cargo.lock
+  depends_on: []
+  soft_deps:
+    - "Consumes the stable public-key-only fixture from tests/replay/fixtures/ (M04 corpus)."
+  gate_check:
+    cmd: wasm-pack test --node crates/chio-kernel-browser
+    timeout_seconds: 1800
+  worktree_branch: wave/W3/m08/p1.t1-verify-receipt-wasm-entry
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P1.T2
+  milestone: M08
+  phase: 1
+  title: Land build-wasm.sh with pinned wasm-pack and wasm-bindgen-cli versions in .tooling/
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - sdks/typescript/scripts/build-wasm.sh
+    - .tooling/wasm-pack.version
+    - .tooling/wasm-bindgen.version
+  shared_paths: []
+  depends_on:
+    - M08.P1.T1
+  soft_deps: []
+  gate_check:
+    cmd: bash -n sdks/typescript/scripts/build-wasm.sh && test -s .tooling/wasm-pack.version && test -s .tooling/wasm-bindgen.version && bash sdks/typescript/scripts/build-wasm.sh --target web
+    timeout_seconds: 1800
+  worktree_branch: wave/W3/m08/p1.t2-build-wasm-script-pinned
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P1.T3
+  milestone: M08
+  phase: 1
+  title: Scaffold @chio-protocol/browser TS surface with engines and exports map
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - sdks/typescript/packages/browser/package.json
+    - sdks/typescript/packages/browser/tsconfig.json
+    - sdks/typescript/packages/browser/src/index.ts
+    - sdks/typescript/package.json
+  shared_paths:
+    - sdks/typescript/package.json
+  depends_on:
+    - M08.P1.T2
+  soft_deps: []
+  gate_check:
+    cmd: bun install --frozen-lockfile && bun run --filter @chio-protocol/browser build && bun run --filter @chio-protocol/browser typecheck
+  worktree_branch: wave/W3/m08/p1.t3-browser-ts-surface
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P1.T4
+  milestone: M08
+  phase: 1
+  title: Land size-budget.sh and size-budget.json recording per-runtime gzip ceilings
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - sdks/typescript/scripts/size-budget.sh
+    - sdks/typescript/scripts/size-budget.json
+  shared_paths: []
+  depends_on:
+    - M08.P1.T3
+  soft_deps: []
+  gate_check:
+    cmd: bash -n sdks/typescript/scripts/size-budget.sh && bash sdks/typescript/scripts/size-budget.sh browser 300
+  worktree_branch: wave/W3/m08/p1.t4-size-budget-gate
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M08.P1.T5
+  milestone: M08
+  phase: 1
+  title: Author docs/demo M04-fixture verify page with engineering-output banner and Pages metadata
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - docs/demo/index.html
+    - docs/demo/main.ts
+    - docs/demo/.nojekyll
+    - docs/demo/CNAME
+    - docs/demo/tests/banner.spec.ts
+    - .github/workflows/demo-pages.yml
+  shared_paths: []
+  depends_on:
+    - M08.P1.T3
+    - M08.P1.T4
+  soft_deps:
+    - "Consumes the stable public-key-only fixture from tests/replay/fixtures/ (M04 corpus)."
+  gate_check:
+    cmd: bun install --frozen-lockfile && bun run --filter docs-demo build && bunx playwright test docs/demo/tests/banner.spec.ts
+    timeout_seconds: 1800
+  worktree_branch: wave/W3/m08/p1.t5-demo-page-and-banner
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

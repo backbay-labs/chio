@@ -1,0 +1,33 @@
+{
+  "name": "@chio-protocol/browser",
+  "version": "0.1.0",
+  "description": "Chio Protocol browser SDK (verify_receipt + future surfaces)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./pkg/*": "./pkg/*"
+  },
+  "files": [
+    "dist/",
+    "pkg/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:wasm": "../../scripts/build-wasm.sh --target web",
+    "prepublishOnly": "npm run build:wasm && npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

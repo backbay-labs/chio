@@ -1,0 +1,15 @@
+[tee]
+# Valid modes: verdict-only, shadow, enforce.
+mode = "shadow"
+
+# Runtime paths match Dockerfile.tee and docker-compose.yml.
+runtime_dir = "/run/chio-tee"
+spool_dir = "/var/lib/chio/tee/spool"
+
+# Keep the local example bounded. Production deployments should size this
+# volume from tenant traffic and replay retention needs.
+max_spool_bytes = 67108864
+
+# M10 tee frames are emitted as chio-tee-frame.v1 after redaction.
+frame_format = "chio-tee-frame.v1"
+redaction_pass = "chio:guards/redact@0.1.0"

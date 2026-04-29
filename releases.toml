@@ -1,0 +1,32 @@
+# releases.toml - Mutation-testing release-cycle gate state.
+#
+# Read by scripts/mutants-gate.sh from .github/workflows/mutants.yml
+# (jobs mutants-pr and mutants-nightly).
+#
+# Schema:
+#   [mutants]
+#   phase3_merge_tag : tag that shipped the initial mutation-testing changes.
+#                      Recorded for provenance; unused by the gate logic.
+#   cycle_end_tag    : tag of the first release after phase3_merge_tag.
+#                      Empty string -> gate is ADVISORY (mutants-gate.sh
+#                      exits 0 unconditionally). Non-empty -> gate is
+#                      BLOCKING (mutants-gate.sh fails the workflow when
+#                      cargo-mutants reports surviving mutants beyond the
+#                      per-crate budget).
+#
+# Lifecycle:
+#   1. File lands with both tags empty; mutants.yml runs in advisory posture.
+#   2. When mutation-testing phase merges: edit phase3_merge_tag to record
+#      the merge release.
+#   3. Next release after phase3_merge_tag: release-binaries.yml writes
+#      cycle_end_tag in a PR titled
+#      `chore(mutants): activate blocking gate after cycle <tag>`.
+#      The gate flips to blocking automatically.
+#   4. Override: clear cycle_end_tag in a PR labelled `mutants-gate-override`
+#      with CODEOWNERS approval to re-enter advisory mode for one cycle.
+#
+# Editing this file is gated by CODEOWNERS.
+
+[mutants]
+phase3_merge_tag = ""
+cycle_end_tag = ""

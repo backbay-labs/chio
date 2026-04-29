@@ -711,7 +711,7 @@ fn cmd_trust_revoke(
         (response.newly_revoked, url.to_string())
     } else {
         let path = require_revocation_db_path(revocation_db_path)?;
-        let mut store = chio_store_sqlite::SqliteRevocationStore::open(path)?;
+        let store = chio_store_sqlite::SqliteRevocationStore::open(path)?;
         (store.revoke(capability_id)?, path.display().to_string())
     };
 

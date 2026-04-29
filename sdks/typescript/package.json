@@ -1,0 +1,23 @@
+{
+  "name": "@chio-protocol/typescript-sdks",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Chio Protocol TypeScript SDK workspace root (npm workspaces).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "packages/ai-sdk",
+    "packages/browser",
+    "packages/workers",
+    "packages/edge",
+    "packages/deno",
+    "packages/conformance",
+    "packages/elysia",
+    "packages/express",
+    "packages/fastify",
+    "packages/node-http"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

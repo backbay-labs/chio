@@ -903,11 +903,25 @@ impl SqliteReceiptStore {
         )?;
         ensure_tool_receipt_attribution_columns(&connection)?;
         super::support::ensure_receipt_lineage_statement_columns(&connection)?;
-        backfill_tool_receipt_attribution_columns(&connection)?;
-        super::support::backfill_provenance_lineage_tables(&mut connection)?;
-        super::support::backfill_claim_receipt_log_entries(&mut connection)?;
-        super::support::backfill_checkpoint_transparency_projections(&mut connection)?;
-        super::support::ensure_transparency_projection_guards(&connection)?;
+        super::support::drop_transparency_projection_guards(&connection)?;
+        let backfill_result = (|| -> Result<(), ReceiptStoreError> {
+            backfill_tool_receipt_attribution_columns(&connection)?;
+            super::support::backfill_provenance_lineage_tables(&mut connection)?;
+            super::support::backfill_claim_receipt_log_entries(&mut connection)?;
+            super::support::backfill_checkpoint_transparency_projections(&mut connection)?;
+            Ok(())
+        })();
+        let guard_result = super::support::ensure_transparency_projection_guards(&connection);
+        match (backfill_result, guard_result) {
+            (Ok(()), Ok(())) => {}
+            (Err(error), Ok(())) => return Err(error),
+            (Ok(()), Err(error)) => return Err(error),
+            (Err(backfill_error), Err(guard_error)) => {
+                return Err(ReceiptStoreError::Canonical(format!(
+                    "receipt projection backfill failed ({backfill_error}); restoring immutability guards also failed ({guard_error})"
+                )));
+            }
+        }
 
         drop(connection);
 

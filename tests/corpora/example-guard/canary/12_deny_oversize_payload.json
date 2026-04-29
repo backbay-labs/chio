@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "write_blob",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 12,
+      "verdict": "deny",
+      "reason": "oversize payload denied"
+    },
+    "scopes": [
+      "example-server:write_blob"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"oversize payload denied\"}"
+}

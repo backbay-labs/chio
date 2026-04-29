@@ -11,6 +11,9 @@ pub mod loader;
 pub mod schema;
 pub mod validation;
 
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
+
 // Re-export the main entry points for convenience.
 pub use loader::{load_from_file, load_from_str};
 pub use schema::{

@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"method":"session/request_permission","params":{"capabilityId":"read_file","arguments":{"path":"/tmp"}}}

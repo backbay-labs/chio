@@ -1,0 +1,37 @@
+# M08 Phase 3 - Trust-boundary review verdict (DECISION-ONLY).
+# Source of truth: .planning/trajectory/08-browser-edge-sdk.md
+# (Phase 3, lines 103-173) and EXECUTION-BOARD section 2 (Wave 3 row).
+# Decision-only ticket per EXECUTION-BOARD: P3 records the trust-boundary
+# review verdict (Approved/Rejected) under the source doc's "Trust-boundary
+# review checkboxes" section and either closes M08 with a "not pursued,
+# rationale recorded" note OR opens a follow-on milestone. P3 does NOT
+# implement signing in this trajectory.
+# M08 ships at the close of P2; P3 must NOT block M08 closeout.
+# Wave 3 ticket: branch under wave/W3/m08/.
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M08.P3.T1
+  milestone: M08
+  phase: 3
+  title: Record trust-boundary review verdict for browser-side delegated subkey signing
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - docs/trust-boundary-browser-signing.md
+    - .planning/trajectory/08-browser-edge-sdk.md
+  shared_paths: []
+  depends_on:
+    - M08.P2.T6
+    - M08.P2.T7
+  soft_deps:
+    - "Decision-only ticket per EXECUTION-BOARD section 2: P3 does NOT implement signing in this trajectory; verdict is Approved (opens follow-on milestone) or Rejected (closes M08 with rationale)."
+  gate_check:
+    cmd: "test -f docs/trust-boundary-browser-signing.md && grep -qE '^Status: (approved|rejected)$' docs/trust-boundary-browser-signing.md && grep -qE '^Approver: @[a-z0-9-]+' docs/trust-boundary-browser-signing.md && grep -qE '^- \\[x\\] (Approved|Rejected)' docs/trust-boundary-browser-signing.md"
+  worktree_branch: wave/W3/m08/p3.t1-trust-boundary-review-verdict
+  agent_role: browser-ts
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

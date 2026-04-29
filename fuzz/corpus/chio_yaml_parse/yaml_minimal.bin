@@ -1,0 +1,7 @@
+kernel:
+  signing_key: "generate"
+
+adapters:
+  - id: "petstore"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"

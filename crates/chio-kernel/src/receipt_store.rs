@@ -64,19 +64,23 @@ pub enum ReceiptStoreError {
     NotFound(String),
 }
 
-pub trait ReceiptStore: Send {
-    fn append_chio_receipt(&mut self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError>;
+pub trait ReceiptStore: Send + Sync {
+    fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError>;
     fn append_chio_receipt_returning_seq(
-        &mut self,
+        &self,
         receipt: &ChioReceipt,
     ) -> Result<Option<u64>, ReceiptStoreError> {
         self.append_chio_receipt(receipt)?;
         Ok(None)
     }
-    fn append_child_receipt(
-        &mut self,
+    fn append_child_receipt(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError>;
+    fn append_child_receipt_returning_seq(
+        &self,
         receipt: &ChildRequestReceipt,
-    ) -> Result<(), ReceiptStoreError>;
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        self.append_child_receipt(receipt)?;
+        Ok(None)
+    }
 
     fn receipts_canonical_bytes_range(
         &self,
@@ -86,10 +90,7 @@ pub trait ReceiptStore: Send {
         Ok(Vec::new())
     }
 
-    fn store_checkpoint(
-        &mut self,
-        _checkpoint: &KernelCheckpoint,
-    ) -> Result<(), ReceiptStoreError> {
+    fn store_checkpoint(&self, _checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
         Ok(())
     }
 
@@ -100,12 +101,38 @@ pub trait ReceiptStore: Send {
         Ok(None)
     }
 
+    fn load_latest_checkpoint(&self) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        let mut checkpoint_seq = 1;
+        let mut latest = None;
+        loop {
+            let Some(checkpoint) = self.load_checkpoint_by_seq(checkpoint_seq)? else {
+                return Ok(latest);
+            };
+            if checkpoint.body.checkpoint_seq != checkpoint_seq {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "checkpoint loader returned checkpoint {} for requested sequence {}",
+                    checkpoint.body.checkpoint_seq, checkpoint_seq
+                )));
+            }
+            checkpoint_seq = checkpoint
+                .body
+                .checkpoint_seq
+                .checked_add(1)
+                .ok_or_else(|| {
+                    ReceiptStoreError::Conflict(
+                        "checkpoint_seq overflow while loading latest".to_string(),
+                    )
+                })?;
+            latest = Some(checkpoint);
+        }
+    }
+
     fn supports_kernel_signed_checkpoints(&self) -> bool {
         false
     }
 
     fn record_capability_snapshot(
-        &mut self,
+        &self,
         _token: &CapabilityToken,
         _parent_capability_id: Option<&str>,
     ) -> Result<(), ReceiptStoreError> {
@@ -135,7 +162,7 @@ pub trait ReceiptStore: Send {
 
     /// Persist a serialized `SessionAnchor` while the concrete P1-A type remains in flight.
     fn record_session_anchor(
-        &mut self,
+        &self,
         _session_id: &str,
         _anchor_id: &str,
         _auth_context_fingerprint: &str,
@@ -149,7 +176,7 @@ pub trait ReceiptStore: Send {
     /// Persist a serialized `RequestLineageRecord` while the concrete P1-A type remains in flight.
     #[allow(clippy::too_many_arguments)]
     fn record_request_lineage(
-        &mut self,
+        &self,
         _session_id: &str,
         _request_id: &str,
         _parent_request_id: Option<&str>,
@@ -164,7 +191,7 @@ pub trait ReceiptStore: Send {
     /// Persist a serialized `ReceiptLineageStatement` while the concrete P1-A type remains in flight.
     #[allow(clippy::too_many_arguments)]
     fn record_receipt_lineage_statement(
-        &mut self,
+        &self,
         _child_receipt_id: &str,
         _request_id: Option<&str>,
         _session_id: Option<&str>,
@@ -192,7 +219,7 @@ pub trait ReceiptStore: Send {
         Ok(Vec::new())
     }
 
-    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+    fn as_any_mut(&self) -> Option<&dyn std::any::Any> {
         None
     }
 }

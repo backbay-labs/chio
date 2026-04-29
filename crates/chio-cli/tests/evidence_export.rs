@@ -256,7 +256,7 @@ capabilities:
     .expect("write policy");
 
     {
-        let mut store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
+        let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let capability = capability_with_id("cap-evidence", &subject, &issuer);

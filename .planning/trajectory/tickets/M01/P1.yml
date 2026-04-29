@@ -1,0 +1,242 @@
+- id: M01.P1.T1
+  milestone: M01
+  phase: 1
+  title: "Audit conformance scenarios and produce spec/schemas/COVERAGE.md checklist"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "spec/schemas/COVERAGE.md"
+  shared_paths: []
+  depends_on: []
+  soft_deps: []
+  gate_check:
+    cmd: "test -f spec/schemas/COVERAGE.md && ! grep -q '^TBD$' spec/schemas/COVERAGE.md"
+  worktree_branch: "wave/W1/m01/p1.t1-schema-coverage-audit"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P1.T2
+  milestone: M01
+  phase: 1
+  title: "Land capability-token, grant, and revocation wire schemas (3 files)"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "spec/schemas/chio-wire/v1/capability/token.schema.json"
+    - "spec/schemas/chio-wire/v1/capability/grant.schema.json"
+    - "spec/schemas/chio-wire/v1/capability/revocation.schema.json"
+    - "spec/schemas/chio-wire/v1/capability/README.md"
+    - "spec/schemas/MANIFEST.sha256"
+  shared_paths:
+    - "spec/schemas/MANIFEST.sha256"
+  depends_on:
+    - M01.P1.T1
+  soft_deps:
+    - "M03 capability algebra invariants (crates/chio-core-types/src/capability*.rs)"
+  gate_check:
+    cmd: "cargo run --quiet -p xtask -- trajectory regen-manifest --check && jq -e . spec/schemas/chio-wire/v1/capability/token.schema.json && jq -e . spec/schemas/chio-wire/v1/capability/grant.schema.json && jq -e . spec/schemas/chio-wire/v1/capability/revocation.schema.json"
+  worktree_branch: "wave/W1/m01/p1.t2-capability-schemas"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P1.T3
+  milestone: M01
+  phase: 1
+  title: "Land receipt record and inclusion-proof wire schemas (2 files)"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "spec/schemas/chio-wire/v1/receipt/record.schema.json"
+    - "spec/schemas/chio-wire/v1/receipt/inclusion-proof.schema.json"
+    - "spec/schemas/chio-wire/v1/receipt/README.md"
+    - "spec/schemas/MANIFEST.sha256"
+  shared_paths:
+    - "spec/schemas/MANIFEST.sha256"
+  depends_on:
+    - M01.P1.T2
+  soft_deps:
+    - "M04 deterministic replay consumes receipt schemas (tests/replay/goldens/**)"
+  gate_check:
+    cmd: "cargo run --quiet -p xtask -- trajectory regen-manifest --check && jq -e . spec/schemas/chio-wire/v1/receipt/record.schema.json && jq -e . spec/schemas/chio-wire/v1/receipt/inclusion-proof.schema.json"
+  worktree_branch: "wave/W1/m01/p1.t3-receipt-schemas"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P1.T4.a
+  milestone: M01
+  phase: 1
+  title: "Land jsonrpc framing wire schemas: request, response, notification (3 files)"
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - "spec/schemas/chio-wire/v1/jsonrpc/request.schema.json"
+    - "spec/schemas/chio-wire/v1/jsonrpc/response.schema.json"
+    - "spec/schemas/chio-wire/v1/jsonrpc/notification.schema.json"
+    - "spec/schemas/chio-wire/v1/jsonrpc/README.md"
+    - "spec/schemas/MANIFEST.sha256"
+  shared_paths:
+    - "spec/schemas/MANIFEST.sha256"
+  depends_on:
+    - M01.P1.T3
+  soft_deps: []
+  gate_check:
+    cmd: "cargo run --quiet -p xtask -- trajectory regen-manifest --check && jq -e . spec/schemas/chio-wire/v1/jsonrpc/request.schema.json && jq -e . spec/schemas/chio-wire/v1/jsonrpc/response.schema.json && jq -e . spec/schemas/chio-wire/v1/jsonrpc/notification.schema.json"
+  worktree_branch: "wave/W1/m01/p1.t4.a-jsonrpc-framing-schemas"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P1.T4.b
+  milestone: M01
+  phase: 1
+  title: "Land trust-control wire schemas: lease, heartbeat, terminate, attestation (4 files)"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "spec/schemas/chio-wire/v1/trust-control/lease.schema.json"
+    - "spec/schemas/chio-wire/v1/trust-control/heartbeat.schema.json"
+    - "spec/schemas/chio-wire/v1/trust-control/terminate.schema.json"
+    - "spec/schemas/chio-wire/v1/trust-control/attestation.schema.json"
+    - "spec/schemas/chio-wire/v1/trust-control/README.md"
+    - "spec/schemas/MANIFEST.sha256"
+  shared_paths:
+    - "spec/schemas/MANIFEST.sha256"
+  depends_on:
+    - M01.P1.T4.a
+  soft_deps: []
+  gate_check:
+    cmd: "cargo run --quiet -p xtask -- trajectory regen-manifest --check && jq -e . spec/schemas/chio-wire/v1/trust-control/lease.schema.json && jq -e . spec/schemas/chio-wire/v1/trust-control/heartbeat.schema.json && jq -e . spec/schemas/chio-wire/v1/trust-control/terminate.schema.json && jq -e . spec/schemas/chio-wire/v1/trust-control/attestation.schema.json"
+  worktree_branch: "wave/W1/m01/p1.t4.b-trust-control-schemas"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P1.T4.c
+  milestone: M01
+  phase: 1
+  title: "Land provenance wire schemas: stamp, context, attestation-bundle, verdict-link (4 files)"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "spec/schemas/chio-wire/v1/provenance/stamp.schema.json"
+    - "spec/schemas/chio-wire/v1/provenance/context.schema.json"
+    - "spec/schemas/chio-wire/v1/provenance/attestation-bundle.schema.json"
+    - "spec/schemas/chio-wire/v1/provenance/verdict-link.schema.json"
+    - "spec/schemas/chio-wire/v1/provenance/README.md"
+    - "spec/schemas/MANIFEST.sha256"
+  shared_paths:
+    - "spec/schemas/MANIFEST.sha256"
+  depends_on:
+    - M01.P1.T4.b
+  soft_deps:
+    - "M07 tool-call fabric consumes provenance/stamp schema (crates/chio-tool-call-fabric/**)"
+  gate_check:
+    cmd: "cargo run --quiet -p xtask -- trajectory regen-manifest --check && jq -e . spec/schemas/chio-wire/v1/provenance/stamp.schema.json && jq -e . spec/schemas/chio-wire/v1/provenance/context.schema.json && jq -e . spec/schemas/chio-wire/v1/provenance/attestation-bundle.schema.json && jq -e . spec/schemas/chio-wire/v1/provenance/verdict-link.schema.json"
+  worktree_branch: "wave/W1/m01/p1.t4.c-provenance-schemas"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P1.T5
+  milestone: M01
+  phase: 1
+  title: "Extend chio-http schemas with stream-frame, session-init, session-resume, error-envelope (4 files)"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "spec/schemas/chio-http/v1/stream-frame.schema.json"
+    - "spec/schemas/chio-http/v1/session-init.schema.json"
+    - "spec/schemas/chio-http/v1/session-resume.schema.json"
+    - "spec/schemas/chio-http/v1/error-envelope.schema.json"
+    - "spec/schemas/MANIFEST.sha256"
+  shared_paths:
+    - "spec/schemas/MANIFEST.sha256"
+  depends_on:
+    - M01.P1.T4.c
+  soft_deps: []
+  gate_check:
+    cmd: "cargo run --quiet -p xtask -- trajectory regen-manifest --check && jq -e . spec/schemas/chio-http/v1/stream-frame.schema.json && jq -e . spec/schemas/chio-http/v1/session-init.schema.json && jq -e . spec/schemas/chio-http/v1/session-resume.schema.json && jq -e . spec/schemas/chio-http/v1/error-envelope.schema.json"
+  worktree_branch: "wave/W1/m01/p1.t5-chio-http-edge-schemas"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P1.T6
+  milestone: M01
+  phase: 1
+  title: "Land chio-spec-validate binary and wire as cargo xtask validate-scenarios"
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-spec-validate/Cargo.toml"
+    - "crates/chio-spec-validate/src/main.rs"
+    - "crates/chio-spec-validate/src/lib.rs"
+    - "crates/chio-spec-validate/tests/scenarios.rs"
+    - "crates/chio-spec-validate/README.md"
+    - "xtask/src/main.rs"
+    - "Cargo.toml"
+    - "Cargo.lock"
+  shared_paths:
+    - "Cargo.toml"
+    - "Cargo.lock"
+  depends_on:
+    - M01.P1.T5
+  soft_deps: []
+  gate_check:
+    cmd: "cargo run --quiet -p xtask -- validate-scenarios && cargo test -p chio-spec-validate"
+  worktree_branch: "wave/W1/m01/p1.t6-spec-validate-binary"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P1.T7
+  milestone: M01
+  phase: 1
+  title: "Drop out-of-band disclaimer from chio-wire README and stamp deprecation headers on hand-typed model files"
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "spec/schemas/chio-wire/v1/README.md"
+    - "sdks/python/chio-sdk-python/src/chio_sdk/models.py"
+    - "sdks/typescript/packages/conformance/src/index.ts"
+    - "sdks/go/chio-go-http/types.go"
+  shared_paths: []
+  depends_on:
+    - M01.P1.T6
+  soft_deps: []
+  gate_check:
+    cmd: "grep -q 'chio-deprecation' sdks/python/chio-sdk-python/src/chio_sdk/models.py && grep -q 'chio-deprecation' sdks/typescript/packages/conformance/src/index.ts && grep -q 'chio-deprecation' sdks/go/chio-go-http/types.go && ! grep -q 'out-of-band' spec/schemas/chio-wire/v1/README.md"
+  worktree_branch: "wave/W1/m01/p1.t7-deprecation-headers-and-readme"
+  agent_role: spec-rust
+  review_required: ["@bb-connor"]
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

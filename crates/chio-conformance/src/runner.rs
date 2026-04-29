@@ -1,3 +1,4 @@
+use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -191,9 +192,11 @@ fn ensure_chio_executable(
     repo_root: &Path,
     cargo_binary: &OsString,
 ) -> Result<PathBuf, RunnerError> {
-    let chio_executable = repo_root.join("target/debug/chio");
-    if chio_executable.exists() {
-        return Ok(chio_executable);
+    let candidates = chio_executable_candidates(repo_root);
+    for candidate in &candidates {
+        if candidate.exists() {
+            return Ok(candidate.clone());
+        }
     }
     let status = Command::new(cargo_binary)
         .current_dir(repo_root)
@@ -213,14 +216,59 @@ fn ensure_chio_executable(
             log_path: "<stderr>".to_string(),
         });
     }
-    if chio_executable.exists() {
-        Ok(chio_executable)
+    for candidate in &candidates {
+        if candidate.exists() {
+            return Ok(candidate.clone());
+        }
+    }
+    let checked = candidates
+        .iter()
+        .map(|candidate| candidate.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(RunnerError::ProcessFailed {
+        command: "cargo build -q -p chio-cli".to_string(),
+        status: 1,
+        log_path: format!("<stderr>; checked {checked}"),
+    })
+}
+
+fn chio_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "chio.exe"
     } else {
-        Err(RunnerError::ProcessFailed {
-            command: "cargo build -q -p chio-cli".to_string(),
-            status: 1,
-            log_path: "<stderr>".to_string(),
-        })
+        "chio"
+    }
+}
+
+fn chio_executable_candidates(repo_root: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(current_exe) = env::current_exe() {
+        if current_exe.file_name().and_then(|name| name.to_str()) == Some(chio_binary_name()) {
+            push_chio_candidate(&mut candidates, current_exe);
+        }
+    }
+    if let Some(target_dir) = env::var_os("CARGO_TARGET_DIR") {
+        push_chio_candidate(
+            &mut candidates,
+            PathBuf::from(target_dir)
+                .join("debug")
+                .join(chio_binary_name()),
+        );
+    }
+    push_chio_candidate(
+        &mut candidates,
+        repo_root
+            .join("target")
+            .join("debug")
+            .join(chio_binary_name()),
+    );
+    candidates
+}
+
+fn push_chio_candidate(candidates: &mut Vec<PathBuf>, path: PathBuf) {
+    if !candidates.iter().any(|candidate| candidate == &path) {
+        candidates.push(path);
     }
 }
 

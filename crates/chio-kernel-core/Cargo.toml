@@ -11,17 +11,13 @@ publish = false
 [lib]
 name = "chio_kernel_core"
 
-# Phase 14.1 portable kernel core extraction.
-#
 # This crate contains the pure-compute subset of Chio kernel evaluation:
 # capability verification, scope matching, guard pipeline evaluation, and
 # receipt signing. It is a `no_std + alloc` crate by source, which means
-# the crate itself never imports from `std`. The current in-repo proof is
+# the crate itself never imports from `std`. The in-repo portability proof is
 # `scripts/check-portable-kernel.sh`, which builds `chio-kernel-core` both for
 # the host and for `wasm32-unknown-unknown` with `--no-default-features`.
-#
-# Later portability tickets qualify the browser and mobile adapter crates on
-# top of this core build proof. See docs/protocols/PORTABLE-KERNEL-ARCHITECTURE.md.
+# See docs/protocols/PORTABLE-KERNEL-ARCHITECTURE.md.
 [dependencies]
 # Depend on `chio-core-types` with `default-features = false` and forward the
 # `std` feature through our own feature flag so downstream consumers can
@@ -30,10 +26,55 @@ name = "chio_kernel_core"
 chio-core-types = { path = "../chio-core-types", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
+# `arbitrary` is gated behind the `fuzz` feature so production builds stay
+# free of fuzz instrumentation. Pulled in by
+# `fuzz/fuzz_targets/receipt_log_replay.rs` via
+# `chio-kernel-core = { features = ["fuzz"] }`.
+arbitrary = { version = "1", features = ["derive"], optional = true }
+# `dudect-bencher` is gated behind the `dudect` feature so default builds
+# never pull it in. Used by the timing-leak harnesses at
+# `tests/dudect/{mac_eq,scope_subset}.rs`, wired as `harness = false` test
+# binaries below. The harnesses statistically detect data-dependent timing
+# in (a) `Signature` byte equality (the kernel-core's MAC-eq surface during
+# signature verification) and (b) `NormalizedScope::is_subset_of` (the
+# capability-algebra subset check).
+dudect-bencher = { version = "0.7", optional = true }
 
 [features]
 default = ["std"]
 std = ["chio-core-types/std", "serde/std", "serde_json/std"]
+# Enables `chio_kernel_core::fuzz`, the libFuzzer entry-point module for the
+# receipt-log replay verifier. Implies `std` because libFuzzer itself only
+# runs in a hosted environment, so the `no_std + alloc` portable proof never
+# observes this surface. Off by default; turned on only by the `chio-fuzz`
+# standalone workspace at `../../fuzz`.
+fuzz = ["dep:arbitrary", "std"]
+# Enables the dudect timing-leak harnesses at `tests/dudect/{mac_eq,
+# scope_subset}.rs`. Implies `std` because dudect-bencher is a hosted-only
+# tool (clap, ctrlc, OS time syscalls) that never runs in the portable
+# `no_std + alloc` proof. Off by default; opt in via
+# `cargo test -p chio-kernel-core --features dudect --release {mac_eq|scope_subset}`.
+# CI lane: `.github/workflows/dudect.yml`.
+dudect = ["dep:dudect-bencher", "std"]
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+# Timing-leak dudect harnesses. `harness = false` so each test binary's
+# `main` is provided by `dudect_bencher::ctbench_main!`. Gated behind the
+# `dudect` feature so default `cargo test` does not try to compile them
+# (the sources are `#![cfg(feature = "dudect")]`).
+[[test]]
+name = "dudect_mac_eq"
+path = "tests/dudect/mac_eq.rs"
+harness = false
+required-features = ["dudect"]
+
+[[test]]
+name = "dudect_scope_subset"
+path = "tests/dudect/scope_subset.rs"
+harness = false
+required-features = ["dudect"]
 
 [lints.clippy]
 unwrap_used = "deny"

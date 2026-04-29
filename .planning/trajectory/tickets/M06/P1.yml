@@ -1,0 +1,191 @@
+# M06 Phase 1 - WIT-native host imports and resources (chio:guard@0.2.0).
+# Source of truth: .planning/trajectory/06-wasm-guard-platform.md
+# (Phase 1, lines 15-116). Six atomic tasks map 1:1 to P1.T1-P1.T6 in doc
+# order.
+#
+# Trust-boundary status: M06 is a TRUST-BOUNDARY milestone. WIT world bumps
+# and bindgen!-generated host wiring sit on the runtime/guest contract;
+# Security x2 review applies (EXECUTION-BOARD section 7).
+#
+# Dep gating:
+#   - P1 chains after M06.P0.T1 (Wave 2b lock bump).
+#   - P1.T2 (bindgen! replacement) blocks on M05.P1.T3 publish so the
+#     bindgen! invocation targets the async-native host trait directly; the
+#     phase doc is explicit that "if both milestones run in parallel, M06
+#     Phase 1 blocks on M05's P1.T3 commit landing first" (lines 397-398).
+#     P1.T1 (WIT 0.2.0 file + M10 namespace placeholder) is purely additive
+#     and does NOT require M05.P1.T3.
+#   - bindgen! is invoked with async = true from day one (load-bearing per
+#     EXECUTION-BOARD section 2 and phase doc line 88).
+#
+# Wave: all P1 tickets land in Wave 2b under wave/W2/m06/p1.* branches.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M06.P1.T1
+  milestone: M06
+  phase: 1
+  title: Bump WIT world to chio:guard@0.2.0 with host interface and policy-context resource
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "wit/chio-guard/world.wit"
+    - "wit/chio-guards-redact/world.wit"
+    - "crates/chio-wasm-guards/Cargo.toml"
+    - "docs/guards/MIGRATION-0.1-to-0.2.md"
+  shared_paths:
+    - "wit/"
+  depends_on:
+    - M06.P0.T1
+  soft_deps:
+    - "Reserves M10 chio:guards/redact@0.1.0 namespace via placeholder file (phase doc lines 90-91)."
+  gate_check:
+    cmd: "test -f wit/chio-guard/world.wit && grep -q 'package chio:guard@0.2.0' wit/chio-guard/world.wit && grep -q 'interface host' wit/chio-guard/world.wit && grep -q 'interface policy-context' wit/chio-guard/world.wit && grep -q 'fetch-blob' wit/chio-guard/world.wit && test -f wit/chio-guards-redact/world.wit && grep -q 'package chio:guards@0.1.0' wit/chio-guards-redact/world.wit"
+  worktree_branch: "wave/W2/m06/p1.t1-wit-0-2-0-host-and-policy-context"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P1.T2
+  milestone: M06
+  phase: 1
+  title: Replace func_wrap host imports with bindgen!-generated wiring (async = true)
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-wasm-guards/src/host.rs"
+    - "crates/chio-wasm-guards/Cargo.toml"
+  shared_paths:
+    - "crates/chio-wasm-guards/"
+  depends_on:
+    - M06.P1.T1
+    - M05.P1.T3
+  soft_deps:
+    - "bindgen! async = true is load-bearing from day one (EXECUTION-BOARD section 2; phase doc line 88)."
+    - "Deletes Linker::func_wrap calls at host.rs:110/159/221 and the JSON-serialization shim."
+  gate_check:
+    cmd: "cargo build -p chio-wasm-guards && ! grep -nE 'Linker::func_wrap|func_wrap\\(' crates/chio-wasm-guards/src/host.rs && grep -q 'bindgen!' crates/chio-wasm-guards/src/host.rs && grep -q 'async = true' crates/chio-wasm-guards/src/host.rs"
+  worktree_branch: "wave/W2/m06/p1.t2-bindgen-async-host-wiring"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P1.T3
+  milestone: M06
+  phase: 1
+  title: Implement policy-context bundle-handle resource and fetch-blob host call
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-wasm-guards/src/host.rs"
+    - "crates/chio-wasm-guards/src/runtime.rs"
+    - "crates/chio-wasm-guards/tests/policy_context_bundle_handle.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P1.T2
+  soft_deps:
+    - "Resource lands as wasmtime::component::Resource<BundleHandle> with host-owned table (phase doc lines 87-88)."
+    - "fetch-blob backs onto the existing content-bundle store; no new persistence."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test policy_context_bundle_handle"
+  worktree_branch: "wave/W2/m06/p1.t3-bundle-handle-fetch-blob"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P1.T4
+  milestone: M06
+  phase: 1
+  title: Gate guard load on wit_world semver and emit migration pointer on mismatch
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "crates/chio-wasm-guards/src/manifest.rs"
+    - "crates/chio-wasm-guards/tests/wit_world_semver_gate.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P1.T3
+  soft_deps:
+    - "Manifest field wit_world: \"chio:guard/guard@0.2.0\"; rejects 0.1.x components at load time with migration-guide pointer (phase doc line 92)."
+  gate_check:
+    cmd: "cargo test -p chio-wasm-guards --test wit_world_semver_gate"
+  worktree_branch: "wave/W2/m06/p1.t4-wit-world-semver-gate"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P1.T5
+  milestone: M06
+  phase: 1
+  title: Atomically migrate Rust/TS/Python/Go guest SDKs to chio:guard@0.2.0
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - "sdks/rust/chio-guard-sdk/Cargo.toml"
+    - "sdks/rust/chio-guard-sdk/src/lib.rs"
+    - "sdks/typescript/chio-guard-sdk/package.json"
+    - "sdks/typescript/chio-guard-sdk/src/**"
+    - "sdks/python/chio_guard_sdk/pyproject.toml"
+    - "sdks/python/chio_guard_sdk/chio_guard_sdk/**"
+    - "sdks/go/chio-guard-sdk-go/go.mod"
+    - "sdks/go/chio-guard-sdk-go/**"
+    - "tools/versions.toml"
+  shared_paths:
+    - "wit/"
+    - "tools/versions.toml"
+  depends_on:
+    - M06.P1.T4
+  soft_deps:
+    - "Single PR atomically bumps all four guest SDKs to 0.2.0 (phase doc lines 107-114)."
+    - "Toolchains pinned via tools/versions.toml: jco, componentize-py, tinygo, wit-bindgen all gated on a known-good wit-bindgen release."
+  gate_check:
+    cmd: "cargo build -p chio-guard-sdk && grep -q 'chio:guard@0.2.0' sdks/rust/chio-guard-sdk/src/lib.rs && grep -q '0.2.0' sdks/typescript/chio-guard-sdk/package.json && grep -q '0.2.0' sdks/python/chio_guard_sdk/pyproject.toml && grep -q '0.2.0' sdks/go/chio-guard-sdk-go/go.mod"
+  worktree_branch: "wave/W2/m06/p1.t5-guest-sdk-train-0-2-0"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M06.P1.T6
+  milestone: M06
+  phase: 1
+  title: Add chio:guard@0.2.0 conformance fixtures for fetch-blob and bundle-handle
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - "tests/corpora/wit-0.2.0/**"
+    - "crates/chio-conformance/tests/wit_0_2_0_fixtures.rs"
+  shared_paths: []
+  depends_on:
+    - M06.P1.T5
+  soft_deps:
+    - "M01 conformance suite is the harness host (phase doc lines 116, 398-399); if M01 ships first, fixtures plug in there. Otherwise they land in chio-conformance directly and migrate later."
+  gate_check:
+    cmd: "test -d tests/corpora/wit-0.2.0 && cargo test -p chio-conformance --test wit_0_2_0_fixtures"
+  worktree_branch: "wave/W2/m06/p1.t6-conformance-fixtures-0-2-0"
+  agent_role: wasm-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

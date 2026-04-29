@@ -66,6 +66,15 @@ Entry points and maps for the Chio protocol documentation.
 - [Economic Layer](guides/ECONOMIC-LAYER.md)
 - [Web Backend Quickstart](guides/WEB_BACKEND_QUICKSTART.md)
 
+## Conformance
+
+- [Conformance Suite (Standalone Consumer Guide)](conformance.md) - external-implementer flow for the Chio cross-language conformance harness (`cargo install chio-conformance`, `chio conformance fetch-peers`, `chio conformance run`)
+
+## Fuzzing
+
+- [Continuous Fuzzing Runbook](fuzzing/continuous.md) - layered strategy (in-tree `cargo +nightly fuzz` matrix, ClusterFuzzLite bridge, OSS-Fuzz primary), GHA budget enforcement, target inventory, local-dev and triage flow
+- [Fuzz Crash Triage Runbook](fuzzing/triage.md) - severity bands (Critical, High, Medium, Low), dedupe rules (sha256 plus crash-type/target/call-site), time-to-fix SLOs (24h ack, 7d Critical, 14d High, 30d Medium), promotion to regression test, regression-deletion guard
+
 ## Protocol and architecture
 
 - Canonical spec: [spec/PROTOCOL.md](../spec/PROTOCOL.md)

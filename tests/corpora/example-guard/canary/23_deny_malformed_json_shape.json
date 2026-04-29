@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "ingest_json",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 23,
+      "verdict": "deny",
+      "reason": "malformed JSON shape denied"
+    },
+    "scopes": [
+      "example-server:ingest_json"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"deny\",\"reason\":\"malformed JSON shape denied\"}"
+}

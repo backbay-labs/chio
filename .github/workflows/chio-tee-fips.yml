@@ -1,0 +1,64 @@
+name: chio-tee-fips
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/chio-tee-fips.yml
+      - crates/chio-tee/**
+      - crates/chio-tee-frame/**
+      - crates/chio-core-types/**
+      - crates/chio-store-sqlite/**
+      - Cargo.toml
+      - Cargo.lock
+  push:
+    branches:
+      - main
+      - 'project/**'
+    paths:
+      - .github/workflows/chio-tee-fips.yml
+      - crates/chio-tee/**
+      - crates/chio-tee-frame/**
+      - crates/chio-core-types/**
+      - crates/chio-store-sqlite/**
+      - Cargo.toml
+      - Cargo.lock
+  workflow_dispatch:
+
+concurrency:
+  group: chio-tee-fips-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  fips-smoke:
+    name: chio-tee fips smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake perl pkg-config protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Run mode precedence under fips
+        run: cargo test -p chio-tee --test mode_precedence --features fips
+
+      - name: Clippy under fips
+        run: cargo clippy -p chio-tee --features fips -- -D warnings

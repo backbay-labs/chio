@@ -11,11 +11,19 @@ publish = false
 [lib]
 name = "chio_config"
 
+[features]
+default = []
+# Enables `chio_config::fuzz`, the libFuzzer entry-point module.
+# Off by default; turned on only by the `chio-fuzz` standalone workspace
+# at `../../fuzz`.
+fuzz = ["dep:arbitrary"]
+
 [dependencies]
 serde = { workspace = true }
 serde_yml = { workspace = true }
 thiserror = { workspace = true }
 regex = "1"
+arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [lints.clippy]
 unwrap_used = "deny"

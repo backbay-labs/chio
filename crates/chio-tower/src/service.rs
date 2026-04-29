@@ -190,7 +190,7 @@ mod tests {
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
             },
-            &issuer,
+            issuer,
         )
         .unwrap_or_else(|e| panic!("token sign failed: {e}"));
         serde_json::to_string(&token).unwrap_or_else(|e| panic!("token serialize failed: {e}"))

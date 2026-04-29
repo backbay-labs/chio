@@ -23,6 +23,17 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+# `arbitrary` is gated behind the `fuzz` feature so production builds stay
+# free of fuzz instrumentation. Pulled in by `fuzz/fuzz_targets/mcp_envelope_decode.rs`
+# via `chio-mcp-adapter = { features = ["fuzz"] }`.
+arbitrary = { version = "1", features = ["derive"], optional = true }
+
+[features]
+# Enables `chio_mcp_adapter::fuzz`, the libFuzzer entry-point module driving
+# the MCP envelope (newline-delimited JSON-RPC) parse path. Off by default;
+# turned on only by the `chio-fuzz` standalone workspace at `../../fuzz`.
+# Production builds never pull in `arbitrary` and never expose `fuzz` symbols.
+fuzz = ["dep:arbitrary"]
 
 [lints.clippy]
 unwrap_used = "deny"

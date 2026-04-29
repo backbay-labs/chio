@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "read_cache",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 6,
+      "verdict": "allow",
+      "mode": "readonly"
+    },
+    "scopes": [
+      "example-server:read_cache"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

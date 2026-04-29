@@ -1,0 +1,35 @@
+{
+  "schema": "chio.guard.wit.fixture.v1",
+  "id": "fetch_blob_boundary_deny",
+  "title": "host.fetch-blob fails closed when offset and length exceed the blob",
+  "description": "Fail-closed fixture for offset/length bounds checking on host.fetch-blob.",
+  "witWorld": "chio:guard/guard@0.2.0",
+  "imports": [
+    "host.fetch-blob"
+  ],
+  "blobStore": {
+    "handles": [
+      {
+        "handle": 7,
+        "bytes": [
+          98,
+          111,
+          117,
+          110,
+          100
+        ]
+      }
+    ],
+    "bundles": []
+  },
+  "input": {
+    "operation": "host.fetch-blob",
+    "handle": 7,
+    "offset": 4,
+    "len": 2
+  },
+  "expected": {
+    "status": "deny",
+    "errorKind": "offset-length-out-of-bounds"
+  }
+}

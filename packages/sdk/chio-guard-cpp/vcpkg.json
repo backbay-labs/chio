@@ -1,0 +1,7 @@
+{
+  "name": "chio-guard-cpp",
+  "version-string": "0.1.0",
+  "description": "Header-only C++17 authoring SDK for Chio WASM guard components",
+  "homepage": "https://github.com/backbay-labs/chio",
+  "license": "Apache-2.0"
+}

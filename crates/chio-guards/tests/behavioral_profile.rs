@@ -178,7 +178,7 @@ fn fifty_x_spike_triggers_advisory_signal() {
 #[test]
 fn guard_reads_from_sqlite_receipt_store() {
     let db = unique_db_path("behavioral-profile-sqlite");
-    let mut store = SqliteReceiptStore::open(&db).expect("open sqlite");
+    let store = SqliteReceiptStore::open(&db).expect("open sqlite");
 
     // Insert 10 receipts in the first window, 500 in the second.
     let base_ts = 1_700_000_000u64;

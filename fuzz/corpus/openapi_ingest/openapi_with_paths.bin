@@ -1,0 +1,18 @@
+openapi: 3.0.3
+info:
+  title: With Paths
+  description: Single GET operation
+  version: "1.0.0"
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List all pets
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: A list of pets

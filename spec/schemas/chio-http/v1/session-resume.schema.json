@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chio HTTP Session Resume",
+  "description": "Persisted session-resume record used to re-attach a remote MCP session after edge restart or transport reconnection. Mirrors the serde-derived `RemoteSessionResumeRecord` struct in `crates/chio-cli/src/remote_mcp/session_core.rs` lines 223-240. The record is signed by `RemoteSessionResumeIntegrityEnvelope` (lines 1611+) and validated on the load path. The `lifecycle.state` enum values reflect the default serde rendering of `RemoteSessionState` (no `#[serde(rename_all)]` attribute), which serializes variant names as PascalCase (`Initializing`, `Ready`, `Draining`, `Deleted`, `Expired`, `Closed`); the lower-case `as_str()` projection is reserved for log/metric labels and is not emitted on the wire. The lifecycle timestamps (`created_at`, `last_seen_at`, `idle_expires_at`, `drain_deadline_at`) are unix **milliseconds** because they are populated from `session_now_millis()` (`session_core.rs` lines 2087-2094 and 2312-2326). NOTE: M07 may re-pin the cross-cluster fields; M08 may extend lifecycle snapshot semantics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_id",
+    "agent_id",
+    "auth_context",
+    "hosted_isolation",
+    "lifecycle",
+    "protocol_version",
+    "peer_capabilities",
+    "initialize_params",
+    "issued_capabilities"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Session identifier being resumed."
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Agent identifier the session is bound to."
+    },
+    "auth_context": {
+      "type": "object",
+      "description": "Authentication context as captured at session creation. Mirrors `chio_core::session::SessionAuthContext`; treated as opaque object here pending dedicated chio-http schema."
+    },
+    "auth_mode_fingerprint": {
+      "type": ["string", "null"],
+      "description": "Optional opaque fingerprint of the auth-mode configuration. `#[serde(default, skip_serializing_if = \"Option::is_none\")]`."
+    },
+    "policy_fingerprint": {
+      "type": ["string", "null"],
+      "description": "Optional opaque fingerprint of the policy bundle. `#[serde(default, skip_serializing_if = \"Option::is_none\")]`."
+    },
+    "hosted_isolation": {
+      "type": "string",
+      "enum": ["dedicated_per_session", "shared_hosted_owner_compatibility"],
+      "description": "Hosted-isolation mode for the session. Mirrors the snake_case enum `RemoteHostedIsolationMode`."
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "created_at", "last_seen_at", "idle_expires_at"],
+      "description": "Lifecycle snapshot recorded at suspend time. Mirrors `RemoteSessionLifecycleSnapshot` in `session_core.rs` lines 338-345. All timestamps are unix milliseconds (populated from `session_now_millis()`).",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["Initializing", "Ready", "Draining", "Deleted", "Expired", "Closed"],
+          "description": "Session state at the time of the snapshot. Mirrors the default serde rendering of `RemoteSessionState` in `session_core.rs` lines 315-323 (PascalCase, no `#[serde(rename_all)]`). The `as_str()` projection at lines 325-335 returns lower-case labels for logs and metrics; those are not emitted on the wire."
+        },
+        "created_at": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unix timestamp (milliseconds) when the session was created. Populated via `session_now_millis()`."
+        },
+        "last_seen_at": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unix timestamp (milliseconds) of the most recent activity recorded for the session. Populated via `session_now_millis()` (see `session_core.rs` lines 2312-2372)."
+        },
+        "idle_expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unix timestamp (milliseconds) at which the session becomes idle-expired. Derived from `session_now_millis()` plus the configured `SessionLifecyclePolicy` idle TTL (also in milliseconds)."
+        },
+        "drain_deadline_at": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Optional Unix timestamp (milliseconds) by which an in-progress drain must complete. Populated via `session_now_millis()` plus the drain TTL when a drain transition is recorded."
+        }
+      }
+    },
+    "protocol_version": {
+      "type": ["string", "null"],
+      "description": "Negotiated MCP protocol version at session-init time."
+    },
+    "peer_capabilities": {
+      "description": "Peer capabilities recorded at session-init time. Mirrors `chio_core::session::PeerCapabilities`; treated as opaque object here pending dedicated peer-capabilities schema.",
+      "type": "object"
+    },
+    "initialize_params": {
+      "description": "Verbatim JSON-RPC `initialize` params object as supplied by the client at session-init time.",
+      "type": "object"
+    },
+    "issued_capabilities": {
+      "type": "array",
+      "description": "Capability tokens issued to the session. Mirrors `Vec<chio_core::capability::CapabilityToken>`; element shape pinned by chio-wire/v1/capability/token.schema.json.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "resume_integrity_tag": {
+      "type": ["string", "null"],
+      "description": "Optional MAC tag computed by `RemoteSessionResumeIntegrityEnvelope` over the resume record (see `session_core.rs` lines 1611+). `#[serde(default, skip_serializing_if = \"Option::is_none\")]`."
+    }
+  }
+}

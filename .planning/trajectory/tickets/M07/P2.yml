@@ -1,0 +1,245 @@
+# M07 Phase 2 - OpenAI Responses adapter (extend crates/chio-openai/) + SSE
+# streaming + conformance harness skeleton.
+# Source of truth: .planning/trajectory/07-provider-native-adapters.md
+# (Phase 2, lines 355-391; fixture matrix lines 376-391).
+# Wave-3 milestone: P2 runs in parallel with P3 (Anthropic) and P4 (Bedrock)
+# once P1 lands. P2 also lands the chio-provider-conformance crate skeleton
+# that P3/P4 fixtures slot into. Adapter lives in-place inside the existing
+# crates/chio-openai/ behind a `provider-adapter` cargo feature; default
+# public surface is preserved (doc lines 28-29, 358-359).
+# Doc T4 (SSE streaming, L=3d) is split into T4.a (SSE transport + buffer
+# wiring) and T4.b (state-machine + verdict gate) to satisfy the hard rule
+# of 0.5-2 day atomic tickets, using the schema's `.k` split convention.
+# Round-2 NEW per-provider error-taxonomy doctest (line 456) is folded into
+# T8 alongside the deprecation note (both touch crate docs).
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M07.P2.T1
+  milestone: M07
+  phase: 2
+  title: Add provider-adapter feature to chio-openai with OpenAI Responses 2026-04-25 pin
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-openai/Cargo.toml
+    - crates/chio-openai/README.md
+  shared_paths:
+    - Cargo.lock
+  depends_on:
+    - M07.P1.T6
+  soft_deps: []
+  gate_check:
+    cmd: cargo build -p chio-openai --features provider-adapter && cargo build -p chio-openai
+  worktree_branch: wave/W3/m07/p2.t1-openai-provider-adapter-feature
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P2.T2
+  milestone: M07
+  phase: 2
+  title: Implement ProviderAdapter::lift for batch responses.create in chio-openai
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-openai/src/adapter.rs
+    - crates/chio-openai/src/lib.rs
+    - crates/chio-openai/tests/adapter_lift.rs
+  shared_paths: []
+  depends_on:
+    - M07.P2.T1
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-openai --features provider-adapter --test adapter_lift
+  worktree_branch: wave/W3/m07/p2.t2-openai-adapter-lift-batch
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P2.T3
+  milestone: M07
+  phase: 2
+  title: Implement ProviderAdapter::lower into tool_outputs incl. deny synthetic path
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-openai/src/adapter.rs
+    - crates/chio-openai/tests/adapter_lower.rs
+  shared_paths: []
+  depends_on:
+    - M07.P2.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-openai --features provider-adapter --test adapter_lower
+  worktree_branch: wave/W3/m07/p2.t3-openai-adapter-lower-batch
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P2.T4.a
+  milestone: M07
+  phase: 2
+  title: Land SSE transport plus per-block buffering scaffold in chio-openai/src/streaming.rs
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-openai/src/streaming.rs
+    - crates/chio-openai/Cargo.toml
+    - crates/chio-openai/tests/streaming_buffering.rs
+  shared_paths: []
+  depends_on:
+    - M07.P2.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-openai --features provider-adapter --test streaming_buffering
+  worktree_branch: wave/W3/m07/p2.t4.a-openai-sse-transport
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P2.T4.b
+  milestone: M07
+  phase: 2
+  title: Wire fabric StreamPhase state machine and verdict gate into chio-openai streaming
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-openai/src/streaming.rs
+    - crates/chio-openai/src/adapter.rs
+    - crates/chio-openai/tests/streaming.rs
+  shared_paths: []
+  depends_on:
+    - M07.P2.T4.a
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-openai --features provider-adapter --test streaming
+  worktree_branch: wave/W3/m07/p2.t4.b-openai-streaming-verdict
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P2.T5
+  milestone: M07
+  phase: 2
+  title: Record 12 OpenAI conformance fixtures pinned to API snapshot 2026-04-25
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-provider-conformance/fixtures/openai/**
+    - crates/chio-provider-conformance/fixtures/openai/EVENTS.md
+  shared_paths: []
+  depends_on:
+    - M07.P2.T4.b
+  soft_deps: []
+  gate_check:
+    cmd: ls crates/chio-provider-conformance/fixtures/openai/*.ndjson | wc -l | grep -qE '^\s*12\s*$'
+  worktree_branch: wave/W3/m07/p2.t5-openai-fixtures-12
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P2.T6
+  milestone: M07
+  phase: 2
+  title: Scaffold chio-provider-conformance replay harness with byte-equality assertions
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-provider-conformance/Cargo.toml
+    - crates/chio-provider-conformance/src/lib.rs
+    - crates/chio-provider-conformance/src/replay.rs
+    - crates/chio-provider-conformance/src/assertions.rs
+    - crates/chio-provider-conformance/tests/replay_openai.rs
+    - .github/workflows/provider-conformance.yml
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+    - .github/workflows/
+  depends_on:
+    - M07.P2.T5
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-provider-conformance --features fixtures-openai
+  worktree_branch: wave/W3/m07/p2.t6-conformance-harness-skeleton
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P2.T7
+  milestone: M07
+  phase: 2
+  title: Bench harness verdict_latency.rs with 250ms p99 merge-gate enforcement
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-openai/benches/verdict_latency.rs
+    - crates/chio-openai/Cargo.toml
+    - .github/workflows/provider-conformance.yml
+  shared_paths:
+    - .github/workflows/provider-conformance.yml
+  depends_on:
+    - M07.P2.T4.b
+  soft_deps: []
+  gate_check:
+    cmd: cargo bench -p chio-openai --features provider-adapter --bench verdict_latency -- --test
+  worktree_branch: wave/W3/m07/p2.t7-openai-verdict-bench
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M07.P2.T8
+  milestone: M07
+  phase: 2
+  title: Land OpenAI error-taxonomy doctest table and CHANGELOG deprecation note
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - crates/chio-openai/README.md
+    - crates/chio-openai/CHANGELOG.md
+    - crates/chio-openai/tests/error_taxonomy_doctest.rs
+  shared_paths: []
+  depends_on:
+    - M07.P2.T4.b
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-openai --features provider-adapter --test error_taxonomy_doctest
+  worktree_branch: wave/W3/m07/p2.t8-openai-taxonomy-changelog
+  agent_role: provider-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

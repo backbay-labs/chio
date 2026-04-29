@@ -1,0 +1,40 @@
+# Cross-version receipt-compatibility matrix.
+# Ratchet: the last N=5 tagged releases are supported by current main.
+# Earlier tags are best-effort; see docs/replay-compat.md.
+#
+# NOTE: bundle_url uses the current GitHub repo name (bb-connor/arc). The
+# project is being renamed to "chio" (see CLAUDE.md); URLs will be re-pointed
+# to bb-connor/chio once the rename completes. The bundle_sha256 placeholder
+# values (all-zero / all-one) are filled in by the release-tagged.yml workflow
+# when each tag is published.
+
+schema = "chio.replay.compat/v1"
+window = 5
+
+[[entry]]
+tag = "v0.1.0"
+released_at = "2025-08-12"
+bundle_url = "https://github.com/bb-connor/arc/releases/download/v0.1.0/replay-bundle.tgz"
+bundle_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+compat = "best_effort"      # one of: supported | best_effort | broken
+supported_until = "v3.0"    # honoured strictly while compat = "supported"
+notes = "pre-canonicalization-freeze; sigs verify, root format pre-dates v2 layout"
+
+[[entry]]
+tag = "v2.0"
+released_at = "2026-02-04"
+bundle_url = "https://github.com/bb-connor/arc/releases/download/v2.0/replay-bundle.tgz"
+bundle_sha256 = "1111111111111111111111111111111111111111111111111111111111111111"
+compat = "best_effort"
+supported_until = "v6.0"
+notes = "ratchet floor candidate; promote to supported after v3.0 tag lands"
+
+# Future entries follow this pattern (auto-appended by release-tagged.yml):
+# [[entry]]
+# tag = "v3.0"
+# released_at = "YYYY-MM-DD"
+# bundle_url = "..."
+# bundle_sha256 = "..."
+# compat = "supported"
+# supported_until = "v8.0"   # tag + 5 minor releases
+# notes = ""

@@ -1,0 +1,36 @@
+[package]
+name = "chio-provider-conformance"
+description = "Provider replay harness for Chio native adapter conformance fixtures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-anthropic-tools-adapter = { path = "../chio-anthropic-tools-adapter", features = ["computer-use"], optional = true }
+chio-bedrock-converse-adapter = { path = "../chio-bedrock-converse-adapter", optional = true }
+chio-manifest = { path = "../chio-manifest", optional = true }
+chio-openai = { package = "chio-openai-adapter", path = "../chio-openai", features = ["provider-adapter"], optional = true }
+chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+chrono = { workspace = true, features = ["clock"] }
+clap = { version = "4", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[[bin]]
+name = "record"
+path = "src/bin/record.rs"
+
+[features]
+default = []
+fixtures-openai = ["dep:chio-openai"]
+fixtures-anthropic = ["dep:chio-anthropic-tools-adapter", "dep:chio-manifest"]
+fixtures-bedrock = ["dep:chio-bedrock-converse-adapter"]
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

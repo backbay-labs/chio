@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": "scope_mismatch",
+  "expected_verdict": "deny",
+  "family": "deny_scope_mismatch",
+  "fixed_nonce_seed_index": 25,
+  "intent": "Deny because the request action (e.g. write) is not in the capability's authorised action set (e.g. read-only), exercising action-scope rejection.",
+  "name": "deny_scope_mismatch/02_wrong_action",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "scope-mismatch"]
+}

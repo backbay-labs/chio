@@ -1,0 +1,11 @@
+{
+  "clock": "2026-01-01T00:00:00Z",
+  "expected_failure_class": null,
+  "expected_verdict": "allow",
+  "family": "allow_with_delegation",
+  "fixed_nonce_seed_index": 11,
+  "intent": "Allow path where the delegate's scope is a strict subset of the authority's scope, exercising scope attenuation along the chain.",
+  "name": "allow_with_delegation/04_attenuated_scope",
+  "schema_version": "v1",
+  "tags": ["canonical-json", "delegation", "attenuation"]
+}

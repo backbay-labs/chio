@@ -1,0 +1,57 @@
+# syntax=docker/dockerfile:1.7
+# Chio TEE sidecar image. This mirrors Dockerfile.sidecar's workspace build
+# pattern so path dependencies and Cargo.lock resolution stay identical to CI.
+
+ARG RUST_VERSION=1.93
+ARG ALPINE_VERSION=3.22
+
+############################
+# Stage 1: build the binary
+############################
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION}@sha256:3c06253e433c1b2ac2c279a98226d385d25c5f324138ab2861a5414bfa6855f9 AS builder
+RUN apk add --no-cache build-base cmake perl pkgconf musl-dev protoc
+WORKDIR /workspace
+
+# Copy the full workspace because chio-tee reaches path dependencies under
+# crates/ and Cargo resolves every workspace member against the committed lock.
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY wit ./wit
+COPY examples ./examples
+COPY formal ./formal
+COPY tests ./tests
+COPY sdks ./sdks
+COPY xtask ./xtask
+
+RUN cargo build --release --locked --package chio-tee --bin chio-tee \
+ && strip target/release/chio-tee \
+ && cp target/release/chio-tee /chio-tee
+
+############################
+# Stage 2: minimal runtime
+############################
+FROM alpine:${ALPINE_VERSION}@sha256:310c62b5e7ca5b08167e4384c68db0fd2905dd9c7493756d356e893909057601 AS runtime
+
+RUN apk add --no-cache ca-certificates tini \
+ && addgroup -S -g 10001 chio \
+ && adduser  -S -u 10001 -G chio -h /home/chio -s /sbin/nologin chio \
+ && mkdir -p /var/lib/chio/tee /etc/chio /run/chio-tee \
+ && chown -R chio:chio /var/lib/chio /etc/chio /run/chio-tee /home/chio
+
+COPY --from=builder /chio-tee /usr/local/bin/chio-tee
+RUN chmod 0755 /usr/local/bin/chio-tee
+
+USER chio:chio
+WORKDIR /home/chio
+ENV CHIO_HOME=/var/lib/chio \
+    CHIO_TEE_CONFIG=/etc/chio/tee.toml \
+    CHIO_TEE_MODE=verdict-only \
+    RUST_LOG=info
+
+LABEL org.opencontainers.image.title="chio-tee" \
+      org.opencontainers.image.description="Chio TEE sidecar runtime" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/backbay/chio"
+
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/chio-tee"]
+CMD ["--help"]

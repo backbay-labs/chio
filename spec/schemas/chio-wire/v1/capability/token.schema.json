@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token/v1",
+  "title": "Chio CapabilityToken",
+  "description": "A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "issuer",
+    "subject",
+    "scope",
+    "issued_at",
+    "expires_at",
+    "signature"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique token ID (UUIDv7 recommended), used for revocation."
+    },
+    "issuer": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+      "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding)."
+    },
+    "subject": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+      "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`."
+    },
+    "scope": {
+      "$ref": "#/$defs/chioScope"
+    },
+    "issued_at": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix timestamp (seconds) when the token was issued."
+    },
+    "expires_at": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix timestamp (seconds) when the token expires."
+    },
+    "delegation_chain": {
+      "type": "array",
+      "description": "Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.",
+      "items": {
+        "$ref": "#/$defs/delegationLink"
+      }
+    },
+    "algorithm": {
+      "type": "string",
+      "enum": ["ed25519", "p256", "p384"],
+      "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field."
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$",
+      "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream."
+    }
+  },
+  "$defs": {
+    "chioScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.",
+      "properties": {
+        "grants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolGrant"
+          }
+        },
+        "resource_grants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resourceGrant"
+          }
+        },
+        "prompt_grants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/promptGrant"
+          }
+        }
+      }
+    },
+    "toolGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["server_id", "tool_name", "operations"],
+      "description": "Authorization to invoke a single tool. Mirrors `ToolGrant`.",
+      "properties": {
+        "server_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation)."
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation)."
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/constraint"
+          }
+        },
+        "max_invocations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_cost_per_invocation": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "max_total_cost": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "dpop_required": {
+          "type": "boolean",
+          "description": "If true, the kernel requires a valid DPoP proof for every invocation under this grant."
+        }
+      }
+    },
+    "resourceGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri_pattern", "operations"],
+      "description": "Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.",
+      "properties": {
+        "uri_pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        }
+      }
+    },
+    "promptGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt_name", "operations"],
+      "description": "Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.",
+      "properties": {
+        "prompt_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        }
+      }
+    },
+    "operation": {
+      "enum": [
+        "invoke",
+        "read_result",
+        "read",
+        "subscribe",
+        "get",
+        "delegate"
+      ]
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "description": "A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.",
+      "properties": {
+        "units": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "required": ["type"],
+      "description": "Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": true
+      }
+    },
+    "delegationLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "delegator",
+        "delegatee",
+        "timestamp",
+        "signature"
+      ],
+      "description": "A single link in a delegation chain. Mirrors `DelegationLink`.",
+      "properties": {
+        "capability_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delegator": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+          "description": "Delegating public key. Same encoding as the token-level `issuer`/`subject`."
+        },
+        "delegatee": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+          "description": "Receiving public key. Same encoding as the token-level `issuer`/`subject`."
+        },
+        "attenuations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "timestamp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$",
+          "description": "Delegation-link signature. Same encoding as the token-level `signature`."
+        }
+      }
+    }
+  }
+}

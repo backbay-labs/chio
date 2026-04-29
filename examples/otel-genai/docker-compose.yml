@@ -1,0 +1,49 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    depends_on:
+      - tempo
+      - jaeger
+    restart: "no"
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command:
+      - "-target=all"
+      - "-server.http-listen-port=3200"
+      - "-distributor.receivers.otlp.protocols.grpc.endpoint=0.0.0.0:4317"
+      - "-distributor.receivers.otlp.protocols.http.endpoint=0.0.0.0:4318"
+      - "-storage.trace.backend=local"
+      - "-storage.trace.local.path=/tmp/tempo/traces"
+      - "-compactor.compaction.block-retention=1h"
+    ports:
+      - "3200:3200"
+    restart: "no"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+    restart: "no"
+
+  grafana:
+    image: grafana/grafana:11.5.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+      - jaeger
+    restart: "no"

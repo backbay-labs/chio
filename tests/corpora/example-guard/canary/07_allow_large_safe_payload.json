@@ -1,0 +1,16 @@
+{
+  "request": {
+    "tool_name": "summarize",
+    "server_id": "example-server",
+    "agent_id": "canary-agent",
+    "arguments": {
+      "case": 7,
+      "verdict": "allow",
+      "payload": "safe payload block with bounded length"
+    },
+    "scopes": [
+      "example-server:summarize"
+    ]
+  },
+  "expected_verdict_bytes": "{\"decision\":\"allow\"}"
+}

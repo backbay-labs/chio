@@ -14,6 +14,9 @@
 
 use std::collections::BTreeMap;
 
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
+
 use chio_kernel::{KernelError, NestedFlowBridge, ToolServerConnection};
 use chio_manifest::ToolManifest;
 use chio_mcp_edge::McpToolInfo;
@@ -165,6 +168,7 @@ impl OpenApiMcpBridge {
             )),
             version: config.server_version.clone(),
             tools,
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key: config.public_key.clone(),
         };

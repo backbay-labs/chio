@@ -74,6 +74,7 @@ mod tests {
                 has_side_effects: false,
                 latency_hint: Some(LatencyHint::Fast),
             }],
+            server_tools: Vec::new(),
             required_permissions: None,
             public_key,
         }

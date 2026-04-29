@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/trust-control/lease/v1",
+  "title": "Chio Trust-Control Authority Lease",
+  "description": "One operator-visible authority lease projection emitted by the trust-control service over `/v1/internal/cluster/status` and the budget-write authority block. A lease names the leader URL that currently holds the trust-control authority, the cluster election term that minted it, the lease identifier and epoch that scope subsequent budget and revocation writes, and the unix-second expiry plus configured TTL that bound the lease's continued validity. Mirrors the `ClusterAuthorityLeaseView` serde shape in `crates/chio-cli/src/trust_control/service_types.rs` (lines 1837-1848). The view uses `serde(rename_all = camelCase)` so wire field names are camelCase. The shape is constructed in `crates/chio-cli/src/trust_control/cluster_and_reports.rs` (`cluster_authority_lease_view_locked`, lines 841-862) from the live cluster consensus view; `leaseValid` is true only when the cluster has quorum and `leaseExpiresAt` is still in the future. NOTE: `leaseExpiresAt` and `termStartedAt` are unix **seconds** (computed in `cluster_and_reports.rs` lines 1580-1606 as `unix_timestamp_now() + lease_ttl_ms / 1000`), even though `leaseTtlMs` itself is in milliseconds. The asymmetry mirrors the live runtime shape and is preserved on the wire so consumers do not have to re-scale by 1000.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authorityId",
+    "leaderUrl",
+    "term",
+    "leaseId",
+    "leaseEpoch",
+    "leaseExpiresAt",
+    "leaseTtlMs",
+    "leaseValid"
+  ],
+  "properties": {
+    "authorityId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier for the authority that holds the lease. In the current bounded release this equals the leader URL."
+    },
+    "leaderUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Normalized URL of the cluster node that currently holds the authority lease."
+    },
+    "term": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Cluster election term that minted this lease. Monotonically non-decreasing."
+    },
+    "leaseId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Composite lease identifier in the form `{leaderUrl}#term-{leaseEpoch}`. Authoritative for downstream writes."
+    },
+    "leaseEpoch": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Lease epoch carried alongside `leaseId`. Currently equals `term`; kept distinct on the wire so future epoch bumps within a term remain expressible."
+    },
+    "termStartedAt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Optional unix-second timestamp at which the current term began on this leader. Captured via `unix_timestamp_now()` in `cluster_and_reports.rs` line 1603. Omitted via `serde(skip_serializing_if = Option::is_none)` when unknown (no quorum or no leader)."
+    },
+    "leaseExpiresAt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix-second timestamp at which the lease expires if not renewed. Computed as `unix_timestamp_now() + lease_ttl_ms / 1000` in `cluster_and_reports.rs` lines 1580-1606. The unit is seconds (not milliseconds) even though the configured TTL is expressed in milliseconds; downstream consumers MUST treat this field as a unix-second timestamp."
+    },
+    "leaseTtlMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Configured lease time-to-live in milliseconds. Bounded between 500ms and 5000ms by `authority_lease_ttl` (cluster_and_reports.rs lines 832-839). NOTE: this field is the only millisecond-denominated quantity in the lease projection; `termStartedAt` and `leaseExpiresAt` are unix seconds."
+    },
+    "leaseValid": {
+      "type": "boolean",
+      "description": "True only when the cluster currently has quorum and `leaseExpiresAt` has not yet passed. Trust-control fails closed and rejects authority-bearing writes when this is false."
+    }
+  }
+}

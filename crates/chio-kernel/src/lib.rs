@@ -33,9 +33,13 @@ pub mod dpop;
 pub mod evidence_export;
 pub mod execution_nonce;
 pub mod memory_provenance;
+pub mod observability;
 pub mod operator_report;
+pub mod otel;
 pub mod payment;
 pub mod post_invocation;
+#[allow(deprecated)]
+pub mod provider_verdict;
 pub mod receipt_analytics;
 pub mod receipt_query;
 pub mod receipt_store;
@@ -81,7 +85,7 @@ pub(crate) use receipt_support::*;
 pub(crate) use request_matching::{
     begin_child_request_in_sessions, begin_session_request_in_sessions, check_subject_binding,
     check_time_bounds, complete_session_request_with_terminal_state_in_sessions,
-    nested_child_request_id, resolve_matching_grants, session_from_map, session_mut_from_map,
+    nested_child_request_id, resolve_matching_grants, session_from_map,
     validate_elicitation_request_in_sessions, validate_sampling_request_in_sessions,
 };
 pub use request_matching::{
@@ -310,6 +314,11 @@ pub use memory_provenance::{
     MemoryProvenanceStore, ProvenanceVerification, UnverifiedReason,
     MEMORY_PROVENANCE_ENTRY_SCHEMA, MEMORY_PROVENANCE_GENESIS_PREV_HASH,
 };
+pub use observability::metrics::{
+    guard_metrics_endpoint, render_guard_metrics_prometheus, GuardMetricFamily,
+    MetricsEndpointResponse, PrometheusMetricKind, GUARD_METRICS_PATH, GUARD_METRIC_FAMILIES,
+    PROMETHEUS_TEXT_CONTENT_TYPE,
+};
 pub use operator_report::{behavioral_anomaly_score, BehavioralAnomalyScore, EmaBaselineState};
 pub use operator_report::{
     AuthorizationContextReport, AuthorizationContextRow, AuthorizationContextSenderConstraint,
@@ -358,6 +367,10 @@ pub use post_invocation::{
     PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,
     PostInvocationVerdict,
 };
+pub use provider_verdict::{
+    build_tool_call_request, canonical_invocation_bytes, verdict_result_from_response,
+    ProviderVerdictError, FABRIC_SHIM_PROVIDER_LANES,
+};
 pub use receipt_analytics::{
     AgentAnalyticsRow, AnalyticsTimeBucket, ReceiptAnalyticsMetrics, ReceiptAnalyticsQuery,
     ReceiptAnalyticsResponse, TimeAnalyticsRow, ToolAnalyticsRow, MAX_ANALYTICS_GROUP_LIMIT,
@@ -376,7 +389,8 @@ pub use runtime::{
 };
 pub use session::{
     InflightRegistry, InflightRequest, LateSessionEvent, PeerCapabilities, Session, SessionError,
-    SessionOperationResponse, SessionState, SubscriptionRegistry, TerminalRegistry,
+    SessionOperationResponse, SessionPersistError, SessionState, SubscriptionRegistry,
+    TerminalRegistry,
 };
 
 /// A string-typed agent identifier.
@@ -391,3 +405,11 @@ pub use kernel::{
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RETENTION_DAYS, EMERGENCY_STOP_DENY_REASON,
 };
+
+pub use kernel::evaluator::ToolEvaluator;
+
+/// Default bounded capacity for the kernel's mpsc-backed signing-task channel.
+/// Re-exported so integration tests can assert against the configured value
+/// without reaching into crate-private module paths.
+pub const SIGNING_CHANNEL_DEFAULT_CAPACITY: usize =
+    kernel::signing_task::DEFAULT_SIGNING_CHANNEL_CAPACITY;
