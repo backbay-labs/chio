@@ -72,6 +72,74 @@ M06 bench additions reuse the trajectory-1 M05 reference runner contract:
 - Local laptop numbers are useful for diagnosis only. They are not release
   gates.
 
+## OTEL exporter channel audit
+
+The live `chio-otel-receipt-exporter` source does not currently contain an
+exporter channel. This matters because the trajectory text describes an
+unaudited channel bound, while this worktree still has a synchronous facade
+that pushes decoded OTLP trace batches directly into the receipt-store sink.
+
+Current code paths:
+
+- `crates/chio-otel-receipt-exporter/src/ingress.rs`: `OtlpGrpcIngress` owns a
+  `ReceiptStoreSink`. `OtlpGrpcIngress::export` synchronously calls
+  `self.sink.export_traces(request)`. There is no producer task, receiver
+  task, channel handle, retry loop, queue depth counter, or explicit capacity
+  in `ingress.rs`.
+- `crates/chio-otel-receipt-exporter/src/sink.rs`:
+  `ReceiptStoreSink::export_traces` maps every span to a
+  `CanonicalChioReceipt`, collects the full batch into `Vec<_>`, and then
+  appends receipts serially through
+  `CanonicalReceiptSink::append_chio_receipt_canonical`. Validation,
+  canonicalization, or signing failure during the collect phase appends zero
+  receipts. A store error during the serial append loop can leave a prefix
+  already appended because this layer does not wrap the batch in a transaction.
+
+Current bounds and backpressure behavior:
+
+- The literal channel audit remains zero for `channel`, `mpsc`, `unbounded`,
+  and `send(` in `crates/chio-otel-receipt-exporter/src`. There is no hidden
+  bounded queue in `ingress.rs` or `sink.rs`.
+- Backpressure is caller-thread blocking. The network owner that decoded the
+  OTLP request stays parked while the sink validates spans, canonicalizes span
+  payloads, signs derived Chio receipts, and appends to the receipt store.
+  Receipt-store pool contention or disk latency is surfaced as synchronous
+  latency or error, not as an exporter queue signal.
+- The effective input bound is whatever the upstream network and protobuf
+  decode layer accepted before constructing `OtlpGrpcTraceExport`. Inside the
+  exporter, one request can allocate decoded vectors, cloned attribute maps,
+  sanitized attributes, canonical span bytes, signed receipts, and the
+  collected receipt vector before the first append.
+- There are no exporter-local span count, byte count, or batch count limits.
+  There are also no exporter drop counters, enqueue failure counters, queue
+  depth gauges, or sustained-load saturation signals for this path yet.
+
+Next implementation notes:
+
+- Put the lossy boundary in front of `ReceiptStoreSink`, either inside
+  `OtlpGrpcIngress` or in a new wrapper exported from `lib.rs`. Keep
+  `ReceiptStoreSink` as the deterministic validate, sign, and append worker so
+  existing tests can continue to exercise it synchronously.
+- Add explicit queue config for max queued batches, max queued spans, max
+  queued bytes, and worker drain limit. If the implementation uses
+  `tokio::sync::mpsc`, wrap it with drop-oldest ring accounting instead of
+  relying on blocking `send`.
+- Decide the queue item shape before coding. Prefer decoded span work items or
+  bounded mini-batches over cloning whole unbounded `OtlpGrpcTraceExport`
+  requests. Count dropped batches and dropped spans separately so one oversized
+  batch cannot hide loss behind one event.
+- Extend summaries or metrics to report accepted, enqueued, appended,
+  dropped-oldest batches, dropped-oldest spans, current queue depth, and append
+  errors. The sustained p99 lane should force saturation and prove nonzero
+  drop counters plus stable memory under an oversized export request.
+- Preserve the current fail-closed validation posture: invalid spans must not
+  append derived receipts. Queue overflow is a deliberate exporter-loss path
+  and must be observable; it must not be conflated with policy decisions or
+  receipt-store durability failure.
+- Add tests for empty export, invalid span before append, store append prefix
+  failure, queue overflow drop-oldest order, worker shutdown with queued items,
+  and metrics increments.
+
 ## Dependency Notes
 
 - `wasmtime` is already present for `chio-wasm-guards`; the `InstancePre`
