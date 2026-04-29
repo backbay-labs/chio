@@ -3829,7 +3829,7 @@
   milestone: M06
   phase: 0
   title: Open M06 audit doc with starting counts, reference-runner contract, and CanonicalBytes API surface decision (Clone vs !Clone; `Arc<CanonicalBytes>` is the sharing primitive)
-  status: review
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M06-perf-hardening.md
@@ -3846,9 +3846,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: c47b4f82fe85cb331da34dbe440c922976ce8423
-  merged_sha: null
+  merged_sha: e16e6fe7606863b1fe3aa90ad8631cd971865d7a
   opened_ts: "2026-04-29T17:55:06.450556Z"
-  merged_ts: null
+  merged_ts: "2026-04-29T18:10:28.919395Z"
 - id: M06.P0.T2
   milestone: M06
   phase: 0

@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-29T18:08:41.927437Z",
+  "last_checkpoint_at": "2026-04-29T18:10:28.864519Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -42,9 +42,9 @@
       "trust_boundary": true
     },
     "M06": {
-      "status": "review",
+      "status": "in_progress",
       "phase": "P0",
-      "owner_branch": "wave/W1/m06/p0.t1-open-perf-audit-doc",
+      "owner_branch": null,
       "trust_boundary": false
     },
     "M07": {
