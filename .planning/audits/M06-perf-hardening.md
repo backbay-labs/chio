@@ -81,10 +81,10 @@ M06 bench additions reuse the trajectory-1 M05 reference runner contract:
 - `Arc<CanonicalBytes>` should avoid introducing a broader byte-buffer
   abstraction unless P1 proves `bytes = "1"` is required.
 - The milestone narrative refers to `spec/vectors/canonical_json/`, but that
-  directory is absent in this worktree. P1 must either restore the intended
-  vector corpus before using it as the oracle or explicitly document the
-  replacement oracle from `crates/chio-core-types/src/canonical.rs` and
-  `formal/diff-tests/tests/canonical_json_diff.rs`.
+  directory is absent in this worktree. M06 treats this as a source-of-truth
+  discrepancy. Before P1 can claim compliance, the intended corpus must be
+  restored or a sanctioned M01 / trajectory amendment must change the
+  requirement.
 
 ## Reproduction Commands
 
@@ -96,7 +96,7 @@ find crates/chio-otel-receipt-exporter/src -maxdepth 1 -type f -name '*.rs' -pri
 rg -n "channel|mpsc|unbounded|Sender::send|send\\(" crates/chio-otel-receipt-exporter/src
 ```
 
-## Phase Tracking
+## Audit-Local Phase Tracking
 
 - [x] P0.T1: Open this audit doc with starting counts, the reference-runner
   contract, and the `CanonicalBytes` API surface decision.
