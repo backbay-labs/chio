@@ -142,3 +142,42 @@ find sdks -maxdepth 3 -type d | sort
 - [ ] P4: Add verdict-matrix harness, Rust driver, manifest, and CI.
 - [ ] P5: Add Python, TypeScript, WASM browser, and Go drivers plus required
   cross-language diff.
+
+## chio-policy Mutation Baseline
+
+Snapshot date: 2026-04-29.
+
+Command:
+
+```bash
+cargo mutants --config crates/chio-policy/mutants.toml --package chio-policy --shard 1/16 --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-policy-p1-t1
+```
+
+The full candidate list contains 418 mutants. This baseline records the
+completed first shard because it is enough to identify immediate survivor
+classes without blocking the rest of Wave 1.
+
+| Metric | Count |
+|--------|-------|
+| Shard candidates | 27 |
+| Caught | 14 |
+| Missed | 11 |
+| Unviable | 2 |
+| Timeout | 0 |
+| Kill rate, excluding unviable | 56.0% |
+
+Missed mutants:
+
+| File | Mutation |
+|------|----------|
+| `crates/chio-policy/src/compiler.rs:826:24` | `==` to `!=` in `tool_patterns_overlap` |
+| `crates/chio-policy/src/conditions.rs:102:69` | `+` to `*` in `evaluate_condition_depth` |
+| `crates/chio-policy/src/conditions.rs:178:9` | delete match arm `5` in `day_abbreviation` |
+| `crates/chio-policy/src/conditions.rs:218:9` | delete match arm `"US/Eastern" | "EST"` in `parse_timezone_offset` |
+| `crates/chio-policy/src/compiler.rs:702:5` | replace `compile_output_sanitizer_config` with `Default::default()` |
+| `crates/chio-policy/src/compiler.rs:776:57` | `&&` to `||` in `compile_velocity_rule` |
+| `crates/chio-policy/src/conditions.rs:220:42` | `*` to `+` in `parse_timezone_offset` |
+| `crates/chio-policy/src/merge.rs:421:5` | replace `merge_chio` with `Some(Default::default())` |
+| `crates/chio-policy/src/validate.rs:234:26` | `<` to `<=` in `validate_posture` |
+| `crates/chio-policy/src/validate.rs:465:22` | `>` to `>=` in `validate_reputation` |
+| `crates/chio-policy/src/validate.rs:606:30` | `-` to `/` in `is_valid_duration` |

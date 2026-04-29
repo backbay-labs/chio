@@ -1,0 +1,32 @@
+generated_at = "2026-04-29"
+tool = "cargo-mutants"
+tool_version = "25.3.1"
+
+[crate.chio-policy]
+package = "chio-policy"
+config = "crates/chio-policy/mutants.toml"
+command = "cargo mutants --config crates/chio-policy/mutants.toml --package chio-policy --shard 1/16 --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-policy-p1-t1"
+listed_mutants = 418
+shard = "1/16"
+evaluated_mutants = 27
+caught_count = 14
+missed_count = 11
+unviable_count = 2
+timeout_count = 0
+kill_rate_excluding_unviable = 56.0
+output_dir = "target/mutants/chio-policy-p1-t1/mutants.out"
+baseline_status = "bounded shard complete"
+
+missed_mutants = [
+  "crates/chio-policy/src/compiler.rs:826:24: replace == with != in tool_patterns_overlap",
+  "crates/chio-policy/src/conditions.rs:102:69: replace + with * in evaluate_condition_depth",
+  "crates/chio-policy/src/conditions.rs:178:9: delete match arm 5 in day_abbreviation",
+  "crates/chio-policy/src/conditions.rs:218:9: delete match arm \"US/Eastern\" | \"EST\" in parse_timezone_offset",
+  "crates/chio-policy/src/compiler.rs:702:5: replace compile_output_sanitizer_config -> OutputSanitizerConfig with Default::default()",
+  "crates/chio-policy/src/compiler.rs:776:57: replace && with || in compile_velocity_rule",
+  "crates/chio-policy/src/conditions.rs:220:42: replace * with + in parse_timezone_offset",
+  "crates/chio-policy/src/merge.rs:421:5: replace merge_chio -> Option<ChioExtension> with Some(Default::default())",
+  "crates/chio-policy/src/validate.rs:234:26: replace < with <= in validate_posture",
+  "crates/chio-policy/src/validate.rs:465:22: replace > with >= in validate_reputation",
+  "crates/chio-policy/src/validate.rs:606:30: replace - with / in is_valid_duration",
+]
