@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-29T18:22:16.557410Z",
+  "last_checkpoint_at": "2026-04-29T18:23:38.463337Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -18,9 +18,9 @@
       "trust_boundary": false
     },
     "M02": {
-      "status": "review",
+      "status": "in_progress",
       "phase": "P0",
-      "owner_branch": "wave/W1/m02/p0.t1-open-audit-doc-and-snapshot-baseline",
+      "owner_branch": null,
       "trust_boundary": false
     },
     "M03": {
