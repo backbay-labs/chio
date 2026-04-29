@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-29T18:23:38.463337Z",
+  "last_checkpoint_at": "2026-04-29T18:26:39.082503Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -12,9 +12,9 @@
   },
   "milestones": {
     "M01": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
-      "owner_branch": null,
+      "status": "in_progress",
+      "phase": "P0",
+      "owner_branch": "wave/W1/m01/p0.t1-pin-errors-and-lsp-deps",
       "trust_boundary": false
     },
     "M02": {
