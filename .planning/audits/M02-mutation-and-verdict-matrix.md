@@ -181,3 +181,47 @@ Missed mutants:
 | `crates/chio-policy/src/validate.rs:234:26` | `<` to `<=` in `validate_posture` |
 | `crates/chio-policy/src/validate.rs:465:22` | `>` to `>=` in `validate_reputation` |
 | `crates/chio-policy/src/validate.rs:606:30` | `-` to `/` in `is_valid_duration` |
+
+## chio-credentials Mutation Baseline
+
+Snapshot date: 2026-04-29.
+
+Command:
+
+```bash
+cargo mutants --config crates/chio-credentials/mutants.toml --package chio-credentials --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-credentials-p1-t2
+```
+
+The full candidate list contains 28 mutants. This baseline records the
+completed full sweep.
+
+| Metric | Count |
+|--------|-------|
+| Listed mutants | 28 |
+| Evaluated mutants | 28 |
+| Caught | 11 |
+| Missed | 16 |
+| Unviable | 1 |
+| Timeout | 0 |
+| Kill rate, excluding unviable | 40.7% |
+
+Missed mutants:
+
+| File | Mutation |
+|------|----------|
+| `crates/chio-credentials/src/lib.rs:57:5` | replace `is_supported_passport_schema` with `true` |
+| `crates/chio-credentials/src/lib.rs:57:41` | `==` to `!=` in `is_supported_passport_schema` |
+| `crates/chio-credentials/src/lib.rs:61:5` | replace `is_supported_passport_verifier_policy_schema` with `true` |
+| `crates/chio-credentials/src/lib.rs:57:31` | `||` to `&&` in `is_supported_passport_schema` |
+| `crates/chio-credentials/src/lib.rs:57:12` | `==` to `!=` in `is_supported_passport_schema` |
+| `crates/chio-credentials/src/lib.rs:61:57` | `==` to `!=` in `is_supported_passport_verifier_policy_schema` |
+| `crates/chio-credentials/src/lib.rs:61:47` | `||` to `&&` in `is_supported_passport_verifier_policy_schema` |
+| `crates/chio-credentials/src/lib.rs:61:12` | `==` to `!=` in `is_supported_passport_verifier_policy_schema` |
+| `crates/chio-credentials/src/lib.rs:65:5` | replace `is_supported_passport_presentation_challenge_schema` with `true` |
+| `crates/chio-credentials/src/lib.rs:65:12` | `==` to `!=` in `is_supported_passport_presentation_challenge_schema` |
+| `crates/chio-credentials/src/lib.rs:66:9` | `||` to `&&` in `is_supported_passport_presentation_challenge_schema` |
+| `crates/chio-credentials/src/lib.rs:66:19` | `==` to `!=` in `is_supported_passport_presentation_challenge_schema` |
+| `crates/chio-credentials/src/lib.rs:71:9` | `||` to `&&` in `is_supported_passport_presentation_response_schema` |
+| `crates/chio-credentials/src/lib.rs:70:5` | replace `is_supported_passport_presentation_response_schema` with `true` |
+| `crates/chio-credentials/src/lib.rs:70:12` | `==` to `!=` in `is_supported_passport_presentation_response_schema` |
+| `crates/chio-credentials/src/lib.rs:71:19` | `==` to `!=` in `is_supported_passport_presentation_response_schema` |
