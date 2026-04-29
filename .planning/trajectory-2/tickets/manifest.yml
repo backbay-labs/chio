@@ -1,13 +1,10 @@
 # GENERATED from per-phase files under .planning/trajectory-2/tickets/M{nn}/P{n}.yml
 # Do not hand-edit. Regenerate with:
-#   yq -N ea '[.[]] | sort_by(.id)' .planning/trajectory-2/tickets/M*/P*.yml > .planning/trajectory-2/tickets/manifest.yml
+#   bash .planning/trajectory-2/scripts/regen-manifest.sh
 # CI validates manifest.yml against schema.json on every PR.
 #
 # Total: 325 tickets across 10 milestones, 61 per-phase files.
-# Authored: 2026-04-29 by parallel milestone agents.
-# Reviewed/reconciled: 2026-04-29 in three review rounds (round 2: A1-A4 + B1-B2; round 3: F1-F4 + W1-W4; round 4: E1-E4 follow-ups).
 # The per-phase files under tickets/M{nn}/P{n}.yml are the source of truth.
-
 - id: M01.P0.T1
   milestone: M01
   phase: 0
@@ -3832,7 +3829,7 @@
   milestone: M06
   phase: 0
   title: Open M06 audit doc with starting counts, reference-runner contract, and CanonicalBytes API surface decision (Clone vs !Clone; `Arc<CanonicalBytes>` is the sharing primitive)
-  status: pending
+  status: in_progress
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M06-perf-hardening.md
@@ -3850,7 +3847,7 @@
     - "@bb-connor"
   first_commit_sha: null
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-29T17:55:06.450556Z"
   merged_ts: null
 - id: M06.P0.T2
   milestone: M06
