@@ -14,7 +14,9 @@ pub use denylist::{
     strip_denied_batch_attributes, strip_denied_span_attributes, PROMETHEUS_DENIED_ATTRIBUTES,
 };
 pub use ingress::{
-    OtlpAttribute, OtlpGrpcIngress, OtlpGrpcTraceExport, OtlpResourceSpans, OtlpSpan,
+    BoundedOtlpExportSummary, BoundedOtlpGrpcIngress, OtlpAttribute, OtlpExporterEnqueueSummary,
+    OtlpExporterQueueConfig, OtlpExporterQueueSnapshot, OtlpGrpcIngress, OtlpGrpcTraceExport,
+    OtlpResourceSpans, OtlpSpan,
 };
 pub use sink::{
     CanonicalChioReceipt, CanonicalReceiptSink, OTelReceiptExportError, ReceiptStoreSink,

@@ -117,6 +117,8 @@ pub enum OTelReceiptExportError {
     Canonical(String),
     #[error("failed to sign Chio receipt: {0}")]
     Sign(chio_core::error::Error),
+    #[error("OTEL exporter queue error: {0}")]
+    Queue(String),
     #[error("failed to append Chio receipt: {0}")]
     ReceiptStore(#[from] ReceiptStoreError),
 }
