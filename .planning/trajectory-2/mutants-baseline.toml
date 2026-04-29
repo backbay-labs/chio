@@ -30,3 +30,37 @@ missed_mutants = [
   "crates/chio-policy/src/validate.rs:465:22: replace > with >= in validate_reputation",
   "crates/chio-policy/src/validate.rs:606:30: replace - with / in is_valid_duration",
 ]
+
+[crate.chio-credentials]
+package = "chio-credentials"
+config = "crates/chio-credentials/mutants.toml"
+command = "cargo mutants --config crates/chio-credentials/mutants.toml --package chio-credentials --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-credentials-p1-t2"
+listed_mutants = 28
+shard = "full"
+evaluated_mutants = 28
+caught_count = 11
+missed_count = 16
+unviable_count = 1
+timeout_count = 0
+kill_rate_excluding_unviable = 40.7
+output_dir = "target/mutants/chio-credentials-p1-t2/mutants.out"
+baseline_status = "full sweep complete"
+
+missed_mutants = [
+  "crates/chio-credentials/src/lib.rs:57:5: replace is_supported_passport_schema -> bool with true",
+  "crates/chio-credentials/src/lib.rs:57:41: replace == with != in is_supported_passport_schema",
+  "crates/chio-credentials/src/lib.rs:61:5: replace is_supported_passport_verifier_policy_schema -> bool with true",
+  "crates/chio-credentials/src/lib.rs:57:31: replace || with && in is_supported_passport_schema",
+  "crates/chio-credentials/src/lib.rs:57:12: replace == with != in is_supported_passport_schema",
+  "crates/chio-credentials/src/lib.rs:61:57: replace == with != in is_supported_passport_verifier_policy_schema",
+  "crates/chio-credentials/src/lib.rs:61:47: replace || with && in is_supported_passport_verifier_policy_schema",
+  "crates/chio-credentials/src/lib.rs:61:12: replace == with != in is_supported_passport_verifier_policy_schema",
+  "crates/chio-credentials/src/lib.rs:65:5: replace is_supported_passport_presentation_challenge_schema -> bool with true",
+  "crates/chio-credentials/src/lib.rs:65:12: replace == with != in is_supported_passport_presentation_challenge_schema",
+  "crates/chio-credentials/src/lib.rs:66:9: replace || with && in is_supported_passport_presentation_challenge_schema",
+  "crates/chio-credentials/src/lib.rs:66:19: replace == with != in is_supported_passport_presentation_challenge_schema",
+  "crates/chio-credentials/src/lib.rs:71:9: replace || with && in is_supported_passport_presentation_response_schema",
+  "crates/chio-credentials/src/lib.rs:70:5: replace is_supported_passport_presentation_response_schema -> bool with true",
+  "crates/chio-credentials/src/lib.rs:70:12: replace == with != in is_supported_passport_presentation_response_schema",
+  "crates/chio-credentials/src/lib.rs:71:19: replace == with != in is_supported_passport_presentation_response_schema",
+]
