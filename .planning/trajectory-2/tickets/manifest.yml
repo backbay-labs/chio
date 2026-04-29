@@ -3853,7 +3853,7 @@
   milestone: M06
   phase: 0
   title: Pin dhat dev-dep and bump Cargo.lock with single-version verification
-  status: merged
+  status: review
   effort_days: 0.5
   owner_glob:
     - Cargo.toml
@@ -3869,15 +3869,15 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: fd5217f3734dc90d3827b0b76775ef97593ef9f7
-  merged_sha: b8f7db20b1d7d4b61c2118f16dfe8f44db6adf65
+  first_commit_sha: 909c02798575efc89bb8dc39e9e2ac89b8040972
+  merged_sha: null
   opened_ts: "2026-04-29T18:49:38.516792Z"
-  merged_ts: "2026-04-29T19:00:23Z"
+  merged_ts: null
 - id: M06.P0.T3
   milestone: M06
   phase: 0
   title: Document bench reference-runner contract for M06 harnesses in audit doc
-  status: in_progress
+  status: merged
   effort_days: 0.25
   owner_glob:
     - .planning/audits/M06-perf-hardening.md
@@ -3893,10 +3893,10 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: fd5217f3734dc90d3827b0b76775ef97593ef9f7
+  merged_sha: b8f7db20b1d7d4b61c2118f16dfe8f44db6adf65
   opened_ts: "2026-04-29T18:49:38.516792Z"
-  merged_ts: null
+  merged_ts: "2026-04-29T19:00:23Z"
 - id: M06.P1.T1
   milestone: M06
   phase: 1

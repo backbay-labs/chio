@@ -264,21 +264,22 @@ git push origin "${BRANCH}"
 Per `EXECUTION-BOARD.md` section 2, the Wave 1 P0 lock-bump order is:
 
 ```
-M06.P0.T1 -> M02.P0.T1 -> M01.P0.T1
+M06.P0.T2 -> M02.P0.T2 -> M01.P0.T1
 ```
 
-Rationale: M06 lands the `dhat` and `dashmap` upgrades that the other
-two consume. The orchestrator schedules them strictly serially through
+Rationale: M06 lands the `dhat` workspace pin and owns the watched
+single-version check that includes `dashmap`. The orchestrator schedules
+lock-touching openers strictly serially through
 the merge queue (concurrency=1 for `Cargo.lock`-touching PRs).
 
 ```bash
-# Step 4a: M06.P0.T1 (dhat + dashmap pins)
-git worktree add .worktrees/wave-W1/m06/p0.t1 -b wave/W1/m06/p0.t1-perf-pack-deps "${BRANCH}"
-# spawn gsd-executor sub-agent with M06.P0.T1 ticket spec
+# Step 4a: M06.P0.T2 (dhat pin + watched single-version check)
+git worktree add .worktrees/wave-W1/m06/p0.t2 -b wave/W1/m06/p0.t2-pin-dhat-and-lockfile-bump "${BRANCH}"
+# spawn gsd-executor sub-agent with M06.P0.T2 ticket spec
 # wait for merge into ${BRANCH}; gate: cargo build --workspace green
 
-# Step 4b: M02.P0.T1 (cargo-mutants harness deps)
-git worktree add .worktrees/wave-W1/m02/p0.t1 -b wave/W1/m02/p0.t1-mutation-harness-deps "${BRANCH}"
+# Step 4b: M02.P0.T2 (cargo-mutants harness deps)
+git worktree add .worktrees/wave-W1/m02/p0.t2 -b wave/W1/m02/p0.t2-cargo-lock-bump-and-mutants-pin "${BRANCH}"
 # spawn gsd-executor; wait for merge
 
 # Step 4c: M01.P0.T1 (error-codes + lsp deps)
