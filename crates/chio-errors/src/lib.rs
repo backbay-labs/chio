@@ -2,6 +2,7 @@ pub mod _generated;
 mod code;
 mod diagnostic;
 mod domain;
+pub mod jsonrpc_bridge;
 mod severity;
 
 pub use _generated::error_codes::{
