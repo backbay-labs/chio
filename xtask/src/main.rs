@@ -72,6 +72,10 @@
 //! `uv tool run --from "datamodel-code-generator==<pin>" datamodel-codegen`
 //! so the toolchain is hermetic and never enters Cargo. With `--check` it
 //! renders to a temp dir and exits non-zero on byte drift.
+//!
+//! `errors regen [--check]` regenerates the Chio error registry Rust output
+//! from `spec/errors/registry.yaml`. With `--check`, it renders to a temp
+//! directory and compares the generated files against the checked-in copies.
 
 use std::env;
 use std::ffi::OsStr;
@@ -133,6 +137,7 @@ fn main() -> ExitCode {
         "validate-scenarios" => validate_scenarios(args.collect()),
         "freeze-vectors" => freeze_vectors(args.collect()),
         "codegen" => run_codegen(args.collect()),
+        "errors" => run_errors(args.collect()),
         "" | "help" | "--help" | "-h" => {
             print_help();
             return ExitCode::SUCCESS;
@@ -153,7 +158,9 @@ fn print_help() {
     println!("  trajectory regen-manifest [--check]");
     println!("  validate-scenarios");
     println!("  freeze-vectors [--check]");
+    println!("  errors regen [--check]");
     println!("  codegen rust [--check]");
+    println!("  codegen --check");
     println!("  codegen --lang rust [--check]");
     println!("  codegen --lang go [--check]");
     println!("  codegen ts [--check]");
@@ -650,9 +657,15 @@ fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    let lang = lang.ok_or_else(|| {
-        XtaskError::Usage("codegen: language is required (rust|python|ts|go)".into())
-    })?;
+    let lang = match lang {
+        Some(lang) => lang,
+        None if check_only => "rust".to_string(),
+        None => {
+            return Err(XtaskError::Usage(
+                "codegen: language is required (rust|python|ts|go)".into(),
+            ));
+        }
+    };
 
     match lang.as_str() {
         "rust" => codegen_rust(check_only),
@@ -663,6 +676,101 @@ fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
             "codegen: unknown language: {other} (expected rust|python|ts|go)"
         ))),
     }
+}
+
+fn run_errors(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut iter = args.into_iter();
+    let sub = iter
+        .next()
+        .ok_or_else(|| XtaskError::Usage("errors <subcommand>".into()))?;
+    match sub.as_str() {
+        "regen" => errors_regen(iter.collect()),
+        other => Err(XtaskError::Usage(format!(
+            "unknown errors subcommand: {other}"
+        ))),
+    }
+}
+
+fn errors_regen(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut check_only = false;
+    for arg in args {
+        match arg.as_str() {
+            "--check" => check_only = true,
+            other => {
+                return Err(XtaskError::Usage(format!(
+                    "errors regen: unknown flag: {other}"
+                )));
+            }
+        }
+    }
+
+    let workspace_root = workspace_root()?;
+    let registry = workspace_root.join(chio_spec_codegen::ERROR_REGISTRY_INPUT);
+    let out_dir = workspace_root.join(chio_spec_codegen::ERRORS_GENERATED_DIR);
+
+    if check_only {
+        let staging = TempDir::new("chio-errors-codegen-check").map_err(|err| {
+            XtaskError::Io("<temp staging dir for errors regen --check>".into(), err)
+        })?;
+        chio_spec_codegen::codegen_error_codes(&registry, staging.path())
+            .map_err(XtaskError::Codegen)?;
+
+        let mut differences: Vec<String> = Vec::new();
+        let mut total_bytes: u64 = 0;
+        for filename in [
+            chio_spec_codegen::ERROR_CODES_OUTPUT,
+            chio_spec_codegen::MOD_FILE,
+        ] {
+            let staged = staging.path().join(filename);
+            let on_disk = out_dir.join(filename);
+            let staged_bytes =
+                fs::read(&staged).map_err(|err| XtaskError::Io(display_path(&staged), err))?;
+            if !on_disk.exists() {
+                differences.push(format!(
+                    "{} is missing on disk (computed {} bytes)",
+                    display_path(&on_disk),
+                    staged_bytes.len()
+                ));
+                continue;
+            }
+            let on_disk_bytes =
+                fs::read(&on_disk).map_err(|err| XtaskError::Io(display_path(&on_disk), err))?;
+            total_bytes += on_disk_bytes.len() as u64;
+            if staged_bytes != on_disk_bytes {
+                differences.push(format!(
+                    "{} is stale (computed {} bytes, on-disk {} bytes)",
+                    display_path(&on_disk),
+                    staged_bytes.len(),
+                    on_disk_bytes.len()
+                ));
+            }
+        }
+        if !differences.is_empty() {
+            return Err(XtaskError::Drift(format!(
+                "rerun `cargo xtask errors regen`:\n  - {}",
+                differences.join("\n  - ")
+            )));
+        }
+        println!(
+            "errors regen: {} and {} in sync ({} bytes total)",
+            display_path(&out_dir.join(chio_spec_codegen::ERROR_CODES_OUTPUT)),
+            display_path(&out_dir.join(chio_spec_codegen::MOD_FILE)),
+            total_bytes
+        );
+        return Ok(());
+    }
+
+    chio_spec_codegen::codegen_error_codes(&registry, &out_dir).map_err(XtaskError::Codegen)?;
+    let out_path = out_dir.join(chio_spec_codegen::ERROR_CODES_OUTPUT);
+    let mod_path = out_dir.join(chio_spec_codegen::MOD_FILE);
+    let bytes = fs::metadata(&out_path).map(|m| m.len()).unwrap_or_default();
+    println!(
+        "errors regen: wrote {} ({} bytes) and refreshed {}",
+        display_path(&out_path),
+        bytes,
+        display_path(&mod_path)
+    );
+    Ok(())
 }
 
 fn codegen_rust(check_only: bool) -> Result<(), XtaskError> {
