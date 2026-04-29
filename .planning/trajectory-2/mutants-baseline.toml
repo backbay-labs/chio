@@ -64,3 +64,78 @@ missed_mutants = [
   "crates/chio-credentials/src/lib.rs:70:12: replace == with != in is_supported_passport_presentation_response_schema",
   "crates/chio-credentials/src/lib.rs:71:19: replace == with != in is_supported_passport_presentation_response_schema",
 ]
+
+[crate.chio-attest-verify]
+package = "chio-attest-verify"
+config = "crates/chio-attest-verify/mutants.toml"
+command = "cargo mutants --config crates/chio-attest-verify/mutants.toml --package chio-attest-verify --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-attest-verify-p1-t3"
+listed_mutants = 72
+shard = "full"
+evaluated_mutants = 72
+caught_count = 0
+missed_count = 57
+unviable_count = 15
+timeout_count = 0
+kill_rate_excluding_unviable = 0.0
+output_dir = "target/mutants/chio-attest-verify-p1-t3/mutants.out"
+baseline_status = "full sweep complete"
+
+missed_mutants = [
+  "crates/chio-attest-verify/src/sigstore.rs:160:16: replace < with == in <impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+  "crates/chio-attest-verify/src/sigstore.rs:160:16: replace < with > in <impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+  "crates/chio-attest-verify/src/sigstore.rs:160:16: replace < with <= in <impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+  "crates/chio-attest-verify/src/sigstore.rs:160:36: replace > with == in <impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+  "crates/chio-attest-verify/src/sigstore.rs:160:36: replace > with < in <impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+  "crates/chio-attest-verify/src/sigstore.rs:160:36: replace > with >= in <impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+  "crates/chio-attest-verify/src/sigstore.rs:320:5: replace parse_certificate_to_der -> Result<Vec<u8>, AttestError> with Ok(vec![])",
+  "crates/chio-attest-verify/src/sigstore.rs:320:5: replace parse_certificate_to_der -> Result<Vec<u8>, AttestError> with Ok(vec![0])",
+  "crates/chio-attest-verify/src/sigstore.rs:320:5: replace parse_certificate_to_der -> Result<Vec<u8>, AttestError> with Ok(vec![1])",
+  "crates/chio-attest-verify/src/sigstore.rs:321:25: replace == with != in parse_certificate_to_der",
+  "crates/chio-attest-verify/src/sigstore.rs:327:22: replace == with != in parse_certificate_to_der",
+  "crates/chio-attest-verify/src/sigstore.rs:340:5: replace validate_against_fulcio -> Result<(), AttestError> with Ok(())",
+  "crates/chio-attest-verify/src/sigstore.rs:375:9: delete match arm webpki::Error::CertNotValidYet{..} | webpki::Error::CertExpired{..} in map_webpki_error",
+  "crates/chio-attest-verify/src/sigstore.rs:378:9: delete match arm webpki::Error::UnknownIssuer in map_webpki_error",
+  "crates/chio-attest-verify/src/sigstore.rs:388:5: replace match_identity -> Result<String, AttestError> with Ok(String::new())",
+  "crates/chio-attest-verify/src/sigstore.rs:388:5: replace match_identity -> Result<String, AttestError> with Ok(\"xyzzy\".into())",
+  "crates/chio-attest-verify/src/sigstore.rs:389:15: replace != with == in match_identity",
+  "crates/chio-attest-verify/src/sigstore.rs:160:29: replace || with && in <impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+  "crates/chio-attest-verify/src/sigstore.rs:410:13: delete match arm GeneralName::Rfc822Name(s) in match_identity",
+  "crates/chio-attest-verify/src/sigstore.rs:411:13: delete match arm GeneralName::UniformResourceIdentifier(s) in match_identity",
+  "crates/chio-attest-verify/src/sigstore.rs:412:46: replace match guard other.type_id == OTHERNAME_OID with true in match_identity",
+  "crates/chio-attest-verify/src/sigstore.rs:412:46: replace match guard other.type_id == OTHERNAME_OID with false in match_identity",
+  "crates/chio-attest-verify/src/sigstore.rs:412:60: replace == with != in match_identity",
+  "crates/chio-attest-verify/src/sigstore.rs:431:5: replace read_oidc_issuer_extension -> Result<String, AttestError> with Ok(\"xyzzy\".into())",
+  "crates/chio-attest-verify/src/sigstore.rs:431:5: replace read_oidc_issuer_extension -> Result<String, AttestError> with Ok(String::new())",
+  "crates/chio-attest-verify/src/sigstore.rs:438:24: replace == with != in read_oidc_issuer_extension",
+  "crates/chio-attest-verify/src/sigstore.rs:458:5: replace decode_oidc_issuer_value -> Result<String, AttestError> with Ok(String::new())",
+  "crates/chio-attest-verify/src/sigstore.rs:458:5: replace decode_oidc_issuer_value -> Result<String, AttestError> with Ok(\"xyzzy\".into())",
+  "crates/chio-attest-verify/src/sigstore.rs:466:31: replace && with || in decode_oidc_issuer_value",
+  "crates/chio-attest-verify/src/sigstore.rs:466:57: delete ! in decode_oidc_issuer_value",
+  "crates/chio-attest-verify/src/sigstore.rs:466:12: delete ! in decode_oidc_issuer_value",
+  "crates/chio-attest-verify/src/sigstore.rs:478:33: replace + with - in certificate_validity",
+  "crates/chio-attest-verify/src/sigstore.rs:479:32: replace + with - in certificate_validity",
+  "crates/chio-attest-verify/src/sigstore.rs:489:5: replace verify_signature_bytes -> Result<(), AttestError> with Ok(())",
+  "crates/chio-attest-verify/src/sigstore.rs:498:5: replace bundle_leaf_certificate_der -> Result<Vec<u8>, AttestError> with Ok(vec![])",
+  "crates/chio-attest-verify/src/sigstore.rs:498:5: replace bundle_leaf_certificate_der -> Result<Vec<u8>, AttestError> with Ok(vec![0])",
+  "crates/chio-attest-verify/src/sigstore.rs:498:5: replace bundle_leaf_certificate_der -> Result<Vec<u8>, AttestError> with Ok(vec![1])",
+  "crates/chio-attest-verify/src/sigstore.rs:505:35: replace > with == in bundle_rekor_metadata",
+  "crates/chio-attest-verify/src/sigstore.rs:505:35: replace > with < in bundle_rekor_metadata",
+  "crates/chio-attest-verify/src/sigstore.rs:506:20: replace + with - in bundle_rekor_metadata",
+  "crates/chio-attest-verify/src/sigstore.rs:505:35: replace > with >= in bundle_rekor_metadata",
+  "crates/chio-attest-verify/src/sigstore.rs:552:9: replace sigstore_protobuf_specs_compat::leaf_der -> Option<Vec<u8>> with None",
+  "crates/chio-attest-verify/src/sigstore.rs:552:9: replace sigstore_protobuf_specs_compat::leaf_der -> Option<Vec<u8>> with Some(vec![])",
+  "crates/chio-attest-verify/src/sigstore.rs:552:9: replace sigstore_protobuf_specs_compat::leaf_der -> Option<Vec<u8>> with Some(vec![1])",
+  "crates/chio-attest-verify/src/sigstore.rs:552:9: replace sigstore_protobuf_specs_compat::leaf_der -> Option<Vec<u8>> with Some(vec![0])",
+  "crates/chio-attest-verify/src/sigstore.rs:554:13: delete match arm verification_material::Content::X509CertificateChain(chain) in sigstore_protobuf_specs_compat::leaf_der",
+  "crates/chio-attest-verify/src/sigstore.rs:558:13: delete match arm verification_material::Content::Certificate(cert) in sigstore_protobuf_specs_compat::leaf_der",
+  "crates/chio-attest-verify/src/sigstore.rs:567:9: replace sigstore_protobuf_specs_compat::rekor_metadata -> Option<(u64, i64)> with None",
+  "crates/chio-attest-verify/src/sigstore.rs:567:9: replace sigstore_protobuf_specs_compat::rekor_metadata -> Option<(u64, i64)> with Some((0, 0))",
+  "crates/chio-attest-verify/src/sigstore.rs:567:9: replace sigstore_protobuf_specs_compat::rekor_metadata -> Option<(u64, i64)> with Some((0, 1))",
+  "crates/chio-attest-verify/src/sigstore.rs:567:9: replace sigstore_protobuf_specs_compat::rekor_metadata -> Option<(u64, i64)> with Some((1, 0))",
+  "crates/chio-attest-verify/src/sigstore.rs:567:9: replace sigstore_protobuf_specs_compat::rekor_metadata -> Option<(u64, i64)> with Some((0, -1))",
+  "crates/chio-attest-verify/src/sigstore.rs:567:9: replace sigstore_protobuf_specs_compat::rekor_metadata -> Option<(u64, i64)> with Some((1, 1))",
+  "crates/chio-attest-verify/src/sigstore.rs:567:9: replace sigstore_protobuf_specs_compat::rekor_metadata -> Option<(u64, i64)> with Some((1, -1))",
+  "crates/chio-attest-verify/src/sigstore.rs:594:28: replace == with != in <impl VerificationPolicy for IssuerOnlyPolicy>::verify",
+  "crates/chio-attest-verify/src/sigstore.rs:585:9: replace <impl VerificationPolicy for IssuerOnlyPolicy>::verify -> Result<(), sigstore::bundle::verify::PolicyError> with Ok(())",
+  "crates/chio-attest-verify/src/sigstore.rs:608:27: replace == with != in <impl VerificationPolicy for IssuerOnlyPolicy>::verify",
+]
