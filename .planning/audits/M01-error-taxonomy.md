@@ -10,7 +10,7 @@ milestone. This document records starting counts before registry work begins.
 | Surface | Baseline | Reproduce |
 | ------- | -------- | --------- |
 | Unstructured CLI errors | 976 `CliError::Other` occurrences across `crates/chio-cli/src/`, `crates/chio-control-plane/src/`, and `crates/chio-hosted-mcp/src/` | `grep -rE 'CliError::Other' crates/chio-cli/src/ crates/chio-control-plane/src/ crates/chio-hosted-mcp/src/ \| wc -l` |
-| Stable string codes | 20 existing `CHIO-*` prefixes in `crates/chio-control-plane/src/lib.rs` | `grep -cE '"CHIO-' crates/chio-control-plane/src/lib.rs` |
+| Stable string-code mentions | 20 `"CHIO-` occurrences and 19 distinct `CHIO-*` values in `crates/chio-control-plane/src/lib.rs` | `grep -cE '"CHIO-' crates/chio-control-plane/src/lib.rs`; `rg -o '"CHIO-[^"]+' crates/chio-control-plane/src/lib.rs \| sort -u \| wc -l` |
 | Numeric wire registry | 11 entries in `spec/errors/chio-error-registry.v1.json` | `jq '.codes \| length' spec/errors/chio-error-registry.v1.json` |
 | Wire schemas | 9 schema directories under `spec/schemas/chio-wire/v1/` | `find spec/schemas/chio-wire/v1 -mindepth 1 -maxdepth 1 -type d \| wc -l` |
 
