@@ -3858,15 +3858,17 @@
   owner_glob:
     - Cargo.toml
     - crates/chio-kernel/Cargo.toml
+    - scripts/cargo-deny-duplicate-baseline.txt
     - supply-chain/config.toml
   shared_paths:
     - Cargo.lock
+    - scripts/cargo-deny-duplicate-baseline.txt
     - supply-chain/config.toml
   depends_on:
     - M06.P0.T1
   soft_deps: []
   gate_check:
-    cmd: "grep -q 'dhat' Cargo.toml && rg -q '^dhat = \\{ workspace = true \\}' crates/chio-kernel/Cargo.toml && rg -q '^name = \"dhat\"' Cargo.lock && cargo tree -d --workspace 2>&1 | tee /tmp/m06-tree.txt && ! grep -E '^(dashmap|arc-swap|wasmtime|prometheus|r2d2) v[0-9]' /tmp/m06-tree.txt | sort -u | awk '{print $1}' | uniq -d | grep -q . && cargo vet --locked"
+    cmd: "grep -q 'dhat' Cargo.toml && rg -q '^dhat = \\{ workspace = true \\}' crates/chio-kernel/Cargo.toml && rg -q '^name = \"dhat\"' Cargo.lock && cargo tree -d --workspace 2>&1 | tee /tmp/m06-tree.txt && ! grep -E '^(dashmap|arc-swap|wasmtime|prometheus|r2d2) v[0-9]' /tmp/m06-tree.txt | sort -u | awk '{print $1}' | uniq -d | grep -q . && cargo vet --locked && python3 scripts/check-cargo-deny-duplicate-baseline.py"
     timeout_seconds: 600
   worktree_branch: wave/W1/m06/p0.t2-pin-dhat-and-lockfile-bump
   agent_role: kernel-rust
