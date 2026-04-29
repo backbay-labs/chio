@@ -34,7 +34,7 @@
   milestone: M01
   phase: 0
   title: Open .planning/audits/M01-error-taxonomy.md with starting counts
-  status: pending
+  status: in_progress
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M01-error-taxonomy.md
@@ -51,7 +51,7 @@
     - "@bb-connor"
   first_commit_sha: null
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-29T18:49:38.516792Z"
   merged_ts: null
 - id: M01.P1.T1
   milestone: M01
@@ -3853,7 +3853,7 @@
   milestone: M06
   phase: 0
   title: Pin dhat dev-dep and bump Cargo.lock with single-version verification
-  status: pending
+  status: in_progress
   effort_days: 0.5
   owner_glob:
     - Cargo.toml
@@ -3871,13 +3871,13 @@
     - "@bb-connor"
   first_commit_sha: null
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-29T18:49:38.516792Z"
   merged_ts: null
 - id: M06.P0.T3
   milestone: M06
   phase: 0
   title: Document bench reference-runner contract for M06 harnesses in audit doc
-  status: pending
+  status: in_progress
   effort_days: 0.25
   owner_glob:
     - .planning/audits/M06-perf-hardening.md
@@ -3895,7 +3895,7 @@
     - "@bb-connor"
   first_commit_sha: null
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-29T18:49:38.516792Z"
   merged_ts: null
 - id: M06.P1.T1
   milestone: M06

@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-29T18:45:13.167099Z",
+  "last_checkpoint_at": "2026-04-29T18:50:23.644993Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -14,7 +14,7 @@
     "M01": {
       "status": "in_progress",
       "phase": "P0",
-      "owner_branch": null,
+      "owner_branch": "wave/W1/m01/p0.t2-audit-doc-starting-counts",
       "trust_boundary": false
     },
     "M02": {
@@ -44,7 +44,7 @@
     "M06": {
       "status": "in_progress",
       "phase": "P0",
-      "owner_branch": null,
+      "owner_branch": "multiple:p0.t2,p0.t3",
       "trust_boundary": false
     },
     "M07": {

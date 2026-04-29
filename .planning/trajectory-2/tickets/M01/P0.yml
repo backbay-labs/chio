@@ -52,7 +52,7 @@
   milestone: M01
   phase: 0
   title: Open .planning/audits/M01-error-taxonomy.md with starting counts
-  status: pending
+  status: in_progress
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M01-error-taxonomy.md
@@ -69,5 +69,5 @@
     - "@bb-connor"
   first_commit_sha: null
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-29T18:49:38.516792Z"
   merged_ts: null
