@@ -3853,7 +3853,7 @@
   milestone: M06
   phase: 0
   title: Pin dhat dev-dep and bump Cargo.lock with single-version verification
-  status: in_progress
+  status: review
   effort_days: 0.5
   owner_glob:
     - Cargo.toml
@@ -3869,7 +3869,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: fd5217f3734dc90d3827b0b76775ef97593ef9f7
   merged_sha: null
   opened_ts: "2026-04-29T18:49:38.516792Z"
   merged_ts: null
