@@ -449,7 +449,7 @@ Wave 4 gate (`EXECUTION-BOARD.md` section 6f W4):
 
 The wave-opener chain serializes Cargo.lock writes within each wave:
 
-- Wave 1: M06.P0.T1 -> M02.P0.T1 -> M01.P0.T1
+- Wave 1: M06.P0.T2 -> M02.P0.T2 -> M01.P0.T1
 - Wave 2: M03.P0.T1 -> M04.P0.T1 -> M05.P0.T1 (verify against
   per-milestone P0 files at run time; the M03 first means revocation
   oracle deps land on top of PQ surface deps)
