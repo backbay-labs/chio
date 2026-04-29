@@ -137,7 +137,7 @@ fn spawn_trust_service_with_verifier(
     let child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
         .expect("spawn trust service");
     ServerGuard { child }

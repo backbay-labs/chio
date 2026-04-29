@@ -1,0 +1,100 @@
+{
+  "schema_version": "1",
+  "trajectory": "trajectory-2",
+  "started_at": null,
+  "last_checkpoint_at": "2026-04-29T16:29:54.436349Z",
+  "current_wave": "wave-0-authoring",
+  "halt": {
+    "halted": true,
+    "reason": "trigger_11_preflight_workspace_one_liner_failed: cargo test failed in chio-wasm-guards conformance_runner because wasm32 release artifacts were missing",
+    "trigger_event_id": "01KQD16PC4RXAKPBW65T0S161K",
+    "halted_at": "2026-04-29T16:29:54.436349Z"
+  },
+  "milestones": {
+    "M01": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": false
+    },
+    "M02": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": false
+    },
+    "M03": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M04": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M05": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M06": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": false
+    },
+    "M07": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": false
+    },
+    "M08": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": false
+    },
+    "M09": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": false
+    },
+    "M10": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    }
+  },
+  "waves": {
+    "W1": [
+      "M01",
+      "M02",
+      "M06"
+    ],
+    "W2": [
+      "M03",
+      "M04",
+      "M05"
+    ],
+    "W3": [
+      "M07",
+      "M08"
+    ],
+    "W4": [
+      "M09",
+      "M10"
+    ]
+  },
+  "notes": [
+    "Seed state authored 2026-04-29 alongside narrative + ticket files.",
+    "Wave 0 is the authoring wave: narrative + tickets land before any P0 wave-opener Cargo.lock bumps.",
+    "Trust-boundary milestones (M03, M04, M05, M10) require security x2 review on every PR per trajectory-1 precedent."
+  ]
+}

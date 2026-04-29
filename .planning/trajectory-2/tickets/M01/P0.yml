@@ -1,0 +1,73 @@
+# M01 Phase 0 - Wave-opener Cargo.lock bump and audit doc.
+# Source of truth: .planning/trajectory-2/01-error-taxonomy-doctor-lsp.md
+# (section "Workspace dependency state" + "Phases" P0).
+#
+# Milestone scope (from .planning/trajectory-2/README.md): M01 lands in Wave 1
+# alongside M02 and M06 on `wave/W1/m01/...` worktrees. P0 is the dependency
+# wave-opener: it pins miette / tower-lsp / lsp-types / notify in the
+# workspace Cargo.toml so all downstream M01 phases compile against a
+# single resolved tree (dashmap is pinned by M06.P0.T1 per the Wave-1
+# Cargo.lock chain ordering M06 -> M02 -> M01 in EXECUTION-BOARD.md
+# section 2; do not re-pin it here), and opens the audit doc with
+# starting counts so the
+# migration is held to a non-regressing baseline.
+#
+# CROSS-MILESTONE GATE: trajectory-1 M01 (chio-spec-codegen) and M06
+# (chio-guard-registry, chio-attest-verify) must remain green; this milestone
+# extends the codegen pipeline and consumes the OCI / cosign verifier surface
+# rather than forking either.
+#
+# M01 is NOT a trust-boundary milestone (developer experience lens), so no
+# security x2 review applies; reviewer is the human-side @bb-connor only.
+#
+# Regenerate the manifest after edits: `cargo xtask trajectory regen-manifest`.
+
+- id: M01.P0.T1
+  milestone: M01
+  phase: 0
+  title: Pin miette, tower-lsp, lsp-types, notify in workspace Cargo.toml (dashmap pinned by M06.P0.T1 per Wave-1 lock-bump chain; do not re-pin here)
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - Cargo.toml
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+  depends_on: []
+  soft_deps:
+    - "trajectory-1 M01 chio-spec-codegen pipeline must remain green; this milestone extends it without forking the codegen crate"
+  gate_check:
+    cmd: "grep -q 'miette' Cargo.toml && grep -q 'tower-lsp' Cargo.toml && grep -q 'lsp-types' Cargo.toml && cargo build --workspace --quiet && cargo tree -p chio-tower -d --quiet | (! grep -E '^tokio v[^1]') && (grep -c 'dashmap' Cargo.toml | grep -q '^1$' || ! grep -q 'dashmap' Cargo.toml)"
+    timeout_seconds: 900
+  worktree_branch: wave/W1/m01/p0.t1-pin-errors-and-lsp-deps
+  agent_role: dx-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P0.T2
+  milestone: M01
+  phase: 0
+  title: Open .planning/audits/M01-error-taxonomy.md with starting counts
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/audits/M01-error-taxonomy.md
+  shared_paths: []
+  depends_on:
+    - M01.P0.T1
+  soft_deps: []
+  gate_check:
+    cmd: "test -f .planning/audits/M01-error-taxonomy.md && grep -q '976' .planning/audits/M01-error-taxonomy.md && grep -qE 'CHIO-' .planning/audits/M01-error-taxonomy.md && grep -q 'registry.yaml' .planning/audits/M01-error-taxonomy.md"
+    timeout_seconds: 600
+  worktree_branch: wave/W1/m01/p0.t2-audit-doc-starting-counts
+  agent_role: dx-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

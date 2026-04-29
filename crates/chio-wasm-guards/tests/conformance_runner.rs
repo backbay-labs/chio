@@ -12,6 +12,9 @@
 #![cfg(feature = "wasmtime-runtime")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+#[path = "support/wasm_examples.rs"]
+mod wasm_examples;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -88,16 +91,8 @@ fn make_go_backend(engine: Arc<Engine>, wasm_bytes: &[u8]) -> Box<dyn WasmGuardA
 // ---------------------------------------------------------------------------
 
 fn try_load_rust_guard() -> Option<GuardEntry> {
-    let path = format!(
-        "{}/../../target/wasm32-unknown-unknown/release/chio_example_tool_gate.wasm",
-        env!("CARGO_MANIFEST_DIR"),
-    );
-    let wasm_bytes = std::fs::read(&path).unwrap_or_else(|e| {
-        panic!(
-            "Rust guard WASM not found at {path}: {e}. \
-             Build with: cargo build --target wasm32-unknown-unknown --release -p chio-example-tool-gate"
-        )
-    });
+    let wasm_bytes =
+        wasm_examples::load_rust_example_wasm("chio-example-tool-gate", "chio_example_tool_gate");
     Some(GuardEntry {
         name: "rust",
         wasm_bytes,
@@ -430,16 +425,10 @@ fn conformance_enriched_inspector_rust() {
     let fixtures = load_fixtures("enriched-fields.yaml");
     let engine = create_shared_engine().unwrap();
 
-    let path = format!(
-        "{}/../../target/wasm32-unknown-unknown/release/chio_example_enriched_inspector.wasm",
-        env!("CARGO_MANIFEST_DIR"),
+    let wasm_bytes = wasm_examples::load_rust_example_wasm(
+        "chio-example-enriched-inspector",
+        "chio_example_enriched_inspector",
     );
-    let wasm_bytes = std::fs::read(&path).unwrap_or_else(|e| {
-        panic!(
-            "Rust enriched-inspector WASM not found at {path}: {e}. \
-             Build with: cargo build --target wasm32-unknown-unknown --release -p chio-example-enriched-inspector"
-        )
-    });
 
     let mut passed = 0u32;
     let mut failed = 0u32;

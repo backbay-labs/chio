@@ -3,7 +3,7 @@
   "network_name": "Ganache Runtime Devnet",
   "chain_id": "eip155:31337",
   "rpc_url": "http://127.0.0.1:8548",
-  "deployed_at": "2026-04-24T01:52:09.164Z",
+  "deployed_at": "2026-04-29T17:26:00.919Z",
   "operator_address": "0x8d6d63c22D114C18C2a0dA6Db0A8972Ed9C40343",
   "delegate_address": "0x9567397B445998E7E405D5Fc3d239391bf5d0200",
   "settlement_token_symbol": "mUSDC",

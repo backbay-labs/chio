@@ -1,0 +1,159 @@
+# M09 Phase 1 - chio-credit activation: hook trait, IOU mint path,
+# persistence, and property tests.
+# Source of truth: .planning/trajectory-2/09-economic-layer-and-lineage.md
+# (P1 section). Wakes the dormant chio-credit crate by binding it to the
+# kernel evaluator's signed-receipt surface (trajectory-1 M05 async kernel).
+#
+# Soft-dep: trajectory-2 M03 hybrid signing surface; if absent, the IOU
+# envelope falls back to the existing classical signing path.
+
+- id: M09.P1.T1
+  milestone: M09
+  phase: 1
+  title: Define CreditEvaluatorHook trait routing signed receipts to IOU envelopes
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-credit/src/hook.rs
+    - crates/chio-credit/src/lib.rs
+  shared_paths: []
+  depends_on:
+    - M09.P0.T4
+  soft_deps:
+    - "trajectory-1 M05 async-kernel post-dispatch evaluator/observer surface (already on main) defines the kernel-side slot the hook plugs into."
+  gate_check:
+    cmd: cargo test -p chio-credit --quiet && cargo clippy -p chio-credit -- -D warnings
+    timeout_seconds: 900
+  worktree_branch: wave/W4/m09/p1.t1-credit-evaluator-hook-trait
+  agent_role: econ-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T2
+  milestone: M09
+  phase: 1
+  title: Implement LocalCreditAccount IOU mint path on finalized receipts
+  status: pending
+  effort_days: 2
+  owner_glob:
+    - crates/chio-credit/src/local_account.rs
+    - crates/chio-credit/src/lib.rs
+  shared_paths: []
+  depends_on:
+    - M09.P1.T1
+  soft_deps:
+    - "trajectory-2 M03.P2.T2 hybrid signing backend is consumed when present; otherwise classical signing is used."
+  gate_check:
+    cmd: cargo test -p chio-credit --quiet
+    timeout_seconds: 900
+  worktree_branch: wave/W4/m09/p1.t2-local-credit-account-iou-mint
+  agent_role: econ-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T3
+  milestone: M09
+  phase: 1
+  title: Persist IOU envelopes through chio-store-sqlite via additive iou_envelope table
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - crates/chio-store-sqlite/src/iou_store.rs
+    - crates/chio-store-sqlite/src/lib.rs
+    - crates/chio-credit/src/store_binding.rs
+  shared_paths: []
+  depends_on:
+    - M09.P1.T2
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-store-sqlite --quiet && cargo test -p chio-credit --quiet
+    timeout_seconds: 900
+  worktree_branch: wave/W4/m09/p1.t3-iou-envelope-sqlite-persistence
+  agent_role: econ-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T4
+  milestone: M09
+  phase: 1
+  title: Property test asserting one finalized receipt mints exactly one IOU or zero
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-credit/tests/iou_invariants.rs
+  shared_paths: []
+  depends_on:
+    - M09.P1.T3
+  soft_deps: []
+  gate_check:
+    cmd: cargo test -p chio-credit --test iou_invariants
+    timeout_seconds: 600
+  worktree_branch: wave/W4/m09/p1.t4-iou-invariants-property-test
+  agent_role: econ-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T5
+  milestone: M09
+  phase: 1
+  title: Migration test for legacy receipts (no manifest price) producing zero IOUs byte-identically
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - crates/chio-credit/tests/legacy_receipt_migration.rs
+  shared_paths: []
+  depends_on:
+    - M09.P1.T4
+  soft_deps:
+    - "trajectory-1 M04 deterministic corpus supplies the legacy receipt fixtures."
+  gate_check:
+    cmd: cargo test -p chio-credit --test legacy_receipt_migration
+    timeout_seconds: 600
+  worktree_branch: wave/W4/m09/p1.t5-legacy-receipt-migration-test
+  agent_role: econ-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P1.T6
+  milestone: M09
+  phase: 1
+  title: Update M09 audit doc with kernel-caller count and IOU schema row
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/audits/M09-economic-layer-and-lineage.md
+  shared_paths: []
+  depends_on:
+    - M09.P1.T5
+  soft_deps: []
+  gate_check:
+    cmd: grep -q 'iou_envelope' .planning/audits/M09-economic-layer-and-lineage.md && grep -q 'kernel callers' .planning/audits/M09-economic-layer-and-lineage.md
+    timeout_seconds: 60
+  worktree_branch: wave/W4/m09/p1.t6-audit-doc-credit-row
+  agent_role: econ-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
