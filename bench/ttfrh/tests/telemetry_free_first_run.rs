@@ -51,7 +51,10 @@ fn every_template_defaults_to_zero_outbound_hosts() {
 #[test]
 fn loopback_only_capture_passes_for_each_template() {
     let allowlist = Allowlist::embedded();
-    let capture = ["127.0.0.1:3000", "localhost:8000", "::1:8787"];
+    // IPv6 addresses must use the bracketed `[host]:port` form so the
+    // sentinel can unambiguously separate the host from the port. The bare
+    // form `::1:8787` is itself a valid IPv6 literal and is preserved.
+    let capture = ["127.0.0.1:3000", "localhost:8000", "[::1]:8787"];
     for template in TemplateRunner::ALL {
         let report =
             SentinelReport::parse_capture_lines(template, &allowlist, capture.iter().copied());
