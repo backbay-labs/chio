@@ -158,7 +158,6 @@ export function scenarioToHttpRequest(scenario: VerdictScenario): ChioHttpReques
     query: {},
     headers: {
       "content-type": "application/json",
-      "x-verdict-scenario": scenario.id,
     },
     caller: {
       subject: `agent:${scenario.id}`,

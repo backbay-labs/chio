@@ -47,6 +47,7 @@ describe("verdict matrix TypeScript node-http driver", () => {
     expect(request.route_pattern).toBe("verdict-matrix:files.read");
     expect(request.capability_id).toBe("cap-capability-subset-001-read-exact");
     expect(request.headers["content-type"]).toBe("application/json");
+    expect(request.headers["x-verdict-scenario"]).toBeUndefined();
   });
 
   it("projects the tuple from the sidecar response instead of scenario fields", async () => {
