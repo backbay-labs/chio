@@ -264,6 +264,85 @@ deterministic on `(finalized_at, receipt_id)`. Missing tables surface
 as empty vectors so the CLI runs cleanly against a pre-M09 receipt
 database.
 
+## P3 close (2026-04-30)
+
+P3 wakes `chio-reputation` against the deterministic feed-composition
+surface. The trait `ReputationFeed` (`crates/chio-reputation/src/feed.rs`)
+plus the two bundled feeds (`crates/chio-reputation/src/feeds/arena_survival.rs`,
+`crates/chio-reputation/src/feeds/cross_provider_equality.rs`) and the
+discrete `ReputationTier` enum (`crates/chio-reputation/src/tier.rs`)
+expose the audit's first deterministic tier mapping. Per the M09 P2-P4
+economics readiness research doc, feeds are caller-projected
+observations rather than direct dependencies on `chio-arena` or
+`chio-conformance`; this preserves the kernel-free invariant the
+research doc called out and lets the audit reproduce feeds offline
+against fixture data.
+
+### Threshold table
+
+| Tier   | Composed-score floor | Per-feed floor (`tier_3` only) | Default? |
+|--------|----------------------|--------------------------------|----------|
+| `tier_0` | 0.0 (any)          | -                              | yes      |
+| `tier_1` | `TIER_1_THRESHOLD` (0.50) | -                       | -        |
+| `tier_2` | `TIER_2_THRESHOLD` (0.75) | -                       | -        |
+| `tier_3` | `TIER_3_THRESHOLD` (0.90) | `TIER_3_PER_FEED_THRESHOLD` (0.80) and >=2 feeds | -        |
+
+The composed score is the per-feed maximum (`compose_deltas`), not the
+sum. The `tier_3` AND-condition is the M09 narrative's Sybil
+mitigation: a publisher with strong arena survival but no cross-
+provider equality evidence collapses to `tier_2`, never `tier_3`.
+
+### Reputation tier distribution on the M04 corpus
+
+Reproduce by replaying the M04 deterministic corpus and projecting
+each publisher's signed-receipt set into the two feed observation
+shapes:
+
+```bash
+cargo test -p chio-reputation --test feed_monotonicity --quiet
+```
+
+The M04 deterministic corpus today carries receipt-level ground truth
+but not yet arena-round outputs (M08 outputs land in the same Wave 4
+window) or M07 verdict-matrix runs in the corpus replay path. P3
+records the resulting baseline tier distribution explicitly so the
+P5.T9 closing pass can compute deltas:
+
+| Tier   | Subjects (M04 corpus baseline, P3 close) | Notes |
+|--------|------------------------------------------|-------|
+| `tier_0` | all corpus publishers                  | Arena and verdict-matrix observations are zero-delta in the corpus today; under the empty-input fallback every publisher lands at `tier_0`. |
+| `tier_1` | 0                                       | Requires composed score >= 0.50; no positive feed evidence in the M04 corpus today. |
+| `tier_2` | 0                                       | Same. |
+| `tier_3` | 0                                       | Requires both feeds independently above 0.80; impossible without populated feeds. |
+
+P3 chooses the explicit-zero baseline rather than synthesizing
+fixture data so the closing audit at M09.P5.T9 can credibly attribute
+any non-zero distribution to the marketplace demo (P4.T7) and the
+lineage ingest (P5.T2/T3), not to inflated test scaffolding. The
+property test in `crates/chio-reputation/tests/feed_monotonicity.rs`
+covers the monotonicity invariant on synthetic inputs (256 cases per
+property) so the tier distribution remains reproducible across runs.
+
+### Property-test coverage
+
+- `crates/chio-reputation/tests/feed_monotonicity.rs`: 6 properties at
+  256 proptest cases each. Adding fully-survived arena rounds, raising
+  the survived count on an existing outcome, adding unanimous-
+  agreement verdict-matrix cases, replacing a disagreement with an
+  agreement, and raising any single delta in `tier_from_deltas` all
+  preserve or increase the resulting score and tier. The targeted
+  `empty_inputs_always_tier_0` test guards the empty-input fallback
+  documented on `ScoreDelta::zero` and per ticket M09.P3.T2.
+
+### Caller counts
+
+After P3, `chio-reputation` consumer files outside its own crate
+(`grep -rE 'use\s+chio_reputation' crates/ | grep -v 'crates/chio-reputation/' | wc -l`):
+12 occurrences (unchanged from P0). The two new feeds and the tier
+helper are exercised by the in-crate property test surface and will
+gain external callers in P4 (the marketplace discovery path) and in
+the audit doc closing pass.
+
 ## Wave entry status
 
 Status: P0 wave-opener landing under the W4 capstone schedule. The audit
