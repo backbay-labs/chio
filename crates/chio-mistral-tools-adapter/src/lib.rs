@@ -110,7 +110,7 @@ impl MistralAdapter {
         let calls = function_calls(raw)?;
         if calls.is_empty() {
             return Err(ProviderError::Malformed(
-                "Mistral generateContent payload did not contain functionCall parts".to_string(),
+                "Mistral chat/completions payload did not contain tool_calls".to_string(),
             ));
         }
         calls
@@ -183,7 +183,7 @@ pub enum MistralAdapterError {
 fn function_calls(raw: ProviderRequest) -> Result<Vec<FunctionCallPart>, ProviderError> {
     let value: Value = serde_json::from_slice(&raw.0).map_err(|error| {
         ProviderError::Malformed(format!(
-            "Mistral generateContent payload was not JSON: {error}"
+            "Mistral chat/completions payload was not JSON: {error}"
         ))
     })?;
     let body = response_body(value);
@@ -202,15 +202,40 @@ fn response_body(value: Value) -> Value {
 }
 
 fn extract_function_calls(body: &Value) -> Result<Vec<FunctionCallPart>, ProviderError> {
+    // Mistral is OpenAI-compatible: tool calls live at
+    // `choices[].message.tool_calls[]` with shape
+    // `{ id, type: "function", function: { name, arguments } }` where
+    // `arguments` is a JSON-encoded string. Parse that primary shape first.
+    let mut calls = Vec::new();
+    if let Some(choices) = body.get("choices").and_then(Value::as_array) {
+        for choice in choices {
+            let tool_calls = choice
+                .get("message")
+                .and_then(|m| m.get("tool_calls"))
+                .and_then(Value::as_array);
+            if let Some(tool_calls) = tool_calls {
+                for entry in tool_calls {
+                    if let Some(part) = openai_tool_call_to_function_call(entry, "Mistral")? {
+                        calls.push(part);
+                    }
+                }
+            }
+        }
+    }
+
+    if !calls.is_empty() {
+        return Ok(calls);
+    }
+
+    // Fall back to legacy Gemini-shaped fixtures for the cross-provider
+    // advisory NDJSON path that pre-dates the OpenAI-compat scaffold.
     if let Some(call) = body.get("functionCall") {
         let parsed: FunctionCallPart = serde_json::from_value(call.clone()).map_err(|error| {
             ProviderError::Malformed(format!("Mistral functionCall part was malformed: {error}"))
         })?;
         return Ok(vec![parsed]);
     }
-    let candidates = body.get("candidates").and_then(Value::as_array);
-    let mut calls = Vec::new();
-    if let Some(candidates) = candidates {
+    if let Some(candidates) = body.get("candidates").and_then(Value::as_array) {
         for candidate in candidates {
             let Some(parts) = candidate
                 .get("content")
@@ -233,6 +258,48 @@ fn extract_function_calls(body: &Value) -> Result<Vec<FunctionCallPart>, Provide
         }
     }
     Ok(calls)
+}
+
+/// Decode an OpenAI-compatible `tool_calls[]` entry into a [`FunctionCallPart`].
+/// See the Groq adapter's identical helper for the rationale; both crates
+/// share this contract since Mistral and Groq use the same wire surface.
+pub(crate) fn openai_tool_call_to_function_call(
+    entry: &Value,
+    provider_label: &str,
+) -> Result<Option<FunctionCallPart>, ProviderError> {
+    let kind = entry
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("function");
+    if kind != "function" {
+        return Ok(None);
+    }
+    let function = match entry.get("function") {
+        Some(f) => f,
+        None => return Ok(None),
+    };
+    let name = function
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            ProviderError::Malformed(format!(
+                "{provider_label} tool_calls[].function.name was missing or non-string"
+            ))
+        })?
+        .to_string();
+    let args_value = match function.get("arguments") {
+        Some(Value::String(s)) => serde_json::from_str::<Value>(s).map_err(|error| {
+            ProviderError::Malformed(format!(
+                "{provider_label} tool_calls[].function.arguments was not valid JSON: {error}"
+            ))
+        })?,
+        Some(other) => other.clone(),
+        None => Value::Object(serde_json::Map::new()),
+    };
+    Ok(Some(FunctionCallPart {
+        name,
+        args: args_value,
+    }))
 }
 
 fn validate_function_call(call: &FunctionCallPart) -> Result<(), ProviderError> {
@@ -340,7 +407,40 @@ mod tests {
     }
 
     #[test]
-    fn lift_batch_extracts_function_call_parts() {
+    fn lift_batch_extracts_openai_tool_calls() {
+        // Wire shape matches the captured Mistral fixture
+        // crates/chio-provider-conformance/fixtures/mistral/mistral_basic_single_tool_call.ndjson:
+        // choices[].message.tool_calls[] with `function.arguments` as a
+        // JSON-encoded string.
+        let cfg = config();
+        let adapter = MistralAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let payload = json!({
+            "id": "chatcmpl_test",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": "call_weather_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Paris\"}"
+                        }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+        let invocations = adapter.lift_batch(raw).unwrap();
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].tool_name, "get_weather");
+    }
+
+    #[test]
+    fn lift_batch_legacy_gemini_shape_still_works() {
         let cfg = config();
         let adapter = MistralAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
         let payload = json!({

@@ -8,7 +8,7 @@
 use chio_tool_call_fabric::{DenyReason, ProviderError, ToolInvocation, VerdictResult};
 use serde_json::Value;
 
-use crate::{native::FunctionCallPart, GroqAdapter};
+use crate::{native::FunctionCallPart, openai_tool_call_to_function_call, GroqAdapter};
 
 /// Result of gating one Groq stream payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,16 +42,15 @@ impl GroqAdapter {
                 continue;
             };
 
-            // Walk candidates[].content.parts[] looking for functionCall parts.
-            let parts = candidate_parts(data);
-            for part in parts {
-                if let Some(call) = function_call_from_part(part)? {
-                    let invocation = self.invocation_from_function_call(&call)?;
-                    let verdict = evaluate(&invocation)?;
-                    ensure_streaming_allow(&call, &verdict)?;
-                    invocations.push(invocation);
-                    verdicts.push(verdict);
-                }
+            // Walk OpenAI-shaped choices[].{delta,message}.tool_calls[]
+            // first; fall back to Gemini-shaped candidates[].content.parts[]
+            // for legacy fixtures.
+            for call in extract_stream_function_calls(data)? {
+                let invocation = self.invocation_from_function_call(&call)?;
+                let verdict = evaluate(&invocation)?;
+                ensure_streaming_allow(&call, &verdict)?;
+                invocations.push(invocation);
+                verdicts.push(verdict);
             }
             output.extend_from_slice(&frame.raw);
         }
@@ -105,18 +104,19 @@ fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
         if line.starts_with(':') {
             continue;
         }
-        let (field, value) = line.split_once(':').ok_or_else(|| {
-            ProviderError::Malformed(format!("Groq SSE line `{line}` was missing `:`"))
-        })?;
+        // Per the WHATWG EventStream spec, lines without a colon are
+        // treated as a field with an empty value; unknown field names are
+        // silently ignored. Reject only `data` payloads downstream.
+        let (field, value) = match line.split_once(':') {
+            Some((f, v)) => (f, v),
+            None => (line.as_str(), ""),
+        };
         let value = value.strip_prefix(' ').unwrap_or(value);
-        match field {
-            "data" => data_lines.push(value.to_string()),
-            "event" | "id" | "retry" => {}
-            other => {
-                return Err(ProviderError::Malformed(format!(
-                    "Groq SSE field `{other}` is not supported"
-                )));
-            }
+        // Spec: only the `data` field contributes to the message body;
+        // `event`, `id`, `retry`, and any unknown fields are silently
+        // ignored.
+        if field == "data" {
+            data_lines.push(value.to_string());
         }
     }
     raw.push(b'\n');
@@ -133,34 +133,57 @@ fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
     Ok(SseFrame { data, raw })
 }
 
-fn candidate_parts(data: &Value) -> Vec<&Value> {
+fn extract_stream_function_calls(data: &Value) -> Result<Vec<FunctionCallPart>, ProviderError> {
     let mut out = Vec::new();
-    let Some(candidates) = data.get("candidates").and_then(Value::as_array) else {
-        return out;
-    };
-    for candidate in candidates {
-        let Some(parts) = candidate
-            .get("content")
-            .and_then(|c| c.get("parts"))
-            .and_then(Value::as_array)
-        else {
-            continue;
-        };
-        for part in parts {
-            out.push(part);
+    if let Some(choices) = data.get("choices").and_then(Value::as_array) {
+        for choice in choices {
+            // Streaming deltas live at choices[].delta.tool_calls[], while
+            // batched / aggregated chunks reuse choices[].message.tool_calls[].
+            for source in ["delta", "message"] {
+                let Some(tool_calls) = choice
+                    .get(source)
+                    .and_then(|m| m.get("tool_calls"))
+                    .and_then(Value::as_array)
+                else {
+                    continue;
+                };
+                for entry in tool_calls {
+                    if let Some(part) = openai_tool_call_to_function_call(entry, "Groq")? {
+                        out.push(part);
+                    }
+                }
+            }
         }
     }
-    out
-}
 
-fn function_call_from_part(part: &Value) -> Result<Option<FunctionCallPart>, ProviderError> {
-    let Some(call) = part.get("functionCall") else {
-        return Ok(None);
-    };
-    let parsed: FunctionCallPart = serde_json::from_value(call.clone()).map_err(|error| {
-        ProviderError::Malformed(format!("Groq functionCall part was malformed: {error}"))
-    })?;
-    Ok(Some(parsed))
+    if !out.is_empty() {
+        return Ok(out);
+    }
+
+    // Legacy Gemini-shaped fallback (kept for cross-provider advisory NDJSON).
+    if let Some(candidates) = data.get("candidates").and_then(Value::as_array) {
+        for candidate in candidates {
+            let Some(parts) = candidate
+                .get("content")
+                .and_then(|c| c.get("parts"))
+                .and_then(Value::as_array)
+            else {
+                continue;
+            };
+            for part in parts {
+                if let Some(call) = part.get("functionCall") {
+                    let parsed: FunctionCallPart =
+                        serde_json::from_value(call.clone()).map_err(|error| {
+                            ProviderError::Malformed(format!(
+                                "Groq functionCall part was malformed: {error}"
+                            ))
+                        })?;
+                    out.push(parsed);
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn ensure_streaming_allow(

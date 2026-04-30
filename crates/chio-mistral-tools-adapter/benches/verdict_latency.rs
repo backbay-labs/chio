@@ -12,12 +12,23 @@ const COLD_INIT_P99_BUDGET: Duration = Duration::from_millis(500);
 const P99_SAMPLE_COUNT: usize = 128;
 
 fn stream_bytes() -> Result<Vec<u8>, ProviderError> {
+    // Mistral is OpenAI-compatible. Streaming chunks emit
+    // choices[].delta.tool_calls[] with `function.arguments` as a
+    // JSON-encoded string.
     let payload = json!({
-        "candidates": [{
-            "content": {
-                "parts": [
-                    {"functionCall": {"name": "lookup_policy", "args": {"policy_id": "pol_latency"}}}
-                ]
+        "id": "chatcmpl_mistral_latency",
+        "object": "chat.completion.chunk",
+        "choices": [{
+            "index": 0,
+            "delta": {
+                "tool_calls": [{
+                    "id": "call_latency_1",
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_policy",
+                        "arguments": "{\"policy_id\":\"pol_latency\"}"
+                    }
+                }]
             }
         }]
     });
