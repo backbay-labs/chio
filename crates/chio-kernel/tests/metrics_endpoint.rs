@@ -115,3 +115,40 @@ fn scrape_renders_counter_and_gauge_samples() {
         assert!(body.contains(sample), "missing sample {sample}");
     }
 }
+
+#[test]
+fn scrape_renders_runtime_counter_samples_without_labels() {
+    let body = render_guard_metrics_prometheus();
+
+    for (name, help) in [
+        (
+            "chio_signing_queue_block_total",
+            "Total receipt signing requests blocked by bounded queue capacity.",
+        ),
+        (
+            "chio_otel_ingress_drop_total",
+            "Total OTEL ingress batches dropped by bounded queue admission.",
+        ),
+        (
+            "chio_otel_sink_drop_total",
+            "Total OTEL receipt sink batches dropped before append.",
+        ),
+    ] {
+        assert!(
+            body.contains(&format!("# HELP {name} {help}\n")),
+            "missing HELP for {name}"
+        );
+        assert!(
+            body.contains(&format!("# TYPE {name} counter\n")),
+            "missing TYPE for {name}"
+        );
+        assert!(
+            body.contains(&format!("{name} 0\n")),
+            "missing no-label sample for {name}"
+        );
+        assert!(
+            !body.contains(&format!("{name}{{}} 0\n")),
+            "unexpected empty label block for {name}"
+        );
+    }
+}

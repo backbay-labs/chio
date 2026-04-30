@@ -16,6 +16,9 @@ pub const METRIC_CHIO_GUARD_RELOAD_TOTAL: &str = "chio_guard_reload_total";
 pub const METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS: &str =
     "chio_guard_host_call_duration_seconds";
 pub const METRIC_CHIO_GUARD_MODULE_BYTES: &str = "chio_guard_module_bytes";
+pub const METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL: &str = "chio_signing_queue_block_total";
+pub const METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
+pub const METRIC_CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
 
 pub const MAX_GUARD_METRIC_CARDINALITY: usize = 1024;
 pub const E_GUARD_METRIC_CARDINALITY_EXCEEDED: &str = "E_GUARD_METRIC_CARDINALITY_EXCEEDED";
@@ -129,6 +132,30 @@ pub const GUARD_METRIC_FAMILIES: &[MetricFamilyDescriptor] = &[
         kind: MetricFamilyKind::Gauge,
         labels: LABELS_GUARD_EPOCH,
         unit: Some("bytes"),
+        buckets: &[],
+    },
+];
+
+pub const RUNTIME_METRIC_FAMILIES: &[MetricFamilyDescriptor] = &[
+    MetricFamilyDescriptor {
+        name: METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+        kind: MetricFamilyKind::Counter,
+        labels: &[],
+        unit: Some("count"),
+        buckets: &[],
+    },
+    MetricFamilyDescriptor {
+        name: METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL,
+        kind: MetricFamilyKind::Counter,
+        labels: &[],
+        unit: Some("count"),
+        buckets: &[],
+    },
+    MetricFamilyDescriptor {
+        name: METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
+        kind: MetricFamilyKind::Counter,
+        labels: &[],
+        unit: Some("count"),
         buckets: &[],
     },
 ];

@@ -1,5 +1,7 @@
 //! Prometheus text exposition for guard metrics.
 
+use crate::kernel::signing_task::METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL;
+
 pub const GUARD_METRICS_PATH: &str = "/metrics";
 pub const PROMETHEUS_TEXT_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
@@ -96,6 +98,33 @@ pub const GUARD_METRIC_FAMILIES: &[GuardMetricFamily] = &[
     },
 ];
 
+const METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
+const METRIC_CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
+
+const RUNTIME_METRIC_FAMILIES: &[GuardMetricFamily] = &[
+    GuardMetricFamily {
+        name: METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+        help: "Total receipt signing requests blocked by bounded queue capacity.",
+        kind: PrometheusMetricKind::Counter,
+        labels: &[],
+        buckets: &[],
+    },
+    GuardMetricFamily {
+        name: METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL,
+        help: "Total OTEL ingress batches dropped by bounded queue admission.",
+        kind: PrometheusMetricKind::Counter,
+        labels: &[],
+        buckets: &[],
+    },
+    GuardMetricFamily {
+        name: METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
+        help: "Total OTEL receipt sink batches dropped before append.",
+        kind: PrometheusMetricKind::Counter,
+        labels: &[],
+        buckets: &[],
+    },
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetricsEndpointResponse {
     pub status: u16,
@@ -119,7 +148,7 @@ pub fn guard_metrics_endpoint(path: &str) -> Option<MetricsEndpointResponse> {
 #[must_use]
 pub fn render_guard_metrics_prometheus() -> String {
     let mut output = String::new();
-    for family in GUARD_METRIC_FAMILIES {
+    for family in GUARD_METRIC_FAMILIES.iter().chain(RUNTIME_METRIC_FAMILIES) {
         output.push_str("# HELP ");
         output.push_str(family.name);
         output.push(' ');
@@ -178,6 +207,10 @@ fn render_labels_with_bucket(labels: &[&str], bucket: &str) -> String {
 }
 
 fn render_labels(labels: &[&str], bucket: Option<&str>) -> String {
+    if labels.is_empty() && bucket.is_none() {
+        return String::new();
+    }
+
     let mut parts = Vec::with_capacity(labels.len() + usize::from(bucket.is_some()));
     for label in labels {
         parts.push(format!("{label}=\"\""));

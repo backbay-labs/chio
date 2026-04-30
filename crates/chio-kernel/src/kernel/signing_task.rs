@@ -67,6 +67,7 @@ use crate::{ChioReceipt, ChioReceiptBody, KernelError, Keypair};
 /// can override via [`SigningTaskHandle::with_capacity`] until a config
 /// knob lands in a later phase.
 pub const DEFAULT_SIGNING_CHANNEL_CAPACITY: usize = 256;
+pub(crate) const METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL: &str = "chio_signing_queue_block_total";
 
 /// One unit of work submitted to the signing task.
 ///
