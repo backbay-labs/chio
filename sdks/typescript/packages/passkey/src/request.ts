@@ -118,34 +118,32 @@ function joinUrl(base: string, path: string): string {
   return `${trimmed}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+// btoa / atob are part of the DOM / Web standards lib (and are also
+// present in Node >= 16). The package targets browsers; tests run in bun
+// which provides both. We avoid a node-types dependency to keep the SDK
+// surface tight (M10.P3.T5 30 KB ceiling).
+declare const btoa: (s: string) => string;
+declare const atob: (s: string) => string;
+
 function bytesToBase64Url(bytes: ArrayBuffer | Uint8Array): string {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let bin = '';
   for (let i = 0; i < u8.length; i += 1) {
     bin += String.fromCharCode(u8[i] as number);
   }
-  // btoa is available in browsers and Node 16+; in non-browser environments
-  // the caller injects fetchImpl/credentials so this branch never runs.
-  const b64 = (
-    typeof btoa === 'function'
-      ? btoa(bin)
-      : Buffer.from(u8).toString('base64')
-  );
-  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-function base64UrlToBytes(s: string): Uint8Array {
+function base64UrlToBytes(s: string): ArrayBuffer {
   const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + pad;
-  if (typeof atob === 'function') {
-    const bin = atob(b64);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i += 1) {
-      out[i] = bin.charCodeAt(i);
-    }
-    return out;
+  const bin = atob(b64);
+  const buf = new ArrayBuffer(bin.length);
+  const out = new Uint8Array(buf);
+  for (let i = 0; i < bin.length; i += 1) {
+    out[i] = bin.charCodeAt(i);
   }
-  return new Uint8Array(Buffer.from(b64, 'base64'));
+  return buf;
 }
 
 async function fetchChallenge(

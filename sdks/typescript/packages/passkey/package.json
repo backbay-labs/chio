@@ -31,6 +31,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "bun test",
+    "size-budget": "bash ../../scripts/size-budget.sh passkey",
     "prepublishOnly": "npm run build"
   },
   "publishConfig": {
