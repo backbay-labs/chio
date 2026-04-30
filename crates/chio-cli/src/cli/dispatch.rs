@@ -2301,6 +2301,37 @@ fn main() {
         },
         Commands::Replay(args) => cmd_replay(&args),
         Commands::Doctor(args) => cmd_doctor(&args, json_output),
+        Commands::Arena { command } => match command {
+            ArenaCommands::Run {
+                scenario,
+                output_root,
+                json,
+            } => cmd_arena_run(&scenario, output_root.as_deref(), json || json_output),
+            ArenaCommands::Replay {
+                scenario_id,
+                output_root,
+                bundle_dir,
+                json,
+            } => cmd_arena_replay(
+                &scenario_id,
+                output_root.as_deref(),
+                bundle_dir.as_deref(),
+                json || json_output,
+            ),
+            ArenaCommands::Evolve {
+                seed,
+                generations,
+                wall_seconds,
+                output_root,
+                json,
+            } => cmd_arena_evolve(
+                &seed,
+                generations,
+                wall_seconds,
+                output_root.as_deref(),
+                json || json_output,
+            ),
+        },
     };
 
     if let Err(e) = result {

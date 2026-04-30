@@ -51,6 +51,7 @@ include!("cli/replay/traffic.rs");
 include!("cli/replay/bless/strip.rs");
 include!("cli/replay/bless/fixture_layout.rs");
 include!("cli/replay/bless.rs");
+include!("cli/arena.rs");
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]

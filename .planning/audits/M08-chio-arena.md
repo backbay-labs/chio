@@ -181,3 +181,68 @@ P1 walking-skeleton evidence:
 
 This file is prose-only and does not modify ticket state, execution state,
 the generated manifest, Cargo files, or code.
+
+## P5 Close-Out (2026-04-30)
+
+Phase 5 closes the M08 milestone. The output plumbing, leaderboard, and
+`arc arena` CLI surfaces are wired and gated. The seven P5 tickets all land
+in this PR:
+
+- M08.P5.T1 (auto-promote to M04 fixtures via CHIO_BLESS): the new
+  `chio_arena::promote_to_m04_fixtures` writes
+  `tests/replay/fixtures/arena/<class>/<hash>.json` records when the
+  CHIO_BLESS gate clauses pass (`CHIO_BLESS=1`, `BLESS_REASON` matches
+  `arena:<scenario-id>`, `CI` is unset). The per-PR cap of 5 from
+  trajectory-1 M04 carries forward unchanged.
+- M08.P5.T2 (auto-promote to chio-adversarial-suite):
+  `chio_arena::promote_to_adversarial_suite` writes per-class JSON cases
+  under `crates/chio-adversarial-suite/cases/` when the M05 scaffold is
+  present, and falls back to `target/arena/promote-pending/` until M05.P0
+  lands. Soft-disabled by absence of the suite scaffold, never CI-blocking.
+- M08.P5.T3 (leaderboard renderer): `chio_arena::leaderboard` consumes the
+  `FitnessReport` from the P4 driver and emits stable Markdown +
+  `chio.arena.leaderboard/v1` JSON under `target/arena/`. M09 reputation is
+  the downstream consumer.
+- M08.P5.T4 / T5 / T6 (`arc arena run/replay/evolve`): three new clap
+  subcommands at `crates/chio-cli/src/cli/arena.rs`, dispatched from the
+  existing `Commands::Arena` variant. `replay` resolves
+  `target/arena/<scenario-id>/` and delegates to the M04 replay engine.
+  `evolve` enforces a bounded budget and renders the leaderboard.
+- M08.P5.T7 (end-to-end smoke): `crates/chio-arena/tests/end_to_end_smoke.rs`
+  composes the bundle writer, the M04 promotion, the adversarial-suite
+  promotion (in fallback mode), and the leaderboard renderer in one test
+  vector.
+
+Local gate evidence:
+
+- `cargo test -p chio-arena --test promote_to_m04`
+- `cargo test -p chio-arena --test promote_to_adversarial_suite`
+- `cargo test -p chio-arena --test leaderboard_render`
+- `grep -q 'chio.arena.leaderboard/v1' crates/chio-arena/src/leaderboard.rs`
+- `cargo test -p chio-cli --test arena_run`
+- `cargo test -p chio-cli --test arena_replay`
+- `cargo test -p chio-cli --test arena_evolve`
+- `cargo test -p chio-arena --test end_to_end_smoke -- --nocapture`
+- `cargo test -p chio-arena --test determinism_gate` (P2 gate still
+  passes; phase-5 work does not regress arena determinism)
+- `cargo build -p chio-cli --quiet`
+- `cargo fmt --all -- --check`
+- `cargo clippy -p chio-arena --tests -- -D warnings`
+- `cargo clippy -p chio-cli --bin chio -- -D warnings`
+
+With P0 + P1 + P2 + P3 + P4 + P5 closed, the success-criteria checklist in
+`.planning/trajectory-2/08-chio-arena-replay-coliseum.md` is satisfied:
+
+- `crates/chio-arena/` builds, tests, and clippy clean.
+- The scenario DSL (`arena/scenarios/SCHEMA.md`, `schema.json`) refuses
+  invalid scenarios (P1).
+- `arc arena run/replay/evolve` are wired and integration-tested (P5).
+- The single-agent walking skeleton replays bit-exact via `chio replay`
+  (P1).
+- The three reference scenarios pass `chio-arena-determinism` twice (P2).
+- All four adversary classes ship with reference scenarios and unit tests
+  (P3).
+- The co-evolution loop is bit-exact reproducible (P4).
+- Auto-promotion to both corpora is wired and CI-tested via the P5 smoke
+  test (P5).
+- `target/arena/leaderboard.{md,json}` render with stable schemas (P5).
