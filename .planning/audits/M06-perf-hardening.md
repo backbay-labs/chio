@@ -202,3 +202,28 @@ rg -n "channel|mpsc|unbounded|Sender::send|send\\(" crates/chio-otel-receipt-exp
 - [ ] P5.T1 evidence: Replace the placeholder probe with the real
   dispatch/canonicalization path and report allocation-count reduction
   attributable to reduced reserialization.
+
+## Final after-counts
+
+after-counts snapshot date: 2026-04-30.
+
+| Surface | Starting count | After count | p99 delta note |
+|---------|---------------:|------------:|----------------|
+| `canonical_json_bytes` direct serialization sites in hot-path core-types files | 10 | 10 | p99 delta is not claimed for canonicalization in this closeout because the P5.T1 dhat harness still measures the placeholder dispatch probe rather than the real dispatch and signing path. |
+| `InstancePre` references in `crates/chio-wasm-guards/src/runtime.rs` | 0 | 25 | p99 delta is now feedable through `guard_pool_checkout_p99/warm_tenant_checkout`, which exercises warmed tenant-ring checkout through `WasmtimeBackend::evaluate`. Reference-runner comparison owns the numeric delta. |
+| `r2d2` `max_size(8)` file-backed pool defaults | 5 | 4 | p99 delta for SQLite write throughput is feedable through `store_receipt_write_throughput`; this audit pass does not claim a laptop-derived release number. |
+| OTEL receipt exporter Rust files | 4 | 5 | p99 delta for exporter saturation remains unclaimed here because P2 introduced the queue boundary after the starting audit and sustained stack evidence needs seven consecutive nightly greens. |
+
+## Final p99 and cache evidence
+
+- `guard_pool_checkout_p99` is the P4.T6 Criterion feed for Wasm guard-pool
+  checkout p99. The bench warms a tenant ring, verifies a nonzero warm size,
+  then measures warmed checkout through the production evaluate path.
+- `sustained_p99_30min` is the P5.T3 nightly lane. The ticket-local gate runs
+  the one-second `--test` path; `.github/workflows/m06-sustained-p99-nightly.yml`
+  sets `CHIO_M06_SUSTAINED_P99_SECONDS=1800` for the 30-minute scheduled run.
+- Current cache hit-rate evidence is structural rather than a final numeric
+  release claim: `pool_metrics_snapshot` records checkout totals and retained
+  warm entries for the bench tenant before measurement. The numeric cache hit
+  rate and p99 delta should be promoted from seven consecutive nightly outputs,
+  not from a single local worktree run.

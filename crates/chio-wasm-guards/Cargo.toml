@@ -64,6 +64,11 @@ name = "wasm_guard_perf"
 harness = false
 required-features = ["wasmtime-runtime"]
 
+[[bench]]
+name = "guard_pool_checkout_p99"
+harness = false
+required-features = ["wasmtime-runtime"]
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
