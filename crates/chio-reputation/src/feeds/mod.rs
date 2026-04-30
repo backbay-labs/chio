@@ -19,3 +19,4 @@
 //! fixture data.
 
 pub mod arena_survival;
+pub mod cross_provider_equality;
