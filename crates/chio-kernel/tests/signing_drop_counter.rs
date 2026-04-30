@@ -8,6 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
+use std::time::Duration;
 
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
@@ -16,7 +17,15 @@ use serde_json::json;
 
 #[allow(dead_code)]
 #[path = "../src/kernel/signing_task.rs"]
-mod signing_task;
+pub(crate) mod signing_task;
+
+mod kernel {
+    pub(crate) use crate::signing_task;
+}
+
+#[allow(dead_code)]
+#[path = "../src/observability/metrics.rs"]
+mod metrics;
 
 const KERNEL_SEED: [u8; 32] = [
     0x91, 0x82, 0x73, 0x64, 0x55, 0x46, 0x37, 0x28, 0x19, 0x0A, 0xB1, 0xC2, 0xD3, 0xE4, 0xF5, 0x06,
@@ -64,6 +73,19 @@ fn make_body(n: usize, kernel_key: &Keypair) -> Result<ChioReceiptBody, String> 
     })
 }
 
+fn rendered_signing_queue_block_total() -> Result<u64, String> {
+    let body = metrics::render_guard_metrics_prometheus();
+    body.lines()
+        .find_map(|line| {
+            line.strip_prefix("chio_signing_queue_block_total ")
+                .map(str::parse::<u64>)
+        })
+        .ok_or_else(|| {
+            "rendered Prometheus metrics omitted chio_signing_queue_block_total".to_string()
+        })?
+        .map_err(|error| format!("rendered chio_signing_queue_block_total was invalid: {error}"))
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn full_signing_queue_increments_block_counter_without_dropping() -> Result<(), String> {
     let keypair = make_keypair();
@@ -72,7 +94,7 @@ async fn full_signing_queue_increments_block_counter_without_dropping() -> Resul
     let queued = handle
         .try_sign(make_body(1, &keypair)?)
         .map_err(|_| "first request should queue before spawned task runs".to_string())?;
-    let before = signing_task::signing_queue_block_total();
+    let before = rendered_signing_queue_block_total()?;
 
     let blocked_body = make_body(2, &keypair)?;
     let mut blocked = Box::pin(handle.sign(blocked_body));
@@ -84,17 +106,23 @@ async fn full_signing_queue_increments_block_counter_without_dropping() -> Resul
     );
 
     assert_eq!(
-        signing_task::signing_queue_block_total(),
+        rendered_signing_queue_block_total()?,
         before + 1,
-        "full bounded queue should increment chio_signing_queue_block_total"
+        "rendered Prometheus metrics should expose chio_signing_queue_block_total increment"
     );
 
-    drop(blocked);
     let signed = queued
         .await
         .map_err(|error| format!("queued signer reply channel closed: {error}"))?
         .map_err(|error| format!("queued request failed to sign: {error}"))?;
     assert_eq!(signed.id, "rcpt-block-counter-0001");
+
+    let blocked_signed = tokio::time::timeout(Duration::from_secs(1), &mut blocked)
+        .await
+        .map_err(|_| "blocked producer did not finish after queue capacity freed".to_string())?
+        .map_err(|error| format!("blocked request failed to sign: {error}"))?;
+    assert_eq!(blocked_signed.id, "rcpt-block-counter-0002");
+
     handle.shutdown().await;
     Ok(())
 }
