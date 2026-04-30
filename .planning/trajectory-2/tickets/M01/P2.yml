@@ -27,7 +27,7 @@
   milestone: M01
   phase: 2
   title: Migrate capability and policy domains (passport, passport_verifier, trust_commands)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-cli/src/passport.rs
@@ -47,9 +47,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 24ea82f3967a4e6cad299aa8b311ccd20f50f93e
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T01:43:46Z"
 
 - id: M01.P2.T2
   milestone: M01

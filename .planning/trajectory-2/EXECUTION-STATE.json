@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-29T20:34:13.098199Z",
+  "last_checkpoint_at": "2026-04-30T02:36:13.284141Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -13,13 +13,13 @@
   "milestones": {
     "M01": {
       "status": "in_progress",
-      "phase": "P1",
+      "phase": "P2",
       "owner_branch": null,
       "trust_boundary": false
     },
     "M02": {
       "status": "in_progress",
-      "phase": "P0",
+      "phase": "P1",
       "owner_branch": null,
       "trust_boundary": false
     },
@@ -43,7 +43,7 @@
     },
     "M06": {
       "status": "in_progress",
-      "phase": "P1",
+      "phase": "P2",
       "owner_branch": null,
       "trust_boundary": false
     },
@@ -95,7 +95,8 @@
   "notes": [
     "Seed state authored 2026-04-29 alongside narrative + ticket files.",
     "Wave 0 is the authoring wave: narrative + tickets land before any P0 wave-opener Cargo.lock bumps.",
-    "Trust-boundary milestones (M03, M04, M05, M10) require security x2 review on every PR per trajectory-1 precedent."
+    "Trust-boundary milestones (M03, M04, M05, M10) require security x2 review on every PR per trajectory-1 precedent.",
+    "WIP drain 2026-04-30: duplicate worktrees removed; Wave 1 cap restored."
   ],
   "wave_heads": {
     "W1": "5a5a8c4d008fc51538b09f4f9800320e9d1f196d"

@@ -20,7 +20,7 @@
   milestone: M01
   phase: 1
   title: Author registry.schema.json and seed registry.yaml with ~40 codes across eighteen domains (ten core plus eight reserved for downstream)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - spec/errors/registry.yaml
@@ -39,15 +39,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: ada4991459a8da51cf1f5c7d09e83cb2fdc81230
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:00:08Z"
 
 - id: M01.P1.T2
   milestone: M01
   phase: 1
   title: Scaffold crates/chio-errors with Code, Domain, Severity, ChioError, Diagnostic impls
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-errors/Cargo.toml
@@ -72,15 +72,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: acb53d9795b1a60d5f583deff95b9056aa4b3ca7
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:16:23Z"
 
 - id: M01.P1.T3
   milestone: M01
   phase: 1
   title: Extend chio-spec-codegen with registry-YAML loader and emit error_codes.rs
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-spec-codegen/src/lib.rs
@@ -101,15 +101,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 114ce725293f486db871fb88b7e8089a91a48bbb
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:55:26Z"
 
 - id: M01.P1.T4
   milestone: M01
   phase: 1
   title: Wire codegen into cargo xtask codegen with drift-check CI gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - xtask/src/codegen.rs
@@ -127,15 +127,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 6ba6c7bf3d86152fa265459c6cf5bcdaeee98476
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:23:24Z"
 
 - id: M01.P1.T5
   milestone: M01
   phase: 1
   title: Round-trip jsonrpc_code entries against spec/errors/chio-error-registry.v1.json via property test
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-errors/tests/jsonrpc_bridge_property.rs
@@ -153,6 +153,6 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9378f1d5f976406255dd175131125198bfd8a574
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:43:52Z"

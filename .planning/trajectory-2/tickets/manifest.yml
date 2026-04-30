@@ -57,7 +57,7 @@
   milestone: M01
   phase: 1
   title: Author registry.schema.json and seed registry.yaml with ~40 codes across eighteen domains (ten core plus eight reserved for downstream)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - spec/errors/registry.yaml
@@ -76,14 +76,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: ada4991459a8da51cf1f5c7d09e83cb2fdc81230
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:00:08Z"
 - id: M01.P1.T2
   milestone: M01
   phase: 1
   title: Scaffold crates/chio-errors with Code, Domain, Severity, ChioError, Diagnostic impls
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-errors/Cargo.toml
@@ -108,14 +108,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: acb53d9795b1a60d5f583deff95b9056aa4b3ca7
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:16:23Z"
 - id: M01.P1.T3
   milestone: M01
   phase: 1
   title: Extend chio-spec-codegen with registry-YAML loader and emit error_codes.rs
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-spec-codegen/src/lib.rs
@@ -136,14 +136,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 114ce725293f486db871fb88b7e8089a91a48bbb
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:55:26Z"
 - id: M01.P1.T4
   milestone: M01
   phase: 1
   title: Wire codegen into cargo xtask codegen with drift-check CI gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - xtask/src/codegen.rs
@@ -161,14 +161,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 6ba6c7bf3d86152fa265459c6cf5bcdaeee98476
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:23:24Z"
 - id: M01.P1.T5
   milestone: M01
   phase: 1
   title: Round-trip jsonrpc_code entries against spec/errors/chio-error-registry.v1.json via property test
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-errors/tests/jsonrpc_bridge_property.rs
@@ -186,14 +186,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9378f1d5f976406255dd175131125198bfd8a574
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:43:52Z"
 - id: M01.P2.T1
   milestone: M01
   phase: 2
   title: Migrate capability and policy domains (passport, passport_verifier, trust_commands)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-cli/src/passport.rs
@@ -213,9 +213,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 24ea82f3967a4e6cad299aa8b311ccd20f50f93e
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T01:43:46Z"
 - id: M01.P2.T2
   milestone: M01
   phase: 2
@@ -807,12 +807,12 @@
   first_commit_sha: 998a2babded9a8535eb1735b808ada24839452aa
   merged_sha: dc5688f413d7af1a9bd8d3572eca9bf1b9264490
   opened_ts: "2026-04-29T18:14:23.386912Z"
-  merged_ts: "2026-04-29T18:23:38.516881Z"
+  merged_ts: "2026-04-29T18:23:04Z"
 - id: M02.P0.T2
   milestone: M02
   phase: 0
   title: Cargo.lock bump and cargo-mutants 25.x re-pin verification
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .github/workflows/mutants.yml
@@ -829,14 +829,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e5ff9b969be9c1a8842026ab34664d4e59bb9892
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:04:58Z"
 - id: M02.P1.T1
   milestone: M02
   phase: 1
   title: cargo-mutants baseline run on chio-policy and capture kill score
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-policy/mutants.toml
@@ -854,14 +854,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9e1ecf4b217b2d79e761c8287d643aa3d6333c84
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:51:58Z"
 - id: M02.P1.T2
   milestone: M02
   phase: 1
   title: cargo-mutants baseline run on chio-credentials and capture kill score
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-credentials/mutants.toml
@@ -879,14 +879,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: c11d129ae279c9438089f68e8e1834504a7e7537
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:11:19Z"
 - id: M02.P1.T3
   milestone: M02
   phase: 1
   title: cargo-mutants baseline run on chio-attest-verify and capture kill score
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/mutants.toml
@@ -904,14 +904,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 42313d7dc5b6a9f7b08e1fe3f753af0cd7bc5912
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:41:26Z"
 - id: M02.P1.T4
   milestone: M02
   phase: 1
   title: cargo-mutants baseline run on chio-kernel-core and capture kill score
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-kernel-core/mutants.toml
@@ -929,9 +929,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 83b7a8152398a31c11cb4b5c81ef2cde8c41866e
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T01:16:11Z"
 - id: M02.P1.T5
   milestone: M02
   phase: 1
@@ -3848,7 +3848,7 @@
   first_commit_sha: c47b4f82fe85cb331da34dbe440c922976ce8423
   merged_sha: e16e6fe7606863b1fe3aa90ad8631cd971865d7a
   opened_ts: "2026-04-29T17:55:06.450556Z"
-  merged_ts: "2026-04-29T18:10:28.919395Z"
+  merged_ts: "2026-04-29T18:09:28Z"
 - id: M06.P0.T2
   milestone: M06
   phase: 0
@@ -3906,7 +3906,7 @@
   milestone: M06
   phase: 1
   title: Add CanonicalBytes newtype with phantom witness in chio-core-types canonical module
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-core-types/src/canonical.rs
@@ -3925,14 +3925,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9c05d3121c0c1365fbb9cb74328a6b37e66e18a6
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:02:56Z"
 - id: M06.P1.T2
   milestone: M06
   phase: 1
   title: Property test CanonicalBytes against M01 vector corpus asserting byte-identity, with corpus-size sanity assertion (assert_eq!(vectors.len(), N) where N matches trajectory-1 M01 vector count recorded in audit doc) to prevent vacuous green on empty corpus
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-core-types/tests/canonical_bytes_vectors.rs
@@ -3949,14 +3949,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e32688b24446ee8164f6ce3515063b7e943831b9
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:11:50Z"
 - id: M06.P1.T3
   milestone: M06
   phase: 1
   title: Migrate chio-core signing path to take Arc<CanonicalBytes>
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-core-types/src/crypto.rs
@@ -3973,14 +3973,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: b9ab2ba79d3389d6d6bead5cbfcd58fa27486a37
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:35:51Z"
 - id: M06.P1.T4
   milestone: M06
   phase: 1
   title: Migrate chio-kernel receipt-sign step to Arc<CanonicalBytes> preserving M04 goldens
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel/src/kernel/signing_task.rs
@@ -3999,14 +3999,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: ecfbbe6e5c3eaa9f5cd318893a4eb564c3eea0ca
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:52:41Z"
 - id: M06.P1.T5
   milestone: M06
   phase: 1
   title: Migrate chio-store-sqlite write API to take Arc<CanonicalBytes> and deprecate bytes-copy variant
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-store-sqlite/src/receipt_store.rs
@@ -4023,14 +4023,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 63a31b5201989a280a89fa7fa845f91b139677ab
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:25:44Z"
 - id: M06.P1.T6
   milestone: M06
   phase: 1
   title: Migrate chio-otel-receipt-exporter sink to Arc<CanonicalBytes> avoiding reserialisation
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-otel-receipt-exporter/src/sink.rs
@@ -4048,14 +4048,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: db4bb9a2c5afc0772805945d8bdf307c1419a747
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:45:49Z"
 - id: M06.P2.T1
   milestone: M06
   phase: 2
   title: Audit OTEL exporter ingress and sink channel bounds and document in audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M06-perf-hardening.md
@@ -4071,14 +4071,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 705f7a1e212eb0b36ace2082c68f30768520312a
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:56:16Z"
 - id: M06.P2.T2
   milestone: M06
   phase: 2
   title: Replace OTEL exporter channels with bounded mpsc plus drop-oldest ring on overload
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-otel-receipt-exporter/src/ingress.rs
@@ -4096,14 +4096,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 4a93b03189664def077f2a20a950bbef78fe2be7
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T00:50:27Z"
 - id: M06.P2.T3
   milestone: M06
   phase: 2
   title: Wire chio_signing_queue_block_total and OTEL drop counters to /metrics endpoint
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-kernel/src/kernel/signing_task.rs
@@ -4122,9 +4122,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: dce8ce5613628f53c77f42310bf7ef49f190067b
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T02:27:17Z"
 - id: M06.P2.T4
   milestone: M06
   phase: 2

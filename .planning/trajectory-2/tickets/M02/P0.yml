@@ -37,13 +37,13 @@
   first_commit_sha: 998a2babded9a8535eb1735b808ada24839452aa
   merged_sha: dc5688f413d7af1a9bd8d3572eca9bf1b9264490
   opened_ts: "2026-04-29T18:14:23.386912Z"
-  merged_ts: "2026-04-29T18:23:38.516881Z"
+  merged_ts: "2026-04-29T18:23:04Z"
 
 - id: M02.P0.T2
   milestone: M02
   phase: 0
   title: Cargo.lock bump and cargo-mutants 25.x re-pin verification
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .github/workflows/mutants.yml
@@ -60,6 +60,6 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e5ff9b969be9c1a8842026ab34664d4e59bb9892
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:04:58Z"

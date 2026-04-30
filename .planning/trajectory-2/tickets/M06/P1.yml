@@ -16,7 +16,7 @@
   milestone: M06
   phase: 1
   title: Add CanonicalBytes newtype with phantom witness in chio-core-types canonical module
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-core-types/src/canonical.rs
@@ -35,15 +35,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9c05d3121c0c1365fbb9cb74328a6b37e66e18a6
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:02:56Z"
 
 - id: M06.P1.T2
   milestone: M06
   phase: 1
   title: Property test CanonicalBytes against M01 vector corpus asserting byte-identity, with corpus-size sanity assertion (assert_eq!(vectors.len(), N) where N matches trajectory-1 M01 vector count recorded in audit doc) to prevent vacuous green on empty corpus
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-core-types/tests/canonical_bytes_vectors.rs
@@ -60,15 +60,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e32688b24446ee8164f6ce3515063b7e943831b9
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:11:50Z"
 
 - id: M06.P1.T3
   milestone: M06
   phase: 1
   title: Migrate chio-core signing path to take Arc<CanonicalBytes>
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-core-types/src/crypto.rs
@@ -85,15 +85,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: b9ab2ba79d3389d6d6bead5cbfcd58fa27486a37
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:35:51Z"
 
 - id: M06.P1.T4
   milestone: M06
   phase: 1
   title: Migrate chio-kernel receipt-sign step to Arc<CanonicalBytes> preserving M04 goldens
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel/src/kernel/signing_task.rs
@@ -112,15 +112,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: ecfbbe6e5c3eaa9f5cd318893a4eb564c3eea0ca
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T21:52:41Z"
 
 - id: M06.P1.T5
   milestone: M06
   phase: 1
   title: Migrate chio-store-sqlite write API to take Arc<CanonicalBytes> and deprecate bytes-copy variant
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-store-sqlite/src/receipt_store.rs
@@ -137,15 +137,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 63a31b5201989a280a89fa7fa845f91b139677ab
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:25:44Z"
 
 - id: M06.P1.T6
   milestone: M06
   phase: 1
   title: Migrate chio-otel-receipt-exporter sink to Arc<CanonicalBytes> avoiding reserialisation
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-otel-receipt-exporter/src/sink.rs
@@ -163,6 +163,6 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: db4bb9a2c5afc0772805945d8bdf307c1419a747
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-29T22:45:49Z"
