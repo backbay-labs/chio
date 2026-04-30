@@ -72,6 +72,7 @@ members = [
     "crates/chio-reputation",
     #
     # Observability & ops
+    "crates/chio-lineage",
     "crates/chio-metering",
     "crates/chio-otel-receipt-exporter",
     "crates/chio-siem",

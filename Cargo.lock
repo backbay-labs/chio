@@ -3119,6 +3119,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-lineage"
+version = "0.1.0"
+dependencies = [
+ "petgraph 0.6.5",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-link"
 version = "0.1.0"
 dependencies = [
