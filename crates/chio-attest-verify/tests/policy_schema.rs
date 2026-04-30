@@ -1,0 +1,163 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+//! Structural-validation coverage for the per-tenant policy schema
+//! (M05.P4.T1). Tests live outside `src/` because the crate root forbids
+//! `unwrap_used` and `expect_used` at the lint level.
+
+use std::time::{Duration, SystemTime};
+
+use chio_attest_verify::policy::TenantPolicy;
+use chio_attest_verify::{AttestError, TENANT_POLICY_SCHEMA_VERSION};
+
+fn sample_toml() -> &'static str {
+    r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["https://github\\.com/acme/.*"]
+oidc_issuers = ["https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#
+}
+
+#[test]
+fn parses_minimal_policy() {
+    let policy = TenantPolicy::from_toml_slice(sample_toml().as_bytes())
+        .expect("sample policy must parse");
+    assert_eq!(policy.tenant_id, "acme");
+    assert_eq!(policy.version, TENANT_POLICY_SCHEMA_VERSION);
+    assert!(policy.pq_identity_regexps.is_empty());
+}
+
+#[test]
+fn rejects_unknown_field() {
+    let toml = r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["x"]
+oidc_issuers = ["y"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+typo_field = true
+"#;
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    assert!(matches!(err, AttestError::Malformed(_)));
+}
+
+#[test]
+fn rejects_empty_identity_regexps() {
+    let toml = r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = []
+oidc_issuers = ["y"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#;
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => {
+            assert!(msg.contains("identity_regexps"), "got: {msg}");
+        }
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_unsupported_version() {
+    let toml = r#"
+tenant_id = "acme"
+version = 999
+identity_regexps = ["x"]
+oidc_issuers = ["y"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#;
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("version"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_uncompilable_regex() {
+    let toml = r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["[unterminated"]
+oidc_issuers = ["y"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#;
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("does not compile"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn canonical_bytes_excludes_signature() {
+    let policy = TenantPolicy::from_toml_slice(sample_toml().as_bytes()).unwrap();
+    let bytes = policy.canonical_signing_bytes().unwrap();
+    let s = std::str::from_utf8(&bytes).unwrap();
+    assert!(
+        !s.contains("signature"),
+        "canonical form must omit signature: {s}"
+    );
+    assert!(s.contains("tenant_id"));
+}
+
+#[test]
+fn signed_at_round_trips() {
+    let policy = TenantPolicy::from_toml_slice(sample_toml().as_bytes()).unwrap();
+    // Anchor "now" well past the signed_at timestamp so the future check passes.
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000_000);
+    let parsed = policy.signed_at_system_time(now).unwrap();
+    // 2026-04-01T00:00:00Z = 1_775_001_600 unix seconds.
+    let expected = SystemTime::UNIX_EPOCH + Duration::from_secs(1_775_001_600);
+    assert_eq!(parsed, expected);
+}
+
+#[test]
+fn signed_at_in_future_rejected() {
+    let policy = TenantPolicy::from_toml_slice(sample_toml().as_bytes()).unwrap();
+    // "now" anchored before 2026-04-01.
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+    let err = policy.signed_at_system_time(now).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("future"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn signed_at_malformed_rejected() {
+    let toml = r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["x"]
+oidc_issuers = ["y"]
+signed_at = "yesterday"
+signature = "AAAA"
+"#;
+    let policy = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap();
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000_000);
+    let err = policy.signed_at_system_time(now).unwrap_err();
+    assert!(matches!(err, AttestError::Malformed(_)));
+}
+
+#[test]
+fn pq_identity_regexps_round_trip_when_present() {
+    let toml = r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["x"]
+oidc_issuers = ["y"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+pq_identity_regexps = ["pq:.*"]
+"#;
+    let policy = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap();
+    assert_eq!(policy.pq_identity_regexps, vec!["pq:.*".to_owned()]);
+}

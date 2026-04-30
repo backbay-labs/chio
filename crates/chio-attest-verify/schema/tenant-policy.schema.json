@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/backbay/chio/spec/security/tenant-policy.schema.json",
+  "title": "Chio TenantPolicy",
+  "description": "Per-tenant ExpectedIdentity policy file (M05.P4.T1). TOML on disk, canonical JSON for signing. Single source of truth: `crates/chio-attest-verify/src/policy.rs`. Trajectory-2 M03 fills in `pq_identity_regexps` once ML-DSA cert identities stabilise.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "version",
+    "identity_regexps",
+    "oidc_issuers",
+    "signed_at",
+    "signature"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable opaque tenant identifier. Two policies with the same tenant_id collide; the loader rejects the second one fail-closed."
+    },
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema-version integer. Currently must equal 1; future format breaks bump this and add an explicit migration path."
+    },
+    "identity_regexps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Non-empty list of Fulcio SAN regex strings. The verifier anchors each regex at both ends; callers MUST NOT include their own `^` / `$`."
+    },
+    "oidc_issuers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1, "format": "uri" },
+      "description": "Non-empty list of OIDC issuer URLs. Verification fails closed unless the cert's OIDC issuer matches one of them exactly."
+    },
+    "signed_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "RFC 3339 UTC timestamp recording when the policy was signed. The loader rejects policies older than its staleness horizon (default 90 days)."
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Base64-encoded Sigstore signature over the canonical JSON serialisation of every other field. Verified through the same SigstoreVerifier surface every other attestation flows through."
+    },
+    "pq_identity_regexps": {
+      "type": "array",
+      "default": [],
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Reserved for trajectory-2 M03 ML-DSA cert identities. Empty until M03 lands. Adding entries before M03 lands is a no-op until the loader recognises ML-DSA cert families."
+    }
+  }
+}

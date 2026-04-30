@@ -32,11 +32,13 @@
 use std::path::Path;
 use std::time::SystemTime;
 
+pub mod policy;
 mod quote;
 mod sigstore;
 #[cfg(feature = "tee-quotes")]
 pub mod tdx;
 
+pub use crate::policy::{TenantPolicy, BOOTSTRAP_TENANT_ID, TENANT_POLICY_SCHEMA_VERSION};
 pub use crate::quote::{
     expect_report_data, QuoteTcbStatus, QuoteVerificationContext, TeeKind, VerifiedQuote,
 };
