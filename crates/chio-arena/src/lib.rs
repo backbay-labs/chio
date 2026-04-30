@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod adversary;
 pub mod clock;
 pub mod link;
 pub mod promote;
@@ -13,6 +14,11 @@ pub mod scheduler;
 /// Scenario schema name used by the arena DSL.
 pub const ARENA_SCENARIO_SCHEMA: &str = "chio.arena.scenario/v1";
 
+pub use adversary::{
+    evaluate_against_guards, population_from_block, Adversary, AdversaryAction, AdversaryClass,
+    AdversaryError, AdversaryPopulation, CapabilityOverrequestAdversary, IssuedScope,
+    PromptInjectionAdversary, ReplayAttemptAdversary, ScopeEscapeAdversary, ToyGuardEvaluation,
+};
 pub use clock::{ClockError, VirtualClock, DEFAULT_TICK_NANOS};
 pub use link::{
     KernelEndpoint, KernelLink, KernelMultiplexer, LinkEnvelope, LinkError, MultiplexError,

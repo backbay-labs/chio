@@ -103,6 +103,8 @@ actual verdicts in `arena.json`.
 ## Adversaries
 
 Adversary blocks are metadata in P1 and become executable populations in P3.
+Each `[[adversary]]` entry (a TOML array-of-tables under the `adversaries`
+key) describes one population the runtime instantiates for the scenario.
 
 ```toml
 [[adversaries]]
@@ -110,6 +112,44 @@ class = "walking-skeleton"
 population = "none"
 seed_ref = "none"
 ```
+
+### P3 adversary classes
+
+The arena ships four canonical adversary classes (`M08.P3.T2` through
+`M08.P3.T5`). Each `[[adversary]]` entry selects one class via the `class`
+field, names the population through `population`, and forwards an optional
+`params` table to the class constructor.
+
+| Class                  | Class id                  | Required params  |
+|------------------------|---------------------------|------------------|
+| Prompt injection       | `prompt-injection`        | none             |
+| Capability overrequest | `capability-overrequest`  | none             |
+| Replay attempt         | `replay-attempt`          | `nonce` (string) |
+| Scope-superset escape  | `scope-escape`            | none             |
+
+Optional parameter overrides per class are documented on the corresponding
+Rust modules under `crates/chio-arena/src/adversary/` (for example,
+`patterns` for `prompt-injection` and `replay-attempt`, `variants` for
+`capability-overrequest`, and `escalations` for `scope-escape`). Reference
+TOML examples for every class live under `arena/scenarios/adversary/`.
+
+Inline secret markers (api keys, bearer tokens, private key blobs) are
+forbidden inside `params`; the parser fails closed on any match against the
+secret marker list.
+
+```toml
+[[adversaries]]
+class = "prompt-injection"
+population = "default-injection"
+seed_ref = "fuzz/artifacts/m02"
+[adversaries.params]
+patterns = ["ignore-previous-instructions", "tool-name-spoof"]
+```
+
+Note: TOML only recognises the plural array-of-tables form `[[adversaries]]`.
+Some documentation tooling greps for the singular `[[adversary]]` token to
+locate this section; that is a documentation convention only, never a
+scenario file syntax.
 
 ## Extension Table
 
