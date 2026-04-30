@@ -49,7 +49,7 @@
   milestone: M02
   phase: 4
   title: Scenario corpus genesis (capability subset, revocation, replay, redaction)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-conformance/verdict_matrix/scenarios/capability_subset/**
@@ -71,15 +71,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 679e1cd2618ec8e3f92f42e296c9ad19de53e8dd
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T13:51:03Z"
 
 - id: M02.P4.T3
   milestone: M02
   phase: 4
   title: Rust kernel driver under verdict_matrix/drivers/rust
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-conformance/verdict_matrix/drivers/rust/**
@@ -96,15 +96,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 679e1cd2618ec8e3f92f42e296c9ad19de53e8dd
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T13:51:03Z"
 
 - id: M02.P4.T4
   milestone: M02
   phase: 4
   title: Diff oracle for (verdict, reason_code, scope_set) tuples and hash-pinned manifest
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-conformance/verdict_matrix/src/diff_oracle.rs
@@ -123,15 +123,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 679e1cd2618ec8e3f92f42e296c9ad19de53e8dd
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T13:51:03Z"
 
 - id: M02.P4.T5
   milestone: M02
   phase: 4
   title: CI integration for verdict-matrix Rust-only path with fail-on-divergence gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .github/workflows/verdict-matrix.yml
@@ -148,6 +148,6 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 679e1cd2618ec8e3f92f42e296c9ad19de53e8dd
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T13:51:03Z"

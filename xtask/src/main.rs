@@ -4,6 +4,7 @@
 //!
 //! ```text
 //! cargo xtask trajectory regen-manifest
+//! cargo xtask trajectory regen-manifest --trajectory trajectory-2
 //! cargo xtask trajectory regen-manifest --check
 //! cargo xtask validate-scenarios
 //! cargo xtask freeze-vectors
@@ -14,6 +15,7 @@
 //! concatenates the per-phase ticket arrays, sorts by id, and writes the
 //! result to `.planning/trajectory/tickets/manifest.yml` with the canonical
 //! header. With `--check` it exits non-zero on drift instead of writing.
+//! Pass `--trajectory trajectory-2` to target `.planning/trajectory-2`.
 //!
 //! `validate-scenarios` walks `tests/conformance/scenarios/**/*.json`, looks
 //! up each scenario's declared `$schema` URI (resolved primarily through an
@@ -88,7 +90,7 @@ use serde::de::Error as _;
 use serde_yml::Value;
 use sha2::{Digest, Sha256};
 
-const MANIFEST_HEADER: &str = "\
+const TRAJECTORY_1_MANIFEST_HEADER: &str = "\
 # GENERATED from per-phase files under .planning/trajectory/tickets/M{nn}/P{n}.yml
 # Do not hand-edit. Regenerate with `cargo xtask trajectory regen-manifest`.
 # CI validates manifest.yml against schema.json on every PR.
@@ -97,6 +99,53 @@ const MANIFEST_HEADER: &str = "\
 # This manifest is a flat, id-sorted concatenation. Empty manifest is the
 # Wave-0 seed state until the Wave 1a phase tickets are authored.
 ";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TrajectoryManifest {
+    Trajectory1,
+    Trajectory2,
+}
+
+impl TrajectoryManifest {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "trajectory" | "trajectory-1" | "1" => Some(Self::Trajectory1),
+            "trajectory-2" | "2" => Some(Self::Trajectory2),
+            _ => None,
+        }
+    }
+
+    fn tickets_dir(self, workspace_root: &Path) -> PathBuf {
+        match self {
+            Self::Trajectory1 => workspace_root.join(".planning/trajectory/tickets"),
+            Self::Trajectory2 => workspace_root.join(".planning/trajectory-2/tickets"),
+        }
+    }
+
+    fn manifest_header(self, phase_file_count: usize, ticket_count: usize) -> String {
+        match self {
+            Self::Trajectory1 => TRAJECTORY_1_MANIFEST_HEADER.to_string(),
+            Self::Trajectory2 => format!(
+                "\
+# GENERATED from per-phase files under .planning/trajectory-2/tickets/M{{nn}}/P{{n}}.yml
+# Do not hand-edit. Regenerate with:
+#   cargo xtask trajectory regen-manifest --trajectory trajectory-2
+# CI validates manifest.yml against schema.json on every PR.
+#
+# Total: {ticket_count} tickets across 10 milestones, {phase_file_count} per-phase files.
+# The per-phase files under tickets/M{{nn}}/P{{n}}.yml are the source of truth.
+"
+            ),
+        }
+    }
+
+    fn rerun_hint(self) -> &'static str {
+        match self {
+            Self::Trajectory1 => "cargo xtask trajectory regen-manifest",
+            Self::Trajectory2 => "cargo xtask trajectory regen-manifest --trajectory trajectory-2",
+        }
+    }
+}
 
 #[derive(Debug)]
 enum XtaskError {
@@ -155,7 +204,7 @@ fn main() -> ExitCode {
 
 fn print_help() {
     println!("xtask subcommands:");
-    println!("  trajectory regen-manifest [--check]");
+    println!("  trajectory regen-manifest [--trajectory trajectory-2] [--check]");
     println!("  validate-scenarios");
     println!("  freeze-vectors [--check]");
     println!("  errors regen [--check]");
@@ -184,9 +233,29 @@ fn run_trajectory(args: Vec<String>) -> Result<(), XtaskError> {
 
 fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_only = false;
-    for arg in args {
+    let mut target = TrajectoryManifest::Trajectory1;
+    let mut iter = args.into_iter();
+    while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--check" => check_only = true,
+            "--trajectory" => {
+                let value = iter.next().ok_or_else(|| {
+                    XtaskError::Usage("regen-manifest: --trajectory requires a value".into())
+                })?;
+                target = TrajectoryManifest::parse(&value).ok_or_else(|| {
+                    XtaskError::Usage(format!(
+                        "regen-manifest: unknown trajectory target: {value}"
+                    ))
+                })?;
+            }
+            value if value.starts_with("--trajectory=") => {
+                let value = value.trim_start_matches("--trajectory=");
+                target = TrajectoryManifest::parse(value).ok_or_else(|| {
+                    XtaskError::Usage(format!(
+                        "regen-manifest: unknown trajectory target: {value}"
+                    ))
+                })?;
+            }
             other => {
                 return Err(XtaskError::Usage(format!(
                     "regen-manifest: unknown flag: {other}"
@@ -196,7 +265,10 @@ fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = workspace_root()?;
-    let tickets_dir = workspace_root.join(".planning/trajectory/tickets");
+    if target == TrajectoryManifest::Trajectory2 {
+        return regen_trajectory_2_manifest(&workspace_root, check_only);
+    }
+    let tickets_dir = target.tickets_dir(&workspace_root);
     let manifest_path = tickets_dir.join("manifest.yml");
 
     let mut tickets: Vec<Value> = Vec::new();
@@ -232,14 +304,18 @@ fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
         serde_yml::to_string(&Value::Sequence(tickets))
             .map_err(|err| XtaskError::Yaml(display_path(&manifest_path), err))?
     };
-    let new_content = format!("{MANIFEST_HEADER}\n{body}");
+    let new_content = format!(
+        "{}\n{body}",
+        target.manifest_header(phase_files.len(), count_top_level_sequence_entries_from_body(&body))
+    );
 
     if check_only {
         let existing = fs::read_to_string(&manifest_path)
             .map_err(|err| XtaskError::Io(display_path(&manifest_path), err))?;
         if existing != new_content {
             return Err(XtaskError::Drift(format!(
-                "manifest.yml is stale; rerun `cargo xtask trajectory regen-manifest` ({} phase files inspected)",
+                "manifest.yml is stale; rerun `{}` ({} phase files inspected)",
+                target.rerun_hint(),
                 phase_files.len()
             )));
         }
@@ -259,6 +335,36 @@ fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
         );
     }
     Ok(())
+}
+
+fn count_top_level_sequence_entries_from_body(body: &str) -> usize {
+    let Ok(value) = serde_yml::from_str::<Value>(body) else {
+        return 0;
+    };
+    match value {
+        Value::Sequence(seq) => seq.len(),
+        _ => 0,
+    }
+}
+
+fn regen_trajectory_2_manifest(workspace_root: &Path, check_only: bool) -> Result<(), XtaskError> {
+    let script = workspace_root.join(".planning/trajectory-2/scripts/regen-manifest.sh");
+    let mut command = Command::new("bash");
+    command.arg(&script);
+    if check_only {
+        command.arg("--check");
+    }
+    let status = command
+        .status()
+        .map_err(|err| XtaskError::Process(format!("failed to run {}: {err}", display_path(&script))))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(XtaskError::ToolFailed(format!(
+            "{} exited with status {status}",
+            display_path(&script)
+        )))
+    }
 }
 
 fn collect_phase_files(tickets_dir: &Path) -> Result<Vec<PathBuf>, XtaskError> {

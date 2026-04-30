@@ -8,10 +8,18 @@
 #
 # Usage:
 #   bash .planning/trajectory-2/scripts/regen-manifest.sh
+#   bash .planning/trajectory-2/scripts/regen-manifest.sh --check
 #
 # Requires: yq v4.x (install via .planning/trajectory-2/scripts/install-orchestrator-tools.sh).
 
 set -euo pipefail
+
+CHECK_ONLY=0
+case "${1:-}" in
+  --check) CHECK_ONLY=1 ;;
+  "") ;;
+  *) echo "unknown flag: $1" >&2; exit 2 ;;
+esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TRAJ_DIR="${REPO_ROOT}/.planning/trajectory-2"
@@ -52,6 +60,15 @@ cat > "${TMP}" <<EOF
 EOF
 
 yq -N ea '[.[]] | sort_by(.id)' "${PHASE_FILES[@]}" >> "${TMP}"
+
+if [[ "${CHECK_ONLY}" -eq 1 ]]; then
+  if cmp -s "${TMP}" "${MANIFEST}"; then
+    echo "manifest.yml in sync with ${#PHASE_FILES[@]} phase files"
+    exit 0
+  fi
+  echo "manifest.yml is stale; rerun cargo xtask trajectory regen-manifest --trajectory trajectory-2" >&2
+  exit 1
+fi
 
 mv "${TMP}" "${MANIFEST}"
 trap - EXIT
