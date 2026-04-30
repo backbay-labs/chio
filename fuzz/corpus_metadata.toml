@@ -845,3 +845,64 @@ path      = "fuzz/corpus/wit_host_call_boundary/truncated.bin"
 sha256    = "8967a50275d5f34d0fc28579599e9301d045874556f3631d64a1678186d3da81"
 source    = "hand_curated_coverage"
 
+# wasm_guard_escape seeds (M05.P3.T1). Eight hand-curated seeds, one per
+# WASM-guard escape class catalogued at
+# .planning/trajectory-2/05-adversarial-escape-threat-model.md (P3). These
+# classes (undeclared_imports, oversize_memory, fuel_exhaustion,
+# table_grow_abuse, deep_recursion, host_reentry, malformed_component,
+# signed_but_malicious) are M05-internal labels; the M05.P1 adversarial
+# `class` taxonomy under VALID_CLASSES in scripts/check-corpus-metadata.sh
+# is a separate axis that applies to clock-rewound / future-dated style
+# vectors only. Escape seeds therefore stay tagged as
+# `hand_curated_coverage` with no `class`/`threat_id` field; the
+# threat-model coverage report (M05.P5.T6) ties them to threat IDs via
+# the M05 audit doc rather than this index.
+
+[[seed]]
+target    = "wasm_guard_escape"
+path      = "fuzz/corpus/wasm_guard_escape/deep_recursion.wasm"
+sha256    = "592cd586cdfe14e8babea85943fd7b4a94b9c52c38c77b066576dbbc25cf9d3a"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_escape"
+path      = "fuzz/corpus/wasm_guard_escape/fuel_exhaustion.wasm"
+sha256    = "4aa76b91f36a4c729e8605e376bac6b9a2a675355d3496c8c60cdfb09db2f982"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_escape"
+path      = "fuzz/corpus/wasm_guard_escape/host_reentry.wasm"
+sha256    = "623bb7e1643c1ce396a235cf874f3f518d5a077d359a321df904af8683faee3c"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_escape"
+path      = "fuzz/corpus/wasm_guard_escape/malformed_component.wasm"
+sha256    = "28d550a3a39e0c8d95f2fc2c676a0882ba8c8b20b053b638a9eb263db2f9950e"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_escape"
+path      = "fuzz/corpus/wasm_guard_escape/oversize_memory.wasm"
+sha256    = "c60b3aa502dca4a8d7b7c89cab03e21b9cee68f242c7f21c5cbca945a6b1ed89"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_escape"
+path      = "fuzz/corpus/wasm_guard_escape/signed_but_malicious.wasm"
+sha256    = "d83c00ceb39d975f51f62eef13b17bbb759c1a7f19c8c29100fc62a493f5e83d"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_escape"
+path      = "fuzz/corpus/wasm_guard_escape/table_grow_abuse.wasm"
+sha256    = "6d9efe6c6d01ce39a3eecd39673b9ece019109da9c00198c8f680d67caf328f2"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_escape"
+path      = "fuzz/corpus/wasm_guard_escape/undeclared_imports.wasm"
+sha256    = "77a8a8a00e263052e3f473060a7ab9e5f6658b73fd0e535b57282cb9dba155f0"
+source    = "hand_curated_coverage"
+

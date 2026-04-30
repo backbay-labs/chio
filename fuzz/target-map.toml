@@ -157,6 +157,16 @@ triggers = [
 seeds    = "fuzz/corpus/wit_host_call_boundary"
 notes    = "GuardRequest/GuestDenyResponse serde deserialization; trust-boundary."
 
+[targets.wasm_guard_escape]
+crate    = "chio-wasm-guards"
+path     = "fuzz/fuzz_targets/wasm_guard_escape.rs"
+triggers = [
+    "crates/chio-wasm-guards/**",
+    "spec/schemas/wasm-guard/**",
+]
+seeds    = "fuzz/corpus/wasm_guard_escape"
+notes    = "Runtime-execution surface (M05.P3); 8 escape classes via evaluate."
+
 [targets.chio_yaml_parse]
 crate    = "chio-config"
 path     = "fuzz/fuzz_targets/chio_yaml_parse.rs"

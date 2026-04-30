@@ -3813,6 +3813,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
  "wasmparser 0.221.3",
