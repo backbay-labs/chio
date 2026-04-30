@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 use chio_kernel::{RevocationRecord, RevocationStore, RevocationStoreError};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 pub struct SqliteRevocationStore {
     connection: Mutex<Connection>,
@@ -129,15 +129,17 @@ impl RevocationStore for SqliteRevocationStore {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|duration| duration.as_secs() as i64)
             .unwrap_or(0);
-        let rows = self.connection()?.execute(
+        let inserted = self
+            .connection()?
+            .query_row(
             r#"
-            INSERT INTO revoked_capabilities (capability_id, revoked_at)
-            VALUES (?1, ?2)
-            ON CONFLICT(capability_id) DO NOTHING
+            INSERT INTO revoked_capabilities (capability_id, revoked_at) VALUES (?1, ?2) ON CONFLICT(capability_id) DO NOTHING RETURNING 1
             "#,
-            params![capability_id, revoked_at],
-        )?;
-        Ok(rows > 0)
+                params![capability_id, revoked_at],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?;
+        Ok(inserted.is_some())
     }
 }
 

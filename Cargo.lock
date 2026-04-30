@@ -3251,6 +3251,7 @@ dependencies = [
  "chacha20poly1305",
  "chio-core-types",
  "chio-kernel",
+ "criterion",
  "r2d2",
  "r2d2_sqlite",
  "rusqlite",

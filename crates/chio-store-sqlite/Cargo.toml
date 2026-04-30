@@ -23,6 +23,13 @@ rusqlite = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 zeroize = { version = "1.8", features = ["derive"] }
 
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "store_receipt_write_throughput"
+harness = false
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"

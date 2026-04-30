@@ -131,14 +131,10 @@ impl ApprovalStore for SqliteApprovalStore {
             .pool
             .get()
             .map_err(|e| ApprovalStoreError::Backend(format!("pool get: {e}")))?;
-        let inserted = conn
-            .execute(
+        let returned_payload = conn
+            .query_row(
                 r#"
-            INSERT INTO chio_hitl_pending (
-                approval_id, policy_id, subject_id, tool_server, tool_name,
-                parameter_hash, expires_at, created_at, payload
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-            ON CONFLICT(approval_id) DO NOTHING
+            INSERT INTO chio_hitl_pending (approval_id, policy_id, subject_id, tool_server, tool_name, parameter_hash, expires_at, created_at, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) ON CONFLICT(approval_id) DO UPDATE SET payload = excluded.payload WHERE chio_hitl_pending.payload = excluded.payload RETURNING payload
             "#,
                 params![
                     request.approval_id,
@@ -151,33 +147,17 @@ impl ApprovalStore for SqliteApprovalStore {
                     request.created_at as i64,
                     payload,
                 ],
+                |row| row.get::<_, String>(0),
             )
+            .optional()
             .map_err(|e| ApprovalStoreError::Backend(format!("insert pending: {e}")))?;
-        if inserted == 0 {
-            let existing: Option<String> = conn
-                .query_row(
-                    "SELECT payload FROM chio_hitl_pending WHERE approval_id = ?1",
-                    params![request.approval_id],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(|e| {
-                    ApprovalStoreError::Backend(format!("select existing pending: {e}"))
-                })?;
-            match existing {
-                Some(existing) if existing == payload => Ok(()),
-                Some(_) => Err(ApprovalStoreError::Backend(format!(
-                    "approval_id {} already exists with different payload",
-                    request.approval_id
-                ))),
-                None => Err(ApprovalStoreError::Backend(format!(
-                    "approval_id {} conflicted but existing row could not be loaded",
-                    request.approval_id
-                ))),
-            }
-        } else {
-            Ok(())
+        if returned_payload.is_none() {
+            return Err(ApprovalStoreError::Backend(format!(
+                "approval_id {} already exists with different payload",
+                request.approval_id
+            )));
         }
+        Ok(())
     }
 
     fn get_pending(&self, id: &str) -> Result<Option<ApprovalRequest>, ApprovalStoreError> {

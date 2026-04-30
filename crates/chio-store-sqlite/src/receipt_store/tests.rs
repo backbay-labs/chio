@@ -1,6 +1,7 @@
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 use std::sync::{Arc, Barrier};
 use std::thread;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
@@ -1097,6 +1098,33 @@ fn append_100_receipts_seqs_span_1_to_100() {
     assert_eq!(seqs[0], 1);
     assert_eq!(seqs[99], 100);
     let _ = fs::remove_file(path);
+}
+
+#[test]
+fn receipt_writer_pool_accepts_writes_when_reader_pool_is_saturated(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-receipts-pool-split");
+    let store = Arc::new(SqliteReceiptStore::open_with_pool_sizes(&path, 1, 1)?);
+    let reader_connection = store.connection()?;
+    let (result_sender, result_receiver) = std::sync::mpsc::sync_channel(1);
+    let writer_store = Arc::clone(&store);
+
+    thread::spawn(move || {
+        let receipt = sample_receipt_with_id("rcpt-pool-split-writer");
+        let result = writer_store.append_chio_receipt_returning_seq(&receipt);
+        let _ = result_sender.send(result);
+    });
+
+    let seq = result_receiver
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|_| std::io::Error::other("writer pool waited for saturated reader pool"))??;
+    assert_eq!(seq, 1);
+
+    drop(reader_connection);
+    assert_eq!(store.tool_receipt_count()?, 1);
+
+    let _ = fs::remove_file(path);
+    Ok(())
 }
 
 #[test]

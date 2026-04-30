@@ -417,49 +417,32 @@ fn append_chio_receipt_tx(
             }
         }
     }
-    let inserted = tx.execute(
-        r#"
-        INSERT INTO chio_tool_receipts (
-            receipt_id,
-            timestamp,
-            capability_id,
-            subject_key,
-            issuer_key,
-            grant_index,
-            tool_server,
-            tool_name,
-            decision_kind,
-            policy_hash,
-            content_hash,
-            tenant_id,
-            raw_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(receipt_id) DO NOTHING
+    let source_seq = tx
+        .query_row(
+            r#"
+        INSERT INTO chio_tool_receipts (receipt_id, timestamp, capability_id, subject_key, issuer_key, grant_index, tool_server, tool_name, decision_kind, policy_hash, content_hash, tenant_id, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(receipt_id) DO NOTHING RETURNING seq
         "#,
-        params![
-            receipt.id.as_str(),
-            sqlite_i64(receipt.timestamp, "receipt timestamp")?,
-            receipt.capability_id.as_str(),
-            subject_key,
-            issuer_key,
-            attribution.grant_index.map(i64::from),
-            receipt.tool_server.as_str(),
-            receipt.tool_name.as_str(),
-            decision_kind(&receipt.decision),
-            receipt.policy_hash.as_str(),
-            receipt.content_hash.as_str(),
-            receipt.tenant_id.as_deref(),
-            raw_json,
-        ],
-    )?;
-    if inserted == 0 {
+            params![
+                receipt.id.as_str(),
+                sqlite_i64(receipt.timestamp, "receipt timestamp")?,
+                receipt.capability_id.as_str(),
+                subject_key,
+                issuer_key,
+                attribution.grant_index.map(i64::from),
+                receipt.tool_server.as_str(),
+                receipt.tool_name.as_str(),
+                decision_kind(&receipt.decision),
+                receipt.policy_hash.as_str(),
+                receipt.content_hash.as_str(),
+                receipt.tenant_id.as_deref(),
+                raw_json,
+            ],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+    let Some(source_seq) = source_seq else {
         return Ok(0);
-    }
-    let source_seq = tx.query_row(
-        "SELECT seq FROM chio_tool_receipts WHERE receipt_id = ?1",
-        params![receipt.id.as_str()],
-        |row| row.get::<_, i64>(0),
-    )?;
+    };
     let source_seq = sqlite_u64(source_seq, "tool receipt source_seq")?;
     let entry_seq = tx.query_row(
         r#"
