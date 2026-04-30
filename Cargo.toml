@@ -120,6 +120,7 @@ members = [
     "tests/replay",
     #
     # Tooling
+    "bench/ttfrh",
     "xtask",
 ]
 
