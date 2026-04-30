@@ -312,3 +312,227 @@ Missed mutants:
 | `crates/chio-attest-verify/src/sigstore.rs:594:28` | replace `==` with `!=` in `<impl VerificationPolicy for IssuerOnlyPolicy>::verify` |
 | `crates/chio-attest-verify/src/sigstore.rs:585:9` | replace `<impl VerificationPolicy for IssuerOnlyPolicy>::verify` with `Ok(())` |
 | `crates/chio-attest-verify/src/sigstore.rs:608:27` | replace `==` with `!=` in `<impl VerificationPolicy for IssuerOnlyPolicy>::verify` |
+
+## chio-kernel-core Mutation Baseline
+
+Snapshot date: 2026-04-29.
+
+Command:
+
+```bash
+cargo mutants --config crates/chio-kernel-core/mutants.toml --package chio-kernel-core --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-kernel-core-p1-t4
+```
+
+The full candidate list contains 304 mutants. This baseline records the
+completed full sweep. `cargo-mutants` exited 3 because missed mutants and one
+timeout survived, which is expected for a baseline run.
+
+| Metric | Count |
+|--------|-------|
+| Listed mutants | 304 |
+| Evaluated mutants | 304 |
+| Caught | 87 |
+| Missed | 175 |
+| Unviable | 41 |
+| Timeout | 1 |
+| Kill rate, excluding unviable | 33.1% |
+
+Missed and timeout mutant classes:
+
+| Class | Count |
+|-------|-------|
+| comparison rewrite | 54 |
+| boolean connective rewrite | 35 |
+| boolean return rewrite | 35 |
+| negation deletion | 18 |
+| arithmetic rewrite | 16 |
+| match arm deletion | 7 |
+| other rewrite | 5 |
+| string return rewrite | 4 |
+| structured return rewrite | 2 |
+
+Timeout mutants:
+
+| File | Mutation |
+|------|----------|
+| `crates/chio-kernel-core/src/passport_verify.rs:240:17` | `replace += with *= in payload_bytes_hex::decode_hex` |
+
+Missed mutants:
+
+| File | Mutation |
+|------|----------|
+| `crates/chio-kernel-core/src/evaluate.rs:96:9` | `replace EvaluationVerdict::is_deny -> bool with true` |
+| `crates/chio-kernel-core/src/evaluate.rs:90:9` | `replace EvaluationVerdict::is_allow -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:102:9` | `replace NormalizedToolGrant::is_subset_of -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:154:38` | `replace == with != in NormalizedToolGrant::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:166:9` | `replace NormalizedToolGrant::is_subset_of_bounded_kani -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:166:9` | `replace NormalizedToolGrant::is_subset_of_bounded_kani -> bool with false` |
+| `crates/chio-kernel-core/src/normalized.rs:169:12` | `delete ! in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:166:12` | `delete ! in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:172:12` | `delete ! in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:175:12` | `delete ! in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:186:12` | `delete ! in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:183:12` | `delete ! in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:192:12` | `delete ! in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:198:12` | `delete ! in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:199:34` | `replace == with != in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:200:32` | `replace == with != in NormalizedToolGrant::is_subset_of_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:219:9` | `replace NormalizedResourceGrant::is_subset_of -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:237:9` | `replace NormalizedPromptGrant::is_subset_of -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:220:13` | `replace && with \|\| in NormalizedResourceGrant::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:238:13` | `replace && with \|\| in NormalizedPromptGrant::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:257:9` | `replace NormalizedScope::is_subset_of -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:262:17` | `replace \|\| with && in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:261:17` | `replace \|\| with && in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:260:17` | `replace \|\| with && in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:259:16` | `delete ! in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:260:20` | `delete ! in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:261:20` | `delete ! in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:269:39` | `replace && with \|\| in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:262:20` | `delete ! in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:269:34` | `replace == with != in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:269:62` | `replace == with != in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:287:16` | `replace && with \|\| in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:282:16` | `replace && with \|\| in NormalizedScope::is_subset_of` |
+| `crates/chio-kernel-core/src/normalized.rs:569:5` | `replace monetary_cap_is_subset -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:592:25` | `replace && with \|\| in normalized_operations_subset_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:589:5` | `replace normalized_operations_subset_bounded_kani -> bool with false` |
+| `crates/chio-kernel-core/src/normalized.rs:592:20` | `replace == with != in normalized_operations_subset_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:589:5` | `replace normalized_operations_subset_bounded_kani -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:593:25` | `replace == with != in normalized_operations_subset_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:592:41` | `replace == with != in normalized_operations_subset_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:603:5` | `replace normalized_constraints_subset_bounded_kani -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:603:5` | `replace normalized_constraints_subset_bounded_kani -> bool with false` |
+| `crates/chio-kernel-core/src/normalized.rs:611:5` | `replace monetary_cap_is_subset_bounded_kani -> bool with false` |
+| `crates/chio-kernel-core/src/normalized.rs:611:5` | `replace monetary_cap_is_subset_bounded_kani -> bool with true` |
+| `crates/chio-kernel-core/src/normalized.rs:615:29` | `replace <= with > in monetary_cap_is_subset_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:615:49` | `replace && with \|\| in monetary_cap_is_subset_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:615:71` | `replace == with != in monetary_cap_is_subset_bounded_kani` |
+| `crates/chio-kernel-core/src/normalized.rs:621:5` | `replace pattern_covers -> bool with true` |
+| `crates/chio-kernel-core/src/passport_verify.rs:164:32` | `replace > with >= in verify_parsed_passport` |
+| `crates/chio-kernel-core/src/passport_verify.rs:182:12` | `replace < with <= in verify_parsed_passport` |
+| `crates/chio-kernel-core/src/passport_verify.rs:239:32` | `replace \| with ^ in payload_bytes_hex::decode_hex` |
+| `crates/chio-kernel-core/src/passport_verify.rs:253:13` | `delete match arm b'A'..= b'F' in payload_bytes_hex::from_hex_nibble` |
+| `crates/chio-kernel-core/src/passport_verify.rs:253:43` | `replace + with - in payload_bytes_hex::from_hex_nibble` |
+| `crates/chio-kernel-core/src/passport_verify.rs:253:36` | `replace - with + in payload_bytes_hex::from_hex_nibble` |
+| `crates/chio-kernel-core/src/passport_verify.rs:253:36` | `replace - with / in payload_bytes_hex::from_hex_nibble` |
+| `crates/chio-kernel-core/src/scope.rs:76:12` | `delete ! in resolve_matching_grants` |
+| `crates/chio-kernel-core/src/scope.rs:74:27` | `replace == with != in resolve_matching_grants` |
+| `crates/chio-kernel-core/src/scope.rs:84:13` | `replace && with \|\| in resolve_matching_grants` |
+| `crates/chio-kernel-core/src/scope.rs:83:13` | `replace && with \|\| in resolve_matching_grants` |
+| `crates/chio-kernel-core/src/scope.rs:117:42` | `replace == with != in resolve_matching_grants` |
+| `crates/chio-kernel-core/src/scope.rs:124:22` | `replace <= with > in resolve_matching_grants` |
+| `crates/chio-kernel-core/src/scope.rs:204:66` | `replace \|\| with && in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:216:16` | `delete ! in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:208:16` | `delete ! in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:216:36` | `replace && with \|\| in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:216:79` | `replace == with != in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:226:91` | `replace <= with > in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:227:72` | `replace <= with > in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:222:17` | `replace && with \|\| in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:221:16` | `delete ! in constraint_matches` |
+| `crates/chio-kernel-core/src/scope.rs:261:26` | `replace == with != in matches_pattern` |
+| `crates/chio-kernel-core/src/scope.rs:261:45` | `replace == with != in matches_pattern` |
+| `crates/chio-kernel-core/src/scope.rs:261:31` | `replace && with \|\| in matches_pattern` |
+| `crates/chio-kernel-core/src/scope.rs:267:26` | `replace == with != in matches_pattern` |
+| `crates/chio-kernel-core/src/scope.rs:264:26` | `replace != with == in matches_pattern` |
+| `crates/chio-kernel-core/src/scope.rs:268:31` | `replace == with != in matches_pattern` |
+| `crates/chio-kernel-core/src/scope.rs:277:5` | `replace pattern_exact -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:281:26` | `replace != with == in pattern_exact` |
+| `crates/chio-kernel-core/src/scope.rs:277:5` | `replace pattern_exact -> bool with true` |
+| `crates/chio-kernel-core/src/scope.rs:284:26` | `replace == with != in pattern_exact` |
+| `crates/chio-kernel-core/src/scope.rs:285:31` | `replace == with != in pattern_exact` |
+| `crates/chio-kernel-core/src/scope.rs:289:13` | `replace == with != in pattern_exact` |
+| `crates/chio-kernel-core/src/scope.rs:293:5` | `replace path_has_prefix -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:302:30` | `replace > with == in path_has_prefix` |
+| `crates/chio-kernel-core/src/scope.rs:299:30` | `replace != with == in path_has_prefix` |
+| `crates/chio-kernel-core/src/scope.rs:302:30` | `replace > with < in path_has_prefix` |
+| `crates/chio-kernel-core/src/scope.rs:302:30` | `replace > with >= in path_has_prefix` |
+| `crates/chio-kernel-core/src/scope.rs:309:44` | `replace == with != in path_has_prefix` |
+| `crates/chio-kernel-core/src/scope.rs:319:5` | `replace normalize_path -> Option<NormalizedPath> with None` |
+| `crates/chio-kernel-core/src/scope.rs:319:45` | `replace \|\| with && in normalize_path` |
+| `crates/chio-kernel-core/src/scope.rs:322:31` | `replace \|\| with && in normalize_path` |
+| `crates/chio-kernel-core/src/scope.rs:325:20` | `replace == with != in normalize_path` |
+| `crates/chio-kernel-core/src/scope.rs:382:5` | `replace collect_string_leaves_inner with ()` |
+| `crates/chio-kernel-core/src/scope.rs:402:5` | `replace is_path_key -> bool with true` |
+| `crates/chio-kernel-core/src/scope.rs:402:5` | `replace is_path_key -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:404:9` | `replace \|\| with && in is_path_key` |
+| `crates/chio-kernel-core/src/scope.rs:411:5` | `replace looks_like_path -> bool with true` |
+| `crates/chio-kernel-core/src/scope.rs:411:5` | `replace looks_like_path -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:412:9` | `replace && with \|\| in looks_like_path` |
+| `crates/chio-kernel-core/src/scope.rs:417:13` | `replace \|\| with && in looks_like_path` |
+| `crates/chio-kernel-core/src/scope.rs:416:13` | `replace \|\| with && in looks_like_path` |
+| `crates/chio-kernel-core/src/scope.rs:415:13` | `replace \|\| with && in looks_like_path` |
+| `crates/chio-kernel-core/src/scope.rs:411:5` | `delete ! in looks_like_path` |
+| `crates/chio-kernel-core/src/scope.rs:414:13` | `replace \|\| with && in looks_like_path` |
+| `crates/chio-kernel-core/src/scope.rs:413:13` | `replace \|\| with && in looks_like_path` |
+| `crates/chio-kernel-core/src/scope.rs:428:5` | `replace parse_domain -> Option<String> with None` |
+| `crates/chio-kernel-core/src/scope.rs:428:5` | `replace parse_domain -> Option<String> with Some("xyzzy".into())` |
+| `crates/chio-kernel-core/src/scope.rs:428:5` | `replace parse_domain -> Option<String> with Some(String::new())` |
+| `crates/chio-kernel-core/src/scope.rs:454:9` | `replace \|\| with && in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:453:19` | `replace == with != in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:456:13` | `replace && with \|\| in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:455:13` | `replace && with \|\| in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:454:13` | `delete ! in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:457:71` | `replace \|\| with && in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:457:51` | `replace \|\| with && in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:457:64` | `replace == with != in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:467:5` | `replace normalize_domain -> String with String::new()` |
+| `crates/chio-kernel-core/src/scope.rs:457:84` | `replace == with != in parse_domain` |
+| `crates/chio-kernel-core/src/scope.rs:471:5` | `replace wildcard_matches -> bool with true` |
+| `crates/chio-kernel-core/src/scope.rs:467:5` | `replace normalize_domain -> String with "xyzzy".into()` |
+| `crates/chio-kernel-core/src/scope.rs:471:5` | `replace wildcard_matches -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:476:25` | `replace < with == in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:476:25` | `replace < with > in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:478:13` | `replace && with \|\| in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:476:25` | `replace < with <= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:477:24` | `replace < with == in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:477:24` | `replace < with > in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:477:24` | `replace < with <= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:479:17` | `replace \|\| with && in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:478:44` | `replace == with != in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:481:43` | `replace == with != in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:479:47` | `replace == with != in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:484:29` | `replace += with -= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:484:29` | `replace += with *= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:486:29` | `replace += with *= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:486:29` | `replace += with -= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:487:31` | `replace += with *= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:487:31` | `replace += with -= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:490:41` | `replace + with * in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:490:41` | `replace + with - in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:491:23` | `replace += with -= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:498:45` | `replace && with \|\| in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:491:23` | `replace += with *= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:498:23` | `replace < with == in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:498:23` | `replace < with > in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:498:23` | `replace < with <= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:498:75` | `replace == with != in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:499:21` | `replace += with *= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:499:21` | `replace += with -= in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:502:17` | `replace == with != in wildcard_matches` |
+| `crates/chio-kernel-core/src/scope.rs:508:31` | `replace && with \|\| in argument_contains_custom` |
+| `crates/chio-kernel-core/src/scope.rs:509:17` | `replace \|\| with && in argument_contains_custom` |
+| `crates/chio-kernel-core/src/scope.rs:506:5` | `replace argument_contains_custom -> bool with true` |
+| `crates/chio-kernel-core/src/scope.rs:508:24` | `replace == with != in argument_contains_custom` |
+| `crates/chio-kernel-core/src/scope.rs:506:5` | `replace argument_contains_custom -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:529:71` | `replace == with != in audience_allowlist_matches` |
+| `crates/chio-kernel-core/src/scope.rs:522:5` | `replace audience_allowlist_matches -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:508:49` | `replace == with != in argument_contains_custom` |
+| `crates/chio-kernel-core/src/scope.rs:522:5` | `replace audience_allowlist_matches -> bool with true` |
+| `crates/chio-kernel-core/src/scope.rs:533:5` | `replace collect_audience_values with ()` |
+| `crates/chio-kernel-core/src/scope.rs:543:9` | `delete match arm serde_json::Value::Array(values) in collect_audience_values` |
+| `crates/chio-kernel-core/src/scope.rs:534:9` | `delete match arm serde_json::Value::Object(map) in collect_audience_values` |
+| `crates/chio-kernel-core/src/scope.rs:553:5` | `replace is_audience_key -> bool with true` |
+| `crates/chio-kernel-core/src/scope.rs:560:5` | `replace collect_string_values with ()` |
+| `crates/chio-kernel-core/src/scope.rs:562:9` | `delete match arm serde_json::Value::Array(values) in collect_string_values` |
+| `crates/chio-kernel-core/src/scope.rs:561:9` | `delete match arm serde_json::Value::String(s) in collect_string_values` |
+| `crates/chio-kernel-core/src/scope.rs:553:5` | `replace is_audience_key -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:579:71` | `replace == with != in memory_store_allowlist_matches` |
+| `crates/chio-kernel-core/src/scope.rs:572:5` | `replace memory_store_allowlist_matches -> bool with true` |
+| `crates/chio-kernel-core/src/scope.rs:572:5` | `replace memory_store_allowlist_matches -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:583:5` | `replace collect_memory_store_values with ()` |
+| `crates/chio-kernel-core/src/scope.rs:593:9` | `delete match arm serde_json::Value::Array(values) in collect_memory_store_values` |
+| `crates/chio-kernel-core/src/scope.rs:584:9` | `delete match arm serde_json::Value::Object(map) in collect_memory_store_values` |
+| `crates/chio-kernel-core/src/scope.rs:603:5` | `replace is_memory_store_key -> bool with false` |
+| `crates/chio-kernel-core/src/scope.rs:603:5` | `replace is_memory_store_key -> bool with true` |
