@@ -23,6 +23,8 @@ tokio-console-smoke = ["tokio/tracing"]
 chio-appraisal = { path = "../chio-appraisal" }
 chio-core = { path = "../chio-core" }
 chio-core-types = { path = "../chio-core-types" }
+chio-custody-hw = { path = "../chio-custody-hw" }
+chrono = { workspace = true, features = ["serde"] }
 chio-kernel-core = { path = "../chio-kernel-core" }
 chio-credit = { path = "../chio-credit" }
 chio-federation = { path = "../chio-federation" }
