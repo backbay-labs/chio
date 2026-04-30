@@ -4349,7 +4349,7 @@
   milestone: M06
   phase: 4
   title: Add wasmtime::InstancePre cache keyed by guard module hash in chio-wasm-guards runtime
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-wasm-guards/src/runtime.rs
@@ -4365,15 +4365,15 @@
   agent_role: wasm-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: 92b692676d44ed72f0c5e55e4a7dd288b1058883
+  merged_sha: c1d6da564976e2f9801b66b1d27b370982d4a70f
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:48:29Z"
 - id: M06.P4.T2
   milestone: M06
   phase: 4
   title: Wire InstancePre cache invalidation hook to ArcSwap reload swap
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-wasm-guards/src/hot_reload.rs
@@ -4390,15 +4390,15 @@
   agent_role: wasm-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: 92b692676d44ed72f0c5e55e4a7dd288b1058883
+  merged_sha: c1d6da564976e2f9801b66b1d27b370982d4a70f
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:48:29Z"
 - id: M06.P4.T3
   milestone: M06
   phase: 4
   title: Per-tenant warmed-instance ring buffer with bounded capacity
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-wasm-guards/src/runtime.rs
@@ -4413,15 +4413,15 @@
   agent_role: wasm-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: 92b692676d44ed72f0c5e55e4a7dd288b1058883
+  merged_sha: c1d6da564976e2f9801b66b1d27b370982d4a70f
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:48:29Z"
 - id: M06.P4.T4
   milestone: M06
   phase: 4
   title: Pool checkout and eviction metrics piggybacking on 1024-cap cardinality
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-wasm-guards/src/metrics.rs
@@ -4438,15 +4438,15 @@
   agent_role: wasm-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: 92b692676d44ed72f0c5e55e4a7dd288b1058883
+  merged_sha: c1d6da564976e2f9801b66b1d27b370982d4a70f
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:48:29Z"
 - id: M06.P4.T5
   milestone: M06
   phase: 4
   title: Loom model loom_instance_pre_reload_vs_checkout for reload-vs-checkout race
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-wasm-guards/tests/loom_instance_pre_reload_vs_checkout.rs
@@ -4462,10 +4462,10 @@
   agent_role: wasm-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: 92b692676d44ed72f0c5e55e4a7dd288b1058883
+  merged_sha: c1d6da564976e2f9801b66b1d27b370982d4a70f
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:48:29Z"
 - id: M06.P4.T6
   milestone: M06
   phase: 4
