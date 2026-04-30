@@ -24,4 +24,5 @@ include!("issuance.rs");
 include!("tests.rs");
 
 pub mod feed;
+pub mod feeds;
 pub use feed::{compose_deltas, min_delta, ReputationFeed, ScoreDelta, MAX_FEED_DELTA};
