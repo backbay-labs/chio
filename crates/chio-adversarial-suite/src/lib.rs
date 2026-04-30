@@ -29,6 +29,79 @@ pub const ATTACK_CLASSES: &[AttackClass] = &[
     AttackClass::SigstoreBundlePayloadMismatch,
 ];
 
+/// One statically bundled adversarial case file.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BundledCase {
+    /// Repository-relative path to the case JSON.
+    pub path: &'static str,
+    /// Embedded JSON payload.
+    pub contents: &'static str,
+}
+
+/// Case files embedded into the crate for downstream test harnesses.
+pub const BUNDLED_CASES: &[BundledCase] = &[
+    BundledCase {
+        path: "cases/clock_rewound/clock-rewound-001.json",
+        contents: include_str!("../cases/clock_rewound/clock-rewound-001.json"),
+    },
+    BundledCase {
+        path: "cases/clock_rewound/clock-rewound-002.json",
+        contents: include_str!("../cases/clock_rewound/clock-rewound-002.json"),
+    },
+    BundledCase {
+        path: "cases/clock_rewound/clock-rewound-003.json",
+        contents: include_str!("../cases/clock_rewound/clock-rewound-003.json"),
+    },
+    BundledCase {
+        path: "cases/clock_rewound/clock-rewound-004.json",
+        contents: include_str!("../cases/clock_rewound/clock-rewound-004.json"),
+    },
+    BundledCase {
+        path: "cases/clock_rewound/clock-rewound-005.json",
+        contents: include_str!("../cases/clock_rewound/clock-rewound-005.json"),
+    },
+    BundledCase {
+        path: "cases/future_dated/future-dated-001.json",
+        contents: include_str!("../cases/future_dated/future-dated-001.json"),
+    },
+    BundledCase {
+        path: "cases/future_dated/future-dated-002.json",
+        contents: include_str!("../cases/future_dated/future-dated-002.json"),
+    },
+    BundledCase {
+        path: "cases/future_dated/future-dated-003.json",
+        contents: include_str!("../cases/future_dated/future-dated-003.json"),
+    },
+    BundledCase {
+        path: "cases/future_dated/future-dated-004.json",
+        contents: include_str!("../cases/future_dated/future-dated-004.json"),
+    },
+    BundledCase {
+        path: "cases/future_dated/future-dated-005.json",
+        contents: include_str!("../cases/future_dated/future-dated-005.json"),
+    },
+    BundledCase {
+        path: "cases/replayed_nonce/replayed-nonce-001.json",
+        contents: include_str!("../cases/replayed_nonce/replayed-nonce-001.json"),
+    },
+    BundledCase {
+        path: "cases/replayed_nonce/replayed-nonce-002.json",
+        contents: include_str!("../cases/replayed_nonce/replayed-nonce-002.json"),
+    },
+    BundledCase {
+        path: "cases/replayed_nonce/replayed-nonce-003.json",
+        contents: include_str!("../cases/replayed_nonce/replayed-nonce-003.json"),
+    },
+    BundledCase {
+        path: "cases/replayed_nonce/replayed-nonce-004.json",
+        contents: include_str!("../cases/replayed_nonce/replayed-nonce-004.json"),
+    },
+    BundledCase {
+        path: "cases/replayed_nonce/replayed-nonce-005.json",
+        contents: include_str!("../cases/replayed_nonce/replayed-nonce-005.json"),
+    },
+];
+
 /// One malicious-but-well-formed case consumed by test harnesses.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -125,6 +198,30 @@ impl CoverageCase {
     pub fn into_inner(self) -> AdversarialCase {
         self.0
     }
+}
+
+/// Load all statically bundled cases.
+pub fn bundled_cases() -> Result<Vec<AdversarialCase>, CaseError> {
+    BUNDLED_CASES
+        .iter()
+        .map(|case| AdversarialCase::from_slice(case.contents.as_bytes()))
+        .collect()
+}
+
+/// Load all statically bundled non-pending cases.
+pub fn bundled_coverage_cases() -> Result<Vec<CoverageCase>, CaseError> {
+    bundled_cases()?
+        .into_iter()
+        .map(AdversarialCase::into_coverage_case)
+        .collect()
+}
+
+/// Load statically bundled cases for one attack class.
+pub fn bundled_cases_by_class(class: AttackClass) -> Result<Vec<AdversarialCase>, CaseError> {
+    Ok(bundled_cases()?
+        .into_iter()
+        .filter(|case| case.class == class)
+        .collect())
 }
 
 /// Adversarial attack classes.
@@ -425,6 +522,21 @@ mod tests {
             case.into_coverage_case(),
             Err(CaseError::PendingCase(id)) if id == "pending-crash"
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn bundled_cases_are_valid_and_coverage_eligible() -> Result<(), CaseError> {
+        let cases = bundled_cases()?;
+        assert_eq!(cases.len(), BUNDLED_CASES.len());
+        for case in cases {
+            assert_eq!(case.expected_verdict, ExpectedVerdict::Deny);
+            assert!(!case.pending);
+            assert!(!case.expected_reason.trim().is_empty());
+            assert!(!case.threat_id.trim().is_empty());
+            assert!(case.artifact.as_object().is_some_and(|object| !object.is_empty()));
+            case.into_coverage_case()?;
+        }
         Ok(())
     }
 }

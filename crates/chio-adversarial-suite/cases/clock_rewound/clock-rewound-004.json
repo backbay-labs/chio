@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "clock-rewound-004",
+  "class": "clock_rewound",
+  "expected_verdict": "DENY",
+  "expected_reason": "clock_rewound_authority_epoch",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "authority_epoch_receipt",
+    "authority": {
+      "id": "did:chio:authority:m05",
+      "epoch": 42,
+      "epoch_not_before": "2026-04-30T15:00:00Z"
+    },
+    "receipt": {
+      "decision": "ALLOW",
+      "observed_at": "2026-04-30T14:59:57Z",
+      "authority_epoch": 42,
+      "signature": "ed25519:clock-rewound-004"
+    }
+  }
+}

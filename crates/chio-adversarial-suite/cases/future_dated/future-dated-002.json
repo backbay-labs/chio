@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "future-dated-002",
+  "class": "future_dated",
+  "expected_verdict": "DENY",
+  "expected_reason": "future_dated_capability_issued_at",
+  "threat_id": "capability_token_theft",
+  "pending": false,
+  "artifact": {
+    "case_kind": "capability_token",
+    "capability": {
+      "id": "cap-future-dated-002",
+      "issuer": "did:chio:authority:m05",
+      "issued_at": "2026-05-01T00:00:00Z",
+      "not_before": "2026-04-30T15:00:00Z",
+      "expires_at": "2026-04-30T15:05:00Z",
+      "nonce": "fd-002",
+      "scopes": ["tool:invoke:calendar.read"]
+    },
+    "request": {
+      "received_at": "2026-04-30T15:01:00Z",
+      "tool": "calendar.read"
+    }
+  }
+}

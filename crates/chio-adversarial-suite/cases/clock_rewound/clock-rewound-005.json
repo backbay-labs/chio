@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "clock-rewound-005",
+  "class": "clock_rewound",
+  "expected_verdict": "DENY",
+  "expected_reason": "clock_rewound_grant_activation",
+  "threat_id": "capability_token_theft",
+  "pending": false,
+  "artifact": {
+    "case_kind": "grant_activation",
+    "grant": {
+      "id": "grant-clock-rewound-005",
+      "subject": "did:chio:agent:borrowed-token",
+      "active_from": "2026-04-30T15:00:00Z",
+      "active_until": "2026-04-30T15:03:00Z",
+      "scopes": ["tool:invoke:billing.read"]
+    },
+    "request": {
+      "received_at": "2026-04-30T14:59:56Z",
+      "tool": "billing.read",
+      "nonce": "cr-005"
+    }
+  }
+}
