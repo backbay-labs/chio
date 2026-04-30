@@ -31,6 +31,15 @@ pki-types = { version = "1.11", default-features = false, package = "rustls-pki-
 webpki = { version = "0.103", default-features = false, features = ["std", "aws-lc-rs"], package = "rustls-webpki" }
 const-oid = "0.9"
 sigstore_protobuf_specs = { version = "0.5", default-features = false }
+fips204 = { workspace = true, optional = true }
+dcap-rs = { workspace = true, optional = true }
+sev = { workspace = true, optional = true }
+coset = { workspace = true, optional = true }
+
+[features]
+default = []
+pq = ["dep:fips204"]
+tee-quotes = ["dep:dcap-rs", "dep:sev", "dep:coset"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

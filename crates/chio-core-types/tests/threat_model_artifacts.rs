@@ -65,11 +65,19 @@ fn threat_model_register_lists_required_threats_with_mitigations() {
 
     let expected_threats = BTreeSet::from([
         "capability_token_theft".to_string(),
+        "agent_velocity_abuse".to_string(),
+        "behavioral_sequence_attack".to_string(),
+        "cumulative_data_exfiltration".to_string(),
         "delegation_chain_abuse".to_string(),
         "kernel_impersonation".to_string(),
         "native_channel_replay".to_string(),
+        "pii_phi_exposure".to_string(),
+        "pq_signature_downgrade".to_string(),
         "resource_exhaustion_dos".to_string(),
+        "ssrf_via_http_substrate".to_string(),
+        "tee_quote_forgery".to_string(),
         "tool_server_escape".to_string(),
+        "wasm_guard_resource_exhaustion".to_string(),
     ]);
 
     let mut seen = BTreeSet::new();

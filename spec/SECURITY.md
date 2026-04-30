@@ -61,6 +61,8 @@ The required threats for the shipped Chio boundary are:
 | `cumulative_data_exfiltration` | an attacker exfiltrates data through many small requests that individually appear benign | session data flow |
 | `behavioral_sequence_attack` | an attacker chains tool invocations in dangerous sequences (e.g., execute then overwrite, or skip required initialization) | session tool sequence |
 | `wasm_guard_resource_exhaustion` | a malicious or buggy WASM guard module consumes unbounded CPU or memory | WASM guard runtime |
+| `pq_signature_downgrade` | an attacker substitutes a classical-only signature where a post-quantum protected artifact is required | receipt, capability, and compliance-certificate verification |
+| `tee_quote_forgery` | an attacker forges, replays, or misbinds a TEE quote to claim execution in a trusted runtime | hosted or native attestation verification |
 
 ### 2.1 Capability Token Theft
 
@@ -436,6 +438,68 @@ Residual risk:
 - compilation of WASM modules is not fuel-metered; a pathologically complex
   module could consume significant CPU during compilation
 
+### 2.13 Post-Quantum Signature Downgrade
+
+Attack:
+an attacker replaces or strips post-quantum signature material so a verifier
+accepts a classical-only artifact even when policy requires a post-quantum
+protected receipt, capability, or compliance certificate.
+
+Existing controls:
+
+- capabilities and receipts are already signed artifacts
+- the shipped verifier surfaces preserve explicit algorithm identity for
+  existing classical signing paths
+
+Required mitigations:
+
+- signed artifacts that opt into the post-quantum profile **MUST** carry
+  policy-visible algorithm metadata
+- receipt, capability, and compliance-certificate verification **MUST** reject
+  classical-only artifacts when the configured cryptographic floor requires
+  post-quantum protection
+- migration tests **SHOULD** cover both classical compatibility and rejection
+  of downgraded artifacts under a post-quantum-required policy
+
+Residual risk:
+
+- post-quantum protection is planned but not yet implemented in the shipped
+  verifier paths
+- operators must not claim post-quantum downgrade resistance until the hybrid
+  signature surface and cryptographic-floor enforcement are available
+
+### 2.14 TEE Quote Forgery or Misbinding
+
+Attack:
+an attacker forges, replays, or misbinds TEE quote evidence so a verifier
+accepts a runtime as confidential or hardware-attested when the quote does
+not correspond to the kernel signing key and receipt root being verified.
+
+Existing controls:
+
+- receipt signatures already provide artifact integrity once the verifier has
+  accepted the signing key
+- attestation alone is not sufficient authorization under the transport rules
+  in this document
+
+Required mitigations:
+
+- quote verifiers **MUST** validate platform evidence for Intel TDX, AMD
+  SEV-SNP, and AWS Nitro before accepting confidential-runtime claims
+- accepted quotes **MUST** bind report data to the kernel signing key and
+  receipt root
+- verifiers **MUST** fail closed on malformed, stale, mismatched, or
+  unsupported quote evidence
+- pinned positive and negative fixtures **SHOULD** cover each supported
+  platform backend
+
+Residual risk:
+
+- platform quote verification is planned but not yet implemented in the
+  shipped verifier crate
+- TEE deployment claims currently depend on external operator evidence rather
+  than independent Chio quote verification
+
 ## 3. Transport Security Requirements
 
 Transport requirements are surface-specific. The matrix below defines the
@@ -482,4 +546,4 @@ representation of:
 - the transport requirements per surface
 
 Implementations and future standards work **SHOULD** treat that artifact as the
-stable registry for phase `313`.
+stable registry for the shipped threat model.

@@ -1,6 +1,6 @@
 {
   "schema": "chio.threat-model.v1",
-  "updatedAt": "2026-04-13",
+  "updatedAt": "2026-04-30",
   "boundary": {
     "focus": "agent-kernel-tool trust boundary",
     "surfaces": [
@@ -159,6 +159,189 @@
         }
       ],
       "residualRisk": "The shipped runtime is stronger than unchecked delegation metadata, but it is not yet a universally recursive, fail-closed delegated-authority proof system at every entry point."
+    },
+    {
+      "id": "ssrf_via_http_substrate",
+      "name": "SSRF via HTTP substrate",
+      "surfaces": [
+        "hosted_mcp",
+        "kernel_to_tool"
+      ],
+      "mitigations": [
+        {
+          "status": "existing",
+          "control": "The InternalNetworkGuard blocks egress to private, reserved, loopback, link-local, cloud metadata, and Kubernetes addresses."
+        },
+        {
+          "status": "existing",
+          "control": "DNS rebinding detection, encoded IP detection, and IPv4-mapped IPv6 handling catch common obfuscated internal targets."
+        },
+        {
+          "status": "planned",
+          "control": "Deployments exposing HTTP substrate endpoints must enable the InternalNetworkGuard, add deployment-specific internal hostnames, and fail closed on address parse ambiguity."
+        }
+      ],
+      "residualRisk": "DNS time-of-check/time-of-use gaps and tool-execution redirects can still reach targets that were not visible in the guarded arguments."
+    },
+    {
+      "id": "pii_phi_exposure",
+      "name": "PII or PHI exposure in responses",
+      "surfaces": [
+        "tool_response_pipeline"
+      ],
+      "mitigations": [
+        {
+          "status": "existing",
+          "control": "The ResponseSanitizationGuard scans responses for PII and PHI patterns with configurable sensitivity levels and block or redact actions."
+        },
+        {
+          "status": "existing",
+          "control": "Pre-invocation scanning prevents PII in request arguments from reaching tool servers, and custom patterns support deployment-specific sensitive data."
+        },
+        {
+          "status": "planned",
+          "control": "Healthcare and financial deployments must enable ResponseSanitizationGuard at Medium sensitivity or higher and define custom patterns for local identifiers."
+        }
+      ],
+      "residualRisk": "Regex-based pattern detection is incomplete, may false-positive in non-medical contexts, and does not scan image or binary response content."
+    },
+    {
+      "id": "agent_velocity_abuse",
+      "name": "Agent velocity abuse",
+      "surfaces": [
+        "native_chio",
+        "hosted_mcp",
+        "trust_control",
+        "kernel_to_tool"
+      ],
+      "mitigations": [
+        {
+          "status": "existing",
+          "control": "The AgentVelocityGuard enforces per-agent and per-session rate limits using token-bucket semantics with configurable burst factors."
+        },
+        {
+          "status": "existing",
+          "control": "Separate buckets per agent and per session isolate one caller's exhaustion from other agents and prevent cross-session token sharing."
+        },
+        {
+          "status": "planned",
+          "control": "Multi-tenant deployments must configure per-agent limits, set per-session limits, and keep burst factors close to 1.0 for high-value operations."
+        }
+      ],
+      "residualRisk": "Rate limits are process-local, and an attacker controlling multiple agent identities can multiply the effective allowed rate."
+    },
+    {
+      "id": "cumulative_data_exfiltration",
+      "name": "Cumulative data exfiltration",
+      "surfaces": [
+        "session_data_flow"
+      ],
+      "mitigations": [
+        {
+          "status": "existing",
+          "control": "The DataFlowGuard reads cumulative bytes-read and bytes-written totals from the session journal and denies requests when configured limits are exceeded."
+        },
+        {
+          "status": "existing",
+          "control": "The DataTransferAdvisoryGuard provides early warning before hard limits, and the session journal uses saturating arithmetic for data-flow accounting."
+        },
+        {
+          "status": "planned",
+          "control": "Sensitive-data deployments must configure DataFlowGuard limits, promotion rules, and max_bytes_total limits appropriate to their data classification."
+        }
+      ],
+      "residualRisk": "Per-session accounting can be bypassed through many short sessions, and byte counts do not measure semantic information density or compression."
+    },
+    {
+      "id": "behavioral_sequence_attack",
+      "name": "Behavioral sequence attack",
+      "surfaces": [
+        "session_tool_sequence"
+      ],
+      "mitigations": [
+        {
+          "status": "existing",
+          "control": "The BehavioralSequenceGuard enforces required predecessors, forbidden transitions, max consecutive invocations, and required first-tool constraints."
+        },
+        {
+          "status": "existing",
+          "control": "The session journal tracks the complete tool invocation sequence, including denied invocations."
+        },
+        {
+          "status": "planned",
+          "control": "Operators should define forbidden transitions, required initialization tools, and max consecutive limits for deployment-specific dangerous sequences."
+        }
+      ],
+      "residualRisk": "The guard cannot prevent cross-session dangerous sequences, non-adjacent forbidden transitions, or semantically dangerous invocations hidden behind benign tool names."
+    },
+    {
+      "id": "wasm_guard_resource_exhaustion",
+      "name": "WASM guard resource exhaustion",
+      "surfaces": [
+        "wasm_guard_runtime"
+      ],
+      "mitigations": [
+        {
+          "status": "existing",
+          "control": "WASM guards execute under a fuel budget that limits CPU per invocation and fails closed on fuel exhaustion."
+        },
+        {
+          "status": "existing",
+          "control": "WASM guards execute in isolated linear memory with no host filesystem, network, kernel-state, or host-callback access."
+        },
+        {
+          "status": "planned",
+          "control": "Operators must set appropriate fuel limits, test custom guards in advisory mode, and monitor fuel consumption before enabling blocking production guards."
+        }
+      ],
+      "residualRisk": "Linear memory pressure within the runtime limit and compilation CPU for pathologically complex modules are not fully capped by Chio fuel metering."
+    },
+    {
+      "id": "pq_signature_downgrade",
+      "name": "Post-quantum signature downgrade",
+      "surfaces": [
+        "trust_control",
+        "hosted_mcp",
+        "native_chio"
+      ],
+      "mitigations": [
+        {
+          "status": "planned",
+          "control": "Signed artifacts that opt into the post-quantum profile will carry policy-visible algorithm metadata so verifiers can reject classical-only substitutions."
+        },
+        {
+          "status": "planned",
+          "control": "Receipt, capability, and compliance-certificate verification will enforce the configured cryptographic floor before accepting an artifact."
+        },
+        {
+          "status": "planned",
+          "control": "Migration tests will cover classical compatibility and post-quantum-required rejection of downgraded signatures."
+        }
+      ],
+      "residualRisk": "Until hybrid signature verification and cryptographic-floor enforcement ship, operators must treat post-quantum protection as planned rather than available."
+    },
+    {
+      "id": "tee_quote_forgery",
+      "name": "TEE quote forgery or misbinding",
+      "surfaces": [
+        "hosted_mcp",
+        "native_chio"
+      ],
+      "mitigations": [
+        {
+          "status": "planned",
+          "control": "Quote verifiers will validate platform evidence for Intel TDX, AMD SEV-SNP, and AWS Nitro before accepting a claimed confidential-runtime binding."
+        },
+        {
+          "status": "planned",
+          "control": "Accepted quotes will bind report data to the kernel signing key and receipt root so copied or stale quotes cannot authorize another runtime."
+        },
+        {
+          "status": "planned",
+          "control": "Pinned positive and negative quote fixtures will exercise malformed, stale, and mismatched quote paths."
+        }
+      ],
+      "residualRisk": "Until platform quote verification lands, TEE deployment claims depend on external operator evidence and are not independently verified by Chio."
     }
   ],
   "transportRequirements": {

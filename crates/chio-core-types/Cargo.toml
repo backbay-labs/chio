@@ -37,6 +37,7 @@ thiserror = { workspace = true, optional = true }
 # FIPS-capable ECDSA (P-256 / P-384) signing via aws-lc-rs. Gated behind the
 # `fips` feature so non-FIPS builds keep their historical dependency set.
 aws-lc-rs = { version = "1.16", default-features = false, features = ["aws-lc-sys"], optional = true }
+fips204 = { workspace = true, optional = true }
 
 # Ensure `getrandom` has the `js` feature enabled whenever the crate is built
 # for a wasm32 target. `rand_core/getrandom` pulls in `getrandom` transitively;
@@ -68,6 +69,7 @@ std = [
 # aws-lc-rs. See `crate::crypto` for details. Requires `std` today because
 # `aws-lc-rs` itself is std-only.
 fips = ["dep:aws-lc-rs", "std"]
+pq = ["dep:fips204"]
 
 [dev-dependencies]
 jsonschema = { version = "0.46.0", default-features = false }
