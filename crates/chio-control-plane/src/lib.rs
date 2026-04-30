@@ -4,6 +4,11 @@ use std::fs;
 use std::path::Path;
 
 use chio_core::crypto::Keypair;
+use chio_errors::_generated::error_codes::{
+    CAPABILITY_SCOPE_EXCEEDED, CLI_JSON, CLI_OTHER, POLICY_CONSTRAINT_INVALID,
+    POLICY_DECISION_DENIED, TRANSPORT_HTTP_FAILED, TRANSPORT_INVALID_REQUEST_SHAPE,
+};
+use chio_errors::{ChioError, ErrorCodeSpec};
 use chio_kernel::transport::TransportError;
 use chio_kernel::{ChioKernel, KernelConfig, StructuredErrorReport};
 
@@ -106,10 +111,47 @@ pub enum CliError {
     Reqwest(#[from] reqwest::Error),
 
     #[error("{0}")]
+    Chio(#[from] ChioError),
+
+    #[error("{0}")]
     Other(String),
 }
 
 impl CliError {
+    pub fn registry_error(spec: &'static ErrorCodeSpec, message: impl Into<String>) -> Self {
+        let diagnostic = chio_errors::diagnostic(spec.urn, spec.domain, spec.severity, message)
+            .with_help(spec.help);
+        Self::Chio(diagnostic.into_error())
+    }
+
+    pub fn capability_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&CAPABILITY_SCOPE_EXCEEDED, message)
+    }
+
+    pub fn policy_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&POLICY_DECISION_DENIED, message)
+    }
+
+    pub fn policy_constraint_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&POLICY_CONSTRAINT_INVALID, message)
+    }
+
+    pub fn transport_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&TRANSPORT_HTTP_FAILED, message)
+    }
+
+    pub fn transport_shape_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&TRANSPORT_INVALID_REQUEST_SHAPE, message)
+    }
+
+    pub fn cli_json_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&CLI_JSON, message)
+    }
+
+    pub fn cli_other_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&CLI_OTHER, message)
+    }
+
     fn report_with_context(
         &self,
         code: &str,
@@ -207,6 +249,26 @@ impl CliError {
                 serde_json::json!({ "source": error.to_string() }),
                 "Check network reachability, TLS settings, and remote endpoint availability before retrying.",
             ),
+            Self::Chio(error) => {
+                let diagnostic = error.diagnostic();
+                let spec = chio_errors::lookup_error_code(diagnostic.code().as_str());
+                StructuredErrorReport::new(
+                    diagnostic.code().as_str(),
+                    diagnostic.message(),
+                    serde_json::json!({
+                        "domain": diagnostic.domain().as_str(),
+                        "severity": diagnostic.severity().as_str(),
+                        "legacy_string_code": spec.map(|entry| entry.legacy_string_code),
+                        "stability": spec.map(|entry| entry.stability),
+                    }),
+                    diagnostic
+                        .help()
+                        .or_else(|| spec.map(|entry| entry.help))
+                        .unwrap_or(
+                            "Inspect the Chio diagnostic and retry after correcting the request.",
+                        ),
+                )
+            }
             Self::Other(message) => self.report_with_context(
                 "CHIO-CLI-OTHER",
                 serde_json::json!({ "detail": message }),
