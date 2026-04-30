@@ -635,7 +635,9 @@ pub mod wasmtime_backend {
 
     use super::*;
     use crate::host::{create_shared_engine, register_host_functions, WasmHostState};
-    use crate::metrics::{tenant_id_label, GuardPoolMetrics, GuardPoolMetricsSnapshot};
+    use crate::metrics::{
+        tenant_id_label, GuardPoolMetrics, GuardPoolMetricsSnapshot, MAX_GUARD_METRIC_CARDINALITY,
+    };
     use sha2::Digest;
     use wasmtime::{Engine, InstancePre, Linker, Memory, Module, Store};
 
@@ -644,6 +646,7 @@ pub mod wasmtime_backend {
     /// Default maximum module size in bytes (10 MiB).
     const DEFAULT_MAX_MODULE_SIZE: usize = 10 * 1024 * 1024;
     const DEFAULT_TENANT_WARM_INSTANCE_CAPACITY: usize = 4;
+    const DEFAULT_TENANT_WARM_RING_LIMIT: usize = MAX_GUARD_METRIC_CARDINALITY;
 
     // -------------------------------------------------------------------
     // Dual-mode format detection
@@ -776,13 +779,15 @@ pub mod wasmtime_backend {
             }
         }
 
-        fn checkout(&mut self, module_hash: &str) -> Option<InstancePre<WasmHostState>> {
+        fn checkout(&mut self, module_hash: &str) -> (Option<InstancePre<WasmHostState>>, usize) {
+            let mut evicted = 0;
             while let Some(entry) = self.entries.pop_front() {
                 if entry.module_hash == module_hash {
-                    return Some(entry.instance_pre);
+                    return (Some(entry.instance_pre), evicted);
                 }
+                evicted += 1;
             }
-            None
+            (None, evicted)
         }
 
         fn push(&mut self, entry: WarmInstancePre) -> bool {
@@ -807,16 +812,24 @@ pub mod wasmtime_backend {
     struct InstancePrePool {
         cache: Option<CachedInstancePre>,
         tenant_rings: HashMap<String, TenantWarmRing>,
+        tenant_lru: VecDeque<String>,
         tenant_capacity: usize,
+        tenant_limit: usize,
         metrics: GuardPoolMetrics,
     }
 
     impl InstancePrePool {
         fn new(tenant_capacity: usize) -> Self {
+            Self::with_limits(tenant_capacity, DEFAULT_TENANT_WARM_RING_LIMIT)
+        }
+
+        fn with_limits(tenant_capacity: usize, tenant_limit: usize) -> Self {
             Self {
                 cache: None,
                 tenant_rings: HashMap::new(),
+                tenant_lru: VecDeque::new(),
                 tenant_capacity,
+                tenant_limit,
                 metrics: GuardPoolMetrics::new(),
             }
         }
@@ -830,11 +843,14 @@ pub mod wasmtime_backend {
             self.metrics.record_checkout(&tenant_id);
 
             if let Some(ring) = self.tenant_rings.get_mut(&tenant_id) {
-                if let Some(instance_pre) = ring.checkout(module_hash) {
-                    self.metrics.set_warm_size(&tenant_id, ring.len());
+                let (instance_pre, evicted) = ring.checkout(module_hash);
+                let warm_size = ring.len();
+                self.record_evicts(&tenant_id, evicted);
+                self.metrics.set_warm_size(&tenant_id, warm_size);
+                self.touch_tenant(&tenant_id);
+                if let Some(instance_pre) = instance_pre {
                     return Ok(instance_pre);
                 }
-                self.metrics.set_warm_size(&tenant_id, ring.len());
             }
 
             match self.cache.as_ref() {
@@ -849,6 +865,7 @@ pub mod wasmtime_backend {
                 instance_pre,
             });
             self.tenant_rings.clear();
+            self.tenant_lru.clear();
             self.metrics.reset_warm_sizes();
         }
 
@@ -859,23 +876,138 @@ pub mod wasmtime_backend {
             instance_pre: InstancePre<WasmHostState>,
         ) {
             let tenant_id = tenant_id_label(tenant_id);
-            let ring = self
-                .tenant_rings
-                .entry(tenant_id.clone())
-                .or_insert_with(|| TenantWarmRing::new(self.tenant_capacity));
-            let evicted = ring.push(WarmInstancePre {
-                module_hash: module_hash.to_string(),
-                instance_pre,
-            });
+            if self.tenant_capacity == 0 {
+                self.metrics.record_evict(&tenant_id);
+                self.metrics.set_warm_size(&tenant_id, 0);
+                return;
+            }
+            if !self.ensure_tenant_ring(&tenant_id) {
+                self.metrics.record_evict(&tenant_id);
+                self.metrics.set_warm_size(&tenant_id, 0);
+                return;
+            }
+            let evicted = match self.tenant_rings.get_mut(&tenant_id) {
+                Some(ring) => ring.push(WarmInstancePre {
+                    module_hash: module_hash.to_string(),
+                    instance_pre,
+                }),
+                None => {
+                    self.metrics.record_evict(&tenant_id);
+                    self.metrics.set_warm_size(&tenant_id, 0);
+                    return;
+                }
+            };
+            let warm_size = match self.tenant_rings.get(&tenant_id) {
+                Some(ring) => ring.len(),
+                None => 0,
+            };
             if evicted {
                 self.metrics.record_evict(&tenant_id);
             }
-            self.metrics.set_warm_size(&tenant_id, ring.len());
+            self.metrics.set_warm_size(&tenant_id, warm_size);
+            self.touch_tenant(&tenant_id);
+        }
+
+        fn ensure_tenant_ring(&mut self, tenant_id: &str) -> bool {
+            if self.tenant_rings.contains_key(tenant_id) {
+                return true;
+            }
+            if self.tenant_limit == 0 {
+                return false;
+            }
+            while self.tenant_rings.len() >= self.tenant_limit {
+                if !self.evict_lru_tenant() {
+                    break;
+                }
+            }
+            if self.tenant_rings.len() >= self.tenant_limit {
+                return false;
+            }
+            self.tenant_rings.insert(
+                tenant_id.to_string(),
+                TenantWarmRing::new(self.tenant_capacity),
+            );
+            self.touch_tenant(tenant_id);
+            true
+        }
+
+        fn evict_lru_tenant(&mut self) -> bool {
+            while let Some(evicted_tenant_id) = self.tenant_lru.pop_front() {
+                if let Some(ring) = self.tenant_rings.remove(&evicted_tenant_id) {
+                    self.record_evicts(&evicted_tenant_id, ring.len());
+                    self.metrics.set_warm_size(&evicted_tenant_id, 0);
+                    return true;
+                }
+            }
+            let evicted_tenant_id = match self.tenant_rings.keys().min() {
+                Some(tenant_id) => tenant_id.clone(),
+                None => return false,
+            };
+            match self.tenant_rings.remove(&evicted_tenant_id) {
+                Some(ring) => {
+                    self.record_evicts(&evicted_tenant_id, ring.len());
+                    self.metrics.set_warm_size(&evicted_tenant_id, 0);
+                    true
+                }
+                None => false,
+            }
+        }
+
+        fn touch_tenant(&mut self, tenant_id: &str) {
+            if let Some(position) = self.tenant_lru.iter().position(|entry| entry == tenant_id) {
+                self.tenant_lru.remove(position);
+            }
+            self.tenant_lru.push_back(tenant_id.to_string());
+        }
+
+        fn record_evicts(&mut self, tenant_id: &str, evicted: usize) {
+            for _ in 0..evicted {
+                self.metrics.record_evict(tenant_id);
+            }
+        }
+
+        #[cfg(test)]
+        fn tenant_warm_size(&self, tenant_id: &str) -> usize {
+            self.tenant_rings
+                .get(&tenant_id_label(tenant_id))
+                .map(TenantWarmRing::len)
+                .unwrap_or(0)
+        }
+
+        #[cfg(test)]
+        fn force_tenant_ring_entry(
+            &mut self,
+            tenant_id: &str,
+            module_hash: String,
+            instance_pre: InstancePre<WasmHostState>,
+        ) {
+            let tenant_id = tenant_id_label(tenant_id);
+            if !self.ensure_tenant_ring(&tenant_id) {
+                self.metrics.record_evict(&tenant_id);
+                self.metrics.set_warm_size(&tenant_id, 0);
+                return;
+            }
+            let warm_size = match self.tenant_rings.get_mut(&tenant_id) {
+                Some(ring) => {
+                    let evicted = ring.push(WarmInstancePre {
+                        module_hash: module_hash.to_string(),
+                        instance_pre,
+                    });
+                    if evicted {
+                        self.metrics.record_evict(&tenant_id);
+                    }
+                    ring.len()
+                }
+                None => 0,
+            };
+            self.metrics.set_warm_size(&tenant_id, warm_size);
+            self.touch_tenant(&tenant_id);
         }
 
         fn clear(&mut self) {
             self.cache = None;
             self.tenant_rings.clear();
+            self.tenant_lru.clear();
             self.metrics.reset_warm_sizes();
         }
 
@@ -888,7 +1020,7 @@ pub mod wasmtime_backend {
         }
 
         fn registered_tenant_count(&self) -> usize {
-            self.metrics.registered_tenant_count()
+            self.tenant_rings.len()
         }
     }
 
@@ -1813,6 +1945,12 @@ pub mod wasmtime_backend {
             }
         }
 
+        fn make_guard_request_for_agent(agent_id: &str) -> GuardRequest {
+            let mut request = make_guard_request();
+            request.agent_id = agent_id.to_string();
+            request
+        }
+
         // -------------------------------------------------------------------
         // chio_alloc tests
         // -------------------------------------------------------------------
@@ -2373,6 +2511,96 @@ pub mod wasmtime_backend {
             assert_eq!(snapshot.checkout_total, 1);
             assert_eq!(snapshot.warm_size, 0);
             assert_eq!(snapshot.evict_total, 1);
+            assert_eq!(backend.pool_registered_tenant_count(), 0);
+            Ok(())
+        }
+
+        #[test]
+        fn wasmtime_pool_limits_tenant_ring_count_and_evicts_oldest() -> Result<(), WasmGuardError>
+        {
+            let wat = r#"
+                (module
+                    (import "chio" "log" (func $log (param i32 i32 i32)))
+                    (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
+                    (import "chio" "get_time_unix_secs" (func $get_time (result i64)))
+                    (memory (export "memory") 2)
+                    (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
+                        (i32.const 0)
+                    )
+                )
+            "#;
+
+            let mut backend = WasmtimeBackend::new()?;
+            backend.instance_pre_pool = InstancePrePool::with_limits(1, 2);
+            backend.load_module(wat.as_bytes(), 1_000_000)?;
+
+            let first = backend.evaluate(&make_guard_request_for_agent("agent-a"))?;
+            assert!(first.is_allow());
+            let second = backend.evaluate(&make_guard_request_for_agent("agent-b"))?;
+            assert!(second.is_allow());
+            assert_eq!(backend.pool_registered_tenant_count(), 2);
+
+            let refreshed = backend.evaluate(&make_guard_request_for_agent("agent-a"))?;
+            assert!(refreshed.is_allow());
+            let third = backend.evaluate(&make_guard_request_for_agent("agent-c"))?;
+            assert!(third.is_allow());
+
+            assert_eq!(backend.pool_registered_tenant_count(), 2);
+            assert_eq!(backend.instance_pre_pool.tenant_warm_size("agent-a"), 1);
+            assert_eq!(backend.instance_pre_pool.tenant_warm_size("agent-b"), 0);
+            assert_eq!(backend.instance_pre_pool.tenant_warm_size("agent-c"), 1);
+
+            let evicted_snapshot = match backend.pool_metrics_snapshot("agent-b") {
+                Some(snapshot) => snapshot,
+                None => return Err(WasmGuardError::BackendUnavailable),
+            };
+            assert_eq!(evicted_snapshot.warm_size, 0);
+            assert_eq!(evicted_snapshot.evict_total, 1);
+            Ok(())
+        }
+
+        #[test]
+        fn wasmtime_pool_records_hash_mismatch_discards_as_evicts() -> Result<(), WasmGuardError> {
+            let wat = r#"
+                (module
+                    (import "chio" "log" (func $log (param i32 i32 i32)))
+                    (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
+                    (import "chio" "get_time_unix_secs" (func $get_time (result i64)))
+                    (memory (export "memory") 2)
+                    (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
+                        (i32.const 0)
+                    )
+                )
+            "#;
+
+            let mut backend = WasmtimeBackend::new()?;
+            backend.load_module(wat.as_bytes(), 1_000_000)?;
+            let instance_pre = match backend.instance_pre_pool.cache.as_ref() {
+                Some(cache) => cache.instance_pre.clone(),
+                None => return Err(WasmGuardError::BackendUnavailable),
+            };
+
+            backend.instance_pre_pool.force_tenant_ring_entry(
+                "agent-1",
+                "stale-module-a".to_string(),
+                instance_pre.clone(),
+            );
+            backend.instance_pre_pool.force_tenant_ring_entry(
+                "agent-1",
+                "stale-module-b".to_string(),
+                instance_pre,
+            );
+            assert_eq!(backend.instance_pre_pool.tenant_warm_size("agent-1"), 2);
+
+            let verdict = backend.evaluate(&make_guard_request())?;
+            assert!(verdict.is_allow());
+            let snapshot = match backend.pool_metrics_snapshot("agent-1") {
+                Some(snapshot) => snapshot,
+                None => return Err(WasmGuardError::BackendUnavailable),
+            };
+            assert_eq!(snapshot.checkout_total, 1);
+            assert_eq!(snapshot.warm_size, 1);
+            assert_eq!(snapshot.evict_total, 2);
             Ok(())
         }
 
