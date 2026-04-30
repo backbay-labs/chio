@@ -13,6 +13,7 @@ name = "chio_revocation_oracle"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 rs_merkle = { workspace = true }
 

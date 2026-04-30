@@ -16,6 +16,8 @@ pub enum RevocationOracleError {
     SignerRejected,
     #[error("invalid epoch transition")]
     InvalidEpochTransition,
+    #[error("serialization failed: {0}")]
+    Serialization(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

@@ -3391,6 +3391,9 @@ name = "chio-revocation-oracle"
 version = "0.1.0"
 dependencies = [
  "rs_merkle",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
