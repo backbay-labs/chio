@@ -1,0 +1,6 @@
+{
+  "id": "01-fresh-passkey",
+  "kind": "positive",
+  "description": "Fresh passkey assertion: matching RPID, matching origin, unused challenge nonce, user-verification observed.",
+  "expected_urn": null
+}

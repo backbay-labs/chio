@@ -1,0 +1,7 @@
+{
+  "id": "02-mismatched-origin",
+  "kind": "negative",
+  "failure_mode": "mismatched-origin",
+  "description": "clientDataJSON.origin does not match the relying party's configured origin.",
+  "expected_urn": "urn:chio:error:custody:assertion-rejected"
+}

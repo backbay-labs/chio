@@ -67,6 +67,7 @@ members = [
     # Supply-chain attestation
     "crates/chio-replay-corpus",
     "crates/chio-attest-verify",
+    "crates/chio-custody-hw",
     "crates/chio-tee",
     "crates/chio-tee-frame",
     #
