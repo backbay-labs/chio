@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod scenario;
+pub mod link;
 
 /// Scenario schema name used by the arena DSL.
 pub const ARENA_SCENARIO_SCHEMA: &str = "chio.arena.scenario/v1";
