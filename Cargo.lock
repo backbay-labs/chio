@@ -3661,6 +3661,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-verdict-matrix-driver-lambda"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chio-wall"
 version = "0.1.0"
 dependencies = [

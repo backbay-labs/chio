@@ -74,6 +74,10 @@ path = "verdict_matrix/tests/diff_oracle_self_test.rs"
 name = "verdict_matrix_typescript"
 path = "verdict_matrix/tests/verdict_matrix_typescript.rs"
 
+[[test]]
+name = "deployment_shape_smoke"
+path = "verdict_matrix/tests/deployment_shape_smoke.rs"
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"

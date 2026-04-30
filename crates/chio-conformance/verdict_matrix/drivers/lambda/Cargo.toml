@@ -1,0 +1,25 @@
+[package]
+name = "chio-verdict-matrix-driver-lambda"
+description = "Lambda deployment-shape driver for the Chio verdict matrix (M07.P6.T3)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+readme = "README.md"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "chio-verdict-matrix-driver-lambda"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

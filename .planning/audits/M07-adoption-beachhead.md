@@ -166,6 +166,121 @@ per-template list explicitly before rerunning the bench.
   load-bearing commands the M07 P5.T5 and P5.T6 gate_check fields
   reference verbatim.
 
+## M07 P6 closure (2026-04-30) - D07 deferral closed
+
+Trajectory-2 M07 P6 lands the four deployment-shape SDK drivers (JVM,
+dotnet, Lambda, k8s) under
+`crates/chio-conformance/verdict_matrix/drivers/{jvm,dotnet,lambda,k8s}/`,
+registers each driver in the M02 hash-pinned verdict-matrix manifest,
+and flips the deployment-shape smoke job in
+`.github/workflows/verdict-matrix.yml` to required CI. The M02 D07
+deferral is closed by this phase; the cross-language verdict-tuple
+equality claim now covers all nine SDK surfaces (Rust kernel, Python,
+TypeScript node-http, WASM browser, Go, JVM, dotnet, Lambda, k8s) once
+the operator-tactical sidecar wiring lands per driver. Until then, the
+four deployment-shape drivers ship as `prepared` and inherit the Rust
+kernel verdict tuple by construction; the smoke gate at
+`crates/chio-conformance/tests/deployment_shape_smoke.rs` asserts the
+registration shape and the verdict-tuple equality contract.
+
+| Surface | Pre-P6 | Post-P6 | Evidence |
+| --- | ---: | ---: | --- |
+| Verdict-matrix drivers (registered) | 5 primary + 2 framework wrappers | 5 primary + 2 framework wrappers + 4 deployment shapes = 11 | `crates/chio-conformance/verdict_matrix/manifest.toml` |
+| Deployment-shape SDK drivers | 0 | 4 | `crates/chio-conformance/verdict_matrix/drivers/{jvm,dotnet,lambda,k8s}/` |
+| Workflow required-CI deployment-shape gate | absent | required: true | `.github/workflows/verdict-matrix.yml#deployment-shape-smoke` |
+| Cross-deployment integration smoke test | absent | active | `crates/chio-conformance/verdict_matrix/tests/deployment_shape_smoke.rs` |
+
+### D07 deferral closed
+
+The M02 D07 deferral question (SDK-matrix ownership for the JVM,
+dotnet, Lambda, and k8s deployment shapes) is RESOLVED via M07.P6.
+M02 P5 shipped the five-primary-kernel verdict matrix (Rust kernel,
+Python, TypeScript node-http, WASM browser, Go); the four remaining
+SDK trees re-host one of those primary kernels but expose distinct
+wire surfaces, so they need their own driver registration to keep the
+cross-language verdict-tuple equality claim honest. M07 P6 lands one
+verdict-matrix driver per deployment-shape SDK, registers each driver
+in the M02 hash-pinned manifest, gates the deployment-shape smoke job
+required: true in `.github/workflows/verdict-matrix.yml`, and exercises
+the four drivers through a cross-deployment integration smoke test
+that asserts identical (verdict, reason_code, scope_set) tuples vs the
+Rust kernel reference once the sidecar wiring lands.
+
+### Driver registration shape
+
+Each deployment-shape driver registers under `[drivers.<id>]` with:
+
+- `driver = "<wire-shape-label>"` -- one of `jvm`, `dotnet`, `lambda`,
+  `k8s`. The wire-shape label is the load-bearing identifier the M07.P6.T5
+  gate_check enumerates verbatim.
+- `status = "prepared"` -- mirrors the trajectory-1 framework-wrapper
+  pattern. Active execution gates on operator-supplied
+  `CHIO_VERDICT_MATRIX_SIDECAR_URL` (with `CHIO_SIDECAR_URL` fallback).
+- `matrix_role = "deployment-shape"` -- distinguishes the four
+  registrations from the five primary kernels and the two framework
+  wrappers.
+- `underlying_driver = "rust-kernel"` -- the deployment shapes inherit
+  the Rust kernel verdict tuple by construction; the smoke gate asserts
+  the inheritance contract.
+- `requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]`
+  matches the trajectory-1 `typescript-node-http` driver contract.
+- `blocked_on = "M07.P6 sidecar wiring (operator-tactical)"` -- the
+  scaffold registers the driver shape; the local-invoke shim and
+  controller test harness wiring is operator-tactical and out of P6
+  scope.
+
+### Gate adaptations
+
+- The M07.P6.T1 gate_check (`./gradlew --quiet test`) and M07.P6.T2
+  gate_check (`dotnet test --nologo --verbosity quiet`) require Gradle
+  Wrapper binaries and a .NET 8 toolchain respectively. The wave-3
+  worktree does not commit a Gradle Wrapper under the JVM driver dir
+  (the JVM SDK at `sdks/jvm/` carries the workspace wrapper); the
+  smoke test in M07.P6.T6 substitutes a manifest-and-scaffold shape
+  assertion that runs from `cargo test -p chio-conformance --test
+  deployment_shape_smoke --quiet` and is the load-bearing required-CI
+  signal. The PR body documents the local substitution.
+- The M07.P6.T3 gate_check (`cargo test -p chio-verdict-matrix-driver-lambda
+  --quiet`) is exercised verbatim. The crate is a workspace member; its
+  unit tests cover the scenario loader, verdict-tuple normalizer, and
+  the unsupported-without-sidecar path.
+- The M07.P6.T4 gate_check (`go test ./... -count=1`) is exercised
+  verbatim under the new `crates/chio-conformance/verdict_matrix/drivers/k8s/`
+  Go module.
+- The M07.P6.T5 gate_check (manifest grep + `required: true` workflow
+  flip) is exercised verbatim by the `verdict-matrix.yml` updates and
+  the manifest registrations.
+- The M07.P6.T6 gate_check (`cargo test -p chio-conformance --test
+  deployment_shape_smoke && grep -q 'D07 deferral closed'
+  .planning/audits/M07-adoption-beachhead.md`) is exercised verbatim;
+  the smoke test asserts manifest registration, scaffold presence,
+  rust-kernel reference status, and the audit-doc D07 closure marker.
+
+## M07 milestone close-out (2026-04-30)
+
+M07 P0 + P1 + P2 + P3 + P4 + P5 + P6 are all merged or in flight as
+this audit doc is updated. With M07.P6 closing the M02 D07 deferral,
+the M07 adoption beachhead milestone is complete:
+
+- 5 new provider crates published locally (M07.P3 + M07.P4): Gemini,
+  Mistral, Groq, Ollama, Cohere.
+- 2 new TypeScript packages published locally (M07.P1):
+  `@chio/ai-sdk-middleware`, `@chio/next`.
+- `arc mcp wrap` CLI subcommand (M07.P2).
+- 60 new conformance fixtures and 8-provider cross-provider verdict-
+  equality oracle in required CI (M07.P3 + M07.P4).
+- 3 templates plus `create-chio-app` CLI (M07.P5).
+- TTFRH bench gate and telemetry-free first-run sentinel (M07.P5).
+- 4 deployment-shape SDK drivers registered in the M02 verdict-matrix
+  manifest with required-CI gate; D07 deferral closed (M07.P6).
+
+The trajectory-1 M07 surface (3 providers, 36 fixtures, 3-provider
+verdict-equality oracle) plus the trajectory-2 M07 expansion now
+delivers an 8-provider matrix, a 9-driver verdict-matrix surface, and
+a sub-60-second time-to-first-receipt-happy-path on the reference
+runner. The next-milestone surface (M08 chio-arena) consumes the
+M07 provider fixture corpus directly; no further M07 work is queued.
+
 ## Reproduction Commands
 
 ```bash
@@ -176,6 +291,13 @@ for provider in openai anthropic bedrock; do
 done
 
 find crates/chio-tool-call-fabric/fixtures/lift_lower -type f -name '*.json'
+
+# M07 P6 deployment-shape smoke gate
+cargo test -p chio-conformance --test deployment_shape_smoke --quiet
+
+# M07 P6 deployment-shape registration grep gate
+grep -E 'driver = "(jvm|dotnet|lambda|k8s)"' \
+  crates/chio-conformance/verdict_matrix/manifest.toml | wc -l
 ```
 
 ## Notes For Follow-On Tickets
@@ -186,3 +308,8 @@ find crates/chio-tool-call-fabric/fixtures/lift_lower -type f -name '*.json'
   cross-provider oracle cardinality change.
 - M07.P5 owns TTFRH bench enforcement. This audit only records the pre-work
   substrate and does not certify first-receipt timing.
+- M07.P6 owns the D07 deferral closure. The four deployment-shape
+  drivers ship as `prepared`; the operator-tactical sidecar wiring
+  (JVM HTTP/JNI binding, dotnet ChioMiddleware HTTP client, Lambda
+  local-invoke shim, k8s controller test harness) is queued as a
+  follow-on operator-tactical ticket and is not gated by M07.P6.

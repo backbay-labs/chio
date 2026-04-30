@@ -108,6 +108,7 @@ members = [
     "crates/chio-bindings-ffi",
     "crates/chio-cpp-kernel-ffi",
     "crates/chio-conformance",
+    "crates/chio-conformance/verdict_matrix/drivers/lambda",
     "crates/chio-spec-codegen",
     "crates/chio-spec-validate",
     #
