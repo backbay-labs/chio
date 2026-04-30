@@ -1,0 +1,19 @@
+{
+  "context_servers": {
+    "demo": {
+      "args": [
+        "mcp",
+        "wrap",
+        "--server-id",
+        "demo",
+        "--",
+        "node",
+        "server.js"
+      ],
+      "command": "chio",
+      "settings": {
+        "chio_schema": "zed.context_servers/2025-02"
+      }
+    }
+  }
+}
