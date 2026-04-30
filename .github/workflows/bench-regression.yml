@@ -69,12 +69,35 @@ jobs:
           set -euo pipefail
           benches_file="$(mktemp)"
           awk '
-            /^\[\[bench\]\]/ { in_bench = 1; next }
-            in_bench && /^name = / {
-              gsub(/"/, "", $3)
-              print $3
-              in_bench = 0
+            function flush_bench() {
+              if (in_bench && bench_name != "" && !has_required_features) {
+                print bench_name
+              }
             }
+            /^\[\[bench\]\]/ {
+              flush_bench()
+              in_bench = 1
+              bench_name = ""
+              has_required_features = 0
+              next
+            }
+            /^\[\[/ {
+              flush_bench()
+              in_bench = 0
+              bench_name = ""
+              has_required_features = 0
+              next
+            }
+            in_bench && /^name = / {
+              bench_name = $3
+              gsub(/"/, "", bench_name)
+              next
+            }
+            in_bench && /^required-features = / {
+              has_required_features = 1
+              next
+            }
+            END { flush_bench() }
           ' crates/chio-kernel/Cargo.toml > "${benches_file}"
           bench_count="$(wc -l < "${benches_file}" | tr -d ' ')"
           if [ "${bench_count}" = "0" ]; then
@@ -96,12 +119,35 @@ jobs:
           set -euo pipefail
           benches_file="$(mktemp)"
           awk '
-            /^\[\[bench\]\]/ { in_bench = 1; next }
-            in_bench && /^name = / {
-              gsub(/"/, "", $3)
-              print $3
-              in_bench = 0
+            function flush_bench() {
+              if (in_bench && bench_name != "" && !has_required_features) {
+                print bench_name
+              }
             }
+            /^\[\[bench\]\]/ {
+              flush_bench()
+              in_bench = 1
+              bench_name = ""
+              has_required_features = 0
+              next
+            }
+            /^\[\[/ {
+              flush_bench()
+              in_bench = 0
+              bench_name = ""
+              has_required_features = 0
+              next
+            }
+            in_bench && /^name = / {
+              bench_name = $3
+              gsub(/"/, "", bench_name)
+              next
+            }
+            in_bench && /^required-features = / {
+              has_required_features = 1
+              next
+            }
+            END { flush_bench() }
           ' crates/chio-kernel/Cargo.toml > "${benches_file}"
           bench_count="$(wc -l < "${benches_file}" | tr -d ' ')"
           if [ "${bench_count}" = "0" ]; then
