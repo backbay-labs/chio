@@ -72,6 +72,27 @@ M06 bench additions reuse the trajectory-1 M05 reference runner contract:
 - Local laptop numbers are useful for diagnosis only. They are not release
   gates.
 
+## Dhat Allocation-Count Baseline
+
+dhat allocation-count baseline: `dispatch_allow_dhat` is a dhat harness
+scaffold for the current placeholder M05 `dispatch_allow` probe. It currently
+measures only `std::hint::black_box(0_u64)`, so the 0 total heap allocation
+blocks and 0 total heap bytes baseline describes the placeholder probe, not the
+real kernel dispatch, canonicalization, receipt signing, or reserialization
+path. The M06 allocation-reduction evidence remains incomplete until this bench
+exercises the real dispatch/canonicalization path and reports a numeric
+allocation-count reduction attributable to reduced reserialization.
+
+Run command:
+
+```bash
+cargo bench -p chio-kernel --features dhat-heap --bench dispatch_allow_dhat -- --test
+```
+
+The bench target keeps the global allocator swap behind the `dhat-heap` feature
+and leaves a source-level `cfg(dhat)` hook so normal production builds and the
+existing Criterion dispatch benches continue to use the default allocator.
+
 ## OTEL exporter channel audit
 
 The live `chio-otel-receipt-exporter` source does not currently contain an
@@ -176,3 +197,8 @@ rg -n "channel|mpsc|unbounded|Sender::send|send\\(" crates/chio-otel-receipt-exp
 - [ ] P3: Add SQLite group commit, `INSERT ... RETURNING`, and pool splits.
 - [ ] P4: Add Wasmtime `InstancePre` cache and warmed-instance rings.
 - [ ] P5: Extend allocation, bundle-size, and sustained-load regression gates.
+- [x] P5.T1: Add `dispatch_allow_dhat` dhat harness scaffold and placeholder
+  allocation-count baseline for the current `dispatch_allow` probe.
+- [ ] P5.T1 evidence: Replace the placeholder probe with the real
+  dispatch/canonicalization path and report allocation-count reduction
+  attributable to reduced reserialization.
