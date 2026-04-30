@@ -1,9 +1,17 @@
+pub mod diff_oracle;
+pub mod driver;
+
+use std::str::FromStr;
+
 pub const MANIFEST_SCHEMA: &str = "chio.verdict-matrix.manifest.v1";
 pub const SCENARIO_SCHEMA: &str = "chio.verdict-matrix.scenario.v1";
 pub const MANIFEST_PATH: &str = "manifest.toml";
 pub const SCENARIOS_SPEC_PATH: &str = "SCENARIOS.md";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, serde::Serialize,
+)]
+#[serde(rename_all = "lowercase")]
 pub enum Verdict {
     Allow,
     Deny,
@@ -20,7 +28,23 @@ impl Verdict {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+impl FromStr for Verdict {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "allow" => Ok(Self::Allow),
+            "deny" => Ok(Self::Deny),
+            "error" => Ok(Self::Error),
+            _ => Err(format!("unknown verdict `{value}`")),
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, serde::Serialize,
+)]
+#[serde(rename_all = "lowercase")]
 pub enum ScenarioCategory {
     Capability,
     Revocation,
@@ -41,7 +65,22 @@ impl ScenarioCategory {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl FromStr for ScenarioCategory {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "capability" => Ok(Self::Capability),
+            "revocation" => Ok(Self::Revocation),
+            "replay" => Ok(Self::Replay),
+            "redaction" => Ok(Self::Redaction),
+            "receipt" => Ok(Self::Receipt),
+            _ => Err(format!("unknown scenario category `{value}`")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct VerdictTuple {
     pub verdict: Verdict,
     pub reason_code: String,
