@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "anchor-grafted-003",
+  "class": "anchor_grafted",
+  "expected_verdict": "DENY",
+  "expected_reason": "anchor_grafted_tree_size",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "tree_size_rollback",
+    "previous_checkpoint": {
+      "root": "merkle:anchor-grafted-003-prev",
+      "tree_size": 2048,
+      "committed_at": "2026-04-30T15:02:00Z"
+    },
+    "candidate_anchor": {
+      "root": "merkle:anchor-grafted-003-candidate",
+      "tree_size": 1024,
+      "committed_at": "2026-04-30T15:03:00Z",
+      "signature": "ed25519:anchor-grafted-003"
+    }
+  }
+}

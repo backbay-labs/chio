@@ -160,6 +160,56 @@ pub const BUNDLED_CASES: &[BundledCase] = &[
         path: "cases/revocation_rollback/revocation-rollback-005.json",
         contents: include_str!("../cases/revocation_rollback/revocation-rollback-005.json"),
     },
+    BundledCase {
+        path: "cases/anchor_grafted/anchor-grafted-001.json",
+        contents: include_str!("../cases/anchor_grafted/anchor-grafted-001.json"),
+    },
+    BundledCase {
+        path: "cases/anchor_grafted/anchor-grafted-002.json",
+        contents: include_str!("../cases/anchor_grafted/anchor-grafted-002.json"),
+    },
+    BundledCase {
+        path: "cases/anchor_grafted/anchor-grafted-003.json",
+        contents: include_str!("../cases/anchor_grafted/anchor-grafted-003.json"),
+    },
+    BundledCase {
+        path: "cases/anchor_grafted/anchor-grafted-004.json",
+        contents: include_str!("../cases/anchor_grafted/anchor-grafted-004.json"),
+    },
+    BundledCase {
+        path: "cases/anchor_grafted/anchor-grafted-005.json",
+        contents: include_str!("../cases/anchor_grafted/anchor-grafted-005.json"),
+    },
+    BundledCase {
+        path: "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json",
+        contents: include_str!(
+            "../cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json"
+        ),
+    },
+    BundledCase {
+        path: "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json",
+        contents: include_str!(
+            "../cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json"
+        ),
+    },
+    BundledCase {
+        path: "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json",
+        contents: include_str!(
+            "../cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json"
+        ),
+    },
+    BundledCase {
+        path: "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json",
+        contents: include_str!(
+            "../cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json"
+        ),
+    },
+    BundledCase {
+        path: "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json",
+        contents: include_str!(
+            "../cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json"
+        ),
+    },
 ];
 
 /// One malicious-but-well-formed case consumed by test harnesses.

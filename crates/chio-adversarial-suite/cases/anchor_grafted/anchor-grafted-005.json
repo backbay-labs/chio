@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "anchor-grafted-005",
+  "class": "anchor_grafted",
+  "expected_verdict": "DENY",
+  "expected_reason": "anchor_grafted_tenant_boundary",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "tenant_anchor",
+    "tenant": "tenant-a",
+    "receipt": {
+      "id": "rcpt-anchor-grafted-005",
+      "tenant": "tenant-a",
+      "decision": "ALLOW"
+    },
+    "anchor": {
+      "tenant": "tenant-b",
+      "root": "merkle:anchor-grafted-005-tenant-b",
+      "signature": "ed25519:anchor-grafted-005"
+    }
+  }
+}

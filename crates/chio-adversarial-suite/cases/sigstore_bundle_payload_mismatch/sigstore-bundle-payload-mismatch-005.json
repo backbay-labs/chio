@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "sigstore-bundle-payload-mismatch-005",
+  "class": "sigstore_bundle_payload_mismatch",
+  "expected_verdict": "DENY",
+  "expected_reason": "sigstore_bundle_payload_mismatch",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "sigstore_identity_policy",
+    "bundle": {
+      "subject_digest": "sha256:trusted-kernel",
+      "certificate_identity": "release@chio.dev",
+      "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
+    },
+    "payload": {
+      "artifact_digest": "sha256:trusted-kernel",
+      "certificate_identity_regexp": ".*@attacker.example",
+      "certificate_oidc_issuer": "https://attacker.example/issuer"
+    }
+  }
+}
