@@ -19,6 +19,17 @@ default = []
 # unchanged. Enabling this feature in M09 P4 wires the marketplace
 # discovery surface; P0 lands the gate only.
 marketplace = ["dep:chio-reputation"]
+# M03.P2.T6: regression-only feature that pulls chio-attest-verify/pq so
+# the cosign-bundle regression test can exercise the verifier under all
+# three crypto_floor settings. Cosign payload bytes themselves are NOT
+# hybrid-signed; this feature exists solely to ride the same compile
+# matrix the kernel-side hybrid path runs in.
+pq = ["chio-attest-verify/pq"]
+
+[[test]]
+name = "cosign_under_crypto_floor"
+path = "tests/cosign_under_crypto_floor.rs"
+required-features = ["pq"]
 
 [dependencies]
 chio-attest-verify = { path = "../chio-attest-verify" }
