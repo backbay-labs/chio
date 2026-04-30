@@ -1,0 +1,30 @@
+[package]
+name = "chio-arena"
+description = "Deterministic Chio arena scenario runner and replay bundle writer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_arena"
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-kernel = { path = "../chio-kernel" }
+chio-replay-corpus = { path = "../chio-replay-corpus" }
+chio-tee-frame = { path = "../chio-tee-frame" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

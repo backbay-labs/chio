@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.chio.dev/arena/scenario/v1/schema.json",
+  "title": "Chio Arena Scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "rng_seed",
+    "virtual_clock_start",
+    "determinism",
+    "agents",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "chio.arena.scenario/v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rng_seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "virtual_clock_start": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rng_seed",
+        "virtual_clock_start",
+        "scheduler",
+        "locale"
+      ],
+      "properties": {
+        "rng_seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "virtual_clock_start": {
+          "type": "string"
+        },
+        "scheduler": {
+          "type": "string",
+          "enum": ["single-agent-v1"]
+        },
+        "locale": {
+          "type": "string",
+          "const": "C"
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "role", "model", "seed_prompt_ref"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "role": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "seed_prompt_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "budgets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["agent", "server", "tool", "max_invocations"],
+        "properties": {
+          "agent": { "type": "string" },
+          "server": { "type": "string" },
+          "tool": { "type": "string" },
+          "max_invocations": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "guards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "mode", "config_ref"],
+        "properties": {
+          "id": { "type": "string" },
+          "mode": {
+            "type": "string",
+            "enum": ["observe", "enforce"]
+          },
+          "config_ref": { "type": "string" }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "agent", "server", "tool", "arguments", "expect_verdict"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "agent": { "type": "string" },
+          "server": { "type": "string" },
+          "tool": { "type": "string" },
+          "arguments": {
+            "type": "object"
+          },
+          "expect_verdict": {
+            "type": "string",
+            "enum": ["allow", "deny", "rewrite"]
+          }
+        }
+      }
+    },
+    "adversaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["class", "population", "seed_ref"],
+        "properties": {
+          "class": { "type": "string" },
+          "population": { "type": "string" },
+          "seed_ref": { "type": "string" }
+        }
+      }
+    },
+    "ext": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

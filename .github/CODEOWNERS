@@ -16,6 +16,7 @@ tests/replay/test-key.seed.README            @bb-connor
 crates/chio-kernel/src/receipt_*.rs          @bb-connor
 crates/chio-kernel-core/**                   @bb-connor
 crates/chio-kernel-browser/**                @bb-connor
+crates/chio-arena/Cargo.toml                 @bb-connor
 crates/chio-core-types/src/capability*.rs    @bb-connor
 crates/chio-core-types/src/scope*.rs         @bb-connor
 crates/chio-core-types/src/receipt*.rs       @bb-connor
@@ -52,7 +53,6 @@ Cargo.toml                                   @bb-connor
 Cargo.lock                                   @bb-connor
 deny.toml                                    @bb-connor
 .github/workflows/ci.yml                     @bb-connor
-.github/workflows/browser-kernel-twiggy.yml  @bb-connor
 CODEOWNERS                                   @bb-connor
 README.md                                    @bb-connor
 AGENTS.md                                    @bb-connor
