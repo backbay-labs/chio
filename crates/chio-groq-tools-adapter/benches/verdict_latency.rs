@@ -2,9 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chio_groq_tools_adapter::{
-    transport, GroqAdapter, GroqAdapterConfig, GROQ_API_VERSION,
-};
+use chio_groq_tools_adapter::{transport, GroqAdapter, GroqAdapterConfig, GROQ_API_VERSION};
 use chio_tool_call_fabric::{ProviderError, ReceiptId, VerdictResult};
 use serde_json::json;
 

@@ -114,7 +114,10 @@ fn replay_fixture(provider: &str, path: &Path) {
 fn assert_replay(
     _provider: &str,
     path: &Path,
-    outcome: Result<chio_provider_conformance::ReplayOutcome, chio_provider_conformance::ReplayError>,
+    outcome: Result<
+        chio_provider_conformance::ReplayOutcome,
+        chio_provider_conformance::ReplayError,
+    >,
 ) {
     let outcome = match outcome {
         Ok(outcome) => outcome,

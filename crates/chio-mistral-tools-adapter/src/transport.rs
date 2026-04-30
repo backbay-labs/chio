@@ -75,16 +75,16 @@ mod tests {
     #[test]
     fn pinned_constants_are_correct() {
         assert_eq!(MISTRAL_API_VERSION, "2025-04");
-        assert_eq!(
-            MISTRAL_CHAT_COMPLETIONS_HOST,
-            "https://api.mistral.ai"
-        );
+        assert_eq!(MISTRAL_CHAT_COMPLETIONS_HOST, "https://api.mistral.ai");
     }
 
     #[test]
     fn mock_transport_records_calls() {
         let mock = MockTransport::new();
-        mock.record("/2025-04/models/mistral-1.5-pro:generateContent", b"{\"foo\":1}");
+        mock.record(
+            "/2025-04/models/mistral-1.5-pro:generateContent",
+            b"{\"foo\":1}",
+        );
         let calls = mock.calls();
         assert_eq!(calls.len(), 1);
     }

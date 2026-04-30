@@ -108,8 +108,7 @@ fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
     }))?);
     require_provider_error(bad_args, "BadToolArgs")?;
 
-    let malformed =
-        adapter.gate_sse_stream(&malformed_stream(), |_invocation| Ok(allow_verdict()));
+    let malformed = adapter.gate_sse_stream(&malformed_stream(), |_invocation| Ok(allow_verdict()));
     // The stub stream contains no functionCall parts, so gating succeeds; we
     // separately confirm an actually malformed JSON SSE produces Malformed.
     if malformed.is_err() {

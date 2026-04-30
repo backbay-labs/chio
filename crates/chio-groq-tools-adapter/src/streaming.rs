@@ -5,9 +5,7 @@
 //! `tool_calls` parts (which arrive whole on Groq's wire) and gate the
 //! emission on a kernel verdict before forwarding bytes downstream.
 
-use chio_tool_call_fabric::{
-    DenyReason, ProviderError, ToolInvocation, VerdictResult,
-};
+use chio_tool_call_fabric::{DenyReason, ProviderError, ToolInvocation, VerdictResult};
 use serde_json::Value;
 
 use crate::{native::FunctionCallPart, GroqAdapter};

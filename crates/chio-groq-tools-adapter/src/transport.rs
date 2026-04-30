@@ -75,10 +75,7 @@ mod tests {
     #[test]
     fn pinned_constants_are_correct() {
         assert_eq!(GROQ_API_VERSION, "2025-04");
-        assert_eq!(
-            GROQ_CHAT_COMPLETIONS_HOST,
-            "https://api.groq.com"
-        );
+        assert_eq!(GROQ_CHAT_COMPLETIONS_HOST, "https://api.groq.com");
     }
 
     #[test]

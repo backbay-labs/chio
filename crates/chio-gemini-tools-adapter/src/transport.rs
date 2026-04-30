@@ -84,7 +84,10 @@ mod tests {
     #[test]
     fn mock_transport_records_calls() {
         let mock = MockTransport::new();
-        mock.record("/v1beta/models/gemini-1.5-pro:generateContent", b"{\"foo\":1}");
+        mock.record(
+            "/v1beta/models/gemini-1.5-pro:generateContent",
+            b"{\"foo\":1}",
+        );
         let calls = mock.calls();
         assert_eq!(calls.len(), 1);
     }

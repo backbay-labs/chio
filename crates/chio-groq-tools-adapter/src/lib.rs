@@ -20,8 +20,8 @@ use std::time::SystemTime;
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_tool_call_fabric::{
-    DenyReason, Principal, ProvenanceStamp, ProviderError, ProviderId, ProviderRequest,
-    Redaction, ToolInvocation, ToolResult, VerdictResult,
+    DenyReason, Principal, ProvenanceStamp, ProviderError, ProviderId, ProviderRequest, Redaction,
+    ToolInvocation, ToolResult, VerdictResult,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -106,15 +106,11 @@ impl GroqAdapter {
 
     /// Lift every Groq `tool_calls` part in a non-streaming
     /// `chat/completions` response payload.
-    pub fn lift_batch(
-        &self,
-        raw: ProviderRequest,
-    ) -> Result<Vec<ToolInvocation>, ProviderError> {
+    pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
         let calls = function_calls(raw)?;
         if calls.is_empty() {
             return Err(ProviderError::Malformed(
-                "Groq generateContent payload did not contain functionCall parts"
-                    .to_string(),
+                "Groq generateContent payload did not contain functionCall parts".to_string(),
             ));
         }
         calls
@@ -225,8 +221,8 @@ fn extract_function_calls(body: &Value) -> Result<Vec<FunctionCallPart>, Provide
             };
             for part in parts {
                 if let Some(call) = part.get("functionCall") {
-                    let parsed: FunctionCallPart = serde_json::from_value(call.clone())
-                        .map_err(|error| {
+                    let parsed: FunctionCallPart =
+                        serde_json::from_value(call.clone()).map_err(|error| {
                             ProviderError::Malformed(format!(
                                 "Groq functionCall part was malformed: {error}"
                             ))
