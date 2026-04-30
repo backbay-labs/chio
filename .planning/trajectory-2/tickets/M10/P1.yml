@@ -15,7 +15,7 @@
   milestone: M10
   phase: 1
   title: Create chio-custody-hw crate skeleton with workspace registration and forbid-unsafe lints
-  status: pending
+  status: in_review
   effort_days: 1
   owner_glob:
     - crates/chio-custody-hw/Cargo.toml
@@ -34,16 +34,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: c83eb2fde
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:54:53Z
   merged_ts: null
 
 - id: M10.P1.T2
   milestone: M10
   phase: 1
   title: Implement PasskeyVerifier wrapping webauthn-rs assertion-verify primitive (fail-closed)
-  status: pending
+  status: in_review
   effort_days: 2
   owner_glob:
     - crates/chio-custody-hw/src/verifier.rs
@@ -61,16 +61,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: b8cfd1958
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:54:53Z
   merged_ts: null
 
 - id: M10.P1.T3
   milestone: M10
   phase: 1
   title: PasskeyCapability envelope with five-minute exp and audience pin (canonical-JSON)
-  status: pending
+  status: in_review
   effort_days: 1.5
   owner_glob:
     - crates/chio-custody-hw/src/capability.rs
@@ -87,16 +87,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 18a568c76
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:54:53Z
   merged_ts: null
 
 - id: M10.P1.T4
   milestone: M10
   phase: 1
   title: Issuer service skeleton (Axum library handler) accepting WebAuthn assertion and returning stub capability
-  status: pending
+  status: in_review
   effort_days: 2
   owner_glob:
     - crates/chio-custody-hw/src/issuer.rs
@@ -112,16 +112,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: b4ea49316
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:54:53Z
   merged_ts: null
 
 - id: M10.P1.T5
   milestone: M10
   phase: 1
   title: Pinned WebAuthn fixture corpus (4 positive, 4 negative) under crates/chio-custody-hw/fixtures/passkey
-  status: pending
+  status: in_review
   effort_days: 1.5
   owner_glob:
     - crates/chio-custody-hw/fixtures/passkey/positive/
@@ -138,16 +138,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 4019cae07
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:54:53Z
   merged_ts: null
 
 - id: M10.P1.T6
   milestone: M10
   phase: 1
   title: Land urn:chio:error:custody:* registry rows (assertion-rejected, audience-mismatch, replay-detected, capability-expired, credential-revoked)
-  status: pending
+  status: in_review
   effort_days: 0.5
   owner_glob:
     - spec/errors/registry.yaml
@@ -165,7 +165,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 5cb209d38
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:54:53Z
   merged_ts: null
