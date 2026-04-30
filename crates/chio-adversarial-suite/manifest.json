@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "producer": "chio-adversarial-suite",
+  "case_count": 40,
+  "cases": [
+    {
+      "id": "anchor-grafted-001",
+      "class": "anchor_grafted",
+      "expected_verdict": "DENY",
+      "expected_reason": "anchor_grafted_receipt_root",
+      "threat_id": "native_channel_replay",
+      "path": "cases/anchor_grafted/anchor-grafted-001.json",
+      "content_sha256": "919f15f6b82ad93bb83b0ae6cb422606b7344da1617b596dccc21c8894a7c73e"
+    },
+    {
+      "id": "anchor-grafted-002",
+      "class": "anchor_grafted",
+      "expected_verdict": "DENY",
+      "expected_reason": "anchor_grafted_checkpoint_signature",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/anchor_grafted/anchor-grafted-002.json",
+      "content_sha256": "b0ea2d9806b22644cd19d55148b99ff4148059774bc79ab7500a2e7a40070d6e"
+    },
+    {
+      "id": "anchor-grafted-003",
+      "class": "anchor_grafted",
+      "expected_verdict": "DENY",
+      "expected_reason": "anchor_grafted_tree_size",
+      "threat_id": "native_channel_replay",
+      "path": "cases/anchor_grafted/anchor-grafted-003.json",
+      "content_sha256": "1a1921fe79c275269dc828ab568c855bdb4f671e53815a70e0ab838581277020"
+    },
+    {
+      "id": "anchor-grafted-004",
+      "class": "anchor_grafted",
+      "expected_verdict": "DENY",
+      "expected_reason": "anchor_grafted_proof_path",
+      "threat_id": "native_channel_replay",
+      "path": "cases/anchor_grafted/anchor-grafted-004.json",
+      "content_sha256": "f2a65c01510f45c6ef5efd28411126e4783f9bf8a40c0322474a9bc94bad1269"
+    },
+    {
+      "id": "anchor-grafted-005",
+      "class": "anchor_grafted",
+      "expected_verdict": "DENY",
+      "expected_reason": "anchor_grafted_tenant_boundary",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/anchor_grafted/anchor-grafted-005.json",
+      "content_sha256": "b185a7ee490bded0b2fb67d1b4d0e262c08c9207b359d06e21b4eea75c157c5d"
+    },
+    {
+      "id": "clock-rewound-001",
+      "class": "clock_rewound",
+      "expected_verdict": "DENY",
+      "expected_reason": "clock_rewound_capability_window",
+      "threat_id": "capability_token_theft",
+      "path": "cases/clock_rewound/clock-rewound-001.json",
+      "content_sha256": "b20f381b053d391875b308ca8aba952e79c1d0200ea79baf9f21640eb424548b"
+    },
+    {
+      "id": "clock-rewound-002",
+      "class": "clock_rewound",
+      "expected_verdict": "DENY",
+      "expected_reason": "clock_rewound_capability_window",
+      "threat_id": "capability_token_theft",
+      "path": "cases/clock_rewound/clock-rewound-002.json",
+      "content_sha256": "d8bbd852f0d42efa4fd456f4e0451f0c9eec79752e6c1ac4fa95a0463eb86f85"
+    },
+    {
+      "id": "clock-rewound-003",
+      "class": "clock_rewound",
+      "expected_verdict": "DENY",
+      "expected_reason": "clock_rewound_receipt_sequence",
+      "threat_id": "native_channel_replay",
+      "path": "cases/clock_rewound/clock-rewound-003.json",
+      "content_sha256": "17c0138ae4f0dd0ac5a0ee61f3889c27fa4dca646b01fb4d231ba9b24a56e073"
+    },
+    {
+      "id": "clock-rewound-004",
+      "class": "clock_rewound",
+      "expected_verdict": "DENY",
+      "expected_reason": "clock_rewound_authority_epoch",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/clock_rewound/clock-rewound-004.json",
+      "content_sha256": "6c5a1f01cfacea51bc9e64d8b39c7834c5419c2a5258e9d45bbf838882c84ed9"
+    },
+    {
+      "id": "clock-rewound-005",
+      "class": "clock_rewound",
+      "expected_verdict": "DENY",
+      "expected_reason": "clock_rewound_grant_activation",
+      "threat_id": "capability_token_theft",
+      "path": "cases/clock_rewound/clock-rewound-005.json",
+      "content_sha256": "b35526db26dd7cefaa0c9f967986d33585c5fa4b390ad29b718770440c3ef0cf"
+    },
+    {
+      "id": "future-dated-001",
+      "class": "future_dated",
+      "expected_verdict": "DENY",
+      "expected_reason": "future_dated_receipt_window",
+      "threat_id": "native_channel_replay",
+      "path": "cases/future_dated/future-dated-001.json",
+      "content_sha256": "0ead4ba5c0582461fb529858dc244a437ec9d71f9f17dd2a9a4f210f9b9c99bc"
+    },
+    {
+      "id": "future-dated-002",
+      "class": "future_dated",
+      "expected_verdict": "DENY",
+      "expected_reason": "future_dated_capability_issued_at",
+      "threat_id": "capability_token_theft",
+      "path": "cases/future_dated/future-dated-002.json",
+      "content_sha256": "ba462b9fb34f6dce15928cee3a9b0758e7e1f6ecdeb3677a83b88aad6eda444e"
+    },
+    {
+      "id": "future-dated-003",
+      "class": "future_dated",
+      "expected_verdict": "DENY",
+      "expected_reason": "future_dated_checkpoint",
+      "threat_id": "native_channel_replay",
+      "path": "cases/future_dated/future-dated-003.json",
+      "content_sha256": "91786cb2f44f20e734dc1e5e9d06807ea522350e8fadcd86500ac695114ed72f"
+    },
+    {
+      "id": "future-dated-004",
+      "class": "future_dated",
+      "expected_verdict": "DENY",
+      "expected_reason": "future_dated_delegation_chain",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/future_dated/future-dated-004.json",
+      "content_sha256": "17fbaf36758ae2e8f6cd2def10a779d46604ec0b999a2e0fdbf7096d7cf47682"
+    },
+    {
+      "id": "future-dated-005",
+      "class": "future_dated",
+      "expected_verdict": "DENY",
+      "expected_reason": "future_dated_authority_signature",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/future_dated/future-dated-005.json",
+      "content_sha256": "9b931c9740b758c440f4c7095d9dc63c72058c9b25e6570402997ba94bdeab73"
+    },
+    {
+      "id": "partial-signature-001",
+      "class": "partial_signature",
+      "expected_verdict": "DENY",
+      "expected_reason": "partial_signature_envelope",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/partial_signature/partial-signature-001.json",
+      "content_sha256": "698f23bfae5ca93563865f790d97f0b5149af4ac8cd7c1293d3dd9407cef7411"
+    },
+    {
+      "id": "partial-signature-002",
+      "class": "partial_signature",
+      "expected_verdict": "DENY",
+      "expected_reason": "partial_signature_missing_scope_claim",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/partial_signature/partial-signature-002.json",
+      "content_sha256": "b6fa3c1f9e24fc63c7fb3bcb2e9cf56d529897736c4fdee59680a8c1df2ec7ae"
+    },
+    {
+      "id": "partial-signature-003",
+      "class": "partial_signature",
+      "expected_verdict": "DENY",
+      "expected_reason": "partial_signature_missing_nonce_claim",
+      "threat_id": "native_channel_replay",
+      "path": "cases/partial_signature/partial-signature-003.json",
+      "content_sha256": "4f7872fdd2ed549366fdcb91dcc5c6d7dd908f3387c8a40c35cf29ba6d890423"
+    },
+    {
+      "id": "partial-signature-004",
+      "class": "partial_signature",
+      "expected_verdict": "DENY",
+      "expected_reason": "partial_signature_missing_parent_link",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/partial_signature/partial-signature-004.json",
+      "content_sha256": "26b09cb66497a07162dda82f7305ca16aefe1fcdfe24ce4fae10a51899341357"
+    },
+    {
+      "id": "partial-signature-005",
+      "class": "partial_signature",
+      "expected_verdict": "DENY",
+      "expected_reason": "partial_signature_missing_expiry_claim",
+      "threat_id": "capability_token_theft",
+      "path": "cases/partial_signature/partial-signature-005.json",
+      "content_sha256": "73d07e4a020b646c03096c87d1f54a1bd0d679cde3a65a559e1408569ea90d49"
+    },
+    {
+      "id": "replayed-nonce-001",
+      "class": "replayed_nonce",
+      "expected_verdict": "DENY",
+      "expected_reason": "nonce_replayed",
+      "threat_id": "native_channel_replay",
+      "path": "cases/replayed_nonce/replayed-nonce-001.json",
+      "content_sha256": "dcc901396912bc24ff481e1e1861462d0fd67d2ea292a38917c8ce9872aadf99"
+    },
+    {
+      "id": "replayed-nonce-002",
+      "class": "replayed_nonce",
+      "expected_verdict": "DENY",
+      "expected_reason": "nonce_replayed",
+      "threat_id": "native_channel_replay",
+      "path": "cases/replayed_nonce/replayed-nonce-002.json",
+      "content_sha256": "086b76ed49ad968f1d137c021dcfb9cbbafb29d5172397a14cd7f8fd790ec3d7"
+    },
+    {
+      "id": "replayed-nonce-003",
+      "class": "replayed_nonce",
+      "expected_verdict": "DENY",
+      "expected_reason": "nonce_replayed_across_sessions",
+      "threat_id": "native_channel_replay",
+      "path": "cases/replayed_nonce/replayed-nonce-003.json",
+      "content_sha256": "a603109ddb4836d29c43d409004b7ad13ed2e9232f79b040caa20e8af69d7959"
+    },
+    {
+      "id": "replayed-nonce-004",
+      "class": "replayed_nonce",
+      "expected_verdict": "DENY",
+      "expected_reason": "nonce_replayed_with_scope_change",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/replayed_nonce/replayed-nonce-004.json",
+      "content_sha256": "78d114e15595cc09c41e79fb7c830d5537aab2503507e7c707a9a1afc2308ae0"
+    },
+    {
+      "id": "replayed-nonce-005",
+      "class": "replayed_nonce",
+      "expected_verdict": "DENY",
+      "expected_reason": "nonce_replayed_after_revocation",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/replayed_nonce/replayed-nonce-005.json",
+      "content_sha256": "4b732adcbb77fb59eaaa56fa695dce7d07880eb748f5cccb148ab906095f1ace"
+    },
+    {
+      "id": "revocation-rollback-001",
+      "class": "revocation_rollback",
+      "expected_verdict": "DENY",
+      "expected_reason": "revocation_epoch_rollback",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/revocation_rollback/revocation-rollback-001.json",
+      "content_sha256": "a6b2b7c3ffd940170bd5d44f759007431e46c9b01520776999cb16f261507568"
+    },
+    {
+      "id": "revocation-rollback-002",
+      "class": "revocation_rollback",
+      "expected_verdict": "DENY",
+      "expected_reason": "revocation_root_rollback",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/revocation_rollback/revocation-rollback-002.json",
+      "content_sha256": "8dee677e970d0ad3517ada29ae346dae8269df715db5fc65595c948999c115a9"
+    },
+    {
+      "id": "revocation-rollback-003",
+      "class": "revocation_rollback",
+      "expected_verdict": "DENY",
+      "expected_reason": "revocation_timestamp_rollback",
+      "threat_id": "native_channel_replay",
+      "path": "cases/revocation_rollback/revocation-rollback-003.json",
+      "content_sha256": "675071657ad0d3154af733bbc9c61c632c79b2ada47da08e6fd1be46c32f4e69"
+    },
+    {
+      "id": "revocation-rollback-004",
+      "class": "revocation_rollback",
+      "expected_verdict": "DENY",
+      "expected_reason": "revocation_proof_rollback",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/revocation_rollback/revocation-rollback-004.json",
+      "content_sha256": "21f6d706f3b99c9d31ef025aaa623ce825389b11afd94dcd2233ec5dac4a6399"
+    },
+    {
+      "id": "revocation-rollback-005",
+      "class": "revocation_rollback",
+      "expected_verdict": "DENY",
+      "expected_reason": "revocation_chain_rollback",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/revocation_rollback/revocation-rollback-005.json",
+      "content_sha256": "4a00cb68a19579f7682c48a2638fc538cd6a681962257281b848ba51122b767d"
+    },
+    {
+      "id": "scope-superset-001",
+      "class": "scope_superset",
+      "expected_verdict": "DENY",
+      "expected_reason": "scope_superset",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/scope_superset/scope-superset-001.json",
+      "content_sha256": "1533e1a99efd6f6b736dc40a422262d47b11e95a2bd01f67bd2248069e840cc0"
+    },
+    {
+      "id": "scope-superset-002",
+      "class": "scope_superset",
+      "expected_verdict": "DENY",
+      "expected_reason": "scope_superset_wildcard",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/scope_superset/scope-superset-002.json",
+      "content_sha256": "c274714376d4b24074983d9662339ad6532e096adff7c3b63dcf129a0772edbf"
+    },
+    {
+      "id": "scope-superset-003",
+      "class": "scope_superset",
+      "expected_verdict": "DENY",
+      "expected_reason": "scope_superset_resource",
+      "threat_id": "capability_token_theft",
+      "path": "cases/scope_superset/scope-superset-003.json",
+      "content_sha256": "1f2f1ac33cd1fdee87705f4ae24ee68f01afdcd699b2456b032affe35b41f473"
+    },
+    {
+      "id": "scope-superset-004",
+      "class": "scope_superset",
+      "expected_verdict": "DENY",
+      "expected_reason": "scope_superset_cross_protocol",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/scope_superset/scope-superset-004.json",
+      "content_sha256": "d68ed538b686aac04979d96c4e01cabab331be703dc9a3d69af80ad4ec25ff5f"
+    },
+    {
+      "id": "scope-superset-005",
+      "class": "scope_superset",
+      "expected_verdict": "DENY",
+      "expected_reason": "scope_superset_admin",
+      "threat_id": "capability_token_theft",
+      "path": "cases/scope_superset/scope-superset-005.json",
+      "content_sha256": "7423a55ae224e9f6ad567dfd5670bbe33bf36a41527e4634b1d49641cb055d2b"
+    },
+    {
+      "id": "sigstore-bundle-payload-mismatch-001",
+      "class": "sigstore_bundle_payload_mismatch",
+      "expected_verdict": "DENY",
+      "expected_reason": "sigstore_bundle_payload_mismatch",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json",
+      "content_sha256": "f4d15c472cd652cf150c69641d085d20192fba9fbd7e9e7d693cb333217aae7e"
+    },
+    {
+      "id": "sigstore-bundle-payload-mismatch-002",
+      "class": "sigstore_bundle_payload_mismatch",
+      "expected_verdict": "DENY",
+      "expected_reason": "sigstore_bundle_payload_mismatch",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json",
+      "content_sha256": "909f993d154e6ccbdd3084ff464f8bdb1b23f62a90dac2c00c30906593924910"
+    },
+    {
+      "id": "sigstore-bundle-payload-mismatch-003",
+      "class": "sigstore_bundle_payload_mismatch",
+      "expected_verdict": "DENY",
+      "expected_reason": "sigstore_bundle_payload_mismatch",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json",
+      "content_sha256": "60b8e9c94736d036b8d1246226196133261d1e378d4d29176048a78cd2ff96b7"
+    },
+    {
+      "id": "sigstore-bundle-payload-mismatch-004",
+      "class": "sigstore_bundle_payload_mismatch",
+      "expected_verdict": "DENY",
+      "expected_reason": "sigstore_bundle_payload_mismatch",
+      "threat_id": "tool_server_escape",
+      "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json",
+      "content_sha256": "635adb88841453a3d0f364d6212d09b56c22da259e42e2238934e004528dce36"
+    },
+    {
+      "id": "sigstore-bundle-payload-mismatch-005",
+      "class": "sigstore_bundle_payload_mismatch",
+      "expected_verdict": "DENY",
+      "expected_reason": "sigstore_bundle_payload_mismatch",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json",
+      "content_sha256": "4f61f16e0f77e8f3eddb2bf5b094503ee8806732abb3a0e3c0002da9430607a5"
+    }
+  ]
+}
