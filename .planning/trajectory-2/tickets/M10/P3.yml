@@ -16,7 +16,7 @@
   milestone: M10
   phase: 3
   title: Scaffold @chio/passkey TypeScript package with package.json, tsconfig, src/index.ts
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - sdks/typescript/packages/passkey/package.json
@@ -34,7 +34,7 @@
   agent_role: browser-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "1b8a05cb16a60558ff92b7fd82fc5405382d9db4"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -43,7 +43,7 @@
   milestone: M10
   phase: 3
   title: Implement requestCapability calling navigator.credentials.get and POSTing to issuer
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - sdks/typescript/packages/passkey/src/request.ts
@@ -61,7 +61,7 @@
   agent_role: browser-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "4fb5e52510ac3bcb02e42c848dbb7b91059a24d5"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -70,7 +70,7 @@
   milestone: M10
   phase: 3
   title: Demo HTML at docs/demo/passkey driving full passkey-to-capability flow with engineering banner
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - docs/demo/passkey/index.html
@@ -88,7 +88,7 @@
   agent_role: browser-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "aad876ccde3b123df788cc4df433fd257a2e0a1f"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -97,7 +97,7 @@
   milestone: M10
   phase: 3
   title: End-to-end revocation test asserting deny within M04 epoch after issuer revoke
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - sdks/typescript/packages/passkey/tests/revocation.spec.ts
@@ -115,7 +115,7 @@
   agent_role: browser-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "7a6f303fd9e0676c0a0edf035900e3dd16557b67"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -124,7 +124,7 @@
   milestone: M10
   phase: 3
   title: Per-runtime size budget for @chio/passkey enforced at 30 KB gzipped in CI
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - sdks/typescript/scripts/size-budget.json
@@ -138,7 +138,7 @@
   agent_role: browser-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "c6818bb2b39a5831e0598963bf454b92e895a136"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -147,7 +147,7 @@
   milestone: M10
   phase: 3
   title: Surface urn:chio:error:custody:* codes in @chio/passkey thrown errors via M01 typed-enum codegen
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - sdks/typescript/packages/passkey/src/errors.ts
@@ -165,7 +165,7 @@
   agent_role: browser-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "63e5b4fbad6a7f0da449ada6603fdbb8b5455c6e"
   merged_sha: null
   opened_ts: null
   merged_ts: null
