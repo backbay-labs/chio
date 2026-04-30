@@ -40,9 +40,9 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: af7748b032d7534f2a5666b486de0a60df1b4cb2
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:33:03Z
   merged_ts: null
 
 - id: M07.P2.T2
@@ -67,9 +67,9 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: dadf356e0aefa3b6337b139a36dea0831e451db8
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:33:03Z
   merged_ts: null
 
 - id: M07.P2.T3
@@ -93,9 +93,9 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 16f4f87179d5d92e9fb1de550b4c91bbf9f295fa
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:33:03Z
   merged_ts: null
 
 - id: M07.P2.T4
@@ -123,9 +123,9 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 27f44d2d4418ba544f7871cfbbfe2c48eb8c7153
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:33:03Z
   merged_ts: null
 
 - id: M07.P2.T5
@@ -149,9 +149,9 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 7676bedbe83d498b88103c212248c694b05abaec
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:33:03Z
   merged_ts: null
 
 - id: M07.P2.T6
@@ -176,7 +176,7 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 08a5941f55e611e6756353ebde0f5f89c6658f99
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:33:03Z
   merged_ts: null
