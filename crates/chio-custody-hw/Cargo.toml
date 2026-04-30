@@ -1,6 +1,6 @@
 [package]
 name = "chio-custody-hw"
-description = "Chio hardware custody surface (M10 P1 WebAuthn assertion verifier, audience-pinned capability envelope, issuer service skeleton)"
+description = "Chio hardware custody surface (M10 P2 HybridBackend-signed capabilities, replay-resistant nonce store, M04 revocation cascade)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,8 +11,27 @@ publish = false
 [lib]
 name = "chio_custody_hw"
 
+[features]
+default = []
+# Enable post-quantum HybridBackend signing for issuer mint paths. The
+# `pq` feature pulls in `chio-core-types/pq` (ML-DSA-65 via FIPS 204).
+# Classical-only deployments leave this disabled and use the Ed25519 /
+# P-256 / P-384 backends directly; the signed capability bytes are
+# byte-identical between classical and hybrid mode at the unsigned
+# canonical envelope (the `signature` field is the only differing slot).
+pq = ["chio-core-types/pq"]
+
+# SQLite-backed durable PasskeyNonceStore (M10.P2.T2). Re-uses the
+# rusqlite version pinned by the workspace (the same version
+# trajectory-1 chio-store-sqlite uses) so a deployment can persist the
+# replay-detection store across issuer restarts. Default-off because the
+# in-memory store is sufficient for unit tests and single-process
+# integration tests.
+sqlite-store = ["dep:rusqlite"]
+
 [dependencies]
 chio-core-types = { path = "../chio-core-types" }
+chio-revocation-oracle = { path = "../chio-revocation-oracle" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -21,9 +40,12 @@ base64ct = { workspace = true, features = ["alloc"] }
 webauthn-rs = { workspace = true }
 webauthn-rs-proto = { workspace = true }
 url = { workspace = true }
+rusqlite = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+proptest = { workspace = true }
+rusqlite = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"

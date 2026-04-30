@@ -32,11 +32,17 @@
 //!   - Revocation cascade through the M04 oracle.
 //!   - Rate limiting and bot-defence at the HTTP edge.
 
+use std::sync::Arc;
+
+use chio_core_types::crypto::SigningBackend;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::capability::{PasskeyCapability, ScopeSet};
 use crate::error::CustodyError;
+use crate::mint::sign_capability;
+use crate::nonce_store::{PasskeyNonceStore, RecordOutcome};
+use crate::revocation::CredentialRevocationOracle;
 use crate::verifier::VerifiedAssertion;
 
 /// HTTP-shaped mint request. Canonical-JSON encodable.
@@ -63,17 +69,76 @@ pub struct MintResponse {
 ///
 /// Configured with a fixed audience pin that requests must match. The
 /// audience pin is the kernel identity URI; it is not caller-rewritable.
+///
+/// An optional signing backend turns the unsigned P1 stub envelope into a
+/// signed P2 capability. The same constructor accepts any
+/// [`chio_core_types::crypto::SigningBackend`] (Ed25519, P-256/P-384 via
+/// the `fips` feature, or `HybridBackend` via the `pq` feature) so a
+/// deployment running with `crypto_floor=allow_classical` and one running
+/// hybrid produce byte-identical envelopes apart from the `signature`
+/// slot itself.
 pub struct IssuerService {
     audience: String,
+    signer: Option<Arc<dyn SigningBackend>>,
+    nonce_store: Option<Arc<dyn PasskeyNonceStore>>,
+    revocation: Option<Arc<dyn CredentialRevocationOracle>>,
 }
 
 impl IssuerService {
-    /// Build an issuer pinned to a specific audience URI.
+    /// Build an issuer pinned to a specific audience URI. The returned
+    /// service has no signer wired (legacy P1 path: produces unsigned
+    /// stubs).
+    ///
+    /// New code SHOULD prefer [`Self::with_signer`]; this constructor
+    /// remains for backwards compatibility with the P1 unsigned-stub test
+    /// surface and for deployments that synthesise capabilities for
+    /// canonical-JSON regression suites.
     #[must_use]
     pub fn new(audience: impl Into<String>) -> Self {
         Self {
             audience: audience.into(),
+            signer: None,
+            nonce_store: None,
+            revocation: None,
         }
+    }
+
+    /// Build an issuer pinned to an audience URI and a signing backend.
+    /// The signing backend is the M03 `HybridBackend` (or any
+    /// [`SigningBackend`] when `crypto_floor=allow_classical`).
+    #[must_use]
+    pub fn with_signer(audience: impl Into<String>, signer: Arc<dyn SigningBackend>) -> Self {
+        Self {
+            audience: audience.into(),
+            signer: Some(signer),
+            nonce_store: None,
+            revocation: None,
+        }
+    }
+
+    /// Attach a [`PasskeyNonceStore`] for replay-attack resistance.
+    ///
+    /// Builder-style: returns the issuer with the nonce store wired.
+    /// When set, every successful mint records
+    /// `(credential_id, challenge_nonce)` keyed for replay detection;
+    /// a duplicate fails the mint with [`CustodyError::ReplayDetected`].
+    #[must_use]
+    pub fn with_nonce_store(mut self, store: Arc<dyn PasskeyNonceStore>) -> Self {
+        self.nonce_store = Some(store);
+        self
+    }
+
+    /// Attach a [`CredentialRevocationOracle`] (M10.P2.T3 cascade).
+    ///
+    /// Builder-style: returns the issuer with the revocation cascade
+    /// wired through the M04 sparse-Merkle oracle. When set, every mint
+    /// consults the oracle BEFORE recording the nonce or signing; a
+    /// revoked credential fails-closed with
+    /// [`CustodyError::CredentialRevoked`].
+    #[must_use]
+    pub fn with_revocation_oracle(mut self, oracle: Arc<dyn CredentialRevocationOracle>) -> Self {
+        self.revocation = Some(oracle);
+        self
     }
 
     /// Configured audience pin for inspection.
@@ -113,13 +178,52 @@ impl IssuerService {
             return Err(CustodyError::UserVerificationRequired);
         }
 
-        let cap = PasskeyCapability::new_stub_unsigned(
+        // Revocation cascade (M10.P2.T3). The check happens AFTER
+        // audience and UV gates but BEFORE recording the nonce or
+        // signing so a revoked credential never advances the nonce
+        // store nor consumes a signing budget. The cascade is
+        // synchronous from the issuer's point of view: revoking the
+        // credential at the M04 oracle denies the next mint within
+        // the current epoch.
+        if let Some(oracle) = &self.revocation {
+            if oracle.is_revoked(&verified.credential_id_b64)? {
+                return Err(CustodyError::CredentialRevoked);
+            }
+        }
+
+        let mut cap = PasskeyCapability::new_stub_unsigned(
             self.audience.clone(),
             verified.credential_id_b64.clone(),
             request.scope_set.clone(),
             request.challenge_nonce.clone(),
             now,
         );
+
+        // Replay-attack resistance (M10.P2.T2). The nonce store is keyed
+        // on (credential_id, challenge_nonce). The check happens BEFORE
+        // signing so a replayed assertion never produces a signed
+        // capability, even if the signer is fast enough to keep up.
+        // Retention is `cap.exp + clock_skew` (clock_skew = 30s default
+        // per `DEFAULT_CLOCK_SKEW_SECONDS`).
+        if let Some(store) = &self.nonce_store {
+            match store.record_if_fresh(
+                &verified.credential_id_b64,
+                &request.challenge_nonce,
+                cap.exp.timestamp(),
+            )? {
+                RecordOutcome::Fresh => {}
+                RecordOutcome::Replayed => {
+                    return Err(CustodyError::ReplayDetected {
+                        credential_id: verified.credential_id_b64.clone(),
+                    });
+                }
+            }
+        }
+
+        if let Some(signer) = &self.signer {
+            sign_capability(&mut cap, signer.as_ref())?;
+        }
+
         Ok(MintResponse { capability: cap })
     }
 }

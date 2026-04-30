@@ -29,6 +29,7 @@ pub mod capability_lineage;
 pub mod checkpoint;
 pub mod compliance_score;
 pub mod cost_attribution;
+pub mod custody;
 pub mod dpop;
 pub mod evidence_export;
 pub mod execution_nonce;
@@ -291,6 +292,7 @@ pub use cost_attribution::{
     CostAttributionReport, CostAttributionSummary, LeafCostAttributionRow, RootCostAttributionRow,
     MAX_COST_ATTRIBUTION_LIMIT,
 };
+pub use custody::PasskeyCapabilityVerifier;
 pub use dpop::{
     is_supported_dpop_schema, verify_dpop_proof, DpopConfig, DpopNonceStore, DpopProof,
     DpopProofBody, DPOP_SCHEMA,
