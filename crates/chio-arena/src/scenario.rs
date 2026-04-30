@@ -131,6 +131,12 @@ pub struct ScenarioAdversary {
     pub class: String,
     pub population: String,
     pub seed_ref: String,
+    /// Optional kebab-case parameter map used by P3 adversary classes to
+    /// configure their populations. Unknown keys are forwarded as-is to the
+    /// adversary constructor; constructors are responsible for rejecting
+    /// missing or ill-typed parameters.
+    #[serde(default)]
+    pub params: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,6 +289,21 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), ScenarioError> {
             &format!("adversaries.{}.seed_ref", adversary.class),
             &adversary.seed_ref,
         )?;
+        for (key, value) in &adversary.params {
+            let lower_key = key.to_ascii_lowercase();
+            if SECRET_MARKERS
+                .iter()
+                .any(|marker| lower_key.contains(marker))
+            {
+                return Err(ScenarioError::InlineSecret {
+                    path: format!("adversaries.{}.params.{}", adversary.class, key),
+                });
+            }
+            reject_inline_secret(
+                &format!("adversaries.{}.params.{}", adversary.class, key),
+                value,
+            )?;
+        }
     }
 
     Ok(())
