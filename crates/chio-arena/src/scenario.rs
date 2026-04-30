@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::ARENA_SCENARIO_SCHEMA;
 
 const SCHEMA_PREFIX: &str = "chio.arena.scenario/v";
-const SUPPORTED_SCHEDULER: &str = "single-agent-v1";
+const SUPPORTED_SCHEDULERS: &[&str] = &["single-agent-v1", "deterministic-multi-v1"];
 const REQUIRED_LOCALE: &str = "C";
 const SECRET_MARKERS: &[&str] = &[
     "BEGIN PRIVATE KEY",
@@ -217,7 +217,7 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), ScenarioError> {
             field: "virtual_clock_start",
         });
     }
-    if scenario.determinism.scheduler != SUPPORTED_SCHEDULER {
+    if !SUPPORTED_SCHEDULERS.contains(&scenario.determinism.scheduler.as_str()) {
         return Err(ScenarioError::UnsupportedScheduler(
             scenario.determinism.scheduler.clone(),
         ));

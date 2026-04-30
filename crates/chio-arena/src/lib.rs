@@ -8,6 +8,7 @@ pub mod promote;
 pub mod rng;
 pub mod runtime;
 pub mod scenario;
+pub mod scheduler;
 
 /// Scenario schema name used by the arena DSL.
 pub const ARENA_SCENARIO_SCHEMA: &str = "chio.arena.scenario/v1";
@@ -23,3 +24,4 @@ pub use scenario::{
     load_scenario, parse_scenario_str, DeterminismWitness, Scenario, ScenarioError, ScenarioStep,
     ScenarioVerdict,
 };
+pub use scheduler::{DeterministicScheduler, ScheduledStep, SchedulerError};
