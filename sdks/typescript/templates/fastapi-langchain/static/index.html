@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Chio receipts (fastapi-langchain template)</title>
+  </head>
+  <body>
+    <h1>Chio receipts</h1>
+    <p>
+      This static viewer reads the local in-memory receipt sink. No outbound
+      network calls run during the TTFRH first-run bench.
+    </p>
+    <ul id="receipts"></ul>
+    <script>
+      fetch("/receipts")
+        .then(r => r.json())
+        .then(({ receipts }) => {
+          const list = document.getElementById("receipts");
+          for (const receipt of receipts) {
+            const li = document.createElement("li");
+            li.textContent = `${receipt.id} (${receipt.verdict}) - ${receipt.source}`;
+            list.appendChild(li);
+          }
+        });
+    </script>
+  </body>
+</html>

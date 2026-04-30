@@ -1,0 +1,21 @@
+# Chio template manifest for fastapi-langchain.
+# Consumed by `npx create-chio-app fastapi-langchain` and by the
+# bench/ttfrh runner that enforces the < 60 s p99 TTFRH budget.
+
+template: fastapi-langchain
+runtime: python
+description: |
+  FastAPI app wrapping a LangChain agent through the trajectory-1 Python
+  SDK. Receipts are surfaced via a static viewer mounted at `/static`.
+
+telemetry_free: true
+allowed_hosts: []
+
+ttfrh:
+  bench: bench/ttfrh/runners/fastapi_langchain.rs
+  budget_ms: 60000
+  buffer_pct: 10
+
+bootstrap:
+  install: "uv sync --frozen"
+  smoke: "uv run python -c 'import app.main'"
