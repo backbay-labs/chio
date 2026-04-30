@@ -52,6 +52,8 @@ include!("cli/replay/bless.rs");
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod cli_entrypoint_tests {
+    use std::error::Error;
+
     use clap::Parser;
 
     use super::*;
@@ -128,5 +130,62 @@ mod cli_entrypoint_tests {
         assert!(rendered.contains("error [CHIO-CLI-OTHER]: bad inputs"));
         assert!(rendered.contains("context:"));
         assert!(rendered.contains("suggested fix:"));
+    }
+
+    #[test]
+    fn write_cli_error_emits_capability_registry_report() -> Result<(), Box<dyn Error>> {
+        let rendered = render_error_json(&CliError::capability_scope_error(
+            "capability does not grant tool access",
+        ))?;
+
+        assert_eq!(
+            rendered["code"],
+            "urn:chio:error:capability:scope-exceeded"
+        );
+        assert_eq!(rendered["context"]["domain"], "capability");
+        assert!(rendered["suggested_fix"]
+            .as_str()
+            .is_some_and(|fix| fix.contains("Issue a capability")));
+
+        Ok(())
+    }
+
+    #[test]
+    fn write_cli_error_emits_policy_registry_report() -> Result<(), Box<dyn Error>> {
+        let rendered = render_error_json(&CliError::policy_constraint_error(
+            "invalid governed autonomy tier",
+        ))?;
+
+        assert_eq!(rendered["code"], "urn:chio:error:policy:constraint-invalid");
+        assert_eq!(rendered["context"]["domain"], "policy");
+        assert!(rendered["suggested_fix"]
+            .as_str()
+            .is_some_and(|fix| fix.contains("constraint")));
+
+        Ok(())
+    }
+
+    #[test]
+    fn write_cli_error_emits_transport_registry_report() -> Result<(), Box<dyn Error>> {
+        let rendered = render_error_json(&CliError::transport_shape_error(
+            "OID4VP request URL must include a host",
+        ))?;
+
+        assert_eq!(
+            rendered["code"],
+            "urn:chio:error:transport:invalid-request-shape"
+        );
+        assert_eq!(rendered["context"]["domain"], "transport");
+        assert!(rendered["suggested_fix"]
+            .as_str()
+            .is_some_and(|fix| fix.contains("request shape")));
+
+        Ok(())
+    }
+
+    fn render_error_json(error: &CliError) -> Result<serde_json::Value, Box<dyn Error>> {
+        let mut output = Vec::new();
+        write_cli_error(&mut output, error, true)?;
+        Ok(serde_json::from_slice(&output)?)
     }
 }

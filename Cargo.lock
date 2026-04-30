@@ -2434,6 +2434,7 @@ dependencies = [
  "chio-credentials",
  "chio-data-guards",
  "chio-did",
+ "chio-errors",
  "chio-external-guards",
  "chio-guards",
  "chio-kernel",

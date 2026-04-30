@@ -37,7 +37,7 @@ const OID4VP_TRANSACTION_STATUS_EXPIRED: &str = "expired";
 
 fn sqlite_i64(value: u64, field: &str) -> Result<i64, CliError> {
     i64::try_from(value).map_err(|_| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "{field} value {value} exceeds SQLite INTEGER range"
         ))
     })
@@ -45,7 +45,7 @@ fn sqlite_i64(value: u64, field: &str) -> Result<i64, CliError> {
 
 fn sqlite_u64(value: i64, field: &str) -> Result<u64, CliError> {
     u64::try_from(value).map_err(|_| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "{field} value {value} is outside the supported u64 range"
         ))
     })
@@ -76,7 +76,7 @@ impl VerifierPolicyRegistry {
                 if registry.version != VERIFIER_POLICY_REGISTRY_VERSION
                     && registry.version != LEGACY_VERIFIER_POLICY_REGISTRY_VERSION
                 {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::policy_error(format!(
                         "unsupported verifier policy registry version: {}",
                         registry.version
                     )));
@@ -84,7 +84,7 @@ impl VerifierPolicyRegistry {
                 registry.version = VERIFIER_POLICY_REGISTRY_VERSION.to_string();
                 for document in registry.policies.values() {
                     verify_signed_passport_verifier_policy(document)
-                        .map_err(|error| CliError::Other(error.to_string()))?;
+                        .map_err(|error| CliError::policy_error(error.to_string()))?;
                 }
                 Ok(registry)
             }
@@ -111,20 +111,20 @@ impl VerifierPolicyRegistry {
         now: u64,
     ) -> Result<&SignedPassportVerifierPolicy, CliError> {
         let Some(document) = self.get(policy_id) else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::policy_error(format!(
                 "verifier policy `{policy_id}` was not found"
             )));
         };
         verify_signed_passport_verifier_policy(document)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         ensure_signed_passport_verifier_policy_active(document, now)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         Ok(document)
     }
 
     pub fn upsert(&mut self, document: SignedPassportVerifierPolicy) -> Result<(), CliError> {
         verify_signed_passport_verifier_policy(&document)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         self.policies
             .insert(document.body.policy_id.clone(), document);
         Ok(())
@@ -230,7 +230,7 @@ impl PassportStatusRegistry {
                 if registry.version != PASSPORT_STATUS_REGISTRY_VERSION
                     && registry.version != LEGACY_PASSPORT_STATUS_REGISTRY_VERSION
                 {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::policy_error(format!(
                         "unsupported passport status registry version: {}",
                         registry.version
                     )));
@@ -270,7 +270,7 @@ impl PassportStatusRegistry {
         distribution: PassportStatusDistribution,
     ) -> Result<PassportLifecycleRecord, CliError> {
         let verification = verify_agent_passport(passport, published_at)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         self.version = PASSPORT_STATUS_REGISTRY_VERSION.to_string();
         if let Some(existing) = self.passports.get(&verification.passport_id) {
             return Ok(existing.clone());
@@ -312,7 +312,7 @@ impl PassportStatusRegistry {
         at: u64,
     ) -> Result<PassportLifecycleResolution, CliError> {
         let verification = verify_agent_passport(passport, at)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         Ok(self
             .get(&verification.passport_id)
             .map(|record| passport_lifecycle_resolution_from_record(record, at))
@@ -364,7 +364,7 @@ impl PassportStatusRegistry {
         revoked_at: Option<u64>,
     ) -> Result<PassportLifecycleRecord, CliError> {
         let Some(entry) = self.passports.get_mut(passport_id) else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::policy_error(format!(
                 "passport `{passport_id}` was not found in the lifecycle registry"
             )));
         };
@@ -384,36 +384,36 @@ impl PassportStatusRegistry {
         let resolution = self.resolve_for_passport(passport, at)?;
         resolution
             .validate()
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         match resolution.state {
             PassportLifecycleState::Active => {}
             PassportLifecycleState::Stale => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::policy_error(format!(
                     "passport `{}` has stale lifecycle state and cannot be delivered with portable lifecycle support",
                     resolution.passport_id
                 )))
             }
             PassportLifecycleState::Superseded => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::policy_error(format!(
                     "passport `{}` is superseded and cannot be delivered with portable lifecycle support",
                     resolution.passport_id
                 )))
             }
             PassportLifecycleState::Revoked => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::policy_error(format!(
                     "passport `{}` is revoked and cannot be delivered with portable lifecycle support",
                     resolution.passport_id
                 )))
             }
             PassportLifecycleState::NotFound => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::policy_error(format!(
                     "passport `{}` must be published into the lifecycle registry before portable issuance can advertise lifecycle support",
                     resolution.passport_id
                 )))
             }
         }
         if resolution.distribution.is_empty() {
-            return Err(CliError::Other(format!(
+            return Err(CliError::policy_error(format!(
                 "passport `{}` must publish at least one resolve_url before portable issuance can advertise lifecycle support",
                 resolution.passport_id
             )));
@@ -433,7 +433,7 @@ impl PassportIssuanceOfferRegistry {
                 if registry.version != PASSPORT_ISSUANCE_REGISTRY_VERSION
                     && registry.version != LEGACY_PASSPORT_ISSUANCE_REGISTRY_VERSION
                 {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::policy_error(format!(
                         "unsupported passport issuance registry version: {}",
                         registry.version
                     )));
@@ -466,7 +466,7 @@ impl PassportIssuanceOfferRegistry {
         now: u64,
     ) -> Result<PassportIssuanceOfferRecord, CliError> {
         if ttl_secs == 0 {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "passport issuance offers require ttl_secs greater than zero".to_string(),
             ));
         }
@@ -524,12 +524,12 @@ impl PassportIssuanceOfferRegistry {
             })
             .map(|(offer_id, _)| offer_id.clone())
         else {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "pre-authorized code is not present in the issuance registry".to_string(),
             ));
         };
         let Some(record) = self.offers.get_mut(&offer_id) else {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "pre-authorized code resolved to a missing issuance offer".to_string(),
             ));
         };
@@ -537,24 +537,26 @@ impl PassportIssuanceOfferRegistry {
         if normalize_credential_issuer(&record.offer.credential_issuer)?
             != normalize_credential_issuer(&metadata.credential_issuer)?
         {
-            return Err(CliError::Other(
+            return Err(CliError::policy_error(
                 "offer credential_issuer does not match the configured issuer metadata".to_string(),
             ));
         }
         match record.state {
             PassportIssuanceOfferState::Offered => {}
             PassportIssuanceOfferState::TokenIssued => {
-                return Err(CliError::Other(
+                return Err(CliError::cli_other_error(
                     "pre-authorized code has already been redeemed".to_string(),
                 ))
             }
             PassportIssuanceOfferState::CredentialIssued => {
-                return Err(CliError::Other(
+                return Err(CliError::policy_error(
                     "credential has already been issued for this offer".to_string(),
                 ))
             }
             PassportIssuanceOfferState::Expired => {
-                return Err(CliError::Other("issuance offer has expired".to_string()))
+                return Err(CliError::cli_other_error(
+                    "issuance offer has expired".to_string(),
+                ))
             }
         }
         let access_token = KeyId::generate();
@@ -563,7 +565,7 @@ impl PassportIssuanceOfferRegistry {
             .min(record.expires_at);
         if token_expires_at <= now {
             record.state = PassportIssuanceOfferState::Expired;
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "issuance offer expired before an access token could be minted".to_string(),
             ));
         }
@@ -595,12 +597,12 @@ impl PassportIssuanceOfferRegistry {
             .find(|(_, record)| record.access_token.as_deref() == Some(access_token))
             .map(|(offer_id, _)| offer_id.clone())
         else {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "access token is not present in the issuance registry".to_string(),
             ));
         };
         let Some(record) = self.offers.get_mut(&offer_id) else {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "access token resolved to a missing issuance offer".to_string(),
             ));
         };
@@ -608,24 +610,26 @@ impl PassportIssuanceOfferRegistry {
         if normalize_credential_issuer(&record.offer.credential_issuer)?
             != normalize_credential_issuer(&metadata.credential_issuer)?
         {
-            return Err(CliError::Other(
+            return Err(CliError::policy_error(
                 "offer credential_issuer does not match the configured issuer metadata".to_string(),
             ));
         }
         match record.state {
             PassportIssuanceOfferState::TokenIssued => {}
             PassportIssuanceOfferState::Offered => {
-                return Err(CliError::Other(
+                return Err(CliError::cli_other_error(
                     "access token has not been issued for this offer".to_string(),
                 ))
             }
             PassportIssuanceOfferState::CredentialIssued => {
-                return Err(CliError::Other(
+                return Err(CliError::cli_other_error(
                     "credential has already been issued for this access token".to_string(),
                 ))
             }
             PassportIssuanceOfferState::Expired => {
-                return Err(CliError::Other("issuance offer has expired".to_string()))
+                return Err(CliError::cli_other_error(
+                    "issuance offer has expired".to_string(),
+                ))
             }
         }
 
@@ -634,7 +638,7 @@ impl PassportIssuanceOfferRegistry {
             .map_err(CliError::from)?;
         let expected_configuration_id = record.offer.primary_configuration_id()?;
         if credential_configuration_id != expected_configuration_id {
-            return Err(CliError::Other(format!(
+            return Err(CliError::policy_error(format!(
                 "credential_configuration_id `{credential_configuration_id}` does not match offer configuration `{expected_configuration_id}`"
             )));
         }
@@ -646,7 +650,7 @@ impl PassportIssuanceOfferRegistry {
             .map(|context| context.subject.as_str())
             .unwrap_or(record.passport.subject.as_str());
         if request.subject != expected_subject {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "credential request subject `{}` does not match offer subject `{expected_subject}`",
                 request.subject
             )));
@@ -662,7 +666,7 @@ impl PassportIssuanceOfferRegistry {
             .as_ref()
             .is_some_and(|requested_format| requested_format != &format)
         {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "credential request format does not match offer format `{format}`"
             )));
         }
@@ -672,7 +676,7 @@ impl PassportIssuanceOfferRegistry {
 
         let response = if format == CHIO_PASSPORT_SD_JWT_VC_FORMAT {
             let keypair = portable_signing_keypair.ok_or_else(|| {
-                CliError::Other(
+                CliError::cli_other_error(
                     "portable sd-jwt vc issuance requires a signing keypair".to_string(),
                 )
             })?;
@@ -684,7 +688,7 @@ impl PassportIssuanceOfferRegistry {
                 now,
                 status_reference.clone(),
             )
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
             Oid4vciCredentialResponse::new_portable_sd_jwt(
                 format.clone(),
                 envelope.compact,
@@ -693,10 +697,10 @@ impl PassportIssuanceOfferRegistry {
                 status_reference,
                 envelope.issuer_jwk,
             )
-            .map_err(|error| CliError::Other(error.to_string()))?
+            .map_err(|error| CliError::policy_error(error.to_string()))?
         } else if format == CHIO_PASSPORT_JWT_VC_JSON_FORMAT {
             let keypair = portable_signing_keypair.ok_or_else(|| {
-                CliError::Other(
+                CliError::cli_other_error(
                     "portable jwt_vc_json issuance requires a signing keypair".to_string(),
                 )
             })?;
@@ -708,7 +712,7 @@ impl PassportIssuanceOfferRegistry {
                 now,
                 status_reference.clone(),
             )
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
             Oid4vciCredentialResponse::new_portable_jwt_vc_json(
                 format.clone(),
                 envelope.compact,
@@ -717,14 +721,14 @@ impl PassportIssuanceOfferRegistry {
                 status_reference,
                 envelope.issuer_jwk,
             )
-            .map_err(|error| CliError::Other(error.to_string()))?
+            .map_err(|error| CliError::policy_error(error.to_string()))?
         } else {
             Oid4vciCredentialResponse::new_with_status_reference(
                 format.clone(),
                 record.passport.clone(),
                 portable_status_reference,
             )
-            .map_err(|error| CliError::Other(error.to_string()))?
+            .map_err(|error| CliError::policy_error(error.to_string()))?
         };
         response.validate(now, Some(&format), Some(expected_subject))?;
         record.state = PassportIssuanceOfferState::CredentialIssued;
@@ -829,7 +833,7 @@ impl PassportVerifierChallengeStore {
             )
             .optional()?
         else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "challenge `{challenge_id}` is not registered in the verifier challenge store"
             )));
         };
@@ -837,17 +841,17 @@ impl PassportVerifierChallengeStore {
         match status.as_str() {
             CHALLENGE_STATUS_ISSUED => {}
             CHALLENGE_STATUS_CONSUMED => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "challenge `{challenge_id}` has already been consumed"
                 )))
             }
             CHALLENGE_STATUS_EXPIRED => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "challenge `{challenge_id}` has already expired"
                 )))
             }
             other => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "challenge `{challenge_id}` has unknown stored status `{other}`"
                 )))
             }
@@ -860,13 +864,13 @@ impl PassportVerifierChallengeStore {
                 params![challenge_id, CHALLENGE_STATUS_EXPIRED],
             )?;
             transaction.commit()?;
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "challenge `{challenge_id}` expired before it could be fetched"
             )));
         }
         let challenge: PassportPresentationChallenge = serde_json::from_str(&challenge_json)?;
         verify_passport_presentation_challenge(&challenge, now)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         transaction.commit()?;
         Ok(challenge)
     }
@@ -895,14 +899,14 @@ impl PassportVerifierChallengeStore {
             )
             .optional()?
         else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "challenge `{}` is not registered in the verifier challenge store",
                 challenge_id
             )));
         };
         let expected_hash = challenge_hash(challenge)?;
         if stored_challenge_hash != expected_hash {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "stored verifier challenge `{}` does not match the provided challenge payload",
                 challenge_id
             )));
@@ -910,20 +914,20 @@ impl PassportVerifierChallengeStore {
         let expires_at = sqlite_u64(expires_at_raw, "passport verifier challenge expires_at")?;
         match status.as_str() {
             CHALLENGE_STATUS_CONSUMED => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "challenge `{}` has already been consumed",
                     challenge_id
                 )))
             }
             CHALLENGE_STATUS_EXPIRED => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "challenge `{}` has already expired",
                     challenge_id
                 )))
             }
             CHALLENGE_STATUS_ISSUED => {}
             other => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "challenge `{}` has unknown stored status `{other}`",
                     challenge_id
                 )))
@@ -937,7 +941,7 @@ impl PassportVerifierChallengeStore {
                 params![challenge_id.as_ref(), CHALLENGE_STATUS_EXPIRED],
             )?;
             transaction.commit()?;
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "challenge `{}` expired before it could be consumed",
                 challenge_id
             )));
@@ -954,7 +958,7 @@ impl PassportVerifierChallengeStore {
             ],
         )?;
         if updated != 1 {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "challenge `{}` could not be consumed safely",
                 challenge_id
             )));
@@ -1061,7 +1065,7 @@ impl Oid4vpVerifierTransactionStore {
             )
             .optional()?
         else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "OID4VP request `{request_id}` is not registered in the verifier transaction store"
             )));
         };
@@ -1069,17 +1073,17 @@ impl Oid4vpVerifierTransactionStore {
         match status.as_str() {
             OID4VP_TRANSACTION_STATUS_ISSUED => {}
             OID4VP_TRANSACTION_STATUS_CONSUMED => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "OID4VP request `{request_id}` has already been consumed"
                 )))
             }
             OID4VP_TRANSACTION_STATUS_EXPIRED => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "OID4VP request `{request_id}` has already expired"
                 )))
             }
             other => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "OID4VP request `{request_id}` has unknown stored status `{other}`"
                 )))
             }
@@ -1092,7 +1096,7 @@ impl Oid4vpVerifierTransactionStore {
                 params![request_id, OID4VP_TRANSACTION_STATUS_EXPIRED],
             )?;
             transaction.commit()?;
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "OID4VP request `{request_id}` expired before it could be fetched"
             )));
         }
@@ -1134,7 +1138,7 @@ impl Oid4vpVerifierTransactionStore {
             )
             .optional()?
         else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "OID4VP request `{request_id}` is not registered in the verifier transaction store"
             )));
         };
@@ -1155,7 +1159,7 @@ impl Oid4vpVerifierTransactionStore {
         }
         let request: Oid4vpRequestObject = serde_json::from_str(&request_json)?;
         if request.jti != request_id {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "stored OID4VP request payload did not match request_id `{request_id}`"
             )));
         }
@@ -1198,14 +1202,14 @@ impl Oid4vpVerifierTransactionStore {
             )
             .optional()?
         else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "OID4VP request `{}` is not registered in the verifier transaction store",
                 request.jti
             )));
         };
         let expected_hash = sha256_hex(request_jwt.as_bytes());
         if request_hash != expected_hash {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "stored OID4VP request `{}` does not match the provided request JWT",
                 request.jti
             )));
@@ -1213,20 +1217,20 @@ impl Oid4vpVerifierTransactionStore {
         let expires_at = sqlite_u64(expires_at_raw, "OID4VP transaction expires_at")?;
         match status.as_str() {
             OID4VP_TRANSACTION_STATUS_CONSUMED => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "OID4VP request `{}` has already been consumed",
                     request.jti
                 )))
             }
             OID4VP_TRANSACTION_STATUS_EXPIRED => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "OID4VP request `{}` has already expired",
                     request.jti
                 )))
             }
             OID4VP_TRANSACTION_STATUS_ISSUED => {}
             other => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "OID4VP request `{}` has unknown stored status `{other}`",
                     request.jti
                 )))
@@ -1240,7 +1244,7 @@ impl Oid4vpVerifierTransactionStore {
                 params![request.jti.as_str(), OID4VP_TRANSACTION_STATUS_EXPIRED],
             )?;
             transaction.commit()?;
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "OID4VP request `{}` expired before it could be consumed",
                 request.jti
             )));
@@ -1257,7 +1261,7 @@ impl Oid4vpVerifierTransactionStore {
             ],
         )?;
         if updated != 1 {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "OID4VP request `{}` could not be consumed safely",
                 request.jti
             )));
@@ -1307,7 +1311,7 @@ fn wallet_exchange_status_from_store(
         OID4VP_TRANSACTION_STATUS_ISSUED => Ok(WalletExchangeTransactionStatus::Issued),
         OID4VP_TRANSACTION_STATUS_CONSUMED => Ok(WalletExchangeTransactionStatus::Consumed),
         OID4VP_TRANSACTION_STATUS_EXPIRED => Ok(WalletExchangeTransactionStatus::Expired),
-        other => Err(CliError::Other(format!(
+        other => Err(CliError::cli_other_error(format!(
             "OID4VP request has unknown stored status `{other}`"
         ))),
     }
@@ -1326,7 +1330,7 @@ fn build_wallet_exchange_transaction_state(
         }
         WalletExchangeTransactionStatus::Consumed => {
             let consumed_at = consumed_at.ok_or_else(|| {
-                CliError::Other(format!(
+                CliError::cli_other_error(format!(
                     "OID4VP request `{request_id}` is marked consumed without consumed_at"
                 ))
             })?;
@@ -1344,7 +1348,7 @@ fn build_wallet_exchange_transaction_state(
     };
     state
         .validate()
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
     Ok(state)
 }
 
@@ -1397,10 +1401,11 @@ fn challenge_hash(challenge: &PassportPresentationChallenge) -> Result<String, C
 }
 
 fn unix_from_rfc3339(value: &str) -> Result<u64, CliError> {
-    let datetime = DateTime::parse_from_rfc3339(value)
-        .map_err(|error| CliError::Other(format!("invalid RFC3339 timestamp: {error}")))?;
+    let datetime = DateTime::parse_from_rfc3339(value).map_err(|error| {
+        CliError::cli_other_error(format!("invalid RFC3339 timestamp: {error}"))
+    })?;
     u64::try_from(datetime.timestamp())
-        .map_err(|_| CliError::Other(format!("invalid RFC3339 timestamp: {value}")))
+        .map_err(|_| CliError::cli_other_error(format!("invalid RFC3339 timestamp: {value}")))
 }
 
 fn unix_timestamp_now() -> u64 {
@@ -1413,7 +1418,7 @@ fn unix_timestamp_now() -> u64 {
 fn verify_passport_lifecycle_record(record: &PassportLifecycleRecord) -> Result<(), CliError> {
     record
         .validate()
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::policy_error(error.to_string()))
 }
 
 fn passport_lifecycle_resolution_from_record(
@@ -1455,7 +1460,7 @@ fn verify_passport_issuance_offer_record(
     record: &PassportIssuanceOfferRecord,
 ) -> Result<(), CliError> {
     if record.offer_id.trim().is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "passport issuance offer entries must include a non-empty offer_id".to_string(),
         ));
     }
@@ -1464,26 +1469,26 @@ fn verify_passport_issuance_offer_record(
         verify_agent_passport(&record.passport, record.issued_at).map_err(CliError::from)?;
     if let Some(context) = record.offer.chio_offer_context.as_ref() {
         if context.passport_id != verification.passport_id {
-            return Err(CliError::Other(format!(
-                "passport issuance offer `{}` stores a passport_id that does not match the embedded passport",
+            return Err(CliError::cli_other_error(format!(
+                    "passport issuance offer `{}` stores a passport_id that does not match the embedded passport",
                 record.offer_id
             )));
         }
         if context.subject != verification.subject {
-            return Err(CliError::Other(format!(
-                "passport issuance offer `{}` stores a subject that does not match the embedded passport",
+            return Err(CliError::cli_other_error(format!(
+                    "passport issuance offer `{}` stores a subject that does not match the embedded passport",
                 record.offer_id
             )));
         }
         if unix_from_rfc3339(&context.expires_at)? != record.expires_at {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "passport issuance offer `{}` has mismatched expires_at metadata",
                 record.offer_id
             )));
         }
     }
     if record.state == PassportIssuanceOfferState::TokenIssued && record.access_token.is_none() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "passport issuance offer `{}` cannot be token-issued without an access_token",
             record.offer_id
         )));
@@ -1491,7 +1496,7 @@ fn verify_passport_issuance_offer_record(
     if record.state == PassportIssuanceOfferState::CredentialIssued
         && record.credential_issued_at.is_none()
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "passport issuance offer `{}` cannot be credential-issued without credential_issued_at",
             record.offer_id
         )));
@@ -1515,7 +1520,7 @@ fn refresh_passport_issuance_offer_state(record: &mut PassportIssuanceOfferRecor
 fn normalize_credential_issuer(value: &str) -> Result<String, CliError> {
     let normalized = value.trim().trim_end_matches('/');
     if normalized.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::policy_constraint_error(
             "credential_issuer must be non-empty".to_string(),
         ));
     }

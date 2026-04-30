@@ -17,6 +17,7 @@ chio-appraisal = { path = "../chio-appraisal" }
 chio-core = { path = "../chio-core" }
 chio-credentials = { path = "../chio-credentials" }
 chio-data-guards = { path = "../chio-data-guards" }
+chio-errors = { path = "../chio-errors" }
 chio-did = { path = "../chio-did" }
 chio-external-guards = { path = "../chio-external-guards" }
 chio-kernel = { path = "../chio-kernel" }

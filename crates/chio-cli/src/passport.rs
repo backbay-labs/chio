@@ -14,7 +14,7 @@ use chio_credentials::{
     present_agent_passport, respond_to_oid4vp_request, respond_to_passport_presentation_challenge,
     verify_agent_passport, verify_passport_presentation_response_with_policy,
     verify_signed_oid4vp_request_object_with_any_key, verify_signed_passport_verifier_policy,
-    AgentPassport, ChioCredentialEvidence, AttestationWindow, EnterpriseIdentityProvenance,
+    AgentPassport, AttestationWindow, ChioCredentialEvidence, EnterpriseIdentityProvenance,
     Oid4vciCredentialOffer, Oid4vciCredentialRequest, Oid4vciTokenRequest, Oid4vciTokenResponse,
     Oid4vpPresentationVerification, Oid4vpRequestObject, Oid4vpVerifierMetadata,
     PassportLifecycleResolution, PassportLifecycleState, PassportPresentationChallenge,
@@ -60,7 +60,7 @@ fn ensure_parent_dir(path: &Path) -> Result<(), CliError> {
 
 fn require_verifier_policy_registry_path(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::Other(
+        CliError::policy_error(
             "verifier policy commands require --verifier-policies-file <path> when not using --control-url"
                 .to_string(),
         )
@@ -69,7 +69,7 @@ fn require_verifier_policy_registry_path(path: Option<&Path>) -> Result<&Path, C
 
 fn require_passport_status_registry_path(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::Other(
+        CliError::policy_error(
             "passport lifecycle commands require --passport-statuses-file <path> when not using --control-url"
                 .to_string(),
         )
@@ -78,7 +78,7 @@ fn require_passport_status_registry_path(path: Option<&Path>) -> Result<&Path, C
 
 fn require_passport_issuance_registry_path(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::Other(
+        CliError::policy_error(
             "passport issuance commands require --passport-issuance-offers-file <path> when not using --control-url"
                 .to_string(),
         )
@@ -87,7 +87,7 @@ fn require_passport_issuance_registry_path(path: Option<&Path>) -> Result<&Path,
 
 fn require_credential_issuer_url(value: Option<&str>) -> Result<&str, CliError> {
     value.ok_or_else(|| {
-        CliError::Other(
+        CliError::policy_error(
             "passport issuance commands require --issuer-url <url> when not using --control-url"
                 .to_string(),
         )
@@ -147,9 +147,9 @@ fn fetch_json_url<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T, C
                 .ok()
                 .filter(|body| !body.trim().is_empty())
                 .unwrap_or_else(|| format!("request failed with status {status}"));
-            Err(CliError::Other(message))
+            Err(CliError::transport_error(message))
         }
-        Err(ureq::Error::Transport(error)) => Err(CliError::Other(format!(
+        Err(ureq::Error::Transport(error)) => Err(CliError::transport_error(format!(
             "transport request failed: {error}"
         ))),
     }
@@ -157,18 +157,18 @@ fn fetch_json_url<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T, C
 
 fn fetch_text_url(url: &str) -> Result<String, CliError> {
     match ureq::get(url).call() {
-        Ok(response) => response
-            .into_string()
-            .map_err(|error| CliError::Other(format!("failed to read response body: {error}"))),
+        Ok(response) => response.into_string().map_err(|error| {
+            CliError::transport_error(format!("failed to read response body: {error}"))
+        }),
         Err(ureq::Error::Status(status, response)) => {
             let message = response
                 .into_string()
                 .ok()
                 .filter(|body| !body.trim().is_empty())
                 .unwrap_or_else(|| format!("request failed with status {status}"));
-            Err(CliError::Other(message))
+            Err(CliError::transport_error(message))
         }
-        Err(ureq::Error::Transport(error)) => Err(CliError::Other(format!(
+        Err(ureq::Error::Transport(error)) => Err(CliError::transport_error(format!(
             "transport request failed: {error}"
         ))),
     }
@@ -186,9 +186,9 @@ fn post_json_url<B: serde::Serialize, T: for<'de> serde::Deserialize<'de>>(
                 .ok()
                 .filter(|body| !body.trim().is_empty())
                 .unwrap_or_else(|| format!("request failed with status {status}"));
-            Err(CliError::Other(message))
+            Err(CliError::transport_error(message))
         }
-        Err(ureq::Error::Transport(error)) => Err(CliError::Other(format!(
+        Err(ureq::Error::Transport(error)) => Err(CliError::transport_error(format!(
             "transport request failed: {error}"
         ))),
     }
@@ -198,8 +198,9 @@ fn post_form_url<T: for<'de> serde::Deserialize<'de>>(
     url: &str,
     fields: &[(&str, &str)],
 ) -> Result<T, CliError> {
-    let body = serde_urlencoded::to_string(fields)
-        .map_err(|error| CliError::Other(format!("failed to encode form body: {error}")))?;
+    let body = serde_urlencoded::to_string(fields).map_err(|error| {
+        CliError::transport_shape_error(format!("failed to encode form body: {error}"))
+    })?;
     match ureq::post(url)
         .set("Content-Type", "application/x-www-form-urlencoded")
         .send_string(&body)
@@ -211,9 +212,9 @@ fn post_form_url<T: for<'de> serde::Deserialize<'de>>(
                 .ok()
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| format!("request failed with status {status}"));
-            Err(CliError::Other(message))
+            Err(CliError::transport_error(message))
         }
-        Err(ureq::Error::Transport(error)) => Err(CliError::Other(format!(
+        Err(ureq::Error::Transport(error)) => Err(CliError::transport_error(format!(
             "transport request failed: {error}"
         ))),
     }
@@ -222,20 +223,21 @@ fn post_form_url<T: for<'de> serde::Deserialize<'de>>(
 fn load_text_file(path: &Path) -> Result<String, CliError> {
     let bytes = fs::read(path)?;
     let value = String::from_utf8(bytes).map_err(|error| {
-        CliError::Other(format!("{} is not valid UTF-8: {error}", path.display()))
+        CliError::cli_other_error(format!("{} is not valid UTF-8: {error}", path.display()))
     })?;
     Ok(value.trim().to_string())
 }
 
 fn oid4vp_request_url_from_launch_url(url: &str) -> Result<String, CliError> {
-    let parsed = Url::parse(url)
-        .map_err(|error| CliError::Other(format!("invalid OID4VP launch URL `{url}`: {error}")))?;
+    let parsed = Url::parse(url).map_err(|error| {
+        CliError::transport_shape_error(format!("invalid OID4VP launch URL `{url}`: {error}"))
+    })?;
     parsed
         .query_pairs()
         .find_map(|(key, value)| (key == "request_uri").then(|| value.into_owned()))
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| {
-            CliError::Other(
+            CliError::transport_shape_error(
                 "OID4VP launch URL must include a non-empty request_uri query parameter"
                     .to_string(),
             )
@@ -244,28 +246,28 @@ fn oid4vp_request_url_from_launch_url(url: &str) -> Result<String, CliError> {
 
 fn oid4vp_verifier_metadata_url(request_url: &str) -> Result<String, CliError> {
     let parsed = Url::parse(request_url).map_err(|error| {
-        CliError::Other(format!(
+        CliError::transport_shape_error(format!(
             "invalid OID4VP request URL `{request_url}`: {error}"
         ))
     })?;
     let scheme = parsed.scheme();
     if scheme != "http" && scheme != "https" {
-        return Err(CliError::Other(
+        return Err(CliError::transport_shape_error(
             "OID4VP request URL must use http or https".to_string(),
         ));
     }
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| CliError::Other("OID4VP request URL must include a host".to_string()))?;
+    let host = parsed.host_str().ok_or_else(|| {
+        CliError::transport_shape_error("OID4VP request URL must include a host".to_string())
+    })?;
     let mut metadata = Url::parse(&format!("{scheme}://{host}")).map_err(|error| {
-        CliError::Other(format!(
+        CliError::transport_shape_error(format!(
             "failed to construct verifier metadata URL: {error}"
         ))
     })?;
     if let Some(port) = parsed.port() {
-        metadata
-            .set_port(Some(port))
-            .map_err(|_| CliError::Other("failed to preserve verifier port".to_string()))?;
+        metadata.set_port(Some(port)).map_err(|_| {
+            CliError::transport_shape_error("failed to preserve verifier port".to_string())
+        })?;
     }
     metadata.set_path(OID4VP_VERIFIER_METADATA_PATH);
     metadata.set_query(None);
@@ -277,11 +279,13 @@ fn verifier_public_keys_from_jwks(jwks: &PortableJwkSet) -> Result<Vec<PublicKey
     let mut keys = Vec::new();
     for entry in &jwks.keys {
         keys.push(entry.jwk.to_public_key().map_err(|error| {
-            CliError::Other(format!("portable verifier JWKS entry is invalid: {error}"))
+            CliError::transport_shape_error(format!(
+                "portable verifier JWKS entry is invalid: {error}"
+            ))
         })?);
     }
     if keys.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::transport_shape_error(
             "portable verifier JWKS did not publish any signing keys".to_string(),
         ));
     }
@@ -291,7 +295,7 @@ fn verifier_public_keys_from_jwks(jwks: &PortableJwkSet) -> Result<Vec<PublicKey
 fn load_existing_keypair(path: &Path) -> Result<Keypair, CliError> {
     let seed_hex = fs::read_to_string(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
-            CliError::Other(format!("required seed file not found: {}", path.display()))
+            CliError::cli_other_error(format!("required seed file not found: {}", path.display()))
         } else {
             CliError::Io(error)
         }
@@ -449,7 +453,7 @@ fn resolve_passport_lifecycle(
     if let Some(url) = control_url {
         let client = crate::trust_control::build_client(url, control_token.unwrap_or_default())?;
         let passport_id = passport_artifact_id(passport).map_err(|error| {
-            CliError::Other(format!("failed to derive passport artifact id: {error}"))
+            CliError::policy_error(format!("failed to derive passport artifact id: {error}"))
         })?;
         let mut lifecycle = match client.public_resolve_passport_status(&passport_id) {
             Ok(lifecycle) => lifecycle,
@@ -465,7 +469,7 @@ fn resolve_passport_lifecycle(
         };
         lifecycle
             .validate()
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         lifecycle
             .source
             .get_or_insert_with(|| format!("remote:{url}"));
@@ -501,7 +505,7 @@ fn require_passport_lifecycle_source(
     control_url: Option<&str>,
 ) -> Result<(), CliError> {
     if require_active_lifecycle && passport_statuses_file.is_none() && control_url.is_none() {
-        return Err(CliError::Other(
+        return Err(CliError::policy_error(
             "passport verifier policy requires active lifecycle enforcement, but no --passport-statuses-file or --control-url was provided"
                 .to_string(),
         ));
@@ -571,7 +575,7 @@ fn apply_passport_lifecycle_to_presentation(
 
 fn require_receipt_db(receipt_db_path: Option<&Path>) -> Result<&Path, CliError> {
     receipt_db_path.ok_or_else(|| {
-        CliError::Other(
+        CliError::policy_error(
             "passport creation requires --receipt-db so the local attestation corpus can be assembled"
                 .to_string(),
         )
@@ -595,12 +599,12 @@ fn build_attestation_evidence(
     })?;
 
     if bundle.tool_receipts.is_empty() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::policy_error(format!(
             "no receipts found for subject {subject_key} in the selected window"
         )));
     }
     if require_checkpoints && !bundle.uncheckpointed_receipts.is_empty() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::policy_error(format!(
             "passport creation requires checkpoint coverage, but {} selected receipt(s) are uncheckpointed",
             bundle.uncheckpointed_receipts.len()
         )));
@@ -697,7 +701,7 @@ pub(crate) fn cmd_passport_generate(
     json_output: bool,
 ) -> Result<(), CliError> {
     if agent.trim().is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::policy_error(
             "`chio passport generate` requires a non-empty --agent".to_string(),
         ));
     }
@@ -782,7 +786,7 @@ pub(crate) fn cmd_passport_create(
         Some(attestation_until),
     )?;
     if corpus.receipts.is_empty() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::policy_error(format!(
             "no receipts found for subject {subject_key} in the selected window"
         )));
     }
@@ -812,7 +816,7 @@ pub(crate) fn cmd_passport_create(
         now + validity_seconds(validity_days),
     )?;
     let subject_did = DidChio::from_public_key(subject_public_key)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
     let passport = build_agent_passport(&subject_did.to_string(), vec![credential])?;
     let (enterprise_provenance_count, enterprise_provider_ids) =
         summarize_enterprise_provenance(&passport.enterprise_identity_provenance);
@@ -861,7 +865,7 @@ pub(crate) fn cmd_passport_verify(
     let passport: AgentPassport = serde_json::from_slice(&fs::read(input)?)?;
     let now = at.unwrap_or_else(unix_now);
     let mut verification = verify_agent_passport(&passport, now)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
     verification.passport_lifecycle = resolve_passport_lifecycle(
         &passport,
         now,
@@ -932,7 +936,7 @@ pub(crate) fn cmd_passport_evaluate(
         control_url,
     )?;
     let mut evaluation = evaluate_agent_passport(&passport, now, &policy)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
     let lifecycle = resolve_passport_lifecycle(
         &passport,
         now,
@@ -1292,7 +1296,7 @@ pub(crate) fn cmd_passport_issuance_credential_redeem(
             response
                 .credential
                 .write_output_bytes()
-                .map_err(|error| CliError::Other(error.to_string()))?,
+                .map_err(|error| CliError::policy_error(error.to_string()))?,
         )?;
     }
 
@@ -1380,9 +1384,9 @@ pub(crate) fn cmd_passport_policy_verify(
 ) -> Result<(), CliError> {
     let document = load_signed_passport_verifier_policy(input)?;
     verify_signed_passport_verifier_policy(&document)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
     ensure_signed_passport_verifier_policy_active(&document, at.unwrap_or_else(unix_now))
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
 
     if json_output {
         println!("{}", serde_json::to_string_pretty(&document)?);
@@ -1448,7 +1452,7 @@ pub(crate) fn cmd_passport_policy_get(
         let path = require_verifier_policy_registry_path(verifier_policies_file)?;
         let registry = load_verifier_policy_registry_for_admin(path)?;
         registry.get(policy_id).cloned().ok_or_else(|| {
-            CliError::Other(format!("verifier policy `{policy_id}` was not found"))
+            CliError::policy_error(format!("verifier policy `{policy_id}` was not found"))
         })?
     };
 
@@ -1476,7 +1480,7 @@ pub(crate) fn cmd_passport_policy_upsert(
 ) -> Result<(), CliError> {
     let document = load_signed_passport_verifier_policy(input)?;
     verify_signed_passport_verifier_policy(&document)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
     let saved = if let Some(url) = control_url {
         let token = crate::require_control_token(control_token)?;
         crate::trust_control::build_client(url, token)?
@@ -1556,7 +1560,7 @@ pub(crate) fn cmd_passport_challenge_create(
     } = args;
     let now = unix_now();
     if policy_path.is_some() && policy_id.is_some() {
-        return Err(CliError::Other(
+        return Err(CliError::policy_error(
             "challenge creation accepts either --policy or --policy-id, not both".to_string(),
         ));
     }
@@ -1592,7 +1596,7 @@ pub(crate) fn cmd_passport_challenge_create(
             )
         };
         if policy_ref.is_some() && policy_verifier != verifier {
-            return Err(CliError::Other(
+            return Err(CliError::policy_error(
                 "stored verifier policy verifier must match --verifier".to_string(),
             ));
         }
@@ -1677,12 +1681,12 @@ pub(crate) fn cmd_passport_challenge_respond(
             (Some(path), None) => serde_json::from_slice(&fs::read(path)?)?,
             (None, Some(url)) => fetch_json_url(url)?,
             (Some(_), Some(_)) => {
-                return Err(CliError::Other(
+                return Err(CliError::policy_error(
                     "challenge response accepts either --challenge or --challenge-url, not both"
                         .to_string(),
                 ))
             }
-            (None, None) => return Err(CliError::Other(
+            (None, None) => return Err(CliError::policy_error(
                 "challenge response requires either --challenge <path> or --challenge-url <url>"
                     .to_string(),
             )),
@@ -1794,7 +1798,7 @@ pub(crate) fn cmd_passport_challenge_verify(
             resolved_policy.as_ref(),
             policy_source,
         )
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
         let lifecycle = resolve_passport_lifecycle(
             &response.passport,
             now,
@@ -1887,14 +1891,14 @@ pub(crate) fn cmd_passport_oid4vp_request_create(
         }),
         (None, None) => None,
         _ => {
-            return Err(CliError::Other(
-                "OID4VP identity assertion requires both --identity-subject and --identity-continuity-id"
+            return Err(CliError::transport_shape_error(
+            "OID4VP identity assertion requires both --identity-subject and --identity-continuity-id"
                     .to_string(),
             ))
         }
     };
     let url = control_url.ok_or_else(|| {
-        CliError::Other(
+        CliError::transport_shape_error(
             "OID4VP request creation requires --control-url because it depends on the running trust-control verifier service"
                 .to_string(),
         )
@@ -1962,20 +1966,20 @@ pub(crate) fn cmd_passport_oid4vp_respond(
         (Some(url), None, None) => url.to_string(),
         (None, Some(url), None) | (None, None, Some(url)) => oid4vp_request_url_from_launch_url(url)?,
         (None, None, None) => {
-            return Err(CliError::Other(
-                "OID4VP response requires one of --request-url, --same-device-url, or --cross-device-url"
+            return Err(CliError::transport_shape_error(
+            "OID4VP response requires one of --request-url, --same-device-url, or --cross-device-url"
                     .to_string(),
             ))
         }
         _ => {
-            return Err(CliError::Other(
-                "OID4VP response accepts exactly one of --request-url, --same-device-url, or --cross-device-url"
+            return Err(CliError::transport_shape_error(
+            "OID4VP response accepts exactly one of --request-url, --same-device-url, or --cross-device-url"
                     .to_string(),
             ))
         }
     };
     if output.is_none() && !submit {
-        return Err(CliError::Other(
+        return Err(CliError::transport_shape_error(
             "OID4VP response requires --output <path> unless --submit is set".to_string(),
         ));
     }
@@ -1985,9 +1989,9 @@ pub(crate) fn cmd_passport_oid4vp_respond(
     let metadata: Oid4vpVerifierMetadata = fetch_json_url(&metadata_url)?;
     metadata
         .validate()
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
     if !resolved_request_url.starts_with(&metadata.request_uri_prefix) {
-        return Err(CliError::Other(
+        return Err(CliError::transport_shape_error(
             "OID4VP request URL is outside the verifier metadata request_uri_prefix".to_string(),
         ));
     }
@@ -1998,14 +2002,14 @@ pub(crate) fn cmd_passport_oid4vp_respond(
         &verifier_public_keys,
         at.unwrap_or_else(unix_now),
     )
-    .map_err(|error| CliError::Other(error.to_string()))?;
+    .map_err(|error| CliError::policy_error(error.to_string()))?;
     if request.request_uri != resolved_request_url {
-        return Err(CliError::Other(
+        return Err(CliError::transport_shape_error(
             "OID4VP request JWT did not match the fetched request URL".to_string(),
         ));
     }
     if request.client_id != metadata.client_id {
-        return Err(CliError::Other(
+        return Err(CliError::transport_shape_error(
             "OID4VP verifier metadata client_id did not match the signed request".to_string(),
         ));
     }
@@ -2018,7 +2022,7 @@ pub(crate) fn cmd_passport_oid4vp_respond(
         &request,
         at.unwrap_or_else(unix_now),
     )
-    .map_err(|error| CliError::Other(error.to_string()))?;
+    .map_err(|error| CliError::policy_error(error.to_string()))?;
 
     if let Some(path) = output {
         ensure_parent_dir(path)?;
@@ -2118,7 +2122,7 @@ pub(crate) fn cmd_passport_oid4vp_metadata(
     let metadata: Oid4vpVerifierMetadata = fetch_json_url(&url)?;
     metadata
         .validate()
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::policy_error(error.to_string()))?;
     if json_output {
         println!("{}", serde_json::to_string_pretty(&metadata)?);
     } else {
@@ -2233,7 +2237,7 @@ pub(crate) fn cmd_passport_status_get(
         let path = require_passport_status_registry_path(passport_statuses_file)?;
         let registry = load_passport_status_registry_for_admin(path)?;
         registry.get(passport_id).cloned().ok_or_else(|| {
-            CliError::Other(format!(
+            CliError::policy_error(format!(
                 "passport `{passport_id}` was not found in the lifecycle registry"
             ))
         })?
@@ -2362,7 +2366,7 @@ fn load_passport_verifier_policy(path: &Path) -> Result<PassportVerifierPolicy, 
         serde_yml::from_str(&contents)?
     } else if let Ok(document) = serde_json::from_str::<SignedPassportVerifierPolicy>(&contents) {
         verify_signed_passport_verifier_policy(&document)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::policy_error(error.to_string()))?;
         document.body.policy
     } else {
         serde_json::from_str(&contents).or_else(|_| serde_yml::from_str(&contents))?
@@ -2385,7 +2389,7 @@ fn resolve_challenge_policy_local(
     let registry = load_verifier_policy_registry_for_admin(path)?;
     let document = registry.active_policy(&reference.policy_id, now)?;
     if document.body.verifier != challenge.verifier {
-        return Err(CliError::Other(format!(
+        return Err(CliError::policy_error(format!(
             "verifier policy `{}` is bound to verifier `{}` but challenge expects `{}`",
             document.body.policy_id, document.body.verifier, challenge.verifier
         )));
