@@ -156,6 +156,19 @@ pub enum RevocationGossipError {
 
     #[error("revocation gossip push queue is poisoned and cannot service requests")]
     QueuePoisoned,
+
+    #[error("catch-up request range inverted: from_epoch {from_epoch} > to_epoch {to_epoch}")]
+    CatchupRangeInverted { from_epoch: u64, to_epoch: u64 },
+
+    #[error(
+        "catch-up request range too wide: requested {requested} epochs, hard cap is {max}"
+    )]
+    CatchupRangeTooWide { requested: u64, max: u64 },
+
+    #[error(
+        "catch-up response monotone ordering violated: expected epoch {expected}, got {observed}"
+    )]
+    CatchupGap { expected: u64, observed: u64 },
 }
 
 impl<T> From<PoisonError<T>> for RevocationGossipError {
@@ -167,6 +180,20 @@ impl<T> From<PoisonError<T>> for RevocationGossipError {
 /// Schema tag for [`RevocationGossipBatch`].
 pub const REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA: &str =
     "chio.federation-revocation-root-gossip-batch.v1";
+
+/// Schema tag for [`RevocationCatchupRequest`].
+pub const REVOCATION_CATCHUP_REQUEST_SCHEMA: &str =
+    "chio.federation-revocation-catchup-request.v1";
+
+/// Schema tag for [`RevocationCatchupResponse`].
+pub const REVOCATION_CATCHUP_RESPONSE_SCHEMA: &str =
+    "chio.federation-revocation-catchup-response.v1";
+
+/// Hard cap on the number of epochs a single catch-up exchange will carry.
+/// Larger gaps must be chunked across multiple round-trips so a single
+/// stalled peer cannot force the responder to materialise an unbounded
+/// history slice.
+pub const REVOCATION_CATCHUP_MAX_EPOCHS: u64 = 4_096;
 
 /// A coalesced batch of [`RevocationRootGossip`] frames addressed to a
 /// single bilateral peer.
@@ -329,6 +356,178 @@ impl RevocationGossipPushQueue {
         let guard = self.inner.lock()?;
         Ok(guard.get(peer_kernel_id).map(VecDeque::len))
     }
+}
+
+/// Request a peer that has fallen behind by `N` epochs sends to fill the
+/// gap with a sequence of signed roots.
+///
+/// The receiver MUST reject any request where:
+/// * `from_epoch > to_epoch`,
+/// * `to_epoch - from_epoch + 1 > REVOCATION_CATCHUP_MAX_EPOCHS`,
+/// * the schema tag does not match [`REVOCATION_CATCHUP_REQUEST_SCHEMA`].
+///
+/// `requester_kernel_id` is informational and used by the responder for
+/// scoping/audit; it is not a substitute for a transport-level identity
+/// pin (the bilateral peer set in `KernelTrustExchange` is the source of
+/// truth for who is allowed to ask).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevocationCatchupRequest {
+    pub schema: String,
+    pub requester_kernel_id: String,
+    /// First epoch (inclusive) the requester is missing.
+    pub from_epoch: u64,
+    /// Last epoch (inclusive) the requester wants. Equal to `from_epoch`
+    /// for a single-epoch fetch.
+    pub to_epoch: u64,
+    pub requested_at_unix_ms: u64,
+}
+
+impl RevocationCatchupRequest {
+    /// Build a well-formed request. Returns `Err` if the requested range is
+    /// inverted or larger than [`REVOCATION_CATCHUP_MAX_EPOCHS`].
+    pub fn new(
+        requester_kernel_id: impl Into<String>,
+        from_epoch: u64,
+        to_epoch: u64,
+        requested_at_unix_ms: u64,
+    ) -> Result<Self, RevocationGossipError> {
+        let req = Self {
+            schema: REVOCATION_CATCHUP_REQUEST_SCHEMA.to_string(),
+            requester_kernel_id: requester_kernel_id.into(),
+            from_epoch,
+            to_epoch,
+            requested_at_unix_ms,
+        };
+        req.validate_envelope()?;
+        Ok(req)
+    }
+
+    pub fn validate_envelope(&self) -> Result<(), RevocationGossipError> {
+        if self.schema != REVOCATION_CATCHUP_REQUEST_SCHEMA {
+            return Err(RevocationGossipError::UnsupportedSchema(self.schema.clone()));
+        }
+        if self.from_epoch > self.to_epoch {
+            return Err(RevocationGossipError::CatchupRangeInverted {
+                from_epoch: self.from_epoch,
+                to_epoch: self.to_epoch,
+            });
+        }
+        let span = self.to_epoch.saturating_sub(self.from_epoch).saturating_add(1);
+        if span > REVOCATION_CATCHUP_MAX_EPOCHS {
+            return Err(RevocationGossipError::CatchupRangeTooWide {
+                requested: span,
+                max: REVOCATION_CATCHUP_MAX_EPOCHS,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Response carrying the contiguous run of signed roots a responder
+/// produced for a [`RevocationCatchupRequest`].
+///
+/// The frames are emitted in strictly increasing epoch order with no gaps
+/// within the responder's known history. If the responder cannot cover the
+/// full requested range (because its own history starts later than
+/// `request.from_epoch`), the response carries the suffix it does have and
+/// surfaces the truncation through [`Self::validate_response`]: callers
+/// use the returned coverage span to decide whether to issue a follow-up
+/// request to a different peer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevocationCatchupResponse {
+    pub schema: String,
+    /// Echoed back from [`RevocationCatchupRequest::requester_kernel_id`].
+    pub requester_kernel_id: String,
+    pub responder_kernel_id: String,
+    pub frames: Vec<RevocationRootGossip>,
+    pub responded_at_unix_ms: u64,
+}
+
+impl RevocationCatchupResponse {
+    /// Validate the response in isolation: schema, every frame's envelope,
+    /// strict monotone epoch ordering with no internal gaps. Callers MUST
+    /// also signature-verify every frame against the responder's pinned
+    /// signer before merging into their cache.
+    pub fn validate_response(&self) -> Result<(), RevocationGossipError> {
+        if self.schema != REVOCATION_CATCHUP_RESPONSE_SCHEMA {
+            return Err(RevocationGossipError::UnsupportedSchema(self.schema.clone()));
+        }
+        let mut prev: Option<u64> = None;
+        for frame in &self.frames {
+            frame.validate_envelope()?;
+            if let Some(previous) = prev {
+                let expected = previous.saturating_add(1);
+                if frame.epoch != expected {
+                    return Err(RevocationGossipError::CatchupGap {
+                        expected,
+                        observed: frame.epoch,
+                    });
+                }
+            }
+            prev = Some(frame.epoch);
+        }
+        Ok(())
+    }
+}
+
+/// Backing-store contract that produces signed roots for a contiguous epoch
+/// range. The oracle (or the federation layer's persistent history shim)
+/// implements this so the catch-up responder can serve gap-fill requests
+/// without taking a dependency on the live oracle's mutable state.
+pub trait RevocationCatchupHistory {
+    /// Return the signed root at `epoch`, or `None` if the responder no
+    /// longer retains it (history may be pruned). The responder MUST never
+    /// fabricate a root: returning `None` is the only legitimate way to
+    /// say "I do not have this epoch".
+    fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot>;
+}
+
+/// Drive a catch-up exchange.
+///
+/// The function walks `[request.from_epoch, request.to_epoch]` against the
+/// supplied history, collecting the contiguous suffix the responder
+/// actually retains. Internal gaps inside the requested range cause the
+/// walk to stop at the first missing epoch (the responder cannot
+/// fabricate frames). The result is wrapped in a
+/// [`RevocationCatchupResponse`] tagged with `responded_at_unix_ms`.
+pub fn respond_to_catchup<H: RevocationCatchupHistory>(
+    request: &RevocationCatchupRequest,
+    responder_kernel_id: &str,
+    history: &H,
+    responded_at_unix_ms: u64,
+) -> Result<RevocationCatchupResponse, RevocationGossipError> {
+    request.validate_envelope()?;
+    let mut frames: Vec<RevocationRootGossip> = Vec::new();
+    let mut started = false;
+    for epoch in request.from_epoch..=request.to_epoch {
+        match history.signed_root_at(epoch) {
+            Some(signed) => {
+                frames.push(RevocationRootGossip::from_signed(signed, responded_at_unix_ms));
+                started = true;
+            }
+            None => {
+                if started {
+                    // Gap inside the responder's known history: stop so the
+                    // monotone-ordering invariant of the response holds.
+                    break;
+                }
+                // Pre-history skip: keep scanning so a responder whose
+                // retained window starts mid-range can still serve the
+                // suffix it does have.
+            }
+        }
+    }
+    let response = RevocationCatchupResponse {
+        schema: REVOCATION_CATCHUP_RESPONSE_SCHEMA.to_string(),
+        requester_kernel_id: request.requester_kernel_id.clone(),
+        responder_kernel_id: responder_kernel_id.to_string(),
+        frames,
+        responded_at_unix_ms,
+    };
+    response.validate_response()?;
+    Ok(response)
 }
 
 #[cfg(test)]
@@ -592,5 +791,167 @@ mod tests {
             RevocationGossipError::UnsupportedSchema(s) => assert!(s.contains("bogus")),
             other => panic!("unexpected variant: {other:?}"),
         }
+    }
+
+    /// Test-only history shim that holds a sparse map of signed roots by
+    /// epoch. Mirrors the catch-up responder's contract that returning
+    /// `None` means "I do not have this epoch" without ever fabricating.
+    struct InMemoryHistory {
+        roots: std::collections::HashMap<u64, SignedEpochRoot>,
+    }
+
+    impl InMemoryHistory {
+        fn from_range(signer_id: &str, range: std::ops::RangeInclusive<u64>) -> Self {
+            let mut roots = std::collections::HashMap::new();
+            for epoch in range {
+                roots.insert(epoch, signed_root(signer_id, epoch));
+            }
+            Self { roots }
+        }
+    }
+
+    impl RevocationCatchupHistory for InMemoryHistory {
+        fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot> {
+            self.roots.get(&epoch).cloned()
+        }
+    }
+
+    #[test]
+    fn catchup_request_new_rejects_inverted_range() {
+        let err = RevocationCatchupRequest::new("peer-a", 9, 5, 0)
+            .expect_err("inverted range must fail closed");
+        assert_eq!(
+            err,
+            RevocationGossipError::CatchupRangeInverted {
+                from_epoch: 9,
+                to_epoch: 5
+            }
+        );
+    }
+
+    #[test]
+    fn catchup_request_new_rejects_oversized_range() {
+        let max = REVOCATION_CATCHUP_MAX_EPOCHS;
+        let err = RevocationCatchupRequest::new("peer-a", 0, max, 0)
+            .expect_err("oversized range must fail closed");
+        match err {
+            RevocationGossipError::CatchupRangeTooWide { requested, max: cap } => {
+                assert_eq!(cap, REVOCATION_CATCHUP_MAX_EPOCHS);
+                assert_eq!(requested, max + 1);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn catchup_request_validate_rejects_bad_schema() {
+        let mut req = RevocationCatchupRequest::new("peer-a", 1, 3, 0).unwrap();
+        req.schema = "chio.federation-bogus.v1".to_string();
+        let err = req.validate_envelope().expect_err("bad schema must fail closed");
+        match err {
+            RevocationGossipError::UnsupportedSchema(_) => {}
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn catchup_responder_emits_full_range_in_order() {
+        let history = InMemoryHistory::from_range("oracle-a", 5..=8);
+        let req = RevocationCatchupRequest::new("peer-a", 5, 8, 0).unwrap();
+        let resp =
+            respond_to_catchup(&req, "oracle-a-host", &history, 1_700_000_030_000).unwrap();
+        assert_eq!(resp.frames.len(), 4);
+        let epochs: Vec<u64> = resp.frames.iter().map(|f| f.epoch).collect();
+        assert_eq!(epochs, vec![5, 6, 7, 8]);
+        assert_eq!(resp.responded_at_unix_ms, 1_700_000_030_000);
+        assert_eq!(resp.schema, REVOCATION_CATCHUP_RESPONSE_SCHEMA);
+        assert!(resp.validate_response().is_ok());
+    }
+
+    #[test]
+    fn catchup_responder_skips_pre_history_then_serves_suffix() {
+        // Responder retained 7..=10 only; requester asks for 4..=10.
+        let history = InMemoryHistory::from_range("oracle-a", 7..=10);
+        let req = RevocationCatchupRequest::new("peer-a", 4, 10, 0).unwrap();
+        let resp = respond_to_catchup(&req, "oracle-a-host", &history, 0).unwrap();
+        let epochs: Vec<u64> = resp.frames.iter().map(|f| f.epoch).collect();
+        assert_eq!(epochs, vec![7, 8, 9, 10]);
+    }
+
+    #[test]
+    fn catchup_responder_stops_at_internal_gap() {
+        // Responder has 5,6,7,9,10 but requester asks 5..=10. The walk must
+        // stop at the gap so the response stays strictly monotone.
+        let mut history = InMemoryHistory::from_range("oracle-a", 5..=10);
+        history.roots.remove(&8);
+        let req = RevocationCatchupRequest::new("peer-a", 5, 10, 0).unwrap();
+        let resp = respond_to_catchup(&req, "oracle-a-host", &history, 0).unwrap();
+        let epochs: Vec<u64> = resp.frames.iter().map(|f| f.epoch).collect();
+        assert_eq!(epochs, vec![5, 6, 7]);
+        assert!(resp.validate_response().is_ok());
+    }
+
+    #[test]
+    fn catchup_responder_emits_empty_response_when_history_missing() {
+        let history = InMemoryHistory::from_range("oracle-a", 100..=110);
+        let req = RevocationCatchupRequest::new("peer-a", 5, 8, 0).unwrap();
+        let resp = respond_to_catchup(&req, "oracle-a-host", &history, 0).unwrap();
+        assert!(resp.frames.is_empty());
+        assert!(resp.validate_response().is_ok());
+    }
+
+    #[test]
+    fn catchup_response_validate_detects_internal_gap() {
+        let history = InMemoryHistory::from_range("oracle-a", 1..=3);
+        let req = RevocationCatchupRequest::new("peer-a", 1, 3, 0).unwrap();
+        let mut resp = respond_to_catchup(&req, "oracle-a-host", &history, 0).unwrap();
+        // Splice an out-of-order frame to simulate corrupted-on-the-wire.
+        resp.frames[1] = RevocationRootGossip::from_signed(signed_root("oracle-a", 99), 0);
+        let err = resp
+            .validate_response()
+            .expect_err("monotone violation must fail closed");
+        match err {
+            RevocationGossipError::CatchupGap { expected, observed } => {
+                assert_eq!(expected, 2);
+                assert_eq!(observed, 99);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn catchup_response_validate_rejects_bad_schema() {
+        let history = InMemoryHistory::from_range("oracle-a", 1..=2);
+        let req = RevocationCatchupRequest::new("peer-a", 1, 2, 0).unwrap();
+        let mut resp = respond_to_catchup(&req, "oracle-a-host", &history, 0).unwrap();
+        resp.schema = "chio.federation-bogus.v1".to_string();
+        let err = resp
+            .validate_response()
+            .expect_err("bad schema must fail closed");
+        match err {
+            RevocationGossipError::UnsupportedSchema(_) => {}
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn catchup_responder_propagates_request_validation_failure() {
+        let history = InMemoryHistory::from_range("oracle-a", 1..=2);
+        let bogus = RevocationCatchupRequest {
+            schema: REVOCATION_CATCHUP_REQUEST_SCHEMA.to_string(),
+            requester_kernel_id: "peer-a".to_string(),
+            from_epoch: 9,
+            to_epoch: 5,
+            requested_at_unix_ms: 0,
+        };
+        let err = respond_to_catchup(&bogus, "oracle-a-host", &history, 0)
+            .expect_err("inverted request must fail closed");
+        assert_eq!(
+            err,
+            RevocationGossipError::CatchupRangeInverted {
+                from_epoch: 9,
+                to_epoch: 5
+            }
+        );
     }
 }

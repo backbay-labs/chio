@@ -19,8 +19,11 @@ pub use bilateral::{
     BILATERAL_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 pub use revocation_gossip::{
-    RevocationGossipBatch, RevocationGossipError, RevocationGossipPushQueue,
-    RevocationRootGossip, REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA, REVOCATION_ROOT_GOSSIP_SCHEMA,
+    respond_to_catchup, RevocationCatchupHistory, RevocationCatchupRequest,
+    RevocationCatchupResponse, RevocationGossipBatch, RevocationGossipError,
+    RevocationGossipPushQueue, RevocationRootGossip, REVOCATION_CATCHUP_MAX_EPOCHS,
+    REVOCATION_CATCHUP_REQUEST_SCHEMA, REVOCATION_CATCHUP_RESPONSE_SCHEMA,
+    REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA, REVOCATION_ROOT_GOSSIP_SCHEMA,
 };
 pub use trust_establishment::{
     FederationPeer, FederationPeerStore, HandshakeChallenge, InMemoryPeerStore,
