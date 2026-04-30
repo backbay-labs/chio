@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-30T07:03:33Z",
+  "last_checkpoint_at": "2026-04-30T12:50:36Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,

@@ -33,7 +33,7 @@
   milestone: M06
   phase: 3
   title: Replace post-insert SELECT with INSERT RETURNING in receipt_store.rs
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-store-sqlite/src/receipt_store.rs
@@ -49,15 +49,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 
 - id: M06.P3.T3
   milestone: M06
   phase: 3
   title: Replace post-insert SELECT with INSERT RETURNING in revocation_store.rs
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
     - crates/chio-store-sqlite/src/revocation_store.rs
@@ -73,15 +73,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 
 - id: M06.P3.T4
   milestone: M06
   phase: 3
   title: Replace post-insert SELECT with INSERT RETURNING in approval_store.rs
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
     - crates/chio-store-sqlite/src/approval_store.rs
@@ -97,15 +97,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 
 - id: M06.P3.T5
   milestone: M06
   phase: 3
   title: Split r2d2 max_size into reader/writer pool config with documented defaults
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-store-sqlite/src/lib.rs
@@ -121,15 +121,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 
 - id: M06.P3.T6
   milestone: M06
   phase: 3
   title: Criterion harness store_receipt_write_throughput feeding bench-regression gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-store-sqlite/benches/store_receipt_write_throughput.rs
@@ -151,6 +151,6 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"

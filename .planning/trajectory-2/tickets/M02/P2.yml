@@ -41,7 +41,7 @@
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-credentials to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-credentials/tests/**
@@ -59,15 +59,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 
 - id: M02.P2.T3
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-attest-verify to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-attest-verify/tests/**
@@ -85,15 +85,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 
 - id: M02.P2.T4
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-kernel-core to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel-core/tests/**
@@ -111,15 +111,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 
 - id: M02.P2.T5
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-guards to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-guards/tests/**
@@ -137,15 +137,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 
 - id: M02.P2.T6
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-anchor to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-anchor/tests/**
@@ -163,6 +163,6 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"

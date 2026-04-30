@@ -1015,7 +1015,7 @@
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-credentials to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-credentials/tests/**
@@ -1033,14 +1033,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 - id: M02.P2.T3
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-attest-verify to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-attest-verify/tests/**
@@ -1058,14 +1058,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 - id: M02.P2.T4
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-kernel-core to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel-core/tests/**
@@ -1083,14 +1083,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 - id: M02.P2.T5
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-guards to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-guards/tests/**
@@ -1108,14 +1108,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 - id: M02.P2.T6
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-anchor to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-anchor/tests/**
@@ -1133,9 +1133,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: e118673ed5cec02adf0ea9da946aa51eb90e472d
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:13:41Z"
 - id: M02.P3.T1
   milestone: M02
   phase: 3
@@ -4228,7 +4228,7 @@
   milestone: M06
   phase: 3
   title: Replace post-insert SELECT with INSERT RETURNING in receipt_store.rs
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-store-sqlite/src/receipt_store.rs
@@ -4244,14 +4244,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 - id: M06.P3.T3
   milestone: M06
   phase: 3
   title: Replace post-insert SELECT with INSERT RETURNING in revocation_store.rs
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
     - crates/chio-store-sqlite/src/revocation_store.rs
@@ -4267,14 +4267,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 - id: M06.P3.T4
   milestone: M06
   phase: 3
   title: Replace post-insert SELECT with INSERT RETURNING in approval_store.rs
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
     - crates/chio-store-sqlite/src/approval_store.rs
@@ -4290,14 +4290,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 - id: M06.P3.T5
   milestone: M06
   phase: 3
   title: Split r2d2 max_size into reader/writer pool config with documented defaults
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-store-sqlite/src/lib.rs
@@ -4313,14 +4313,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 - id: M06.P3.T6
   milestone: M06
   phase: 3
   title: Criterion harness store_receipt_write_throughput feeding bench-regression gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-store-sqlite/benches/store_receipt_write_throughput.rs
@@ -4342,9 +4342,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 9892cbe9985dae417ad6b0bf91fa50d2773cc022
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T08:11:33Z"
 - id: M06.P4.T1
   milestone: M06
   phase: 4
