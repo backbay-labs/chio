@@ -4,6 +4,7 @@
 
 pub mod adversary;
 pub mod clock;
+pub mod coevolve;
 pub mod link;
 pub mod promote;
 pub mod rng;
@@ -20,6 +21,10 @@ pub use adversary::{
     PromptInjectionAdversary, ReplayAttemptAdversary, ScopeEscapeAdversary, ToyGuardEvaluation,
 };
 pub use clock::{ClockError, VirtualClock, DEFAULT_TICK_NANOS};
+pub use coevolve::{
+    evaluate_population, FitnessError, FitnessInputs, FitnessReport, FitnessSample, MatrixVerdict,
+    VerdictTuple,
+};
 pub use link::{
     KernelEndpoint, KernelLink, KernelMultiplexer, LinkEnvelope, LinkError, MultiplexError,
 };
