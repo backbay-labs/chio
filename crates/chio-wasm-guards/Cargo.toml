@@ -56,6 +56,7 @@ loom = { workspace = true }
 rand_core = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
+toml = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["registry"] }
 wat = "1.246"
 
@@ -67,6 +68,14 @@ required-features = ["wasmtime-runtime"]
 [[bench]]
 name = "guard_pool_checkout_p99"
 harness = false
+required-features = ["wasmtime-runtime"]
+
+# WASM guard escape harness (M05.P3). Aggregates per-class companion
+# fixtures under `tests/escape/`. Required-feature gate matches the
+# wasmtime-runtime backend the escape vectors actually drive.
+[[test]]
+name = "escape"
+path = "tests/escape/mod.rs"
 required-features = ["wasmtime-runtime"]
 
 [lints.clippy]
