@@ -1,3 +1,5 @@
+#![cfg(feature = "pq")]
+
 use std::error::Error;
 use std::io::{Error as IoError, ErrorKind};
 
