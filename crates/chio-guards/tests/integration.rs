@@ -14,7 +14,7 @@ use chio_guards::{
     EgressAllowlistGuard, ForbiddenPathGuard, GuardPipeline, PathAllowlistGuard, ShellCommandGuard,
 };
 use chio_kernel::{
-    ChioKernel, KernelConfig, KernelError, SessionOperationResponse, ToolCallRequest,
+    ChioKernel, Guard, KernelConfig, KernelError, SessionOperationResponse, ToolCallRequest,
     ToolServerConnection, Verdict,
 };
 
@@ -99,6 +99,14 @@ impl ToolServerConnection for EchoServer {
     ) -> Result<serde_json::Value, KernelError> {
         Ok(serde_json::json!({ "tool": tool_name, "echo": arguments }))
     }
+}
+
+#[test]
+fn guard_names_are_stable_for_kernel_evidence() {
+    assert_eq!(ForbiddenPathGuard::new().name(), "forbidden-path");
+    assert_eq!(ShellCommandGuard::new().name(), "shell-command");
+    assert_eq!(EgressAllowlistGuard::new().name(), "egress-allowlist");
+    assert_eq!(PathAllowlistGuard::new().name(), "path-allowlist");
 }
 
 #[tokio::test]
