@@ -13,6 +13,11 @@ chio-provider-conformance = { path = "../../crates/chio-provider-conformance", f
     "fixtures-openai",
     "fixtures-anthropic",
     "fixtures-bedrock",
+    "fixtures-gemini",
+    "fixtures-mistral",
+    "fixtures-groq",
+    "fixtures-ollama",
+    "fixtures-cohere",
 ] }
 clap = { version = "4", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }

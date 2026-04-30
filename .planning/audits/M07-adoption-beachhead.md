@@ -49,6 +49,62 @@ the 12-fixture-per-provider trajectory-1 pattern. When P4 re-cardinalizes the
 oracle, the expected cross-provider verdict-equality set becomes 8 providers
 instead of 3.
 
+## M07 P4 closure (2026-04-30)
+
+Trajectory-2 M07 P4 lands the last two provider-adapter scaffolds in the
+expansion (Ollama and Cohere) and flips the cross-provider verdict-equality
+oracle from 3 providers to 8 with the matrix gated required-CI.
+
+| Surface | Pre-P4 | Post-P4 | Evidence |
+| --- | ---: | ---: | --- |
+| Native provider adapters | 6 | 8 | `crates/chio-{ollama,cohere}-tools-adapter` |
+| Provider conformance fixtures | 72 | 96 | 12 NDJSON each under `crates/chio-provider-conformance/fixtures/{ollama,cohere}/` |
+| Cross-provider verdict-equality matrix | 6 advisory | 8 required | `tests/cross_provider_equality.rs` plus `fixtures/cross_provider/manifest.toml` plus `.github/workflows/provider-conformance.yml#cross-provider-equality` |
+| Cross-provider demo receipts | 3 | 8 | `examples/cross-provider-policy` (trajectory-1 fixture corpus untouched) |
+
+### Forward pointer to trajectory-1
+
+The trajectory-1 M07 audit anchored the cross-provider verdict-equality
+oracle at 3 providers (OpenAI, Anthropic, Bedrock) under M07.P4.T6. The
+trajectory-2 expansion does not modify the oracle surface; it extends the
+matrix cardinality and the fixture corpus. The 8-provider matrix is
+disjoint from the 5-kernel matrix tracked by trajectory-2 M02.
+
+### Provider wire-shape note
+
+The Mistral and Groq adapter source modules in P3 carry forward the Gemini
+`functionCall`/`candidates` parser as a sed-rebadge; their conformance
+fixtures use the OpenAI-style `tool_calls` shape. P4 does not modify the
+P3 source files; the deep adapter replay path (`replay_<provider>_fixture`)
+is intentionally not exposed for the Gemini/Mistral/Groq/Ollama/Cohere
+providers in P4. The cross-provider oracle uses the NDJSON capture path
+(`load_single_verdict`) instead, so the matrix cardinality flip stays
+boundary-respecting and does not depend on a P3 cleanup.
+
+The Ollama and Cohere adapters added in P4 parse their respective wire
+shapes correctly: Ollama lifts `tool_calls` from the assistant `message`
+on `/api/chat` (OpenAI-style with arguments as a JSON object); Cohere
+lifts `tool_calls` blocks from the assistant `message` on `/v2/chat`
+(arguments as a JSON-encoded string per the v2 surface).
+
+### Localhost integration lane
+
+`tests/localhost_replay.rs` under `crates/chio-ollama-tools-adapter`
+gates on the `OLLAMA_HOST` environment variable. CI exposes the daemon
+through a service container with a pre-pulled `llama3.2:1b` model in
+the new `provider-conformance.yml#ollama-localhost-replay` job; the lane
+is optional on PR and required on nightly per the M07 P4 plan.
+
+### Demo invocation
+
+The trajectory-1 README invocation `cargo run -p cross-provider-policy
+--quiet -- --dry-run` continues to work and now emits 8 receipts. The
+P4.T6 ticket gate_check references `cargo run --example cross-provider-policy`,
+which has never been a registered example target (the demo is its own
+workspace member crate). The substitution used here is the README
+invocation; the demo emits one `provenance.provider:` marker line per
+receipt to match the gate's `grep -c 'provenance.provider'` expectation.
+
 ## Reproduction Commands
 
 ```bash
