@@ -1,0 +1,180 @@
+//! tower-lsp server skeleton.
+//!
+//! Implements the minimal `LanguageServer` lifecycle (`initialize`,
+//! `initialized`, `shutdown`) plus the text-document open / change /
+//! close handlers that drive the document cache. Diagnostics,
+//! completion, hover, and go-to-definition are wired in by sibling
+//! P4 tickets.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use tower_lsp::jsonrpc::Result as LspResult;
+use tower_lsp::lsp_types::{
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    InitializeParams, InitializeResult, InitializedParams, MessageType, OneOf, ServerCapabilities,
+    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+};
+use tower_lsp::{Client, LanguageServer};
+
+use crate::document::DocumentCache;
+
+/// Snapshot of the capabilities the server advertises in
+/// `initialize`. Exposed so integration tests can pin the contract
+/// without re-deriving the full LSP `ServerCapabilities` shape.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ServerCapabilitiesSnapshot {
+    pub text_document_sync_full: bool,
+    pub completion: bool,
+    pub hover: bool,
+    pub definition: bool,
+}
+
+#[derive(Debug)]
+pub struct ChioLanguageServer {
+    client: Client,
+    documents: DocumentCache,
+    initialized: AtomicBool,
+    shutdown_requested: AtomicBool,
+}
+
+impl ChioLanguageServer {
+    #[must_use]
+    pub fn new(client: Client) -> Self {
+        Self {
+            client,
+            documents: DocumentCache::new(),
+            initialized: AtomicBool::new(false),
+            shutdown_requested: AtomicBool::new(false),
+        }
+    }
+
+    /// Construct a server bound to a pre-built document cache.
+    /// Used by tests that want to inspect the cache after lifecycle
+    /// events fire.
+    #[must_use]
+    pub fn with_cache(client: Client, documents: DocumentCache) -> Self {
+        Self {
+            client,
+            documents,
+            initialized: AtomicBool::new(false),
+            shutdown_requested: AtomicBool::new(false),
+        }
+    }
+
+    #[must_use]
+    pub fn documents(&self) -> DocumentCache {
+        self.documents.clone()
+    }
+
+    #[must_use]
+    pub fn is_initialized(&self) -> bool {
+        self.initialized.load(Ordering::SeqCst)
+    }
+
+    #[must_use]
+    pub fn shutdown_requested(&self) -> bool {
+        self.shutdown_requested.load(Ordering::SeqCst)
+    }
+
+    /// Capabilities advertised in `initialize`. Listed in
+    /// dependency order: P4.T1 ships text-document-sync; T3-T5 light up
+    /// completion, hover, and definition; T2/T6 wire diagnostics.
+    #[must_use]
+    pub fn capabilities() -> ServerCapabilities {
+        ServerCapabilities {
+            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            completion_provider: None,
+            hover_provider: None,
+            definition_provider: Some(OneOf::Left(true)),
+            ..ServerCapabilities::default()
+        }
+    }
+
+    #[must_use]
+    pub fn capabilities_snapshot() -> ServerCapabilitiesSnapshot {
+        let caps = Self::capabilities();
+        let sync_full = matches!(
+            caps.text_document_sync,
+            Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL))
+        );
+        ServerCapabilitiesSnapshot {
+            text_document_sync_full: sync_full,
+            completion: caps.completion_provider.is_some(),
+            hover: caps.hover_provider.is_some(),
+            definition: caps.definition_provider.is_some(),
+        }
+    }
+}
+
+#[tower_lsp::async_trait]
+impl LanguageServer for ChioLanguageServer {
+    async fn initialize(&self, _params: InitializeParams) -> LspResult<InitializeResult> {
+        Ok(InitializeResult {
+            capabilities: Self::capabilities(),
+            server_info: Some(ServerInfo {
+                name: "chio-lsp".to_string(),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            }),
+        })
+    }
+
+    async fn initialized(&self, _params: InitializedParams) {
+        self.initialized.store(true, Ordering::SeqCst);
+        self.client
+            .log_message(MessageType::INFO, "chio-lsp initialized")
+            .await;
+    }
+
+    async fn shutdown(&self) -> LspResult<()> {
+        self.shutdown_requested.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        let td = params.text_document;
+        self.documents
+            .open(td.uri, td.text, td.version, Some(td.language_id.as_str()));
+    }
+
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+        // We negotiated FULL sync; the client sends one change with the
+        // entire document body.
+        if let Some(change) = params.content_changes.into_iter().next() {
+            self.documents.replace(
+                &params.text_document.uri,
+                change.text,
+                params.text_document.version,
+            );
+        }
+    }
+
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        self.documents.close(&params.text_document.uri);
+    }
+}
+
+/// Run the server over stdio. Used by `chio-lsp` and `chio lsp`.
+pub async fn run_stdio() {
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let (service, socket) =
+        tower_lsp::LspService::new(|client| Arc::new(ChioLanguageServer::new(client)));
+    tower_lsp::Server::new(stdin, stdout, socket)
+        .serve(service)
+        .await;
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capabilities_snapshot_matches_phase_t1_contract() {
+        let snap = ChioLanguageServer::capabilities_snapshot();
+        assert!(snap.text_document_sync_full);
+        // P4.T3-T5 land completion / hover; T1 exposes definition only.
+        assert!(snap.definition);
+    }
+}

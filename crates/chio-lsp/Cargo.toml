@@ -1,0 +1,41 @@
+[package]
+name = "chio-lsp"
+description = "Chio language server (chio.yaml, manifest, guard DSL diagnostics + completion + hover + go-to-definition)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_lsp"
+
+[[bin]]
+name = "chio-lsp"
+path = "src/main.rs"
+
+[dependencies]
+chio-errors = { path = "../chio-errors" }
+dashmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yml = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tower-lsp = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+notify = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+
+[[bench]]
+name = "diagnostic_latency"
+harness = false
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

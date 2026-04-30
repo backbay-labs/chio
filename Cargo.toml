@@ -13,6 +13,7 @@ members = [
     "crates/chio-kernel-browser",
     "crates/chio-kernel-core",
     "crates/chio-kernel-mobile",
+    "crates/chio-lsp",
     #
     # Guards & policy
     "crates/chio-data-guards",
