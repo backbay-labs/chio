@@ -1,0 +1,11 @@
+{
+  "schema": "chio.hybrid-signature.v1",
+  "message": "m03 hybrid canonical round trip",
+  "alg_set": "ed25519+mldsa65",
+  "classical_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "pq_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "public_key_prefix": "hybrid:",
+  "public_key_sha256": "03cc9413904f767344eb2b14fa594a84be0a8c677f9374f77999d18ec0ec6b6b",
+  "signature_prefix": "hybrid:",
+  "canonical_public_key_json_sha256": "86ae77bbeb1939783f6bd252e35f9f780625cede5cd1c811460e659d1484d143"
+}

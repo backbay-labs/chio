@@ -10,11 +10,14 @@ use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
 
 use super::diagnostic_with_urn;
 
-/// URN code emitted for schema-invalid manifest documents.
+/// URN code emitted for schema-invalid manifest documents (missing or
+/// structurally wrong required keys, malformed sequences, parse errors).
 pub const URN_MANIFEST_SCHEMA_INVALID: &str = "urn:chio:error:manifest:schema-invalid";
 
-/// URN code emitted when a tool entry references a guard that is not
-/// declared in the document's `guards:` allowlist (when present).
+/// URN code reserved for runtime lookups against the active manifest
+/// (a request references a tool id that the manifest does not list).
+/// Per the registry, this is a runtime error, not a schema violation;
+/// missing structural keys must use [`URN_MANIFEST_SCHEMA_INVALID`].
 pub const URN_MANIFEST_TOOL_NOT_REGISTERED: &str = "urn:chio:error:manifest:tool-not-registered";
 
 /// Required keys for tool entries.
@@ -108,11 +111,14 @@ pub fn validate(text: &str) -> Vec<Diagnostic> {
                 .iter()
                 .any(|(k, _)| k.as_str().is_some_and(|s| s == *required));
             if !present {
+                // Missing structural keys are a schema violation, not
+                // a runtime registry-lookup miss; the registry pins
+                // `tool-not-registered` to the latter case.
                 diagnostics.push(diagnostic_with_urn(
                     1,
                     1,
                     DiagnosticSeverity::ERROR,
-                    URN_MANIFEST_TOOL_NOT_REGISTERED,
+                    URN_MANIFEST_SCHEMA_INVALID,
                     format!("tool[{idx}] is missing required key `{required}`."),
                 ));
             }
@@ -150,10 +156,13 @@ mod tests {
     }
 
     #[test]
-    fn tool_without_id_is_unregistered() {
+    fn tool_without_id_is_schema_invalid() {
+        // Missing structural key on a tool entry is a schema violation
+        // (the registry's `tool-not-registered` URN is reserved for
+        // runtime lookups against the active manifest).
         let diags = validate("tools:\n  - name: nope\n");
         assert_eq!(diags.len(), 1);
-        assert_eq!(first_code(&diags), URN_MANIFEST_TOOL_NOT_REGISTERED);
+        assert_eq!(first_code(&diags), URN_MANIFEST_SCHEMA_INVALID);
     }
 
     #[test]

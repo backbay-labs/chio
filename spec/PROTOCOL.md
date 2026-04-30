@@ -168,7 +168,14 @@ The security boundary that matters is constant across these surfaces:
 
 ### 4.1 Canonical JSON
 
-Signed Chio artifacts use canonical JSON serialization before Ed25519 signing.
+Signed Chio artifacts use canonical JSON serialization before signing. Legacy
+artifacts remain Ed25519 by default. Post-quantum hybrid artifacts use the
+`hybrid:<classical>:<pq>:<alg_set>` string prefix, where `pq` is ML-DSA-65
+bytes encoded as lowercase hex and `alg_set` is one of
+`ed25519+mldsa65`, `p256+mldsa65`, or `p384+mldsa65`. Verifiers dispatch from
+the self-describing signature prefix and reject malformed or mismatched hybrid
+halves fail-closed.
+
 This includes capability tokens, receipts, manifests, checkpoints, verifier
 policies, passport presentations, and certification artifacts.
 
@@ -224,6 +231,9 @@ describe it literally:
 ### 4.4 Identity
 
 Chio uses Ed25519 keys as the primary cryptographic identity primitive.
+Hybrid public keys are encoded with the same self-describing prefix discipline
+as signatures: `hybrid:<classical-public-key>:<mldsa65-public-key>:<alg_set>`.
+Classical encodings remain byte-identical.
 
 `did:chio` remains the shipped self-certifying DID method for those keys in
 this release:

@@ -39,11 +39,36 @@ pub fn default_lsp_command() -> (String, Vec<String>) {
     (CHIO_LSP_BINARY.to_string(), Vec::new())
 }
 
+/// Compose the LSP invocation for a single launch from the default
+/// binary plus any user overrides discovered in Zed's `LspSettings`.
+///
+/// `override_path` corresponds to `lsp.<server>.binary.path`; an empty
+/// or `None` value falls back to [`CHIO_LSP_BINARY`] so the default
+/// `PATH` lookup still works. `override_args` correspond to
+/// `lsp.<server>.binary.arguments` and replace the empty default. The
+/// helper lives outside the wasm extension block so the host-side
+/// integration test can exercise the override contract without booting
+/// Zed's wasm runtime.
+#[must_use]
+pub fn lsp_command_with_overrides(
+    override_path: Option<&str>,
+    override_args: Option<Vec<String>>,
+) -> (String, Vec<String>) {
+    let command = match override_path {
+        Some(p) if !p.trim().is_empty() => p.to_string(),
+        _ => CHIO_LSP_BINARY.to_string(),
+    };
+    let args = override_args.unwrap_or_default();
+    (command, args)
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm_extension {
-    use zed_extension_api::{self as zed, Command, LanguageServerId, Result, Worktree};
+    use zed_extension_api::{
+        self as zed, settings::LspSettings, Command, LanguageServerId, Result, Worktree,
+    };
 
-    use super::CHIO_LSP_BINARY;
+    use super::lsp_command_with_overrides;
 
     struct ChioExtension;
 
@@ -54,14 +79,27 @@ mod wasm_extension {
 
         fn language_server_command(
             &mut self,
-            _id: &LanguageServerId,
-            _worktree: &Worktree,
+            id: &LanguageServerId,
+            worktree: &Worktree,
         ) -> Result<Command> {
-            Ok(Command {
-                command: CHIO_LSP_BINARY.to_string(),
-                args: Vec::new(),
-                env: Vec::new(),
-            })
+            // Read user-configured overrides for this language server
+            // (the `lsp.<id>.binary.{path,arguments,env}` block) and
+            // fall back to the bare `chio-lsp` invocation when the
+            // user has not customised it. Without this lookup the
+            // documented `lsp.path` / `lsp.args` knobs in the README
+            // are unreachable and non-default installs cannot launch.
+            let settings = LspSettings::for_worktree(id.as_ref(), worktree).ok();
+            let binary = settings.as_ref().and_then(|s| s.binary.as_ref());
+
+            let override_path = binary.and_then(|b| b.path.as_deref());
+            let override_args = binary.and_then(|b| b.arguments.clone());
+            let env: Vec<(String, String)> = binary
+                .and_then(|b| b.env.as_ref())
+                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default();
+
+            let (command, args) = lsp_command_with_overrides(override_path, override_args);
+            Ok(Command { command, args, env })
         }
     }
 

@@ -151,6 +151,12 @@ fn parse_rfc3339_nanos(value: &str) -> Result<u64, ClockError> {
     {
         return Err(ClockError::InvalidStart(value.to_string()));
     }
+    // Reject impossible dates such as `2026-02-31`. Without this guard the
+    // civil-day algorithm silently normalises the input, which would shift
+    // the determinism witness anchor on malformed scenarios.
+    if day > days_in_month(year, month) {
+        return Err(ClockError::InvalidStart(value.to_string()));
+    }
 
     let days = days_from_civil(year, month, day);
     let seconds = days
@@ -184,6 +190,29 @@ fn scale_fractional(value: u64, len: usize) -> u64 {
         scaled = scaled.saturating_mul(10);
     }
     scaled
+}
+
+/// Maximum valid day in `month` of `year` under the proleptic Gregorian
+/// calendar. Used to reject impossible dates like `2026-02-31` before they
+/// reach `days_from_civil`, which would otherwise normalise rather than
+/// fault.
+fn days_in_month(year: u64, month: u64) -> u64 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if is_leap_year(year) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 0,
+    }
+}
+
+fn is_leap_year(year: u64) -> bool {
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 /// Civil days since 1970-01-01 using Howard Hinnant's chrono algorithm,
@@ -245,5 +274,39 @@ mod tests {
         let clock = VirtualClock::with_default_tick("2026-04-30T00:00:00.500Z")?;
         assert_eq!(clock.absolute_now_nanos() % 1_000_000_000, 500_000_000);
         Ok(())
+    }
+
+    #[test]
+    fn rejects_impossible_calendar_day() {
+        // February 31 is never valid; the civil-day algorithm would silently
+        // normalise it without this check, shifting the determinism witness
+        // anchor on malformed scenarios.
+        match VirtualClock::with_default_tick("2026-02-31T00:00:00Z") {
+            Err(ClockError::InvalidStart(_)) => {}
+            Err(other) => panic!("unexpected error variant: {other:?}"),
+            Ok(_) => panic!("expected InvalidStart error for 2026-02-31"),
+        }
+    }
+
+    #[test]
+    fn rejects_april_31() {
+        match VirtualClock::with_default_tick("2026-04-31T00:00:00Z") {
+            Err(ClockError::InvalidStart(_)) => {}
+            other => panic!("expected InvalidStart for 2026-04-31, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn accepts_leap_day_in_leap_year() -> Result<(), ClockError> {
+        VirtualClock::with_default_tick("2024-02-29T00:00:00Z")?;
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_leap_day_in_non_leap_year() {
+        match VirtualClock::with_default_tick("2023-02-29T00:00:00Z") {
+            Err(ClockError::InvalidStart(_)) => {}
+            other => panic!("expected InvalidStart for 2023-02-29, got {other:?}"),
+        }
     }
 }

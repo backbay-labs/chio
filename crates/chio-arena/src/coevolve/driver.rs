@@ -267,15 +267,23 @@ pub fn run_coevolution(inputs: CoevolutionInputs<'_>) -> Result<CoevolutionRun, 
         return Err(DriverError::ZeroGenerations);
     }
 
-    let target_generations = inputs
-        .config
-        .generations
-        .min(inputs.config.budget.max_generations);
+    // The generation budget caps how many iterations we will run. When the
+    // configured `generations` exceeds the budget's `max_generations` we
+    // run up to the cap and report `BudgetExceeded`; the original
+    // `generations` is preserved so the run is auditable. When the budget
+    // is generous we run the full configured count and report `Completed`.
+    let configured_generations = inputs.config.generations;
+    let target_generations = configured_generations.min(inputs.config.budget.max_generations);
+    let generation_budget_capped = configured_generations > target_generations;
     let started_at = Instant::now();
     let mut population_pool = inputs.parents.clone();
 
     let mut entries = Vec::with_capacity(target_generations as usize);
-    let mut outcome = CoevolutionOutcome::Completed;
+    let mut outcome = if generation_budget_capped {
+        CoevolutionOutcome::BudgetExceeded
+    } else {
+        CoevolutionOutcome::Completed
+    };
 
     for generation in 0..target_generations {
         if started_at.elapsed() >= inputs.config.budget.max_wall_clock {

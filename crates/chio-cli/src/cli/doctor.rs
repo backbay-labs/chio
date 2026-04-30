@@ -29,6 +29,14 @@ pub struct DoctorArgs {
 }
 
 /// Entry point invoked from `dispatch.rs`.
+///
+/// `cmd_doctor` short-circuits the generic `dispatch.rs` `exit(1)` path
+/// so the process exit code matches the contract documented on
+/// `Commands::Doctor` and on `DoctorRun::exit_code()`: 0 for ok / info /
+/// warning, 1 for error, 2 for fatal. The doctor JSON envelope reports
+/// the same numeric code via the `exit_code` field, so downstream CI
+/// gates that branch on Fatal vs Error stay consistent with both
+/// channels.
 pub fn cmd_doctor(args: &DoctorArgs, json_output: bool) -> Result<(), CliError> {
     let config = ProbeConfig {
         skip_network: args.skip_network || std::env::var("CHIO_DOCTOR_SKIP_NETWORK").is_ok(),
@@ -39,24 +47,28 @@ pub fn cmd_doctor(args: &DoctorArgs, json_output: bool) -> Result<(), CliError> 
     let run = runner.run();
 
     let render_json = args.json || json_output;
-    let mut stdout = std::io::stdout().lock();
-    if render_json {
-        render_doctor_json(&mut stdout, &run).map_err(|err| {
-            CliError::cli_other_error(format!("doctor: failed to render JSON output: {err}"))
-        })?;
-    } else {
-        render_doctor_human(&mut stdout, &run).map_err(|err| {
-            CliError::cli_other_error(format!("doctor: failed to render human output: {err}"))
-        })?;
+    {
+        let mut stdout = std::io::stdout().lock();
+        if render_json {
+            render_doctor_json(&mut stdout, &run).map_err(|err| {
+                CliError::cli_other_error(format!("doctor: failed to render JSON output: {err}"))
+            })?;
+        } else {
+            render_doctor_human(&mut stdout, &run).map_err(|err| {
+                CliError::cli_other_error(format!("doctor: failed to render human output: {err}"))
+            })?;
+        }
     }
 
-    if run.worst.is_failing() {
-        Err(CliError::cli_other_error(format!(
-            "doctor: one or more probes failed (worst severity: {})",
-            run.worst
-        )))
-    } else {
+    let code = run.exit_code();
+    if code == 0 {
         Ok(())
+    } else {
+        // Bypass the generic `dispatch.rs` error renderer + exit(1) so
+        // the worst-severity exit code (1 for Error, 2 for Fatal)
+        // reaches the process and stays in lockstep with the
+        // `exit_code` field already serialized in the JSON envelope.
+        std::process::exit(code);
     }
 }
 

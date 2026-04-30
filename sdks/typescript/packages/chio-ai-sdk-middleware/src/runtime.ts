@@ -78,9 +78,15 @@ function normalizeRuntime(runtime: ChioRuntime | "auto" | undefined): ChioRuntim
 declare const EdgeRuntime: string | undefined;
 
 async function importOptionalEdge(): Promise<EdgeModule> {
-  const dynamicImport = new Function("specifier", "return import(specifier)") as
-    (specifier: string) => Promise<EdgeModule>;
-  return dynamicImport("@chio-protocol/edge");
+  // Use a native dynamic import expression rather than a `Function`-built
+  // importer. Vercel/Next edge runtimes block runtime code evaluation
+  // (`new Function`, `eval`), and would throw before `@chio-protocol/edge`
+  // could load -- silently bypassing every guarded tool invocation.
+  // Bundlers that statically analyse `import(...)` will still treat the
+  // specifier as a separate chunk because the import is awaited at call
+  // time only, after the runtime check above has selected the edge path.
+  const specifier = "@chio-protocol/edge";
+  return import(/* @vite-ignore */ /* webpackIgnore: true */ specifier) as Promise<EdgeModule>;
 }
 
 function normalizeEvaluation(value: unknown): ChioEvaluation {

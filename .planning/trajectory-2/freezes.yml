@@ -65,6 +65,7 @@ freezes:
       - crates/chio-revocation-oracle/**
       - crates/chio-credentials/src/revocation*.rs
       - crates/chio-federation/src/revocation*.rs
+      - crates/chio-federation/src/lib.rs
     start_trigger: M04.P1.T1
     end_trigger: M04.P3.T5
     trust_boundary: true
@@ -79,7 +80,9 @@ freezes:
     milestone: M04
     phases: [P3, P4, P5]
     path_globs:
+      - crates/chio-core-types/src/capability.rs
       - crates/chio-core-types/src/capability*.rs
+      - crates/chio-federation/src/lib.rs
       - crates/chio-kernel/src/delegation*.rs
       - formal/lean4/Chio/Capability/Delegation.lean
       - formal/tla/DelegationDepthBound.tla
@@ -141,8 +144,10 @@ freezes:
 #     both freezes are active; the m04-freeze-guard required-check
 #     unions `crates/chio-revocation-oracle/**`,
 #     `crates/chio-credentials/src/revocation*.rs`,
-#     `crates/chio-federation/src/revocation*.rs` with
+#     `crates/chio-federation/src/revocation*.rs`,
+#     `crates/chio-federation/src/lib.rs` with
 #     `crates/chio-core-types/src/capability*.rs`,
+#     `crates/chio-core-types/src/capability.rs`,
 #     `crates/chio-kernel/src/delegation*.rs`,
 #     `formal/lean4/Chio/Capability/Delegation.lean`, and
 #     `formal/tla/DelegationDepthBound.tla`. The overlap is recorded on

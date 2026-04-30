@@ -1,0 +1,6 @@
+{
+  "id": "02-touch-id",
+  "kind": "positive",
+  "description": "Platform authenticator (Touch ID-class) passkey: matching RPID, user-verification observed, no counter regression.",
+  "expected_urn": null
+}

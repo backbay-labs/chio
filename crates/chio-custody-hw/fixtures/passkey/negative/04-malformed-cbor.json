@@ -1,0 +1,7 @@
+{
+  "id": "04-malformed-cbor",
+  "kind": "negative",
+  "failure_mode": "malformed-cbor",
+  "description": "Authenticator data CBOR is truncated; webauthn-rs MUST reject parsing.",
+  "expected_urn": "urn:chio:error:custody:assertion-rejected"
+}

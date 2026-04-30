@@ -14,7 +14,8 @@ use std::path::PathBuf;
 use toml::Value;
 
 use zed_chio::{
-    default_lsp_command, CHIO_LANGUAGE_ID, CHIO_LSP_BINARY, SETTINGS_ARGS_KEY, SETTINGS_PATH_KEY,
+    default_lsp_command, lsp_command_with_overrides, CHIO_LANGUAGE_ID, CHIO_LSP_BINARY,
+    SETTINGS_ARGS_KEY, SETTINGS_PATH_KEY,
 };
 
 fn extension_dir() -> PathBuf {
@@ -91,4 +92,33 @@ fn settings_keys_match_vscode_extension() {
     // Zed side reads the matching subkeys under `chio` settings.
     assert_eq!(SETTINGS_PATH_KEY, "lsp.path");
     assert_eq!(SETTINGS_ARGS_KEY, "lsp.args");
+}
+
+#[test]
+fn override_path_and_args_are_honored() {
+    // The wasm extension threads `LspSettings::for_worktree` through
+    // `lsp_command_with_overrides`. Pin the override contract here so
+    // the host-side gate catches drift if the helper stops applying
+    // user-supplied `lsp.<server>.binary.{path,arguments}` values.
+    let (cmd, args) = lsp_command_with_overrides(
+        Some("/opt/chio/bin/chio-lsp"),
+        Some(vec!["--verbose".into()]),
+    );
+    assert_eq!(cmd, "/opt/chio/bin/chio-lsp");
+    assert_eq!(args, vec!["--verbose".to_string()]);
+}
+
+#[test]
+fn empty_override_path_falls_back_to_default_binary() {
+    let (cmd, args) = lsp_command_with_overrides(Some("   "), None);
+    assert_eq!(cmd, CHIO_LSP_BINARY);
+    assert!(args.is_empty());
+}
+
+#[test]
+fn missing_overrides_match_default_command() {
+    let (cmd, args) = lsp_command_with_overrides(None, None);
+    let (def_cmd, def_args) = default_lsp_command();
+    assert_eq!(cmd, def_cmd);
+    assert_eq!(args, def_args);
 }

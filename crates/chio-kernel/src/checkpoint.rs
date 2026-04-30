@@ -243,7 +243,7 @@ pub struct CheckpointTransparencySummary {
 pub fn checkpoint_log_id(checkpoint: &KernelCheckpoint) -> String {
     let log_key_bytes: Vec<u8> = match checkpoint.body.kernel_key.algorithm() {
         SigningAlgorithm::Ed25519 => checkpoint.body.kernel_key.as_bytes().to_vec(),
-        SigningAlgorithm::P256 | SigningAlgorithm::P384 => {
+        SigningAlgorithm::P256 | SigningAlgorithm::P384 | SigningAlgorithm::Hybrid => {
             checkpoint.body.kernel_key.to_hex().into_bytes()
         }
     };

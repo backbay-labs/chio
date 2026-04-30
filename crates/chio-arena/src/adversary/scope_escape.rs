@@ -122,6 +122,22 @@ impl Adversary for ScopeEscapeAdversary {
             Value::String(format!("{entropy:016x}")),
         );
         arguments_map.insert("scope_escape".to_string(), Value::Object(escape));
+        // Derive the expected verdict from the delegated scope content
+        // relative to the base step's (server, tool). An escalation entry
+        // that delegates the same `(server, tool)` as the issuer is
+        // monotone and the toy guard will return `Allow`; hardcoding
+        // `Deny` would emit a self-contradictory action that could be
+        // misclassified as a policy regression. The
+        // `default_escalations` set keeps the natural invariant that
+        // every entry escalates beyond the issuer's canonical scope, so
+        // default-built populations still emit `Deny`.
+        let escalates =
+            self.escalation.server != base_step.server || self.escalation.tool != base_step.tool;
+        let expected_verdict = if escalates {
+            ScenarioVerdict::Deny
+        } else {
+            ScenarioVerdict::Allow
+        };
         let mutated_step = ScenarioStep {
             id: format!(
                 "{}::{}::{}",
@@ -131,13 +147,13 @@ impl Adversary for ScopeEscapeAdversary {
             server: base_step.server.clone(),
             tool: base_step.tool.clone(),
             arguments: Value::Object(arguments_map),
-            expect_verdict: ScenarioVerdict::Deny,
+            expect_verdict: expected_verdict,
         };
         AdversaryAction {
             class: AdversaryClass::ScopeEscape,
             population: self.population.clone(),
             mutated_step,
-            expected_verdict: ScenarioVerdict::Deny,
+            expected_verdict,
             reason_marker: REASON.to_string(),
         }
     }

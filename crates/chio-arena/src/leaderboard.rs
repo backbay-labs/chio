@@ -69,8 +69,16 @@ impl Leaderboard {
             .iter()
             .map(|(name, sample)| LeaderboardRow {
                 rank: 0,
+                // Use the canonical kebab-case identifier (the same one
+                // emitted by `AdversaryClass::as_str()` and serialised by
+                // `#[serde(rename_all = "kebab-case")]`) so the
+                // `chio.arena.leaderboard/v1` schema is consistent with
+                // every other arena artifact. The previous Debug-derived
+                // form produced names like "promptinjection" that
+                // diverged from the canonical "prompt-injection" tokens
+                // M09 reputation matches against.
                 population: name.clone(),
-                class: format!("{:?}", sample.class).to_ascii_lowercase(),
+                class: sample.class.as_str().to_string(),
                 survival_rate: sample.survival_rate(),
                 survivals: sample.survivals,
                 defeats: sample.defeats,

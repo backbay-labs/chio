@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/signature/v1",
+  "title": "Chio Signature Encoding",
+  "description": "Algorithm-aware public-key and signature string encodings used by Chio signed artifacts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["public_key", "signature"],
+  "properties": {
+    "public_key": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:.+:[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+      "description": "PublicKey::to_hex output. Hybrid keys use hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>."
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:.+:[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+      "description": "Signature::to_hex output. Hybrid signatures use hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>."
+    },
+    "algorithm": {
+      "type": "string",
+      "enum": ["ed25519", "p256", "p384", "hybrid"],
+      "description": "Envelope hint. Verifiers dispatch from the self-describing signature prefix and reject mismatches fail-closed."
+    }
+  }
+}

@@ -29,9 +29,9 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 3c45cbdf3d30bb2249790a8abfaf2dfec5df88a8
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T13:56:26Z
   merged_ts: null
 
 - id: M04.P0.T2
@@ -57,9 +57,9 @@
   agent_role: delegate-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 3c45cbdf3d30bb2249790a8abfaf2dfec5df88a8
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T13:56:26Z
   merged_ts: null
 
 - id: M04.P0.T3
@@ -81,9 +81,9 @@
   agent_role: delegate-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: ab8b96218b65676aa8c3de1009a99c02a07e0772
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T15:36:28Z
   merged_ts: null
 
 - id: M04.P0.T4
@@ -106,7 +106,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: ab8b96218b65676aa8c3de1009a99c02a07e0772
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T15:36:28Z
   merged_ts: null

@@ -1335,19 +1335,39 @@ impl ChioKernel {
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
-        let _receipt_store_write = self
-            .receipt_store_write_lock
-            .lock()
-            .map_err(|_| KernelError::Internal("receipt store write lock poisoned".to_string()))?;
-        if let Some(seq) = self
-            .with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?))?
-            .flatten()
+        // Scope the receipt-store write lock so it is released before the
+        // settlement observer runs. M09 review follow-up (PR #387,
+        // Cursor Bugbot + Codex): holding the mutex across
+        // `run_settlement_observer` serialized all concurrent receipt
+        // persistence behind potentially I/O-bound hook latency. The
+        // observer needs only a fully-persisted receipt, so we drop the
+        // guard first.
         {
-            if self.should_checkpoint_after_seq(seq) {
-                self.maybe_trigger_checkpoint_locked(seq)?;
+            let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
+                KernelError::Internal("receipt store write lock poisoned".to_string())
+            })?;
+            if let Some(seq) = self
+                .with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?))?
+                .flatten()
+            {
+                if self.should_checkpoint_after_seq(seq) {
+                    self.maybe_trigger_checkpoint_locked(seq)?;
+                }
             }
+            self.append_chio_receipt_to_local_log(receipt.clone());
         }
-        self.append_chio_receipt_to_local_log(receipt.clone());
+        // M09 review follow-up (PR #378, Codex): drive the settlement
+        // observer slot from the receipt-persistence path so a
+        // registered hook actually runs during normal dispatches.
+        // The receipt is fully signed and persisted at this point;
+        // the observer is byte-irrelevant to the receipt itself, and
+        // the hook's return value is intentionally consumed without
+        // feeding back into the dispatch path. This preserves the
+        // documented invariant that hook failures NEVER block
+        // dispatch (P2.T4 byte-identity test). The write lock is
+        // released above so concurrent persistence is not stalled by
+        // observer I/O.
+        let _settlement_status = self.run_settlement_observer(receipt);
         Ok(())
     }
 

@@ -215,13 +215,32 @@ fn list_pending(conn: &Connection) -> Result<Vec<PendingRow>, SettleStatusError>
 }
 
 fn list_settled(conn: &Connection) -> Result<Vec<SettledRow>, SettleStatusError> {
+    // M09 review follow-up (PR #378, Bugbot): the documented CLI
+    // ordering contract is `(finalized_at, receipt_id)` across all
+    // three sections of `arc settle status`. The
+    // `settlement_reconciliations` table only carries `updated_at`
+    // (the time the reconciliation row was last modified, which can
+    // drift from the receipt's finalized timestamp on retry/restage),
+    // so when `chio_tool_receipts` is present we LEFT JOIN it to
+    // recover the receipt finalization time and sort on it. When the
+    // receipts table is absent (synthetic test fixtures, settle-only
+    // databases) we fall back to `updated_at` so the function still
+    // returns rows in a deterministic order.
+    let receipts_present = table_exists(conn, "chio_tool_receipts")?;
+    let sql = if receipts_present {
+        "SELECT sr.receipt_id, sr.reconciliation_state, sr.updated_at \
+         FROM settlement_reconciliations AS sr \
+         LEFT JOIN chio_tool_receipts AS r ON r.receipt_id = sr.receipt_id \
+         WHERE sr.reconciliation_state = 'settled' \
+         ORDER BY COALESCE(r.timestamp, sr.updated_at) ASC, sr.receipt_id ASC"
+    } else {
+        "SELECT receipt_id, reconciliation_state, updated_at \
+         FROM settlement_reconciliations \
+         WHERE reconciliation_state = 'settled' \
+         ORDER BY updated_at ASC, receipt_id ASC"
+    };
     let mut stmt = conn
-        .prepare(
-            "SELECT receipt_id, reconciliation_state, updated_at \
-             FROM settlement_reconciliations \
-             WHERE reconciliation_state = 'settled' \
-             ORDER BY updated_at ASC, receipt_id ASC",
-        )
+        .prepare(sql)
         .map_err(|err| SettleStatusError::Backend(err.to_string()))?;
     let rows = stmt
         .query_map([], |row| {
@@ -408,5 +427,63 @@ mod tests {
         assert!(report.pending.is_empty());
         assert!(report.settled.is_empty());
         assert!(report.dead_lettered.is_empty());
+    }
+
+    #[test]
+    fn settled_orders_by_receipt_finalized_at_when_receipts_table_present() {
+        // M09 review follow-up (PR #378, Bugbot): when
+        // `chio_tool_receipts` is present, list_settled must order
+        // by the receipt's finalized timestamp (`r.timestamp`), not
+        // by `settlement_reconciliations.updated_at`. This test
+        // creates two settled rows whose `updated_at` ordering is
+        // the OPPOSITE of their receipt-finalized ordering, then
+        // confirms the report follows the receipts ordering.
+        let dir = TempDir::new().expect("tempdir");
+        let path = dir.path().join("ordered.sqlite");
+        let conn = Connection::open(&path).expect("open db");
+        conn.execute_batch(
+            "CREATE TABLE iou_envelope (
+                receipt_id TEXT PRIMARY KEY,
+                iou_id TEXT NOT NULL,
+                receipt_timestamp INTEGER NOT NULL,
+                tenant_id TEXT,
+                amount_units INTEGER NOT NULL,
+                currency TEXT NOT NULL,
+                issuer_key TEXT NOT NULL,
+                canonical_json TEXT NOT NULL
+            );
+            CREATE TABLE settlement_reconciliations (
+                receipt_id TEXT PRIMARY KEY,
+                reconciliation_state TEXT NOT NULL,
+                note TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE chio_tool_receipts (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                receipt_id TEXT NOT NULL UNIQUE,
+                timestamp INTEGER NOT NULL
+            );",
+        )
+        .expect("create tables");
+        // rcpt-A: finalized_at=100, settled updated_at=900
+        // rcpt-B: finalized_at=200, settled updated_at=500
+        // Ordering by updated_at would give B,A; ordering by
+        // finalized_at gives A,B.
+        conn.execute(
+            "INSERT INTO chio_tool_receipts (receipt_id, timestamp) VALUES ('rcpt-A', 100), ('rcpt-B', 200)",
+            [],
+        )
+        .expect("insert receipts");
+        conn.execute(
+            "INSERT INTO settlement_reconciliations (receipt_id, reconciliation_state, note, updated_at) \
+             VALUES ('rcpt-A', 'settled', NULL, 900), ('rcpt-B', 'settled', NULL, 500)",
+            [],
+        )
+        .expect("insert reconciliations");
+        drop(conn);
+        let report = SettleStatusReport::load(&path).expect("load ok");
+        assert_eq!(report.settled.len(), 2);
+        assert_eq!(report.settled[0].receipt_id, "rcpt-A");
+        assert_eq!(report.settled[1].receipt_id, "rcpt-B");
     }
 }

@@ -28,9 +28,9 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 05861085925b64c00cd4aa2b7b06e7f6edaad34b
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T17:18:48Z"
   merged_ts: null
 
 - id: M03.P1.T2
@@ -53,9 +53,9 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 05861085925b64c00cd4aa2b7b06e7f6edaad34b
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T17:18:48Z"
   merged_ts: null
 
 - id: M03.P1.T3
@@ -79,9 +79,9 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 00d8beacaf528d64985044aa5ac3e7d9a9450b97
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T17:18:48Z"
   merged_ts: null
 
 - id: M03.P1.T4
@@ -104,9 +104,9 @@
   agent_role: formal-kani
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 2f750ae6e53db479446d67323fa1c5890829627d
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T17:18:48Z"
   merged_ts: null
 
 - id: M03.P1.T5
@@ -130,9 +130,9 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 231534260dc918d9b526a417463a611e14f03cea
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T17:18:48Z"
   merged_ts: null
 
 - id: M03.P1.T6
@@ -155,7 +155,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d5d8343ee15c0a0978e241703c5705fbc6a670ad
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T17:18:48Z"
   merged_ts: null

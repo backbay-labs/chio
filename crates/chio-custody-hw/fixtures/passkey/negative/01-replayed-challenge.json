@@ -1,0 +1,7 @@
+{
+  "id": "01-replayed-challenge",
+  "kind": "negative",
+  "failure_mode": "replayed-challenge",
+  "description": "Same challenge nonce presented twice for the same credential id.",
+  "expected_urn": "urn:chio:error:custody:replay-detected"
+}

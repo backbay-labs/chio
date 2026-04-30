@@ -168,6 +168,7 @@ fn driver_caps_generations_at_budget_max() -> Result<(), Box<dyn std::error::Err
         witness_seed: scenario.rng_seed,
     })?;
     assert_eq!(run.trace.entries.len(), 2);
+    assert_eq!(run.outcome, CoevolutionOutcome::BudgetExceeded);
     Ok(())
 }
 

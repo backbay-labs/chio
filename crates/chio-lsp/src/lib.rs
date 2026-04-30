@@ -22,6 +22,7 @@ pub mod definition;
 pub mod diagnostics;
 pub mod document;
 pub mod hover;
+pub mod position;
 pub mod server;
 
 pub use document::{DocumentCache, DocumentEntry, DocumentLanguage};

@@ -1,0 +1,6 @@
+{
+  "id": "04-android",
+  "kind": "positive",
+  "description": "Android passkey: matching RPID with subdomain, user-verification observed, fresh challenge.",
+  "expected_urn": null
+}
