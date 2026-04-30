@@ -3433,6 +3433,7 @@ version = "0.1.0"
 dependencies = [
  "chio-anthropic-tools-adapter",
  "chio-bedrock-converse-adapter",
+ "chio-cohere-tools-adapter",
  "chio-core-types",
  "chio-gemini-tools-adapter",
  "chio-groq-tools-adapter",
