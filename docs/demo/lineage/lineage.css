@@ -1,0 +1,107 @@
+/* Chio lineage viewer (M09 P5.T8). Vanilla CSS, no build pipeline. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1f1f1f;
+  --muted: #666666;
+  --border: #d0d0d0;
+  --accent: #325cff;
+  --evidence-asserted: #c08a00;
+  --evidence-observed: #1a7f37;
+  --evidence-verified: #6a3aa6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161616;
+    --fg: #ececec;
+    --muted: #9e9e9e;
+    --border: #2e2e2e;
+    --accent: #82a0ff;
+  }
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  margin: 0;
+  padding: 1.5rem;
+  line-height: 1.4;
+}
+
+header h1 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.4rem;
+}
+
+.schema-pin {
+  margin: 0 0 1.5rem 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-family: ui-monospace, monospace;
+}
+
+.controls {
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+button {
+  font: inherit;
+  padding: 0.35rem 0.75rem;
+  background: var(--accent);
+  color: #ffffff;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.summary {
+  margin-bottom: 1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.tables h2 {
+  font-size: 1rem;
+  margin: 1rem 0 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  font-family: ui-monospace, monospace;
+}
+
+th {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.evidence-asserted {
+  color: var(--evidence-asserted);
+}
+
+.evidence-observed {
+  color: var(--evidence-observed);
+}
+
+.evidence-verified {
+  color: var(--evidence-verified);
+}
