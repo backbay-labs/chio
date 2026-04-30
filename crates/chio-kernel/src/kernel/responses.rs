@@ -1348,6 +1348,16 @@ impl ChioKernel {
             }
         }
         self.append_chio_receipt_to_local_log(receipt.clone());
+        // M09 review follow-up (PR #378, Codex): drive the settlement
+        // observer slot from the receipt-persistence path so a
+        // registered hook actually runs during normal dispatches.
+        // The receipt is fully signed and persisted at this point;
+        // the observer is byte-irrelevant to the receipt itself, and
+        // the hook's return value is intentionally consumed without
+        // feeding back into the dispatch path. This preserves the
+        // documented invariant that hook failures NEVER block
+        // dispatch (P2.T4 byte-identity test).
+        let _settlement_status = self.run_settlement_observer(receipt);
         Ok(())
     }
 

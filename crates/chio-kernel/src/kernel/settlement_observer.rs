@@ -72,6 +72,18 @@ impl SettlementObserverStatus {
 /// (currently: missing manifest pricing context, zero-priced
 /// invocations, or non-allow decisions). The kernel observer slot
 /// invokes a registered hook only when this returns `Some`.
+///
+/// The receipt's financial metadata is canonically the
+/// `FinancialReceiptMetadata` shape (`cost_charged`, `currency`,
+/// `attempted_cost`) under `metadata.financial.*`. M09 review
+/// follow-up (PR #378, Codex): the previous version of this function
+/// looked for `approved_max`/`settlement_cap`/`amount.units` keys that
+/// no kernel-issued receipt actually carries, so settlement hooks
+/// never ran for real traffic and every priced allow receipt was
+/// reported as "outside marketplace surface". The lookup is now
+/// canonical-first, with a legacy-fallback path that still accepts
+/// the older keys for tests and external receipts that pre-date the
+/// kernel canonical shape.
 #[must_use]
 pub fn build_observation(receipt: &ChioReceipt) -> Option<SettlementObservation> {
     use chio_core::receipt::Decision;
@@ -86,18 +98,31 @@ pub fn build_observation(receipt: &ChioReceipt) -> Option<SettlementObservation>
             .and_then(|value| value.as_object())
     })?;
 
-    let amount = financial.get("approved_max").or_else(|| {
-        financial
-            .get("settlement_cap")
-            .or_else(|| financial.get("amount"))
+    // Canonical kernel shape: `FinancialReceiptMetadata`.
+    let canonical_amount = financial.get("cost_charged").and_then(|cc| {
+        let units = cc.as_u64()?;
+        let currency = financial.get("currency")?.as_str()?.to_string();
+        Some(chio_core::capability::MonetaryAmount { currency, units })
+    });
+
+    // Legacy/test fallback: nested `approved_max`/`settlement_cap`/
+    // `amount` objects that some pre-M09 fixtures and external
+    // receipts emit. Kept so the unit tests in this module and any
+    // imported corpus continue to round-trip.
+    let monetary = canonical_amount.or_else(|| {
+        let amount = financial.get("approved_max").or_else(|| {
+            financial
+                .get("settlement_cap")
+                .or_else(|| financial.get("amount"))
+        })?;
+        let units = amount.get("units")?.as_u64()?;
+        let currency = amount.get("currency")?.as_str()?.to_string();
+        Some(chio_core::capability::MonetaryAmount { currency, units })
     })?;
-    let units = amount.get("units")?.as_u64()?;
-    if units == 0 {
+
+    if monetary.units == 0 {
         return None;
     }
-    let currency = amount.get("currency")?.as_str()?.to_string();
-
-    let monetary = chio_core::capability::MonetaryAmount { currency, units };
 
     let observation = SettlementObservation::new(
         receipt.id.clone(),
@@ -297,6 +322,48 @@ mod tests {
         let hook: Arc<dyn SettlementHook> = Arc::new(FailingHook);
         let status = run_observer(Some(&hook), &receipt);
         assert!(matches!(status, SettlementObserverStatus::Skipped { .. }));
+    }
+
+    #[test]
+    fn build_observation_reads_canonical_financial_metadata() {
+        // M09 review follow-up (PR #378, Codex): the kernel canonical
+        // financial-metadata shape is `FinancialReceiptMetadata`
+        // (`cost_charged`, `currency`, `attempted_cost`). Receipts
+        // emitted by the kernel's normal finalize path use this
+        // shape, so the settlement observer MUST recognize it.
+        let receipt = sign_with(
+            serde_json::json!({
+                "financial": {
+                    "grant_index": 0,
+                    "cost_charged": 250,
+                    "currency": "USD",
+                    "budget_remaining": 750,
+                    "budget_total": 1000,
+                    "delegation_depth": 1,
+                    "root_budget_holder": "tenant-a",
+                    "settlement_status": "pending"
+                }
+            }),
+            Decision::Allow,
+        );
+        let observation = build_observation(&receipt)
+            .expect("canonical FinancialReceiptMetadata shape yields observation");
+        assert_eq!(observation.amount.units, 250);
+        assert_eq!(observation.amount.currency, "USD");
+    }
+
+    #[test]
+    fn build_observation_skips_zero_cost_charged() {
+        let receipt = sign_with(
+            serde_json::json!({
+                "financial": {
+                    "cost_charged": 0,
+                    "currency": "USD"
+                }
+            }),
+            Decision::Allow,
+        );
+        assert!(build_observation(&receipt).is_none());
     }
 
     #[test]
