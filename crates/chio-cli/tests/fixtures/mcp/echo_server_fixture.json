@@ -1,0 +1,50 @@
+{
+  "tools": [
+    {
+      "name": "echo",
+      "description": "Echo back the input string.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" }
+        },
+        "required": ["text"]
+      }
+    },
+    {
+      "name": "read_file",
+      "description": "Read a file from disk.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" }
+        },
+        "required": ["path"]
+      },
+      "annotations": { "readOnlyHint": true }
+    },
+    {
+      "name": "delete_record",
+      "description": "Remove a record from the store.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" }
+        },
+        "required": ["id"]
+      },
+      "annotations": { "destructiveHint": true }
+    },
+    {
+      "name": "fetch_url",
+      "description": "Fetch a URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" }
+        },
+        "required": ["url"]
+      }
+    }
+  ]
+}
