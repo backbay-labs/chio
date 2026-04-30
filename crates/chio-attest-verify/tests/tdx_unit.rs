@@ -98,6 +98,91 @@ fn tdx_verifier_rejects_stale_tcb_recovery_event_id() {
 }
 
 #[test]
+fn tdx_verifier_rejects_non_intel_qe_vendor_id() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
+    let receipt_root = [8u8; 32];
+    let mut quote = fixture_quote(expect_report_data(&kernel, &receipt_root));
+    // Flip the vendor id to a non-Intel value.
+    quote[12..28].copy_from_slice(&[0xDE; 16]);
+    let verifier = TdxDcapVerifier::with_verification_time(collateral(now), 7, now);
+
+    let error = verifier
+        .verify_quote(
+            &quote,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn tdx_verifier_rejects_unsupported_att_key_type() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
+    let receipt_root = [8u8; 32];
+    let mut quote = fixture_quote(expect_report_data(&kernel, &receipt_root));
+    // EPID-style (1) is invalid for TDX; backend MUST reject.
+    quote[2..4].copy_from_slice(&1u16.to_le_bytes());
+    let verifier = TdxDcapVerifier::with_verification_time(collateral(now), 7, now);
+
+    let error = verifier
+        .verify_quote(
+            &quote,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn tdx_verifier_rejects_collateral_chain_consisting_only_of_root() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
+    let receipt_root = [8u8; 32];
+    let quote = fixture_quote(expect_report_data(&kernel, &receipt_root));
+    let mut bad = collateral(now);
+    let root = bad.intel_root_ca_der.clone();
+    // Chain whose only link is the root: no real leaf, no real intermediate.
+    bad.pck_certificate_chain_der = vec![root];
+    let verifier = TdxDcapVerifier::with_verification_time(bad, 7, now);
+
+    let error = verifier
+        .verify_quote(
+            &quote,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::TrustRoot)));
+}
+
+#[test]
+fn tdx_verifier_rejects_collateral_chain_with_empty_link() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
+    let receipt_root = [8u8; 32];
+    let quote = fixture_quote(expect_report_data(&kernel, &receipt_root));
+    let mut bad = collateral(now);
+    let root = bad.intel_root_ca_der.clone();
+    // Empty link forbidden: an attacker MUST NOT smuggle a "missing"
+    // intermediate past the chain check.
+    bad.tcb_info_issuer_chain_der = vec![Vec::new(), root];
+    let verifier = TdxDcapVerifier::with_verification_time(bad, 7, now);
+
+    let error = verifier
+        .verify_quote(
+            &quote,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::TrustRoot)));
+}
+
+#[test]
 fn tdx_verifier_rejects_malformed_or_wrong_tee_quote() {
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
     let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
@@ -136,12 +221,17 @@ fn collateral(now: SystemTime) -> TdxCollateral {
     )
 }
 
+const INTEL_SGX_QE_VENDOR_ID: [u8; 16] = [
+    0x93, 0x9a, 0x72, 0x33, 0xf7, 0x9c, 0x4c, 0xa9, 0x94, 0x0a, 0x0d, 0xb3, 0x95, 0x7f, 0x06, 0x07,
+];
+
 fn fixture_quote(report_data: [u8; 64]) -> Vec<u8> {
     let signature_len = 1usize;
     let mut quote = vec![0u8; SIGNATURE_BYTES_OFFSET + signature_len];
     quote[0..2].copy_from_slice(&4u16.to_le_bytes());
     quote[2..4].copy_from_slice(&2u16.to_le_bytes());
     quote[4..8].copy_from_slice(&0x0000_0081u32.to_le_bytes());
+    quote[12..28].copy_from_slice(&INTEL_SGX_QE_VENDOR_ID);
     quote[TD10_REPORT_DATA_OFFSET..TD10_REPORT_DATA_OFFSET + 64].copy_from_slice(&report_data);
     quote[SIGNATURE_LEN_OFFSET..SIGNATURE_LEN_OFFSET + 4]
         .copy_from_slice(&(signature_len as u32).to_le_bytes());

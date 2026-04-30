@@ -16,7 +16,7 @@
   milestone: M03
   phase: 3
   title: Define QuoteVerifier trait and VerifiedQuote shape next to AttestVerifier
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/src/lib.rs
@@ -33,7 +33,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 265203dd18400a2f067e1d787ac0b10de951e5f5
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -42,7 +42,7 @@
   milestone: M03
   phase: 3
   title: Implement TDX DCAP backend with collateral chain validation to Intel root CA
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-attest-verify/src/tdx.rs
@@ -59,7 +59,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 8ecda5de89041ab1d9c2220428a1e98e88d4158b
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -68,7 +68,7 @@
   milestone: M03
   phase: 3
   title: report_data binding helper expect_report_data fails closed when kernel_pk or receipt_root is unset
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/src/lib.rs
@@ -86,7 +86,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 11a496804a6d3197329a09a098fcb991d14ec1f8
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -95,7 +95,7 @@
   milestone: M03
   phase: 3
   title: Pin TDX positive and negative fixture corpus under chio-attest-verify fixtures
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-attest-verify/fixtures/quotes/tdx/positive/
@@ -113,7 +113,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 33777ac973a7166830524f7fa32389e0f1af800b
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -122,7 +122,7 @@
   milestone: M03
   phase: 3
   title: Integration test consumes M10 container quote and asserts report_data binds kernel_pk plus receipt_root
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-attest-verify/tests/tdx_integration.rs
@@ -138,7 +138,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 5bfeab04bb277e5b04ab978af2ad8fbfcfcb5afb
   merged_sha: null
   opened_ts: null
   merged_ts: null

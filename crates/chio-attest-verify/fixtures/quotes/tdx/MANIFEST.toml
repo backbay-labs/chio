@@ -1,0 +1,75 @@
+# Pinned TDX fixture corpus.
+# Regenerate with: cargo run -p chio-attest-verify \
+#   --example generate_tdx_fixtures --features tee-quotes
+# Each entry pins file path, role, role tag, note, and sha256 digest.
+# Reviewers verify a fixture matches its manifest digest by re-running
+# the generator and diffing the working tree against HEAD.
+
+[corpus]
+kernel_seed_hex = "0909090909090909090909090909090909090909090909090909090909090909"
+receipt_root_hex = "0808080808080808080808080808080808080808080808080808080808080808"
+
+[[fixture]]
+path = "positive/kernel_seed_09_root_08.bin"
+role = "positive"
+role_tag = "intel-tdx-bound-ecdsa-p256"
+note = "Bound to KERNEL_SEED=[9;32], RECEIPT_ROOT=[8;32]; ECDSA P-256."
+size_bytes = 637
+sha256 = "b3dfe0e40034ad4029a039a8319ca97a7091010add28fa671e33b4ab0d2f49d4"
+
+[[fixture]]
+path = "positive/kernel_seed_09_root_08_p384.bin"
+role = "positive"
+role_tag = "intel-tdx-bound-ecdsa-p384"
+note = "Same binding as default positive; ECDSA P-384 attestation key."
+size_bytes = 637
+sha256 = "dddf78b8e6e990833c2b7d9134e37f874aa44113a11549db7603670b03db8d50"
+
+[[fixture]]
+path = "positive/kernel_seed_09_root_08_alt_body.bin"
+role = "positive"
+role_tag = "intel-tdx-bound-alt-body"
+note = "Bound report_data; alternate body marker exercises body bytes."
+size_bytes = 637
+sha256 = "48f0b4b33f601e2c66a12aee4e488a5524466b6b9722cad260b7e5c1b815e786"
+
+[[fixture]]
+path = "positive/kernel_seed_09_root_08_alt_sig.bin"
+role = "positive"
+role_tag = "intel-tdx-bound-alt-sig-byte"
+note = "Bound; alternate signature trailing byte exercises envelope tail."
+size_bytes = 637
+sha256 = "3daebfd002b4bf313b0f05ad9ef2c130999d90f69e3e6e9d647be9b4680f4157"
+
+[[fixture]]
+path = "negative/report_data_unbound.bin"
+role = "negative"
+role_tag = "intel-tdx-report-data-mismatch"
+note = "report_data bound to a different kernel key plus receipt root."
+size_bytes = 637
+sha256 = "a64c7771b57fb8757b5a10b91f5dc31471ea1ba5d6153393362086d05585f05a"
+
+[[fixture]]
+path = "negative/report_data_upper_half_tamper.bin"
+role = "negative"
+role_tag = "intel-tdx-upper-half-tamper"
+note = "Lower 32 bytes match digest; upper 32 bytes have a 1-bit tamper."
+size_bytes = 637
+sha256 = "830a6311f1dcb81502a28089695ceca3c8ddd65f26c59fc516faf18cbcf8271e"
+
+[[fixture]]
+path = "negative/wrong_qe_vendor_id.bin"
+role = "negative"
+role_tag = "intel-tdx-non-intel-vendor"
+note = "Bound report_data; qe_vendor_id is not the Intel SGX QE."
+size_bytes = 637
+sha256 = "1c72c0bfbf898f6c162c4e4b92f5b5b6db1e79a7cc89fedffe913e907b2ab16a"
+
+[[fixture]]
+path = "negative/unsupported_att_key_type.bin"
+role = "negative"
+role_tag = "intel-tdx-att-key-type-epid"
+note = "Bound report_data; legacy EPID attestation key type rejected."
+size_bytes = 637
+sha256 = "593e6f3a643db4c137f5fcac6500d8d6d248a35c557145231d34051d00eed7ab"
+
