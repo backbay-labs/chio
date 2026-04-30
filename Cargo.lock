@@ -2543,6 +2543,7 @@ dependencies = [
  "chio-credit",
  "chio-data-guards",
  "chio-did",
+ "chio-errors",
  "chio-external-guards",
  "chio-federation",
  "chio-guard-registry",

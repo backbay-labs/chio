@@ -62,3 +62,57 @@ Replay exit-code probes:
   `--tenant-pubkey` exits 20.
 - `chio replay traffic --against <policy-ref>` without `--tenant-pubkey`
   exits 20 before policy I/O.
+
+## P3 Closeout Evidence
+
+Measured: 2026-04-30 on `wave/W1/m01/p3.bundle`.
+
+Scope: M01 P3.T1 through P3.T6. The phase added the `chio doctor`
+subcommand with six probes (toolchain, OCI registry reachability,
+cosign guard-bundle freshness, OTEL endpoint resolution, kernel
+runtime metrics, and `chio.yaml` schema validity) plus seven new
+`urn:chio:error:cli:doctor-*` registry codes regenerated through
+`chio-spec-codegen`.
+
+| Surface | P3 result | Reproduce |
+| ------- | --------- | --------- |
+| Doctor probes wired | 6 in canonical order (`toolchain`, `oci`, `cosign`, `otel`, `kernel_runtime`, `chio_yaml`) | `chio doctor --json --skip-network \| jq '.reports[].probe'` |
+| Doctor registry codes | 6 `urn:chio:error:cli:doctor-*` codes plus 1 aggregate | `rg -n 'urn:chio:error:cli:doctor-' spec/errors/registry.yaml \| wc -l` |
+| Kernel inflight gauge name pinned | `chio_kernel_dispatch_inflight` literal present in source | `grep -q 'chio_kernel_dispatch_inflight' crates/chio-cli/src/doctor/kernel_runtime.rs` |
+
+### `chio doctor --fix` repair allowlist
+
+`--fix` runs only the repairs enumerated below. Repairs that touch
+user state (delete, overwrite, mutate registry records) are explicitly
+rejected; the doctor returns a `urn:chio:error:cli:doctor-probe-failed`
+report when a destructive action would be required.
+
+Allowed repairs:
+
+1. **OCI cache rehydrate.** Re-fetch a guard manifest into the local
+   on-disk cache when the cache directory is empty or its content
+   digest does not match the registry-side digest. Idempotent: a
+   second run is a no-op.
+2. **`chio.yaml` schema scaffold.** Create a minimal `chio.yaml` with
+   the required top-level keys (`version`, `policy`) when no document
+   exists at the expected path. Refuses to overwrite an existing
+   document.
+
+Rejected actions (always denied):
+
+- Deleting receipts, capability records, or guard bundles.
+- Rewriting an existing `chio.yaml`, `policy.yaml`, or guard manifest.
+- Mutating remote registry contents.
+- Regenerating signing keys or rotating authority material.
+
+Local gates run for the P3 close-out:
+
+- `cargo test -p chio-cli --test doctor_skeleton`
+- `cargo test -p chio-cli --test doctor_toolchain`
+- `cargo test -p chio-cli --test doctor_oci`
+- `cargo test -p chio-cli --test doctor_cosign`
+- `cargo test -p chio-cli --test doctor_otel`
+- `cargo test -p chio-cli --test doctor_chio_yaml`
+- `cargo run -p chio-cli --bin chio -- doctor --help | grep -q 'Probe'`
+- `cargo clippy -p chio-cli --bin chio -- -D warnings`
+- `cargo fmt --all -- --check`

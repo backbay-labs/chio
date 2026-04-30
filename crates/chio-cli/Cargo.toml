@@ -23,6 +23,7 @@ chio-acp-proxy = { path = "../chio-acp-proxy" }
 chio-core = { path = "../chio-core" }
 chio-credentials = { path = "../chio-credentials" }
 chio-data-guards = { path = "../chio-data-guards" }
+chio-errors = { path = "../chio-errors" }
 chio-did = { path = "../chio-did" }
 chio-external-guards = { path = "../chio-external-guards" }
 chio-federation = { path = "../chio-federation" }

@@ -19,6 +19,7 @@ mod commands {
     pub mod guard_blocklist;
 }
 mod did;
+mod doctor;
 mod guard;
 mod guards;
 mod passport;
@@ -26,6 +27,7 @@ mod policies;
 mod scaffold;
 
 include!("cli/types.rs");
+include!("cli/doctor.rs");
 include!("cli/dispatch.rs");
 include!("cli/runtime.rs");
 include!("cli/trust_commands.rs");
