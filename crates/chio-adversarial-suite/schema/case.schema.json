@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.chio.dev/adversarial-suite/case.schema.json",
+  "title": "Chio adversarial case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "class",
+    "expected_verdict",
+    "expected_reason",
+    "threat_id",
+    "pending",
+    "artifact"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "class": {
+      "type": "string",
+      "enum": [
+        "clock_rewound",
+        "future_dated",
+        "replayed_nonce",
+        "partial_signature",
+        "scope_superset",
+        "revocation_rollback",
+        "anchor_grafted",
+        "sigstore_bundle_payload_mismatch"
+      ]
+    },
+    "expected_verdict": {
+      "type": "string",
+      "const": "DENY"
+    },
+    "expected_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "threat_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "pending": {
+      "type": "boolean",
+      "default": false
+    },
+    "artifact": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    }
+  }
+}

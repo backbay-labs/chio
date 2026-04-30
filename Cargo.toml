@@ -5,6 +5,7 @@ members = [
     "crates/chio-core",
     "crates/chio-core-types",
     "crates/chio-errors",
+    "crates/chio-adversarial-suite",
     #
     # Kernel variants
     "crates/chio-kernel",
