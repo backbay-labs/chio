@@ -23,7 +23,7 @@ use super::{Adversary, AdversaryAction, AdversaryClass, AdversaryError, Adversar
 pub const REASON: &str = "capability-overrequest-denied";
 
 /// Single overrequest variant: target server/tool plus a stable label.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OverrequestVariant {
     /// Variant label written into receipt manifests.
     pub label: String,

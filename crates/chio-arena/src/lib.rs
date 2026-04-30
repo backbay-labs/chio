@@ -4,6 +4,7 @@
 
 pub mod adversary;
 pub mod clock;
+pub mod coevolve;
 pub mod link;
 pub mod promote;
 pub mod rng;
@@ -20,6 +21,22 @@ pub use adversary::{
     PromptInjectionAdversary, ReplayAttemptAdversary, ScopeEscapeAdversary, ToyGuardEvaluation,
 };
 pub use clock::{ClockError, VirtualClock, DEFAULT_TICK_NANOS};
+pub use coevolve::driver::CoevolutionInputs;
+pub use coevolve::mutation::{
+    OverrequestBlueprint, PopulationBlueprint, PromptInjectionBlueprint, ReplayAttemptBlueprint,
+    ReplayAttemptEntry, ScopeEscapeBlueprint,
+};
+pub use coevolve::{
+    blueprint_to_population, crossover_overrequest_population, crossover_populations,
+    crossover_prompt_injection_population, crossover_replay_attempt_population,
+    crossover_scope_escape_population, evaluate_population, load_seed_corpus,
+    mutate_overrequest_population, mutate_population, mutate_prompt_injection_population,
+    mutate_replay_attempt_population, mutate_scope_escape_population, run_coevolution,
+    CoevolutionBudget, CoevolutionConfig, CoevolutionOutcome, CoevolutionRun, CrossoverError,
+    DriverError, FitnessError, FitnessInputs, FitnessReport, FitnessSample, GenerationTrace,
+    GenerationTraceEntry, MatrixVerdict, MutationConfig, MutationError, MutationKind, SeedArtifact,
+    SeedCorpus, SeedCorpusError, SeedCorpusSources, VerdictTuple,
+};
 pub use link::{
     KernelEndpoint, KernelLink, KernelMultiplexer, LinkEnvelope, LinkError, MultiplexError,
 };

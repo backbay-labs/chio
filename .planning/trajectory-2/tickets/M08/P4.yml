@@ -19,7 +19,7 @@
   milestone: M08
   phase: 4
   title: Fitness function - per-adversary survival rate using trajectory-2 M02 verdict_matrix oracle
-  status: pending
+  status: in_review
   effort_days: 1.5
   owner_glob:
     - crates/chio-arena/src/coevolve.rs
@@ -40,16 +40,16 @@
   agent_role: arena-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 96ee02f1b
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:31:19Z
   merged_ts: null
 
 - id: M08.P4.T2
   milestone: M08
   phase: 4
   title: DSL-aware mutation operator (per-field strategies; never mutates determinism witness, only adversary block)
-  status: pending
+  status: in_review
   effort_days: 1.5
   owner_glob:
     - crates/chio-arena/src/coevolve.rs
@@ -66,16 +66,16 @@
   agent_role: arena-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 3c31b04d2
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:31:19Z
   merged_ts: null
 
 - id: M08.P4.T3
   milestone: M08
   phase: 4
   title: Two-parent crossover operator splicing on agent-population boundaries
-  status: pending
+  status: in_review
   effort_days: 1
   owner_glob:
     - crates/chio-arena/src/coevolve.rs
@@ -92,16 +92,16 @@
   agent_role: arena-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 11878bab4
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:31:19Z
   merged_ts: null
 
 - id: M08.P4.T4
   milestone: M08
   phase: 4
   title: Seed-corpus loader from fuzz/artifacts/ + M04 replay_attack/tampered_signature families
-  status: pending
+  status: in_review
   effort_days: 1
   owner_glob:
     - crates/chio-arena/src/coevolve.rs
@@ -120,16 +120,16 @@
   agent_role: arena-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 06a43747d
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:31:19Z
   merged_ts: null
 
 - id: M08.P4.T5
   milestone: M08
   phase: 4
   title: Co-evolution driver with N generations, elitism, fitness-proportional selection, bounded-budget gate
-  status: pending
+  status: in_review
   effort_days: 2
   owner_glob:
     - crates/chio-arena/src/coevolve.rs
@@ -146,16 +146,16 @@
   agent_role: arena-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 415530daa
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:31:19Z
   merged_ts: null
 
 - id: M08.P4.T6
   milestone: M08
   phase: 4
   title: Co-evolution determinism test - same seed corpus + RNG seed yields byte-identical generation traces
-  status: pending
+  status: in_review
   effort_days: 1
   owner_glob:
     - crates/chio-arena/tests/coevolve_determinism.rs
@@ -170,7 +170,7 @@
   agent_role: arena-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: fa058f822
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:31:19Z
   merged_ts: null
