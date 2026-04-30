@@ -9,7 +9,8 @@
 //! deployment and every on-wire artifact produced to date. To unblock
 //! enterprise procurement in FIPS-constrained environments, this module also
 //! exposes a [`SigningBackend`] abstraction with pluggable implementations for
-//! NIST P-256 (secp256r1) and P-384 (secp384r1) ECDSA signatures.
+//! NIST P-256 (secp256r1), P-384 (secp384r1), and hybrid classical plus
+//! ML-DSA-65 signatures.
 //!
 //! The FIPS backends are gated behind the `fips` Cargo feature and link to
 //! `aws-lc-rs`, a FIPS 140-3 validated module. When the feature is disabled
@@ -23,9 +24,10 @@
 //! Ed25519 artifacts serialize byte-for-byte identically to the historical
 //! format: a 64-character lowercase hex string for the public key and a
 //! 128-character hex string for the signature. FIPS-algorithm artifacts use a
-//! self-describing hex prefix (e.g. `p256:` or `p384:`) so older verifiers
-//! that only understand bare hex recognise that the material is non-Ed25519
-//! and can reject with a clear error rather than misinterpreting bytes.
+//! self-describing hex prefix (e.g. `p256:`, `p384:`, or `hybrid:`) so older
+//! verifiers that only understand bare hex recognise that the material is
+//! non-Ed25519 and can reject with a clear error rather than misinterpreting
+//! bytes.
 //!
 //! # Safety Notes
 //!
@@ -53,6 +55,17 @@ use crate::error::{Error, Result};
 /// Shared canonical JSON bytes suitable for signing and verification.
 pub type SharedCanonicalBytes = Arc<CanonicalBytes<CanonicalJsonWitness>>;
 
+/// Wire algorithm-set suffix for Ed25519 plus ML-DSA-65 hybrid material.
+pub const HYBRID_ED25519_MLDSA65: &str = "ed25519+mldsa65";
+/// Wire algorithm-set suffix for P-256 plus ML-DSA-65 hybrid material.
+pub const HYBRID_P256_MLDSA65: &str = "p256+mldsa65";
+/// Wire algorithm-set suffix for P-384 plus ML-DSA-65 hybrid material.
+pub const HYBRID_P384_MLDSA65: &str = "p384+mldsa65";
+/// ML-DSA-65 public-key byte length from FIPS 204.
+pub const ML_DSA_65_PUBLIC_KEY_LEN: usize = 1952;
+/// ML-DSA-65 signature byte length from FIPS 204.
+pub const ML_DSA_65_SIGNATURE_LEN: usize = 3309;
+
 // ---------------------------------------------------------------------------
 // SigningAlgorithm
 // ---------------------------------------------------------------------------
@@ -61,12 +74,14 @@ pub type SharedCanonicalBytes = Arc<CanonicalBytes<CanonicalJsonWitness>>;
 ///
 /// `Ed25519` is always available. `P256` and `P384` require the `fips`
 /// Cargo feature on `chio-core-types` and route through `aws-lc-rs`.
+/// `Hybrid` combines one classical signature with ML-DSA-65 and requires
+/// the `pq` feature to produce or verify cryptographically.
 ///
 /// This enum serializes as a short lowercase identifier:
-/// `"ed25519"`, `"p256"`, or `"p384"`. When absent from an artifact's
-/// envelope, consumers MUST treat the algorithm as [`SigningAlgorithm::Ed25519`]
-/// for backward compatibility with artifacts produced before this module
-/// existed.
+/// `"ed25519"`, `"p256"`, `"p384"`, or `"hybrid"`. When absent from an
+/// artifact's envelope, consumers MUST treat the algorithm as
+/// [`SigningAlgorithm::Ed25519`] for backward compatibility with artifacts
+/// produced before this module existed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SigningAlgorithm {
@@ -77,6 +92,8 @@ pub enum SigningAlgorithm {
     P256,
     /// ECDSA on NIST P-384 / secp384r1 with SHA-384. Requires `fips` feature.
     P384,
+    /// Classical signature plus ML-DSA-65. Requires `pq` feature.
+    Hybrid,
 }
 
 impl SigningAlgorithm {
@@ -97,6 +114,7 @@ impl SigningAlgorithm {
             Self::Ed25519 => "",
             Self::P256 => "p256",
             Self::P384 => "p384",
+            Self::Hybrid => "hybrid",
         }
     }
 }
@@ -225,8 +243,9 @@ impl Keypair {
 /// Internally this is a sum over the supported [`SigningAlgorithm`]s. The
 /// common case (Ed25519) preserves the historical 32-byte encoding and bare
 /// hex serialization. Non-Ed25519 variants use a self-describing hex prefix
-/// (`p256:<hex>` / `p384:<hex>`) so the wire format unambiguously identifies
-/// the algorithm without a separate envelope field.
+/// (`p256:<hex>` / `p384:<hex>` / `hybrid:<classical>:<pq>:<alg_set>`) so the
+/// wire format unambiguously identifies the algorithm without a separate
+/// envelope field.
 #[derive(Clone, Debug)]
 pub struct PublicKey {
     material: PublicKeyMaterial,
@@ -245,6 +264,12 @@ enum PublicKeyMaterial {
     P384 {
         encoded_point: Vec<u8>,
     },
+    /// Hybrid classical plus ML-DSA-65 public-key material.
+    Hybrid {
+        classical: Box<PublicKey>,
+        pq: Vec<u8>,
+        alg_set: String,
+    },
 }
 
 impl PartialEq for PublicKey {
@@ -262,6 +287,18 @@ impl PartialEq for PublicKey {
                 PublicKeyMaterial::P384 { encoded_point: a },
                 PublicKeyMaterial::P384 { encoded_point: b },
             ) => a == b,
+            (
+                PublicKeyMaterial::Hybrid {
+                    classical: classical_a,
+                    pq: pq_a,
+                    alg_set: alg_set_a,
+                },
+                PublicKeyMaterial::Hybrid {
+                    classical: classical_b,
+                    pq: pq_b,
+                    alg_set: alg_set_b,
+                },
+            ) => classical_a == classical_b && pq_a == pq_b && alg_set_a == alg_set_b,
             _ => false,
         }
     }
@@ -343,6 +380,20 @@ impl PublicKey {
         })
     }
 
+    /// Create a hybrid public key from a classical public key and ML-DSA-65
+    /// public-key bytes.
+    pub fn from_hybrid_parts(classical: PublicKey, pq: &[u8], alg_set: &str) -> Result<Self> {
+        validate_hybrid_alg_set(classical.algorithm(), alg_set)?;
+        validate_mldsa65_public_key_len(pq)?;
+        Ok(Self {
+            material: PublicKeyMaterial::Hybrid {
+                classical: Box::new(classical),
+                pq: pq.to_vec(),
+                alg_set: alg_set.to_string(),
+            },
+        })
+    }
+
     /// Create from hex-encoded bytes (with optional `0x` prefix).
     ///
     /// The string may carry a `p256:` or `p384:` prefix to select an ECDSA
@@ -358,6 +409,12 @@ impl PublicKey {
             let rest = rest.strip_prefix("0x").unwrap_or(rest);
             let bytes = hex::decode(rest).map_err(|e| Error::InvalidHex(e.to_string()))?;
             return Self::from_p384_sec1(&bytes);
+        }
+        if let Some(rest) = hex_str.strip_prefix("hybrid:") {
+            let (classical_hex, pq_hex, alg_set) = parse_hybrid_wire(rest)?;
+            let classical = Self::from_hex(classical_hex)?;
+            let pq = hex::decode(pq_hex).map_err(|e| Error::InvalidHex(e.to_string()))?;
+            return Self::from_hybrid_parts(classical, &pq, alg_set);
         }
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
         let bytes = hex::decode(hex_str).map_err(|e| Error::InvalidHex(e.to_string()))?;
@@ -379,6 +436,7 @@ impl PublicKey {
             PublicKeyMaterial::Ed25519 { .. } => SigningAlgorithm::Ed25519,
             PublicKeyMaterial::P256 { .. } => SigningAlgorithm::P256,
             PublicKeyMaterial::P384 { .. } => SigningAlgorithm::P384,
+            PublicKeyMaterial::Hybrid { .. } => SigningAlgorithm::Hybrid,
         }
     }
 
@@ -398,6 +456,23 @@ impl PublicKey {
             }
             (PublicKeyMaterial::P384 { encoded_point }, SignatureMaterial::P384 { der }) => {
                 verify_ecdsa_p384(encoded_point, message, der)
+            }
+            (
+                PublicKeyMaterial::Hybrid {
+                    classical,
+                    pq,
+                    alg_set,
+                },
+                SignatureMaterial::Hybrid {
+                    classical: classical_signature,
+                    pq: pq_signature,
+                    alg_set: signature_alg_set,
+                },
+            ) => {
+                alg_set == signature_alg_set
+                    && validate_hybrid_alg_set(classical.algorithm(), alg_set).is_ok()
+                    && classical.verify(message, classical_signature)
+                    && verify_mldsa65_signature(pq, message, pq_signature)
             }
             _ => false,
         }
@@ -445,6 +520,18 @@ impl PublicKey {
             PublicKeyMaterial::P384 { encoded_point } => {
                 format!("p384:{}", hex::encode(encoded_point))
             }
+            PublicKeyMaterial::Hybrid {
+                classical,
+                pq,
+                alg_set,
+            } => {
+                format!(
+                    "hybrid:{}:{}:{}",
+                    classical.to_hex(),
+                    hex::encode(pq),
+                    alg_set
+                )
+            }
         }
     }
 
@@ -462,7 +549,9 @@ impl PublicKey {
     pub fn as_bytes(&self) -> &[u8; 32] {
         match &self.material {
             PublicKeyMaterial::Ed25519 { verifying_key } => verifying_key.as_bytes(),
-            PublicKeyMaterial::P256 { .. } | PublicKeyMaterial::P384 { .. } => {
+            PublicKeyMaterial::P256 { .. }
+            | PublicKeyMaterial::P384 { .. }
+            | PublicKeyMaterial::Hybrid { .. } => {
                 panic!(
                     "PublicKey::as_bytes is only valid for Ed25519 keys; use to_hex() for algorithm-aware encoding"
                 )
@@ -498,6 +587,12 @@ enum SignatureMaterial {
     P384 {
         der: Vec<u8>,
     },
+    /// Hybrid classical plus ML-DSA-65 signature material.
+    Hybrid {
+        classical: Box<Signature>,
+        pq: Vec<u8>,
+        alg_set: String,
+    },
 }
 
 impl PartialEq for Signature {
@@ -508,6 +603,18 @@ impl PartialEq for Signature {
             }
             (SignatureMaterial::P256 { der: a }, SignatureMaterial::P256 { der: b }) => a == b,
             (SignatureMaterial::P384 { der: a }, SignatureMaterial::P384 { der: b }) => a == b,
+            (
+                SignatureMaterial::Hybrid {
+                    classical: classical_a,
+                    pq: pq_a,
+                    alg_set: alg_set_a,
+                },
+                SignatureMaterial::Hybrid {
+                    classical: classical_b,
+                    pq: pq_b,
+                    alg_set: alg_set_b,
+                },
+            ) => classical_a == classical_b && pq_a == pq_b && alg_set_a == alg_set_b,
             _ => false,
         }
     }
@@ -562,6 +669,20 @@ impl Signature {
         }
     }
 
+    /// Create a hybrid signature from a classical signature and ML-DSA-65
+    /// signature bytes.
+    pub fn from_hybrid_parts(classical: Signature, pq: &[u8], alg_set: &str) -> Result<Self> {
+        validate_hybrid_alg_set(classical.algorithm(), alg_set)?;
+        validate_mldsa65_signature_len(pq)?;
+        Ok(Self {
+            material: SignatureMaterial::Hybrid {
+                classical: Box::new(classical),
+                pq: pq.to_vec(),
+                alg_set: alg_set.to_string(),
+            },
+        })
+    }
+
     /// Create from hex-encoded bytes (with optional `0x` prefix).
     ///
     /// A bare hex string is interpreted as an Ed25519 signature (64 bytes)
@@ -576,6 +697,12 @@ impl Signature {
             let rest = rest.strip_prefix("0x").unwrap_or(rest);
             let bytes = hex::decode(rest).map_err(|e| Error::InvalidHex(e.to_string()))?;
             return Ok(Self::from_p384_der(&bytes));
+        }
+        if let Some(rest) = hex_str.strip_prefix("hybrid:") {
+            let (classical_hex, pq_hex, alg_set) = parse_hybrid_wire(rest)?;
+            let classical = Self::from_hex(classical_hex)?;
+            let pq = hex::decode(pq_hex).map_err(|e| Error::InvalidHex(e.to_string()))?;
+            return Self::from_hybrid_parts(classical, &pq, alg_set);
         }
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
         let bytes = hex::decode(hex_str).map_err(|e| Error::InvalidHex(e.to_string()))?;
@@ -600,6 +727,18 @@ impl Signature {
             SignatureMaterial::Ed25519 { inner } => hex::encode(inner.to_bytes()),
             SignatureMaterial::P256 { der } => format!("p256:{}", hex::encode(der)),
             SignatureMaterial::P384 { der } => format!("p384:{}", hex::encode(der)),
+            SignatureMaterial::Hybrid {
+                classical,
+                pq,
+                alg_set,
+            } => {
+                format!(
+                    "hybrid:{}:{}:{}",
+                    classical.to_hex(),
+                    hex::encode(pq),
+                    alg_set
+                )
+            }
         }
     }
 
@@ -624,6 +763,7 @@ impl Signature {
             SignatureMaterial::Ed25519 { .. } => SigningAlgorithm::Ed25519,
             SignatureMaterial::P256 { .. } => SigningAlgorithm::P256,
             SignatureMaterial::P384 { .. } => SigningAlgorithm::P384,
+            SignatureMaterial::Hybrid { .. } => SigningAlgorithm::Hybrid,
         }
     }
 }
@@ -941,6 +1081,9 @@ mod fips_backends {
 #[cfg(feature = "fips")]
 pub use fips_backends::{P256Backend, P384Backend};
 
+#[cfg(feature = "pq")]
+pub use crate::pq::{HybridBackend, MlDsa65Backend};
+
 // ---------------------------------------------------------------------------
 // Verification helpers (always compiled; use aws-lc-rs under fips feature,
 // otherwise return false)
@@ -971,6 +1114,76 @@ fn verify_ecdsa_p384(public_sec1: &[u8], message: &[u8], signature_der: &[u8]) -
 #[allow(clippy::ptr_arg)]
 fn verify_ecdsa_p384(_public_sec1: &[u8], _message: &[u8], _signature_der: &[u8]) -> bool {
     false
+}
+
+#[cfg(feature = "pq")]
+fn verify_mldsa65_signature(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool {
+    crate::pq::verify_mldsa65_signature(public_key, message, signature)
+}
+
+#[cfg(not(feature = "pq"))]
+fn verify_mldsa65_signature(_public_key: &[u8], _message: &[u8], _signature: &[u8]) -> bool {
+    false
+}
+
+fn expected_hybrid_alg_set(algorithm: SigningAlgorithm) -> Result<&'static str> {
+    match algorithm {
+        SigningAlgorithm::Ed25519 => Ok(HYBRID_ED25519_MLDSA65),
+        SigningAlgorithm::P256 => Ok(HYBRID_P256_MLDSA65),
+        SigningAlgorithm::P384 => Ok(HYBRID_P384_MLDSA65),
+        SigningAlgorithm::Hybrid => Err(Error::InvalidSignature(
+            "hybrid signatures cannot be nested".to_string(),
+        )),
+    }
+}
+
+fn validate_hybrid_alg_set(algorithm: SigningAlgorithm, alg_set: &str) -> Result<()> {
+    let expected = expected_hybrid_alg_set(algorithm)?;
+    if alg_set != expected {
+        return Err(Error::InvalidSignature(format!(
+            "hybrid alg_set {alg_set} does not match expected {expected}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_mldsa65_public_key_len(bytes: &[u8]) -> Result<()> {
+    if bytes.len() != ML_DSA_65_PUBLIC_KEY_LEN {
+        return Err(Error::InvalidPublicKey(format!(
+            "expected {ML_DSA_65_PUBLIC_KEY_LEN}-byte ML-DSA-65 public key, got {} bytes",
+            bytes.len()
+        )));
+    }
+    Ok(())
+}
+
+fn validate_mldsa65_signature_len(bytes: &[u8]) -> Result<()> {
+    if bytes.len() != ML_DSA_65_SIGNATURE_LEN {
+        return Err(Error::InvalidSignature(format!(
+            "expected {ML_DSA_65_SIGNATURE_LEN}-byte ML-DSA-65 signature, got {} bytes",
+            bytes.len()
+        )));
+    }
+    Ok(())
+}
+
+fn parse_hybrid_wire(rest: &str) -> Result<(&str, &str, &str)> {
+    let mut parts = rest.rsplitn(3, ':');
+    let alg_set = parts
+        .next()
+        .ok_or_else(|| Error::InvalidSignature("hybrid signature missing alg_set".to_string()))?;
+    let pq_hex = parts
+        .next()
+        .ok_or_else(|| Error::InvalidSignature("hybrid signature missing pq half".to_string()))?;
+    let classical_hex = parts.next().ok_or_else(|| {
+        Error::InvalidSignature("hybrid signature missing classical half".to_string())
+    })?;
+    if classical_hex.is_empty() || pq_hex.is_empty() || alg_set.is_empty() {
+        return Err(Error::InvalidSignature(
+            "hybrid signature contains empty component".to_string(),
+        ));
+    }
+    Ok((classical_hex, pq_hex, alg_set))
 }
 
 // ---------------------------------------------------------------------------

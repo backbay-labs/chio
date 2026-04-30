@@ -84,3 +84,54 @@ future frozen implementation paths:
 - no edits to kernel signing paths
 - no edits to TEE container code
 - no edits to frame schemas
+
+## P1 Progress - PQ Hybrid Primitives And TEE Scaffold
+
+Measured on 2026-04-30 from branch
+`wave/W2/m03/p1.bundle-pq-primitives`.
+
+P1 lands the default-off PQ primitive surface:
+
+- `M03.P1.T1` / `M03.P1.T2`: `Signature`, `PublicKey`, and
+  `SigningAlgorithm` now support a `Hybrid` variant behind the `pq` feature,
+  with `MlDsa65Backend` and `HybridBackend` in `chio-core-types`.
+- `M03.P1.T3`: `chio-core` has ML-DSA-65 KAT replay coverage pinned to the
+  NIST-derived fixture hashes recorded in `pq_kats.rs`.
+- `M03.P1.T4`: hybrid signatures reject bit flips in either classical or PQ
+  half, reject alg-set tampering, and reject malformed ML-DSA-65 lengths.
+- `M03.P1.T5`: hybrid canonical JSON roundtrip coverage is locked under
+  `crates/chio-core/tests/golden/` with deterministic seed-derived public-key
+  and canonical-string hashes. Classical Ed25519 encodings are not changed.
+- `M03.P1.T6`: `spec/PROTOCOL.md` and `spec/schemas/signature.v1.json`
+  document the `hybrid:<classical>:<pq>:<alg_set>` wire prefix.
+
+The same branch also carries a TEE primitive scaffold required by the phase
+bundle:
+
+- `expect_report_data` binds a quote to the kernel public key and receipt
+  root by hashing the kernel key wire bytes plus the receipt root into the
+  first 32 report-data bytes, then zero-padding the remaining 32 bytes.
+- `QuoteVerifier`, `QuoteVerificationContext`, `VerifiedQuote`, `TeeKind`, and
+  `QuoteTcbStatus` define the verifier-facing scaffold.
+- `TdxDcapVerifier` currently parses a minimal Intel TDX v4 quote envelope,
+  checks report-data binding, rejects missing or unanchored collateral,
+  rejects stale collateral windows, rejects low recovery event IDs, and
+  rejects unacceptable TCB states.
+
+This is scaffold and primitive work only. It does not claim full Intel DCAP
+certificate validation, a pinned TDX quote corpus, SEV-SNP or Nitro quote
+backends, kernel policy rollout, or production TEE admission.
+
+## P1 Gate Evidence
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Core PQ tests | PASS | `cargo test -p chio-core-types --features pq --quiet` |
+| Core PQ clippy | PASS | `cargo clippy -p chio-core-types --features pq -- -D warnings` |
+| ML-DSA-65 KAT replay | PASS | `cargo test -p chio-core --test pq_kats --features pq` |
+| Hybrid bitflip property | PASS | `cargo test -p chio-core-types --features pq --test hybrid_bitflip` |
+| Hybrid canonical roundtrip | PASS | `cargo test -p chio-core --test hybrid_canonical_roundtrip --features pq` |
+| Spec and schema prefix check | PASS | `grep -q 'hybrid:' spec/PROTOCOL.md && grep -q 'hybrid' spec/schemas/signature.v1.json` |
+| TEE quote scaffold build | PASS | `cargo build -p chio-attest-verify --features tee-quotes --quiet` |
+| report_data binding tests | PASS | `cargo test -p chio-attest-verify --features tee-quotes --test expect_report_data` |
+| TDX unit scaffold tests | PASS | `cargo test -p chio-attest-verify --features tee-quotes --test tdx_unit` |

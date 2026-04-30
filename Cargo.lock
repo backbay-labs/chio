@@ -2471,6 +2471,7 @@ dependencies = [
 name = "chio-attest-verify"
 version = "0.1.0"
 dependencies = [
+ "chio-core-types",
  "const-oid 0.9.6",
  "coset",
  "dcap-rs",

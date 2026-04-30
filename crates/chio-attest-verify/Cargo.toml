@@ -12,6 +12,7 @@ publish = false
 name = "chio_attest_verify"
 
 [dependencies]
+chio-core-types = { path = "../chio-core-types" }
 sigstore = { version = "0.13", default-features = false, features = [
     "cosign",
     "rustls-tls",

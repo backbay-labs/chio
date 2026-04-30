@@ -39,6 +39,10 @@ sha2 = { workspace = true }
 percent-encoding = "2"
 url = "2"
 
+[features]
+default = []
+pq = ["chio-core-types/pq"]
+
 [dev-dependencies]
 serde_json = { workspace = true }
 proptest = { workspace = true }

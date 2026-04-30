@@ -32,8 +32,14 @@
 use std::path::Path;
 use std::time::SystemTime;
 
+mod quote;
 mod sigstore;
+#[cfg(feature = "tee-quotes")]
+pub mod tdx;
 
+pub use crate::quote::{
+    expect_report_data, QuoteTcbStatus, QuoteVerificationContext, TeeKind, VerifiedQuote,
+};
 pub use crate::sigstore::SigstoreVerifier;
 
 /// Identity expectation pinned by every verification call. Both fields are
@@ -98,6 +104,10 @@ pub enum AttestError {
     TrustRoot,
     #[error("malformed bundle: {0}")]
     Malformed(String),
+    #[error("quote report_data does not match expected kernel and receipt binding")]
+    ReportDataMismatch,
+    #[error("quote verification failed: {0}")]
+    QuoteRejected(String),
 }
 
 /// The single trait every chio component implements against.
@@ -128,4 +138,14 @@ pub trait AttestVerifier: Send + Sync {
         bundle_json: &[u8],
         expected: &ExpectedIdentity,
     ) -> Result<VerifiedAttestation, AttestError>;
+}
+
+/// The single trait every TEE quote backend implements against.
+pub trait QuoteVerifier: Send + Sync {
+    /// Verify a raw TEE quote and bind it to the kernel key plus receipt root.
+    fn verify_quote(
+        &self,
+        quote: &[u8],
+        context: &QuoteVerificationContext<'_>,
+    ) -> Result<VerifiedQuote, AttestError>;
 }
