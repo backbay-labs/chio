@@ -511,7 +511,6 @@ and attempts to obtain fresh Chio capabilities from the issuer.
 
 Existing controls:
 
-- browser clients do not hold root capability or signing material
 - capabilities remain signed, time-bounded, and revocable
 - kernel admission verifies capability signatures before use
 
@@ -519,6 +518,7 @@ Required mitigations:
 
 - passkey-backed browser flows **MUST** present WebAuthn assertions to a
   server-side issuer rather than mint authority in the browser
+- browser clients **MUST NOT** hold root capability or issuer signing material
 - issuers **MUST** bind minted capabilities to the credential id, audience,
   scope set, and short expiry
 - issuers **MUST** reject failed WebAuthn assertions and treat authenticator,

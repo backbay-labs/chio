@@ -165,6 +165,17 @@ name = "uniffi_udl"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
+# M10 P0 pins WebAuthn crates for passkey-backed custody. Both crates are
+# MPL-2.0 weak copyleft, so keep the exception pinned to the exact crate names
+# instead of widening the workspace allow-list.
+name = "webauthn-rs"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "webauthn-rs-proto"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
 # Wasmtime 43 pulls `wasm-compose`, which depends on these persistent-data
 # structure crates. They are MPL-2.0 weak copyleft, so keep the exception
 # pinned to the exact crate names instead of widening the global allow-list.
