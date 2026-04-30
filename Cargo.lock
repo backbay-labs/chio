@@ -2440,6 +2440,12 @@ dependencies = [
 [[package]]
 name = "chio-arena"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "toml 0.8.23",
+]
 
 [[package]]
 name = "chio-attest-verify"

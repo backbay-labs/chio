@@ -12,6 +12,10 @@ publish = false
 name = "chio_arena"
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"

@@ -2,5 +2,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod scenario;
+
 /// Scenario schema name used by the arena DSL.
 pub const ARENA_SCENARIO_SCHEMA: &str = "chio.arena.scenario/v1";
+
+pub use scenario::{
+    parse_scenario_str, DeterminismWitness, Scenario, ScenarioError, ScenarioStep,
+    ScenarioVerdict,
+};
