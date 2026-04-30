@@ -87,6 +87,44 @@ fn verify_bytes_rejects_random_garbage() {
 }
 
 #[test]
+fn verify_bytes_distinguishes_non_certificate_pem() -> Result<(), AttestError> {
+    let verifier = SigstoreVerifier::with_embedded_root()?;
+    let expected = github_release_identity();
+    let input = b"-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n";
+
+    let result = verifier.verify_bytes(b"artifact", b"AAAA", input, &expected);
+
+    let Err(AttestError::Malformed(message)) = result else {
+        assert!(false, "non-certificate PEM must be rejected as malformed");
+        return Ok(());
+    };
+    assert!(
+        message.contains("neither PEM nor DER"),
+        "non-certificate PEM must fail in certificate input classification: {message}"
+    );
+    Ok(())
+}
+
+#[test]
+fn verify_bytes_reports_der_parse_for_der_like_garbage() -> Result<(), AttestError> {
+    let verifier = SigstoreVerifier::with_embedded_root()?;
+    let expected = github_release_identity();
+    let input = [0x30, 0x03, 0x02, 0x01, 0x01];
+
+    let result = verifier.verify_bytes(b"artifact", b"AAAA", &input, &expected);
+
+    let Err(AttestError::Malformed(message)) = result else {
+        assert!(false, "DER-like garbage must be rejected as malformed");
+        return Ok(());
+    };
+    assert!(
+        message.contains("leaf cert DER parse"),
+        "DER-like input must reach the certificate parser: {message}"
+    );
+    Ok(())
+}
+
+#[test]
 fn verify_bytes_rejects_self_signed_cert_against_fulcio_root() {
     // A non-Fulcio leaf certificate (here a real but unrelated PEM) must
     // be rejected by the chain-validation step before the signature is
