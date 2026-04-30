@@ -15,6 +15,7 @@ name = "chio_kernel"
 [features]
 default = ["legacy-sync"]
 legacy-sync = []
+dhat-heap = []
 otel = ["dep:opentelemetry-semantic-conventions"]
 tokio-console-smoke = ["tokio/tracing"]
 
@@ -101,6 +102,11 @@ name = "dispatch_allow"
 harness = false
 
 [[bench]]
+name = "dispatch_allow_dhat"
+harness = false
+required-features = ["dhat-heap"]
+
+[[bench]]
 name = "dispatch_deny"
 harness = false
 
@@ -127,4 +133,4 @@ unwrap_used = "deny"
 expect_used = "deny"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)", "cfg(chio_kernel_loom)"] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(dhat)", "cfg(loom)", "cfg(chio_kernel_loom)"] }

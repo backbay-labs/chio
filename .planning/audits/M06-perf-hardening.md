@@ -72,6 +72,22 @@ M06 bench additions reuse the trajectory-1 M05 reference runner contract:
 - Local laptop numbers are useful for diagnosis only. They are not release
   gates.
 
+## Dhat Allocation-Count Baseline
+
+dhat allocation-count baseline: `dispatch_allow_dhat` mirrors the current M05
+`dispatch_allow` bench body and records 0 total heap allocation blocks and 0
+total heap bytes for the probed allow dispatch operation.
+
+Run command:
+
+```bash
+cargo bench -p chio-kernel --features dhat-heap --bench dispatch_allow_dhat -- --test
+```
+
+The bench target keeps the global allocator swap behind the `dhat-heap` feature
+and leaves a source-level `cfg(dhat)` hook so normal production builds and the
+existing Criterion dispatch benches continue to use the default allocator.
+
 ## OTEL exporter channel audit
 
 The live `chio-otel-receipt-exporter` source does not currently contain an
@@ -176,3 +192,4 @@ rg -n "channel|mpsc|unbounded|Sender::send|send\\(" crates/chio-otel-receipt-exp
 - [ ] P3: Add SQLite group commit, `INSERT ... RETURNING`, and pool splits.
 - [ ] P4: Add Wasmtime `InstancePre` cache and warmed-instance rings.
 - [ ] P5: Extend allocation, bundle-size, and sustained-load regression gates.
+- [x] P5.T1: Add `dispatch_allow_dhat` allocation-count harness and baseline.
