@@ -1,4 +1,5 @@
 import { withChio } from "@chio/next";
+import { localChatEvaluator } from "../../../lib/evaluator.js";
 
 export const runtime = "edge";
 
@@ -6,7 +7,9 @@ export const POST = withChio(async () => {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     start(controller) {
-      controller.enqueue(encoder.encode("data: {\"message\":\"hello from Chio\"}\n\n"));
+      controller.enqueue(
+        encoder.encode("data: {\"message\":\"hello from Chio\"}\n\n"),
+      );
       controller.close();
     },
   });
@@ -17,8 +20,5 @@ export const POST = withChio(async () => {
     },
   });
 }, {
-  evaluate: () => ({
-    verdict: "allow",
-    receiptId: "local-template-receipt",
-  }),
+  evaluate: localChatEvaluator,
 });

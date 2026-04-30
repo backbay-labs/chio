@@ -1,0 +1,20 @@
+{
+  "name": "cloudflare-worker-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@chio/ai-sdk-middleware": "workspace:*",
+    "@chio-protocol/workers": ">=0.1.0 <1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": ">=4.20240320 <5",
+    "typescript": ">=5.4 <6",
+    "wrangler": ">=3.30 <5"
+  }
+}

@@ -1,0 +1,23 @@
+# Chio template manifest for next-ai-sdk-receipts.
+# Consumed by `npx create-chio-app next-ai-sdk-receipts` and by the
+# bench/ttfrh runner that enforces the < 60 s p99 TTFRH budget.
+
+template: next-ai-sdk-receipts
+runtime: edge
+description: |
+  Next.js (App Router) + Vercel AI SDK middleware + receipts viewer.
+  Verdict gating runs at the tool-use boundary through @chio/next.
+
+# First-run telemetry-free contract: no outbound network calls except
+# to upstream providers the user explicitly configures via env vars.
+telemetry_free: true
+allowed_hosts: []
+
+ttfrh:
+  bench: bench/ttfrh/runners/next_ai_sdk_receipts.rs
+  budget_ms: 60000
+  buffer_pct: 10
+
+bootstrap:
+  install: "bun install --frozen-lockfile"
+  build: "bun run build"

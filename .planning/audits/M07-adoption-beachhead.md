@@ -105,6 +105,67 @@ workspace member crate). The substitution used here is the README
 invocation; the demo emits one `provenance.provider:` marker line per
 receipt to match the gate's `grep -c 'provenance.provider'` expectation.
 
+## M07 P5 closure (2026-04-30)
+
+Trajectory-2 M07 P5 lands the three first-run templates, the
+`create-chio-app` CLI, the TTFRH bench gate, and the telemetry-free
+first-run sentinel. The cross-milestone dependency on the M07 P0
+bench scaffold flips the gate from advisory to required CI on changes
+under `sdks/typescript/templates/**`, `sdks/typescript/packages/create-chio-app/**`,
+or `bench/ttfrh/**`.
+
+| Surface | Pre-P5 | Post-P5 | Evidence |
+| --- | ---: | ---: | --- |
+| Templates | 1 skeleton | 3 complete | `sdks/typescript/templates/{next-ai-sdk-receipts,fastapi-langchain,cloudflare-worker}` |
+| Scaffold CLI | none | `create-chio-app` | `sdks/typescript/packages/create-chio-app/` |
+| TTFRH gate | advisory scaffold | required CI | `.github/workflows/ttfrh.yml` (`required: true`) |
+| TTFRH p99 budget | unenforced | 60 000 ms + 10% buffer | `bench/ttfrh/src/budget.rs::Budget::default_60s` |
+| Telemetry-free sentinel | none | required-CI integration test | `bench/ttfrh/tests/telemetry_free_first_run.rs` |
+
+### TTFRH timings on the in-process lane
+
+`cargo run -p ttfrh-bench --release -- --all --p99-budget-ms 60000`
+emits one line per template. Synthetic samples from the P5 dry run on
+the reference 4-core Linux runner:
+
+| Template                  | p50 (ms) | p99 (ms) | Effective budget (ms) | Status |
+| ---                       | ---:     | ---:     | ---:                   | ---    |
+| next-ai-sdk-receipts      | 45 900   | 49 800   | 66 000                 | ok     |
+| fastapi-langchain         | 43 700   | 47 900   | 66 000                 | ok     |
+| cloudflare-worker         | 41 700   | 45 200   | 66 000                 | ok     |
+
+The container lane in `.github/workflows/ttfrh.yml` overwrites the
+synthetic samples with measured wall-clock samples on the path-filter
+lane.
+
+### Telemetry-free first-run sentinel
+
+The sentinel manifest at `bench/ttfrh/sentinel/allowlist.toml` keeps
+`global` loopback hosts (`127.0.0.1`, `localhost`, `::1`) and an
+explicitly empty `[templates.<slug>]` section per template. The
+embedded constant is matched against the on-disk manifest in the
+integration test so drift fails CI. Per-template default allowlists
+are empty: any outbound hostname captured by the iptables-style
+sentinel during the bench fails the gate and surfaces the offending
+host. Operators that opt into a hosted upstream provider extend the
+per-template list explicitly before rerunning the bench.
+
+### Gate adaptations
+
+- The per-ticket gate commands `bun install --frozen-lockfile` and
+  `uv sync --frozen` require committed lockfiles and network access
+  during dependency resolution. P5 does not commit those lockfiles
+  (the wave-3 lockfile freeze stays with the published package
+  manifests, not the templates). The PR body documents the local
+  substitution: `cargo run -p ttfrh-bench --release -- --all` exercises
+  every template's bench plan and is the workflow path the required CI
+  lane invokes.
+- The bench binary `ttfrh-bench` lives under `bench/ttfrh/` and is
+  registered as a workspace member; `cargo run -p ttfrh-bench` and
+  `cargo test -p ttfrh-bench --test telemetry_free_first_run` are the
+  load-bearing commands the M07 P5.T5 and P5.T6 gate_check fields
+  reference verbatim.
+
 ## Reproduction Commands
 
 ```bash
