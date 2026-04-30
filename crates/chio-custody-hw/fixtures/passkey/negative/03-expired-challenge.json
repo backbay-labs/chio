@@ -1,0 +1,7 @@
+{
+  "id": "03-expired-challenge",
+  "kind": "negative",
+  "failure_mode": "expired-challenge",
+  "description": "Challenge nonce is older than the issuer-side TTL.",
+  "expected_urn": "urn:chio:error:custody:assertion-rejected"
+}

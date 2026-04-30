@@ -1,0 +1,6 @@
+{
+  "id": "03-yubikey",
+  "kind": "positive",
+  "description": "Roaming hardware authenticator (FIDO2 USB) passkey: matching RPID, user-presence observed, fresh challenge.",
+  "expected_urn": null
+}
