@@ -44,68 +44,98 @@
 
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
+#[cfg(loom)]
+pub const LOOM_MODEL_ONLY: () = ();
+
+#[cfg(not(loom))]
 pub mod abi;
+#[cfg(not(loom))]
 pub mod blocklist;
+#[cfg(not(loom))]
 pub mod bundle_store;
-#[cfg(feature = "wasmtime-runtime")]
+#[cfg(all(not(loom), feature = "wasmtime-runtime"))]
 pub mod component;
+#[cfg(not(loom))]
 pub mod config;
+#[cfg(not(loom))]
 pub mod epoch;
+#[cfg(not(loom))]
 pub mod error;
-#[cfg(feature = "wasmtime-runtime")]
+#[cfg(all(not(loom), feature = "wasmtime-runtime"))]
 pub mod host;
+#[cfg(not(loom))]
 pub mod hot_reload;
+#[cfg(not(loom))]
 pub mod incident;
+#[cfg(not(loom))]
 pub mod manifest;
+#[cfg(not(loom))]
 pub mod metrics;
+#[cfg(not(loom))]
 pub mod observability;
+#[cfg(not(loom))]
 pub mod placeholders;
+#[cfg(not(loom))]
 pub mod runtime;
-#[cfg(feature = "wasmtime-runtime")]
+#[cfg(all(not(loom), feature = "wasmtime-runtime"))]
 pub mod wiring;
 
 // libFuzzer entry-point module, enabled only when the `fuzz` feature is
 // turned on by the standalone `chio-fuzz` workspace at `../../fuzz`.
-#[cfg(feature = "fuzz")]
+#[cfg(all(not(loom), feature = "fuzz"))]
 pub mod fuzz;
 
+#[cfg(not(loom))]
 pub use abi::{GuardRequest, GuardVerdict, WasmGuardAbi};
+#[cfg(not(loom))]
 pub use blocklist::{
     normalize_digest, BlocklistError, GuardDigestBlocklist, E_GUARD_DIGEST_BLOCKLISTED,
 };
+#[cfg(not(loom))]
 pub use bundle_store::{BundleError, BundleStore, InMemoryBundleStore};
-#[cfg(feature = "wasmtime-runtime")]
+#[cfg(all(not(loom), feature = "wasmtime-runtime"))]
 pub use component::ComponentBackend;
+#[cfg(not(loom))]
 pub use config::WasmGuardConfig;
+#[cfg(not(loom))]
 pub use epoch::EpochId;
+#[cfg(not(loom))]
 pub use error::WasmGuardError;
-#[cfg(feature = "wasmtime-runtime")]
+#[cfg(all(not(loom), feature = "wasmtime-runtime"))]
 pub use host::WasmHostState;
+#[cfg(not(loom))]
 pub use hot_reload::{
     CanaryCorpus, CanaryFixture, DebouncedReload, Engine, HotReloadError, RegistryDigestPoller,
     ReloadBackendFactory, ReloadTrigger, ReloadTriggerSource, ReloadWatchdog, WatchdogConfig,
     CANARY_FIXTURE_COUNT,
 };
+#[cfg(not(loom))]
 pub use incident::{EvalTrace, IncidentError, IncidentWriter, ReloadIncident};
+#[cfg(not(loom))]
 pub use manifest::{
     load_signature_sidecar, signature_sidecar_path, signed_module_message, verify_guard_signature,
     verify_signed_module, write_signature_sidecar, GuardManifest, SignedWasmModule,
     MANIFEST_FILENAME, SIGNATURE_SUFFIX, SUPPORTED_ABI_VERSIONS,
 };
+#[cfg(not(loom))]
 pub use metrics::{
     epoch_label, guard_id_label_from_digest, register_guard_metric_families,
-    GuardMetricRegistrationError, GuardMetricRegistry, MetricFamilyDescriptor, MetricFamilyKind,
-    EVAL_DURATION_BUCKETS_SECONDS, E_GUARD_METRIC_CARDINALITY_EXCEEDED, GUARD_METRIC_FAMILIES,
-    HOST_CALL_DURATION_BUCKETS_SECONDS, HOST_FN_LABEL_VALUES, LABEL_EPOCH, LABEL_GUARD_ID,
-    LABEL_HOST_FN, LABEL_OUTCOME, LABEL_REASON_CLASS, LABEL_VERDICT, MAX_GUARD_METRIC_CARDINALITY,
+    register_guard_pool_metric_families, tenant_id_label, GuardMetricRegistrationError,
+    GuardMetricRegistry, GuardPoolMetrics, GuardPoolMetricsSnapshot, MetricFamilyDescriptor,
+    MetricFamilyKind, EVAL_DURATION_BUCKETS_SECONDS, E_GUARD_METRIC_CARDINALITY_EXCEEDED,
+    GUARD_METRIC_FAMILIES, GUARD_POOL_METRIC_FAMILIES, HOST_CALL_DURATION_BUCKETS_SECONDS,
+    HOST_FN_LABEL_VALUES, LABEL_EPOCH, LABEL_GUARD_ID, LABEL_HOST_FN, LABEL_OUTCOME,
+    LABEL_REASON_CLASS, LABEL_TENANT_ID, LABEL_VERDICT, MAX_GUARD_METRIC_CARDINALITY,
     METRIC_CHIO_GUARD_DENY_TOTAL, METRIC_CHIO_GUARD_EVAL_DURATION_SECONDS,
     METRIC_CHIO_GUARD_FUEL_CONSUMED_TOTAL, METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS,
-    METRIC_CHIO_GUARD_MODULE_BYTES, METRIC_CHIO_GUARD_RELOAD_TOTAL,
-    METRIC_CHIO_GUARD_VERDICT_TOTAL, METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL,
-    METRIC_CHIO_OTEL_SINK_DROP_TOTAL, METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
-    REASON_CLASS_LABEL_VALUES, RELOAD_OUTCOME_LABEL_VALUES, RUNTIME_METRIC_FAMILIES,
-    VERDICT_LABEL_VALUES,
+    METRIC_CHIO_GUARD_MODULE_BYTES, METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL,
+    METRIC_CHIO_GUARD_POOL_EVICT_TOTAL, METRIC_CHIO_GUARD_POOL_WARM_SIZE,
+    METRIC_CHIO_GUARD_RELOAD_TOTAL, METRIC_CHIO_GUARD_VERDICT_TOTAL,
+    METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
+    METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL, OVERFLOW_TENANT_ID, REASON_CLASS_LABEL_VALUES,
+    RELOAD_OUTCOME_LABEL_VALUES, RUNTIME_METRIC_FAMILIES, UNKNOWN_TENANT_ID, VERDICT_LABEL_VALUES,
 };
+#[cfg(not(loom))]
 pub use observability::{
     guard_digest_or_unknown, guard_evaluate_span, guard_fetch_blob_span, guard_host_call_span,
     guard_reload_span, guard_verify_span, DEFAULT_GUARD_VERSION, HOST_FETCH_BLOB, HOST_GET_CONFIG,
@@ -114,16 +144,18 @@ pub use observability::{
     SPAN_GUARD_VERIFY, UNKNOWN_GUARD_DIGEST, VERDICT_ALLOW, VERDICT_DENY, VERDICT_ERROR,
     VERDICT_REWRITE, VERIFY_MODE_ED25519, VERIFY_RESULT_FAIL, VERIFY_RESULT_OK,
 };
+#[cfg(not(loom))]
 pub use placeholders::{
     resolve_placeholders, resolve_placeholders_in_json, PlaceholderEnv, PlaceholderError,
     ProcessEnv,
 };
-#[cfg(feature = "wasmtime-runtime")]
+#[cfg(all(not(loom), feature = "wasmtime-runtime"))]
 pub use runtime::wasmtime_backend::{
     create_backend, detect_wasm_format, load_guards_from_policy, load_signed_guard, LoadError,
     PolicyCustomGuard, PolicyCustomGuards, PolicyModuleSource, WasmFormat, WasmGuardHandle,
     KNOWN_HOST_FUNCTIONS,
 };
+#[cfg(not(loom))]
 pub use runtime::{LoadedModule, WasmGuard, WasmGuardRuntime};
-#[cfg(feature = "wasmtime-runtime")]
+#[cfg(all(not(loom), feature = "wasmtime-runtime"))]
 pub use wiring::{build_guard_pipeline, load_wasm_guards};

@@ -1,14 +1,17 @@
 use chio_wasm_guards::{
     epoch_label, guard_id_label_from_digest, register_guard_metric_families,
-    MetricFamilyDescriptor, MetricFamilyKind, EVAL_DURATION_BUCKETS_SECONDS,
+    register_guard_pool_metric_families, GuardPoolMetrics, MetricFamilyDescriptor,
+    MetricFamilyKind, EVAL_DURATION_BUCKETS_SECONDS, GUARD_POOL_METRIC_FAMILIES,
     HOST_CALL_DURATION_BUCKETS_SECONDS, HOST_FN_LABEL_VALUES, LABEL_EPOCH, LABEL_GUARD_ID,
-    LABEL_HOST_FN, LABEL_OUTCOME, LABEL_REASON_CLASS, LABEL_VERDICT, METRIC_CHIO_GUARD_DENY_TOTAL,
-    METRIC_CHIO_GUARD_EVAL_DURATION_SECONDS, METRIC_CHIO_GUARD_FUEL_CONSUMED_TOTAL,
-    METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS, METRIC_CHIO_GUARD_MODULE_BYTES,
+    LABEL_HOST_FN, LABEL_OUTCOME, LABEL_REASON_CLASS, LABEL_TENANT_ID, LABEL_VERDICT,
+    METRIC_CHIO_GUARD_DENY_TOTAL, METRIC_CHIO_GUARD_EVAL_DURATION_SECONDS,
+    METRIC_CHIO_GUARD_FUEL_CONSUMED_TOTAL, METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS,
+    METRIC_CHIO_GUARD_MODULE_BYTES, METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL,
+    METRIC_CHIO_GUARD_POOL_EVICT_TOTAL, METRIC_CHIO_GUARD_POOL_WARM_SIZE,
     METRIC_CHIO_GUARD_RELOAD_TOTAL, METRIC_CHIO_GUARD_VERDICT_TOTAL,
     METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
-    METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL, REASON_CLASS_LABEL_VALUES, RELOAD_OUTCOME_LABEL_VALUES,
-    RUNTIME_METRIC_FAMILIES, VERDICT_LABEL_VALUES,
+    METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL, OVERFLOW_TENANT_ID, REASON_CLASS_LABEL_VALUES,
+    RELOAD_OUTCOME_LABEL_VALUES, RUNTIME_METRIC_FAMILIES, VERDICT_LABEL_VALUES,
 };
 
 fn family<'a>(families: &'a [MetricFamilyDescriptor], name: &str) -> &'a MetricFamilyDescriptor {
@@ -113,6 +116,68 @@ fn runtime_metric_descriptors_lock_counter_names_and_units() {
         assert_eq!(descriptor.unit, Some("count"));
         assert!(descriptor.buckets.is_empty());
     }
+}
+
+#[test]
+fn pool_metric_descriptors_lock_names_labels_and_units() {
+    let registry = register_guard_pool_metric_families();
+    let names = registry
+        .families()
+        .iter()
+        .map(|family| family.name)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        names,
+        vec![
+            METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL,
+            METRIC_CHIO_GUARD_POOL_WARM_SIZE,
+            METRIC_CHIO_GUARD_POOL_EVICT_TOTAL,
+        ]
+    );
+    assert_eq!(registry.families(), GUARD_POOL_METRIC_FAMILIES);
+
+    let checkout = family(registry.families(), METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL);
+    assert_eq!(checkout.kind, MetricFamilyKind::Counter);
+    assert_eq!(checkout.labels, &[LABEL_GUARD_ID, LABEL_TENANT_ID]);
+    assert_eq!(checkout.unit, Some("count"));
+    assert!(checkout.buckets.is_empty());
+
+    let warm = family(registry.families(), METRIC_CHIO_GUARD_POOL_WARM_SIZE);
+    assert_eq!(warm.kind, MetricFamilyKind::Gauge);
+    assert_eq!(warm.labels, &[LABEL_GUARD_ID, LABEL_TENANT_ID]);
+    assert_eq!(warm.unit, Some("instances"));
+    assert!(warm.buckets.is_empty());
+
+    let evict = family(registry.families(), METRIC_CHIO_GUARD_POOL_EVICT_TOTAL);
+    assert_eq!(evict.kind, MetricFamilyKind::Counter);
+    assert_eq!(evict.labels, &[LABEL_GUARD_ID, LABEL_TENANT_ID]);
+    assert_eq!(evict.unit, Some("count"));
+    assert!(evict.buckets.is_empty());
+}
+
+#[test]
+fn guard_pool_metrics_cap_tenant_cardinality() {
+    let mut metrics = GuardPoolMetrics::with_max_tenants(2);
+    metrics.record_checkout("tenant-a");
+    metrics.set_warm_size("tenant-a", 1);
+    metrics.record_checkout("tenant-b");
+    metrics.record_checkout("tenant-c");
+    metrics.record_evict("tenant-c");
+
+    let tenant_a = match metrics.snapshot("tenant-a") {
+        Some(snapshot) => snapshot,
+        None => panic!("tenant-a metrics should be registered"),
+    };
+    assert_eq!(tenant_a.checkout_total, 1);
+    assert_eq!(tenant_a.warm_size, 1);
+    assert_eq!(tenant_a.evict_total, 0);
+    assert_eq!(metrics.registered_tenant_count(), 2);
+
+    let overflow = metrics.overflow_snapshot();
+    assert_eq!(overflow.checkout_total, 1);
+    assert_eq!(overflow.evict_total, 1);
+    assert!(metrics.snapshot(OVERFLOW_TENANT_ID).is_some());
 }
 
 #[test]

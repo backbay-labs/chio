@@ -1,6 +1,6 @@
 //! Prometheus metric family descriptors for WASM guard observability.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::observability::{
     HOST_FETCH_BLOB, HOST_GET_CONFIG, HOST_GET_TIME_UNIX_SECS, HOST_LOG, RELOAD_APPLIED,
@@ -16,12 +16,17 @@ pub const METRIC_CHIO_GUARD_RELOAD_TOTAL: &str = "chio_guard_reload_total";
 pub const METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS: &str =
     "chio_guard_host_call_duration_seconds";
 pub const METRIC_CHIO_GUARD_MODULE_BYTES: &str = "chio_guard_module_bytes";
+pub const METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL: &str = "chio_guard_pool_checkout_total";
+pub const METRIC_CHIO_GUARD_POOL_WARM_SIZE: &str = "chio_guard_pool_warm_size";
+pub const METRIC_CHIO_GUARD_POOL_EVICT_TOTAL: &str = "chio_guard_pool_evict_total";
 pub const METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL: &str = "chio_signing_queue_block_total";
 pub const METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
 pub const METRIC_CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
 
 pub const MAX_GUARD_METRIC_CARDINALITY: usize = 1024;
 pub const E_GUARD_METRIC_CARDINALITY_EXCEEDED: &str = "E_GUARD_METRIC_CARDINALITY_EXCEEDED";
+pub const OVERFLOW_TENANT_ID: &str = "__overflow__";
+pub const UNKNOWN_TENANT_ID: &str = "unknown";
 
 pub const LABEL_GUARD_ID: &str = "guard_id";
 pub const LABEL_VERDICT: &str = "verdict";
@@ -29,6 +34,7 @@ pub const LABEL_REASON_CLASS: &str = "reason_class";
 pub const LABEL_OUTCOME: &str = "outcome";
 pub const LABEL_HOST_FN: &str = "host_fn";
 pub const LABEL_EPOCH: &str = "epoch";
+pub const LABEL_TENANT_ID: &str = "tenant_id";
 
 pub const EVAL_DURATION_BUCKETS_SECONDS: &[f64] = &[
     0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0,
@@ -67,6 +73,7 @@ const LABELS_GUARD_REASON_CLASS: &[&str] = &[LABEL_GUARD_ID, LABEL_REASON_CLASS]
 const LABELS_GUARD_OUTCOME: &[&str] = &[LABEL_GUARD_ID, LABEL_OUTCOME];
 const LABELS_GUARD_HOST_FN: &[&str] = &[LABEL_GUARD_ID, LABEL_HOST_FN];
 const LABELS_GUARD_EPOCH: &[&str] = &[LABEL_GUARD_ID, LABEL_EPOCH];
+const LABELS_GUARD_TENANT: &[&str] = &[LABEL_GUARD_ID, LABEL_TENANT_ID];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricFamilyKind {
@@ -132,6 +139,30 @@ pub const GUARD_METRIC_FAMILIES: &[MetricFamilyDescriptor] = &[
         kind: MetricFamilyKind::Gauge,
         labels: LABELS_GUARD_EPOCH,
         unit: Some("bytes"),
+        buckets: &[],
+    },
+];
+
+pub const GUARD_POOL_METRIC_FAMILIES: &[MetricFamilyDescriptor] = &[
+    MetricFamilyDescriptor {
+        name: METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL,
+        kind: MetricFamilyKind::Counter,
+        labels: LABELS_GUARD_TENANT,
+        unit: Some("count"),
+        buckets: &[],
+    },
+    MetricFamilyDescriptor {
+        name: METRIC_CHIO_GUARD_POOL_WARM_SIZE,
+        kind: MetricFamilyKind::Gauge,
+        labels: LABELS_GUARD_TENANT,
+        unit: Some("instances"),
+        buckets: &[],
+    },
+    MetricFamilyDescriptor {
+        name: METRIC_CHIO_GUARD_POOL_EVICT_TOTAL,
+        kind: MetricFamilyKind::Counter,
+        labels: LABELS_GUARD_TENANT,
+        unit: Some("count"),
         buckets: &[],
     },
 ];
@@ -226,8 +257,13 @@ impl GuardMetricRegistry {
 
     #[must_use]
     pub fn with_max_guards(max_guards: usize) -> Self {
+        Self::with_families(GUARD_METRIC_FAMILIES, max_guards)
+    }
+
+    #[must_use]
+    pub fn with_families(families: &'static [MetricFamilyDescriptor], max_guards: usize) -> Self {
         Self {
-            families: GUARD_METRIC_FAMILIES,
+            families,
             guard_ids: BTreeSet::new(),
             max_guards,
         }
@@ -297,6 +333,11 @@ pub fn register_guard_metric_families() -> GuardMetricRegistry {
 }
 
 #[must_use]
+pub fn register_guard_pool_metric_families() -> GuardMetricRegistry {
+    GuardMetricRegistry::with_families(GUARD_POOL_METRIC_FAMILIES, MAX_GUARD_METRIC_CARDINALITY)
+}
+
+#[must_use]
 pub fn guard_id_label_from_digest(digest: &str) -> String {
     digest
         .strip_prefix("sha256:")
@@ -309,4 +350,120 @@ pub fn guard_id_label_from_digest(digest: &str) -> String {
 #[must_use]
 pub fn epoch_label(epoch: u64) -> String {
     epoch.to_string()
+}
+
+#[must_use]
+pub fn tenant_id_label(tenant_id: &str) -> String {
+    let tenant_id = tenant_id.trim();
+    if tenant_id.is_empty() {
+        UNKNOWN_TENANT_ID.to_string()
+    } else {
+        tenant_id.to_string()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GuardPoolMetricsSnapshot {
+    pub checkout_total: u64,
+    pub warm_size: u64,
+    pub evict_total: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct GuardPoolMetrics {
+    registry: GuardMetricRegistry,
+    tenant_snapshots: BTreeMap<String, GuardPoolMetricsSnapshot>,
+    overflow_snapshot: GuardPoolMetricsSnapshot,
+}
+
+impl GuardPoolMetrics {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_max_tenants(MAX_GUARD_METRIC_CARDINALITY)
+    }
+
+    #[must_use]
+    pub fn with_max_tenants(max_tenants: usize) -> Self {
+        Self {
+            registry: GuardMetricRegistry::with_families(GUARD_POOL_METRIC_FAMILIES, max_tenants),
+            tenant_snapshots: BTreeMap::new(),
+            overflow_snapshot: GuardPoolMetricsSnapshot::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn families(&self) -> &'static [MetricFamilyDescriptor] {
+        self.registry.families()
+    }
+
+    #[must_use]
+    pub fn registered_tenant_count(&self) -> usize {
+        self.registry.registered_guard_count()
+    }
+
+    #[must_use]
+    pub fn max_tenants(&self) -> usize {
+        self.registry.max_guards()
+    }
+
+    pub fn record_checkout(&mut self, tenant_id: &str) {
+        let snapshot = self.snapshot_mut(tenant_id);
+        snapshot.checkout_total = snapshot.checkout_total.saturating_add(1);
+    }
+
+    pub fn set_warm_size(&mut self, tenant_id: &str, warm_size: usize) {
+        let snapshot = self.snapshot_mut(tenant_id);
+        snapshot.warm_size = warm_size as u64;
+    }
+
+    pub fn record_evict(&mut self, tenant_id: &str) {
+        let snapshot = self.snapshot_mut(tenant_id);
+        snapshot.evict_total = snapshot.evict_total.saturating_add(1);
+    }
+
+    #[must_use]
+    pub fn snapshot(&self, tenant_id: &str) -> Option<GuardPoolMetricsSnapshot> {
+        let tenant_id = tenant_id_label(tenant_id);
+        if tenant_id == OVERFLOW_TENANT_ID {
+            Some(self.overflow_snapshot)
+        } else {
+            self.tenant_snapshots.get(&tenant_id).copied()
+        }
+    }
+
+    #[must_use]
+    pub fn overflow_snapshot(&self) -> GuardPoolMetricsSnapshot {
+        self.overflow_snapshot
+    }
+
+    pub fn reset_warm_sizes(&mut self) {
+        for snapshot in self.tenant_snapshots.values_mut() {
+            snapshot.warm_size = 0;
+        }
+        self.overflow_snapshot.warm_size = 0;
+    }
+
+    fn snapshot_mut(&mut self, tenant_id: &str) -> &mut GuardPoolMetricsSnapshot {
+        let tenant_id = tenant_id_label(tenant_id);
+        if tenant_id == OVERFLOW_TENANT_ID {
+            return &mut self.overflow_snapshot;
+        }
+        if self.tenant_snapshots.contains_key(&tenant_id) {
+            return match self.tenant_snapshots.get_mut(&tenant_id) {
+                Some(snapshot) => snapshot,
+                None => &mut self.overflow_snapshot,
+            };
+        }
+        if self.registry.register_guard_id(tenant_id.clone()).is_ok() {
+            self.tenant_snapshots.entry(tenant_id).or_default()
+        } else {
+            &mut self.overflow_snapshot
+        }
+    }
+}
+
+impl Default for GuardPoolMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }

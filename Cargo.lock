@@ -3386,6 +3386,7 @@ dependencies = [
  "criterion",
  "ed25519-dalek",
  "hex",
+ "loom",
  "notify",
  "pollster",
  "rand_core 0.6.4",

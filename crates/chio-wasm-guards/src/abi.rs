@@ -114,6 +114,10 @@ pub trait WasmGuardAbi: Send + Sync {
     fn last_fuel_consumed(&self) -> Option<u64> {
         None
     }
+
+    /// Drop cached pre-instantiation state after a reload publishes a new
+    /// module epoch.
+    fn clear_instance_pre_cache(&mut self) {}
 }
 
 // ---------------------------------------------------------------------------

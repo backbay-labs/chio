@@ -84,6 +84,14 @@ impl LoadedModule {
         let fuel = backend.last_fuel_consumed();
         Ok((result, fuel))
     }
+
+    fn clear_instance_pre_cache(&self) {
+        let mut backend = match self.backend.lock() {
+            Ok(backend) => backend,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        backend.clear_instance_pre_cache();
+    }
 }
 
 impl std::fmt::Debug for LoadedModule {
@@ -253,6 +261,7 @@ impl WasmGuard {
             epoch_id,
             manifest_sha256,
         )));
+        previous.clear_instance_pre_cache();
         if let Ok(mut evidence_lock) = self.last_evaluation_evidence.lock() {
             *evidence_lock = None;
         }
@@ -268,7 +277,9 @@ impl WasmGuard {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
+        let previous = self.loaded.load_full();
         self.loaded.store(module);
+        previous.clear_instance_pre_cache();
         if let Ok(mut evidence_lock) = self.last_evaluation_evidence.lock() {
             *evidence_lock = None;
         }
@@ -619,17 +630,20 @@ pub mod wasmtime_backend {
     //!
     //! Requires the `wasmtime-runtime` feature.
 
-    use std::collections::HashMap;
+    use std::collections::{HashMap, VecDeque};
     use std::sync::Arc;
 
     use super::*;
     use crate::host::{create_shared_engine, register_host_functions, WasmHostState};
-    use wasmtime::{Engine, Linker, Memory, Module, Store};
+    use crate::metrics::{tenant_id_label, GuardPoolMetrics, GuardPoolMetricsSnapshot};
+    use sha2::Digest;
+    use wasmtime::{Engine, InstancePre, Linker, Memory, Module, Store};
 
     use crate::host::MAX_MEMORY_BYTES;
 
     /// Default maximum module size in bytes (10 MiB).
     const DEFAULT_MAX_MODULE_SIZE: usize = 10 * 1024 * 1024;
+    const DEFAULT_TENANT_WARM_INSTANCE_CAPACITY: usize = 4;
 
     // -------------------------------------------------------------------
     // Dual-mode format detection
@@ -738,6 +752,157 @@ pub mod wasmtime_backend {
     // WasmtimeBackend
     // -------------------------------------------------------------------
 
+    #[derive(Clone)]
+    struct CachedInstancePre {
+        module_hash: String,
+        instance_pre: InstancePre<WasmHostState>,
+    }
+
+    struct WarmInstancePre {
+        module_hash: String,
+        instance_pre: InstancePre<WasmHostState>,
+    }
+
+    struct TenantWarmRing {
+        capacity: usize,
+        entries: VecDeque<WarmInstancePre>,
+    }
+
+    impl TenantWarmRing {
+        fn new(capacity: usize) -> Self {
+            Self {
+                capacity,
+                entries: VecDeque::with_capacity(capacity),
+            }
+        }
+
+        fn checkout(&mut self, module_hash: &str) -> Option<InstancePre<WasmHostState>> {
+            while let Some(entry) = self.entries.pop_front() {
+                if entry.module_hash == module_hash {
+                    return Some(entry.instance_pre);
+                }
+            }
+            None
+        }
+
+        fn push(&mut self, entry: WarmInstancePre) -> bool {
+            if self.capacity == 0 {
+                return true;
+            }
+            let evicted = if self.entries.len() >= self.capacity {
+                self.entries.pop_front();
+                true
+            } else {
+                false
+            };
+            self.entries.push_back(entry);
+            evicted
+        }
+
+        fn len(&self) -> usize {
+            self.entries.len()
+        }
+    }
+
+    struct InstancePrePool {
+        cache: Option<CachedInstancePre>,
+        tenant_rings: HashMap<String, TenantWarmRing>,
+        tenant_capacity: usize,
+        metrics: GuardPoolMetrics,
+    }
+
+    impl InstancePrePool {
+        fn new(tenant_capacity: usize) -> Self {
+            Self {
+                cache: None,
+                tenant_rings: HashMap::new(),
+                tenant_capacity,
+                metrics: GuardPoolMetrics::new(),
+            }
+        }
+
+        fn checkout(
+            &mut self,
+            tenant_id: &str,
+            module_hash: &str,
+        ) -> Result<InstancePre<WasmHostState>, WasmGuardError> {
+            let tenant_id = tenant_id_label(tenant_id);
+            self.metrics.record_checkout(&tenant_id);
+
+            if let Some(ring) = self.tenant_rings.get_mut(&tenant_id) {
+                if let Some(instance_pre) = ring.checkout(module_hash) {
+                    self.metrics.set_warm_size(&tenant_id, ring.len());
+                    return Ok(instance_pre);
+                }
+                self.metrics.set_warm_size(&tenant_id, ring.len());
+            }
+
+            match self.cache.as_ref() {
+                Some(cache) if cache.module_hash == module_hash => Ok(cache.instance_pre.clone()),
+                _ => Err(WasmGuardError::BackendUnavailable),
+            }
+        }
+
+        fn install(&mut self, module_hash: String, instance_pre: InstancePre<WasmHostState>) {
+            self.cache = Some(CachedInstancePre {
+                module_hash,
+                instance_pre,
+            });
+            self.tenant_rings.clear();
+            self.metrics.reset_warm_sizes();
+        }
+
+        fn return_instance_pre(
+            &mut self,
+            tenant_id: &str,
+            module_hash: &str,
+            instance_pre: InstancePre<WasmHostState>,
+        ) {
+            let tenant_id = tenant_id_label(tenant_id);
+            let ring = self
+                .tenant_rings
+                .entry(tenant_id.clone())
+                .or_insert_with(|| TenantWarmRing::new(self.tenant_capacity));
+            let evicted = ring.push(WarmInstancePre {
+                module_hash: module_hash.to_string(),
+                instance_pre,
+            });
+            if evicted {
+                self.metrics.record_evict(&tenant_id);
+            }
+            self.metrics.set_warm_size(&tenant_id, ring.len());
+        }
+
+        fn clear(&mut self) {
+            self.cache = None;
+            self.tenant_rings.clear();
+            self.metrics.reset_warm_sizes();
+        }
+
+        fn cached_module_hash(&self) -> Option<&str> {
+            self.cache.as_ref().map(|cache| cache.module_hash.as_str())
+        }
+
+        fn metrics_snapshot(&self, tenant_id: &str) -> Option<GuardPoolMetricsSnapshot> {
+            self.metrics.snapshot(tenant_id)
+        }
+
+        fn registered_tenant_count(&self) -> usize {
+            self.metrics.registered_tenant_count()
+        }
+    }
+
+    fn build_instance_pre(
+        engine: &Engine,
+        module: &Module,
+    ) -> Result<InstancePre<WasmHostState>, WasmGuardError> {
+        let mut linker: Linker<WasmHostState> = Linker::new(engine);
+        register_host_functions(&mut linker)?;
+        linker
+            .instantiate_pre(module)
+            .map_err(|e| WasmGuardError::Compilation(e.to_string()))
+    }
+
     /// WASM guard backend powered by Wasmtime.
     ///
     /// Uses a shared [`Arc<Engine>`] and creates a fresh
@@ -752,6 +917,8 @@ pub mod wasmtime_backend {
         max_memory_bytes: usize,
         max_module_size: usize,
         last_fuel_consumed: Option<u64>,
+        module_hash: Option<String>,
+        instance_pre_pool: InstancePrePool,
     }
 
     impl WasmtimeBackend {
@@ -769,6 +936,8 @@ pub mod wasmtime_backend {
                 max_memory_bytes: MAX_MEMORY_BYTES,
                 max_module_size: DEFAULT_MAX_MODULE_SIZE,
                 last_fuel_consumed: None,
+                module_hash: None,
+                instance_pre_pool: InstancePrePool::new(DEFAULT_TENANT_WARM_INSTANCE_CAPACITY),
             })
         }
 
@@ -786,6 +955,8 @@ pub mod wasmtime_backend {
                 max_memory_bytes: MAX_MEMORY_BYTES,
                 max_module_size: DEFAULT_MAX_MODULE_SIZE,
                 last_fuel_consumed: None,
+                module_hash: None,
+                instance_pre_pool: InstancePrePool::new(DEFAULT_TENANT_WARM_INSTANCE_CAPACITY),
             }
         }
 
@@ -803,6 +974,8 @@ pub mod wasmtime_backend {
                 max_memory_bytes: MAX_MEMORY_BYTES,
                 max_module_size: DEFAULT_MAX_MODULE_SIZE,
                 last_fuel_consumed: None,
+                module_hash: None,
+                instance_pre_pool: InstancePrePool::new(DEFAULT_TENANT_WARM_INSTANCE_CAPACITY),
             }
         }
 
@@ -814,6 +987,28 @@ pub mod wasmtime_backend {
             self.max_memory_bytes = max_memory_bytes;
             self.max_module_size = max_module_size;
             self
+        }
+
+        /// Set the per-tenant warm InstancePre ring capacity.
+        #[must_use]
+        pub fn with_warm_instance_capacity(mut self, capacity: usize) -> Self {
+            self.instance_pre_pool = InstancePrePool::new(capacity);
+            self
+        }
+
+        #[must_use]
+        pub fn instance_pre_cache_module_hash(&self) -> Option<&str> {
+            self.instance_pre_pool.cached_module_hash()
+        }
+
+        #[must_use]
+        pub fn pool_metrics_snapshot(&self, tenant_id: &str) -> Option<GuardPoolMetricsSnapshot> {
+            self.instance_pre_pool.metrics_snapshot(tenant_id)
+        }
+
+        #[must_use]
+        pub fn pool_registered_tenant_count(&self) -> usize {
+            self.instance_pre_pool.registered_tenant_count()
         }
     }
 
@@ -829,6 +1024,8 @@ pub mod wasmtime_backend {
                     max_memory_bytes: MAX_MEMORY_BYTES,
                     max_module_size: DEFAULT_MAX_MODULE_SIZE,
                     last_fuel_consumed: None,
+                    module_hash: None,
+                    instance_pre_pool: InstancePrePool::new(DEFAULT_TENANT_WARM_INSTANCE_CAPACITY),
                 },
             }
         }
@@ -861,8 +1058,12 @@ pub mod wasmtime_backend {
                 }
             }
 
+            let module_hash = hex::encode(sha2::Sha256::digest(wasm_bytes));
+            let instance_pre = build_instance_pre(&self.engine, &module)?;
             self.module = Some(module);
             self.fuel_limit = fuel_limit;
+            self.module_hash = Some(module_hash.clone());
+            self.instance_pre_pool.install(module_hash, instance_pre);
             Ok(())
         }
 
@@ -871,6 +1072,11 @@ pub mod wasmtime_backend {
                 .module
                 .as_ref()
                 .ok_or(WasmGuardError::BackendUnavailable)?;
+            let module_hash = self
+                .module_hash
+                .as_deref()
+                .ok_or(WasmGuardError::BackendUnavailable)?;
+            let tenant_id = request.agent_id.as_str();
 
             // WGSEC-01: Create a fresh Store with configurable memory limit
             let host_state =
@@ -881,12 +1087,20 @@ pub mod wasmtime_backend {
                 .set_fuel(self.fuel_limit)
                 .map_err(|e| WasmGuardError::Trap(e.to_string()))?;
 
-            // Create a Linker with host functions registered
-            let mut linker: Linker<WasmHostState> = Linker::new(&self.engine);
-            register_host_functions(&mut linker)?;
+            let instance_pre = match self.instance_pre_pool.checkout(tenant_id, module_hash) {
+                Ok(instance_pre) => instance_pre,
+                Err(_) => {
+                    let instance_pre = build_instance_pre(&self.engine, module)?;
+                    self.instance_pre_pool
+                        .install(module_hash.to_string(), instance_pre.clone());
+                    instance_pre
+                }
+            };
 
-            let instance = pollster::block_on(linker.instantiate_async(&mut store, module))
+            let instance = pollster::block_on(instance_pre.instantiate_async(&mut store))
                 .map_err(|e| WasmGuardError::Trap(e.to_string()))?;
+            self.instance_pre_pool
+                .return_instance_pre(tenant_id, module_hash, instance_pre);
 
             // Serialize request to JSON
             let request_json = serde_json::to_vec(request)
@@ -1020,6 +1234,10 @@ pub mod wasmtime_backend {
         fn last_fuel_consumed(&self) -> Option<u64> {
             self.last_fuel_consumed
         }
+
+        fn clear_instance_pre_cache(&mut self) {
+            self.instance_pre_pool.clear();
+        }
     }
 
     /// Read a structured deny reason from the guest via the `chio_deny_reason`
@@ -1103,8 +1321,6 @@ pub mod wasmtime_backend {
 
     use crate::manifest::GuardManifest;
     use crate::placeholders::{resolve_placeholders_in_json, PlaceholderEnv, PlaceholderError};
-    use sha2::Digest;
-
     /// Names of `chio.*` host functions Chio currently exposes to guests.
     ///
     /// Operators can pass a subset of this list as `policy_allowed_host_fns`
@@ -2081,6 +2297,86 @@ pub mod wasmtime_backend {
         }
 
         #[test]
+        fn wasmtime_instance_pre_cache_tracks_pool_checkout_metrics() -> Result<(), WasmGuardError>
+        {
+            let wat = r#"
+                (module
+                    (import "chio" "log" (func $log (param i32 i32 i32)))
+                    (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
+                    (import "chio" "get_time_unix_secs" (func $get_time (result i64)))
+                    (memory (export "memory") 2)
+                    (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
+                        (i32.const 0)
+                    )
+                )
+            "#;
+
+            let mut backend = WasmtimeBackend::new()?.with_warm_instance_capacity(1);
+            backend.load_module(wat.as_bytes(), 1_000_000)?;
+            let cache_hash = match backend.instance_pre_cache_module_hash() {
+                Some(hash) => hash.to_string(),
+                None => return Err(WasmGuardError::BackendUnavailable),
+            };
+            let req = make_guard_request();
+
+            let first = backend.evaluate(&req)?;
+            assert!(first.is_allow());
+            let first_snapshot = match backend.pool_metrics_snapshot("agent-1") {
+                Some(snapshot) => snapshot,
+                None => return Err(WasmGuardError::BackendUnavailable),
+            };
+            assert_eq!(first_snapshot.checkout_total, 1);
+            assert_eq!(first_snapshot.warm_size, 1);
+            assert_eq!(first_snapshot.evict_total, 0);
+
+            let second = backend.evaluate(&req)?;
+            assert!(second.is_allow());
+            let second_snapshot = match backend.pool_metrics_snapshot("agent-1") {
+                Some(snapshot) => snapshot,
+                None => return Err(WasmGuardError::BackendUnavailable),
+            };
+            assert_eq!(second_snapshot.checkout_total, 2);
+            assert_eq!(second_snapshot.warm_size, 1);
+            assert_eq!(second_snapshot.evict_total, 0);
+            assert_eq!(
+                backend.instance_pre_cache_module_hash(),
+                Some(cache_hash.as_str())
+            );
+            assert_eq!(backend.pool_registered_tenant_count(), 1);
+            Ok(())
+        }
+
+        #[test]
+        fn wasmtime_pool_capacity_zero_records_evicts() -> Result<(), WasmGuardError> {
+            let wat = r#"
+                (module
+                    (import "chio" "log" (func $log (param i32 i32 i32)))
+                    (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
+                    (import "chio" "get_time_unix_secs" (func $get_time (result i64)))
+                    (memory (export "memory") 2)
+                    (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
+                        (i32.const 0)
+                    )
+                )
+            "#;
+
+            let mut backend = WasmtimeBackend::new()?.with_warm_instance_capacity(0);
+            backend.load_module(wat.as_bytes(), 1_000_000)?;
+            let req = make_guard_request();
+            let verdict = backend.evaluate(&req)?;
+            assert!(verdict.is_allow());
+
+            let snapshot = match backend.pool_metrics_snapshot("agent-1") {
+                Some(snapshot) => snapshot,
+                None => return Err(WasmGuardError::BackendUnavailable),
+            };
+            assert_eq!(snapshot.checkout_total, 1);
+            assert_eq!(snapshot.warm_size, 0);
+            assert_eq!(snapshot.evict_total, 1);
+            Ok(())
+        }
+
+        #[test]
         fn wasmtime_fuel_consumed_tracked_on_wasm_guard() {
             let wat = r#"
                 (module
@@ -2622,6 +2918,64 @@ mod tests {
         assert!(first_replacement < second_replacement);
         assert_eq!(guard.current_epoch_id(), second_replacement);
         assert_eq!(guard.manifest_sha256().as_deref(), Some("epoch-two"));
+    }
+
+    #[test]
+    fn replace_loaded_module_clears_previous_instance_pre_cache() -> Result<(), WasmGuardError> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        struct CacheHookBackend {
+            clear_count: Arc<AtomicUsize>,
+        }
+
+        impl WasmGuardAbi for CacheHookBackend {
+            fn load_module(
+                &mut self,
+                _wasm_bytes: &[u8],
+                _fuel_limit: u64,
+            ) -> Result<(), WasmGuardError> {
+                Ok(())
+            }
+
+            fn evaluate(
+                &mut self,
+                _request: &GuardRequest,
+            ) -> Result<GuardVerdict, WasmGuardError> {
+                Ok(GuardVerdict::Allow)
+            }
+
+            fn backend_name(&self) -> &str {
+                "cache-hook"
+            }
+
+            fn clear_instance_pre_cache(&mut self) {
+                self.clear_count.fetch_add(1, Ordering::AcqRel);
+            }
+        }
+
+        let clear_count = Arc::new(AtomicUsize::new(0));
+        let guard = WasmGuard::new(
+            "cache-hook".to_string(),
+            Box::new(CacheHookBackend {
+                clear_count: Arc::clone(&clear_count),
+            }),
+            false,
+            None,
+        );
+        let (_previous, epoch_id) = match guard.replace_loaded_module_with_previous(
+            Box::new(CacheHookBackend {
+                clear_count: Arc::new(AtomicUsize::new(0)),
+            }),
+            Some("next".to_string()),
+        ) {
+            Some(value) => value,
+            None => return Err(WasmGuardError::BackendUnavailable),
+        };
+
+        assert_eq!(epoch_id, EpochId::new(1));
+        assert_eq!(clear_count.load(Ordering::Acquire), 1);
+        Ok(())
     }
 
     #[test]

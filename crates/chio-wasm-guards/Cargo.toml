@@ -25,7 +25,7 @@ tracing-opentelemetry = []
 # preinstantiate-validate trust boundary lives in `ComponentBackend`.
 fuzz = ["dep:arbitrary", "wasmtime-runtime"]
 
-[dependencies]
+[target.'cfg(not(loom))'.dependencies]
 arc-swap = { workspace = true }
 chio-kernel = { path = "../chio-kernel" }
 chio-core = { path = "../chio-core" }
@@ -52,6 +52,7 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
+loom = { workspace = true }
 rand_core = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
@@ -66,3 +67,6 @@ required-features = ["wasmtime-runtime"]
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }
