@@ -12,10 +12,12 @@ publish = false
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-anthropic-tools-adapter = { path = "../chio-anthropic-tools-adapter", features = ["computer-use"], optional = true }
 chio-bedrock-converse-adapter = { path = "../chio-bedrock-converse-adapter", optional = true }
+chio-cohere-tools-adapter = { path = "../chio-cohere-tools-adapter", optional = true }
 chio-gemini-tools-adapter = { path = "../chio-gemini-tools-adapter", optional = true }
 chio-groq-tools-adapter = { path = "../chio-groq-tools-adapter", optional = true }
 chio-manifest = { path = "../chio-manifest", optional = true }
 chio-mistral-tools-adapter = { path = "../chio-mistral-tools-adapter", optional = true }
+chio-ollama-tools-adapter = { path = "../chio-ollama-tools-adapter", optional = true }
 chio-openai = { package = "chio-openai-adapter", path = "../chio-openai", features = ["provider-adapter"], optional = true }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
 chrono = { workspace = true, features = ["clock"] }
@@ -33,9 +35,11 @@ default = []
 fixtures-openai = ["dep:chio-openai"]
 fixtures-anthropic = ["dep:chio-anthropic-tools-adapter", "dep:chio-manifest"]
 fixtures-bedrock = ["dep:chio-bedrock-converse-adapter"]
+fixtures-cohere = ["dep:chio-cohere-tools-adapter"]
 fixtures-gemini = ["dep:chio-gemini-tools-adapter"]
 fixtures-groq = ["dep:chio-groq-tools-adapter"]
 fixtures-mistral = ["dep:chio-mistral-tools-adapter"]
+fixtures-ollama = ["dep:chio-ollama-tools-adapter"]
 
 [lints.clippy]
 unwrap_used = "deny"

@@ -2613,6 +2613,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-cohere-tools-adapter"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-tool-call-fabric",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-config"
 version = "0.1.0"
 dependencies = [
@@ -3316,6 +3327,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-ollama-tools-adapter"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-tool-call-fabric",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-open-market"
 version = "0.1.0"
 dependencies = [
@@ -3411,11 +3433,13 @@ version = "0.1.0"
 dependencies = [
  "chio-anthropic-tools-adapter",
  "chio-bedrock-converse-adapter",
+ "chio-cohere-tools-adapter",
  "chio-core-types",
  "chio-gemini-tools-adapter",
  "chio-groq-tools-adapter",
  "chio-manifest",
  "chio-mistral-tools-adapter",
+ "chio-ollama-tools-adapter",
  "chio-openai-adapter",
  "chio-tool-call-fabric",
  "chrono",
