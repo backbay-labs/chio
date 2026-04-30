@@ -2822,6 +2822,7 @@ dependencies = [
  "chio-core",
  "chio-did",
  "chio-reputation",
+ "chio-revocation-oracle",
  "chrono",
  "dudect-bencher",
  "proptest",
