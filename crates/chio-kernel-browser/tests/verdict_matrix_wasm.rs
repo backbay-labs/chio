@@ -1,9 +1,6 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use chio_core_types::capability::{
     CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
 };
@@ -11,12 +8,213 @@ use chio_core_types::crypto::Keypair;
 use chio_kernel_browser::{evaluate_pure, BrowserClock, EvaluateRequestJson, ToolCallRequestJson};
 use serde::Deserialize;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_test::wasm_bindgen_test_configure;
+
+#[cfg(target_arch = "wasm32")]
+wasm_bindgen_test_configure!(run_in_browser);
+
 const MATRIX_SERVER_ID: &str = "verdict-matrix";
 const ISSUED_AT: u64 = 1_700_000_000;
 const EXPIRES_AT: u64 = 1_700_100_000;
 const REASON_NONE: &str = "urn:chio:error:none";
 const REASON_SCOPE_EXCEEDED: &str = "urn:chio:error:capability:scope-exceeded";
 const REASON_KERNEL_INTERNAL: &str = "urn:chio:error:kernel:internal-error";
+const SCENARIO_COUNT: usize = 48;
+const SCENARIO_FIXTURES: [(&str, &str); SCENARIO_COUNT] = [
+    (
+        "capability_subset/capability-subset-001-read-exact.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-001-read-exact.json"),
+    ),
+    (
+        "capability_subset/capability-subset-002-write-exact.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-002-write-exact.json"),
+    ),
+    (
+        "capability_subset/capability-subset-003-admin-exact.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-003-admin-exact.json"),
+    ),
+    (
+        "capability_subset/capability-subset-004-read-superset.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-004-read-superset.json"),
+    ),
+    (
+        "capability_subset/capability-subset-005-telemetry-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-005-telemetry-read.json"),
+    ),
+    (
+        "capability_subset/capability-subset-006-prompt-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-006-prompt-read.json"),
+    ),
+    (
+        "capability_subset/capability-subset-007-missing-write.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-007-missing-write.json"),
+    ),
+    (
+        "capability_subset/capability-subset-008-missing-admin.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-008-missing-admin.json"),
+    ),
+    (
+        "capability_subset/capability-subset-009-empty-scope.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-009-empty-scope.json"),
+    ),
+    (
+        "capability_subset/capability-subset-010-resource-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-010-resource-read.json"),
+    ),
+    (
+        "capability_subset/capability-subset-011-mixed-tool-call.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-011-mixed-tool-call.json"),
+    ),
+    (
+        "capability_subset/capability-subset-012-prompt-write-denied.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/capability_subset/capability-subset-012-prompt-write-denied.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-001-input-mask-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-001-input-mask-read.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-002-output-mask-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-002-output-mask-read.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-003-input-drop-write.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-003-input-drop-write.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-004-input-deny-write.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-004-input-deny-write.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-005-no-redaction-resource.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-005-no-redaction-resource.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-006-output-drop-resource.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-006-output-drop-resource.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-007-input-mask-prompt.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-007-input-mask-prompt.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-008-output-deny-prompt.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-008-output-deny-prompt.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-009-input-mask-telemetry.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-009-input-mask-telemetry.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-010-output-mask-telemetry.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-010-output-mask-telemetry.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-011-input-deny-admin.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-011-input-deny-admin.json"),
+    ),
+    (
+        "redaction_determinism/redaction-determinism-012-no-redaction-tool-call.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/redaction_determinism/redaction-determinism-012-no-redaction-tool-call.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-001-fresh-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-001-fresh-read.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-002-duplicate-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-002-duplicate-read.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-003-stale-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-003-stale-read.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-004-missing-trace.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-004-missing-trace.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-005-fresh-write.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-005-fresh-write.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-006-duplicate-write.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-006-duplicate-write.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-007-fresh-resource.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-007-fresh-resource.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-008-stale-resource.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-008-stale-resource.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-009-fresh-prompt.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-009-fresh-prompt.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-010-duplicate-prompt.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-010-duplicate-prompt.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-011-fresh-telemetry.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-011-fresh-telemetry.json"),
+    ),
+    (
+        "replay_verdict/replay-verdict-012-missing-trace-admin.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/replay_verdict/replay-verdict-012-missing-trace-admin.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-001-active-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-001-active-read.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-002-revoked-read.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-002-revoked-read.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-003-active-write.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-003-active-write.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-004-revoked-write.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-004-revoked-write.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-005-revoked-superset.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-005-revoked-superset.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-006-active-resource.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-006-active-resource.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-007-revoked-resource.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-007-revoked-resource.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-008-active-prompt.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-008-active-prompt.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-009-revoked-prompt.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-009-revoked-prompt.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-010-active-telemetry.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-010-active-telemetry.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-011-revoked-admin.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-011-revoked-admin.json"),
+    ),
+    (
+        "revocation_propagation/revocation-propagation-012-active-tool-call.json",
+        include_str!("../../chio-conformance/verdict_matrix/scenarios/revocation_propagation/revocation-propagation-012-active-tool-call.json"),
+    ),
+];
 
 #[derive(Debug, Clone, Deserialize)]
 struct VerdictScenario {
@@ -43,10 +241,11 @@ struct VerdictTuple {
     scope_set: Vec<String>,
 }
 
-#[test]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 fn wasm_browser_driver_reports_real_supported_tuples_and_unsupported_stateful_classes() {
     let scenarios = load_scenarios();
-    assert_eq!(scenarios.len(), 48);
+    assert_eq!(scenarios.len(), SCENARIO_COUNT);
 
     let mut failures = Vec::new();
     let mut passed = 0usize;
@@ -276,65 +475,13 @@ fn normalized(mut tuple: VerdictTuple) -> VerdictTuple {
 }
 
 fn load_scenarios() -> Vec<VerdictScenario> {
-    let root = repo_root()
-        .join("crates")
-        .join("chio-conformance")
-        .join("verdict_matrix")
-        .join("scenarios");
-    let mut files = Vec::new();
-    collect_json_files(&root, &mut files);
-    files.sort();
-    files
-        .into_iter()
-        .map(|file| {
-            let text = match fs::read_to_string(&file) {
-                Ok(text) => text,
-                Err(error) => panic!("failed to read {}: {error}", file.display()),
-            };
-            match serde_json::from_str::<VerdictScenario>(&text) {
+    SCENARIO_FIXTURES
+        .iter()
+        .map(
+            |(path, text)| match serde_json::from_str::<VerdictScenario>(text) {
                 Ok(scenario) => scenario,
-                Err(error) => panic!("failed to parse {}: {error}", file.display()),
-            }
-        })
+                Err(error) => panic!("failed to parse {path}: {error}"),
+            },
+        )
         .collect()
-}
-
-fn repo_root() -> PathBuf {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let Some(crates_dir) = manifest_dir.parent() else {
-        panic!(
-            "CARGO_MANIFEST_DIR has no parent: {}",
-            manifest_dir.display()
-        );
-    };
-    let Some(root) = crates_dir.parent() else {
-        panic!("crates dir has no parent: {}", crates_dir.display());
-    };
-    root.to_path_buf()
-}
-
-fn collect_json_files(path: &Path, files: &mut Vec<PathBuf>) {
-    let entries = match fs::read_dir(path) {
-        Ok(entries) => entries,
-        Err(error) => panic!("failed to list {}: {error}", path.display()),
-    };
-    for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(error) => panic!(
-                "failed to read directory entry in {}: {error}",
-                path.display()
-            ),
-        };
-        let entry_path = entry.path();
-        if entry_path.is_dir() {
-            collect_json_files(&entry_path, files);
-        } else if entry_path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            == Some("json")
-        {
-            files.push(entry_path);
-        }
-    }
 }

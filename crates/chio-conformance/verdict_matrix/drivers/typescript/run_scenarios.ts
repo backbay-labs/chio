@@ -172,7 +172,7 @@ export function scenarioToHttpRequest(scenario: VerdictScenario): ChioHttpReques
   });
 }
 
-function tupleFromEvaluateResponse(response: EvaluateResponse): VerdictTuple {
+export function tupleFromEvaluateResponse(response: EvaluateResponse): VerdictTuple {
   const metadata = response.receipt.metadata as MatrixMetadata | undefined;
   const matrix = metadata?.verdict_matrix;
   const reasonCode =
