@@ -7,7 +7,7 @@
   milestone: M06
   phase: 3
   title: Per-store group-commit actor coalescing receipt inserts into one BEGIN IMMEDIATE/COMMIT
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-store-sqlite/src/receipt_store.rs
@@ -25,9 +25,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 5e578282c4f19a3caaa9cf6110670d89b095e6b3
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T05:26:46Z"
 
 - id: M06.P3.T2
   milestone: M06

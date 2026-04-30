@@ -116,7 +116,7 @@
   milestone: M02
   phase: 1
   title: cargo-mutants baseline run on chio-guards and chio-anchor and capture kill scores
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-guards/mutants.toml
@@ -135,15 +135,15 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 6b8308868d693e6cb8b93a36eb145e3c387dc74a
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T03:48:21Z"
 
 - id: M02.P1.T6
   milestone: M02
   phase: 1
   title: Aggregate per-crate baselines into mutants-baseline.toml and audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-2/mutants-baseline.toml
@@ -164,6 +164,6 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: d5b451d7d6e0e980300f125cb97b8622edb9436c
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T04:40:45Z"

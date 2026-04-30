@@ -18,7 +18,7 @@
   milestone: M02
   phase: 4
   title: Land verdict_matrix harness scaffold and scenario format spec
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-conformance/verdict_matrix/SCENARIOS.md
@@ -41,9 +41,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 247515524d047859830a1182578277c569b7b9cf
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T04:47:38Z"
 
 - id: M02.P4.T2
   milestone: M02

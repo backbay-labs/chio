@@ -15,7 +15,7 @@
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-policy to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-policy/tests/**
@@ -33,9 +33,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 866eb0b813b8f92b45f510308cd83b9b67186cdf
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T06:09:06Z"
 
 - id: M02.P2.T2
   milestone: M02

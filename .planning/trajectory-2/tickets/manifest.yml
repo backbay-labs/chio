@@ -220,7 +220,7 @@
   milestone: M01
   phase: 2
   title: Migrate guard and manifest domains (guard.rs, guards/, policies/)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-cli/src/guard.rs
@@ -241,9 +241,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 245654a9536a10ad9910891fc0428e6dfbfddf65
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T06:04:03Z"
 - id: M01.P2.T3
   milestone: M01
   phase: 2
@@ -936,7 +936,7 @@
   milestone: M02
   phase: 1
   title: cargo-mutants baseline run on chio-guards and chio-anchor and capture kill scores
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-guards/mutants.toml
@@ -955,14 +955,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 6b8308868d693e6cb8b93a36eb145e3c387dc74a
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T03:48:21Z"
 - id: M02.P1.T6
   milestone: M02
   phase: 1
   title: Aggregate per-crate baselines into mutants-baseline.toml and audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-2/mutants-baseline.toml
@@ -983,14 +983,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: d5b451d7d6e0e980300f125cb97b8622edb9436c
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T04:40:45Z"
 - id: M02.P2.T1
   milestone: M02
   phase: 2
   title: Add targeted tests to chio-policy to raise mutation kill rate to >= 80 percent
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-policy/tests/**
@@ -1008,9 +1008,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 866eb0b813b8f92b45f510308cd83b9b67186cdf
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T06:09:06Z"
 - id: M02.P2.T2
   milestone: M02
   phase: 2
@@ -1273,7 +1273,7 @@
   milestone: M02
   phase: 4
   title: Land verdict_matrix harness scaffold and scenario format spec
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-conformance/verdict_matrix/SCENARIOS.md
@@ -1296,9 +1296,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 247515524d047859830a1182578277c569b7b9cf
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T04:47:38Z"
 - id: M02.P4.T2
   milestone: M02
   phase: 4
@@ -4129,7 +4129,7 @@
   milestone: M06
   phase: 2
   title: Add saturation alert to trajectory-1 M06.P4.T5 Grafana dashboard JSON
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - infra/grafana/chio-perf.json
@@ -4146,14 +4146,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 582b24026b3204db01dd72408503094351e4c9cd
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T04:10:13Z"
 - id: M06.P2.T5
   milestone: M06
   phase: 2
   title: Loom model loom_ring_sender_vs_shutdown for bounded drop-oldest ring under shutdown race
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-otel-receipt-exporter/tests/loom_ring_sender_vs_shutdown.rs
@@ -4170,14 +4170,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 910f591c46f60035ad7b02571b3ede9da922ffe2
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T06:01:50Z"
 - id: M06.P2.T6
   milestone: M06
   phase: 2
   title: Audit signing-task channel bound and emit chio_signing_queue_block_total counter alongside existing depth gauge (signing path blocks under backpressure; does not drop)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-kernel/src/kernel/signing_task.rs
@@ -4196,14 +4196,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 6d96086c9d69f4901bb6587ad8d291b126c34dd3
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T06:22:34Z"
 - id: M06.P3.T1
   milestone: M06
   phase: 3
   title: Per-store group-commit actor coalescing receipt inserts into one BEGIN IMMEDIATE/COMMIT
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-store-sqlite/src/receipt_store.rs
@@ -4221,9 +4221,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 5e578282c4f19a3caaa9cf6110670d89b095e6b3
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T05:26:46Z"
 - id: M06.P3.T2
   milestone: M06
   phase: 3
