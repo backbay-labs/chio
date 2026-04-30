@@ -16,12 +16,6 @@ const ISSUED_AT: u64 = 1_700_000_000;
 const EXPIRES_AT: u64 = 1_700_100_000;
 const REASON_NONE: &str = "urn:chio:error:none";
 const REASON_SCOPE_EXCEEDED: &str = "urn:chio:error:capability:scope-exceeded";
-const REASON_REVOKED: &str = "urn:chio:error:capability:revoked";
-const REASON_REPLAY_DRIFT: &str = "urn:chio:error:replay:deterministic-mismatch";
-const REASON_REPLAY_TRACE_MISSING: &str = "urn:chio:error:replay:trace-not-found";
-const REASON_INPUT_REDACTED: &str = "urn:chio:error:guard:input-redacted";
-const REASON_OUTPUT_REDACTED: &str = "urn:chio:error:guard:output-redacted";
-const REASON_GUARD_DENIED: &str = "urn:chio:error:guard:denied";
 const REASON_KERNEL_INTERNAL: &str = "urn:chio:error:kernel:internal-error";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -40,16 +34,6 @@ struct ScenarioScript {
     input_json: String,
     #[serde(default)]
     capability_scopes: Vec<String>,
-    #[serde(default)]
-    required_scope: Option<String>,
-    #[serde(default)]
-    revoked: bool,
-    #[serde(default)]
-    replay_nonce_status: Option<String>,
-    #[serde(default)]
-    redaction_action: Option<String>,
-    #[serde(default)]
-    redaction_phase: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -60,22 +44,36 @@ struct VerdictTuple {
 }
 
 #[test]
-fn wasm_browser_driver_matches_verdict_matrix_tuples() {
+fn wasm_browser_driver_reports_real_supported_tuples_and_unsupported_stateful_classes() {
     let scenarios = load_scenarios();
     assert_eq!(scenarios.len(), 48);
 
     let mut failures = Vec::new();
+    let mut passed = 0usize;
+    let mut unsupported = 0usize;
     for scenario in scenarios {
-        let actual = evaluate_browser_scenario(&scenario);
-        let expected = normalized(scenario.expected.clone());
-        if actual != expected {
-            failures.push(format!(
-                "{} expected {:?}, actual {:?}",
-                scenario.id, expected, actual
-            ));
+        match evaluate_browser_scenario(&scenario) {
+            DriverOutcome::Pass => passed += 1,
+            DriverOutcome::Unsupported(reason) => {
+                unsupported += 1;
+                assert!(
+                    scenario.category != "capability",
+                    "{} was unexpectedly unsupported: {}",
+                    scenario.id,
+                    reason
+                );
+            }
+            DriverOutcome::Fail { expected, actual } => {
+                failures.push(format!(
+                    "{} expected {:?}, actual {:?}",
+                    scenario.id, expected, actual
+                ));
+            }
         }
     }
 
+    assert_eq!(passed, 12);
+    assert_eq!(unsupported, 36);
     assert!(
         failures.is_empty(),
         "wasm browser verdict driver failures ({}):\n{}",
@@ -84,20 +82,42 @@ fn wasm_browser_driver_matches_verdict_matrix_tuples() {
     );
 }
 
-fn evaluate_browser_scenario(scenario: &VerdictScenario) -> VerdictTuple {
+enum DriverOutcome {
+    Pass,
+    Unsupported(String),
+    Fail {
+        expected: VerdictTuple,
+        actual: VerdictTuple,
+    },
+}
+
+fn evaluate_browser_scenario(scenario: &VerdictScenario) -> DriverOutcome {
+    let expected = normalized(scenario.expected.clone());
     if scenario.schema != "chio.verdict-matrix.scenario.v1" {
-        return tuple(
-            "error",
-            REASON_KERNEL_INTERNAL,
-            scenario.script.capability_scopes.clone(),
-        );
+        return DriverOutcome::Fail {
+            expected,
+            actual: tuple(
+                "error",
+                REASON_KERNEL_INTERNAL,
+                scenario.script.capability_scopes.clone(),
+            ),
+        };
     }
     if scenario.script.operation != "tool.call" {
-        return tuple(
-            "error",
-            REASON_KERNEL_INTERNAL,
-            scenario.script.capability_scopes.clone(),
-        );
+        return DriverOutcome::Fail {
+            expected,
+            actual: tuple(
+                "error",
+                REASON_KERNEL_INTERNAL,
+                scenario.script.capability_scopes.clone(),
+            ),
+        };
+    }
+    if scenario.category != "capability" {
+        return DriverOutcome::Unsupported(format!(
+            "browser evaluate_pure has no revocation store, execution nonce store, or guard pipeline for category `{}`",
+            scenario.category
+        ));
     }
 
     let subject = Keypair::generate();
@@ -110,17 +130,23 @@ fn evaluate_browser_scenario(scenario: &VerdictScenario) -> VerdictTuple {
     ) {
         Ok(capability) => capability,
         Err(reason) => {
-            return tuple("error", &reason, scenario.script.capability_scopes.clone());
+            return DriverOutcome::Fail {
+                expected,
+                actual: tuple("error", &reason, scenario.script.capability_scopes.clone()),
+            };
         }
     };
     let arguments = match serde_json::from_str(&scenario.script.input_json) {
         Ok(arguments) => arguments,
         Err(error) => {
-            return tuple(
-                "error",
-                &format!("{}: {error}", REASON_KERNEL_INTERNAL),
-                scenario.script.capability_scopes.clone(),
-            );
+            return DriverOutcome::Fail {
+                expected,
+                actual: tuple(
+                    "error",
+                    &format!("{}: {error}", REASON_KERNEL_INTERNAL),
+                    scenario.script.capability_scopes.clone(),
+                ),
+            };
         }
     };
     let input = EvaluateRequestJson {
@@ -140,105 +166,50 @@ fn evaluate_browser_scenario(scenario: &VerdictScenario) -> VerdictTuple {
     let core = match evaluate_pure(input, &browser_clock) {
         Ok(core) => core,
         Err(error) => {
-            return tuple(
-                "error",
-                &format!("{}: {}", REASON_KERNEL_INTERNAL, error.message),
-                scenario.script.capability_scopes.clone(),
-            );
+            return DriverOutcome::Fail {
+                expected,
+                actual: tuple(
+                    "error",
+                    &format!("{}: {}", REASON_KERNEL_INTERNAL, error.message),
+                    scenario.script.capability_scopes.clone(),
+                ),
+            };
         }
     };
 
-    if core.verdict == "deny" {
-        return tuple(
+    let actual = tuple_from_browser_core(&core, &scenario.script.capability_scopes);
+    if actual == expected {
+        DriverOutcome::Pass
+    } else {
+        DriverOutcome::Fail { expected, actual }
+    }
+}
+
+fn tuple_from_browser_core(
+    core: &chio_kernel_browser::EvaluationVerdictJson,
+    scope_set: &[String],
+) -> VerdictTuple {
+    match core.verdict.as_str() {
+        "allow" => tuple("allow", REASON_NONE, scope_set.to_vec()),
+        "deny" => tuple(
             "deny",
-            REASON_SCOPE_EXCEEDED,
-            scenario.script.capability_scopes.clone(),
-        );
+            deny_reason_code(core.reason.as_deref()),
+            scope_set.to_vec(),
+        ),
+        _ => tuple("error", REASON_KERNEL_INTERNAL, scope_set.to_vec()),
     }
-    if let Some(required_scope) = &scenario.script.required_scope {
-        if !scenario.script.capability_scopes.contains(required_scope) {
-            return tuple(
-                "deny",
-                REASON_SCOPE_EXCEEDED,
-                scenario.script.capability_scopes.clone(),
-            );
-        }
+}
+
+fn deny_reason_code(reason: Option<&str>) -> &'static str {
+    let Some(reason) = reason else {
+        return REASON_KERNEL_INTERNAL;
+    };
+    let lower = reason.to_ascii_lowercase();
+    if lower.contains("not in capability scope") || lower.contains("out of scope") {
+        REASON_SCOPE_EXCEEDED
+    } else {
+        REASON_KERNEL_INTERNAL
     }
-    if scenario.script.revoked {
-        return tuple(
-            "deny",
-            REASON_REVOKED,
-            scenario.script.capability_scopes.clone(),
-        );
-    }
-    if scenario.category == "replay" {
-        match scenario
-            .script
-            .replay_nonce_status
-            .as_deref()
-            .unwrap_or("fresh")
-        {
-            "fresh" => {}
-            "duplicate" | "stale" => {
-                return tuple(
-                    "deny",
-                    REASON_REPLAY_DRIFT,
-                    scenario.script.capability_scopes.clone(),
-                );
-            }
-            "trace_missing" => {
-                return tuple(
-                    "error",
-                    REASON_REPLAY_TRACE_MISSING,
-                    scenario.script.capability_scopes.clone(),
-                );
-            }
-            _ => {
-                return tuple(
-                    "error",
-                    REASON_KERNEL_INTERNAL,
-                    scenario.script.capability_scopes.clone(),
-                );
-            }
-        }
-    }
-    if scenario.category == "redaction" {
-        match scenario
-            .script
-            .redaction_action
-            .as_deref()
-            .unwrap_or("none")
-        {
-            "deny" => {
-                return tuple(
-                    "deny",
-                    REASON_GUARD_DENIED,
-                    scenario.script.capability_scopes.clone(),
-                );
-            }
-            "mask" | "drop" => {
-                let reason = if scenario.script.redaction_phase.as_deref() == Some("output") {
-                    REASON_OUTPUT_REDACTED
-                } else {
-                    REASON_INPUT_REDACTED
-                };
-                return tuple("allow", reason, scenario.script.capability_scopes.clone());
-            }
-            "none" => {}
-            _ => {
-                return tuple(
-                    "error",
-                    REASON_KERNEL_INTERNAL,
-                    scenario.script.capability_scopes.clone(),
-                );
-            }
-        }
-    }
-    tuple(
-        "allow",
-        REASON_NONE,
-        scenario.script.capability_scopes.clone(),
-    )
 }
 
 fn make_capability(

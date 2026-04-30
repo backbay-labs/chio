@@ -9,6 +9,12 @@ verdict into the matrix tuple:
 - `reason_code`
 - `scope_set`
 
+The TypeScript SDK is a transport client, not an embedded kernel. The driver
+therefore reports scenarios as unsupported unless `CHIO_VERDICT_MATRIX_SIDECAR_URL`
+or `CHIO_SIDECAR_URL` points at a live Chio sidecar that emits verdict matrix
+receipt metadata. It does not stub `fetch` or synthesize verdicts from scenario
+fields.
+
 The conformance package runs the driver with:
 
 ```bash

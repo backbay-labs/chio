@@ -6,7 +6,6 @@ import {
   type ChioHttpRequest,
   type EvaluateResponse,
   type HttpMethod,
-  type HttpReceipt,
   type Verdict as SdkVerdict,
 } from "../../../../../sdks/typescript/packages/node-http/src/index.ts";
 
@@ -14,14 +13,8 @@ export const TYPESCRIPT_NODE_HTTP_DRIVER = "typescript-node-http";
 
 const MATRIX_SERVER_ID = "verdict-matrix";
 const REASON_NONE = "urn:chio:error:none";
-const REASON_SCOPE_EXCEEDED = "urn:chio:error:capability:scope-exceeded";
-const REASON_REVOKED = "urn:chio:error:capability:revoked";
-const REASON_REPLAY_DRIFT = "urn:chio:error:replay:deterministic-mismatch";
-const REASON_REPLAY_TRACE_MISSING = "urn:chio:error:replay:trace-not-found";
-const REASON_INPUT_REDACTED = "urn:chio:error:guard:input-redacted";
-const REASON_OUTPUT_REDACTED = "urn:chio:error:guard:output-redacted";
-const REASON_GUARD_DENIED = "urn:chio:error:guard:denied";
 const REASON_KERNEL_INTERNAL = "urn:chio:error:kernel:internal-error";
+const SIDECAR_ENV = "CHIO_VERDICT_MATRIX_SIDECAR_URL";
 
 type MatrixVerdict = "allow" | "deny" | "error";
 
@@ -54,8 +47,8 @@ export interface VerdictScenario {
 
 export interface DriverOutcome {
   scenario_id: string;
-  status: "pass" | "fail";
-  actual: VerdictTuple;
+  status: "pass" | "fail" | "unsupported";
+  actual?: VerdictTuple;
   expected: VerdictTuple;
   diagnostic?: string;
 }
@@ -65,6 +58,11 @@ interface MatrixMetadata {
     reason_code?: unknown;
     scope_set?: unknown;
   };
+}
+
+export interface RunOptions {
+  sidecarUrl?: string;
+  timeoutMs?: number;
 }
 
 export async function loadScenarios(scenarioRoot: string): Promise<VerdictScenario[]> {
@@ -80,12 +78,41 @@ export async function loadScenarios(scenarioRoot: string): Promise<VerdictScenar
 
 export async function runVerdictMatrixScenarios(
   scenarioRoot: string,
+  options: RunOptions = {},
 ): Promise<DriverOutcome[]> {
   const scenarios = await loadScenarios(scenarioRoot);
+  const sidecarUrl = resolveDriverSidecarUrl(options);
   const outcomes: DriverOutcome[] = [];
   for (const scenario of scenarios) {
-    const actual = await evaluateScenario(scenario);
     const expected = normalizeTuple(scenario.expected);
+    if (sidecarUrl == null) {
+      outcomes.push({
+        scenario_id: scenario.id,
+        status: "unsupported",
+        expected,
+        diagnostic:
+          `set ${SIDECAR_ENV} or CHIO_SIDECAR_URL to a live Chio sidecar; ` +
+          "the TypeScript SDK does not embed kernel evaluation",
+      });
+      continue;
+    }
+
+    let actual: VerdictTuple;
+    try {
+      actual = await evaluateScenario(scenario, {
+        ...options,
+        sidecarUrl,
+      });
+    } catch (error) {
+      outcomes.push({
+        scenario_id: scenario.id,
+        status: "fail",
+        expected,
+        diagnostic: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+
     const normalizedActual = normalizeTuple(actual);
     const pass = tupleKey(normalizedActual) === tupleKey(expected);
     outcomes.push({
@@ -101,27 +128,19 @@ export async function runVerdictMatrixScenarios(
 
 export async function evaluateScenario(
   scenario: VerdictScenario,
+  options: RunOptions = {},
 ): Promise<VerdictTuple> {
+  const sidecarUrl = resolveDriverSidecarUrl(options);
+  if (sidecarUrl == null) {
+    throw new Error(`missing ${SIDECAR_ENV} or CHIO_SIDECAR_URL`);
+  }
   const request = scenarioToHttpRequest(scenario);
   const client = new ChioSidecarClient({
-    sidecarUrl: "http://127.0.0.1:19090",
-    timeoutMs: scenarioTimeout(scenario),
+    sidecarUrl,
+    timeoutMs: options.timeoutMs ?? scenarioTimeout(scenario),
   });
-  const previousFetch = globalThis.fetch;
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) =>
-    scenarioFetch(scenario, input, init);
-  try {
-    const response = await client.evaluate(
-      request,
-      JSON.stringify({
-        id: `cap-${scenario.id}`,
-        scopes: scenario.script.capability_scopes ?? [],
-      }),
-    );
-    return tupleFromEvaluateResponse(response);
-  } finally {
-    globalThis.fetch = previousFetch;
-  }
+  const response = await client.evaluate(request, capabilityTokenForScenario(scenario));
+  return tupleFromEvaluateResponse(response);
 }
 
 export function scenarioToHttpRequest(scenario: VerdictScenario): ChioHttpRequest {
@@ -154,100 +173,6 @@ export function scenarioToHttpRequest(scenario: VerdictScenario): ChioHttpReques
   });
 }
 
-async function scenarioFetch(
-  scenario: VerdictScenario,
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  const url = String(input);
-  if (!url.endsWith("/chio/evaluate")) {
-    return new Response("not found", { status: 404 });
-  }
-  const parsed = parseRequestBody(init?.body);
-  if (parsed.request_id == null || parsed.route_pattern == null) {
-    return new Response("bad request", { status: 400 });
-  }
-  return Response.json(evaluateAsSidecar(scenario, parsed));
-}
-
-function evaluateAsSidecar(
-  scenario: VerdictScenario,
-  request: ChioHttpRequest,
-): EvaluateResponse {
-  const tuple = evaluateNeutralScenario(scenario);
-  const sdkVerdict = sdkVerdictFromTuple(tuple);
-  return {
-    verdict: sdkVerdict,
-    evidence: [],
-    receipt: receiptForScenario(scenario, request, sdkVerdict, tuple),
-  };
-}
-
-function evaluateNeutralScenario(scenario: VerdictScenario): VerdictTuple {
-  const scopes = scenario.script.capability_scopes ?? [];
-  if (scenario.script.operation !== "tool.call") {
-    return tuple("error", REASON_KERNEL_INTERNAL, scopes);
-  }
-  if (scenario.script.revoked === true) {
-    return tuple("deny", REASON_REVOKED, scopes);
-  }
-  if (scenario.category === "replay") {
-    switch (scenario.script.replay_nonce_status ?? "fresh") {
-      case "fresh":
-        break;
-      case "duplicate":
-      case "stale":
-        return tuple("deny", REASON_REPLAY_DRIFT, scopes);
-      case "trace_missing":
-        return tuple("error", REASON_REPLAY_TRACE_MISSING, scopes);
-    }
-  }
-  const requiredScope = scenario.script.required_scope;
-  if (requiredScope != null && !scopes.includes(requiredScope)) {
-    return tuple("deny", REASON_SCOPE_EXCEEDED, scopes);
-  }
-  if (scenario.category === "redaction") {
-    const action = scenario.script.redaction_action ?? "none";
-    const phase = scenario.script.redaction_phase ?? "input";
-    if (action === "deny") {
-      return tuple("deny", REASON_GUARD_DENIED, scopes);
-    }
-    if (action === "mask" || action === "drop") {
-      const reason = phase === "output" ? REASON_OUTPUT_REDACTED : REASON_INPUT_REDACTED;
-      return tuple("allow", reason, scopes);
-    }
-  }
-  return tuple("allow", REASON_NONE, scopes);
-}
-
-function tuple(
-  verdict: MatrixVerdict,
-  reasonCode: string,
-  scopeSet: string[],
-): VerdictTuple {
-  return {
-    verdict,
-    reason_code: reasonCode,
-    scope_set: [...scopeSet],
-  };
-}
-
-function sdkVerdictFromTuple(tupleValue: VerdictTuple): SdkVerdict {
-  switch (tupleValue.verdict) {
-    case "allow":
-      return { verdict: "allow" };
-    case "deny":
-      return {
-        verdict: "deny",
-        reason: tupleValue.reason_code,
-        guard: "verdict_matrix",
-        http_status: 403,
-      };
-    case "error":
-      return { verdict: "incomplete", reason: tupleValue.reason_code };
-  }
-}
-
 function tupleFromEvaluateResponse(response: EvaluateResponse): VerdictTuple {
   const metadata = response.receipt.metadata as MatrixMetadata | undefined;
   const matrix = metadata?.verdict_matrix;
@@ -277,37 +202,6 @@ function reasonFromSdkVerdict(verdict: SdkVerdict): string {
   return REASON_KERNEL_INTERNAL;
 }
 
-function receiptForScenario(
-  scenario: VerdictScenario,
-  request: ChioHttpRequest,
-  verdict: SdkVerdict,
-  tupleValue: VerdictTuple,
-): HttpReceipt {
-  return {
-    id: `receipt-${scenario.id}`,
-    request_id: request.request_id,
-    route_pattern: request.route_pattern,
-    method: request.method,
-    caller_identity_hash: "a".repeat(64),
-    verdict,
-    evidence: [],
-    response_status: verdict.verdict === "deny" ? verdict.http_status : 200,
-    timestamp: request.timestamp,
-    content_hash: "b".repeat(64),
-    policy_hash: "verdict-matrix-policy",
-    capability_id: request.capability_id,
-    metadata: {
-      verdict_matrix: {
-        driver: TYPESCRIPT_NODE_HTTP_DRIVER,
-        reason_code: tupleValue.reason_code,
-        scope_set: tupleValue.scope_set,
-      },
-    },
-    kernel_key: "typescript-node-http",
-    signature: "sidecar-stub",
-  };
-}
-
 async function scenarioFiles(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true });
   const files: string[] = [];
@@ -330,13 +224,6 @@ function validateScenario(scenario: VerdictScenario, file: string): void {
     throw new Error(`${file}: script.operation is required`);
   }
   JSON.parse(scenario.script.input_json);
-}
-
-function parseRequestBody(body: BodyInit | null | undefined): ChioHttpRequest {
-  if (typeof body !== "string") {
-    throw new Error("sidecar request body must be a JSON string");
-  }
-  return JSON.parse(body) as ChioHttpRequest;
 }
 
 function methodForTool(tool: string): HttpMethod {
@@ -363,13 +250,33 @@ function tupleKey(tupleValue: VerdictTuple): string {
   return JSON.stringify(normalizeTuple(tupleValue));
 }
 
+function resolveDriverSidecarUrl(options: RunOptions): string | undefined {
+  const explicit = options.sidecarUrl ?? process.env[SIDECAR_ENV] ?? process.env["CHIO_SIDECAR_URL"];
+  if (explicit == null || explicit.trim().length === 0) {
+    return undefined;
+  }
+  return explicit;
+}
+
+function capabilityTokenForScenario(scenario: VerdictScenario): string {
+  return JSON.stringify({
+    id: `cap-${scenario.id}`,
+    scopes: scenario.script.capability_scopes ?? [],
+  });
+}
+
 if (process.argv[1] != null && resolve(process.argv[1]) === import.meta.filename) {
   const scenarioRoot = process.argv[2] ?? join(process.cwd(), "scenarios");
   runVerdictMatrixScenarios(scenarioRoot)
     .then((outcomes) => {
       const failed = outcomes.filter((outcome) => outcome.status !== "pass");
-      console.log(JSON.stringify({ driver: TYPESCRIPT_NODE_HTTP_DRIVER, outcomes }, null, 2));
-      process.exitCode = failed.length === 0 ? 0 : 1;
+      const unsupported = outcomes.filter((outcome) => outcome.status === "unsupported");
+      console.log(JSON.stringify({
+        driver: TYPESCRIPT_NODE_HTTP_DRIVER,
+        unsupported_count: unsupported.length,
+        outcomes,
+      }, null, 2));
+      process.exitCode = failed.some((outcome) => outcome.status === "fail") ? 1 : 0;
     })
     .catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : String(error));
