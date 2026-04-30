@@ -97,6 +97,15 @@ async function runFlow(): Promise<void> {
   }
 }
 
+// M10.P3.T4 cascade renderer.
+//
+// When the operator presses the revoke button, the issuer test-double
+// pushes a revocation entry into the in-page M04 oracle (the
+// RevocationState set). The same capability that previously rendered an
+// allow now renders a deny carrying urn:chio:error:custody:credential-revoked.
+// In the kernel-side e2e (M10.P2.T6) the cascade arrives within one M04
+// epoch (one-second tick in test config); the demo runs synchronously
+// because the test-double consults the oracle on every call.
 async function revokeAndReplay(): Promise<void> {
   if (!lastCapability) {
     setText('verdict-revoked', 'no capability minted yet', 'fail');
@@ -106,7 +115,7 @@ async function revokeAndReplay(): Promise<void> {
   const verdict = await simulateKernelCall(KERNEL_URL, lastCapability, revocationState);
   setText(
     'verdict-revoked',
-    verdict.allowed ? 'allow' : 'deny',
+    verdict.allowed ? 'allow' : 'deny (within M04 epoch)',
     verdict.allowed ? 'ok' : 'fail',
   );
   setText('revocation-urn', verdict.errorCode ?? '(none)', verdict.allowed ? 'info' : 'fail');
