@@ -3150,6 +3150,7 @@ name = "chio-kernel-core"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "chio-adversarial-suite",
  "chio-core-types",
  "dudect-bencher",
  "proptest",
