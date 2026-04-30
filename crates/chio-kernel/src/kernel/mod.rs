@@ -1041,6 +1041,16 @@ pub struct ChioKernel {
     /// and never blocks dispatch; failures are surfaced through the
     /// retry/dead-letter machinery in P2.T3, not through this option.
     settlement_observer: Option<std::sync::Arc<dyn chio_settle::SettlementHook>>,
+    /// M04 P3.T4 recursive-delegation oracle handle. When `Some` and the
+    /// `delegation_v2` cargo feature is on, the verifier consults this
+    /// arc-swap-backed snapshot on every delegated dispatch and denies
+    /// the capability if any link in the chain (or the leaf) is in the
+    /// revoked set. `None` falls back to the legacy per-row
+    /// `RevocationStore` lookup. Field always present so the struct
+    /// shape is feature-flag agnostic; consultation is gated by
+    /// `cfg(feature = "delegation_v2")` on the read path.
+    revocation_view:
+        Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
 }
 
 #[derive(Clone, Copy)]
@@ -1419,7 +1429,33 @@ impl ChioKernel {
             federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
             signing_task,
             settlement_observer: None,
+            revocation_view: None,
         }
+    }
+
+    /// Install (or replace) the M04 P3.T4 recursive-delegation oracle
+    /// handle. Default deployments leave this `None` and rely on the
+    /// legacy per-row `RevocationStore` lookup. With the `delegation_v2`
+    /// feature on, installing a [`chio_kernel_core::RevocationView`]
+    /// here causes the verifier to consult it on every delegated
+    /// dispatch.
+    ///
+    /// The handle is `Arc`-shared so federation gossip (M04 P2.T6) can
+    /// install monotone snapshot updates without holding a kernel
+    /// mutex.
+    pub fn set_revocation_view(
+        &mut self,
+        view: std::sync::Arc<chio_kernel_core::RevocationView>,
+    ) {
+        self.revocation_view = Some(view);
+    }
+
+    /// Borrow the currently-installed revocation view, if any.
+    #[must_use]
+    pub fn revocation_view(
+        &self,
+    ) -> Option<&std::sync::Arc<chio_kernel_core::RevocationView>> {
+        self.revocation_view.as_ref()
     }
 
     /// Borrow the kernel's mpsc-backed signing-task handle.
@@ -3591,6 +3627,14 @@ impl ChioKernel {
     }
 
     fn validate_delegation_admission(&self, cap: &CapabilityToken) -> Result<(), KernelError> {
+        // M04 P3.T4: when the `delegation_v2` feature is on, consult the
+        // installed `RevocationView` snapshot before re-running the
+        // legacy chain validation. Fail-closed: a revoked ancestor or
+        // leaf denies dispatch even if the chain is otherwise valid.
+        // This is a no-op (`Ok(())`) when no view is installed.
+        #[cfg(feature = "delegation_v2")]
+        delegation::consult_revocation_view(cap, self.revocation_view.as_ref())?;
+
         if cap.delegation_chain.is_empty() {
             return Ok(());
         }
@@ -6085,6 +6129,9 @@ pub(crate) fn current_unix_timestamp() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(feature = "delegation_v2")]
+#[path = "delegation.rs"]
+pub(crate) mod delegation;
 #[path = "evaluator.rs"]
 pub mod evaluator;
 #[allow(dead_code)]
