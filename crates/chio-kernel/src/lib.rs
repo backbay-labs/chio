@@ -27,6 +27,7 @@ pub mod authority;
 pub mod budget_store;
 pub mod capability_lineage;
 pub mod checkpoint;
+pub mod compliance_certificate;
 pub mod compliance_score;
 pub mod cost_attribution;
 pub mod dpop;
