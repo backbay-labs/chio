@@ -34,6 +34,7 @@ members = [
     "crates/chio-ag-ui-proxy",
     "crates/chio-anthropic-tools-adapter",
     "crates/chio-bedrock-converse-adapter",
+    "crates/chio-cohere-tools-adapter",
     "crates/chio-cross-protocol",
     "crates/chio-envoy-ext-authz",
     "crates/chio-gemini-tools-adapter",

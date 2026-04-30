@@ -1,0 +1,423 @@
+//! Provider-native adapter that mediates Cohere `/v2/chat` tool-use traffic
+//! through the Chio kernel. Pinned upstream API version: `2025-04` (see
+//! [`transport::COHERE_API_VERSION`]).
+//!
+//! Cohere v2 surfaces tool calls as a `tool_plan` string plus a `tool_calls`
+//! array on the assistant `message`. Tool results travel back as `tool` role
+//! messages carrying `tool_call_id` and a content block list. The adapter's
+//! [`lift_batch`](CohereAdapter::lift_batch) lifts every `tool_calls` entry
+//! into a [`chio_tool_call_fabric::ToolInvocation`] and
+//! [`lower_tool_message`](CohereAdapter::lower_tool_message) lowers a kernel
+//! verdict back into a [`ToolResultMessage`].
+
+#![forbid(unsafe_code)]
+
+pub mod native;
+pub mod streaming;
+pub mod transport;
+
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use chio_core::canonical::canonical_json_bytes;
+use chio_tool_call_fabric::{
+    DenyReason, Principal, ProvenanceStamp, ProviderError, ProviderId, ProviderRequest, Redaction,
+    ToolInvocation, ToolResult, VerdictResult,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use thiserror::Error;
+
+pub use native::{ToolCallBlock, ToolCallFunction, ToolResultContent, ToolResultMessage};
+pub use transport::{Transport, COHERE_API_VERSION, COHERE_CHAT_HOST};
+
+/// Configuration for the Cohere adapter.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CohereAdapterConfig {
+    /// Stable identifier for this adapter instance.
+    pub server_id: String,
+    /// Human-readable name surfaced in logs and the manifest.
+    pub server_name: String,
+    /// Adapter version string (independent of the upstream API version).
+    pub server_version: String,
+    /// Hex-encoded Ed25519 public key for receipt provenance.
+    pub public_key: String,
+    /// Pinned upstream API version, always [`COHERE_API_VERSION`].
+    pub api_version: String,
+    /// Cohere organization identifier. Cohere does not expose a dedicated
+    /// principal slot in the fabric `Principal` taxonomy yet; the adapter
+    /// reuses the `OpenAiOrg` slot here so receipts remain provenance-stable.
+    pub org_id: String,
+}
+
+impl CohereAdapterConfig {
+    /// Construct a configuration with the API version pinned to
+    /// [`COHERE_API_VERSION`].
+    pub fn new(
+        server_id: impl Into<String>,
+        server_name: impl Into<String>,
+        server_version: impl Into<String>,
+        public_key: impl Into<String>,
+        org_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            server_id: server_id.into(),
+            server_name: server_name.into(),
+            server_version: server_version.into(),
+            public_key: public_key.into(),
+            api_version: COHERE_API_VERSION.to_string(),
+            org_id: org_id.into(),
+        }
+    }
+}
+
+/// Adapter handle.
+#[derive(Clone)]
+pub struct CohereAdapter {
+    config: CohereAdapterConfig,
+    transport: Arc<dyn Transport>,
+}
+
+impl CohereAdapter {
+    /// Build a new adapter from a config and a transport handle.
+    pub fn new(config: CohereAdapterConfig, transport: Arc<dyn Transport>) -> Self {
+        Self { config, transport }
+    }
+
+    /// Provider identifier for this adapter.
+    pub fn provider(&self) -> ProviderId {
+        ProviderId::Cohere
+    }
+
+    /// Pinned upstream API version (always [`COHERE_API_VERSION`]).
+    pub fn api_version(&self) -> &str {
+        &self.config.api_version
+    }
+
+    /// Borrow the configuration.
+    pub fn config(&self) -> &CohereAdapterConfig {
+        &self.config
+    }
+
+    /// Borrow the transport handle.
+    pub fn transport(&self) -> &Arc<dyn Transport> {
+        &self.transport
+    }
+
+    /// Lift every Cohere `tool_calls` block in a non-streaming `/v2/chat`
+    /// response payload.
+    pub fn lift_batch(&self, raw: ProviderRequest) -> Result<Vec<ToolInvocation>, ProviderError> {
+        let calls = tool_calls(raw)?;
+        if calls.is_empty() {
+            return Err(ProviderError::Malformed(
+                "Cohere /v2/chat payload did not contain tool_calls blocks".to_string(),
+            ));
+        }
+        calls
+            .iter()
+            .map(|call| self.invocation_from_tool_call(call))
+            .collect()
+    }
+
+    pub(crate) fn invocation_from_tool_call(
+        &self,
+        call: &ToolCallBlock,
+    ) -> Result<ToolInvocation, ProviderError> {
+        validate_tool_call(call)?;
+        let parsed_args: Value = serde_json::from_str(&call.function.arguments).map_err(|error| {
+            ProviderError::BadToolArgs(format!(
+                "Cohere tool_call `{}` arguments did not parse as JSON: {error}",
+                call.function.name
+            ))
+        })?;
+        if !parsed_args.is_object() {
+            return Err(ProviderError::BadToolArgs(format!(
+                "Cohere tool_call `{}` arguments did not parse as a JSON object",
+                call.function.name
+            )));
+        }
+        let arguments = canonical_json_bytes(&parsed_args).map_err(|error| {
+            ProviderError::BadToolArgs(format!(
+                "Cohere tool_call args failed canonical JSON encoding: {error}"
+            ))
+        })?;
+
+        Ok(ToolInvocation {
+            provider: ProviderId::Cohere,
+            tool_name: call.function.name.clone(),
+            arguments,
+            provenance: ProvenanceStamp {
+                provider: ProviderId::Cohere,
+                request_id: call.id.clone(),
+                api_version: self.config.api_version.clone(),
+                principal: Principal::OpenAiOrg {
+                    org_id: self.config.org_id.clone(),
+                },
+                received_at: SystemTime::now(),
+            },
+        })
+    }
+
+    /// Lower a kernel verdict and tool result into a [`ToolResultMessage`].
+    pub fn lower_tool_message(
+        &self,
+        tool_call_id: &str,
+        verdict: VerdictResult,
+        result: ToolResult,
+    ) -> Result<ToolResultMessage, ProviderError> {
+        let tool_call_id = non_empty_str(tool_call_id, "tool_call_id")?;
+        match verdict {
+            VerdictResult::Allow { redactions, .. } => {
+                let value = parse_value(&result.0)?;
+                let value = apply_redactions(value, &redactions, "Cohere tool_result")?;
+                let canonical = canonical_json_bytes(&value).map_err(|error| {
+                    ProviderError::Malformed(format!(
+                        "Cohere tool_result canonical encoding failed: {error}"
+                    ))
+                })?;
+                let text = String::from_utf8(canonical).map_err(|error| {
+                    ProviderError::Malformed(format!(
+                        "Cohere tool_result canonical bytes were not UTF-8: {error}"
+                    ))
+                })?;
+                Ok(ToolResultMessage::new(tool_call_id, text))
+            }
+            VerdictResult::Deny { reason, .. } => {
+                let payload = deny_payload(&reason);
+                let text = serde_json::to_string(&payload).map_err(|error| {
+                    ProviderError::Malformed(format!(
+                        "Cohere deny payload encoding failed: {error}"
+                    ))
+                })?;
+                Ok(ToolResultMessage::new(tool_call_id, text))
+            }
+        }
+    }
+}
+
+/// Adapter-local error taxonomy.
+#[derive(Debug, Error)]
+pub enum CohereAdapterError {
+    /// Placeholder for call sites not yet implemented.
+    #[error("cohere adapter call site is not implemented: {0}")]
+    NotImplemented(&'static str),
+    /// Bubbled up from the transport layer.
+    #[error(transparent)]
+    Transport(#[from] transport::TransportError),
+}
+
+fn tool_calls(raw: ProviderRequest) -> Result<Vec<ToolCallBlock>, ProviderError> {
+    let value: Value = serde_json::from_slice(&raw.0).map_err(|error| {
+        ProviderError::Malformed(format!("Cohere /v2/chat payload was not JSON: {error}"))
+    })?;
+    let body = response_body(value);
+    extract_tool_calls(&body)
+}
+
+fn response_body(value: Value) -> Value {
+    for field in ["body", "response", "payload"] {
+        if let Some(nested) = value.get(field) {
+            if let Some(obj) = nested.as_object() {
+                return Value::Object(obj.clone());
+            }
+        }
+    }
+    value
+}
+
+fn extract_tool_calls(body: &Value) -> Result<Vec<ToolCallBlock>, ProviderError> {
+    let message = match body.get("message") {
+        Some(value) => value,
+        None => return Ok(Vec::new()),
+    };
+    let array = match message.get("tool_calls").and_then(Value::as_array) {
+        Some(array) => array,
+        None => return Ok(Vec::new()),
+    };
+    let mut calls = Vec::with_capacity(array.len());
+    for entry in array {
+        let parsed: ToolCallBlock = serde_json::from_value(entry.clone()).map_err(|error| {
+            ProviderError::Malformed(format!("Cohere tool_call block was malformed: {error}"))
+        })?;
+        calls.push(parsed);
+    }
+    Ok(calls)
+}
+
+fn validate_tool_call(call: &ToolCallBlock) -> Result<(), ProviderError> {
+    if call.id.trim().is_empty() {
+        return Err(ProviderError::Malformed(
+            "Cohere tool_call id was empty".to_string(),
+        ));
+    }
+    if call.kind != "function" {
+        return Err(ProviderError::Malformed(format!(
+            "Cohere tool_call kind `{}` is not supported on the v2 surface",
+            call.kind
+        )));
+    }
+    if call.function.name.trim().is_empty() {
+        return Err(ProviderError::Malformed(
+            "Cohere tool_call.function.name was empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn parse_value(bytes: &[u8]) -> Result<Value, ProviderError> {
+    serde_json::from_slice(bytes).map_err(|error| {
+        ProviderError::Malformed(format!("tool result was not JSON bytes: {error}"))
+    })
+}
+
+fn apply_redactions(
+    mut value: Value,
+    redactions: &[Redaction],
+    context: &str,
+) -> Result<Value, ProviderError> {
+    for redaction in redactions {
+        if redaction.path.is_empty() {
+            value = Value::String(redaction.replacement.clone());
+            continue;
+        }
+        if !redaction.path.starts_with('/') {
+            return Err(ProviderError::Malformed(format!(
+                "{context} redaction path `{}` is not a JSON Pointer",
+                redaction.path
+            )));
+        }
+        let target = value.pointer_mut(&redaction.path).ok_or_else(|| {
+            ProviderError::Malformed(format!(
+                "{context} redaction path `{}` did not resolve",
+                redaction.path
+            ))
+        })?;
+        *target = Value::String(redaction.replacement.clone());
+    }
+    Ok(value)
+}
+
+fn deny_payload(reason: &DenyReason) -> Value {
+    let text = match reason {
+        DenyReason::PolicyDeny { rule_id } => format!("policy_deny: {rule_id}"),
+        DenyReason::GuardDeny { guard_id, detail } => {
+            format!("guard_deny: {guard_id}: {detail}")
+        }
+        DenyReason::CapabilityExpired => "capability_expired".to_string(),
+        DenyReason::PrincipalUnknown => "principal_unknown".to_string(),
+        DenyReason::BudgetExceeded => "budget_exceeded".to_string(),
+    };
+    json!({ "error": text })
+}
+
+fn non_empty_str<'a>(value: &'a str, field: &str) -> Result<&'a str, ProviderError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Err(ProviderError::Malformed(format!(
+            "Cohere {field} must not be empty"
+        )))
+    } else {
+        Ok(trimmed)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn config() -> CohereAdapterConfig {
+        CohereAdapterConfig::new(
+            "cohere-1",
+            "Cohere v2 chat",
+            "0.1.0",
+            "deadbeef",
+            "org_chio_demo",
+        )
+    }
+
+    #[test]
+    fn config_pins_api_version() {
+        let cfg = config();
+        assert_eq!(cfg.api_version, COHERE_API_VERSION);
+        assert_eq!(cfg.api_version, "2025-04");
+    }
+
+    #[test]
+    fn adapter_reports_provider_and_pin() {
+        let cfg = config();
+        let transport = transport::MockTransport::new();
+        let adapter = CohereAdapter::new(cfg, Arc::new(transport));
+        assert_eq!(adapter.provider(), ProviderId::Cohere);
+        assert_eq!(adapter.api_version(), "2025-04");
+    }
+
+    #[test]
+    fn lift_batch_extracts_tool_calls() {
+        let cfg = config();
+        let adapter = CohereAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let payload = json!({
+            "message": {
+                "role": "assistant",
+                "tool_plan": "I will look up the weather",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Paris\"}"
+                        }
+                    }
+                ]
+            }
+        });
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+        let invocations = adapter.lift_batch(raw).unwrap();
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].tool_name, "get_weather");
+        assert_eq!(invocations[0].provider, ProviderId::Cohere);
+        assert_eq!(invocations[0].provenance.request_id, "call_1");
+    }
+
+    #[test]
+    fn lift_batch_rejects_payload_without_tool_calls() {
+        let cfg = config();
+        let adapter = CohereAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let payload = json!({"message": {"role": "assistant", "content": "no tools"}});
+        let raw = ProviderRequest(serde_json::to_vec(&payload).unwrap());
+        let err = adapter.lift_batch(raw).unwrap_err();
+        match err {
+            ProviderError::Malformed(_) => {}
+            other => panic!("expected Malformed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lower_tool_message_allow() {
+        let cfg = config();
+        let adapter = CohereAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let verdict = VerdictResult::Allow {
+            redactions: vec![],
+            receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_demo".into()),
+        };
+        let result = ToolResult(b"{\"temp\":18}".to_vec());
+        let msg = adapter
+            .lower_tool_message("call_1", verdict, result)
+            .unwrap();
+        assert_eq!(msg.role, "tool");
+        assert_eq!(msg.tool_call_id, "call_1");
+        assert_eq!(msg.content.len(), 1);
+        assert!(msg.content[0].text.contains("\"temp\""));
+    }
+
+    #[test]
+    fn error_display_is_em_dash_free() {
+        let cases = vec![CohereAdapterError::NotImplemented("/v2/chat")];
+        for err in cases {
+            let s = err.to_string();
+            assert!(!s.contains('\u{2014}'));
+        }
+    }
+}
