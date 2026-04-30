@@ -1,4 +1,4 @@
-//! M06 allocation-count bench for the M05 dispatch_allow baseline.
+//! Allocation-count bench for the dispatch_allow baseline.
 
 #[cfg(any(dhat, feature = "dhat-heap"))]
 #[global_allocator]
