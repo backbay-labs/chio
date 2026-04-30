@@ -248,6 +248,18 @@ enum Commands {
         command: SettleCommands,
     },
 
+    /// Query, diff, or list anchored roots in the lineage DAG.
+    ///
+    /// Surfaces the M09 P5 lineage graph (`chio-lineage`):
+    /// - `query` walks forward or reverse from a seed node id over a
+    ///   lineage JSON dump.
+    /// - `diff` computes the symmetric edge diff between two dumps.
+    /// - `roots` lists pinned-frontier artifacts in a directory.
+    Lineage {
+        #[command(subcommand)]
+        command: LineageCommands,
+    },
+
     /// Diagnose toolchain, registry, OTEL, and `chio.yaml` health.
     ///
     /// Probes (in order):
@@ -455,6 +467,56 @@ enum SettleCommands {
 
         /// Emit a structured JSON report on stdout instead of the
         /// human-readable text summary.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+/// `arc lineage` subcommands. M09 P5.T7 surfaces three verbs that the
+/// underlying library and tests share.
+#[derive(Subcommand)]
+enum LineageCommands {
+    /// Walk forward or reverse from a seed node id over a lineage JSON dump.
+    Query {
+        /// Path to the lineage JSON dump (the same format the static
+        /// viewer at `docs/demo/lineage` reads).
+        #[arg(long, value_name = "PATH")]
+        graph: PathBuf,
+        /// Seed node ids. Repeatable.
+        #[arg(long = "seed", value_name = "ID")]
+        seeds: Vec<String>,
+        /// Walk direction. `forward` walks downstream edges; `reverse`
+        /// walks upstream.
+        #[arg(long, default_value = "forward")]
+        direction: String,
+        /// Maximum recursion depth. Defaults to 20 (matches the
+        /// recursive-CTE bound documented on `chio-store-sqlite::lineage_cte`).
+        #[arg(long, default_value_t = 20)]
+        depth_limit: u32,
+        /// Maximum row count.
+        #[arg(long, default_value_t = 10_000)]
+        row_limit: u32,
+        /// Emit a JSON report instead of a TTY summary.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Symmetric edge diff between two lineage JSON dumps.
+    Diff {
+        #[arg(long, value_name = "LABEL")]
+        left_label: String,
+        #[arg(long, value_name = "PATH")]
+        left: PathBuf,
+        #[arg(long, value_name = "LABEL")]
+        right_label: String,
+        #[arg(long, value_name = "PATH")]
+        right: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List pinned-frontier artifacts in a directory.
+    Roots {
+        #[arg(long, value_name = "PATH")]
+        dir: PathBuf,
         #[arg(long)]
         json: bool,
     },
