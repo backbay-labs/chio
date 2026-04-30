@@ -104,19 +104,21 @@ fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
         if line.starts_with(':') {
             continue;
         }
-        let (field, value) = line.split_once(':').ok_or_else(|| {
-            ProviderError::Malformed(format!("Cohere SSE line `{line}` was missing `:`"))
-        })?;
+        // Per the WHATWG EventStream spec, lines without a colon are
+        // treated as a field with an empty value, and unknown field names
+        // are silently ignored. Avoid hard-failing on metadata fields that
+        // Cohere may add later (tracing headers, custom extensions).
+        let (field, value) = match line.split_once(':') {
+            Some((f, v)) => (f, v),
+            None => (line.as_str(), ""),
+        };
         let value = value.strip_prefix(' ').unwrap_or(value);
         match field {
             "data" => data_lines.push(value.to_string()),
             "event" => event = Some(value.to_string()),
-            "id" | "retry" => {}
-            other => {
-                return Err(ProviderError::Malformed(format!(
-                    "Cohere SSE field `{other}` is not supported"
-                )));
-            }
+            // `id`, `retry`, and any other unknown fields are silently
+            // ignored per the EventStream spec.
+            _ => {}
         }
     }
     raw.push(b'\n');
@@ -174,5 +176,32 @@ fn deny_reason_text(reason: &DenyReason) -> String {
         DenyReason::CapabilityExpired => "capability_expired".to_string(),
         DenyReason::PrincipalUnknown => "principal_unknown".to_string(),
         DenyReason::BudgetExceeded => "budget_exceeded".to_string(),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_sse_frames_ignores_unknown_fields() {
+        // Unknown SSE fields (the spec says these MUST be silently ignored)
+        // and bare `:` comment lines and lines without a colon must not
+        // cause a hard parse failure.
+        let raw = b": cohere keep-alive\n\
+                  trace-id: abc-123\n\
+                  custom-extension: hello\n\
+                  data: {\"event_type\":\"text-delta\",\"text\":\"hi\"}\n\
+                  bare-line-no-colon\n\
+                  \n";
+        let frames = parse_sse_frames(raw).expect("unknown SSE fields must be tolerated");
+        assert_eq!(frames.len(), 1);
+        let frame = &frames[0];
+        let data = frame.data.as_ref().expect("frame has data");
+        assert_eq!(
+            data.get("event_type").and_then(serde_json::Value::as_str),
+            Some("text-delta")
+        );
     }
 }

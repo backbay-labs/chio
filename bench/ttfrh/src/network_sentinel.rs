@@ -127,10 +127,7 @@ impl SentinelReport {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            let host = match line.split_once(':') {
-                Some((host, _)) => host.trim(),
-                None => line,
-            };
+            let host = split_host_port(line);
             if host.is_empty() {
                 continue;
             }
@@ -145,6 +142,41 @@ impl SentinelReport {
             allowed,
             offending,
         }
+    }
+}
+
+/// Strip an optional trailing `:port` from a capture line while preserving
+/// IPv6 literals.
+///
+/// IPv6 addresses contain colons, so a naive `split_once(':')` strips the
+/// host down to an empty string and silently bypasses the sentinel
+/// (allowing arbitrary IPv6 endpoints to evade the allowlist). Three forms
+/// are supported:
+///
+/// - `[::1]:8787`   - bracketed IPv6 with port; brackets and port stripped.
+/// - `[::1]`        - bracketed IPv6 without port.
+/// - `127.0.0.1:80` - IPv4 or hostname with port; port stripped.
+/// - `::1`          - bare IPv6 literal (no port; preserved as-is).
+/// - `127.0.0.1`    - bare IPv4/hostname.
+fn split_host_port(line: &str) -> &str {
+    let line = line.trim();
+    // Bracketed form unambiguously delimits the host.
+    if let Some(rest) = line.strip_prefix('[') {
+        if let Some(close) = rest.find(']') {
+            return &rest[..close];
+        }
+        // Mismatched bracket: treat the whole rest as the host literal.
+        return rest;
+    }
+    // A bare line containing two or more colons is an IPv6 literal with no
+    // port, e.g. `::1` or `fe80::1`. Preserve it verbatim.
+    if line.matches(':').count() >= 2 {
+        return line;
+    }
+    // Otherwise (IPv4 or hostname, optionally `:port`), strip a single port.
+    match line.split_once(':') {
+        Some((host, _)) => host.trim(),
+        None => line,
     }
 }
 
@@ -193,6 +225,43 @@ mod tests {
         assert!(report.allowed.contains("127.0.0.1"));
         assert!(report.allowed.contains("localhost"));
         assert!(report.offending.contains("telemetry.example"));
+    }
+
+    #[test]
+    fn split_host_port_handles_ipv6_forms() {
+        // Bare IPv6 literals: preserved as-is so they can match the
+        // loopback allowlist (`::1`, etc).
+        assert_eq!(split_host_port("::1"), "::1");
+        assert_eq!(split_host_port("fe80::1"), "fe80::1");
+        // Bracketed IPv6 with and without port.
+        assert_eq!(split_host_port("[::1]:8787"), "::1");
+        assert_eq!(split_host_port("[fe80::1]"), "fe80::1");
+        // IPv4 with port.
+        assert_eq!(split_host_port("127.0.0.1:3000"), "127.0.0.1");
+        // Hostname with port.
+        assert_eq!(
+            split_host_port("telemetry.example:443"),
+            "telemetry.example"
+        );
+        // Bare hostname.
+        assert_eq!(split_host_port("localhost"), "localhost");
+    }
+
+    #[test]
+    fn parse_capture_does_not_silently_drop_ipv6_addresses() {
+        let allowlist = Allowlist::embedded();
+        let lines = ["[::1]:8787", "[2001:db8::1]:443", "fe80::1"];
+        let report = SentinelReport::parse_capture_lines(
+            TemplateRunner::CloudflareWorker,
+            &allowlist,
+            lines.iter().copied(),
+        );
+        // ::1 is in the loopback allowlist; the other IPv6 addresses must
+        // surface as offending instead of being silently dropped.
+        assert!(report.allowed.contains("::1"));
+        assert!(report.offending.contains("2001:db8::1"));
+        assert!(report.offending.contains("fe80::1"));
+        assert!(!report.passed());
     }
 
     #[test]

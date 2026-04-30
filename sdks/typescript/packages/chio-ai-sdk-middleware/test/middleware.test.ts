@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   ChioMiddlewareDeniedError,
+  createChioMiddleware,
   isAsyncIterable,
   isReadableStreamLike,
   wrapWithChio,
@@ -111,6 +112,43 @@ describe("wrapWithChio", () => {
 
     // Names are sorted to stabilize evaluation order across runtimes.
     expect(seen).toEqual(["fetch_url", "search"]);
+  });
+
+  it("createChioMiddleware exposes AI SDK wrapGenerate/wrapStream hooks", async () => {
+    // The Vercel AI SDK invokes `wrapGenerate({ doGenerate, params })` and
+    // `wrapStream({ doStream, params })` once per call. Without these
+    // hooks, passing the result to `wrapLanguageModel({ middleware })`
+    // would silently no-op and bypass Chio. The test asserts they exist
+    // and that the gate runs before the underlying call.
+    const middleware = createChioMiddleware({
+      evaluate: ({ toolUse }) =>
+        toolUse?.name === "blocked"
+          ? { verdict: "deny", reason: "blocked tool" }
+          : { verdict: "allow" },
+    });
+
+    expect(typeof middleware.wrapGenerate).toBe("function");
+    expect(typeof middleware.wrapStream).toBe("function");
+
+    // Allow path runs the inner doGenerate with the original params.
+    const allowResult = await middleware.wrapGenerate<LanguageModelInvocation, { ok: boolean }>({
+      doGenerate: async (p) => ({ ok: p.tools != null }),
+      params: { tools: { search: {} } } as LanguageModelInvocation,
+    });
+    expect(allowResult).toEqual({ ok: true });
+
+    // Deny path throws ChioMiddlewareDeniedError before the inner call.
+    let invoked = false;
+    await expect(
+      middleware.wrapStream<LanguageModelInvocation, unknown>({
+        doStream: async () => {
+          invoked = true;
+          return null;
+        },
+        params: { toolCalls: [{ toolName: "blocked" }] } as LanguageModelInvocation,
+      }),
+    ).rejects.toThrow(ChioMiddlewareDeniedError);
+    expect(invoked).toBe(false);
   });
 
   it("denies on the first denying tool and stops invoking the model", async () => {
