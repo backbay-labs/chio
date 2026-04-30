@@ -107,6 +107,12 @@ export interface ChioHttpRequest {
   body_length: number;
   session_id?: string | undefined;
   capability_id?: string | undefined;
+  /** Optional sidecar tool-server identity for synthetic tool-call evaluations. */
+  tool_server?: string | undefined;
+  /** Optional sidecar tool name for synthetic tool-call evaluations. */
+  tool_name?: string | undefined;
+  /** Optional structured tool-call arguments for synthetic sidecar evaluations. */
+  arguments?: unknown;
   model_metadata?: ModelMetadata | undefined;
   timestamp: number;
 }

@@ -113,6 +113,16 @@ export interface BuildRequestOptions {
   bodyLength: number;
   routePattern: string;
   capabilityId: string | undefined;
+  /**
+   * Optional sidecar tool-server identity. Required for synthetic tool-call
+   * evaluations so the kernel's capability-scope checks see
+   * `requested_tool_server` and can apply scope-subset rules.
+   */
+  toolServer?: string | undefined;
+  /** Optional sidecar tool name (companion to `toolServer`). */
+  toolName?: string | undefined;
+  /** Optional structured arguments forwarded with synthetic tool calls. */
+  toolArguments?: unknown;
   modelMetadata?: ChioHttpRequest["model_metadata"] | undefined;
 }
 
@@ -158,6 +168,9 @@ export function buildChioHttpRequest(opts: BuildRequestOptions): ChioHttpRequest
     body_length: opts.bodyLength,
     session_id: undefined,
     capability_id: opts.capabilityId,
+    tool_server: opts.toolServer,
+    tool_name: opts.toolName,
+    arguments: opts.toolArguments,
     model_metadata: opts.modelMetadata,
     timestamp: Math.floor(Date.now() / 1000),
   };

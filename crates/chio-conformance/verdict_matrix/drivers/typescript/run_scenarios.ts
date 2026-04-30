@@ -106,6 +106,16 @@ export async function runVerdictMatrixScenarios(
       });
       continue;
     }
+    const unsignedCapabilityReason = unsupportedSignedCapability(scenario);
+    if (unsignedCapabilityReason != null) {
+      outcomes.push({
+        scenario_id: scenario.id,
+        status: "unsupported",
+        expected,
+        diagnostic: unsignedCapabilityReason,
+      });
+      continue;
+    }
 
     let actual: VerdictTuple;
     try {
@@ -162,6 +172,16 @@ export function scenarioToHttpRequest(scenario: VerdictScenario): ChioHttpReques
     bodyLength = Buffer.byteLength(scenario.script.input_json, "utf8");
     bodyHash = bodyLength > 0 ? "0".repeat(64) : undefined;
   }
+  // Populate tool-call fields so the sidecar's capability-scope check sees
+  // requested_tool_server / requested_tool_name / arguments. Without these
+  // the sidecar evaluator (chio-api-protect/evaluator.rs) treats the request
+  // as a generic HTTP call and can not apply scope-subset rules.
+  let toolArguments: unknown = undefined;
+  try {
+    toolArguments = JSON.parse(scenario.script.input_json);
+  } catch {
+    toolArguments = undefined;
+  }
   return buildChioHttpRequest({
     method,
     path,
@@ -179,6 +199,9 @@ export function scenarioToHttpRequest(scenario: VerdictScenario): ChioHttpReques
     bodyLength,
     routePattern: `${MATRIX_SERVER_ID}:${scenario.script.tool}`,
     capabilityId: `cap-${scenario.id}`,
+    toolServer: MATRIX_SERVER_ID,
+    toolName: scenario.script.tool,
+    toolArguments,
   });
 }
 
@@ -283,10 +306,41 @@ function unsupportedRequirement(requirements: string[]): string | undefined {
 }
 
 function capabilityTokenForScenario(scenario: VerdictScenario): string {
+  // The Chio sidecar validates a full signed CapabilityToken (issuer,
+  // signature, time-validity) via crates/chio-http-core/src/authority.rs:
+  // `validate_capability_token`. The TypeScript node-http SDK does not yet
+  // expose capability signing primitives, so we surface the structural
+  // shape (id + scopes) for diagnostic correlation only. The driver
+  // pre-empts evaluation for scenarios whose tuples depend on signed-token
+  // validity via `unsupportedSignedCapability`, so this token never reaches
+  // the live sidecar evaluator for capability/revocation cases. Replay,
+  // redaction, and receipt scenarios are already gated by `requires` and
+  // do not exercise the signed-capability path through this driver.
   return JSON.stringify({
     id: `cap-${scenario.id}`,
     scopes: scenario.script.capability_scopes ?? [],
   });
+}
+
+function unsupportedSignedCapability(
+  scenario: VerdictScenario,
+): string | undefined {
+  // Capability and revocation tuples are gated by the kernel's signed
+  // capability-token validation. Until the TypeScript node-http SDK
+  // provides a signed-token builder, sidecar evaluation of these classes
+  // would systematically deny on token validation rather than surface the
+  // intended verdict. Report unsupported with an actionable diagnostic
+  // instead of producing misleading conformance outcomes.
+  if (scenario.category === "capability" || scenario.category === "revocation") {
+    return (
+      "typescript node-http SDK does not yet expose a signed CapabilityToken " +
+      "builder; sidecar evaluation of `" +
+      scenario.category +
+      "` scenarios requires issuer + signature + time-valid fields per " +
+      "chio-http-core::authority::validate_capability_token"
+    );
+  }
+  return undefined;
 }
 
 if (process.argv[1] != null && resolve(process.argv[1]) === import.meta.filename) {
