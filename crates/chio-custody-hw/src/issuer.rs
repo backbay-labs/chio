@@ -42,6 +42,7 @@ use crate::capability::{PasskeyCapability, ScopeSet};
 use crate::error::CustodyError;
 use crate::mint::sign_capability;
 use crate::nonce_store::{PasskeyNonceStore, RecordOutcome};
+use crate::revocation::CredentialRevocationOracle;
 use crate::verifier::VerifiedAssertion;
 
 /// HTTP-shaped mint request. Canonical-JSON encodable.
@@ -80,6 +81,7 @@ pub struct IssuerService {
     audience: String,
     signer: Option<Arc<dyn SigningBackend>>,
     nonce_store: Option<Arc<dyn PasskeyNonceStore>>,
+    revocation: Option<Arc<dyn CredentialRevocationOracle>>,
 }
 
 impl IssuerService {
@@ -97,6 +99,7 @@ impl IssuerService {
             audience: audience.into(),
             signer: None,
             nonce_store: None,
+            revocation: None,
         }
     }
 
@@ -109,6 +112,7 @@ impl IssuerService {
             audience: audience.into(),
             signer: Some(signer),
             nonce_store: None,
+            revocation: None,
         }
     }
 
@@ -121,6 +125,19 @@ impl IssuerService {
     #[must_use]
     pub fn with_nonce_store(mut self, store: Arc<dyn PasskeyNonceStore>) -> Self {
         self.nonce_store = Some(store);
+        self
+    }
+
+    /// Attach a [`CredentialRevocationOracle`] (M10.P2.T3 cascade).
+    ///
+    /// Builder-style: returns the issuer with the revocation cascade
+    /// wired through the M04 sparse-Merkle oracle. When set, every mint
+    /// consults the oracle BEFORE recording the nonce or signing; a
+    /// revoked credential fails-closed with
+    /// [`CustodyError::CredentialRevoked`].
+    #[must_use]
+    pub fn with_revocation_oracle(mut self, oracle: Arc<dyn CredentialRevocationOracle>) -> Self {
+        self.revocation = Some(oracle);
         self
     }
 
@@ -159,6 +176,19 @@ impl IssuerService {
 
         if !verified.user_verified {
             return Err(CustodyError::UserVerificationRequired);
+        }
+
+        // Revocation cascade (M10.P2.T3). The check happens AFTER
+        // audience and UV gates but BEFORE recording the nonce or
+        // signing so a revoked credential never advances the nonce
+        // store nor consumes a signing budget. The cascade is
+        // synchronous from the issuer's point of view: revoking the
+        // credential at the M04 oracle denies the next mint within
+        // the current epoch.
+        if let Some(oracle) = &self.revocation {
+            if oracle.is_revoked(&verified.credential_id_b64)? {
+                return Err(CustodyError::CredentialRevoked);
+            }
         }
 
         let mut cap = PasskeyCapability::new_stub_unsigned(
