@@ -11,6 +11,7 @@ use std::fmt;
 use std::time::Duration;
 
 pub mod budget;
+pub mod network_sentinel;
 pub mod runners;
 
 pub use budget::{Budget, BudgetError, DEFAULT_BUDGET_MS, DEFAULT_BUFFER_PCT};
