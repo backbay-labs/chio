@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use chio_gemini_tools_adapter::transport::MockTransport;
-use chio_gemini_tools_adapter::{GeminiAdapter, GeminiAdapterConfig};
+use chio_groq_tools_adapter::transport::MockTransport;
+use chio_groq_tools_adapter::{GroqAdapter, GroqAdapterConfig};
 use chio_tool_call_fabric::{ProviderError, ProviderRequest, ReceiptId, Redaction, VerdictResult};
 use serde_json::{json, Value};
 
@@ -15,15 +15,15 @@ struct TaxonomyRow {
     envelope: Value,
 }
 
-fn adapter() -> GeminiAdapter {
-    let config = GeminiAdapterConfig::new(
-        "gemini-1",
-        "Gemini generateContent",
+fn adapter() -> GroqAdapter {
+    let config = GroqAdapterConfig::new(
+        "groq-1",
+        "Groq generateContent",
         "0.1.0",
         "deadbeef",
-        "proj_chio_demo",
+        "org_chio_demo",
     );
-    GeminiAdapter::new(config, Arc::new(MockTransport::new()))
+    GroqAdapter::new(config, Arc::new(MockTransport::new()))
 }
 
 fn raw(value: Value) -> Result<ProviderRequest, String> {

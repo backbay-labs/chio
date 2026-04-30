@@ -1,14 +1,14 @@
-//! Gemini generateContent transport scaffold.
+//! Groq chat/completions transport scaffold.
 
 use std::sync::Mutex;
 
 use thiserror::Error;
 
-/// Pinned Gemini API version. Bumping requires re-recording conformance fixtures.
-pub const GEMINI_API_VERSION: &str = "v1beta";
+/// Pinned Groq API version. Bumping requires re-recording conformance fixtures.
+pub const GROQ_API_VERSION: &str = "2025-04";
 
-/// Default Gemini generateContent endpoint host.
-pub const GEMINI_GENERATE_CONTENT_HOST: &str = "https://generativelanguage.googleapis.com";
+/// Default Groq generateContent endpoint host.
+pub const GROQ_CHAT_COMPLETIONS_HOST: &str = "https://api.groq.com";
 
 /// Wire-level transport errors.
 #[derive(Debug, Error)]
@@ -17,18 +17,18 @@ pub enum TransportError {
     #[error("mock transport has no scripted response for `{endpoint}`")]
     MockExhausted { endpoint: String },
     /// Placeholder for the real HTTP transport path.
-    #[error("gemini transport HTTP path is not implemented: {0}")]
+    #[error("groq transport HTTP path is not implemented: {0}")]
     NotImplemented(&'static str),
 }
 
 /// Wire-level transport contract.
 pub trait Transport: Send + Sync {
     fn api_version(&self) -> &str {
-        GEMINI_API_VERSION
+        GROQ_API_VERSION
     }
 
     fn endpoint(&self) -> &str {
-        GEMINI_GENERATE_CONTENT_HOST
+        GROQ_CHAT_COMPLETIONS_HOST
     }
 }
 
@@ -63,7 +63,7 @@ impl MockTransport {
 
 impl Transport for MockTransport {
     fn endpoint(&self) -> &str {
-        "mock://gemini"
+        "mock://groq"
     }
 }
 
@@ -74,17 +74,17 @@ mod tests {
 
     #[test]
     fn pinned_constants_are_correct() {
-        assert_eq!(GEMINI_API_VERSION, "v1beta");
+        assert_eq!(GROQ_API_VERSION, "2025-04");
         assert_eq!(
-            GEMINI_GENERATE_CONTENT_HOST,
-            "https://generativelanguage.googleapis.com"
+            GROQ_CHAT_COMPLETIONS_HOST,
+            "https://api.groq.com"
         );
     }
 
     #[test]
     fn mock_transport_records_calls() {
         let mock = MockTransport::new();
-        mock.record("/v1beta/models/gemini-1.5-pro:generateContent", b"{\"foo\":1}");
+        mock.record("/openai/v1/chat/completions", b"{\"foo\":1}");
         let calls = mock.calls();
         assert_eq!(calls.len(), 1);
     }
@@ -92,17 +92,17 @@ mod tests {
     #[test]
     fn mock_transport_advertises_pin() {
         let mock = MockTransport::new();
-        assert_eq!(mock.api_version(), GEMINI_API_VERSION);
-        assert_eq!(mock.endpoint(), "mock://gemini");
+        assert_eq!(mock.api_version(), GROQ_API_VERSION);
+        assert_eq!(mock.endpoint(), "mock://groq");
     }
 
     #[test]
     fn transport_error_display_is_em_dash_free() {
         let cases = vec![
             TransportError::MockExhausted {
-                endpoint: "/v1beta".to_string(),
+                endpoint: "/2025-04".to_string(),
             },
-            TransportError::NotImplemented("generateContent"),
+            TransportError::NotImplemented("chat/completions"),
         ];
         for err in cases {
             let s = err.to_string();

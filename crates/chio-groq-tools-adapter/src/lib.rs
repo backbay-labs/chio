@@ -1,12 +1,12 @@
-//! Provider-native adapter that mediates Google Gemini `generateContent`
+//! Provider-native adapter that mediates Groq `chat/completions`
 //! tool-use traffic through the Chio kernel. Pinned upstream API version:
-//! `v1beta` (see [`transport::GEMINI_API_VERSION`]).
+//! `2025-04` (see [`transport::GROQ_API_VERSION`]).
 //!
-//! Gemini surfaces tool calls as `functionCall` parts inside the model's
+//! Groq surfaces tool calls as `tool_calls` parts inside the model's
 //! `Content` payload. Tool results travel back as `functionResponse` parts
-//! on the user turn. The adapter's [`lift_batch`](GeminiAdapter::lift_batch)
-//! lifts every `functionCall` into a [`chio_tool_call_fabric::ToolInvocation`]
-//! and [`lower_function_response`](GeminiAdapter::lower_function_response)
+//! on the user turn. The adapter's [`lift_batch`](GroqAdapter::lift_batch)
+//! lifts every `tool_calls` into a [`chio_tool_call_fabric::ToolInvocation`]
+//! and [`lower_function_response`](GroqAdapter::lower_function_response)
 //! lowers a kernel verdict back into a [`FunctionResponsePart`].
 
 #![forbid(unsafe_code)]
@@ -28,11 +28,11 @@ use serde_json::{json, Value};
 use thiserror::Error;
 
 pub use native::{FunctionCallPart, FunctionResponsePart};
-pub use transport::{Transport, GEMINI_API_VERSION, GEMINI_GENERATE_CONTENT_HOST};
+pub use transport::{Transport, GROQ_API_VERSION, GROQ_CHAT_COMPLETIONS_HOST};
 
-/// Configuration for the Gemini adapter.
+/// Configuration for the Groq adapter.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct GeminiAdapterConfig {
+pub struct GroqAdapterConfig {
     /// Stable identifier for this adapter instance.
     pub server_id: String,
     /// Human-readable name surfaced in logs and the manifest.
@@ -41,18 +41,18 @@ pub struct GeminiAdapterConfig {
     pub server_version: String,
     /// Hex-encoded Ed25519 public key for receipt provenance.
     pub public_key: String,
-    /// Pinned upstream API version, always [`GEMINI_API_VERSION`].
+    /// Pinned upstream API version, always [`GROQ_API_VERSION`].
     pub api_version: String,
     /// Google Cloud project identifier (populates the AnthropicWorkspace
-    /// principal slot via reuse; Gemini does not yet have its own variant
+    /// principal slot via reuse; Groq does not yet have its own variant
     /// in the fabric ProviderId enum's Principal taxonomy, so we reuse the
     /// generic OpenAi org slot here).
     pub project_id: String,
 }
 
-impl GeminiAdapterConfig {
+impl GroqAdapterConfig {
     /// Construct a configuration with the API version pinned to
-    /// [`GEMINI_API_VERSION`].
+    /// [`GROQ_API_VERSION`].
     pub fn new(
         server_id: impl Into<String>,
         server_name: impl Into<String>,
@@ -65,7 +65,7 @@ impl GeminiAdapterConfig {
             server_name: server_name.into(),
             server_version: server_version.into(),
             public_key: public_key.into(),
-            api_version: GEMINI_API_VERSION.to_string(),
+            api_version: GROQ_API_VERSION.to_string(),
             project_id: project_id.into(),
         }
     }
@@ -73,29 +73,29 @@ impl GeminiAdapterConfig {
 
 /// Adapter handle.
 #[derive(Clone)]
-pub struct GeminiAdapter {
-    config: GeminiAdapterConfig,
+pub struct GroqAdapter {
+    config: GroqAdapterConfig,
     transport: Arc<dyn Transport>,
 }
 
-impl GeminiAdapter {
+impl GroqAdapter {
     /// Build a new adapter from a config and a transport handle.
-    pub fn new(config: GeminiAdapterConfig, transport: Arc<dyn Transport>) -> Self {
+    pub fn new(config: GroqAdapterConfig, transport: Arc<dyn Transport>) -> Self {
         Self { config, transport }
     }
 
     /// Provider identifier for this adapter.
     pub fn provider(&self) -> ProviderId {
-        ProviderId::Gemini
+        ProviderId::Groq
     }
 
-    /// Pinned upstream API version (always [`GEMINI_API_VERSION`]).
+    /// Pinned upstream API version (always [`GROQ_API_VERSION`]).
     pub fn api_version(&self) -> &str {
         &self.config.api_version
     }
 
     /// Borrow the configuration.
-    pub fn config(&self) -> &GeminiAdapterConfig {
+    pub fn config(&self) -> &GroqAdapterConfig {
         &self.config
     }
 
@@ -104,8 +104,8 @@ impl GeminiAdapter {
         &self.transport
     }
 
-    /// Lift every Gemini `functionCall` part in a non-streaming
-    /// `generateContent` response payload.
+    /// Lift every Groq `tool_calls` part in a non-streaming
+    /// `chat/completions` response payload.
     pub fn lift_batch(
         &self,
         raw: ProviderRequest,
@@ -113,7 +113,7 @@ impl GeminiAdapter {
         let calls = function_calls(raw)?;
         if calls.is_empty() {
             return Err(ProviderError::Malformed(
-                "Gemini generateContent payload did not contain functionCall parts"
+                "Groq generateContent payload did not contain functionCall parts"
                     .to_string(),
             ));
         }
@@ -130,17 +130,17 @@ impl GeminiAdapter {
         validate_function_call(call)?;
         let arguments = canonical_json_bytes(&call.args).map_err(|error| {
             ProviderError::BadToolArgs(format!(
-                "Gemini functionCall args failed canonical JSON encoding: {error}"
+                "Groq functionCall args failed canonical JSON encoding: {error}"
             ))
         })?;
 
         Ok(ToolInvocation {
-            provider: ProviderId::Gemini,
+            provider: ProviderId::Groq,
             tool_name: call.name.clone(),
             arguments,
             provenance: ProvenanceStamp {
-                provider: ProviderId::Gemini,
-                request_id: format!("gemini_{}_call", call.name),
+                provider: ProviderId::Groq,
+                request_id: format!("groq_{}_call", call.name),
                 api_version: self.config.api_version.clone(),
                 principal: Principal::OpenAiOrg {
                     org_id: self.config.project_id.clone(),
@@ -162,7 +162,7 @@ impl GeminiAdapter {
         match verdict {
             VerdictResult::Allow { redactions, .. } => {
                 let value = parse_value(&result.0)?;
-                let value = apply_redactions(value, &redactions, "Gemini functionResponse")?;
+                let value = apply_redactions(value, &redactions, "Groq functionResponse")?;
                 Ok(FunctionResponsePart::new(function_name, value))
             }
             VerdictResult::Deny { reason, .. } => Ok(FunctionResponsePart::new(
@@ -175,9 +175,9 @@ impl GeminiAdapter {
 
 /// Adapter-local error taxonomy.
 #[derive(Debug, Error)]
-pub enum GeminiAdapterError {
+pub enum GroqAdapterError {
     /// Placeholder for call sites not yet implemented.
-    #[error("gemini adapter call site is not implemented: {0}")]
+    #[error("groq adapter call site is not implemented: {0}")]
     NotImplemented(&'static str),
     /// Bubbled up from the transport layer.
     #[error(transparent)]
@@ -187,7 +187,7 @@ pub enum GeminiAdapterError {
 fn function_calls(raw: ProviderRequest) -> Result<Vec<FunctionCallPart>, ProviderError> {
     let value: Value = serde_json::from_slice(&raw.0).map_err(|error| {
         ProviderError::Malformed(format!(
-            "Gemini generateContent payload was not JSON: {error}"
+            "Groq generateContent payload was not JSON: {error}"
         ))
     })?;
     let body = response_body(value);
@@ -208,7 +208,7 @@ fn response_body(value: Value) -> Value {
 fn extract_function_calls(body: &Value) -> Result<Vec<FunctionCallPart>, ProviderError> {
     if let Some(call) = body.get("functionCall") {
         let parsed: FunctionCallPart = serde_json::from_value(call.clone()).map_err(|error| {
-            ProviderError::Malformed(format!("Gemini functionCall part was malformed: {error}"))
+            ProviderError::Malformed(format!("Groq functionCall part was malformed: {error}"))
         })?;
         return Ok(vec![parsed]);
     }
@@ -228,7 +228,7 @@ fn extract_function_calls(body: &Value) -> Result<Vec<FunctionCallPart>, Provide
                     let parsed: FunctionCallPart = serde_json::from_value(call.clone())
                         .map_err(|error| {
                             ProviderError::Malformed(format!(
-                                "Gemini functionCall part was malformed: {error}"
+                                "Groq functionCall part was malformed: {error}"
                             ))
                         })?;
                     calls.push(parsed);
@@ -242,12 +242,12 @@ fn extract_function_calls(body: &Value) -> Result<Vec<FunctionCallPart>, Provide
 fn validate_function_call(call: &FunctionCallPart) -> Result<(), ProviderError> {
     if call.name.trim().is_empty() {
         return Err(ProviderError::Malformed(
-            "Gemini functionCall name was empty".to_string(),
+            "Groq functionCall name was empty".to_string(),
         ));
     }
     if !call.args.is_object() {
         return Err(ProviderError::BadToolArgs(format!(
-            "Gemini functionCall `{}` args were not a JSON object",
+            "Groq functionCall `{}` args were not a JSON object",
             call.name
         )));
     }
@@ -304,7 +304,7 @@ fn non_empty_str<'a>(value: &'a str, field: &str) -> Result<&'a str, ProviderErr
     let trimmed = value.trim();
     if trimmed.is_empty() {
         Err(ProviderError::Malformed(format!(
-            "Gemini {field} must not be empty"
+            "Groq {field} must not be empty"
         )))
     } else {
         Ok(trimmed)
@@ -317,36 +317,36 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn config() -> GeminiAdapterConfig {
-        GeminiAdapterConfig::new(
-            "gemini-1",
-            "Gemini generateContent",
+    fn config() -> GroqAdapterConfig {
+        GroqAdapterConfig::new(
+            "groq-1",
+            "Groq generateContent",
             "0.1.0",
             "deadbeef",
-            "proj_chio_demo",
+            "org_chio_demo",
         )
     }
 
     #[test]
     fn config_pins_api_version() {
         let cfg = config();
-        assert_eq!(cfg.api_version, GEMINI_API_VERSION);
-        assert_eq!(cfg.api_version, "v1beta");
+        assert_eq!(cfg.api_version, GROQ_API_VERSION);
+        assert_eq!(cfg.api_version, "2025-04");
     }
 
     #[test]
     fn adapter_reports_provider_and_pin() {
         let cfg = config();
         let transport = transport::MockTransport::new();
-        let adapter = GeminiAdapter::new(cfg, Arc::new(transport));
-        assert_eq!(adapter.provider(), ProviderId::Gemini);
-        assert_eq!(adapter.api_version(), "v1beta");
+        let adapter = GroqAdapter::new(cfg, Arc::new(transport));
+        assert_eq!(adapter.provider(), ProviderId::Groq);
+        assert_eq!(adapter.api_version(), "2025-04");
     }
 
     #[test]
     fn lift_batch_extracts_function_call_parts() {
         let cfg = config();
-        let adapter = GeminiAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let adapter = GroqAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
         let payload = json!({
             "candidates": [{
                 "content": {
@@ -366,7 +366,7 @@ mod tests {
     #[test]
     fn lower_function_response_allow() {
         let cfg = config();
-        let adapter = GeminiAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
+        let adapter = GroqAdapter::new(cfg, Arc::new(transport::MockTransport::new()));
         let verdict = VerdictResult::Allow {
             redactions: vec![],
             receipt_id: chio_tool_call_fabric::ReceiptId("rcpt_demo".into()),
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn error_display_is_em_dash_free() {
-        let cases = vec![GeminiAdapterError::NotImplemented("generateContent")];
+        let cases = vec![GroqAdapterError::NotImplemented("chat/completions")];
         for err in cases {
             let s = err.to_string();
             assert!(!s.contains('\u{2014}'));

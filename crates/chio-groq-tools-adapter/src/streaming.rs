@@ -1,8 +1,8 @@
-//! Gemini SSE gating for `streamGenerateContent` payloads.
+//! Groq SSE gating for `chat/completions stream` payloads.
 //!
-//! Gemini streams as JSON-array chunks framed in SSE-style `data:` events.
+//! Groq streams as JSON-array chunks framed in SSE-style `data:` events.
 //! Each chunk carries a partial `Candidate` with content parts. We buffer
-//! `functionCall` parts (which arrive whole on Gemini's wire) and gate the
+//! `tool_calls` parts (which arrive whole on Groq's wire) and gate the
 //! emission on a kernel verdict before forwarding bytes downstream.
 
 use chio_tool_call_fabric::{
@@ -10,21 +10,21 @@ use chio_tool_call_fabric::{
 };
 use serde_json::Value;
 
-use crate::{native::FunctionCallPart, GeminiAdapter};
+use crate::{native::FunctionCallPart, GroqAdapter};
 
-/// Result of gating one Gemini stream payload.
+/// Result of gating one Groq stream payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatedSseStream {
     /// SSE bytes that are safe to forward downstream.
     pub bytes: Vec<u8>,
-    /// Tool invocations evaluated when each `functionCall` part finalised.
+    /// Tool invocations evaluated when each `tool_calls` part finalised.
     pub invocations: Vec<ToolInvocation>,
     /// Verdicts returned for each invocation in stream order.
     pub verdicts: Vec<VerdictResult>,
 }
 
-impl GeminiAdapter {
-    /// Gate a deterministic Gemini SSE payload.
+impl GroqAdapter {
+    /// Gate a deterministic Groq SSE payload.
     pub fn gate_sse_stream<F>(
         &self,
         raw: &[u8],
@@ -74,7 +74,7 @@ struct SseFrame {
 
 fn parse_sse_frames(raw: &[u8]) -> Result<Vec<SseFrame>, ProviderError> {
     let text = std::str::from_utf8(raw).map_err(|error| {
-        ProviderError::Malformed(format!("Gemini SSE bytes were not UTF-8: {error}"))
+        ProviderError::Malformed(format!("Groq SSE bytes were not UTF-8: {error}"))
     })?;
     let mut frames = Vec::new();
     let mut lines: Vec<String> = Vec::new();
@@ -108,7 +108,7 @@ fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
             continue;
         }
         let (field, value) = line.split_once(':').ok_or_else(|| {
-            ProviderError::Malformed(format!("Gemini SSE line `{line}` was missing `:`"))
+            ProviderError::Malformed(format!("Groq SSE line `{line}` was missing `:`"))
         })?;
         let value = value.strip_prefix(' ').unwrap_or(value);
         match field {
@@ -116,7 +116,7 @@ fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
             "event" | "id" | "retry" => {}
             other => {
                 return Err(ProviderError::Malformed(format!(
-                    "Gemini SSE field `{other}` is not supported"
+                    "Groq SSE field `{other}` is not supported"
                 )));
             }
         }
@@ -128,7 +128,7 @@ fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
     } else {
         let text = data_lines.join("\n");
         Some(serde_json::from_str::<Value>(&text).map_err(|error| {
-            ProviderError::Malformed(format!("Gemini SSE data was not JSON: {error}"))
+            ProviderError::Malformed(format!("Groq SSE data was not JSON: {error}"))
         })?)
     };
 
@@ -160,7 +160,7 @@ fn function_call_from_part(part: &Value) -> Result<Option<FunctionCallPart>, Pro
         return Ok(None);
     };
     let parsed: FunctionCallPart = serde_json::from_value(call.clone()).map_err(|error| {
-        ProviderError::Malformed(format!("Gemini functionCall part was malformed: {error}"))
+        ProviderError::Malformed(format!("Groq functionCall part was malformed: {error}"))
     })?;
     Ok(Some(parsed))
 }
@@ -172,11 +172,11 @@ fn ensure_streaming_allow(
     match verdict {
         VerdictResult::Allow { redactions, .. } if redactions.is_empty() => Ok(()),
         VerdictResult::Allow { .. } => Err(ProviderError::Malformed(format!(
-            "Gemini streaming functionCall `{}` allow verdict requested redactions; fail-closed",
+            "Groq streaming functionCall `{}` allow verdict requested redactions; fail-closed",
             call.name
         ))),
         VerdictResult::Deny { reason, receipt_id } => Err(ProviderError::Malformed(format!(
-            "Gemini streaming functionCall `{}` denied: {} (receipt {})",
+            "Groq streaming functionCall `{}` denied: {} (receipt {})",
             call.name,
             deny_reason_text(reason),
             receipt_id.0

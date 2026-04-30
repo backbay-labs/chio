@@ -1,8 +1,8 @@
-//! Gemini-native content-part shapes for `generateContent`.
+//! Groq-native content-part shapes for `chat/completions`.
 //!
-//! Gemini renders tool calls as `functionCall` parts inside a `Content` and
+//! Groq renders tool calls as `tool_calls` parts inside a `Content` and
 //! tool results as `functionResponse` parts. Pinned to API version
-//! `v1beta` (see [`crate::transport::GEMINI_API_VERSION`]).
+//! `2025-04` (see [`crate::transport::GROQ_API_VERSION`]).
 
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +31,7 @@ impl FunctionCallPart {
     }
 }
 
-/// Function-response part fed back to Gemini on the next user turn.
+/// Function-response part fed back to Groq on the next user turn.
 ///
 /// Wire shape:
 ///
@@ -42,7 +42,7 @@ impl FunctionCallPart {
 pub struct FunctionResponsePart {
     /// Function name matching [`FunctionCallPart::name`].
     pub name: String,
-    /// JSON object Gemini consumes as the tool result.
+    /// JSON object Groq consumes as the tool result.
     pub response: serde_json::Value,
 }
 

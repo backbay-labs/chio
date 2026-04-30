@@ -1,6 +1,6 @@
 [package]
-name = "chio-gemini-tools-adapter"
-description = "Google Gemini generateContent tool-use adapter for Chio (pinned to v1beta generateContent)"
+name = "chio-groq-tools-adapter"
+description = "Groq OpenAI-compatible chat/completions tool-use adapter for Chio (pinned to 2025-04)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,12 +10,12 @@ readme = "README.md"
 publish = false
 
 [lib]
-name = "chio_gemini_tools_adapter"
+name = "chio_groq_tools_adapter"
 
 # Pinned upstream API version. Bumping requires a deliberate PR with a fixture
-# re-record. The same string is exposed at `crate::transport::GEMINI_API_VERSION`.
+# re-record. The same string is exposed at `crate::transport::GROQ_API_VERSION`.
 [package.metadata.chio]
-gemini_api_version = "v1beta"
+groq_api_version = "2025-04"
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
