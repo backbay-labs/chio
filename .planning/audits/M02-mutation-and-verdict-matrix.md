@@ -137,6 +137,7 @@ find sdks -maxdepth 3 -type d | sort
 - [ ] P0.T2: Verify Cargo.lock bump and cargo-mutants 25.x re-pin.
 - [ ] P1: Capture mutation baseline and missed-mutant classes per crate.
 - [x] P1.T3: Capture `chio-attest-verify` mutation baseline.
+- [x] P1.T5: Capture `chio-guards` and `chio-anchor` bounded baseline.
 - [ ] P2: Raise each target crate to >= 80% kill rate.
 - [ ] P3: Flip mutation gate, PR comment, issue filing, skip rationale, and
   README headline.
@@ -542,3 +543,90 @@ Missed mutants:
 | `crates/chio-kernel-core/src/scope.rs:584:9` | `delete match arm serde_json::Value::Object(map) in collect_memory_store_values` |
 | `crates/chio-kernel-core/src/scope.rs:603:5` | `replace is_memory_store_key -> bool with false` |
 | `crates/chio-kernel-core/src/scope.rs:603:5` | `replace is_memory_store_key -> bool with true` |
+
+## chio-guards Mutation Baseline
+
+Snapshot date: 2026-04-30.
+
+Commands:
+
+```bash
+cargo mutants --config crates/chio-guards/mutants.toml --package chio-guards --list
+cargo mutants --config crates/chio-guards/mutants.toml --package chio-guards --shard 1/32 --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-guards-p1-t5-shard
+```
+
+The candidate list contains 1298 mutants. This baseline records a bounded
+first shard attempt. The unmutated baseline was clean, then the run was stopped
+after the first completed mutant outcomes because the cold scratch build cost
+exceeded the ticket close-out budget.
+
+| Metric | Count |
+|--------|-------|
+| Shard candidates | 41 |
+| Evaluated mutants | 5 |
+| Caught | 1 |
+| Missed | 0 |
+| Unviable | 4 |
+| Timeout | 0 |
+| Kill rate, excluding unviable | 100.0% |
+| Baseline build | 400.8 seconds |
+| Baseline test | 91.1 seconds |
+
+Caught mutants:
+
+| File | Mutation |
+|------|----------|
+| `crates/chio-guards/src/path_normalization.rs:16:5` | replace `normalize_path_for_policy` with `"xyzzy".into()` |
+
+Unviable mutants:
+
+| File | Mutation |
+|------|----------|
+| `crates/chio-guards/src/behavioral_sequence.rs:92:38` | replace `&&` with `||` in `<impl Guard for BehavioralSequenceGuard>::evaluate` |
+| `crates/chio-guards/src/behavioral_profile.rs:295:9` | replace `BehavioralProfileGuard::current_window_start` with `1` |
+| `crates/chio-guards/src/forbidden_path.rs:141:9` | replace `<impl chio_kernel::Guard for ForbiddenPathGuard>::name` with `""` |
+| `crates/chio-guards/src/behavioral_profile.rs:118:9` | replace `InMemoryReceiptFeed::push` with `Ok(())` |
+
+## chio-anchor Mutation Baseline
+
+Snapshot date: 2026-04-30.
+
+Commands:
+
+```bash
+cargo mutants --config crates/chio-anchor/mutants.toml --package chio-anchor --list
+cargo mutants --config crates/chio-anchor/mutants.toml --package chio-anchor --shard 1/32 --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-anchor-p1-t5-shard
+```
+
+The candidate list contains 249 mutants. This baseline records a bounded first
+shard attempt. The unmutated baseline was clean, then the run was stopped after
+the first completed mutant outcomes because the cold scratch build cost
+exceeded the ticket close-out budget.
+
+| Metric | Count |
+|--------|-------|
+| Shard candidates | 8 |
+| Evaluated mutants | 6 |
+| Caught | 2 |
+| Missed | 0 |
+| Unviable | 4 |
+| Timeout | 0 |
+| Kill rate, excluding unviable | 100.0% |
+| Baseline build | 381.4 seconds |
+| Baseline test | 20.4 seconds |
+
+Caught mutants:
+
+| File | Mutation |
+|------|----------|
+| `crates/chio-anchor/src/discovery.rs:554:5` | replace `freshness_status_label` with `"xyzzy"` |
+| `crates/chio-anchor/src/evm.rs:390:8` | delete `!` in `ensure_publication_ready` |
+
+Unviable mutants:
+
+| File | Mutation |
+|------|----------|
+| `crates/chio-anchor/src/lib.rs:125:5` | replace `kernel_checkpoint_from_statement` with `Default::default()` |
+| `crates/chio-anchor/src/discovery.rs:167:68` | replace `!=` with `==` in `build_anchor_discovery_artifact` |
+| `crates/chio-anchor/src/functions.rs:255:27` | replace `!=` with `==` in `assess_functions_verification` |
+| `crates/chio-anchor/src/bitcoin.rs:132:5` | replace `verify_ots_proof_for_submission` with `Ok(Default::default())` |

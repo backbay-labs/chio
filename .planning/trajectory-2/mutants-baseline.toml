@@ -352,3 +352,60 @@ missed_mutants = [
 timeout_mutants = [
   "crates/chio-kernel-core/src/passport_verify.rs:240:17: replace += with *= in payload_bytes_hex::decode_hex",
 ]
+
+[crate.chio-guards]
+package = "chio-guards"
+config = "crates/chio-guards/mutants.toml"
+command = "cargo mutants --config crates/chio-guards/mutants.toml --package chio-guards --shard 1/32 --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-guards-p1-t5-shard"
+listed_mutants = 1298
+shard = "1/32"
+evaluated_mutants = 5
+caught_count = 1
+missed_count = 0
+unviable_count = 4
+timeout_count = 0
+kill_rate_excluding_unviable = 100.0
+output_dir = "target/mutants/chio-guards-p1-t5-shard/mutants.out"
+baseline_status = "bounded shard interrupted after clean baseline; partial outcomes recorded"
+baseline_build_seconds = 400.8
+baseline_test_seconds = 91.1
+
+caught_mutants = [
+  "crates/chio-guards/src/path_normalization.rs:16:5: replace normalize_path_for_policy -> String with \"xyzzy\".into()",
+]
+
+unviable_mutants = [
+  "crates/chio-guards/src/behavioral_sequence.rs:92:38: replace && with || in <impl Guard for BehavioralSequenceGuard>::evaluate",
+  "crates/chio-guards/src/behavioral_profile.rs:295:9: replace BehavioralProfileGuard::current_window_start -> u64 with 1",
+  "crates/chio-guards/src/forbidden_path.rs:141:9: replace <impl chio_kernel::Guard for ForbiddenPathGuard>::name -> &str with \"\"",
+  "crates/chio-guards/src/behavioral_profile.rs:118:9: replace InMemoryReceiptFeed::push -> Result<(), KernelError> with Ok(())",
+]
+
+[crate.chio-anchor]
+package = "chio-anchor"
+config = "crates/chio-anchor/mutants.toml"
+command = "cargo mutants --config crates/chio-anchor/mutants.toml --package chio-anchor --shard 1/32 --jobs 4 --timeout 120 --no-shuffle --output target/mutants/chio-anchor-p1-t5-shard"
+listed_mutants = 249
+shard = "1/32"
+evaluated_mutants = 6
+caught_count = 2
+missed_count = 0
+unviable_count = 4
+timeout_count = 0
+kill_rate_excluding_unviable = 100.0
+output_dir = "target/mutants/chio-anchor-p1-t5-shard/mutants.out"
+baseline_status = "bounded shard interrupted after clean baseline; partial outcomes recorded"
+baseline_build_seconds = 381.4
+baseline_test_seconds = 20.4
+
+caught_mutants = [
+  "crates/chio-anchor/src/discovery.rs:554:5: replace freshness_status_label -> &'static str with \"xyzzy\"",
+  "crates/chio-anchor/src/evm.rs:390:8: delete ! in ensure_publication_ready",
+]
+
+unviable_mutants = [
+  "crates/chio-anchor/src/lib.rs:125:5: replace kernel_checkpoint_from_statement -> KernelCheckpoint with Default::default()",
+  "crates/chio-anchor/src/discovery.rs:167:68: replace != with == in build_anchor_discovery_artifact",
+  "crates/chio-anchor/src/functions.rs:255:27: replace != with == in assess_functions_verification",
+  "crates/chio-anchor/src/bitcoin.rs:132:5: replace verify_ots_proof_for_submission -> Result<ParsedOtsProof, AnchorError> with Ok(Default::default())",
+]
