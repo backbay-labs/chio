@@ -2299,6 +2299,7 @@ fn main() {
             ),
         },
         Commands::Replay(args) => cmd_replay(&args),
+        Commands::Doctor(args) => cmd_doctor(&args, json_output),
     };
 
     if let Err(e) = result {

@@ -236,6 +236,23 @@ enum Commands {
     ///   50 Redaction mismatch: `redaction_pass_id` unavailable, or rerunning
     ///      the redaction manifest produces a different result.
     Replay(ReplayArgs),
+
+    /// Diagnose toolchain, registry, OTEL, and `chio.yaml` health.
+    ///
+    /// Probes (in order):
+    ///
+    /// 1. Toolchain version vs. workspace MSRV / `rust-toolchain.toml`.
+    /// 2. OCI guard registry reachability.
+    /// 3. Cosign guard-bundle freshness.
+    /// 4. OTEL exporter endpoint resolution.
+    /// 5. Kernel runtime `/metrics` (asserts the
+    ///    `chio_kernel_dispatch_inflight` gauge is reachable).
+    /// 6. `chio.yaml` schema validity.
+    ///
+    /// Exit codes follow the worst observed severity: 0 for ok / info /
+    /// warning, 1 for error, 2 for fatal. The optional `--fix` flag
+    /// runs idempotent repairs only; destructive operations are rejected.
+    Doctor(DoctorArgs),
 }
 
 /// Arguments for the `chio replay` subcommand.

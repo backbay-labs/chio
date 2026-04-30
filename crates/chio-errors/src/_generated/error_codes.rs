@@ -604,6 +604,84 @@ pub const CLI_OTHER: ErrorCodeSpec = ErrorCodeSpec {
     consumed_by: &["chio-cli", "chio-control-plane"],
 };
 
+pub const CLI_DOCTOR_TOOLCHAIN_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:cli:doctor-toolchain-mismatch",
+    domain: Domain::Cli,
+    severity: Severity::Error,
+    summary: "chio doctor toolchain probe found a Rust toolchain mismatch.",
+    help: "Install the workspace MSRV (or the version pinned in rust-toolchain.toml) and rerun chio doctor.",
+    legacy_string_code: "CHIO-CLI-DOCTOR-TOOLCHAIN-MISMATCH",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-cli"],
+};
+
+pub const CLI_DOCTOR_OCI_UNREACHABLE: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:cli:doctor-oci-unreachable",
+    domain: Domain::Cli,
+    severity: Severity::Warning,
+    summary: "chio doctor OCI registry reachability probe could not reach the configured registry.",
+    help: "Verify the registry URL, network egress, and credentials, or run with CHIO_DOCTOR_SKIP_NETWORK=1 to bypass.",
+    legacy_string_code: "CHIO-CLI-DOCTOR-OCI-UNREACHABLE",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-cli", "chio-guard-registry"],
+};
+
+pub const CLI_DOCTOR_COSIGN_STALE: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:cli:doctor-cosign-stale",
+    domain: Domain::Cli,
+    severity: Severity::Warning,
+    summary: "chio doctor cosign freshness probe found a stale or unverifiable guard-bundle signature.",
+    help: "Re-pull the guard bundle and verify its sigstore signature against the trusted identity set.",
+    legacy_string_code: "CHIO-CLI-DOCTOR-COSIGN-STALE",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-cli", "chio-attest-verify"],
+};
+
+pub const CLI_DOCTOR_OTEL_UNRESOLVED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:cli:doctor-otel-unresolved",
+    domain: Domain::Cli,
+    severity: Severity::Warning,
+    summary: "chio doctor OTEL probe could not resolve the OTLP endpoint or kernel runtime metrics.",
+    help: "Set OTEL_EXPORTER_OTLP_ENDPOINT and ensure the chio-tower /metrics endpoint exposes chio_kernel_dispatch_inflight.",
+    legacy_string_code: "CHIO-CLI-DOCTOR-OTEL-UNRESOLVED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-cli"],
+};
+
+pub const CLI_DOCTOR_CHIO_YAML_INVALID: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:cli:doctor-chio-yaml-invalid",
+    domain: Domain::Cli,
+    severity: Severity::Error,
+    summary: "chio doctor schema probe found chio.yaml validation errors.",
+    help: "Repair the document at the reported line and column and rerun chio doctor.",
+    legacy_string_code: "CHIO-CLI-DOCTOR-CHIO-YAML-INVALID",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-cli"],
+};
+
+pub const CLI_DOCTOR_PROBE_FAILED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:cli:doctor-probe-failed",
+    domain: Domain::Cli,
+    severity: Severity::Error,
+    summary: "chio doctor reported one or more failing probes.",
+    help: "Inspect the per-probe diagnostics, fix the reported issues, and rerun chio doctor.",
+    legacy_string_code: "CHIO-CLI-DOCTOR-PROBE-FAILED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-cli"],
+};
+
 pub const DELEGATION_CHAIN_REVOKED: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:delegation:chain-revoked",
     domain: Domain::Delegation,
@@ -753,6 +831,12 @@ pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     CLI_YAML,
     CLI_SQLITE,
     CLI_OTHER,
+    CLI_DOCTOR_TOOLCHAIN_MISMATCH,
+    CLI_DOCTOR_OCI_UNREACHABLE,
+    CLI_DOCTOR_COSIGN_STALE,
+    CLI_DOCTOR_OTEL_UNRESOLVED,
+    CLI_DOCTOR_CHIO_YAML_INVALID,
+    CLI_DOCTOR_PROBE_FAILED,
     DELEGATION_CHAIN_REVOKED,
     ADVERSARIAL_ESCAPE_DETECTED,
     THREAT_COVERAGE_GAP,
