@@ -2571,6 +2571,7 @@ dependencies = [
  "chio-policy",
  "chio-replay-corpus",
  "chio-reputation",
+ "chio-settle",
  "chio-siem",
  "chio-store-sqlite",
  "chio-tee-frame",

@@ -81,6 +81,7 @@ uuid = { workspace = true, features = ["v4"] }
 [dev-dependencies]
 chio-credit = { path = "../chio-credit" }
 chio-open-market = { path = "../chio-open-market" }
+chio-settle = { path = "../chio-settle" }
 chio-underwriting = { path = "../chio-underwriting" }
 insta = { version = "1.42", features = ["json", "redactions"] }
 rand_core = { workspace = true }
