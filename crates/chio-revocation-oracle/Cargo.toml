@@ -16,6 +16,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 rs_merkle = { workspace = true }
+sha2 = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"

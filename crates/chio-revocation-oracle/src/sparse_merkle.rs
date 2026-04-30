@@ -6,6 +6,7 @@ use crate::api::{
     EpochRoot, InclusionProof, NonInclusionProof, Result, RevocationKey, RevocationOracle,
     RevocationOracleError,
 };
+use crate::{EpochRootSigner, SignedEpochRoot};
 
 #[derive(Debug, Clone)]
 struct LeafRecord {
@@ -69,6 +70,10 @@ impl InMemoryRevocationOracle {
         let bytes = serde_json::to_vec(key)
             .map_err(|err| RevocationOracleError::Serialization(err.to_string()))?;
         Ok(Sha256::hash(&bytes))
+    }
+
+    pub fn signed_epoch_root(&self, signer: &impl EpochRootSigner) -> Result<SignedEpochRoot> {
+        SignedEpochRoot::sign(self.epoch_root(), signer)
     }
 }
 
@@ -158,5 +163,17 @@ mod tests {
 
         assert!(!oracle.verify_non_inclusion(&proof));
         Ok(())
+    }
+
+    #[test]
+    fn signed_epoch_root_verifies() -> Result<()> {
+        let mut oracle = InMemoryRevocationOracle::new();
+        let key = RevocationKey::new(SubjectId::from("subject-a"), EpochNonce::new(7));
+        oracle.insert(key, 10)?;
+        let signer = crate::DigestRootSigner::new("m04-test", b"secret".to_vec());
+
+        let signed = oracle.signed_epoch_root(&signer)?;
+
+        signed.verify(&signer)
     }
 }

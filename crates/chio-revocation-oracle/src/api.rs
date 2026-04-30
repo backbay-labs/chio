@@ -14,6 +14,8 @@ pub enum RevocationOracleError {
     StaleRoot,
     #[error("signer rejected epoch root")]
     SignerRejected,
+    #[error("signature verification failed")]
+    SignatureVerificationFailed,
     #[error("invalid epoch transition")]
     InvalidEpochTransition,
     #[error("serialization failed: {0}")]
@@ -84,6 +86,13 @@ pub struct EpochRoot {
     pub root_hash: [u8; 32],
     pub leaf_count: usize,
     pub issued_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RootSignature {
+    pub signer_id: String,
+    pub algorithm: String,
+    pub signature_bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
