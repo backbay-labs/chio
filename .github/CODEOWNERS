@@ -32,6 +32,10 @@ wit/chio-guards-redact/world.wit             @bb-connor
 crates/chio-attest-verify/**                 @bb-connor
 crates/chio-tee/**                           @bb-connor
 crates/chio-tee-frame/**                     @bb-connor
+crates/chio-revocation-oracle/**             @bb-connor
+crates/chio-credentials/src/revocation*.rs   @bb-connor
+crates/chio-federation/src/revocation*.rs    @bb-connor
+crates/chio-federation/src/lib.rs            @bb-connor
 crates/chio-tool-call-fabric/**              @bb-connor
 crates/chio-openai/**                        @bb-connor
 crates/chio-conformance/**                   @bb-connor
@@ -43,7 +47,9 @@ sdks/typescript/packages/wire/**             @bb-connor
 sdks/python/**/_generated/**                 @bb-connor
 sdks/python/**                               @bb-connor
 formal/lean4/**                              @bb-connor
+formal/lean4/Chio/Capability/Delegation.lean @bb-connor
 formal/tla/**                                @bb-connor
+formal/tla/DelegationDepthBound.tla          @bb-connor
 formal/rust-verification/**                  @bb-connor
 fuzz/fuzz_targets/**                         @bb-connor
 fuzz/corpus/**                               @bb-connor
@@ -51,6 +57,7 @@ fuzz/corpora/**                              @bb-connor
 fuzz/target-map.toml                         @bb-connor
 Cargo.toml                                   @bb-connor
 Cargo.lock                                   @bb-connor
+crates/chio-core-types/src/capability.rs     @bb-connor
 deny.toml                                    @bb-connor
 .github/workflows/ci.yml                     @bb-connor
 CODEOWNERS                                   @bb-connor

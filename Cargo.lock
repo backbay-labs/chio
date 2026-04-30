@@ -3499,6 +3499,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-revocation-oracle"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "proptest",
+ "rs_merkle",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-settle"
 version = "0.1.0"
 dependencies = [
@@ -8755,6 +8768,15 @@ checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
 dependencies = [
  "bytes",
  "rustc-hex",
+]
+
+[[package]]
+name = "rs_merkle"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb09b49230ba22e8c676e7b75dfe2887dea8121f18b530ae0ba519ce442d2b21"
+dependencies = [
+ "sha2 0.10.9",
 ]
 
 [[package]]
