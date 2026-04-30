@@ -544,7 +544,7 @@ fn normalize_registry_url(url: &str) -> String {
 
 fn require_non_empty_field(value: &str, field: &str) -> Result<(), CliError> {
     if value.trim().is_empty() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification field `{field}` must not be empty"
         )));
     }
@@ -553,7 +553,7 @@ fn require_non_empty_field(value: &str, field: &str) -> Result<(), CliError> {
 
 fn validate_certification_evidence(evidence: &CertificationEvidence) -> Result<(), CliError> {
     if !is_supported_evidence_profile(&evidence.evidence_profile) {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported certification evidence profile: {}",
             evidence.evidence_profile
         )));
@@ -573,18 +573,18 @@ fn validate_certification_evidence(evidence: &CertificationEvidence) -> Result<(
         "evidence.generatedReportSha256",
     )?;
     if evidence.generated_report_bytes == 0 {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification evidence must include a non-empty generated report".to_string(),
         ));
     }
     if evidence.generated_report_media_type != GENERATED_REPORT_MEDIA_TYPE_MARKDOWN {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported generated report media type: {}",
             evidence.generated_report_media_type
         )));
     }
     if evidence.provenance_mode != CERTIFICATION_PROVENANCE_MODE_ARTIFACT_SIGNER {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported certification provenance mode: {}",
             evidence.provenance_mode
         )));
@@ -598,7 +598,7 @@ pub(crate) fn validate_public_certification_metadata(
     now: u64,
 ) -> Result<(), CliError> {
     if metadata.schema != CERTIFICATION_PUBLIC_METADATA_SCHEMA {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported certification public metadata schema: {}",
             metadata.schema
         )));
@@ -606,63 +606,63 @@ pub(crate) fn validate_public_certification_metadata(
     let publisher_id = normalize_registry_url(&metadata.publisher.publisher_id);
     let registry_url = normalize_registry_url(&metadata.publisher.registry_url);
     if publisher_id.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification public metadata is missing publisher.publisherId".to_string(),
         ));
     }
     if registry_url.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification public metadata is missing publisher.registryUrl".to_string(),
         ));
     }
     if publisher_id != registry_url {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification public metadata publisher id `{publisher_id}` does not match registry url `{registry_url}`"
         )));
     }
     if let Some(expected_registry_url) = expected_registry_url {
         let expected = normalize_registry_url(expected_registry_url);
         if registry_url != expected {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "certification public metadata registry url `{registry_url}` does not match expected `{expected}`"
             )));
         }
     }
     if metadata.generated_at == 0 {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification public metadata must include generatedAt".to_string(),
         ));
     }
     if metadata.expires_at <= metadata.generated_at {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification public metadata has expired or invalid expiry".to_string(),
         ));
     }
     if now >= metadata.expires_at {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification public metadata is stale".to_string(),
         ));
     }
     if !metadata.discovery_informational_only {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification public metadata must declare discovery as informational-only"
                 .to_string(),
         ));
     }
     if metadata.supported_profiles.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification public metadata must advertise at least one supported profile"
                 .to_string(),
         ));
     }
     for profile in &metadata.supported_profiles {
         if profile.criteria_profile.trim().is_empty() {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "certification public metadata contains an empty criteria profile".to_string(),
             ));
         }
         if !is_supported_evidence_profile(&profile.evidence_profile) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "certification public metadata contains unsupported evidence profile `{}`",
                 profile.evidence_profile
             )));
@@ -674,7 +674,7 @@ pub(crate) fn validate_public_certification_metadata(
         metadata.public_transparency_path.as_str(),
     ] {
         if !normalize_registry_url(path).starts_with(&registry_url) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "certification public metadata path `{path}` falls outside publisher registry url `{registry_url}`"
             )));
         }
@@ -684,13 +684,13 @@ pub(crate) fn validate_public_certification_metadata(
 
 fn validate_certification_artifact_body(body: &CertificationCheckBody) -> Result<(), CliError> {
     if !is_supported_certification_schema(&body.schema) {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported certification schema: expected {} or {}, got {}",
             CERTIFICATION_SCHEMA, LEGACY_CERTIFICATION_SCHEMA, body.schema
         )));
     }
     if body.criteria_profile != CRITERIA_PROFILE_ALL_PASS_V1 {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported certification criteria profile: {}",
             body.criteria_profile
         )));
@@ -702,7 +702,7 @@ fn validate_certification_artifact_body(body: &CertificationCheckBody) -> Result
 
 fn require_certification_discovery_path(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::Other(
+        CliError::attest_error(
             "certification discovery requires --certification-discovery-file when not using --control-url"
                 .to_string(),
         )
@@ -720,13 +720,13 @@ impl Default for CertificationRegistry {
 
 fn require_existing_dir(path: &Path, label: &str) -> Result<(), CliError> {
     if !path.exists() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "{label} directory does not exist: {}",
             path.display()
         )));
     }
     if !path.is_dir() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "{label} path must be a directory: {}",
             path.display()
         )));
@@ -752,7 +752,7 @@ fn build_certification_body(
     results: Vec<ScenarioResult>,
 ) -> Result<(CertificationCheckBody, Vec<u8>), CliError> {
     if criteria_profile != CRITERIA_PROFILE_ALL_PASS_V1 {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported certification criteria profile: {criteria_profile}"
         )));
     }
@@ -1020,7 +1020,7 @@ pub(crate) fn verify_signed_certification_check(
         .signer_public_key
         .verify(&body_bytes, &artifact.signature)
     {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "certification artifact signature is invalid".to_string(),
         ));
     }
@@ -1045,7 +1045,7 @@ impl CertificationRegistry {
             Ok(bytes) => {
                 let mut registry: Self = serde_json::from_slice(&bytes)?;
                 if !is_supported_certification_registry_version(&registry.version) {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::attest_error(format!(
                         "unsupported certification registry version: {}",
                         registry.version
                     )));
@@ -1169,7 +1169,7 @@ impl CertificationRegistry {
         revoked_at: Option<u64>,
     ) -> Result<CertificationRegistryEntry, CliError> {
         let Some(entry) = self.artifacts.get_mut(artifact_id) else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "certification artifact `{artifact_id}` was not found"
             )));
         };
@@ -1185,7 +1185,7 @@ impl CertificationRegistry {
         request: &CertificationDisputeRequest,
     ) -> Result<CertificationRegistryEntry, CliError> {
         let Some(entry) = self.artifacts.get_mut(artifact_id) else {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "certification artifact `{artifact_id}` was not found"
             )));
         };
@@ -1381,62 +1381,62 @@ fn verify_certification_registry_entry(entry: &CertificationRegistryEntry) -> Re
     verify_signed_certification_check(&entry.artifact)?;
     let expected_artifact_id = certification_artifact_id(&entry.artifact)?;
     if entry.artifact_id != expected_artifact_id {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` has mismatched artifact_id",
             entry.artifact_id
         )));
     }
     if entry.artifact_sha256 != expected_artifact_id {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` has mismatched artifact digest",
             entry.artifact_id
         )));
     }
     if entry.tool_server_id != entry.artifact.body.target.tool_server_id {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` has mismatched tool_server_id",
             entry.artifact_id
         )));
     }
     if entry.tool_server_name != entry.artifact.body.target.tool_server_name {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` has mismatched tool_server_name",
             entry.artifact_id
         )));
     }
     if entry.checked_at != entry.artifact.body.checked_at {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` has mismatched checked_at",
             entry.artifact_id
         )));
     }
     if entry.verdict != entry.artifact.body.verdict {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` has mismatched verdict",
             entry.artifact_id
         )));
     }
     if entry.status == CertificationRegistryState::Superseded && entry.superseded_by.is_none() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` is superseded without superseded_by",
             entry.artifact_id
         )));
     }
     if entry.status == CertificationRegistryState::Superseded && entry.superseded_at.is_none() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` is superseded without superseded_at",
             entry.artifact_id
         )));
     }
     if entry.status == CertificationRegistryState::Revoked && entry.revoked_at.is_none() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "certification registry entry `{}` is revoked without revoked_at",
             entry.artifact_id
         )));
     }
     if let Some(dispute) = entry.dispute.as_ref() {
         if dispute.updated_at == 0 {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "certification registry entry `{}` has invalid dispute timestamp",
                 entry.artifact_id
             )));
@@ -1579,7 +1579,7 @@ pub fn cmd_certify_registry_get_local(
 ) -> Result<(), CliError> {
     let registry = CertificationRegistry::load(registry_path)?;
     let entry = registry.get(artifact_id).cloned().ok_or_else(|| {
-        CliError::Other(format!(
+        CliError::attest_error(format!(
             "certification artifact `{artifact_id}` was not found"
         ))
     })?;
@@ -1729,7 +1729,7 @@ fn selected_network_operators<'a>(
     let mut operators = Vec::new();
     for operator_id in operator_ids {
         let operator = network.validated_operator(operator_id).ok_or_else(|| {
-            CliError::Other(format!(
+            CliError::attest_error(format!(
                 "certification discovery operator `{operator_id}` was not found or is invalid"
             ))
         })?;
@@ -2078,7 +2078,7 @@ pub fn publish_certification_across_network(
     } else {
         for operator_id in operator_ids {
             let operator = network.validated_operator(operator_id).ok_or_else(|| {
-                CliError::Other(format!(
+                CliError::attest_error(format!(
                     "certification discovery operator `{operator_id}` was not found or is invalid"
                 ))
             })?;
@@ -2234,7 +2234,7 @@ fn parse_registry_state_filter(
         Some("active") => Ok(Some(CertificationRegistryState::Active)),
         Some("superseded") => Ok(Some(CertificationRegistryState::Superseded)),
         Some("revoked") => Ok(Some(CertificationRegistryState::Revoked)),
-        Some(other) => Err(CliError::Other(format!(
+        Some(other) => Err(CliError::attest_error(format!(
             "unsupported certification status filter `{other}`"
         ))),
     }
@@ -2246,7 +2246,7 @@ fn parse_dispute_state(state: &str) -> Result<CertificationDisputeState, CliErro
         "under-review" => Ok(CertificationDisputeState::UnderReview),
         "resolved-no-change" => Ok(CertificationDisputeState::ResolvedNoChange),
         "resolved-revoked" => Ok(CertificationDisputeState::ResolvedRevoked),
-        other => Err(CliError::Other(format!(
+        other => Err(CliError::attest_error(format!(
             "unsupported certification dispute state `{other}`"
         ))),
     }
@@ -2410,7 +2410,7 @@ pub fn cmd_certify_registry_dispute(
             .dispute_certification(artifact_id, &request)?
     } else {
         let path = certification_registry_file.ok_or_else(|| {
-            CliError::Other(
+            CliError::attest_error(
                 "certification dispute requires --certification-registry-file when not using --control-url"
                     .to_string(),
             )

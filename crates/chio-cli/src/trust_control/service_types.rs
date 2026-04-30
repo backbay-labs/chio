@@ -927,7 +927,7 @@ pub fn verify_federated_delegation_policy(
     if policy.body.schema != FEDERATED_DELEGATION_POLICY_SCHEMA
         && policy.body.schema != LEGACY_FEDERATED_DELEGATION_POLICY_SCHEMA
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "unsupported federated delegation policy schema: expected {} or {}, got {}",
             FEDERATED_DELEGATION_POLICY_SCHEMA,
             LEGACY_FEDERATED_DELEGATION_POLICY_SCHEMA,
@@ -935,13 +935,13 @@ pub fn verify_federated_delegation_policy(
         )));
     }
     if policy.body.created_at > policy.body.expires_at {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "federated delegation policy created_at must be less than or equal to expires_at"
                 .to_string(),
         ));
     }
     if policy.body.ttl_seconds == 0 {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "federated delegation policy ttl_seconds must be greater than zero".to_string(),
         ));
     }
@@ -950,7 +950,7 @@ pub fn verify_federated_delegation_policy(
         .signer_public_key
         .verify_canonical(&policy.body, &policy.signature)?
     {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "federated delegation policy signature verification failed".to_string(),
         ));
     }
@@ -962,12 +962,12 @@ fn ensure_federated_delegation_policy_active(
     now: u64,
 ) -> Result<(), CliError> {
     if now < policy.body.created_at {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "federated delegation policy is not yet valid".to_string(),
         ));
     }
     if now > policy.body.expires_at {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "federated delegation policy has expired".to_string(),
         ));
     }
@@ -980,20 +980,20 @@ fn ensure_requested_capability_within_delegation_policy(
     now: u64,
 ) -> Result<(), CliError> {
     if !capability.scope.is_subset_of(&policy.body.scope) {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "requested capability scope exceeds the signed federated delegation policy ceiling"
                 .to_string(),
         ));
     }
     if capability.ttl > policy.body.ttl_seconds {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "requested capability ttl exceeds the signed federated delegation policy ceiling"
                 .to_string(),
         ));
     }
     let requested_expires_at = now.saturating_add(capability.ttl);
     if requested_expires_at > policy.body.expires_at {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "requested capability expires after the federated delegation policy validity window"
                 .to_string(),
         ));
@@ -1008,19 +1008,19 @@ fn ensure_requested_capability_within_parent_snapshot(
 ) -> Result<(), CliError> {
     let parent_scope: ChioScope = serde_json::from_str(&parent_snapshot.grants_json)?;
     if !capability.scope.is_subset_of(&parent_scope) {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "requested capability scope exceeds the imported upstream capability scope".to_string(),
         ));
     }
     let requested_expires_at = now.saturating_add(capability.ttl);
     if requested_expires_at > parent_snapshot.expires_at {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "requested capability expires after the imported upstream capability validity window"
                 .to_string(),
         ));
     }
     if now >= parent_snapshot.expires_at {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "imported upstream capability has already expired".to_string(),
         ));
     }
@@ -1512,7 +1512,7 @@ impl TrustHttpError {
 
 impl From<TrustHttpError> for CliError {
     fn from(error: TrustHttpError) -> Self {
-        CliError::Other(error.message)
+        CliError::cli_other_error(error.message)
     }
 }
 

@@ -565,7 +565,7 @@ async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {
 
     axum::serve(listener, router)
         .await
-        .map_err(|error| CliError::Other(format!("trust control service failed: {error}")))
+        .map_err(|error| CliError::cli_other_error(format!("trust control service failed: {error}")))
 }
 
 pub fn build_client(
@@ -601,7 +601,7 @@ fn build_client_with_cluster_peer(
         .map(|value| value.trim_end_matches('/').to_string())
         .collect::<Vec<_>>();
     if endpoints.is_empty() {
-        return Err(CliError::Other("control URL must not be empty".to_string()));
+        return Err(CliError::cli_other_error("control URL must not be empty".to_string()));
     }
     let http = ureq::AgentBuilder::new()
         .timeout(CONTROL_HTTP_TIMEOUT)
@@ -629,7 +629,7 @@ pub fn resolve_public_certification(
 ) -> Result<CertificationResolutionResponse, CliError> {
     let endpoint = registry_url.trim().trim_end_matches('/');
     if endpoint.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "public certification registry URL must not be empty".to_string(),
         ));
     }
@@ -645,12 +645,12 @@ pub fn resolve_public_certification(
         .get(&format!("{endpoint}{path}"))
         .call()
         .map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to query public certification registry {endpoint}: {error}"
             ))
         })?;
     response.into_json().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to parse public certification response from {endpoint}: {error}"
         ))
     })
@@ -691,9 +691,9 @@ pub fn issue_signed_generic_trust_activation(
         request,
         issued_at,
     )
-    .map_err(CliError::Other)?;
+    .map_err(CliError::cli_other_error)?;
     SignedGenericTrustActivation::sign(artifact, &signer_keypair).map_err(|error| {
-        CliError::Other(format!("failed to sign trust activation artifact: {error}"))
+        CliError::cli_other_error(format!("failed to sign trust activation artifact: {error}"))
     })
 }
 
@@ -701,7 +701,7 @@ pub fn evaluate_generic_trust_activation_request(
     request: &GenericTrustActivationEvaluationRequest,
 ) -> Result<GenericTrustActivationEvaluation, CliError> {
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_generic_trust_activation(request, now).map_err(CliError::Other)
+    evaluate_generic_trust_activation(request, now).map_err(CliError::cli_other_error)
 }
 
 pub fn issue_signed_generic_governance_charter(
@@ -720,9 +720,9 @@ pub fn issue_signed_generic_governance_charter(
         request,
         issued_at,
     )
-    .map_err(CliError::Other)?;
+    .map_err(CliError::cli_other_error)?;
     SignedGenericGovernanceCharter::sign(artifact, &signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign governance charter artifact: {error}"
         ))
     })
@@ -740,9 +740,9 @@ pub fn issue_signed_generic_governance_case(
     let issued_at = request.opened_at.unwrap_or(now_unix_secs()?);
     let artifact =
         build_generic_governance_case_artifact(&local_operator.operator_id, request, issued_at)
-            .map_err(CliError::Other)?;
+            .map_err(CliError::cli_other_error)?;
     SignedGenericGovernanceCase::sign(artifact, &signer_keypair).map_err(|error| {
-        CliError::Other(format!("failed to sign governance case artifact: {error}"))
+        CliError::cli_other_error(format!("failed to sign governance case artifact: {error}"))
     })
 }
 
@@ -750,7 +750,7 @@ pub fn evaluate_generic_governance_case_request(
     request: &GenericGovernanceCaseEvaluationRequest,
 ) -> Result<GenericGovernanceCaseEvaluation, CliError> {
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_generic_governance_case(request, now).map_err(CliError::Other)
+    evaluate_generic_governance_case(request, now).map_err(CliError::cli_other_error)
 }
 
 pub fn issue_signed_open_market_fee_schedule(
@@ -769,9 +769,9 @@ pub fn issue_signed_open_market_fee_schedule(
         request,
         issued_at,
     )
-    .map_err(CliError::Other)?;
+    .map_err(CliError::cli_other_error)?;
     SignedOpenMarketFeeSchedule::sign(artifact, &signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign open-market fee schedule artifact: {error}"
         ))
     })
@@ -789,9 +789,9 @@ pub fn issue_signed_open_market_penalty(
     let issued_at = request.opened_at.unwrap_or(now_unix_secs()?);
     let artifact =
         build_open_market_penalty_artifact(&local_operator.operator_id, request, issued_at)
-            .map_err(CliError::Other)?;
+            .map_err(CliError::cli_other_error)?;
     SignedOpenMarketPenalty::sign(artifact, &signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign open-market penalty artifact: {error}"
         ))
     })
@@ -801,7 +801,7 @@ pub fn evaluate_open_market_penalty_request(
     request: &OpenMarketPenaltyEvaluationRequest,
 ) -> Result<OpenMarketPenaltyEvaluation, CliError> {
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_open_market_penalty(request, now).map_err(CliError::Other)
+    evaluate_open_market_penalty(request, now).map_err(CliError::cli_other_error)
 }
 
 pub fn issue_signed_portable_reputation_summary(
@@ -809,7 +809,7 @@ pub fn issue_signed_portable_reputation_summary(
     request: &PortableReputationSummaryIssueRequest,
 ) -> Result<SignedPortableReputationSummary, CliError> {
     if config.receipt_db_path.is_none() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "trust service is missing receipt_db_path for portable reputation summary issuance"
                 .to_string(),
         ));
@@ -828,9 +828,9 @@ pub fn issue_signed_portable_reputation_summary(
         request.until,
         config.issuance_policy.as_ref(),
     )
-    .map_err(|error| CliError::Other(error.to_string()))?;
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let Some(receipt_db_path) = config.receipt_db_path.as_deref() else {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "receipt db path is required for imported trust reporting".to_string(),
         ));
     };
@@ -856,7 +856,7 @@ pub fn issue_signed_portable_reputation_summary(
         },
     )?;
     SignedPortableReputationSummary::sign(artifact, &signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign portable reputation summary artifact: {error}"
         ))
     })
@@ -879,7 +879,7 @@ pub fn issue_signed_portable_negative_event(
         issued_at,
     )?;
     SignedPortableNegativeEvent::sign(artifact, &signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign portable negative event artifact: {error}"
         ))
     })
@@ -889,7 +889,7 @@ pub fn evaluate_portable_reputation_request(
     request: &PortableReputationEvaluationRequest,
 ) -> Result<PortableReputationEvaluation, CliError> {
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_portable_reputation(request, now).map_err(|error| CliError::Other(error.to_string()))
+    evaluate_portable_reputation(request, now).map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 fn evaluate_federation_policy_request(
@@ -899,7 +899,7 @@ fn evaluate_federation_policy_request(
 ) -> Result<FederationAdmissionEvaluationResponse, CliError> {
     let (_, registry) = load_federation_policy_registry_for_admin(&state.config)?;
     let record = registry.get(&request.policy_id).cloned().ok_or_else(|| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "federation policy `{}` was not found",
             request.policy_id
         ))
@@ -973,7 +973,7 @@ fn evaluate_federation_policy_request(
             state.config.issuance_policy.as_ref(),
         )
         .map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to inspect local reputation for federation admission: {error}"
             ))
         })?;
@@ -992,7 +992,7 @@ fn evaluate_federation_policy_request(
             .federation_admission_rate_limiter
             .lock()
             .map_err(|_| {
-                CliError::Other("federation admission rate limiter is poisoned".to_string())
+                CliError::cli_other_error("federation admission rate limiter is poisoned".to_string())
             })?;
         let status = limiter.check_and_record(&request.policy_id, &request.subject_key, limit, now);
         let limited = status.retry_after_seconds.is_some();
@@ -1036,7 +1036,7 @@ fn public_certification_get_json<T: for<'de> Deserialize<'de>>(
 ) -> Result<T, CliError> {
     let endpoint = registry_url.trim().trim_end_matches('/');
     if endpoint.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "public certification registry URL must not be empty".to_string(),
         ));
     }
@@ -1047,12 +1047,12 @@ fn public_certification_get_json<T: for<'de> Deserialize<'de>>(
         .get(&format!("{endpoint}{path}"))
         .call()
         .map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to query public certification registry {endpoint}: {error}"
             ))
         })?;
     response.into_json().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to parse public certification response from {endpoint}: {error}"
         ))
     })
@@ -1064,7 +1064,7 @@ fn public_registry_get_json<T: for<'de> Deserialize<'de>>(
 ) -> Result<T, CliError> {
     let endpoint = registry_url.trim().trim_end_matches('/');
     if endpoint.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "public registry URL must not be empty".to_string(),
         ));
     }
@@ -1075,12 +1075,12 @@ fn public_registry_get_json<T: for<'de> Deserialize<'de>>(
         .get(&format!("{endpoint}{path}"))
         .call()
         .map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to query public registry {endpoint}: {error}"
             ))
         })?;
     response.into_json().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to parse public registry response from {endpoint}: {error}"
         ))
     })
@@ -1093,12 +1093,12 @@ fn public_registry_get_json_with_query<Q: Serialize, T: for<'de> Deserialize<'de
 ) -> Result<T, CliError> {
     let endpoint = registry_url.trim().trim_end_matches('/');
     if endpoint.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "public registry URL must not be empty".to_string(),
         ));
     }
     let encoded_query = serde_urlencoded::to_string(query).map_err(|error| {
-        CliError::Other(format!("failed to encode public registry query: {error}"))
+        CliError::cli_other_error(format!("failed to encode public registry query: {error}"))
     })?;
     let url = if encoded_query.is_empty() {
         format!("{endpoint}{path}")
@@ -1109,12 +1109,12 @@ fn public_registry_get_json_with_query<Q: Serialize, T: for<'de> Deserialize<'de
         .timeout(CONTROL_HTTP_TIMEOUT)
         .build();
     let response = agent.get(&url).call().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to query public registry {endpoint}: {error}"
         ))
     })?;
     response.into_json().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to parse public registry response from {endpoint}: {error}"
         ))
     })
@@ -1127,12 +1127,12 @@ fn public_certification_get_json_with_query<Q: Serialize, T: for<'de> Deserializ
 ) -> Result<T, CliError> {
     let endpoint = registry_url.trim().trim_end_matches('/');
     if endpoint.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "public certification registry URL must not be empty".to_string(),
         ));
     }
     let encoded_query = serde_urlencoded::to_string(query).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to encode public certification query: {error}"
         ))
     })?;
@@ -1145,12 +1145,12 @@ fn public_certification_get_json_with_query<Q: Serialize, T: for<'de> Deserializ
         .timeout(CONTROL_HTTP_TIMEOUT)
         .build();
     let response = agent.get(&url).call().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to query public certification registry {endpoint}: {error}"
         ))
     })?;
     response.into_json().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to parse public certification response from {endpoint}: {error}"
         ))
     })
@@ -2325,7 +2325,7 @@ impl TrustControlClient {
         let released_exposure_units = authorized_exposure_units
             .checked_sub(realized_spend_units)
             .ok_or_else(|| {
-                CliError::Other(
+                CliError::cli_other_error(
                     "realized spend cannot exceed authorized exposure during reconciliation"
                         .to_string(),
                 )
@@ -2400,7 +2400,7 @@ impl TrustControlClient {
         term: Option<u64>,
     ) -> Result<T, CliError> {
         let encoded_query = serde_urlencoded::to_string(query).map_err(|error| {
-            CliError::Other(format!("failed to encode trust control query: {error}"))
+            CliError::cli_other_error(format!("failed to encode trust control query: {error}"))
         })?;
         let url = if encoded_query.is_empty() {
             path.to_string()
@@ -2436,7 +2436,7 @@ impl TrustControlClient {
         query: &Q,
     ) -> Result<T, CliError> {
         let encoded_query = serde_urlencoded::to_string(query).map_err(|error| {
-            CliError::Other(format!("failed to encode trust control query: {error}"))
+            CliError::cli_other_error(format!("failed to encode trust control query: {error}"))
         })?;
         let url = if encoded_query.is_empty() {
             path.to_string()
@@ -2460,7 +2460,7 @@ impl TrustControlClient {
         body: &B,
     ) -> Result<T, CliError> {
         let json = serde_json::to_value(body).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to serialize trust control request: {error}"
             ))
         })?;
@@ -2482,7 +2482,7 @@ impl TrustControlClient {
         term: Option<u64>,
     ) -> Result<T, CliError> {
         let json = serde_json::to_value(body).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to serialize trust control request: {error}"
             ))
         })?;
@@ -2495,7 +2495,7 @@ impl TrustControlClient {
         body: &B,
     ) -> Result<T, CliError> {
         let json = serde_json::to_value(body).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to serialize trust control request: {error}"
             ))
         })?;
@@ -2520,7 +2520,7 @@ impl TrustControlClient {
         body: &B,
     ) -> Result<T, CliError> {
         let json = serde_json::to_value(body).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to serialize trust control request: {error}"
             ))
         })?;
@@ -2541,7 +2541,7 @@ impl TrustControlClient {
         body: &B,
     ) -> Result<T, CliError> {
         let json = serde_json::to_value(body).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to serialize trust control request: {error}"
             ))
         })?;
@@ -2592,7 +2592,7 @@ impl TrustControlClient {
                 Ok(response) => {
                     self.mark_preferred(index);
                     return serde_json::from_reader(response.into_reader()).map_err(|error| {
-                        CliError::Other(format!(
+                        CliError::cli_other_error(format!(
                             "failed to decode trust control service response body: {error}"
                         ))
                     });
@@ -2605,7 +2605,7 @@ impl TrustControlClient {
                 }
             }
         }
-        Err(CliError::Other(last_error.unwrap_or_else(|| {
+        Err(CliError::cli_other_error(last_error.unwrap_or_else(|| {
             "trust control service request failed".to_string()
         })))
     }
@@ -2634,7 +2634,7 @@ impl TrustControlClient {
                 Ok(response) => {
                     self.mark_preferred(index);
                     return serde_json::from_reader(response.into_reader()).map_err(|error| {
-                        CliError::Other(format!(
+                        CliError::cli_other_error(format!(
                             "failed to decode trust control service response body: {error}"
                         ))
                     });
@@ -2647,7 +2647,7 @@ impl TrustControlClient {
                 }
             }
         }
-        Err(CliError::Other(last_error.unwrap_or_else(|| {
+        Err(CliError::cli_other_error(last_error.unwrap_or_else(|| {
             "trust control service request failed".to_string()
         })))
     }
@@ -2727,32 +2727,32 @@ impl TrustControlClient {
                 Ok(response) => {
                     self.mark_preferred(index);
                     return serde_json::from_reader(response.into_reader()).map_err(|error| {
-                        CliError::Other(format!(
+                        CliError::cli_other_error(format!(
                             "failed to decode trust control service response body: {error}"
                         ))
                     });
                 }
                 Err(ureq::Error::Status(status, response)) if should_retry_status(status) => {
-                    last_error = Some(CliError::Other(format!(
+                    last_error = Some(CliError::cli_other_error(format!(
                         "trust control service request failed with {status}: {}",
                         response.into_string().unwrap_or_default()
                     )));
                 }
                 Err(ureq::Error::Status(status, response)) => {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::cli_other_error(format!(
                         "trust control service request failed with {status}: {}",
                         response.into_string().unwrap_or_default()
                     )));
                 }
                 Err(ureq::Error::Transport(error)) => {
-                    last_error = Some(CliError::Other(format!(
+                    last_error = Some(CliError::cli_other_error(format!(
                         "trust control service transport failed: {error}"
                     )));
                 }
             }
         }
         Err(last_error.unwrap_or_else(|| {
-            CliError::Other("trust control service request failed with no endpoints".to_string())
+            CliError::cli_other_error("trust control service request failed with no endpoints".to_string())
         }))
     }
 
@@ -2769,32 +2769,32 @@ impl TrustControlClient {
                 Ok(response) => {
                     self.mark_preferred(index);
                     return serde_json::from_reader(response.into_reader()).map_err(|error| {
-                        CliError::Other(format!(
+                        CliError::cli_other_error(format!(
                             "failed to decode trust control service response body: {error}"
                         ))
                     });
                 }
                 Err(ureq::Error::Status(status, response)) if should_retry_status(status) => {
-                    last_error = Some(CliError::Other(format!(
+                    last_error = Some(CliError::cli_other_error(format!(
                         "trust control service request failed with {status}: {}",
                         response.into_string().unwrap_or_default()
                     )));
                 }
                 Err(ureq::Error::Status(status, response)) => {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::cli_other_error(format!(
                         "trust control service request failed with {status}: {}",
                         response.into_string().unwrap_or_default()
                     )));
                 }
                 Err(ureq::Error::Transport(error)) => {
-                    last_error = Some(CliError::Other(format!(
+                    last_error = Some(CliError::cli_other_error(format!(
                         "trust control service transport failed: {error}"
                     )));
                 }
             }
         }
         Err(last_error.unwrap_or_else(|| {
-            CliError::Other("trust control service request failed with no endpoints".to_string())
+            CliError::cli_other_error("trust control service request failed with no endpoints".to_string())
         }))
     }
 
@@ -2814,32 +2814,32 @@ impl TrustControlClient {
                 Ok(response) => {
                     self.mark_preferred(index);
                     return response.into_string().map_err(|error| {
-                        CliError::Other(format!(
+                        CliError::cli_other_error(format!(
                             "failed to decode trust control text response body: {error}"
                         ))
                     });
                 }
                 Err(ureq::Error::Status(status, response)) if should_retry_status(status) => {
-                    last_error = Some(CliError::Other(format!(
+                    last_error = Some(CliError::cli_other_error(format!(
                         "trust control service request failed with {status}: {}",
                         response.into_string().unwrap_or_default()
                     )));
                 }
                 Err(ureq::Error::Status(status, response)) => {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::cli_other_error(format!(
                         "trust control service request failed with {status}: {}",
                         response.into_string().unwrap_or_default()
                     )));
                 }
                 Err(ureq::Error::Transport(error)) => {
-                    last_error = Some(CliError::Other(format!(
+                    last_error = Some(CliError::cli_other_error(format!(
                         "trust control service transport failed: {error}"
                     )));
                 }
             }
         }
         Err(last_error.unwrap_or_else(|| {
-            CliError::Other("trust control service request failed with no endpoints".to_string())
+            CliError::cli_other_error("trust control service request failed with no endpoints".to_string())
         }))
     }
 
@@ -3740,7 +3740,7 @@ fn remote_budget_guarantee_level(
 impl AuthorityKeyCache {
     fn from_status(status: &TrustAuthorityStatus) -> Result<Self, CliError> {
         if !status.configured {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "trust control service does not have an authority configured".to_string(),
             ));
         }
@@ -3750,7 +3750,7 @@ impl AuthorityKeyCache {
             .map(PublicKey::from_hex)
             .transpose()?;
         if current.is_none() {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "trust control service returned no current authority public key".to_string(),
             ));
         }
@@ -4963,9 +4963,9 @@ mod service_runtime_tests {
         assert!(!should_retry_status(401));
 
         let message = "backend unavailable".to_string();
-        let receipt_error = into_receipt_store_error(CliError::Other(message.clone()));
-        let revocation_error = into_revocation_store_error(CliError::Other(message.clone()));
-        let budget_error = into_budget_store_error(CliError::Other(message.clone()));
+        let receipt_error = into_receipt_store_error(CliError::cli_other_error(message.clone()));
+        let revocation_error = into_revocation_store_error(CliError::cli_other_error(message.clone()));
+        let budget_error = into_budget_store_error(CliError::cli_other_error(message.clone()));
 
         assert!(receipt_error.to_string().contains(&message));
         assert!(revocation_error.to_string().contains(&message));

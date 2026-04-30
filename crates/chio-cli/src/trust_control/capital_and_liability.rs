@@ -1184,7 +1184,7 @@ pub fn list_credit_facilities(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .query_credit_facilities(query)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 pub fn build_credit_bond_report(
@@ -1217,7 +1217,7 @@ pub fn list_credit_bonds(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .query_credit_bonds(query)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 pub fn build_credit_bonded_execution_simulation_report(
@@ -1259,7 +1259,7 @@ pub fn list_credit_loss_lifecycle(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .query_credit_loss_lifecycle(query)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 pub fn build_credit_backtest_report(
@@ -1313,7 +1313,7 @@ pub fn issue_signed_liability_provider(
     supersedes_provider_record_id: Option<&str>,
 ) -> Result<SignedLiabilityProvider, CliError> {
     let mut receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
-    report.validate().map_err(CliError::Other)?;
+    report.validate().map_err(CliError::cli_other_error)?;
     let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_provider_artifact(
@@ -1322,13 +1322,13 @@ pub fn issue_signed_liability_provider(
         supersedes_provider_record_id.map(ToOwned::to_owned),
     )?;
     let signed = SignedLiabilityProvider::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability provider artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_provider(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1339,7 +1339,7 @@ pub fn list_liability_providers(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .query_liability_providers(query)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 pub fn resolve_liability_provider(
@@ -1349,7 +1349,7 @@ pub fn resolve_liability_provider(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .resolve_liability_provider(query)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 fn build_liability_provider_artifact(
@@ -1357,7 +1357,7 @@ fn build_liability_provider_artifact(
     issued_at: u64,
     supersedes_provider_record_id: Option<String>,
 ) -> Result<LiabilityProviderArtifact, CliError> {
-    report.validate().map_err(CliError::Other)?;
+    report.validate().map_err(CliError::cli_other_error)?;
     let lifecycle_state = report.lifecycle_state;
     let provider_record_id_input = canonical_json_bytes(&(
         LIABILITY_PROVIDER_ARTIFACT_SCHEMA,
@@ -1366,7 +1366,7 @@ fn build_liability_provider_artifact(
         &supersedes_provider_record_id,
         &report,
     ))
-    .map_err(|error| CliError::Other(error.to_string()))?;
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let provider_record_id = format!("lpr-{}", sha256_hex(&provider_record_id_input));
     Ok(LiabilityProviderArtifact {
         schema: LIABILITY_PROVIDER_ARTIFACT_SCHEMA.to_string(),
@@ -1392,18 +1392,18 @@ pub fn issue_signed_liability_quote_request(
             coverage_class: request.coverage_class,
             currency: request.requested_coverage_amount.currency.clone(),
         })
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_quote_request_artifact(request, &resolution, issued_at)?;
     let signed = SignedLiabilityQuoteRequest::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability quote request artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_quote_request(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1431,7 +1431,7 @@ pub fn issue_signed_liability_quote_response(
             coverage_class: request.quote_request.body.provider_policy.coverage_class,
             currency: request.quote_request.body.provider_policy.currency.clone(),
         })
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     if resolution.provider.body.provider_record_id
         != request
             .quote_request
@@ -1439,7 +1439,7 @@ pub fn issue_signed_liability_quote_response(
             .provider_policy
             .provider_record_id
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "liability quote request `{}` references stale provider record `{}`",
             request.quote_request.body.quote_request_id,
             request
@@ -1453,13 +1453,13 @@ pub fn issue_signed_liability_quote_response(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_quote_response_artifact(request, issued_at)?;
     let signed = SignedLiabilityQuoteResponse::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability quote response artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_quote_response(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1504,7 +1504,7 @@ pub fn issue_signed_liability_placement(
                 .currency
                 .clone(),
         })
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     if resolution.provider.body.provider_record_id
         != request
             .quote_response
@@ -1514,7 +1514,7 @@ pub fn issue_signed_liability_placement(
             .provider_policy
             .provider_record_id
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "liability quote request `{}` references stale provider record `{}`",
             request
                 .quote_response
@@ -1535,13 +1535,13 @@ pub fn issue_signed_liability_placement(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_placement_artifact(request, issued_at)?;
     let signed = SignedLiabilityPlacement::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability placement artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_placement(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1569,7 +1569,7 @@ pub fn issue_signed_liability_pricing_authority(
             coverage_class: request.quote_request.body.provider_policy.coverage_class,
             currency: request.quote_request.body.provider_policy.currency.clone(),
         })
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     if resolution.provider.body.provider_record_id
         != request
             .quote_request
@@ -1577,7 +1577,7 @@ pub fn issue_signed_liability_pricing_authority(
             .provider_policy
             .provider_record_id
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "liability quote request `{}` references stale provider record `{}`",
             request.quote_request.body.quote_request_id,
             request
@@ -1591,13 +1591,13 @@ pub fn issue_signed_liability_pricing_authority(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_pricing_authority_artifact(request, issued_at)?;
     let signed = SignedLiabilityPricingAuthority::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability pricing authority artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_pricing_authority(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1650,7 +1650,7 @@ pub fn issue_signed_liability_bound_coverage(
                 .currency
                 .clone(),
         })
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     if resolution.provider.body.provider_record_id
         != request
             .placement
@@ -1662,7 +1662,7 @@ pub fn issue_signed_liability_bound_coverage(
             .provider_policy
             .provider_record_id
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "liability quote request `{}` references stale provider record `{}`",
             request
                 .placement
@@ -1687,13 +1687,13 @@ pub fn issue_signed_liability_bound_coverage(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_bound_coverage_artifact(request, issued_at)?;
     let signed = SignedLiabilityBoundCoverage::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability bound coverage artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_bound_coverage(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1738,7 +1738,7 @@ pub fn issue_signed_liability_auto_bind(
                 .currency
                 .clone(),
         })
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     if resolution.provider.body.provider_record_id
         != request
             .quote_response
@@ -1748,7 +1748,7 @@ pub fn issue_signed_liability_auto_bind(
             .provider_policy
             .provider_record_id
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "liability quote request `{}` references stale provider record `{}`",
             request
                 .quote_response
@@ -1766,7 +1766,7 @@ pub fn issue_signed_liability_auto_bind(
         )));
     }
     if request.authority.body.expires_at <= unix_timestamp_now() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "liability pricing authority `{}` is stale",
             request.authority.body.authority_id
         )));
@@ -1777,16 +1777,16 @@ pub fn issue_signed_liability_auto_bind(
         .quoted_terms
         .as_ref()
         .ok_or_else(|| {
-            CliError::Other("liability auto-bind requires a quoted quote response".to_string())
+            CliError::cli_other_error("liability auto-bind requires a quoted quote response".to_string())
         })?;
     if quoted_terms.expires_at <= unix_timestamp_now() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "liability quote response `{}` is stale",
             request.quote_response.body.quote_response_id
         )));
     }
     if !request.authority.body.auto_bind_enabled {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "liability pricing authority `{}` does not permit automatic binding",
             request.authority.body.authority_id
         )));
@@ -1799,20 +1799,20 @@ pub fn issue_signed_liability_auto_bind(
         .quote_request_id
         != request.authority.body.quote_request.body.quote_request_id
     {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "liability auto-bind quote response must match the delegated pricing authority"
                 .to_string(),
         ));
     }
     if quoted_terms.quoted_coverage_amount.units > request.authority.body.max_coverage_amount.units
     {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "liability auto-bind cannot be issued because quoted coverage exceeds pricing authority ceiling"
                 .to_string(),
         ));
     }
     if quoted_terms.quoted_premium_amount.units > request.authority.body.max_premium_amount.units {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "liability auto-bind cannot be issued because quoted premium exceeds pricing authority ceiling"
                 .to_string(),
         ));
@@ -1841,7 +1841,7 @@ pub fn issue_signed_liability_auto_bind(
     let placement_artifact = build_liability_placement_artifact(&placement_request, issued_at)?;
     let signed_placement =
         SignedLiabilityPlacement::sign(placement_artifact, &keypair).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to sign liability placement artifact: {error}"
             ))
         })?;
@@ -1868,7 +1868,7 @@ pub fn issue_signed_liability_auto_bind(
     let bound_artifact = build_liability_bound_coverage_artifact(&bound_request, issued_at)?;
     let signed_bound =
         SignedLiabilityBoundCoverage::sign(bound_artifact, &keypair).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to sign liability bound coverage artifact: {error}"
             ))
         })?;
@@ -1880,13 +1880,13 @@ pub fn issue_signed_liability_auto_bind(
     )?;
     let signed =
         SignedLiabilityAutoBindDecision::sign(decision_artifact, &keypair).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to sign liability auto-bind decision artifact: {error}"
             ))
         })?;
     receipt_store
         .record_liability_auto_bind_decision(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1897,7 +1897,7 @@ pub fn list_liability_market_workflows(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .query_liability_market_workflows(query)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 pub fn issue_signed_liability_claim_package(
@@ -1911,13 +1911,13 @@ pub fn issue_signed_liability_claim_package(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_claim_package_artifact(request, issued_at)?;
     let signed = SignedLiabilityClaimPackage::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability claim package artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_claim_package(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1932,13 +1932,13 @@ pub fn issue_signed_liability_claim_response(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_claim_response_artifact(request, issued_at)?;
     let signed = SignedLiabilityClaimResponse::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability claim response artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_claim_response(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1953,13 +1953,13 @@ pub fn issue_signed_liability_claim_dispute(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_claim_dispute_artifact(request, issued_at)?;
     let signed = SignedLiabilityClaimDispute::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability claim dispute artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_claim_dispute(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1974,13 +1974,13 @@ pub fn issue_signed_liability_claim_adjudication(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_claim_adjudication_artifact(request, issued_at)?;
     let signed = SignedLiabilityClaimAdjudication::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability claim adjudication artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_claim_adjudication(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -1996,13 +1996,13 @@ pub fn issue_signed_liability_claim_payout_instruction(
     let artifact = build_liability_claim_payout_instruction_artifact(request, issued_at)?;
     let signed =
         SignedLiabilityClaimPayoutInstruction::sign(artifact, &keypair).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to sign liability claim payout instruction artifact: {error}"
             ))
         })?;
     receipt_store
         .record_liability_claim_payout_instruction(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -2017,13 +2017,13 @@ pub fn issue_signed_liability_claim_payout_receipt(
     let issued_at = unix_timestamp_now();
     let artifact = build_liability_claim_payout_receipt_artifact(request, issued_at)?;
     let signed = SignedLiabilityClaimPayoutReceipt::sign(artifact, &keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign liability claim payout receipt artifact: {error}"
         ))
     })?;
     receipt_store
         .record_liability_claim_payout_receipt(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -2039,13 +2039,13 @@ pub fn issue_signed_liability_claim_settlement_instruction(
     let artifact = build_liability_claim_settlement_instruction_artifact(request, issued_at)?;
     let signed =
         SignedLiabilityClaimSettlementInstruction::sign(artifact, &keypair).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to sign liability claim settlement instruction artifact: {error}"
             ))
         })?;
     receipt_store
         .record_liability_claim_settlement_instruction(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -2061,13 +2061,13 @@ pub fn issue_signed_liability_claim_settlement_receipt(
     let artifact = build_liability_claim_settlement_receipt_artifact(request, issued_at)?;
     let signed =
         SignedLiabilityClaimSettlementReceipt::sign(artifact, &keypair).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to sign liability claim settlement receipt artifact: {error}"
             ))
         })?;
     receipt_store
         .record_liability_claim_settlement_receipt(&signed)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(signed)
 }
 
@@ -2078,7 +2078,7 @@ pub fn list_liability_claim_workflows(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .query_liability_claim_workflows(query)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 fn build_liability_provider_policy_reference(
@@ -2120,7 +2120,7 @@ fn build_liability_quote_request_artifact(
                     request.requested_effective_until,
                     &request.risk_package.body.subject_key,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2131,7 +2131,7 @@ fn build_liability_quote_request_artifact(
         risk_package: request.risk_package.clone(),
         notes: request.notes.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2155,7 +2155,7 @@ fn build_liability_quote_response_artifact(
                     &request.quoted_terms,
                     &request.decline_reason,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2166,7 +2166,7 @@ fn build_liability_quote_response_artifact(
         quoted_terms: request.quoted_terms.clone(),
         decline_reason: request.decline_reason.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2191,7 +2191,7 @@ fn build_liability_pricing_authority_artifact(
                     request.expires_at,
                     request.auto_bind_enabled,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2207,7 +2207,7 @@ fn build_liability_pricing_authority_artifact(
         auto_bind_enabled: request.auto_bind_enabled,
         notes: request.notes.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2230,7 +2230,7 @@ fn build_liability_placement_artifact(
                     request.effective_until,
                     &request.placement_ref,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2242,7 +2242,7 @@ fn build_liability_placement_artifact(
         placement_ref: request.placement_ref.clone(),
         notes: request.notes.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2268,7 +2268,7 @@ fn build_liability_bound_coverage_artifact(
                     &request.coverage_amount,
                     &request.premium_amount,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2281,7 +2281,7 @@ fn build_liability_bound_coverage_artifact(
         coverage_amount: request.coverage_amount.clone(),
         premium_amount: request.premium_amount.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2306,7 +2306,7 @@ fn build_liability_auto_bind_decision_artifact(
                     &placement.body.placement_id,
                     &bound_coverage.body.bound_coverage_id,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2317,7 +2317,7 @@ fn build_liability_auto_bind_decision_artifact(
         placement: Some(placement),
         bound_coverage: Some(bound_coverage),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2389,7 +2389,7 @@ fn build_liability_claim_package_artifact(
                     &request.bond.body.bond_id,
                     &request.loss_event.body.event_id,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2405,7 +2405,7 @@ fn build_liability_claim_package_artifact(
         receipt_ids: request.receipt_ids.clone(),
         evidence_refs,
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2440,7 +2440,7 @@ fn build_liability_claim_response_artifact(
                     &request.response_note,
                     &request.denial_reason,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2452,7 +2452,7 @@ fn build_liability_claim_response_artifact(
         denial_reason: request.denial_reason.clone(),
         evidence_refs,
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2479,7 +2479,7 @@ fn build_liability_claim_dispute_artifact(
                     &request.reason,
                     &request.note,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2489,7 +2489,7 @@ fn build_liability_claim_dispute_artifact(
         note: request.note.clone(),
         evidence_refs,
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2527,7 +2527,7 @@ fn build_liability_claim_adjudication_artifact(
                     &request.awarded_amount,
                     &request.note,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2538,7 +2538,7 @@ fn build_liability_claim_adjudication_artifact(
         note: request.note.clone(),
         evidence_refs,
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2549,13 +2549,13 @@ fn liability_claim_adjudication_awarded_amount(
         LiabilityClaimAdjudicationOutcome::ClaimUpheld
         | LiabilityClaimAdjudicationOutcome::PartialSettlement => {
             adjudication.body.awarded_amount.clone().ok_or_else(|| {
-                CliError::Other(
+                CliError::cli_other_error(
                     "claim payout instructions require adjudications with awarded_amount"
                         .to_string(),
                 )
             })
         }
-        LiabilityClaimAdjudicationOutcome::ProviderUpheld => Err(CliError::Other(
+        LiabilityClaimAdjudicationOutcome::ProviderUpheld => Err(CliError::cli_other_error(
             "claim payout instructions require a payable adjudication outcome".to_string(),
         )),
     }
@@ -2579,7 +2579,7 @@ fn build_liability_claim_payout_instruction_artifact(
                     &payout_amount,
                     &request.note,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2588,7 +2588,7 @@ fn build_liability_claim_payout_instruction_artifact(
         payout_amount,
         note: request.note.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2610,7 +2610,7 @@ fn build_liability_claim_payout_receipt_artifact(
                     &request.observed_execution,
                     &request.note,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2620,7 +2620,7 @@ fn build_liability_claim_payout_receipt_artifact(
         observed_execution: request.observed_execution.clone(),
         note: request.note.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2654,7 +2654,7 @@ fn build_liability_claim_settlement_instruction_artifact(
                     &request.settlement_reference,
                     &request.note,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2669,7 +2669,7 @@ fn build_liability_claim_settlement_instruction_artifact(
         settlement_reference: request.settlement_reference.clone(),
         note: request.note.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 
@@ -2696,7 +2696,7 @@ fn build_liability_claim_settlement_receipt_artifact(
                     &request.observed_payee_id,
                     &request.note,
                 ))
-                .map_err(|error| CliError::Other(error.to_string()))?
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?
             )
         ),
         issued_at,
@@ -2708,7 +2708,7 @@ fn build_liability_claim_settlement_receipt_artifact(
         observed_payee_id: request.observed_payee_id.clone(),
         note: request.note.clone(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     Ok(artifact)
 }
 

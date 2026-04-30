@@ -46,7 +46,7 @@ include!("cli/replay/execute.rs");
 include!("cli/replay/diff.rs");
 include!("cli/replay/traffic.rs");
 include!("cli/replay/bless/strip.rs");
-include!("cli/replay/bless/m04_layout.rs");
+include!("cli/replay/bless/fixture_layout.rs");
 include!("cli/replay/bless.rs");
 
 #[cfg(test)]
@@ -121,15 +121,15 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn write_cli_error_emits_human_report() {
-        let error = CliError::Other("bad inputs".to_string());
+        let error = CliError::cli_other_error("bad inputs".to_string());
         let mut output = Vec::new();
 
         write_cli_error(&mut output, &error, false).unwrap();
 
         let rendered = String::from_utf8(output).unwrap();
-        assert!(rendered.contains("error [CHIO-CLI-OTHER]: bad inputs"));
-        assert!(rendered.contains("context:"));
-        assert!(rendered.contains("suggested fix:"));
+        assert!(rendered.contains("error [urn:chio:error:cli:other]: bad inputs"));
+        assert!(rendered.contains(r#"context: {"domain":"cli""#));
+        assert!(rendered.contains("suggested fix: Preserve the original message"));
     }
 
     #[test]

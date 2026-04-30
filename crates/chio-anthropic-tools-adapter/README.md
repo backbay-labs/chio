@@ -13,8 +13,7 @@ Responses, Anthropic Messages, and Bedrock Converse.
 - Recorded in `Cargo.toml` under `[package.metadata.chio]`.
 
 Bumping the pin is a deliberate PR with a fixture re-record; CI never
-auto-bumps. See `.planning/trajectory/07-provider-native-adapters.md`,
-"Pinned upstream API versions" section.
+auto-bumps.
 
 ## Cargo features
 
@@ -23,22 +22,22 @@ auto-bumps. See `.planning/trajectory/07-provider-native-adapters.md`,
 | `computer-use` | off     | Compiles the Anthropic server-tool variants (`computer_use_20241022`, `bash_20241022`, `text_editor_20241022`) and lets the transport stamp `anthropic-beta: computer-use-2025-01-24` on outgoing requests. |
 
 The `computer-use` feature alone is not sufficient to enable the
-server-tool surface at runtime. M07.P3.T4 adds a `chio-manifest`
-`server_tools: [...]` allowlist that the adapter consults at lift time
-through `AnthropicAdapter::new_with_manifest`. Default deny applies even
-with the feature on, including when `AnthropicAdapter::new` is used without
-manifest wiring.
+server-tool surface at runtime. The adapter requires a `chio-manifest`
+`server_tools: [...]` allowlist at lift time through
+`AnthropicAdapter::new_with_manifest`. Default deny applies even with the
+feature on, including when `AnthropicAdapter::new` is used without manifest
+wiring.
 
-## M07.P3 ticket sequence
+## Implementation Status
 
-| Ticket | Deliverable                                                                  | Status |
-| ------ | ---------------------------------------------------------------------------- | ------ |
-| T1     | Crate scaffold, API pin, `computer-use` feature, native types, transport trait | landed |
-| T2     | `ProviderAdapter::lift`/`lower` for batch `messages.create` tool_use blocks  | landed |
-| T3     | SSE streaming with verdict at `content_block_start` for `tool_use`           | landed |
-| T4     | `chio-manifest` `server_tools` allowlist gating the beta surface             | landed |
-| T5     | 12 conformance fixtures (incl. 2 server-tool sessions behind the feature)    | pending |
-| T6     | Native-error envelope -> `ProviderError` taxonomy doctest                    | landed |
+| Deliverable                                                                  | Status |
+| ---------------------------------------------------------------------------- | ------ |
+| Crate scaffold, API pin, `computer-use` feature, native types, transport trait | landed |
+| `ProviderAdapter::lift`/`lower` for batch `messages.create` tool_use blocks  | landed |
+| SSE streaming with verdict at `content_block_start` for `tool_use`           | landed |
+| `chio-manifest` `server_tools` allowlist gating the beta surface             | landed |
+| 12 conformance fixtures including 2 server-tool sessions behind the feature  | pending |
+| Native-error envelope -> `ProviderError` taxonomy doctest                    | landed |
 
 ## Server-tool manifest gate
 
@@ -91,13 +90,13 @@ as one valid inline JSON object.
 <!-- error-taxonomy:start -->
 | ProviderError class | Native or boundary envelope | Source | Adapter-visible behavior |
 | ------------------- | --------------------------- | ------ | ------------------------ |
-| `ProviderError::RateLimited` | `{"status":429,"headers":{"retry-after-ms":"1000"},"body":{"type":"error","error":{"type":"rate_limit_error","message":"rate limit reached"},"request_id":"req_rate"}}` | HTTP transport boundary | Preserve the retry hint as `retry_after_ms` when the native response carries one. |
-| `ProviderError::ContentPolicy` | `{"status":200,"body":{"type":"message","id":"msg_refusal","role":"assistant","content":[{"type":"text","text":""}],"stop_reason":"refusal"}}` | HTTP transport boundary | Surface provider refusal as content-policy denial rather than a tool execution error. |
-| `ProviderError::BadToolArgs` | `{"type":"tool_use","id":"toolu_bad_args","name":"get_weather","input":"not an object"}` | current adapter path | Fail closed when Anthropic emits a `tool_use.input` that cannot become canonical JSON object arguments. |
-| `ProviderError::Upstream5xx` | `{"status":529,"body":{"type":"error","error":{"type":"overloaded_error","message":"overloaded"},"request_id":"req_overloaded"}}` | HTTP transport boundary | Keep upstream 5xx and overload bodies visible for retry and audit policy. |
-| `ProviderError::TransportTimeout` | `{"transport":"timeout","endpoint":"https://api.anthropic.com/v1/messages","elapsed_ms":30000}` | HTTP transport boundary | Classify local transport timeout separately from Anthropic 504 `timeout_error` envelopes. |
-| `ProviderError::VerdictBudgetExceeded` | `{"provider":"anthropic","event":"content_block_start","observed_ms":300,"budget_ms":250}` | current adapter path | Preserve the fabric verdict-budget error when the evaluator misses the 250ms gate. |
-| `ProviderError::Malformed` | `{"event":"content_block_delta","data":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}}` | current adapter path | Fail closed for impossible or out-of-order native SSE/message shapes. |
+| `ProviderError::RateLimited` | `{"status":429,"headers":{"retry-after-ms":"1000"},"body":{"type":"error","error":{"type":"rate_limit_error","message":"rate limit reached"},"request_id":"req_rate"}}` | `urn:chio:error:provider:anthropic` (`CHIO-PROVIDER-ANTHROPIC`) + HTTP transport boundary | Anthropic provider adapter returned a normalized provider error. Preserve the retry hint as `retry_after_ms` when the native response carries one. Registry help: Inspect the provider error details and retry only when the adapter marks the failure transient. |
+| `ProviderError::ContentPolicy` | `{"status":200,"body":{"type":"message","id":"msg_refusal","role":"assistant","content":[{"type":"text","text":""}],"stop_reason":"refusal"}}` | `urn:chio:error:provider:anthropic` (`CHIO-PROVIDER-ANTHROPIC`) + HTTP transport boundary | Anthropic provider adapter returned a normalized provider error. Surface provider refusal as content-policy denial rather than a tool execution error. Registry help: Inspect the provider error details and retry only when the adapter marks the failure transient. |
+| `ProviderError::BadToolArgs` | `{"type":"tool_use","id":"toolu_bad_args","name":"get_weather","input":"not an object"}` | `urn:chio:error:provider:anthropic` (`CHIO-PROVIDER-ANTHROPIC`) + current adapter path | Anthropic provider adapter returned a normalized provider error. Fail closed when Anthropic emits a `tool_use.input` that cannot become canonical JSON object arguments. Registry help: Inspect the provider error details and retry only when the adapter marks the failure transient. |
+| `ProviderError::Upstream5xx` | `{"status":529,"body":{"type":"error","error":{"type":"overloaded_error","message":"overloaded"},"request_id":"req_overloaded"}}` | `urn:chio:error:provider:anthropic` (`CHIO-PROVIDER-ANTHROPIC`) + HTTP transport boundary | Anthropic provider adapter returned a normalized provider error. Keep upstream 5xx and overload bodies visible for retry and audit policy. Registry help: Inspect the provider error details and retry only when the adapter marks the failure transient. |
+| `ProviderError::TransportTimeout` | `{"transport":"timeout","endpoint":"https://api.anthropic.com/v1/messages","elapsed_ms":30000}` | `urn:chio:error:provider:anthropic` (`CHIO-PROVIDER-ANTHROPIC`) + HTTP transport boundary | Anthropic provider adapter returned a normalized provider error. Classify local transport timeout separately from Anthropic 504 `timeout_error` envelopes. Registry help: Inspect the provider error details and retry only when the adapter marks the failure transient. |
+| `ProviderError::VerdictBudgetExceeded` | `{"provider":"anthropic","event":"content_block_start","observed_ms":300,"budget_ms":250}` | `urn:chio:error:provider:anthropic` (`CHIO-PROVIDER-ANTHROPIC`) + current adapter path | Anthropic provider adapter returned a normalized provider error. Preserve the fabric verdict-budget error when the evaluator misses the 250ms gate. Registry help: Inspect the provider error details and retry only when the adapter marks the failure transient. |
+| `ProviderError::Malformed` | `{"event":"content_block_delta","data":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}}` | `urn:chio:error:provider:anthropic` (`CHIO-PROVIDER-ANTHROPIC`) + current adapter path | Anthropic provider adapter returned a normalized provider error. Fail closed for impossible or out-of-order native SSE/message shapes. Registry help: Inspect the provider error details and retry only when the adapter marks the failure transient. |
 <!-- error-taxonomy:end -->
 
 `ProviderError::Other` is intentionally absent. Native Anthropic envelopes
@@ -128,8 +127,7 @@ cargo build -p chio-anthropic-tools-adapter --features computer-use
 cargo test -p chio-anthropic-tools-adapter --features computer-use server_tools
 ```
 
-Both invocations must succeed for T1 to merge (gate-check defined in
-`.planning/trajectory/tickets/M07/P3.yml`).
+Both invocations must succeed in CI.
 
 ## House rules
 
@@ -141,9 +139,5 @@ Both invocations must succeed for T1 to merge (gate-check defined in
 
 ## References
 
-- Trajectory doc: `.planning/trajectory/07-provider-native-adapters.md`
-  Phase 3 (lines 393-420).
-- Ticket spec: `.planning/trajectory/tickets/M07/P3.yml` (T4).
 - Fabric trait surface: `crates/chio-tool-call-fabric/src/lib.rs`.
-- Conformance harness skeleton: `crates/chio-provider-conformance/`
-  (lands in M07.P2).
+- Conformance harness skeleton: `crates/chio-provider-conformance/`.

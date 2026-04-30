@@ -57,7 +57,7 @@ fn cmd_run(
 
     let (cmd, args) = command
         .split_first()
-        .ok_or_else(|| CliError::Other("empty command".to_string()))?;
+        .ok_or_else(|| CliError::transport_error("empty command".to_string()))?;
 
     let mut child = Command::new(cmd)
         .args(args)
@@ -69,11 +69,11 @@ fn cmd_run(
     let child_stdin = child
         .stdin
         .take()
-        .ok_or_else(|| CliError::Other("failed to open child stdin".to_string()))?;
+        .ok_or_else(|| CliError::transport_error("failed to open child stdin".to_string()))?;
     let child_stdout = child
         .stdout
         .take()
-        .ok_or_else(|| CliError::Other("failed to open child stdout".to_string()))?;
+        .ok_or_else(|| CliError::transport_error("failed to open child stdout".to_string()))?;
 
     let mut transport = ChioTransport::new(child_stdout, child_stdin);
 
@@ -136,7 +136,7 @@ fn cmd_run(
         Ok(())
     } else {
         let code = status.code().unwrap_or(1);
-        Err(CliError::Other(format!("agent exited with code {code}")))
+        Err(CliError::transport_error(format!("agent exited with code {code}")))
     }
 }
 
@@ -150,7 +150,7 @@ fn cmd_api_protect(
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(|error| CliError::Other(format!("failed to start async runtime: {error}")))?;
+        .map_err(|error| CliError::transport_error(format!("failed to start async runtime: {error}")))?;
 
     runtime.block_on(async move {
         let sidecar_control_token = std::env::var("CHIO_SIDECAR_CONTROL_TOKEN")
@@ -176,7 +176,7 @@ fn cmd_api_protect(
         ProtectProxy::new(config)
             .run()
             .await
-            .map_err(|error| CliError::Other(format!("failed to start chio api protect: {error}")))
+            .map_err(|error| CliError::transport_error(format!("failed to start chio api protect: {error}")))
     })
 }
 
@@ -188,7 +188,7 @@ fn parse_trusted_capability_issuers_from_env() -> Result<Vec<chio_core::PublicKe
         if !single_issuer.is_empty() {
             issuers.push(
                 chio_core::PublicKey::from_hex(single_issuer).map_err(|error| {
-                    CliError::Other(format!(
+                    CliError::transport_error(format!(
                         "failed to parse CHIO_TRUSTED_ISSUER_KEY as a public key: {error}"
                     ))
                 })?,
@@ -203,7 +203,7 @@ fn parse_trusted_capability_issuers_from_env() -> Result<Vec<chio_core::PublicKe
             .filter(|issuer| !issuer.is_empty())
         {
             let parsed = chio_core::PublicKey::from_hex(issuer).map_err(|error| {
-                CliError::Other(format!(
+                CliError::transport_error(format!(
                     "failed to parse CHIO_TRUSTED_ISSUER_KEYS entry as a public key: {error}"
                 ))
             })?;
@@ -269,7 +269,7 @@ fn cmd_check(
         None => kernel
             .issue_capability(&agent_pk, ChioScope::default(), 300)
             .map_err(|error| {
-                CliError::Other(format!(
+                CliError::transport_error(format!(
                     "failed to issue fallback empty capability: {error}"
                 ))
             })?,
@@ -302,7 +302,7 @@ fn cmd_check(
         | SessionOperationResponse::Completion { .. }
         | SessionOperationResponse::CapabilityList { .. }
         | SessionOperationResponse::Heartbeat => {
-            return Err(CliError::Other(
+            return Err(CliError::transport_error(
                 "unexpected non-tool response while evaluating check command".to_string(),
             ));
         }
@@ -389,7 +389,7 @@ fn cmd_mcp_serve(
         (Some(_), None) => None,
         (None, Some(name)) => {
             let preset = policies::McpPreset::from_name(name).ok_or_else(|| {
-                CliError::Other(format!(
+                CliError::transport_error(format!(
                     "unknown --preset {name:?} (known: code-agent)"
                 ))
             })?;
@@ -398,12 +398,12 @@ fn cmd_mcp_serve(
         (Some(_), Some(_)) => {
             // clap's `conflicts_with` should prevent this, but we
             // guard defensively in case the CLI wiring ever drifts.
-            return Err(CliError::Other(
+            return Err(CliError::transport_error(
                 "--policy and --preset are mutually exclusive".to_string(),
             ));
         }
         (None, None) => {
-            return Err(CliError::Other(
+            return Err(CliError::transport_error(
                 "either --policy <path> or --preset <name> is required".to_string(),
             ));
         }
@@ -451,7 +451,7 @@ fn cmd_mcp_serve(
 
     let (wrapped_cmd, wrapped_args) = command
         .split_first()
-        .ok_or_else(|| CliError::Other("empty MCP server command".to_string()))?;
+        .ok_or_else(|| CliError::transport_error("empty MCP server command".to_string()))?;
     let wrapped_arg_refs = wrapped_args.iter().map(String::as_str).collect::<Vec<_>>();
 
     let manifest_public_key = manifest_public_key
@@ -573,7 +573,7 @@ fn cmd_mcp_serve_http(
 
     let (wrapped_cmd, wrapped_args) = command
         .split_first()
-        .ok_or_else(|| CliError::Other("empty MCP server command".to_string()))?;
+        .ok_or_else(|| CliError::transport_error("empty MCP server command".to_string()))?;
 
     remote_mcp::serve_http(remote_mcp::RemoteServeHttpConfig {
         listen,
@@ -625,7 +625,7 @@ fn cmd_mcp_serve_http(
 
 fn require_revocation_db_path(revocation_db_path: Option<&Path>) -> Result<&Path, CliError> {
     revocation_db_path.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "trust commands require --revocation-db <path> so persisted trust state is explicit"
                 .to_string(),
         )
@@ -634,7 +634,7 @@ fn require_revocation_db_path(revocation_db_path: Option<&Path>) -> Result<&Path
 
 fn require_receipt_db_path(receipt_db_path: Option<&Path>) -> Result<&Path, CliError> {
     receipt_db_path.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "shared evidence commands require --receipt-db <path> when --control-url is not set"
                 .to_string(),
         )
@@ -1208,7 +1208,7 @@ fn cmd_trust_behavioral_feed_export(
         trust_control::build_client(url, token)?.behavioral_feed(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "behavioral feed export requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1273,7 +1273,7 @@ fn cmd_trust_exposure_ledger_export(
         trust_control::build_client(url, token)?.exposure_ledger(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "exposure ledger export requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1343,7 +1343,7 @@ fn cmd_trust_credit_scorecard_export(
         trust_control::build_client(url, token)?.credit_scorecard(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "credit scorecard export requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1416,7 +1416,7 @@ fn cmd_trust_capital_book_export(
         trust_control::build_client(url, token)?.capital_book(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "capital book export requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1488,7 +1488,7 @@ fn cmd_trust_capital_instruction_issue(
         trust_control::build_client(url, token)?.issue_capital_execution_instruction(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "capital instruction issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1537,7 +1537,7 @@ fn cmd_trust_capital_allocation_issue(
         trust_control::build_client(url, token)?.issue_capital_allocation_decision(&request)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "capital allocation issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1589,7 +1589,7 @@ fn cmd_trust_credit_facility_evaluate(
         trust_control::build_client(url, token)?.credit_facility_report(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "credit facility evaluation requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1647,7 +1647,7 @@ fn cmd_trust_credit_facility_issue(
         trust_control::build_client(url, token)?.issue_credit_facility(&request)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "credit facility issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1709,7 +1709,7 @@ fn cmd_trust_credit_facility_list(
         trust_control::build_client(url, token)?.list_credit_facilities(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "credit facility list requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1760,7 +1760,7 @@ fn cmd_trust_credit_bond_evaluate(
         trust_control::build_client(url, token)?.credit_bond_report(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "credit bond evaluation requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1818,7 +1818,7 @@ fn cmd_trust_credit_bond_issue(
         trust_control::build_client(url, token)?.issue_credit_bond(&request)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "credit bond issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1876,7 +1876,7 @@ fn cmd_trust_credit_bond_simulate(
         trust_control::build_client(url, token)?.simulate_credit_bonded_execution(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "credit bond simulation requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1936,7 +1936,7 @@ fn cmd_trust_credit_bond_list(
         trust_control::build_client(url, token)?.list_credit_bonds(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "credit bond list requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1976,7 +1976,7 @@ fn build_credit_loss_lifecycle_query(
                 currency: currency.to_string(),
             }),
             (None, None) => None,
-            _ => return Err(CliError::Other(
+            _ => return Err(CliError::cli_other_error(
                 "credit loss lifecycle amount requires both --amount-units and --amount-currency"
                     .to_string(),
             )),
@@ -1987,4 +1987,46 @@ fn build_credit_loss_lifecycle_query(
         event_kind: parse_credit_loss_lifecycle_event_kind(event_kind)?,
         amount,
     })
+}
+
+#[cfg(test)]
+mod runtime_local_error_domain_tests {
+    use super::*;
+
+    fn must_err<T: std::fmt::Debug>(result: Result<T, CliError>, context: &str) -> CliError {
+        match result {
+            Ok(value) => panic!("{context}: expected error, got {value:?}"),
+            Err(error) => error,
+        }
+    }
+
+    fn assert_registry_error(err: &CliError, expected_code: &str, expected_domain: &str) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected_code);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_local_receipt_db_uses_cli_domain() {
+        let error = must_err(
+            require_receipt_db_path(None),
+            "missing receipt db should fail closed",
+        );
+
+        assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+    }
+
+    #[test]
+    fn partial_credit_loss_lifecycle_amount_uses_cli_domain() {
+        let error = must_err(
+            build_credit_loss_lifecycle_query("bond-1", "delinquency", Some(100), None),
+            "partial amount flags should fail closed",
+        );
+
+        assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+    }
 }

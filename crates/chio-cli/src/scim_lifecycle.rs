@@ -159,7 +159,7 @@ impl ScimLifecycleRegistry {
             Ok(bytes) => {
                 let mut registry: Self = serde_json::from_slice(&bytes)?;
                 if registry.version != SCIM_LIFECYCLE_REGISTRY_VERSION {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::cli_other_error(format!(
                         "unsupported scim lifecycle registry version: {}",
                         registry.version
                     )));
@@ -197,7 +197,7 @@ impl ScimLifecycleRegistry {
 
     pub fn insert(&mut self, record: ScimLifecycleUserRecord) -> Result<(), CliError> {
         if self.users.contains_key(&record.user_id) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "scim user `{}` already exists",
                 record.user_id
             )));
@@ -206,7 +206,7 @@ impl ScimLifecycleRegistry {
             .find_by_identity(&record.provider_id, &record.enterprise_identity.subject_key)
             .is_some()
         {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "scim lifecycle already contains provider `{}` subject `{}`",
                 record.provider_id, record.enterprise_identity.subject_key
             )));
@@ -229,7 +229,7 @@ impl ScimLifecycleRegistry {
             return Ok(false);
         };
         if !record.scim_user.active {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "scim lifecycle identity `{}` is inactive",
                 record.user_id
             )));
@@ -462,12 +462,12 @@ pub fn required_chio_extension(
     user: &ScimUserResource,
 ) -> Result<&ChioScimUserExtension, CliError> {
     let Some(extension) = user.chio.as_ref() else {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "scim user requires the `{CHIO_SCIM_USER_EXTENSION_SCHEMA}` extension"
         )));
     };
     if extension.provider_id.trim().is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "scim user chio extension requires provider_id".to_string(),
         ));
     }
@@ -481,7 +481,7 @@ pub fn validate_scim_user_request(user: &ScimUserResource) -> Result<(), CliErro
             .iter()
             .any(|value| value == SCIM_CORE_USER_SCHEMA)
         {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "scim user schemas must include `{SCIM_CORE_USER_SCHEMA}`"
             )));
         }
@@ -490,13 +490,13 @@ pub fn validate_scim_user_request(user: &ScimUserResource) -> Result<(), CliErro
             .iter()
             .any(|value| value == CHIO_SCIM_USER_EXTENSION_SCHEMA)
         {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "scim user schemas must include `{CHIO_SCIM_USER_EXTENSION_SCHEMA}`"
             )));
         }
     }
     if user.user_name.trim().is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "scim user requires a non-empty userName".to_string(),
         ));
     }
@@ -506,13 +506,13 @@ pub fn validate_scim_user_request(user: &ScimUserResource) -> Result<(), CliErro
 
 pub fn ensure_scim_provider(provider: &EnterpriseProviderRecord) -> Result<(), CliError> {
     if !provider.is_validated_enabled() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "enterprise provider `{}` is not enabled and validated for scim lifecycle",
             provider.provider_id
         )));
     }
     if !matches!(provider.kind, EnterpriseProviderKind::Scim) {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "enterprise provider `{}` is not a scim provider",
             provider.provider_id
         )));
@@ -543,13 +543,13 @@ fn derive_scim_principal(
             .clone()
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| {
-                CliError::Other(
+                CliError::cli_other_error(
                     "scim provider principal_source `externalId` requires externalId".to_string(),
                 )
             }),
         "id" => Ok(user_id.to_string()),
         "email" | "emails" | "primaryEmail" => primary_email(user).ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "scim provider principal_source `email` requires at least one email value"
                     .to_string(),
             )
@@ -559,7 +559,7 @@ fn derive_scim_principal(
             .clone()
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| {
-                CliError::Other(
+                CliError::cli_other_error(
                     "scim provider principal_source `clientId` requires clientId".to_string(),
                 )
             }),
@@ -568,11 +568,11 @@ fn derive_scim_principal(
             .clone()
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| {
-                CliError::Other(
+                CliError::cli_other_error(
                     "scim provider principal_source `objectId` requires objectId".to_string(),
                 )
             }),
-        other => Err(CliError::Other(format!(
+        other => Err(CliError::cli_other_error(format!(
             "unsupported scim principal_source `{other}`; use userName, externalId, id, email, clientId, or objectId"
         ))),
     }

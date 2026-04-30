@@ -8,7 +8,7 @@ fn cmd_replay(args: &ReplayArgs) -> Result<(), CliError> {
 
     // Legacy surface requires the positional `log` path.
     let Some(log) = args.log.as_ref() else {
-        return Err(CliError::Other(
+        return Err(CliError::replay_mismatch_error(
             "chio replay requires a positional <log> path or the `traffic` sub-subcommand"
                 .to_string(),
         ));
@@ -41,13 +41,13 @@ fn cmd_replay_legacy(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
 
     let tenant_pubkey = match args.tenant_pubkey.as_deref() {
         Some(path) => Some(load_tenant_pubkey(path).map_err(|e| {
-            CliError::Other(format!("failed to load tenant pubkey: {e}"))
+            CliError::replay_mismatch_error(format!("failed to load tenant pubkey: {e}"))
         })?),
         None => None,
     };
     let trusted_kernel_key = match args.trusted_kernel_pubkey.as_deref() {
         Some(path) => Some(load_trusted_kernel_pubkey(path).map_err(|e| {
-            CliError::Other(format!("failed to load trusted kernel pubkey: {e}"))
+            CliError::replay_mismatch_error(format!("failed to load trusted kernel pubkey: {e}"))
         })?),
         None => None,
     };
@@ -63,10 +63,10 @@ fn cmd_replay_legacy(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
     let mut stdout = std::io::stdout().lock();
     if args.json {
         render_json(&mut stdout, &report)
-            .map_err(|e| CliError::Other(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
     } else {
         render_replay_human(&mut stdout, &report)
-            .map_err(|e| CliError::Other(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
     }
 
     if report.exit_code == 0 {
@@ -98,7 +98,7 @@ fn run_legacy_replay(
 
     if from_tee {
         let Some(tenant_pubkey) = tenant_pubkey else {
-            return Err(CliError::Other(
+            return Err(CliError::replay_mismatch_error(
                 "chio replay --from-tee requires --tenant-pubkey".to_string(),
             ));
         };
@@ -106,7 +106,7 @@ fn run_legacy_replay(
     }
 
     let reader = ReceiptLogReader::open(log).map_err(|e| {
-        CliError::Other(format!(
+        CliError::replay_mismatch_error(format!(
             "failed to open receipt log {}: {e}",
             log.display()
         ))
@@ -138,13 +138,13 @@ fn run_legacy_replay(
             ));
         }
         Err(ReadError::Empty(p)) => {
-            return Err(CliError::Other(format!(
+            return Err(CliError::replay_mismatch_error(format!(
                 "empty receipt log: {}",
                 p.display(),
             )));
         }
         Err(ReadError::Io(e)) => {
-            return Err(CliError::Other(format!(
+            return Err(CliError::replay_mismatch_error(format!(
                 "io error while reading receipt log: {e}",
             )));
         }
@@ -177,13 +177,13 @@ fn run_legacy_replay(
                 ));
             }
             Err(ReadError::Empty(p)) => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::replay_mismatch_error(format!(
                     "empty receipt log: {}",
                     p.display(),
                 )));
             }
             Err(ReadError::Io(e)) => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::replay_mismatch_error(format!(
                     "io error while reading receipt log: {e}",
                 )));
             }
@@ -205,7 +205,7 @@ fn run_legacy_replay(
                     ),
                 },
                 ReceiptGateError::RedactionMismatch { .. } => {
-                    return Err(CliError::Other(
+                    return Err(CliError::replay_mismatch_error(
                         "schema gate produced a redaction error".to_string(),
                     ));
                 }
@@ -236,7 +236,7 @@ fn run_legacy_replay(
                     ),
                 },
                 ReceiptGateError::SchemaMismatch { .. } => {
-                    return Err(CliError::Other(
+                    return Err(CliError::replay_mismatch_error(
                         "redaction gate produced a schema error".to_string(),
                     ));
                 }
@@ -351,12 +351,12 @@ fn run_legacy_replay(
                 ));
             }
             Err(other) => {
-                return Err(CliError::Other(format!("verdict re-derive failed: {other}")));
+                return Err(CliError::replay_mismatch_error(format!("verdict re-derive failed: {other}")));
             }
         }
 
         let canonical = chio_core::canonical::canonical_json_bytes(&receipt).map_err(|e| {
-            CliError::Other(format!("canonicalize receipt {}: {e}", receipt.id))
+            CliError::replay_mismatch_error(format!("canonicalize receipt {}: {e}", receipt.id))
         })?;
         acc.append(&canonical);
         receipts_checked = receipts_checked.saturating_add(1);
@@ -407,7 +407,7 @@ fn run_legacy_replay_from_tee(
     tenant_pubkey: &[u8; 32],
 ) -> Result<ReplayReport, CliError> {
     let iter = open_ndjson(log).map_err(|e| {
-        CliError::Other(format!(
+        CliError::replay_mismatch_error(format!(
             "failed to open tee capture {}: {e}",
             log.display()
         ))
@@ -448,7 +448,7 @@ fn run_legacy_replay_from_tee(
                 }
                 let canonical =
                     chio_core::canonical::canonical_json_bytes(&record.frame).map_err(|e| {
-                        CliError::Other(format!(
+                        CliError::replay_mismatch_error(format!(
                             "canonicalize frame at line {}: {e}",
                             record.line,
                         ))

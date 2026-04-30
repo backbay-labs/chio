@@ -276,13 +276,13 @@ impl CertificationDiscoveryOperator {
 impl EnterpriseProviderRegistry {
     pub fn load(path: &Path) -> Result<Self, CliError> {
         let bytes = fs::read(path).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_io_error(format!(
                 "failed to read enterprise provider registry {}: {error}",
                 path.display()
             ))
         })?;
         let registry = serde_json::from_slice::<Self>(&bytes).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_json_error(format!(
                 "failed to parse enterprise provider registry {}: {error}",
                 path.display()
             ))
@@ -295,7 +295,7 @@ impl EnterpriseProviderRegistry {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    CliError::Other(format!(
+                    CliError::cli_io_error(format!(
                         "failed to create enterprise provider registry directory {}: {error}",
                         parent.display()
                     ))
@@ -303,13 +303,13 @@ impl EnterpriseProviderRegistry {
             }
         }
         let serialized = serde_json::to_vec_pretty(&registry).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_json_error(format!(
                 "failed to serialize enterprise provider registry {}: {error}",
                 path.display()
             ))
         })?;
         fs::write(path, serialized).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_io_error(format!(
                 "failed to write enterprise provider registry {}: {error}",
                 path.display()
             ))
@@ -336,7 +336,7 @@ impl EnterpriseProviderRegistry {
         if self.version != ENTERPRISE_PROVIDER_REGISTRY_VERSION
             && self.version != LEGACY_ENTERPRISE_PROVIDER_REGISTRY_VERSION
         {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "unsupported enterprise provider registry version `{}`",
                 self.version
             )));
@@ -356,13 +356,13 @@ impl EnterpriseProviderRegistry {
 impl CertificationDiscoveryNetwork {
     pub fn load(path: &Path) -> Result<Self, CliError> {
         let bytes = fs::read(path).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_io_error(format!(
                 "failed to read certification discovery network {}: {error}",
                 path.display()
             ))
         })?;
         let network = serde_json::from_slice::<Self>(&bytes).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_json_error(format!(
                 "failed to parse certification discovery network {}: {error}",
                 path.display()
             ))
@@ -375,7 +375,7 @@ impl CertificationDiscoveryNetwork {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    CliError::Other(format!(
+                    CliError::cli_io_error(format!(
                         "failed to create certification discovery network directory {}: {error}",
                         parent.display()
                     ))
@@ -383,13 +383,13 @@ impl CertificationDiscoveryNetwork {
             }
         }
         let serialized = serde_json::to_vec_pretty(&network).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_json_error(format!(
                 "failed to serialize certification discovery network {}: {error}",
                 path.display()
             ))
         })?;
         fs::write(path, serialized).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_io_error(format!(
                 "failed to write certification discovery network {}: {error}",
                 path.display()
             ))
@@ -420,7 +420,7 @@ impl CertificationDiscoveryNetwork {
         if self.version != CERTIFICATION_DISCOVERY_NETWORK_VERSION
             && self.version != LEGACY_CERTIFICATION_DISCOVERY_NETWORK_VERSION
         {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "unsupported certification discovery network version `{}`",
                 self.version
             )));
@@ -511,7 +511,7 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::JwtProviderProfile;
+    use crate::{CliError, JwtProviderProfile};
 
     use super::{
         CertificationDiscoveryNetwork, CertificationDiscoveryOperator, EnterpriseProviderKind,
@@ -591,6 +591,29 @@ mod tests {
             .expect("system time before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("chio-certify-discovery-network-{nonce}.json"))
+    }
+
+    fn assert_registry_error(err: &CliError, expected_code: &str, expected_domain: &str) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected_code);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    fn must_err<T: std::fmt::Debug>(result: Result<T, CliError>, context: &str) -> CliError {
+        match result {
+            Ok(value) => panic!("{context}: expected error, got {value:?}"),
+            Err(error) => error,
+        }
+    }
+
+    fn write_test_file(path: &std::path::Path, bytes: impl AsRef<[u8]>) {
+        if let Err(error) = fs::write(path, bytes) {
+            panic!("failed to write {}: {error}", path.display());
+        }
     }
 
     fn discovery_operator(operator_id: &str) -> CertificationDiscoveryOperator {
@@ -718,6 +741,37 @@ mod tests {
     }
 
     #[test]
+    fn enterprise_provider_registry_local_failures_use_cli_domains() {
+        let missing_path = temp_registry_path();
+        let missing_error = must_err(
+            EnterpriseProviderRegistry::load(&missing_path),
+            "missing registry should fail closed",
+        );
+        assert_registry_error(&missing_error, "urn:chio:error:cli:io", "cli");
+
+        let invalid_json_path = temp_registry_path();
+        write_test_file(&invalid_json_path, b"{not-json");
+        let json_error = must_err(
+            EnterpriseProviderRegistry::load(&invalid_json_path),
+            "invalid registry JSON should fail closed",
+        );
+        assert_registry_error(&json_error, "urn:chio:error:cli:json", "cli");
+        let _ = fs::remove_file(invalid_json_path);
+
+        let unsupported_version_path = temp_registry_path();
+        write_test_file(
+            &unsupported_version_path,
+            r#"{"version":"unsupported","providers":{}}"#,
+        );
+        let version_error = must_err(
+            EnterpriseProviderRegistry::load(&unsupported_version_path),
+            "unsupported registry version should fail closed",
+        );
+        assert_registry_error(&version_error, "urn:chio:error:cli:other", "cli");
+        let _ = fs::remove_file(unsupported_version_path);
+    }
+
+    #[test]
     fn enterprise_provider_invalid_enabled_record_is_excluded_by_validated_provider() {
         let mut registry = EnterpriseProviderRegistry {
             version: ENTERPRISE_PROVIDER_REGISTRY_VERSION.to_string(),
@@ -767,6 +821,30 @@ mod tests {
         );
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn certification_discovery_network_local_failures_use_cli_domains() {
+        let invalid_json_path = temp_discovery_path();
+        write_test_file(&invalid_json_path, b"{not-json");
+        let json_error = must_err(
+            CertificationDiscoveryNetwork::load(&invalid_json_path),
+            "invalid discovery JSON should fail closed",
+        );
+        assert_registry_error(&json_error, "urn:chio:error:cli:json", "cli");
+        let _ = fs::remove_file(invalid_json_path);
+
+        let unsupported_version_path = temp_discovery_path();
+        write_test_file(
+            &unsupported_version_path,
+            r#"{"version":"unsupported","operators":{}}"#,
+        );
+        let version_error = must_err(
+            CertificationDiscoveryNetwork::load(&unsupported_version_path),
+            "unsupported discovery version should fail closed",
+        );
+        assert_registry_error(&version_error, "urn:chio:error:cli:other", "cli");
+        let _ = fs::remove_file(unsupported_version_path);
     }
 
     #[test]

@@ -669,7 +669,7 @@ fn import_budget_delta_response(
         .len()
         .saturating_add(response.mutation_events.len());
     if record_count > BUDGET_DELTA_MAX_RECORDS {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "budget delta response contains {record_count} records, maximum is {BUDGET_DELTA_MAX_RECORDS}"
         )));
     }
@@ -741,7 +741,7 @@ fn sync_peer_lineage(
         for record in response.records {
             store
                 .upsert_capability_snapshot(&record.snapshot)
-                .map_err(|error| CliError::Other(error.to_string()))?;
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?;
             last_seq = record.seq;
             applied = applied.saturating_add(1);
         }
@@ -755,7 +755,7 @@ fn build_cluster_state(
     local_addr: SocketAddr,
 ) -> Result<Option<Arc<Mutex<ClusterRuntimeState>>>, CliError> {
     if !config.peer_urls.is_empty() && config.authority_seed_path.is_some() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "clustered trust control requires --authority-db instead of --authority-seed-file"
                 .to_string(),
         ));
@@ -1493,7 +1493,7 @@ fn budget_visibility_matches(
 fn normalize_cluster_url(value: &str) -> Result<String, CliError> {
     let normalized = value.trim().trim_end_matches('/');
     if normalized.is_empty() {
-        return Err(CliError::Other("cluster URL must not be empty".to_string()));
+        return Err(CliError::cli_other_error("cluster URL must not be empty".to_string()));
     }
     Ok(normalized.to_string())
 }
@@ -1501,11 +1501,11 @@ fn normalize_cluster_url(value: &str) -> Result<String, CliError> {
 fn normalize_cluster_config_url(value: &str, allow_local: bool) -> Result<String, CliError> {
     let normalized = normalize_cluster_url(value)?;
     let parsed = Url::parse(&normalized)
-        .map_err(|error| CliError::Other(format!("cluster URL must be valid: {error}")))?;
+        .map_err(|error| CliError::cli_other_error(format!("cluster URL must be valid: {error}")))?;
     match parsed.scheme() {
         "http" | "https" => {}
         scheme => {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "cluster URL scheme `{scheme}` is not allowed"
             )))
         }
@@ -1521,14 +1521,14 @@ fn validate_cluster_url_host(parsed: &Url) -> Result<(), CliError> {
     match parsed.host() {
         Some(Host::Ipv4(address)) => {
             if chio_external_guards::denied_external_guard_ip(IpAddr::V4(address)) {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "cluster URL must not target disallowed address `{address}` without --allow-local-peer-urls"
                 )));
             }
         }
         Some(Host::Ipv6(address)) => {
             if chio_external_guards::denied_external_guard_ip(IpAddr::V6(address)) {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "cluster URL must not target disallowed address `{address}` without --allow-local-peer-urls"
                 )));
             }
@@ -1536,20 +1536,20 @@ fn validate_cluster_url_host(parsed: &Url) -> Result<(), CliError> {
         Some(Host::Domain(host)) => {
             let lower = host.to_ascii_lowercase();
             if lower == "localhost" || lower.ends_with(".localhost") {
-                return Err(CliError::Other(
+                return Err(CliError::cli_other_error(
                     "cluster URL must not target localhost without --allow-local-peer-urls"
                         .to_string(),
                 ));
             }
             let port = parsed.port_or_known_default().ok_or_else(|| {
-                CliError::Other("cluster URL must include a resolvable port".to_string())
+                CliError::cli_other_error("cluster URL must include a resolvable port".to_string())
             })?;
             let addrs = (host, port).to_socket_addrs().map_err(|error| {
-                CliError::Other(format!("cluster URL host `{host}` could not be resolved: {error}"))
+                CliError::cli_other_error(format!("cluster URL host `{host}` could not be resolved: {error}"))
             })?;
             for addr in addrs {
                 if chio_external_guards::denied_external_guard_ip(addr.ip()) {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::cli_other_error(format!(
                         "cluster URL host `{host}` resolved to disallowed address `{}` without --allow-local-peer-urls",
                         addr.ip()
                     )));
@@ -1557,7 +1557,7 @@ fn validate_cluster_url_host(parsed: &Url) -> Result<(), CliError> {
             }
         }
         None => {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "cluster URL must include a host".to_string(),
             ))
         }
@@ -1760,7 +1760,7 @@ fn apply_cluster_snapshot(
         for record in &lineage {
             store
                 .upsert_capability_snapshot(&record.snapshot)
-                .map_err(|error| CliError::Other(error.to_string()))?;
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         }
     }
 
@@ -1777,7 +1777,7 @@ fn apply_cluster_snapshot(
             .collect::<Result<Vec<_>, _>>()?;
         store
             .import_snapshot_records(&usage_records, &mutation_records)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         for event in &budget_mutation_events {
             budget_cursor = Some(merge_budget_cursor(
                 budget_cursor,
@@ -1825,10 +1825,10 @@ fn seed_cluster_authority_from_snapshot(
     let snapshot_leader = authority_lease.map(|lease| lease.leader_url.clone());
     if let Some(path) = state.config.authority_db_path.as_deref() {
         let authority = SqliteCapabilityAuthority::open(path)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         authority
             .seed_cluster_fence(snapshot_leader.as_deref(), snapshot_term)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     }
     let seed_guard = |guard: &mut ClusterRuntimeState| {
         let conflicting_same_term_self_leader = snapshot_term == guard.election_term
@@ -1944,7 +1944,7 @@ fn collect_lineage_views(store: &SqliteReceiptStore) -> Result<Vec<StoredLineage
     loop {
         let batch = store
             .list_capability_snapshots_after_seq(after_seq, MAX_LIST_LIMIT)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         if batch.is_empty() {
             break;
         }
@@ -2108,7 +2108,7 @@ fn budget_mutation_record_from_view(
     event: &BudgetMutationEventView,
 ) -> Result<BudgetMutationRecord, CliError> {
     let kind = BudgetMutationKind::parse(&event.kind).ok_or_else(|| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "unknown budget mutation kind `{}` in cluster snapshot",
             event.kind
         ))
@@ -2141,13 +2141,13 @@ fn budget_mutation_record_from_view(
 
 fn forwarded_control_response(response: ureq::Response) -> Result<Response, CliError> {
     let status = StatusCode::from_u16(response.status()).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to map forwarded trust-control response status: {error}"
         ))
     })?;
     let content_type = response.header(CONTENT_TYPE.as_str()).map(str::to_owned);
     let body = response.into_string().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to decode forwarded trust-control response body: {error}"
         ))
     })?;
@@ -2157,7 +2157,7 @@ fn forwarded_control_response(response: ureq::Response) -> Result<Response, CliE
         builder = builder.header(CONTENT_TYPE, content_type);
     }
     builder.body(axum::body::Body::from(body)).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to build forwarded trust-control response: {error}"
         ))
     })
@@ -2169,12 +2169,12 @@ fn post_json_to_control_service<B: Serialize>(
     body: &B,
 ) -> Result<Response, CliError> {
     let json = serde_json::to_value(body).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to serialize forwarded trust control request: {error}"
         ))
     })?;
     let endpoint = client.endpoints.first().ok_or_else(|| {
-        CliError::Other("trust control client requires at least one endpoint".to_string())
+        CliError::cli_other_error("trust control client requires at least one endpoint".to_string())
     })?;
     let url = format!("{endpoint}{path}");
     match client
@@ -2185,7 +2185,7 @@ fn post_json_to_control_service<B: Serialize>(
     {
         Ok(response) => forwarded_control_response(response),
         Err(ureq::Error::Status(_, response)) => forwarded_control_response(response),
-        Err(ureq::Error::Transport(error)) => Err(CliError::Other(format!(
+        Err(ureq::Error::Transport(error)) => Err(CliError::cli_other_error(format!(
             "trust control service transport failed: {error}"
         ))),
     }
@@ -2623,7 +2623,7 @@ fn cluster_peer_auth_signature(
         "term": term,
     }))
     .map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to encode cluster peer auth payload: {error}"
         ))
     })?;
@@ -3072,7 +3072,7 @@ pub fn build_signed_behavioral_feed(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     let report =
         build_behavioral_feed_report(&receipt_store, receipt_db_path, budget_db_path, query)
-            .map_err(|response| CliError::Other(response_status_text(&response)))?;
+            .map_err(|response| CliError::cli_other_error(response_status_text(&response)))?;
     let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     SignedBehavioralFeed::sign(report, &keypair).map_err(Into::into)
 }
@@ -3084,7 +3084,7 @@ pub fn build_signed_runtime_attestation_appraisal_report(
     evidence: &RuntimeAttestationEvidence,
 ) -> Result<SignedRuntimeAttestationAppraisalReport, CliError> {
     let report = build_runtime_attestation_appraisal_report(runtime_assurance_policy, evidence)
-        .map_err(|response| CliError::Other(response_status_text(&response)))?;
+        .map_err(|response| CliError::cli_other_error(response_status_text(&response)))?;
     let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     SignedRuntimeAttestationAppraisalReport::sign(report, &keypair).map_err(Into::into)
 }
@@ -3096,7 +3096,7 @@ pub fn build_signed_runtime_attestation_appraisal_result(
     request: &RuntimeAttestationAppraisalResultExportRequest,
 ) -> Result<SignedRuntimeAttestationAppraisalResult, CliError> {
     let result = build_runtime_attestation_appraisal_result(runtime_assurance_policy, request)
-        .map_err(|response| CliError::Other(response_status_text(&response)))?;
+        .map_err(|response| CliError::cli_other_error(response_status_text(&response)))?;
     let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     SignedRuntimeAttestationAppraisalResult::sign(result, &keypair).map_err(Into::into)
 }

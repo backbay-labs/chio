@@ -127,7 +127,7 @@ impl FederationAdmissionPolicyRegistry {
             Ok(bytes) => {
                 let mut registry: Self = serde_json::from_slice(&bytes)?;
                 if registry.version != FEDERATION_ADMISSION_POLICY_REGISTRY_VERSION {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::transport_error(format!(
                         "unsupported federation admission policy registry version: {}",
                         registry.version
                     )));
@@ -171,22 +171,22 @@ pub fn verify_federation_admission_policy_record(
     record: &FederationAdmissionPolicyRecord,
 ) -> Result<(), CliError> {
     if record.schema != FEDERATION_ADMISSION_POLICY_RECORD_SCHEMA {
-        return Err(CliError::Other(format!(
+        return Err(CliError::transport_error(format!(
             "unsupported federation admission policy schema: {}",
             record.schema
         )));
     }
     if !record.policy.verify_signature()? {
-        return Err(CliError::Other(
+        return Err(CliError::transport_error(
             "federation admission policy signature verification failed".to_string(),
         ));
     }
     validate_federated_open_admission_policy(&record.policy.body)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::transport_error(error.to_string()))?;
     validate_anti_sybil_controls(&record.anti_sybil, &record.policy.body)?;
     if let Some(score) = record.minimum_reputation_score {
         if !score.is_finite() || !(0.0..=1.0).contains(&score) {
-            return Err(CliError::Other(
+            return Err(CliError::transport_error(
                 "minimum_reputation_score must be between 0.0 and 1.0".to_string(),
             ));
         }
@@ -213,19 +213,19 @@ fn validate_anti_sybil_controls(
 ) -> Result<(), CliError> {
     if let Some(limit) = controls.rate_limit.as_ref() {
         if limit.max_requests == 0 {
-            return Err(CliError::Other(
+            return Err(CliError::transport_error(
                 "anti_sybil.rate_limit.max_requests must be non-zero".to_string(),
             ));
         }
         if limit.window_seconds == 0 {
-            return Err(CliError::Other(
+            return Err(CliError::transport_error(
                 "anti_sybil.rate_limit.window_seconds must be non-zero".to_string(),
             ));
         }
     }
     if let Some(bits) = controls.proof_of_work_bits {
         if bits == 0 || bits > 24 {
-            return Err(CliError::Other(
+            return Err(CliError::transport_error(
                 "anti_sybil.proof_of_work_bits must be between 1 and 24".to_string(),
             ));
         }
@@ -235,7 +235,7 @@ fn validate_anti_sybil_controls(
             .allowed_admission_classes
             .contains(&GenericTrustAdmissionClass::BondBacked)
     {
-        return Err(CliError::Other(
+        return Err(CliError::transport_error(
             "bond_backed_only requires the signed policy to allow bond_backed admission"
                 .to_string(),
         ));

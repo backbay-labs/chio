@@ -16,13 +16,13 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
     }
     let pubkey = match args.tenant_pubkey.as_deref() {
         Some(path) => Some(load_tenant_pubkey(path).map_err(|e| {
-            CliError::Other(format!("failed to load tenant pubkey: {e}"))
+            CliError::replay_mismatch_error(format!("failed to load tenant pubkey: {e}"))
         })?),
         None => None,
     };
 
     let iter = open_ndjson(&args.from).map_err(|e| {
-        CliError::Other(format!(
+        CliError::replay_mismatch_error(format!(
             "failed to open ndjson capture {}: {e}",
             args.from.display()
         ))
@@ -40,7 +40,7 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
             args.from.display(),
             args.schema,
         )
-        .map_err(|e| CliError::Other(format!("write stdout: {e}")))?;
+        .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
     }
 
     for record in iter {
@@ -57,7 +57,7 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
                                 record.line, record.frame.event_id,
                             )
                             .map_err(|e| {
-                                CliError::Other(format!("write stdout: {e}"))
+                                CliError::replay_mismatch_error(format!("write stdout: {e}"))
                             })?;
                         }
                     }
@@ -74,7 +74,7 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
                                 record.line,
                             )
                             .map_err(|e| {
-                                CliError::Other(format!("write stdout: {e}"))
+                                CliError::replay_mismatch_error(format!("write stdout: {e}"))
                             })?;
                         }
                     }
@@ -93,7 +93,7 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
                         "  line {:>4}: FAIL exit={EXIT_PARSE_ERROR} {msg}",
                         line,
                     )
-                    .map_err(|e| CliError::Other(format!("write stdout: {e}")))?;
+                    .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
                 }
             }
         }
@@ -124,15 +124,15 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
             }),
         });
         let serialized = serde_json::to_string(&payload)
-            .map_err(|e| CliError::Other(format!("serialize report: {e}")))?;
+            .map_err(|e| CliError::replay_mismatch_error(format!("serialize report: {e}")))?;
         writeln!(stdout, "{serialized}")
-            .map_err(|e| CliError::Other(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
     } else {
         writeln!(
             stdout,
             "chio replay traffic: {passes}/{total} frames passed",
         )
-        .map_err(|e| CliError::Other(format!("write stdout: {e}")))?;
+        .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
     }
 
     if let Some((line, msg, exit)) = first_error {
@@ -157,7 +157,7 @@ fn cmd_replay_traffic_with_against(
     against_str: &str,
 ) -> Result<(), CliError> {
     let against = PolicyRef::parse(against_str)
-        .map_err(|e| CliError::Other(format!("--against parse failed: {e}")))?;
+        .map_err(|e| CliError::replay_mismatch_error(format!("--against parse failed: {e}")))?;
     let report = match run_traffic_replay(args, &against) {
         Ok(report) => report,
         Err(ExecuteError::MissingTenantPubkey) => {
@@ -168,7 +168,7 @@ fn cmd_replay_traffic_with_against(
             );
         }
         Err(err) => {
-            return Err(CliError::Other(format!(
+            return Err(CliError::replay_mismatch_error(format!(
                 "chio replay traffic --against: {err}"
             )));
         }
@@ -178,10 +178,10 @@ fn cmd_replay_traffic_with_against(
     let mut stdout = std::io::stdout().lock();
     if args.json {
         render_traffic_diff_json(&mut stdout, &diff)
-            .map_err(|e| CliError::Other(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
     } else {
         render_traffic_diff_human(&mut stdout, &diff)
-            .map_err(|e| CliError::Other(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
     }
 
     if !diff.ok() {
@@ -227,7 +227,7 @@ fn finish_replay_failure(code: i32, _message: String) -> Result<(), CliError> {
 
 #[cfg(test)]
 fn finish_replay_failure(_code: i32, message: String) -> Result<(), CliError> {
-    Err(CliError::Other(message))
+    Err(CliError::replay_mismatch_error(message))
 }
 
 #[cfg(test)]
@@ -235,6 +235,20 @@ fn finish_replay_failure(_code: i32, message: String) -> Result<(), CliError> {
 mod replay_traffic_tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
+
+    fn assert_replay_error(err: CliError, expected_message: &str) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), "urn:chio:error:replay:deterministic-mismatch");
+                assert_eq!(chio.domain().as_str(), "replay");
+                assert!(
+                    chio.to_string().contains(expected_message),
+                    "message: {chio}",
+                );
+            }
+            other => panic!("expected registry-backed replay error, got {other:?}"),
+        }
+    }
 
     fn signing_keypair() -> SigningKey {
         SigningKey::from_bytes(&[7u8; 32])
@@ -344,15 +358,7 @@ mod replay_traffic_tests {
             run_id: None,
         };
         let err = cmd_replay_traffic(&args).unwrap_err();
-        match err {
-            CliError::Other(msg) => {
-                assert!(
-                    msg.contains("tenant signature verification failed"),
-                    "msg: {msg}"
-                );
-            }
-            other => panic!("expected CliError::Other, got {other:?}"),
-        }
+        assert_replay_error(err, "tenant signature verification failed");
     }
 
     #[test]
@@ -390,10 +396,7 @@ mod replay_traffic_tests {
             run_id: None,
         };
         let err = cmd_replay_traffic(&args).unwrap_err();
-        match err {
-            CliError::Other(msg) => assert!(msg.contains("ndjson"), "msg: {msg}"),
-            other => panic!("expected CliError::Other, got {other:?}"),
-        }
+        assert_replay_error(err, "ndjson");
     }
 
     #[test]

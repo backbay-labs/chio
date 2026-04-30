@@ -306,7 +306,10 @@ fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
     };
     let new_content = format!(
         "{}\n{body}",
-        target.manifest_header(phase_files.len(), count_top_level_sequence_entries_from_body(&body))
+        target.manifest_header(
+            phase_files.len(),
+            count_top_level_sequence_entries_from_body(&body)
+        )
     );
 
     if check_only {
@@ -354,9 +357,9 @@ fn regen_trajectory_2_manifest(workspace_root: &Path, check_only: bool) -> Resul
     if check_only {
         command.arg("--check");
     }
-    let status = command
-        .status()
-        .map_err(|err| XtaskError::Process(format!("failed to run {}: {err}", display_path(&script))))?;
+    let status = command.status().map_err(|err| {
+        XtaskError::Process(format!("failed to run {}: {err}", display_path(&script)))
+    })?;
     if status.success() {
         Ok(())
     } else {
