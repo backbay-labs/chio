@@ -2443,8 +2443,11 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-kernel",
+ "chio-replay-corpus",
+ "chio-tee-frame",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "toml 0.8.23",
