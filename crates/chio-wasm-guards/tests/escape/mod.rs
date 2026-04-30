@@ -32,3 +32,8 @@ mod undeclared_imports;
 mod deep_recursion;
 mod host_reentry;
 mod table_grow;
+
+// Third batch (M05.P3.T4): malformed component-model encoding,
+// signed-but-malicious modules.
+mod malformed_component;
+mod signed_but_malicious;
