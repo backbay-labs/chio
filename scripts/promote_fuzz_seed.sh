@@ -501,6 +501,34 @@ else
     mv "$INPUT" "$DEST"
 fi
 
+# Append a [[seed]] entry to fuzz/corpus_metadata.toml when the file
+# exists so the M05.P2.T2 gate stays green after a fresh promotion.
+# Idempotent: skip the append when the path is already indexed.
+METADATA="$REPO_ROOT/fuzz/corpus_metadata.toml"
+if [[ -f "$METADATA" ]]; then
+    DEST_REL="fuzz/corpus/$TARGET/$SHA.bin"
+    if grep -Fq "path      = \"$DEST_REL\"" "$METADATA" 2>/dev/null; then
+        :
+    else
+        case "$MODE" in
+            adversarial) META_SOURCE="adversarial_promoted" ;;
+            libfuzzer)   META_SOURCE="libfuzzer_crash" ;;
+            proptest)    META_SOURCE="hand_curated_coverage" ;;
+        esac
+        {
+            printf '\n[[seed]]\n'
+            printf 'target    = "%s"\n' "$TARGET"
+            printf 'path      = "%s"\n' "$DEST_REL"
+            printf 'sha256    = "%s"\n' "$SHA"
+            printf 'source    = "%s"\n' "$META_SOURCE"
+            if [[ "$MODE" == "adversarial" ]]; then
+                printf 'class     = "%s"\n' "$CLASS"
+                printf 'threat_id = "%s"\n' "$THREAT_ID"
+            fi
+        } >>"$METADATA"
+    fi
+fi
+
 echo "promote_fuzz_seed.sh: promoted $TARGET seed $SHA16 ($MODE, $SEVERITY)"
 if [[ "$MODE" == "adversarial" ]]; then
     echo "  case:   $OUT"
