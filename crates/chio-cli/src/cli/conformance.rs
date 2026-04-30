@@ -19,10 +19,10 @@ fn cmd_conformance_run(
     })?;
 
     let scenarios = chio_conformance::load_scenarios_from_dir(&options.scenarios_dir)
-        .map_err(|error| CliError::provider_error(format!("failed to load scenarios: {error}")))?;
+        .map_err(|error| CliError::cli_io_error(format!("failed to load scenarios: {error}")))?;
     let mut results =
         chio_conformance::load_results_from_dir(&summary.results_dir).map_err(|error| {
-            CliError::provider_error(format!("failed to load peer results: {error}"))
+            CliError::cli_io_error(format!("failed to load peer results: {error}"))
         })?;
     if let Some(filter) = scenario {
         results.retain(|result| result.scenario_id == filter);
