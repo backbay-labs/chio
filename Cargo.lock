@@ -2825,6 +2825,7 @@ dependencies = [
  "chio-core",
  "chio-did",
  "chio-reputation",
+ "chio-revocation-oracle",
  "chrono",
  "dudect-bencher",
  "proptest",
@@ -2993,8 +2994,10 @@ name = "chio-federation"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-kernel-core",
  "chio-listing",
  "chio-open-market",
+ "chio-revocation-oracle",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3220,6 +3223,7 @@ name = "chio-kernel-core"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "arc-swap",
  "chio-adversarial-suite",
  "chio-core-types",
  "dudect-bencher",

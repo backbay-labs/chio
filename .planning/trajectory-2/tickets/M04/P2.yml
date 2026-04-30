@@ -8,7 +8,7 @@
   milestone: M04
   phase: 2
   title: Define RevocationRootGossip message type in chio-federation (epoch, root, signature, signer_id, ts)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-federation/src/revocation_gossip.rs
@@ -25,7 +25,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 9c979f6f3418f26465338959903da7dd6f7b49f7
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -34,7 +34,7 @@
   milestone: M04
   phase: 2
   title: Push path - oracle epoch tick broadcasts signed root to bilateral peers (250ms batched default)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-federation/src/revocation_gossip.rs
@@ -52,7 +52,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d24ad6f13b9e95a0365c11ca2a5bace4340353bb
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -61,7 +61,7 @@
   milestone: M04
   phase: 2
   title: Pull / catch-up path - peer behind by N epochs requests gap, sender replies with sequence of signed roots
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-federation/src/revocation_gossip.rs
@@ -76,7 +76,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 4a0f92b0aec6b3759980bc2c51c320d95ddec8fd
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -85,7 +85,7 @@
   milestone: M04
   phase: 2
   title: RevocationView cache in chio-kernel-core - arc-swap-backed read-only view consulted on dispatch
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-kernel-core/src/revocation_view.rs
@@ -102,7 +102,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 1e5f124ef03297f0009a9848eb1fbca9ccb3995a
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -111,7 +111,7 @@
   milestone: M04
   phase: 2
   title: End-to-end gossip integration test - oracle insert at A observable to verifier V within 500ms median (100 trials, N=3 peers, 0-cost localhost links, single-host gossip mesh)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-federation/tests/oracle_gossip_e2e.rs
@@ -126,7 +126,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 7a8a957dad17ffd4164b391d82c323b891131df5
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -135,7 +135,7 @@
   milestone: M04
   phase: 2
   title: Wire chio-credentials passport-revocation events into oracle so passport revocation cascades through same surface
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-credentials/src/passport.rs
@@ -153,7 +153,7 @@
   agent_role: delegate-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 89e20698eddf2934fe60b02be09c313523ef7718
   merged_sha: null
   opened_ts: null
   merged_ts: null

@@ -62,6 +62,8 @@ pub mod guard;
 pub mod normalized;
 pub mod passport_verify;
 pub mod receipts;
+#[cfg(feature = "revocation-view")]
+pub mod revocation_view;
 pub mod rng;
 pub mod scope;
 
@@ -80,6 +82,10 @@ pub use passport_verify::{
     VerifiedPassport, VerifyError, PORTABLE_PASSPORT_SCHEMA,
 };
 pub use receipts::{sign_receipt, ReceiptSigningError};
+#[cfg(feature = "revocation-view")]
+pub use revocation_view::{
+    RevocationSnapshot, RevocationView, RevocationViewError, RevocationViewSubject,
+};
 pub use rng::{NullRng, Rng};
 pub use scope::{MatchedGrant, ScopeMatchError};
 

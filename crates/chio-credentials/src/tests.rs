@@ -1991,4 +1991,64 @@ mod tests {
             .expect_err("distribution without ttl should fail");
         assert!(matches!(error, CredentialError::InvalidPassportLifecycle(_)));
     }
+
+    /// M04 P2 T6 bridge: a Revoked PassportLifecycleRecord projects into
+    /// a chio_revocation_oracle::PassportRevocationEvent that the oracle
+    /// can ingest, while non-revoked states project to None. The
+    /// projection is read-only on the credentials side so it cannot
+    /// regress the trajectory-1 M03 named property_passport invariants.
+    #[test]
+    fn revoked_lifecycle_record_projects_into_oracle_bridge_event() {
+        let subject = Keypair::from_seed(&[5u8; 32]);
+        let issuer = Keypair::from_seed(&[6u8; 32]);
+        let record = PassportLifecycleRecord {
+            passport_id: "sha256:revoked-passport".to_string(),
+            subject: did_from_public_key(subject.public_key()).to_string(),
+            issuers: vec![did_from_public_key(issuer.public_key()).to_string()],
+            issuer_count: 1,
+            published_at: 1_710_000_000,
+            updated_at: 1_710_000_500,
+            status: PassportLifecycleState::Revoked,
+            superseded_by: None,
+            revoked_at: Some(1_710_000_500),
+            revoked_reason: Some("compromised key material".to_string()),
+            distribution: PassportStatusDistribution::default(),
+            valid_until: "2026-03-28T00:00:00Z".to_string(),
+        };
+        let event = record
+            .to_revocation_event()
+            .expect("revoked record projects without bridge error")
+            .expect("revoked record projects into Some(_)");
+        assert_eq!(event.passport_id, record.passport_id);
+        assert_eq!(event.subject, record.subject);
+        assert_eq!(event.revoked_at_unix_ms, 1_710_000_500);
+        assert_eq!(
+            event.revoked_reason.as_deref(),
+            Some("compromised key material")
+        );
+    }
+
+    #[test]
+    fn non_revoked_lifecycle_record_projects_into_none() {
+        let subject = Keypair::from_seed(&[7u8; 32]);
+        let issuer = Keypair::from_seed(&[8u8; 32]);
+        let record = PassportLifecycleRecord {
+            passport_id: "sha256:active-passport".to_string(),
+            subject: did_from_public_key(subject.public_key()).to_string(),
+            issuers: vec![did_from_public_key(issuer.public_key()).to_string()],
+            issuer_count: 1,
+            published_at: 1_710_000_000,
+            updated_at: 1_710_000_000,
+            status: PassportLifecycleState::Active,
+            superseded_by: None,
+            revoked_at: None,
+            revoked_reason: None,
+            distribution: PassportStatusDistribution::default(),
+            valid_until: "2026-03-28T00:00:00Z".to_string(),
+        };
+        let projection = record
+            .to_revocation_event()
+            .expect("active record never errors at the bridge");
+        assert!(projection.is_none(), "active records do not produce events");
+    }
 }

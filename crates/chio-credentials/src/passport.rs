@@ -172,6 +172,38 @@ impl PassportLifecycleRecord {
             true,
         )
     }
+
+    /// Project this lifecycle record into the bridge value the
+    /// `chio-revocation-oracle::passport_bridge` surface ingests.
+    ///
+    /// Returns `Ok(Some(_))` only when `self.status` is
+    /// `PassportLifecycleState::Revoked` and the record carries the
+    /// non-zero `revoked_at` the lifecycle validator already enforces;
+    /// non-revoked records yield `Ok(None)`. Malformed revoked records
+    /// surface the bridge's structural validation through
+    /// `Err(PassportRevocationBridgeError)` so callers stay fail-closed.
+    ///
+    /// This method does NOT modify the record: trajectory-1 M03 named
+    /// invariants `property_passport::*` remain green because the
+    /// projection is read-only on the credentials side.
+    pub fn to_revocation_event(
+        &self,
+    ) -> Result<
+        Option<chio_revocation_oracle::PassportRevocationEvent>,
+        chio_revocation_oracle::PassportRevocationBridgeError,
+    > {
+        if self.status != PassportLifecycleState::Revoked {
+            return Ok(None);
+        }
+        let revoked_at = self.revoked_at.unwrap_or(0);
+        let event = chio_revocation_oracle::PassportRevocationEvent::new(
+            self.passport_id.clone(),
+            self.subject.clone(),
+            revoked_at,
+            self.revoked_reason.clone(),
+        )?;
+        Ok(Some(event))
+    }
 }
 
 impl PassportLifecycleResolution {
