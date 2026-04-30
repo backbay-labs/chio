@@ -17,7 +17,6 @@ struct LeafRecord {
 #[derive(Clone)]
 pub struct InMemoryRevocationOracle {
     layers: Vec<Vec<[u8; 32]>>,
-    leaves: Vec<[u8; 32]>,
     records: HashMap<RevocationKey, LeafRecord>,
     epoch: u64,
     issued_at_unix_ms: u64,
@@ -37,13 +36,20 @@ impl InMemoryRevocationOracle {
 
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
+        let mut layers = Vec::new();
+        if capacity > 0 {
+            layers.push(Vec::with_capacity(capacity));
+        }
         Self {
-            layers: Vec::new(),
-            leaves: Vec::with_capacity(capacity),
+            layers,
             records: HashMap::with_capacity(capacity),
             epoch: 0,
             issued_at_unix_ms: 0,
         }
+    }
+
+    fn leaf_count(&self) -> usize {
+        self.layers.first().map_or(0, Vec::len)
     }
 
     pub fn verify_inclusion(proof: &InclusionProof) -> Result<()> {
@@ -148,9 +154,8 @@ impl RevocationOracle for InMemoryRevocationOracle {
         }
 
         let hash = Self::leaf_hash(&key)?;
-        let index = self.leaves.len();
+        let index = self.leaf_count();
         self.append_leaf(hash);
-        self.leaves.push(hash);
         self.records.insert(key, LeafRecord { index, hash });
         self.epoch = self.epoch.saturating_add(1);
         self.issued_at_unix_ms = now_unix_ms;
@@ -165,7 +170,7 @@ impl RevocationOracle for InMemoryRevocationOracle {
         EpochRoot {
             epoch: self.epoch,
             root_hash: self.current_root_hash(),
-            leaf_count: self.leaves.len(),
+            leaf_count: self.leaf_count(),
             issued_at_unix_ms: self.issued_at_unix_ms,
         }
     }
