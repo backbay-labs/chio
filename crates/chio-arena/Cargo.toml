@@ -1,0 +1,18 @@
+[package]
+name = "chio-arena"
+description = "Deterministic Chio arena scenario runner and replay bundle writer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_arena"
+
+[dependencies]
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

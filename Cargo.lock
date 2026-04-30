@@ -2438,6 +2438,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-arena"
+version = "0.1.0"
+
+[[package]]
 name = "chio-attest-verify"
 version = "0.1.0"
 dependencies = [

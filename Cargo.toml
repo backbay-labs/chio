@@ -6,6 +6,7 @@ members = [
     "crates/chio-core-types",
     "crates/chio-errors",
     "crates/chio-adversarial-suite",
+    "crates/chio-arena",
     #
     # Kernel variants
     "crates/chio-kernel",
@@ -58,6 +59,7 @@ members = [
     "crates/chio-web3-bindings",
     #
     # Supply-chain attestation
+    "crates/chio-arena",
     "crates/chio-replay-corpus",
     "crates/chio-attest-verify",
     "crates/chio-tee",
