@@ -10,19 +10,40 @@ use crate::sink::{OTelReceiptExportError, ReceiptStoreSink, ReceiptStoreSinkSumm
 /// The network listener owns protobuf decoding. This facade receives the decoded
 /// export request and commits it through the receipt-store sink.
 pub struct OtlpGrpcIngress {
-    sink: ReceiptStoreSink,
+    bounded: BoundedOtlpGrpcIngress,
 }
 
 impl OtlpGrpcIngress {
     pub fn new(sink: ReceiptStoreSink) -> Self {
-        Self { sink }
+        Self::with_queue_config(sink, OtlpExporterQueueConfig::default())
+    }
+
+    pub fn with_queue_config(sink: ReceiptStoreSink, config: OtlpExporterQueueConfig) -> Self {
+        Self {
+            bounded: BoundedOtlpGrpcIngress::new(sink, config),
+        }
     }
 
     pub fn export(
         &self,
         request: &OtlpGrpcTraceExport,
     ) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
-        self.sink.export_traces(request)
+        Ok(self.bounded.export(request.clone())?.sink)
+    }
+
+    pub fn enqueue(
+        &self,
+        request: OtlpGrpcTraceExport,
+    ) -> Result<OtlpExporterEnqueueSummary, OTelReceiptExportError> {
+        self.bounded.enqueue(request)
+    }
+
+    pub fn drain(&self) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
+        self.bounded.drain()
+    }
+
+    pub fn snapshot(&self) -> Result<OtlpExporterQueueSnapshot, OTelReceiptExportError> {
+        self.bounded.snapshot()
     }
 }
 
@@ -69,6 +90,8 @@ pub struct OtlpExporterQueueSnapshot {
     pub dropped_incoming_spans: u64,
     pub appended_batches: u64,
     pub appended_spans: u64,
+    pub append_error_batches: u64,
+    pub append_error_spans: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -94,6 +117,7 @@ pub struct BoundedOtlpGrpcIngress {
     sink: ReceiptStoreSink,
     config: OtlpExporterQueueConfig,
     queue: Mutex<BoundedOtlpQueue>,
+    flow_lock: Mutex<()>,
 }
 
 impl BoundedOtlpGrpcIngress {
@@ -102,6 +126,7 @@ impl BoundedOtlpGrpcIngress {
             sink,
             config: config.normalized(),
             queue: Mutex::new(BoundedOtlpQueue::default()),
+            flow_lock: Mutex::new(()),
         }
     }
 
@@ -109,6 +134,9 @@ impl BoundedOtlpGrpcIngress {
         &self,
         request: OtlpGrpcTraceExport,
     ) -> Result<OtlpExporterEnqueueSummary, OTelReceiptExportError> {
+        let _flow = self.flow_lock.lock().map_err(|_| {
+            OTelReceiptExportError::Queue("OTEL queue flow mutex poisoned".to_string())
+        })?;
         let item = QueuedOtlpExport::new(request);
         let mut queue = self
             .queue
@@ -118,16 +146,25 @@ impl BoundedOtlpGrpcIngress {
     }
 
     pub fn drain(&self) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
+        let _flow = self.flow_lock.lock().map_err(|_| {
+            OTelReceiptExportError::Queue("OTEL queue flow mutex poisoned".to_string())
+        })?;
         let mut summary = ReceiptStoreSinkSummary::default();
         for _ in 0..self.config.drain_limit {
-            let Some(item) = self.pop_front()? else {
+            let Some((export, spans)) = self.front_export()? else {
                 break;
             };
-            let item_spans = item.spans;
-            let item_summary = self.sink.export_traces(&item.export)?;
+            let item_summary = match self.sink.export_traces(&export) {
+                Ok(item_summary) => item_summary,
+                Err(error) => {
+                    self.record_append_error(spans)?;
+                    return Err(error);
+                }
+            };
+            let _ = self.pop_front()?;
             summary.accepted_spans += item_summary.accepted_spans;
             summary.appended_receipts += item_summary.appended_receipts;
-            self.record_appended(item_spans)?;
+            self.record_appended(spans)?;
         }
         Ok(summary)
     }
@@ -157,6 +194,17 @@ impl BoundedOtlpGrpcIngress {
         Ok(queue.pop_front())
     }
 
+    fn front_export(&self) -> Result<Option<(OtlpGrpcTraceExport, usize)>, OTelReceiptExportError> {
+        let queue = self
+            .queue
+            .lock()
+            .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
+        Ok(queue
+            .queue
+            .front()
+            .map(|item| (item.export.clone(), item.spans)))
+    }
+
     fn record_appended(&self, spans: usize) -> Result<(), OTelReceiptExportError> {
         let mut queue = self
             .queue
@@ -164,6 +212,16 @@ impl BoundedOtlpGrpcIngress {
             .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
         queue.appended_batches += 1;
         queue.appended_spans += spans as u64;
+        Ok(())
+    }
+
+    fn record_append_error(&self, spans: usize) -> Result<(), OTelReceiptExportError> {
+        let mut queue = self
+            .queue
+            .lock()
+            .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
+        queue.append_error_batches += 1;
+        queue.append_error_spans += spans as u64;
         Ok(())
     }
 }
@@ -181,6 +239,8 @@ struct BoundedOtlpQueue {
     dropped_incoming_spans: u64,
     appended_batches: u64,
     appended_spans: u64,
+    append_error_batches: u64,
+    append_error_spans: u64,
 }
 
 impl BoundedOtlpQueue {
@@ -250,6 +310,8 @@ impl BoundedOtlpQueue {
             dropped_incoming_spans: self.dropped_incoming_spans,
             appended_batches: self.appended_batches,
             appended_spans: self.appended_spans,
+            append_error_batches: self.append_error_batches,
+            append_error_spans: self.append_error_spans,
         }
     }
 }
@@ -459,6 +521,8 @@ mod tests {
         receipts: Mutex<Vec<CanonicalChioReceipt>>,
     }
 
+    struct FailingCanonicalSink;
+
     impl RecordingCanonicalSink {
         fn receipt_names(&self) -> Result<Vec<String>, ReceiptStoreError> {
             let guard = self
@@ -491,6 +555,36 @@ mod tests {
             guard.push(receipt);
             Ok(())
         }
+    }
+
+    impl CanonicalReceiptSink for FailingCanonicalSink {
+        fn append_chio_receipt_canonical(
+            &self,
+            _receipt: CanonicalChioReceipt,
+        ) -> Result<(), ReceiptStoreError> {
+            Err(ReceiptStoreError::Pool("forced append failure".to_string()))
+        }
+    }
+
+    #[test]
+    fn ingress_facade_crosses_bounded_queue() -> Result<(), Box<dyn Error>> {
+        let recorder = Arc::new(RecordingCanonicalSink::default());
+        let sink = ReceiptStoreSink::new_canonical(
+            recorder.clone(),
+            ReceiptStoreSinkConfig::new(Keypair::generate()),
+        );
+        let ingress = OtlpGrpcIngress::new(sink);
+
+        let delivered = ingress.export(&export_with_span("span-1"))?;
+        let snapshot = ingress.snapshot()?;
+
+        assert_eq!(delivered.appended_receipts, 1);
+        assert_eq!(snapshot.accepted_batches, 1);
+        assert_eq!(snapshot.appended_batches, 1);
+        assert_eq!(snapshot.queued_batches, 0);
+        assert_eq!(recorder.receipt_names()?, vec!["span-1".to_string()]);
+
+        Ok(())
     }
 
     #[test]
@@ -549,6 +643,31 @@ mod tests {
             recorder.receipt_names()?,
             vec!["span-2".to_string(), "span-3".to_string()]
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_ingress_keeps_failed_append_queued() -> Result<(), Box<dyn Error>> {
+        let sink = ReceiptStoreSink::new_canonical(
+            Arc::new(FailingCanonicalSink),
+            ReceiptStoreSinkConfig::new(Keypair::generate()),
+        );
+        let ingress = BoundedOtlpGrpcIngress::new(sink, OtlpExporterQueueConfig::default());
+
+        let enqueue = ingress.enqueue(export_with_span("span-1"))?;
+        let error = match ingress.drain() {
+            Ok(_) => return Err(std::io::Error::other("failing sink accepted append").into()),
+            Err(error) => error,
+        };
+        let snapshot = ingress.snapshot()?;
+
+        assert_eq!(enqueue.enqueued_batches, 1);
+        assert!(matches!(error, OTelReceiptExportError::ReceiptStore(_)));
+        assert_eq!(snapshot.queued_batches, 1);
+        assert_eq!(snapshot.append_error_batches, 1);
+        assert_eq!(snapshot.append_error_spans, 1);
+        assert_eq!(snapshot.appended_batches, 0);
 
         Ok(())
     }
