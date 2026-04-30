@@ -247,6 +247,33 @@ pub fn diff_expected_reports(
     divergences
 }
 
+pub fn diff_manifest_reports(
+    manifest: &VerdictMatrixManifest,
+    expected: &BTreeMap<String, VerdictTuple>,
+    reports: &[DriverReport],
+) -> Vec<TupleDivergence> {
+    let mut divergences = Vec::new();
+    for required_driver in &manifest.drivers.required {
+        if reports
+            .iter()
+            .any(|report| report.driver == *required_driver)
+        {
+            continue;
+        }
+        for (scenario_id, expected_tuple) in expected {
+            divergences.push(TupleDivergence {
+                scenario_id: scenario_id.clone(),
+                driver: required_driver.clone(),
+                expected: Some(expected_tuple.clone().normalized()),
+                actual: None,
+            });
+        }
+    }
+
+    divergences.extend(diff_expected_reports(expected, reports));
+    divergences
+}
+
 pub fn expected_tuple_map(scenarios: &[VerdictScenario]) -> BTreeMap<String, VerdictTuple> {
     scenarios
         .iter()

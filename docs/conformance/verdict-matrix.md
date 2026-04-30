@@ -1,12 +1,12 @@
 # Verdict Matrix
 
 The verdict matrix is the cross-SDK semantic equality harness for Chio tool
-access decisions. P4 ships the Rust kernel path first, with the scenario corpus,
+access decisions. The Rust kernel path ships first, with the scenario corpus,
 driver, and diff oracle living under `crates/chio-conformance/verdict_matrix/`.
 
 ## Corpus
 
-The P4 corpus contains 48 JSON scenarios:
+The active corpus contains 48 JSON scenarios:
 
 | Class | Directory | Count |
 | --- | --- | --- |
@@ -43,6 +43,23 @@ The Rust driver fails closed:
 - unknown top-level scenario fields are rejected
 - unsupported scenario requirements are reported as unsupported
 - revocation, replay, scope, and guard denials produce deny or error tuples
+
+## Rust Driver Boundary
+
+The Rust driver evaluates scenarios through an in-process `ChioKernel`. It
+issues real capabilities, optionally revokes them, registers a tool server,
+runs kernel evaluation, and compares signed receipt-backed outcomes.
+
+The scenario format uses driver-neutral labels, so the Rust driver adapts them
+to existing kernel surfaces:
+
+- `capability_scopes` labels become native `ToolGrant` entries.
+- Input redaction allow cases are represented as signed receipt metadata until
+  the pre-execution guard interface can carry allow-with-redaction details.
+- Output redaction uses the kernel post-invocation hook pipeline.
+- Replay verdicts use execution-nonce verification. The missing-trace case is
+  mapped from the strict-mode missing-nonce gate because the current kernel
+  response type does not expose an error verdict.
 
 ## Local Gates
 

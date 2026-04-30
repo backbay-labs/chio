@@ -1,7 +1,22 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
+use chio_core::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core::crypto::Keypair;
+use chio_core::receipt::GuardEvidence;
+use chio_kernel::execution_nonce::{
+    ExecutionNonceConfig, ExecutionNonceError, InMemoryExecutionNonceStore, NonceBinding,
+};
+use chio_kernel::post_invocation::{
+    PostInvocationContext, PostInvocationHook, PostInvocationVerdict,
+};
+use chio_kernel::{
+    ChioKernel, Guard, GuardContext, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest,
+    ToolServerConnection, Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
@@ -9,6 +24,8 @@ use thiserror::Error;
 use super::{ScenarioCategory, Verdict, VerdictTuple, SCENARIO_SCHEMA};
 
 pub const RUST_KERNEL_DRIVER: &str = "rust-kernel";
+const MATRIX_SERVER_ID: &str = "verdict-matrix";
+const MATRIX_INPUT_METADATA: &str = "verdict_matrix";
 pub const REASON_NONE: &str = "urn:chio:error:none";
 pub const REASON_SCOPE_EXCEEDED: &str = "urn:chio:error:capability:scope-exceeded";
 pub const REASON_REVOKED: &str = "urn:chio:error:capability:revoked";
@@ -214,8 +231,19 @@ impl RustKernelDriver {
             };
         }
 
-        let actual = evaluate_scenario(scenario).normalized();
         let expected = scenario.expected.clone().normalized();
+        let actual = match evaluate_scenario(scenario) {
+            Ok(actual) => actual.normalized(),
+            Err(error) => {
+                return DriverOutcome {
+                    scenario_id: scenario.id.clone(),
+                    status: DriverStatus::Fail,
+                    actual: None,
+                    expected,
+                    diagnostic: Some(error),
+                };
+            }
+        };
         let status = if actual == expected {
             DriverStatus::Pass
         } else {
@@ -288,44 +316,59 @@ fn collect_json_files(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), Drive
     Ok(())
 }
 
-fn evaluate_scenario(scenario: &VerdictScenario) -> VerdictTuple {
-    let scopes = scenario.script.capability_scopes.clone();
+fn evaluate_scenario(scenario: &VerdictScenario) -> Result<VerdictTuple, String> {
     if scenario.script.operation.as_str() != "tool.call" {
-        return tuple(Verdict::Error, REASON_KERNEL_INTERNAL, scopes);
+        return Ok(tuple(
+            Verdict::Error,
+            REASON_KERNEL_INTERNAL,
+            scenario.script.capability_scopes.clone(),
+        ));
     }
+
+    let mut kernel = ChioKernel::new(kernel_config());
+    configure_replay_store(&mut kernel, scenario);
+    configure_redaction_hooks(&mut kernel, scenario);
+    kernel.register_tool_server(Box::new(MatrixToolServer::new()));
+
+    let subject = Keypair::generate();
+    let scope = scope_from_labels(&scenario.script.capability_scopes)?;
+    let capability = kernel
+        .issue_capability(&subject.public_key(), scope, 300)
+        .map_err(|error| format!("capability issuance failed: {error}"))?;
     if scenario.script.revoked {
-        return tuple(Verdict::Deny, REASON_REVOKED, scopes);
+        kernel
+            .revoke_capability(&capability.id)
+            .map_err(|error| format!("capability revocation failed: {error}"))?;
     }
-    match scenario.script.replay_nonce_status {
-        ReplayNonceStatus::Duplicate | ReplayNonceStatus::Stale => {
-            return tuple(Verdict::Deny, REASON_REPLAY_DRIFT, scopes);
-        }
-        ReplayNonceStatus::TraceMissing => {
-            return tuple(Verdict::Error, REASON_REPLAY_TRACE_MISSING, scopes);
-        }
-        ReplayNonceStatus::Fresh => {}
+
+    let arguments = serde_json::from_str::<Value>(&scenario.script.input_json)
+        .map_err(|error| format!("script.input_json parse failed: {error}"))?;
+    let request = ToolCallRequest {
+        request_id: scenario.id.clone(),
+        capability: capability.clone(),
+        tool_name: scenario.script.tool.clone(),
+        server_id: MATRIX_SERVER_ID.to_string(),
+        agent_id: capability.subject.to_hex(),
+        arguments,
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+
+    if scenario.category == ScenarioCategory::Replay {
+        return evaluate_replay_scenario(&kernel, &request, &capability, scenario);
     }
-    if let Some(required_scope) = &scenario.script.required_scope {
-        if !scenario
-            .script
-            .capability_scopes
-            .iter()
-            .any(|scope| scope == required_scope)
-        {
-            return tuple(Verdict::Deny, REASON_SCOPE_EXCEEDED, scopes);
-        }
-    }
-    match scenario.script.redaction_action {
-        RedactionAction::Deny => tuple(Verdict::Deny, REASON_GUARD_DENIED, scopes),
-        RedactionAction::Mask | RedactionAction::Drop => {
-            let reason = match scenario.script.redaction_phase {
-                RedactionPhase::Input => REASON_INPUT_REDACTED,
-                RedactionPhase::Output => REASON_OUTPUT_REDACTED,
-            };
-            tuple(Verdict::Allow, reason, scopes)
-        }
-        RedactionAction::None => tuple(Verdict::Allow, REASON_NONE, scopes),
-    }
+
+    let metadata = input_redaction_metadata(&scenario.script);
+    let response = kernel
+        .evaluate_tool_call_blocking_with_metadata(&request, metadata)
+        .map_err(|error| format!("kernel evaluation failed: {error}"))?;
+    Ok(tuple_from_response(
+        &response,
+        &scenario.script.capability_scopes,
+    ))
 }
 
 fn tuple(verdict: Verdict, reason_code: &str, scope_set: Vec<String>) -> VerdictTuple {
@@ -333,6 +376,484 @@ fn tuple(verdict: Verdict, reason_code: &str, scope_set: Vec<String>) -> Verdict
         verdict,
         reason_code: reason_code.to_string(),
         scope_set,
+    }
+}
+
+fn kernel_config() -> KernelConfig {
+    KernelConfig {
+        keypair: Keypair::generate(),
+        ca_public_keys: vec![],
+        max_delegation_depth: 5,
+        policy_hash: "verdict-matrix-policy".to_string(),
+        allow_sampling: false,
+        allow_sampling_tool_use: false,
+        allow_elicitation: false,
+        max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
+        max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        require_web3_evidence: false,
+        checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
+        retention_config: None,
+    }
+}
+
+fn configure_replay_store(kernel: &mut ChioKernel, scenario: &VerdictScenario) {
+    if scenario.category != ScenarioCategory::Replay {
+        return;
+    }
+
+    let mut config = ExecutionNonceConfig::default();
+    if scenario.script.replay_nonce_status == ReplayNonceStatus::Stale {
+        config.nonce_ttl_secs = 0;
+    }
+    if scenario.script.replay_nonce_status == ReplayNonceStatus::TraceMissing {
+        config.require_nonce = true;
+    }
+    let store = InMemoryExecutionNonceStore::from_config(&config);
+    kernel.set_execution_nonce_store(config, Box::new(store));
+}
+
+fn configure_redaction_hooks(kernel: &mut ChioKernel, scenario: &VerdictScenario) {
+    match (
+        scenario.script.redaction_phase,
+        scenario.script.redaction_action,
+    ) {
+        (RedactionPhase::Input, RedactionAction::Deny) => {
+            kernel.add_guard(Box::new(MatrixInputGuard));
+        }
+        (RedactionPhase::Output, RedactionAction::Mask | RedactionAction::Drop) => {
+            kernel.add_post_invocation_hook(Box::new(MatrixOutputHook::new(
+                scenario.script.redaction_action,
+            )));
+        }
+        (RedactionPhase::Output, RedactionAction::Deny) => {
+            kernel.add_post_invocation_hook(Box::new(MatrixOutputHook::new(RedactionAction::Deny)));
+        }
+        _ => {}
+    }
+}
+
+fn scope_from_labels(labels: &[String]) -> Result<ChioScope, String> {
+    let grants = labels
+        .iter()
+        .map(|label| grant_from_label(label))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ChioScope {
+        grants,
+        ..ChioScope::default()
+    })
+}
+
+fn grant_from_label(label: &str) -> Result<ToolGrant, String> {
+    let tool_name = match label {
+        "tool:read" => "files.read",
+        "tool:write" => "files.write",
+        "tool:admin" => "system.rotate",
+        "telemetry:read" => "metrics.query",
+        "prompt:read" => "prompts.get",
+        "prompt:write" => "prompts.update",
+        "resource:read" => "resources.read",
+        "tool:call" => "tools.invoke",
+        other => return Err(format!("unsupported capability scope label `{other}`")),
+    };
+    Ok(ToolGrant {
+        server_id: MATRIX_SERVER_ID.to_string(),
+        tool_name: tool_name.to_string(),
+        operations: vec![Operation::Invoke],
+        constraints: vec![],
+        max_invocations: None,
+        max_cost_per_invocation: None,
+        max_total_cost: None,
+        dpop_required: None,
+    })
+}
+
+fn input_redaction_metadata(script: &ScenarioScript) -> Option<Value> {
+    if script.redaction_phase != RedactionPhase::Input {
+        return None;
+    }
+    let action = match script.redaction_action {
+        RedactionAction::Mask => "mask",
+        RedactionAction::Drop => "drop",
+        _ => return None,
+    };
+    Some(serde_json::json!({
+        MATRIX_INPUT_METADATA: {
+            "input_redaction": {
+                "action": action,
+                "applied": true
+            }
+        }
+    }))
+}
+
+fn evaluate_replay_scenario(
+    kernel: &ChioKernel,
+    request: &ToolCallRequest,
+    capability: &CapabilityToken,
+    scenario: &VerdictScenario,
+) -> Result<VerdictTuple, String> {
+    let response = kernel
+        .evaluate_tool_call_blocking_with_metadata(request, None)
+        .map_err(|error| format!("kernel evaluation failed: {error}"))?;
+    if response.verdict != KernelVerdict::Allow {
+        return Ok(tuple_from_response(
+            &response,
+            &scenario.script.capability_scopes,
+        ));
+    }
+
+    match scenario.script.replay_nonce_status {
+        ReplayNonceStatus::Fresh => verify_fresh_nonce(
+            kernel,
+            request,
+            capability,
+            &response,
+            &scenario.script.capability_scopes,
+        ),
+        ReplayNonceStatus::Duplicate => verify_duplicate_nonce(
+            kernel,
+            request,
+            capability,
+            &response,
+            &scenario.script.capability_scopes,
+        ),
+        ReplayNonceStatus::Stale => verify_stale_nonce(
+            kernel,
+            request,
+            capability,
+            &response,
+            &scenario.script.capability_scopes,
+        ),
+        ReplayNonceStatus::TraceMissing => {
+            match kernel.require_presented_execution_nonce(request, capability, None) {
+                Ok(()) => Err("missing execution nonce was accepted".to_string()),
+                Err(_) => Ok(tuple(
+                    Verdict::Error,
+                    REASON_REPLAY_TRACE_MISSING,
+                    scenario.script.capability_scopes.clone(),
+                )),
+            }
+        }
+    }
+}
+
+fn verify_fresh_nonce(
+    kernel: &ChioKernel,
+    request: &ToolCallRequest,
+    capability: &CapabilityToken,
+    response: &chio_kernel::ToolCallResponse,
+    scope_set: &[String],
+) -> Result<VerdictTuple, String> {
+    let nonce = response
+        .execution_nonce
+        .as_deref()
+        .ok_or_else(|| "kernel allow response did not include an execution nonce".to_string())?;
+    let binding = nonce_binding(request, capability, response);
+    match kernel.verify_presented_execution_nonce(nonce, &binding) {
+        Ok(()) => Ok(tuple(Verdict::Allow, REASON_NONE, scope_set.to_vec())),
+        Err(error) => Ok(tuple(
+            Verdict::Deny,
+            replay_reason_code(&error),
+            scope_set.to_vec(),
+        )),
+    }
+}
+
+fn verify_duplicate_nonce(
+    kernel: &ChioKernel,
+    request: &ToolCallRequest,
+    capability: &CapabilityToken,
+    response: &chio_kernel::ToolCallResponse,
+    scope_set: &[String],
+) -> Result<VerdictTuple, String> {
+    let nonce = response
+        .execution_nonce
+        .as_deref()
+        .ok_or_else(|| "kernel allow response did not include an execution nonce".to_string())?;
+    let binding = nonce_binding(request, capability, response);
+    if let Err(error) = kernel.verify_presented_execution_nonce(nonce, &binding) {
+        return Ok(tuple(
+            Verdict::Deny,
+            replay_reason_code(&error),
+            scope_set.to_vec(),
+        ));
+    }
+    match kernel.verify_presented_execution_nonce(nonce, &binding) {
+        Ok(()) => Err("duplicate execution nonce was accepted".to_string()),
+        Err(error) => Ok(tuple(
+            Verdict::Deny,
+            replay_reason_code(&error),
+            scope_set.to_vec(),
+        )),
+    }
+}
+
+fn verify_stale_nonce(
+    kernel: &ChioKernel,
+    request: &ToolCallRequest,
+    capability: &CapabilityToken,
+    response: &chio_kernel::ToolCallResponse,
+    scope_set: &[String],
+) -> Result<VerdictTuple, String> {
+    let nonce = response
+        .execution_nonce
+        .as_deref()
+        .ok_or_else(|| "kernel allow response did not include an execution nonce".to_string())?;
+    let binding = nonce_binding(request, capability, response);
+    match kernel.verify_presented_execution_nonce(nonce, &binding) {
+        Ok(()) => Err("stale execution nonce was accepted".to_string()),
+        Err(error) => Ok(tuple(
+            Verdict::Deny,
+            replay_reason_code(&error),
+            scope_set.to_vec(),
+        )),
+    }
+}
+
+fn nonce_binding(
+    request: &ToolCallRequest,
+    capability: &CapabilityToken,
+    response: &chio_kernel::ToolCallResponse,
+) -> NonceBinding {
+    NonceBinding {
+        subject_id: capability.subject.to_hex(),
+        capability_id: capability.id.clone(),
+        tool_server: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        parameter_hash: response.receipt.action.parameter_hash.clone(),
+    }
+}
+
+fn replay_reason_code(error: &ExecutionNonceError) -> &'static str {
+    match error {
+        ExecutionNonceError::Expired { .. }
+        | ExecutionNonceError::Replayed
+        | ExecutionNonceError::BindingMismatch { .. }
+        | ExecutionNonceError::InvalidSignature
+        | ExecutionNonceError::BadSchema { .. }
+        | ExecutionNonceError::Encoding(_)
+        | ExecutionNonceError::Store(_) => REASON_REPLAY_DRIFT,
+    }
+}
+
+fn tuple_from_response(
+    response: &chio_kernel::ToolCallResponse,
+    scope_set: &[String],
+) -> VerdictTuple {
+    match response.verdict {
+        KernelVerdict::Allow => {
+            let reason = if has_input_redaction_metadata(response) {
+                REASON_INPUT_REDACTED
+            } else if has_output_redaction_metadata(response) {
+                REASON_OUTPUT_REDACTED
+            } else {
+                REASON_NONE
+            };
+            tuple(Verdict::Allow, reason, scope_set.to_vec())
+        }
+        KernelVerdict::Deny => tuple(
+            Verdict::Deny,
+            deny_reason_code(response.reason.as_deref()),
+            scope_set.to_vec(),
+        ),
+        KernelVerdict::PendingApproval => {
+            tuple(Verdict::Deny, REASON_GUARD_DENIED, scope_set.to_vec())
+        }
+    }
+}
+
+fn has_input_redaction_metadata(response: &chio_kernel::ToolCallResponse) -> bool {
+    response
+        .receipt
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get(MATRIX_INPUT_METADATA))
+        .and_then(|metadata| metadata.get("input_redaction"))
+        .and_then(|metadata| metadata.get("applied"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn has_output_redaction_metadata(response: &chio_kernel::ToolCallResponse) -> bool {
+    response
+        .receipt
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("post_invocation"))
+        .and_then(|metadata| metadata.get("sanitized"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn deny_reason_code(reason: Option<&str>) -> &'static str {
+    let Some(reason) = reason else {
+        return REASON_KERNEL_INTERNAL;
+    };
+    let lower = reason.to_ascii_lowercase();
+    if lower.contains("revoked") {
+        REASON_REVOKED
+    } else if lower.contains("not in capability scope") || lower.contains("out of scope") {
+        REASON_SCOPE_EXCEEDED
+    } else if lower.contains("guard") || lower.contains("redaction") {
+        REASON_GUARD_DENIED
+    } else {
+        REASON_KERNEL_INTERNAL
+    }
+}
+
+struct MatrixToolServer {
+    id: String,
+}
+
+impl MatrixToolServer {
+    fn new() -> Self {
+        Self {
+            id: MATRIX_SERVER_ID.to_string(),
+        }
+    }
+}
+
+impl ToolServerConnection for MatrixToolServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        matrix_tools()
+            .iter()
+            .map(|tool| (*tool).to_string())
+            .collect()
+    }
+
+    fn invoke(
+        &self,
+        tool_name: &str,
+        arguments: Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Value, KernelError> {
+        if !matrix_tools().contains(&tool_name) {
+            return Err(KernelError::ToolNotRegistered(format!(
+                "server \"{}\" / tool \"{}\"",
+                self.id, tool_name
+            )));
+        }
+        Ok(serde_json::json!({
+            "server": self.id,
+            "tool": tool_name,
+            "arguments": arguments
+        }))
+    }
+}
+
+fn matrix_tools() -> &'static [&'static str] {
+    &[
+        "files.read",
+        "files.write",
+        "system.rotate",
+        "metrics.query",
+        "prompts.get",
+        "prompts.update",
+        "resources.read",
+        "tools.invoke",
+    ]
+}
+
+struct MatrixInputGuard;
+
+impl Guard for MatrixInputGuard {
+    fn name(&self) -> &str {
+        "verdict-matrix-input"
+    }
+
+    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<KernelVerdict, KernelError> {
+        Ok(KernelVerdict::Deny)
+    }
+}
+
+struct MatrixOutputHook {
+    action: RedactionAction,
+    evidence: Mutex<Option<GuardEvidence>>,
+}
+
+impl MatrixOutputHook {
+    fn new(action: RedactionAction) -> Self {
+        Self {
+            action,
+            evidence: Mutex::new(None),
+        }
+    }
+
+    fn set_evidence(&self, verdict: bool, details: &str) {
+        if let Ok(mut evidence) = self.evidence.lock() {
+            *evidence = Some(GuardEvidence {
+                guard_name: self.name().to_string(),
+                verdict,
+                details: Some(details.to_string()),
+            });
+        }
+    }
+}
+
+impl PostInvocationHook for MatrixOutputHook {
+    fn name(&self) -> &str {
+        "verdict-matrix-output"
+    }
+
+    fn inspect(&self, _ctx: &PostInvocationContext<'_>, response: &Value) -> PostInvocationVerdict {
+        match self.action {
+            RedactionAction::None => PostInvocationVerdict::Allow,
+            RedactionAction::Deny => {
+                self.set_evidence(false, "output redaction denied the response");
+                PostInvocationVerdict::Block(
+                    "guard \"verdict-matrix-output\" denied the request".to_string(),
+                )
+            }
+            RedactionAction::Mask | RedactionAction::Drop => {
+                self.set_evidence(true, "output redaction sanitized the response");
+                PostInvocationVerdict::Redact(redacted_output_envelope(response))
+            }
+        }
+    }
+
+    fn take_evidence(&self) -> Option<GuardEvidence> {
+        match self.evidence.lock() {
+            Ok(mut evidence) => evidence.take(),
+            Err(_) => None,
+        }
+    }
+}
+
+fn redacted_output_envelope(response: &Value) -> Value {
+    match response.get("kind").and_then(Value::as_str) {
+        Some("stream") => {
+            let complete = response
+                .get("stream")
+                .and_then(|stream| stream.get("complete"))
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            if complete {
+                serde_json::json!({
+                    "kind": "stream",
+                    "stream": {
+                        "complete": true,
+                        "chunks": [{"redacted": true}]
+                    }
+                })
+            } else {
+                serde_json::json!({
+                    "kind": "stream",
+                    "stream": {
+                        "complete": false,
+                        "reason": "redacted incomplete stream",
+                        "chunks": [{"redacted": true}]
+                    }
+                })
+            }
+        }
+        _ => serde_json::json!({
+            "kind": "value",
+            "value": {"redacted": true}
+        }),
     }
 }
 

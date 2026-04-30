@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 mod verdict_matrix;
 
 use verdict_matrix::diff_oracle::{
-    diff_expected_reports, expected_tuple_map, load_manifest, verify_manifest_corpus_hash,
+    diff_manifest_reports, expected_tuple_map, load_manifest, verify_manifest_corpus_hash,
     DriverReport,
 };
 use verdict_matrix::driver::{
@@ -21,7 +21,10 @@ fn verdict_matrix_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("verdict_matrix")
 }
 
-fn load_corpus() -> Vec<verdict_matrix::driver::VerdictScenario> {
+fn load_manifest_and_corpus() -> (
+    verdict_matrix::diff_oracle::VerdictMatrixManifest,
+    Vec<verdict_matrix::driver::VerdictScenario>,
+) {
     let root = verdict_matrix_root();
     let manifest_path = root.join(verdict_matrix::MANIFEST_PATH);
     let manifest = match load_manifest(&manifest_path) {
@@ -34,14 +37,20 @@ fn load_corpus() -> Vec<verdict_matrix::driver::VerdictScenario> {
     if let Err(error) = verify_manifest_corpus_hash(&root, &manifest) {
         panic!("manifest hash verification failed: {error}");
     }
-    match load_scenarios(&root.join(&manifest.corpus.scenario_root)) {
+    let scenarios = match load_scenarios(&root.join(&manifest.corpus.scenario_root)) {
         Ok(scenarios) => scenarios,
         Err(error) => panic!("failed to load verdict scenarios: {error}"),
-    }
+    };
+    (manifest, scenarios)
+}
+
+fn load_corpus() -> Vec<verdict_matrix::driver::VerdictScenario> {
+    let (_, scenarios) = load_manifest_and_corpus();
+    scenarios
 }
 
 #[test]
-fn corpus_satisfies_m02_p4_t2_counts() {
+fn corpus_satisfies_verdict_matrix_counts() {
     let scenarios = load_corpus();
     assert_eq!(scenarios.len(), 48);
 
@@ -57,7 +66,7 @@ fn corpus_satisfies_m02_p4_t2_counts() {
 
 #[test]
 fn rust_kernel_driver_matches_expected_tuples() {
-    let scenarios = load_corpus();
+    let (manifest, scenarios) = load_manifest_and_corpus();
     let driver = RustKernelDriver;
     let outcomes = driver.run_all(&scenarios);
 
@@ -99,7 +108,7 @@ fn rust_kernel_driver_matches_expected_tuples() {
         driver: RUST_KERNEL_DRIVER.to_string(),
         tuples: tuple_report,
     }];
-    let divergences = diff_expected_reports(&expected, &reports);
+    let divergences = diff_manifest_reports(&manifest, &expected, &reports);
     assert!(
         divergences.is_empty(),
         "diff oracle found divergences: {divergences:?}"

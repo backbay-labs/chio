@@ -8,6 +8,7 @@ on:
       - "sdks/python/chio-sdk-python/**"
       - "sdks/typescript/packages/**"
       - "sdks/go/**"
+      - "spec/errors/registry.yaml"
       - ".github/workflows/verdict-matrix.yml"
       - "docs/conformance/verdict-matrix.md"
   push:
@@ -19,6 +20,7 @@ on:
       - "sdks/python/chio-sdk-python/**"
       - "sdks/typescript/packages/**"
       - "sdks/go/**"
+      - "spec/errors/registry.yaml"
       - ".github/workflows/verdict-matrix.yml"
       - "docs/conformance/verdict-matrix.md"
   workflow_dispatch:

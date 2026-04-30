@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 mod verdict_matrix;
 
 use verdict_matrix::diff_oracle::{
-    diff_expected_reports, expected_tuple_map, load_error_registry_urns, load_manifest,
-    scenario_index_hash, validate_reason_codes, verify_manifest_corpus_hash, DriverReport,
+    diff_expected_reports, diff_manifest_reports, expected_tuple_map, load_error_registry_urns,
+    load_manifest, scenario_index_hash, validate_reason_codes, verify_manifest_corpus_hash,
+    DriverReport,
 };
 use verdict_matrix::driver::{load_scenarios, REASON_NONE};
 use verdict_matrix::{Verdict, VerdictTuple};
@@ -153,4 +154,25 @@ fn loaded_corpus_builds_expected_tuple_map() {
     assert_eq!(expected.len(), scenarios.len());
     assert!(expected.contains_key("capability-subset-001-read-exact"));
     assert!(expected.contains_key("redaction-determinism-012-no-redaction-tool-call"));
+}
+
+#[test]
+fn manifest_required_driver_absence_is_divergence() {
+    let root = verdict_matrix_root();
+    let manifest_path = root.join(verdict_matrix::MANIFEST_PATH);
+    let manifest = match load_manifest(&manifest_path) {
+        Ok(manifest) => manifest,
+        Err(error) => panic!(
+            "failed to load manifest {}: {error}",
+            manifest_path.display()
+        ),
+    };
+    let scenarios = load_corpus();
+    let expected = expected_tuple_map(&scenarios);
+    let divergences = diff_manifest_reports(&manifest, &expected, &[]);
+
+    assert_eq!(divergences.len(), expected.len());
+    assert!(divergences
+        .iter()
+        .all(|divergence| { divergence.driver == "rust-kernel" && divergence.actual.is_none() }));
 }
