@@ -2864,6 +2864,7 @@ dependencies = [
  "base64ct",
  "chio-core-types",
  "chrono",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

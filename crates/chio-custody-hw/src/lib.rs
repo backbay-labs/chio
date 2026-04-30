@@ -33,9 +33,11 @@
 pub mod capability;
 pub mod error;
 pub mod issuer;
+pub mod mint;
 pub mod verifier;
 
 pub use capability::{PasskeyCapability, ScopeSet};
 pub use error::CustodyError;
 pub use issuer::{IssuerService, MintRequest, MintResponse};
+pub use mint::{sign_capability, signing_message};
 pub use verifier::{PasskeyVerifier, VerifiedAssertion};
