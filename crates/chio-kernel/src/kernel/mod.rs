@@ -968,6 +968,12 @@ pub struct ChioKernel {
     /// handles can pass the signing handle to in-flight evaluators without
     /// cloning the whole kernel.
     signing_task: std::sync::Arc<signing_task::SigningTaskHandle>,
+    /// M09 P2.T2 settlement observer slot. When `Some`, the kernel
+    /// invokes the hook against every finalized receipt that carries a
+    /// non-zero manifest price. Settlement runs strictly post-signing
+    /// and never blocks dispatch; failures are surfaced through the
+    /// retry/dead-letter machinery in P2.T3, not through this option.
+    settlement_observer: Option<std::sync::Arc<dyn chio_settle::SettlementHook>>,
 }
 
 #[derive(Clone, Copy)]
@@ -1345,6 +1351,7 @@ impl ChioKernel {
             federation_dual_receipts: DashMap::new(),
             federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
             signing_task,
+            settlement_observer: None,
         }
     }
 
@@ -1486,6 +1493,41 @@ impl ChioKernel {
         hook: Box<dyn crate::post_invocation::PostInvocationHook>,
     ) {
         self.post_invocation_pipeline.add(hook);
+    }
+
+    /// M09 P2.T2: install a settlement hook that runs after each
+    /// receipt is signed and persisted. Settlement is strictly an
+    /// observer relative to receipt bytes; the hook MUST NOT mutate
+    /// the receipt store and MUST NOT block the dispatch path on its
+    /// own latency. Hook failures are surfaced through
+    /// [`Self::run_settlement_observer`]'s return value and are routed
+    /// through the retry/dead-letter machinery introduced by P2.T3.
+    pub fn set_settlement_observer(
+        &mut self,
+        hook: std::sync::Arc<dyn chio_settle::SettlementHook>,
+    ) {
+        self.settlement_observer = Some(hook);
+    }
+
+    /// Return a clone of the active settlement observer, or `None` when
+    /// no hook has been installed. Useful for integration tests that
+    /// want to assert observer state directly.
+    #[must_use]
+    pub fn settlement_observer(&self) -> Option<std::sync::Arc<dyn chio_settle::SettlementHook>> {
+        self.settlement_observer.clone()
+    }
+
+    /// M09 P2.T2: invoke the registered settlement hook against a
+    /// freshly signed receipt. The receipt is observer-only relative
+    /// to this call: callers MUST pass a receipt that has already been
+    /// signed and stored, and the returned status NEVER feeds back
+    /// into the dispatch path.
+    #[must_use]
+    pub fn run_settlement_observer(
+        &self,
+        receipt: &chio_core::receipt::ChioReceipt,
+    ) -> settlement_observer::SettlementObserverStatus {
+        settlement_observer::run_observer(self.settlement_observer.as_ref(), receipt)
     }
 
     /// Phase 18.2: install a memory-provenance chain.
@@ -5983,6 +6025,12 @@ pub mod evaluator;
 mod responses;
 #[path = "session_ops.rs"]
 mod session_ops;
+// M09 P2.T2 settlement observer slot. Wires `chio-settle::SettlementHook`
+// into the post-dispatch surface so finalized receipts can be routed
+// through the existing `chio-settle/ops.rs` pipeline. The observer is
+// strictly post-signing: hook failures never block the dispatch path.
+#[path = "settlement_observer.rs"]
+pub mod settlement_observer;
 // Mpsc-backed signing task. Owns a clone of the kernel signing keypair and
 // pulls signing requests from a bounded `tokio::sync::mpsc` channel so receipt
 // signing leaves the synchronous critical path.

@@ -237,6 +237,17 @@ enum Commands {
     ///      the redaction manifest produces a different result.
     Replay(ReplayArgs),
 
+    /// Inspect local settlement lifecycle records.
+    ///
+    /// Lists pending IOU envelopes (minted by P1 but not yet settled),
+    /// settled receipts (rows in `settlement_reconciliations` whose
+    /// state is `settled`), and dead-lettered settlements (rows in
+    /// `settle_dead_letters` introduced by M09 P2.T3).
+    Settle {
+        #[command(subcommand)]
+        command: SettleCommands,
+    },
+
     /// Diagnose toolchain, registry, OTEL, and `chio.yaml` health.
     ///
     /// Probes (in order):
@@ -426,6 +437,27 @@ pub struct TrafficArgs {
     /// `replay:<run_id>:<frame_id>` ids stay grep-friendly).
     #[arg(long, value_name = "ID")]
     pub run_id: Option<String>,
+}
+
+/// Settle subcommands. M09 P2.T5 currently exposes a single `status`
+/// surface; further verbs (e.g. `clear`, `replay`) can attach here in
+/// later milestones without breaking the `arc settle status` contract.
+#[derive(Subcommand)]
+enum SettleCommands {
+    /// Show pending IOU envelopes, settled receipts, and dead-lettered
+    /// settlements for the local store.
+    Status {
+        /// Path to the chio-store-sqlite database. Defaults to
+        /// `--receipt-db` when omitted, which is the same store every
+        /// other receipt-aware subcommand reads.
+        #[arg(long, value_name = "PATH")]
+        store: Option<PathBuf>,
+
+        /// Emit a structured JSON report on stdout instead of the
+        /// human-readable text summary.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Conformance harness commands.

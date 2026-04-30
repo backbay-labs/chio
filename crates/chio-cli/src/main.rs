@@ -25,6 +25,7 @@ mod guards;
 mod passport;
 mod policies;
 mod scaffold;
+mod settle;
 
 include!("cli/types.rs");
 include!("cli/doctor.rs");

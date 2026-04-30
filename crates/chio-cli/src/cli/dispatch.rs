@@ -2300,6 +2300,21 @@ fn main() {
             ),
         },
         Commands::Replay(args) => cmd_replay(&args),
+        Commands::Settle { command } => match command {
+            SettleCommands::Status { store, json } => {
+                let resolved = store.or_else(|| receipt_db.clone());
+                match resolved {
+                    Some(path) => match settle::cmd_settle_status(&path, json || json_output) {
+                        Ok(_) => Ok(()),
+                        Err(err) => Err(CliError::Other(format!("settle status: {err}"))),
+                    },
+                    None => Err(CliError::Other(
+                        "settle status: no store path supplied; pass --store or set --receipt-db"
+                            .to_string(),
+                    )),
+                }
+            }
+        },
         Commands::Doctor(args) => cmd_doctor(&args, json_output),
         Commands::Arena { command } => match command {
             ArenaCommands::Run {

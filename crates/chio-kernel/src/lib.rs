@@ -408,6 +408,16 @@ pub use kernel::{
 
 pub use kernel::evaluator::ToolEvaluator;
 
+/// M09 P2.T2 settlement observer surface. Re-exported so integration
+/// tests and embedders can drive a SettlementHook against finalized
+/// receipts without reaching into crate-private module paths.
+pub mod settlement_observer {
+    pub use crate::kernel::settlement_observer::{
+        build_observation, run_observer, SettlementObserverStatus,
+        SETTLEMENT_OBSERVER_STATUS_SCHEMA,
+    };
+}
+
 /// Default bounded capacity for the kernel's mpsc-backed signing-task channel.
 /// Re-exported so integration tests can assert against the configured value
 /// without reaching into crate-private module paths.

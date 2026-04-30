@@ -167,6 +167,103 @@ Indexes: `idx_iou_envelope_receipt_timestamp`,
   metadata) mints zero IOUs and the receipt's canonical JSON bytes
   are byte-identical before and after evaluation.
 
+## P2 close (2026-04-30)
+
+P2 wakes `chio-settle` against finalized signed receipts. The
+`SettlementHook` trait (`crates/chio-settle/src/hook.rs`) plus the
+bounded retry policy and dead-letter persistence machinery
+(`crates/chio-settle/src/retry.rs`,
+`crates/chio-store-sqlite/src/dead_letters.rs`) wire the
+post-dispatch observer slot into the kernel
+(`crates/chio-kernel/src/kernel/settlement_observer.rs`). Settlement
+remains observer-only relative to receipt bytes: a hook failure NEVER
+mutates the receipt store and NEVER blocks the dispatch path. The
+P2.T4 integration test
+(`crates/chio-kernel/tests/settlement_observer_byte_identity.rs`)
+asserts byte-equivalence with the no-settlement baseline over ten
+priced receipts.
+
+### Kernel callers
+
+After P2, the count of kernel-side callers of `chio-settle` outside
+its own crate
+(`grep -rE 'use\s+chio_settle' crates/ | grep -v 'crates/chio-settle/' | wc -l`):
+4 occurrences. The new callers are
+`crates/chio-kernel/src/kernel/settlement_observer.rs`,
+`crates/chio-store-sqlite/src/dead_letters.rs`, and the integration
+test plus dead-letter store tests. The pre-existing in-workspace
+caller (`chio-market::insurance_flow`) remains untouched, preserving
+the trait-bridge directionality the P2-P4 readiness research called
+out.
+
+### Settlement throughput
+
+settlement throughput counters land at the kernel observer slot. The
+P2.T4 integration test
+(`crates/chio-kernel/tests/settlement_observer_byte_identity.rs`)
+drives ten priced receipts through `run_observer` and asserts ten
+`SettlementOutcome::Accepted` outcomes (zero retryable, zero
+permanent, zero skipped). The byte-identity assertion runs against
+the same canonical encoding the trajectory-1 M04 deterministic-replay
+goldens were minted under (`chio_core::canonical::canonical_json_bytes`),
+so a settlement-throughput regression that mutates a receipt byte
+would fail the existing M04 byte-identity gate as well.
+
+Documented retry envelope (`chio_settle::RetryPolicy::default`):
+
+| Bound | Value |
+|-------|-------|
+| `max_retries` | 5 |
+| `initial_backoff_ms` | 250 |
+| `backoff_multiplier` | 2 |
+| `backoff_cap_ms` | 60000 |
+
+Total attempt count is `max_retries + 1`. After the envelope is
+exhausted, `classify_attempt` returns
+`RetryDecision::DeadLetter { .. }`; permanent outcomes short-circuit
+to dead-letter on the first attempt.
+
+### Dead letters
+
+P2.T3 introduces `settle_dead_letters` rows for permanent settlement
+failures. The table is additive (`CREATE TABLE IF NOT EXISTS`) and
+keyed by `receipt_id`; reopening an existing store is a no-op.
+
+Reproduce with:
+
+```bash
+sqlite3 /tmp/example.sqlite '.schema settle_dead_letters'
+```
+
+Column layout (additive, `CREATE TABLE IF NOT EXISTS`):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `receipt_id` | TEXT PRIMARY KEY | Stable uniqueness key. Idempotent on byte-identical re-inserts. |
+| `finalized_at` | INTEGER NOT NULL | Receipt timestamp at the time of dead-lettering. |
+| `attempts` | INTEGER NOT NULL | Number of attempts before the failure was sealed in (always >= 1). |
+| `reason` | TEXT NOT NULL | Operator-visible failure reason. |
+| `pipeline_error` | TEXT | Optional structured error string from `chio-settle/ops.rs`. |
+| `canonical_json` | TEXT NOT NULL | Canonical JSON of the dead letters record; used for idempotency byte-equality checks. |
+| `recorded_at` | INTEGER NOT NULL | Unix seconds when the row was first inserted. |
+
+Indexes: `idx_settle_dead_letters_finalized_at`. Lists are sorted by
+`(finalized_at, receipt_id)` to match the deterministic settlement
+ordering documented on `SettlementHook`. Fail-closed: dead letters do
+NOT auto-retry past the documented bound; operators clear rows
+explicitly via `SqliteDeadLetterStore::clear`.
+
+### CLI surface
+
+`arc settle status [--store PATH] [--json]` reports pending IOU
+envelopes (rows in `iou_envelope` without a
+`settlement_reconciliations` match), settled receipts
+(`settlement_reconciliations` with state=`settled`), and
+dead-lettered settlements (`settle_dead_letters` rows). Output is
+deterministic on `(finalized_at, receipt_id)`. Missing tables surface
+as empty vectors so the CLI runs cleanly against a pre-M09 receipt
+database.
+
 ## Wave entry status
 
 Status: P0 wave-opener landing under the W4 capstone schedule. The audit

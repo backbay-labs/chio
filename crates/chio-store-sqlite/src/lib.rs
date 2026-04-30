@@ -3,6 +3,7 @@ pub mod authority;
 pub mod batch_approval_store;
 pub mod budget_store;
 pub mod capability_lineage;
+pub mod dead_letters;
 pub mod encrypted_blob;
 pub mod evidence_export;
 pub mod execution_nonce_store;
