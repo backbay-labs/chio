@@ -25,6 +25,7 @@ sha2 = { workspace = true }
 regex = "1"
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
+toml = "0.8"
 x509-cert = { version = "0.2", default-features = false, features = ["pem", "std"] }
 pem = "3"
 pki-types = { version = "1.11", default-features = false, package = "rustls-pki-types" }
