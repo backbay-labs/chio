@@ -1,6 +1,11 @@
 name: verdict-matrix
 # M02.P5.T5 metadata: required-on-divergence remains pending until the
 # cross-language oracle and all non-Rust verdict drivers are active.
+# M07.P6.T5 metadata: deployment-shape SDK drivers (JVM, dotnet, Lambda,
+# k8s) close the M02 D07 deferral. The deployment-shape smoke job below
+# is flipped to required: true so the cross-language verdict-tuple
+# equality claim covers all nine drivers (Rust, Python, TS node-http,
+# WASM browser, Go, JVM, dotnet, Lambda, k8s).
 
 on:
   pull_request:
@@ -10,6 +15,10 @@ on:
       - "sdks/python/chio-sdk-python/**"
       - "sdks/typescript/packages/**"
       - "sdks/go/**"
+      - "sdks/jvm/**"
+      - "sdks/dotnet/**"
+      - "sdks/lambda/**"
+      - "sdks/k8s/**"
       - "spec/errors/registry.yaml"
       - ".github/workflows/verdict-matrix.yml"
       - "docs/conformance/verdict-matrix.md"
@@ -22,6 +31,10 @@ on:
       - "sdks/python/chio-sdk-python/**"
       - "sdks/typescript/packages/**"
       - "sdks/go/**"
+      - "sdks/jvm/**"
+      - "sdks/dotnet/**"
+      - "sdks/lambda/**"
+      - "sdks/k8s/**"
       - "spec/errors/registry.yaml"
       - ".github/workflows/verdict-matrix.yml"
       - "docs/conformance/verdict-matrix.md"
@@ -72,3 +85,43 @@ jobs:
           test -f .github/workflows/verdict-matrix.yml
           grep -q 'verdict_matrix' .github/workflows/verdict-matrix.yml
           test -f docs/conformance/verdict-matrix.md
+
+  deployment-shape-smoke:
+    # M07.P6.T5 + M07.P6.T6: deployment-shape SDK drivers (JVM, dotnet,
+    # Lambda, k8s) close the M02 D07 deferral. This job runs the cross-
+    # deployment integration smoke test that asserts identical (verdict,
+    # reason_code, scope_set) tuples across all four drivers vs the Rust
+    # kernel reference, plus the manifest-registration shape gate. The
+    # job is flagged required: true so the matrix gate fails the PR on
+    # any divergence in the deployment-shape registration or smoke test.
+    name: verdict_matrix deployment-shape (required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: rust-kernel
+    # required: true (M07.P6.T5 flip; closes the D07 deferral by gating
+    # the four deployment-shape SDK drivers in required CI)
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Verify deployment-shape driver registration
+        run: |
+          set -euo pipefail
+          grep -q 'driver = "jvm"' crates/chio-conformance/verdict_matrix/manifest.toml
+          grep -q 'driver = "dotnet"' crates/chio-conformance/verdict_matrix/manifest.toml
+          grep -q 'driver = "lambda"' crates/chio-conformance/verdict_matrix/manifest.toml
+          grep -q 'driver = "k8s"' crates/chio-conformance/verdict_matrix/manifest.toml
+          grep -q 'required: true' .github/workflows/verdict-matrix.yml
+
+      - name: Run cross-deployment smoke gate
+        run: cargo test -p chio-conformance --test deployment_shape_smoke --quiet
+
+      - name: Verify D07 closure marker in audit doc
+        run: |
+          set -euo pipefail
+          grep -q 'D07 deferral closed' .planning/audits/M07-adoption-beachhead.md

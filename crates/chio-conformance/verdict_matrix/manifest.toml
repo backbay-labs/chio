@@ -66,6 +66,60 @@ entrypoint = "drivers/wasm-browser"
 command = "crates/chio-conformance/verdict_matrix/drivers/wasm-browser/run.sh"
 supported_categories = ["capability"]
 
+# Deployment-shape SDK drivers (M07.P6, closes the M02 D07 deferral). The
+# four drivers below re-host one of the primary kernels (Rust, Python,
+# TS node-http, WASM browser, Go) but expose distinct wire surfaces and
+# therefore register their own driver shape. Active execution gates on an
+# operator-supplied Chio sidecar URL (CHIO_VERDICT_MATRIX_SIDECAR_URL with
+# CHIO_SIDECAR_URL fallback); status stays `prepared` until the local-
+# invoke / controller-test-harness wiring lands in a follow-on operator-
+# tactical ticket. The cross-deployment smoke gate at
+# crates/chio-conformance/tests/deployment_shape_smoke.rs asserts the
+# registration shape and the verdict-tuple equality contract.
+[drivers.jvm-sdk]
+driver = "jvm"
+status = "prepared"
+entrypoint = "drivers/jvm"
+command = "cd crates/chio-conformance/verdict_matrix/drivers/jvm && ./gradlew --quiet test"
+underlying_driver = "rust-kernel"
+matrix_role = "deployment-shape"
+package = "io.backbay.chio:chio-sdk-jvm"
+requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]
+blocked_on = "M07.P6 sidecar wiring (operator-tactical)"
+
+[drivers.dotnet-sdk]
+driver = "dotnet"
+status = "prepared"
+entrypoint = "drivers/dotnet"
+command = "cd crates/chio-conformance/verdict_matrix/drivers/dotnet && dotnet test --nologo --verbosity quiet"
+underlying_driver = "rust-kernel"
+matrix_role = "deployment-shape"
+package = "BackBay.Chio.ChioMiddleware"
+requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]
+blocked_on = "M07.P6 sidecar wiring (operator-tactical)"
+
+[drivers.lambda-deployment-shape]
+driver = "lambda"
+status = "prepared"
+entrypoint = "drivers/lambda"
+command = "cargo test -p chio-verdict-matrix-driver-lambda --quiet"
+underlying_driver = "rust-kernel"
+matrix_role = "deployment-shape"
+package = "chio-lambda-extension"
+requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]
+blocked_on = "M07.P6 local-invoke shim wiring (operator-tactical)"
+
+[drivers.k8s-admission-webhook]
+driver = "k8s"
+status = "prepared"
+entrypoint = "drivers/k8s"
+command = "cd crates/chio-conformance/verdict_matrix/drivers/k8s && go test ./... -count=1"
+underlying_driver = "rust-kernel"
+matrix_role = "deployment-shape"
+package = "sdks/k8s/webhooks"
+requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]
+blocked_on = "M07.P6 controller test harness wiring (operator-tactical)"
+
 [oracle]
 tuple_fields = ["verdict", "reason_code", "scope_set"]
 reason_registry = "spec/errors/registry.yaml"
