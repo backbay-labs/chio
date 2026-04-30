@@ -80,7 +80,7 @@ pub(crate) fn cmd_guard_new(name: &str) -> Result<(), CliError> {
         .and_then(|n| n.to_str())
         .filter(|n| !n.trim().is_empty())
         .ok_or_else(|| {
-            CliError::Other(format!(
+            CliError::guard_error(format!(
                 "could not derive a project name from `{}`",
                 project_dir.display()
             ))
@@ -95,7 +95,7 @@ pub(crate) fn cmd_guard_new(name: &str) -> Result<(), CliError> {
     // Write src/lib.rs
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir).map_err(|e| {
-        CliError::Other(format!("failed to create {}: {e}", src_dir.display()))
+        CliError::guard_error(format!("failed to create {}: {e}", src_dir.display()))
     })?;
     write_file(&src_dir.join("lib.rs"), LIB_RS_TEMPLATE)?;
 
@@ -120,12 +120,12 @@ pub(crate) fn cmd_guard_new(name: &str) -> Result<(), CliError> {
 pub(crate) fn cmd_guard_build() -> Result<(), CliError> {
     // Verify Cargo.toml exists and contains cdylib crate-type
     let cargo_toml_contents = fs::read_to_string("Cargo.toml").map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "could not read Cargo.toml in current directory: {e}"
         ))
     })?;
     if !cargo_toml_contents.contains("cdylib") {
-        return Err(CliError::Other(
+        return Err(CliError::guard_error(
             "current directory does not appear to be a guard project (no cdylib crate-type in Cargo.toml)"
                 .to_string(),
         ));
@@ -145,7 +145,7 @@ pub(crate) fn cmd_guard_build() -> Result<(), CliError> {
             }
         })
         .ok_or_else(|| {
-            CliError::Other("could not extract package name from Cargo.toml".to_string())
+            CliError::guard_error("could not extract package name from Cargo.toml".to_string())
         })?;
     let underscored_name = package_name.replace('-', "_");
 
@@ -153,10 +153,10 @@ pub(crate) fn cmd_guard_build() -> Result<(), CliError> {
     let status = Command::new("cargo")
         .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
         .status()
-        .map_err(|e| CliError::Other(format!("failed to run cargo: {e}")))?;
+        .map_err(|e| CliError::guard_error(format!("failed to run cargo: {e}")))?;
 
     if !status.success() {
-        return Err(CliError::Other("cargo build failed".to_string()));
+        return Err(CliError::guard_error("cargo build failed".to_string()));
     }
 
     // Verify the output .wasm file exists
@@ -164,7 +164,7 @@ pub(crate) fn cmd_guard_build() -> Result<(), CliError> {
         "target/wasm32-unknown-unknown/release/{underscored_name}.wasm"
     );
     let metadata = fs::metadata(&wasm_path).map_err(|e| {
-        CliError::Other(format!("expected output not found at {wasm_path}: {e}"))
+        CliError::guard_error(format!("expected output not found at {wasm_path}: {e}"))
     })?;
 
     let size = metadata.len();
@@ -188,7 +188,7 @@ fn format_size(bytes: u64) -> String {
 
 pub(crate) fn cmd_guard_inspect(path: &Path) -> Result<(), CliError> {
     let wasm_bytes = fs::read(path).map_err(|e| {
-        CliError::Other(format!("failed to read {}: {e}", path.display()))
+        CliError::guard_error(format!("failed to read {}: {e}", path.display()))
     })?;
 
     let file_size = wasm_bytes.len() as u64;
@@ -200,13 +200,13 @@ pub(crate) fn cmd_guard_inspect(path: &Path) -> Result<(), CliError> {
 
     for payload in parser.parse_all(&wasm_bytes) {
         let payload = payload.map_err(|e| {
-            CliError::Other(format!("wasm parse error: {e}"))
+            CliError::guard_error(format!("wasm parse error: {e}"))
         })?;
         match payload {
             wasmparser::Payload::ExportSection(reader) => {
                 for export in reader {
                     let export = export.map_err(|e| {
-                        CliError::Other(format!("wasm export parse error: {e}"))
+                        CliError::guard_error(format!("wasm export parse error: {e}"))
                     })?;
                     let kind_str = match export.kind {
                         wasmparser::ExternalKind::Func => "function",
@@ -221,7 +221,7 @@ pub(crate) fn cmd_guard_inspect(path: &Path) -> Result<(), CliError> {
             wasmparser::Payload::MemorySection(reader) => {
                 for memory in reader {
                     let memory = memory.map_err(|e| {
-                        CliError::Other(format!("wasm memory parse error: {e}"))
+                        CliError::guard_error(format!("wasm memory parse error: {e}"))
                     })?;
                     let initial_pages = memory.initial;
                     let max_str = memory
@@ -325,7 +325,7 @@ pub(crate) fn cmd_guard_test(
     fuel_limit: u64,
 ) -> Result<(), CliError> {
     let wasm_bytes = fs::read(wasm_path).map_err(|e| {
-        CliError::Other(format!("failed to read {}: {e}", wasm_path.display()))
+        CliError::guard_error(format!("failed to read {}: {e}", wasm_path.display()))
     })?;
 
     let mut total = 0u32;
@@ -334,13 +334,13 @@ pub(crate) fn cmd_guard_test(
 
     for fixture_path in fixture_paths {
         let yaml_content = fs::read_to_string(fixture_path).map_err(|e| {
-            CliError::Other(format!(
+            CliError::guard_error(format!(
                 "failed to read fixture file {}: {e}",
                 fixture_path.display()
             ))
         })?;
         let fixtures: Vec<TestFixture> = serde_yml::from_str(&yaml_content).map_err(|e| {
-            CliError::Other(format!(
+            CliError::guard_error(format!(
                 "failed to parse fixture file {}: {e}",
                 fixture_path.display()
             ))
@@ -351,10 +351,10 @@ pub(crate) fn cmd_guard_test(
 
             // Create a fresh backend per fixture to reset fuel and memory state.
             let mut backend = WasmtimeBackend::new().map_err(|e| {
-                CliError::Other(format!("failed to create wasmtime backend: {e}"))
+                CliError::guard_error(format!("failed to create wasmtime backend: {e}"))
             })?;
             backend.load_module(&wasm_bytes, fuel_limit).map_err(|e| {
-                CliError::Other(format!("failed to load wasm module: {e}"))
+                CliError::guard_error(format!("failed to load wasm module: {e}"))
             })?;
 
             match backend.evaluate(&fixture.request) {
@@ -383,7 +383,7 @@ pub(crate) fn cmd_guard_test(
     println!("{passed} passed, {failed} failed out of {total} total");
 
     if failed > 0 {
-        Err(CliError::Other(format!("{failed} test(s) failed")))
+        Err(CliError::guard_error(format!("{failed} test(s) failed")))
     } else {
         Ok(())
     }
@@ -446,7 +446,7 @@ pub(crate) fn cmd_guard_bench(
     fuel_limit: u64,
 ) -> Result<(), CliError> {
     let wasm_bytes = fs::read(wasm_path).map_err(|e| {
-        CliError::Other(format!("failed to read {}: {e}", wasm_path.display()))
+        CliError::guard_error(format!("failed to read {}: {e}", wasm_path.display()))
     })?;
 
     let sample_request = GuardRequest {
@@ -466,10 +466,10 @@ pub(crate) fn cmd_guard_bench(
     let warmup_count = 5u32;
     for _ in 0..warmup_count {
         let mut backend = WasmtimeBackend::new().map_err(|e| {
-            CliError::Other(format!("failed to create wasmtime backend: {e}"))
+            CliError::guard_error(format!("failed to create wasmtime backend: {e}"))
         })?;
         backend.load_module(&wasm_bytes, fuel_limit).map_err(|e| {
-            CliError::Other(format!("failed to load wasm module: {e}"))
+            CliError::guard_error(format!("failed to load wasm module: {e}"))
         })?;
         let _ = backend.evaluate(&sample_request);
     }
@@ -480,15 +480,15 @@ pub(crate) fn cmd_guard_bench(
 
     for _ in 0..iterations {
         let mut backend = WasmtimeBackend::new().map_err(|e| {
-            CliError::Other(format!("failed to create wasmtime backend: {e}"))
+            CliError::guard_error(format!("failed to create wasmtime backend: {e}"))
         })?;
         backend.load_module(&wasm_bytes, fuel_limit).map_err(|e| {
-            CliError::Other(format!("failed to load wasm module: {e}"))
+            CliError::guard_error(format!("failed to load wasm module: {e}"))
         })?;
 
         let start = std::time::Instant::now();
         let _verdict = backend.evaluate(&sample_request).map_err(|e| {
-            CliError::Other(format!("evaluation failed during benchmark: {e}"))
+            CliError::guard_error(format!("evaluation failed during benchmark: {e}"))
         })?;
         let elapsed = start.elapsed();
 
@@ -599,28 +599,28 @@ pub(crate) struct GuardPublishCommand<'a> {
 pub(crate) fn cmd_guard_publish(command: GuardPublishCommand<'_>) -> Result<(), CliError> {
     let manifest_path = command.project_dir.join("guard-manifest.yaml");
     let manifest_content = fs::read_to_string(&manifest_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "failed to read {}: {e}",
             manifest_path.display()
         ))
     })?;
     let manifest: GuardManifest = serde_yml::from_str(&manifest_content).map_err(|e| {
-        CliError::Other(format!("failed to parse guard-manifest.yaml: {e}"))
+        CliError::guard_error(format!("failed to parse guard-manifest.yaml: {e}"))
     })?;
 
     let wit_world = manifest.wit_world.as_deref().unwrap_or(GUARD_WIT_WORLD);
     if wit_world != GUARD_WIT_WORLD {
-        return Err(CliError::Other(format!(
+        return Err(CliError::guard_error(format!(
             "guard publish requires wit_world {GUARD_WIT_WORLD}, got {wit_world}"
         )));
     }
 
     let wasm_path = command.project_dir.join(Path::new(&manifest.wasm_path));
     let wasm_bytes = fs::read(&wasm_path).map_err(|e| {
-        CliError::Other(format!("failed to read {}: {e}", wasm_path.display()))
+        CliError::guard_error(format!("failed to read {}: {e}", wasm_path.display()))
     })?;
     let wit_bytes = fs::read(command.wit_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "failed to read WIT file {}: {e}",
             command.wit_path.display()
         ))
@@ -640,26 +640,26 @@ pub(crate) fn cmd_guard_publish(command: GuardPublishCommand<'_>) -> Result<(), 
         config: artifact_config,
         signer_subject: command.signer_subject.map(str::to_owned),
     })
-    .map_err(|e| CliError::Other(e.to_string()))?;
+    .map_err(|e| CliError::guard_error(e.to_string()))?;
 
     let reference = command
         .reference
         .parse::<GuardPublishRef>()
-        .map_err(|e| CliError::Other(e.to_string()))?;
+        .map_err(|e| CliError::guard_error(e.to_string()))?;
     let credentials = registry_credentials(command.username, command.password);
     let client = GuardRegistryClient::try_new(GuardRegistryConfig {
         allow_http_registries: command.allow_http_registry,
         ..GuardRegistryConfig::default()
     })
-    .map_err(|e| CliError::Other(e.to_string()))?;
+    .map_err(|e| CliError::guard_error(e.to_string()))?;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|e| CliError::Other(format!("failed to create publish runtime: {e}")))?;
+        .map_err(|e| CliError::guard_error(format!("failed to create publish runtime: {e}")))?;
     let response = runtime
         .block_on(client.publish_guard_artifact(&reference, artifact, &credentials))
-        .map_err(|e| CliError::Other(e.to_string()))?;
+        .map_err(|e| CliError::guard_error(e.to_string()))?;
 
     println!("published guard artifact");
     println!("reference:         {reference}");
@@ -683,37 +683,37 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
     let reference = command
         .reference
         .parse::<GuardOciRef>()
-        .map_err(|e| CliError::Other(e.to_string()))?;
+        .map_err(|e| CliError::guard_error(e.to_string()))?;
     let blocklist = GuardDigestBlocklist::from_environment()
-        .map_err(|e| CliError::Other(format!("failed to load guard blocklist: {e}")))?;
+        .map_err(|e| CliError::guard_error(format!("failed to load guard blocklist: {e}")))?;
     if blocklist
         .is_blocklisted(reference.digest().as_str())
-        .map_err(|e| CliError::Other(format!("failed to check guard blocklist: {e}")))?
+        .map_err(|e| CliError::guard_error(format!("failed to check guard blocklist: {e}")))?
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::guard_error(format!(
             "{E_GUARD_DIGEST_BLOCKLISTED}: guard digest {} is blocklisted",
             reference.digest()
         )));
     }
     let credentials = registry_credentials(command.username, command.password);
-    let cache = GuardCache::from_environment().map_err(|e| CliError::Other(e.to_string()))?;
+    let cache = GuardCache::from_environment().map_err(|e| CliError::guard_error(e.to_string()))?;
     let client = GuardRegistryClient::try_new(GuardRegistryConfig {
         allow_http_registries: command.allow_http_registry,
         ..GuardRegistryConfig::default()
     })
-    .map_err(|e| CliError::Other(e.to_string()))?;
+    .map_err(|e| CliError::guard_error(e.to_string()))?;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|e| CliError::Other(format!("failed to create pull runtime: {e}")))?;
+        .map_err(|e| CliError::guard_error(format!("failed to create pull runtime: {e}")))?;
     let response = runtime
         .block_on(client.pull_guard_to_cache(GuardPullRequest {
             reference: &reference,
             credentials: &credentials,
             cache: &cache,
         }))
-        .map_err(|e| CliError::Other(e.to_string()))?;
+        .map_err(|e| CliError::guard_error(e.to_string()))?;
 
     println!("pulled guard artifact");
     println!("reference:        {reference}");
@@ -751,20 +751,20 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
 fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
     let manifest_path = project_dir.join("guard-manifest.yaml");
     let manifest_content = fs::read_to_string(&manifest_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "failed to read {}: {e}",
             manifest_path.display()
         ))
     })?;
     let manifest: GuardManifest = serde_yml::from_str(&manifest_content).map_err(|e| {
-        CliError::Other(format!("failed to parse guard-manifest.yaml: {e}"))
+        CliError::guard_error(format!("failed to parse guard-manifest.yaml: {e}"))
     })?;
 
     // Resolve the wasm file relative to the project directory
     let wasm_rel_path = Path::new(&manifest.wasm_path);
     let wasm_abs_path = project_dir.join(wasm_rel_path);
     let wasm_bytes = fs::read(&wasm_abs_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "failed to read wasm file {}: {e}",
             wasm_abs_path.display()
         ))
@@ -775,7 +775,7 @@ fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| {
-            CliError::Other(format!(
+            CliError::guard_error(format!(
                 "could not derive filename from wasm_path '{}'",
                 manifest.wasm_path
             ))
@@ -785,7 +785,7 @@ fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
     let archive_path = project_dir.join(&archive_name);
 
     let file = fs::File::create(&archive_path).map_err(|e| {
-        CliError::Other(format!("failed to create {}: {e}", archive_path.display()))
+        CliError::guard_error(format!("failed to create {}: {e}", archive_path.display()))
     })?;
     let enc = GzEncoder::new(file, Compression::default());
     let mut tar_builder = tar::Builder::new(enc);
@@ -799,7 +799,7 @@ fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
     tar_builder
         .append_data(&mut manifest_header, "guard-manifest.yaml", manifest_bytes)
         .map_err(|e| {
-            CliError::Other(format!("failed to add manifest to archive: {e}"))
+            CliError::guard_error(format!("failed to add manifest to archive: {e}"))
         })?;
 
     // Add the .wasm file (store as filename only, not full relative path)
@@ -810,14 +810,14 @@ fn pack_from_dir(project_dir: &Path) -> Result<(), CliError> {
     tar_builder
         .append_data(&mut wasm_header, wasm_filename, wasm_bytes.as_slice())
         .map_err(|e| {
-            CliError::Other(format!("failed to add wasm to archive: {e}"))
+            CliError::guard_error(format!("failed to add wasm to archive: {e}"))
         })?;
 
     let enc = tar_builder.into_inner().map_err(|e| {
-        CliError::Other(format!("failed to finalize tar archive: {e}"))
+        CliError::guard_error(format!("failed to finalize tar archive: {e}"))
     })?;
     enc.finish().map_err(|e| {
-        CliError::Other(format!("failed to finish gzip: {e}"))
+        CliError::guard_error(format!("failed to finish gzip: {e}"))
     })?;
 
     let archive_size = fs::metadata(&archive_path)
@@ -833,7 +833,7 @@ fn resolve_signer_public_key(
     manifest: &GuardManifest,
 ) -> Result<String, CliError> {
     let Some(value) = explicit.or(manifest.signer_public_key.as_deref()) else {
-        return Err(CliError::Other(
+        return Err(CliError::guard_error(
             "guard publish requires --signer-public-key or signer_public_key in guard-manifest.yaml"
                 .to_string(),
         ));
@@ -844,7 +844,7 @@ fn resolve_signer_public_key(
     }
 
     let decoded = hex::decode(value).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "signer public key must be ed25519:<base64> or hex-encoded Ed25519 bytes: {e}"
         ))
     })?;
@@ -864,7 +864,7 @@ fn registry_credentials(username: Option<&str>, password: Option<&str>) -> Regis
 
 pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Result<(), CliError> {
     let file = fs::File::open(archive_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "failed to open {}: {e}",
             archive_path.display()
         ))
@@ -886,14 +886,14 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
     ));
     if tmp_path.exists() {
         fs::remove_dir_all(&tmp_path).map_err(|e| {
-            CliError::Other(format!(
+            CliError::guard_error(format!(
                 "failed to clean existing temp directory {}: {e}",
                 tmp_path.display()
             ))
         })?;
     }
     fs::create_dir_all(&tmp_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "failed to create temp directory {}: {e}",
             tmp_path.display()
         ))
@@ -901,31 +901,31 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
 
     // Collect entries into the temp directory
     for entry_result in archive.entries().map_err(|e| {
-        CliError::Other(format!("failed to read archive entries: {e}"))
+        CliError::guard_error(format!("failed to read archive entries: {e}"))
     })? {
         let mut entry = entry_result.map_err(|e| {
-            CliError::Other(format!("failed to read archive entry: {e}"))
+            CliError::guard_error(format!("failed to read archive entry: {e}"))
         })?;
         entry.unpack_in(&tmp_path).map_err(|e| {
-            CliError::Other(format!("failed to extract archive entry: {e}"))
+            CliError::guard_error(format!("failed to extract archive entry: {e}"))
         })?;
     }
 
     // Read the manifest from the temp directory to determine the guard name
     let tmp_manifest_path = tmp_path.join("guard-manifest.yaml");
     let manifest_content = fs::read_to_string(&tmp_manifest_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "archive does not contain guard-manifest.yaml: {e}"
         ))
     })?;
     let manifest: GuardManifest = serde_yml::from_str(&manifest_content).map_err(|e| {
-        CliError::Other(format!("failed to parse manifest from archive: {e}"))
+        CliError::guard_error(format!("failed to parse manifest from archive: {e}"))
     })?;
 
     let guard_name = &manifest.name;
     let guard_dir = target_dir.join(guard_name);
     fs::create_dir_all(&guard_dir).map_err(|e| {
-        CliError::Other(format!(
+        CliError::guard_error(format!(
             "failed to create directory {}: {e}",
             guard_dir.display()
         ))
@@ -935,10 +935,10 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
     let wasm_filename = {
         let mut found: Option<String> = None;
         for entry in fs::read_dir(&tmp_path).map_err(|e| {
-            CliError::Other(format!("failed to list temp directory: {e}"))
+            CliError::guard_error(format!("failed to list temp directory: {e}"))
         })? {
             let entry = entry.map_err(|e| {
-                CliError::Other(format!("failed to read directory entry: {e}"))
+                CliError::guard_error(format!("failed to read directory entry: {e}"))
             })?;
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
@@ -947,7 +947,7 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
             }
         }
         found.ok_or_else(|| {
-            CliError::Other("archive does not contain a .wasm file".to_string())
+            CliError::guard_error("archive does not contain a .wasm file".to_string())
         })?
     };
 
@@ -955,13 +955,13 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
     let src_wasm = tmp_path.join(&wasm_filename);
     let dst_wasm = guard_dir.join(&wasm_filename);
     fs::copy(&src_wasm, &dst_wasm).map_err(|e| {
-        CliError::Other(format!("failed to copy wasm file: {e}"))
+        CliError::guard_error(format!("failed to copy wasm file: {e}"))
     })?;
 
     // Update the manifest's wasm_path to point to the co-located filename and write it
     let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;
     fs::write(guard_dir.join("guard-manifest.yaml"), updated_manifest_content).map_err(|e| {
-        CliError::Other(format!("failed to write updated manifest: {e}"))
+        CliError::guard_error(format!("failed to write updated manifest: {e}"))
     })?;
 
     // Clean up temp directory (best-effort)
@@ -975,7 +975,7 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
 /// Rewrite the `wasm_path` field in the manifest YAML to point to the given filename.
 fn update_manifest_wasm_path(content: &str, new_wasm_path: &str) -> Result<String, CliError> {
     let mut value: serde_yml::Value = serde_yml::from_str(content).map_err(|e| {
-        CliError::Other(format!("failed to parse manifest for wasm_path update: {e}"))
+        CliError::guard_error(format!("failed to parse manifest for wasm_path update: {e}"))
     })?;
     if let serde_yml::Value::Mapping(ref mut map) = value {
         map.insert(
@@ -984,7 +984,7 @@ fn update_manifest_wasm_path(content: &str, new_wasm_path: &str) -> Result<Strin
         );
     }
     serde_yml::to_string(&value).map_err(|e| {
-        CliError::Other(format!("failed to serialize updated manifest: {e}"))
+        CliError::guard_error(format!("failed to serialize updated manifest: {e}"))
     })
 }
 
@@ -995,13 +995,13 @@ fn update_manifest_wasm_path(content: &str, new_wasm_path: &str) -> Result<Strin
 fn ensure_target_dir(path: &Path) -> Result<(), CliError> {
     if path.exists() {
         if !path.is_dir() {
-            return Err(CliError::Other(format!(
+            return Err(CliError::guard_error(format!(
                 "refusing to scaffold into non-directory `{}`",
                 path.display()
             )));
         }
         if path.read_dir()?.next().is_some() {
-            return Err(CliError::Other(format!(
+            return Err(CliError::guard_error(format!(
                 "refusing to scaffold into non-empty directory `{}`",
                 path.display()
             )));
@@ -1037,7 +1037,7 @@ fn sanitize_package_name(input: &str) -> String {
 
 fn write_file(path: &Path, content: &str) -> Result<(), CliError> {
     fs::write(path, content).map_err(|e| {
-        CliError::Other(format!("failed to write {}: {e}", path.display()))
+        CliError::guard_error(format!("failed to write {}: {e}", path.display()))
     })
 }
 
@@ -1057,6 +1057,23 @@ mod tests {
         assert_eq!(sanitize_package_name("UPPER_CASE"), "upper-case");
         assert_eq!(sanitize_package_name("___"), "chio-guard");
         assert_eq!(sanitize_package_name("a--b"), "a-b");
+    }
+
+    fn assert_registry_error(err: &CliError, expected_code: &str, expected_domain: &str) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected_code);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    fn must_cli_err<T>(result: Result<T, CliError>, context: &str) -> CliError {
+        match result {
+            Ok(_) => panic!("{context}: expected error"),
+            Err(err) => err,
+        }
     }
 
     #[test]
@@ -1102,7 +1119,10 @@ mod tests {
         fs::write(project_path.join("some-file.txt"), "content").unwrap();
 
         let result = cmd_guard_new(project_path.to_str().unwrap());
-        assert!(result.is_err());
+        let err = must_cli_err(result, "scaffold into non-empty directory");
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("refusing to scaffold"), "{msg}");
     }
 
     #[test]
@@ -1461,8 +1481,11 @@ wasm_sha256: "deadbeef"
     fn test_pack_fails_without_manifest() {
         let project_dir = tempfile::tempdir().unwrap();
         // No guard-manifest.yaml created
-        let result = pack_from_dir(project_dir.path());
-        assert!(result.is_err(), "pack should fail without manifest");
+        let err = must_cli_err(pack_from_dir(project_dir.path()), "pack without manifest");
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to read"), "{msg}");
+        assert!(msg.contains("guard-manifest.yaml"), "{msg}");
     }
 
     #[test]
@@ -1482,15 +1505,22 @@ wasm_sha256: "deadbeef"
         )
         .unwrap();
 
-        let result = pack_from_dir(project_dir.path());
-        assert!(result.is_err(), "pack should fail with missing wasm");
+        let err = must_cli_err(pack_from_dir(project_dir.path()), "pack with missing wasm");
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to read wasm file"), "{msg}");
     }
 
     #[test]
     fn test_install_fails_with_missing_archive() {
         let install_dir = tempfile::tempdir().unwrap();
         let bogus_path = install_dir.path().join("nonexistent.arcguard");
-        let result = cmd_guard_install(&bogus_path, install_dir.path());
-        assert!(result.is_err(), "install should fail with missing archive");
+        let err = must_cli_err(
+            cmd_guard_install(&bogus_path, install_dir.path()),
+            "install missing archive",
+        );
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to open"), "{msg}");
     }
 }

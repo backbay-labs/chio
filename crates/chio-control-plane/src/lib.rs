@@ -5,7 +5,8 @@ use std::path::Path;
 
 use chio_core::crypto::Keypair;
 use chio_errors::_generated::error_codes::{
-    CAPABILITY_SCOPE_EXCEEDED, CAPABILITY_SUBJECT_MISMATCH, CLI_JSON, CLI_OTHER,
+    CAPABILITY_SCOPE_EXCEEDED, CAPABILITY_SUBJECT_MISMATCH, CLI_IO, CLI_JSON, CLI_OTHER, CLI_YAML,
+    GUARD_DENIED, GUARD_WASM_TRAP, MANIFEST_SCHEMA_INVALID, MANIFEST_SIGNATURE_INVALID,
     POLICY_CONSTRAINT_INVALID, POLICY_DECISION_DENIED, TRANSPORT_HTTP_FAILED,
     TRANSPORT_INVALID_REQUEST_SHAPE,
 };
@@ -145,6 +146,22 @@ impl CliError {
         Self::registry_error(&POLICY_CONSTRAINT_INVALID, message)
     }
 
+    pub fn guard_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&GUARD_DENIED, message)
+    }
+
+    pub fn guard_wasm_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&GUARD_WASM_TRAP, message)
+    }
+
+    pub fn manifest_schema_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&MANIFEST_SCHEMA_INVALID, message)
+    }
+
+    pub fn manifest_signature_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&MANIFEST_SIGNATURE_INVALID, message)
+    }
+
     pub fn transport_error(message: impl Into<String>) -> Self {
         Self::registry_error(&TRANSPORT_HTTP_FAILED, message)
     }
@@ -153,8 +170,16 @@ impl CliError {
         Self::registry_error(&TRANSPORT_INVALID_REQUEST_SHAPE, message)
     }
 
+    pub fn cli_io_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&CLI_IO, message)
+    }
+
     pub fn cli_json_error(message: impl Into<String>) -> Self {
         Self::registry_error(&CLI_JSON, message)
+    }
+
+    pub fn cli_yaml_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&CLI_YAML, message)
     }
 
     pub fn cli_other_error(message: impl Into<String>) -> Self {
@@ -602,6 +627,55 @@ mod tests {
             .expect("system time before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
+    }
+
+    fn assert_registry_error(
+        err: &CliError,
+        expected: &'static ErrorCodeSpec,
+        expected_domain: &str,
+    ) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected.urn);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn migrated_cli_error_helpers_emit_registry_codes_and_domains() {
+        let cases = [
+            (
+                CliError::manifest_signature_error("bad manifest signature"),
+                &MANIFEST_SIGNATURE_INVALID,
+                "manifest",
+            ),
+            (
+                CliError::manifest_schema_error("bad manifest schema"),
+                &MANIFEST_SCHEMA_INVALID,
+                "manifest",
+            ),
+            (
+                CliError::guard_error("guard denied request"),
+                &GUARD_DENIED,
+                "guard",
+            ),
+            (
+                CliError::cli_io_error("could not read input"),
+                &CLI_IO,
+                "cli",
+            ),
+            (
+                CliError::cli_yaml_error("could not parse yaml"),
+                &CLI_YAML,
+                "cli",
+            ),
+        ];
+
+        for (err, expected, expected_domain) in cases {
+            assert_registry_error(&err, expected, expected_domain);
+        }
     }
 
     #[test]
