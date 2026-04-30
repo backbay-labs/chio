@@ -59,7 +59,6 @@ members = [
     "crates/chio-web3-bindings",
     #
     # Supply-chain attestation
-    "crates/chio-arena",
     "crates/chio-replay-corpus",
     "crates/chio-attest-verify",
     "crates/chio-tee",
