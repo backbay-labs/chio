@@ -567,4 +567,4 @@ representation of:
 - the transport requirements per surface
 
 Implementations and future standards work **SHOULD** treat that artifact as the
-stable registry for phase `313`.
+stable threat-model registry for the Chio boundary.

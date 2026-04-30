@@ -64,12 +64,15 @@ fn threat_model_register_lists_required_threats_with_mitigations() {
     assert_eq!(threat_model.schema, "chio.threat-model.v1");
 
     let expected_threats = BTreeSet::from([
+        "audience_confusion".to_string(),
         "capability_token_theft".to_string(),
         "delegation_chain_abuse".to_string(),
         "kernel_impersonation".to_string(),
         "native_channel_replay".to_string(),
+        "passkey_credential_theft".to_string(),
         "resource_exhaustion_dos".to_string(),
         "tool_server_escape".to_string(),
+        "weights_hash_spoof".to_string(),
     ]);
 
     let mut seen = BTreeSet::new();
