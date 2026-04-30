@@ -337,7 +337,7 @@ timeout survived, which is expected for a baseline run.
 | Timeout | 1 |
 | Kill rate, excluding unviable | 33.1% |
 
-Missed and timeout mutant classes:
+Missed mutant classes:
 
 | Class | Count |
 |-------|-------|
@@ -345,11 +345,17 @@ Missed and timeout mutant classes:
 | boolean connective rewrite | 35 |
 | boolean return rewrite | 35 |
 | negation deletion | 18 |
-| arithmetic rewrite | 16 |
+| arithmetic rewrite | 15 |
 | match arm deletion | 7 |
 | other rewrite | 5 |
 | string return rewrite | 4 |
 | structured return rewrite | 2 |
+
+Timeout mutant classes:
+
+| Class | Count |
+|-------|-------|
+| arithmetic rewrite | 1 |
 
 Timeout mutants:
 

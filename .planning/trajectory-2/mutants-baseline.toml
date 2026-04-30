@@ -160,11 +160,15 @@ missed_mutant_classes = [
   { class = "boolean connective rewrite", count = 35 },
   { class = "boolean return rewrite", count = 35 },
   { class = "negation deletion", count = 18 },
-  { class = "arithmetic rewrite", count = 16 },
+  { class = "arithmetic rewrite", count = 15 },
   { class = "match arm deletion", count = 7 },
   { class = "other rewrite", count = 5 },
   { class = "string return rewrite", count = 4 },
   { class = "structured return rewrite", count = 2 },
+]
+
+timeout_mutant_classes = [
+  { class = "arithmetic rewrite", count = 1 },
 ]
 
 missed_mutants = [
