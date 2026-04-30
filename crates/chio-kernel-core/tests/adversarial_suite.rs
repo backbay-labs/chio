@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use chio_adversarial_suite::{
-    bundled_coverage_cases, AttackClass, CaseError, ExpectedVerdict,
-};
+use chio_adversarial_suite::{bundled_coverage_cases, AttackClass, CaseError, ExpectedVerdict};
 
 const KERNEL_CLASSES: &[AttackClass] = &[
     AttackClass::ClockRewound,
@@ -38,7 +36,9 @@ fn kernel_core_adversarial_suite_answer_key_denies_kernel_classes() -> Result<()
             case.id
         );
         assert!(
-            case.artifact.as_object().is_some_and(|object| !object.is_empty()),
+            case.artifact
+                .as_object()
+                .is_some_and(|object| !object.is_empty()),
             "kernel adversarial case {} must carry a non-empty artifact",
             case.id
         );

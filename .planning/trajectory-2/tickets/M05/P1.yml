@@ -1,6 +1,6 @@
 # M05 Phase 1 - chio-adversarial-suite crate genesis.
 # Source of truth: .planning/trajectory-2/05-adversarial-escape-threat-model.md
-# (Phase 1). Forty curated adversarial vectors across seven attack classes;
+# (Phase 1). Forty curated adversarial vectors across eight attack classes;
 # every vector annotated `{ class, expected_verdict: "DENY", expected_reason }`.
 # Wired into chio-kernel-core and chio-attest-verify test runs.
 #
@@ -42,7 +42,7 @@
   milestone: M05
   phase: 1
   title: Ship clock-rewound, future-dated, and replayed-nonce adversarial classes (15 vectors)
-  status: pending
+  status: review
   effort_days: 2
   owner_glob:
     - crates/chio-adversarial-suite/cases/clock_rewound/**
@@ -61,16 +61,16 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 447c549f809fe23f7ece347ea28ee19d52cc5833
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T16:06:55Z"
   merged_ts: null
 
 - id: M05.P1.T3
   milestone: M05
   phase: 1
   title: Ship partial-signature, scope-superset, and revocation-rollback adversarial classes (15 vectors)
-  status: pending
+  status: review
   effort_days: 2
   owner_glob:
     - crates/chio-adversarial-suite/cases/partial_signature/**
@@ -89,16 +89,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d1fdf108793831785674fd218643010c97a6e3c6
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T16:06:55Z"
   merged_ts: null
 
 - id: M05.P1.T4
   milestone: M05
   phase: 1
   title: Ship anchor-grafted and sigstore-bundle-payload-mismatch adversarial classes (10 vectors)
-  status: pending
+  status: review
   effort_days: 1.5
   owner_glob:
     - crates/chio-adversarial-suite/cases/anchor_grafted/**
@@ -116,16 +116,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: efbc1e19a9425bb014fc8e9f7eb79bbe233ecc35
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T16:06:55Z"
   merged_ts: null
 
 - id: M05.P1.T5
   milestone: M05
   phase: 1
   title: Wire adversarial suite into chio-kernel-core test run as required check
-  status: pending
+  status: review
   effort_days: 1
   owner_glob:
     - crates/chio-kernel-core/Cargo.toml
@@ -142,16 +142,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 259aeb9abdfa25d7ae6d11fee30fb509f8cece12
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T16:06:55Z"
   merged_ts: null
 
 - id: M05.P1.T6
   milestone: M05
   phase: 1
   title: Wire adversarial suite into chio-attest-verify test run as required check
-  status: pending
+  status: review
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/Cargo.toml
@@ -168,7 +168,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: face04a077c6b73734cfc4b9eb43e96fddbf77d6
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T16:06:55Z"
   merged_ts: null

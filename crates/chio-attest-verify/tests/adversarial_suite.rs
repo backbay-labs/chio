@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use chio_adversarial_suite::{
-    bundled_coverage_cases, AttackClass, CaseError, ExpectedVerdict,
-};
+use chio_adversarial_suite::{bundled_coverage_cases, AttackClass, CaseError, ExpectedVerdict};
 
 const ATTEST_CLASSES: &[AttackClass] = &[
     AttackClass::AnchorGrafted,
@@ -39,7 +37,9 @@ fn attest_verify_adversarial_suite_answer_key_denies_attestation_classes() -> Re
             case.id
         );
         assert!(
-            case.artifact.as_object().is_some_and(|object| !object.is_empty()),
+            case.artifact
+                .as_object()
+                .is_some_and(|object| !object.is_empty()),
             "attestation adversarial case {} must carry a non-empty artifact",
             case.id
         );

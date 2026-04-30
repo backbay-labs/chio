@@ -644,7 +644,10 @@ mod tests {
             assert!(!case.pending);
             assert!(!case.expected_reason.trim().is_empty());
             assert!(!case.threat_id.trim().is_empty());
-            assert!(case.artifact.as_object().is_some_and(|object| !object.is_empty()));
+            assert!(case
+                .artifact
+                .as_object()
+                .is_some_and(|object| !object.is_empty()));
             case.into_coverage_case()?;
         }
         Ok(())
