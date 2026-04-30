@@ -9,7 +9,7 @@
   milestone: M04
   phase: 3
   title: Add Capability::delegate mint helper to chio-core-types wrapping DelegationLink::sign with attenuation enforcement
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-core-types/src/capability.rs
@@ -27,16 +27,16 @@
   agent_role: delegate-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 6a95f15c8
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T23:01:39Z
   merged_ts: null
 
 - id: M04.P3.T2
   milestone: M04
   phase: 3
   title: Define DelegationReceipt schema (parent_chain, attenuation, signed_at, nonce) with canonical-JSON encoding
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-core-types/src/delegation_receipt.rs
@@ -53,16 +53,16 @@
   agent_role: delegate-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 518d07a01
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T23:01:39Z
   merged_ts: null
 
 - id: M04.P3.T3
   milestone: M04
   phase: 3
   title: Three new named proptest invariants (delegate_strictly_weakens, delegate_chain_extension_monotone, delegate_revoked_parent_revokes_children)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-core-types/tests/property_capability_algebra.rs
@@ -78,16 +78,16 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 37d89607c
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T23:01:39Z
   merged_ts: null
 
 - id: M04.P3.T4
   milestone: M04
   phase: 3
   title: Kernel integration behind delegation_v2 feature flag (default OFF) - verifier consults oracle on each delegated dispatch
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel/Cargo.toml
@@ -105,16 +105,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 0add5bd57
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T23:01:39Z
   merged_ts: null
 
 - id: M04.P3.T5
   milestone: M04
   phase: 3
   title: SDK breakage audit - feature-gate Capability::Delegate variant pub re-export and document migration path
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-core-types/src/lib.rs
@@ -132,7 +132,7 @@
   agent_role: delegate-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 99ff3c928
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T23:01:39Z
   merged_ts: null
