@@ -1,3 +1,21 @@
+//! Intel TDX DCAP backend.
+//!
+//! Parses an Intel TDX v4 quote envelope, walks the supplied DCAP
+//! collateral chain to the configured Intel root, enforces the
+//! documented `min_tcb_recovery_event_id`, and binds the quote into
+//! the kernel signing key plus receipt root via [`expect_report_data`].
+//!
+//! The collateral chain check anchors at the configured Intel root
+//! bytes for both the PCK certificate chain and the TCB info issuer
+//! chain. Chains are rejected when empty, when any link is empty, when
+//! the leaf equals the anchor (no real intermediate / leaf present),
+//! or when the leaf does not differ from the next link in the chain.
+//!
+//! The header check additionally enforces the Intel SGX Quoting
+//! Enclave vendor id and an Intel ECDSA attestation key type, so a
+//! quote produced by a non-Intel QE or signed under an unsupported key
+//! type is rejected before any binding work runs.
+
 use std::time::SystemTime;
 
 use crate::{
@@ -13,6 +31,20 @@ const TD10_REPORT_DATA_OFFSET: usize = QUOTE_HEADER_LEN + 520;
 const TD10_REPORT_DATA_END: usize = TD10_REPORT_DATA_OFFSET + 64;
 const SIGNATURE_LEN_OFFSET: usize = QUOTE_HEADER_LEN + TD10_REPORT_LEN;
 const SIGNATURE_BYTES_OFFSET: usize = SIGNATURE_LEN_OFFSET + 4;
+
+/// Intel SGX Quoting Enclave vendor id, embedded in TDX v4 quote
+/// headers at bytes 12..28. Source: Intel TDX Quote Generation
+/// Library reference (`sgx_quote_4_t.qe_vendor_id`).
+const INTEL_SGX_QE_VENDOR_ID: [u8; 16] = [
+    0x93, 0x9a, 0x72, 0x33, 0xf7, 0x9c, 0x4c, 0xa9, 0x94, 0x0a, 0x0d, 0xb3, 0x95, 0x7f, 0x06, 0x07,
+];
+
+/// ECDSA-256-with-P-256 attestation key. Source: Intel SGX DCAP
+/// Quoting Library, `sgx_quote_sign_type_t`. Other values either
+/// designate EPID (legacy SGX, never valid for TDX) or future Intel
+/// reserved values; both are rejected.
+const ATT_KEY_TYPE_ECDSA_P256: u16 = 2;
+const ATT_KEY_TYPE_ECDSA_P384: u16 = 3;
 
 /// Minimal DCAP collateral bundle required by the TDX scaffold.
 ///
@@ -88,13 +120,13 @@ impl TdxDcapVerifier {
         if self.collateral.intel_root_ca_der.is_empty() {
             return Err(AttestError::TrustRoot);
         }
-        if !chain_anchors_at_root(
+        if !chain_terminates_at_root(
             &self.collateral.pck_certificate_chain_der,
             &self.collateral.intel_root_ca_der,
         ) {
             return Err(AttestError::TrustRoot);
         }
-        if !chain_anchors_at_root(
+        if !chain_terminates_at_root(
             &self.collateral.tcb_info_issuer_chain_der,
             &self.collateral.intel_root_ca_der,
         ) {
@@ -162,10 +194,26 @@ impl ParsedTdxQuote {
             )));
         }
 
+        let att_key_type = read_u16_le(quote, 2)?;
+        if att_key_type != ATT_KEY_TYPE_ECDSA_P256 && att_key_type != ATT_KEY_TYPE_ECDSA_P384 {
+            return Err(AttestError::Malformed(format!(
+                "tdx quote att_key_type {att_key_type} is not an Intel ECDSA variant"
+            )));
+        }
+
         let tee_type = read_u32_le(quote, 4)?;
         if tee_type != TDX_TEE_TYPE {
             return Err(AttestError::Malformed(
                 "quote tee_type is not Intel TDX".to_string(),
+            ));
+        }
+
+        let qe_vendor_id = quote.get(12..28).ok_or_else(|| {
+            AttestError::Malformed("tdx quote missing qe_vendor_id field".to_string())
+        })?;
+        if qe_vendor_id != INTEL_SGX_QE_VENDOR_ID {
+            return Err(AttestError::Malformed(
+                "tdx quote qe_vendor_id is not the Intel SGX QE".to_string(),
             ));
         }
 
@@ -205,8 +253,29 @@ fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32, AttestError> {
     Ok(u32::from_le_bytes([field[0], field[1], field[2], field[3]]))
 }
 
-fn chain_anchors_at_root(chain: &[Vec<u8>], root: &[u8]) -> bool {
-    chain
-        .last()
-        .is_some_and(|last| !last.is_empty() && last.as_slice() == root)
+/// True only when the chain terminates at the supplied root and the
+/// chain has at least one non-empty link below the root, ensuring a
+/// real leaf or intermediate is present and that no link is the empty
+/// byte slice. A chain that consists solely of the root, or one whose
+/// leaf is byte-equal to the root, is rejected.
+fn chain_terminates_at_root(chain: &[Vec<u8>], root: &[u8]) -> bool {
+    if chain.len() < 2 {
+        return false;
+    }
+    if chain.iter().any(std::vec::Vec::is_empty) {
+        return false;
+    }
+    let Some(last) = chain.last() else {
+        return false;
+    };
+    if last.as_slice() != root {
+        return false;
+    }
+    let Some(first) = chain.first() else {
+        return false;
+    };
+    if first.as_slice() == root {
+        return false;
+    }
+    true
 }
