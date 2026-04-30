@@ -33,9 +33,10 @@ fn cmd_replay_legacy(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
         );
     }
     if !args.from_tee && args.trusted_kernel_pubkey.is_none() {
-        return Err(CliError::cli_other_error(
+        return finish_replay_failure(
+            EXIT_BAD_SIGNATURE,
             "chio replay receipt logs require --trusted-kernel-pubkey".to_string(),
-        ));
+        );
     }
 
     let tenant_pubkey = match args.tenant_pubkey.as_deref() {
