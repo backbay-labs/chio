@@ -1,0 +1,19 @@
+[package]
+name = "chio-conformance-verdict-matrix"
+description = "Scenario format scaffold for Chio cross-SDK verdict comparison"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.93"
+license = "Apache-2.0"
+repository = "https://github.com/backbay/chio"
+publish = false
+
+[lib]
+name = "chio_conformance_verdict_matrix"
+path = "src/lib.rs"
+
+[workspace]
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

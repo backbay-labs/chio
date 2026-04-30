@@ -15,6 +15,7 @@ include = [
     "README.md",
     "Cargo.toml",
     "peers.lock.toml",
+    "verdict_matrix/**",
     "tests/conformance/scenarios/**",
     "tests/conformance/peers/python/**",
     "tests/conformance/peers/js/**",

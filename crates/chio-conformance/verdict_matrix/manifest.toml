@@ -1,0 +1,15 @@
+schema = "chio.verdict-matrix.manifest.v1"
+version = 1
+scenario_spec = "chio.verdict-matrix.scenario.v1"
+
+[corpus]
+status = "scaffold"
+scenario_count = 0
+scenario_root = "scenarios"
+
+[drivers]
+required = []
+
+[drivers.rust-kernel]
+status = "planned"
+entrypoint = "drivers/rust"
