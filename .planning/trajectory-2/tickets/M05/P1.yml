@@ -12,7 +12,7 @@
   milestone: M05
   phase: 1
   title: Genesis chio-adversarial-suite crate with case schema and cases directory layout
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-adversarial-suite/Cargo.toml
@@ -33,10 +33,10 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: 3be5573f04d9302aaf198de00da1e39357866f02
+  merged_sha: 07f1a9f63d7bc8aba303ffb675225de455dcb6ca
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:59:41Z"
 
 - id: M05.P1.T2
   milestone: M05

@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-30T14:59:04Z",
+  "last_checkpoint_at": "2026-04-30T15:03:41Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -36,8 +36,8 @@
       "trust_boundary": true
     },
     "M05": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
+      "status": "in_progress",
+      "phase": "P1",
       "owner_branch": null,
       "trust_boundary": true
     },
