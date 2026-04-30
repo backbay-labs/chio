@@ -10,7 +10,7 @@
   milestone: M02
   phase: 3
   title: Flip mutants-pr lane to required CI for the six trust-boundary crates
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .github/workflows/mutants.yml
@@ -33,16 +33,16 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: c839fe25f5eb8798c93c07994e5bff4ba5cb1ba2
+  merged_sha: ef1fec343fc9e96455d031ff2d6c4f2439749d09
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:58:19Z"
 
 - id: M02.P3.T2
   milestone: M02
   phase: 3
   title: PR-comment surface listing surviving mutants with class breakdown
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - scripts/mutants-comment.sh
@@ -58,16 +58,16 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: c839fe25f5eb8798c93c07994e5bff4ba5cb1ba2
+  merged_sha: ef1fec343fc9e96455d031ff2d6c4f2439749d09
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:58:19Z"
 
 - id: M02.P3.T3
   milestone: M02
   phase: 3
   title: Auto-file issue per surviving mutant beyond per-PR cap
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .github/ISSUE_TEMPLATE/mutants_survivor.yml
@@ -85,16 +85,16 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: c839fe25f5eb8798c93c07994e5bff4ba5cb1ba2
+  merged_sha: ef1fec343fc9e96455d031ff2d6c4f2439749d09
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:58:19Z"
 
 - id: M02.P3.T4
   milestone: M02
   phase: 3
   title: Skip-with-rationale process for un-killable mutants and CODEOWNERS gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - scripts/check-mutants-rationale.sh
@@ -112,16 +112,16 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: c839fe25f5eb8798c93c07994e5bff4ba5cb1ba2
+  merged_sha: ef1fec343fc9e96455d031ff2d6c4f2439749d09
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:58:19Z"
 
 - id: M02.P3.T5
   milestone: M02
   phase: 3
   title: README headline kill-score banner with nightly auto-update PR
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - README.md
@@ -139,7 +139,7 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: c839fe25f5eb8798c93c07994e5bff4ba5cb1ba2
+  merged_sha: ef1fec343fc9e96455d031ff2d6c4f2439749d09
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:58:19Z"
