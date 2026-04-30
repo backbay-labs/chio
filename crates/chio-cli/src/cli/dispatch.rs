@@ -2563,7 +2563,18 @@ fn dispatch_lineage(command: LineageCommands, json_output: bool) -> Result<(), C
             };
             let report = ln::cmd_query(&graph, &seeds, dir, bounds)
                 .map_err(|e| CliError::Other(format!("lineage query: {e}")))?;
-            emit_lineage_report(&report, json || json_output)
+            if json || json_output {
+                emit_lineage_report(&report, true)
+            } else {
+                let line = format!(
+                    "lineage {}: nodes={} edges={}\n",
+                    report.direction,
+                    report.graph.nodes.len(),
+                    report.graph.edges.len(),
+                );
+                std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes())
+                    .map_err(|e| CliError::Other(format!("lineage query write: {e}")))
+            }
         }
         LineageCommands::Diff {
             left_label,
