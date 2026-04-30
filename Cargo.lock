@@ -2990,6 +2990,7 @@ name = "chio-federation"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-kernel-core",
  "chio-listing",
  "chio-open-market",
  "chio-revocation-oracle",

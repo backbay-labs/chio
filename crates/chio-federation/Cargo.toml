@@ -20,6 +20,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+# Integration test crates/chio-federation/tests/oracle_gossip_e2e.rs walks
+# a single-host gossip mesh end-to-end and asserts the oracle-insert to
+# verifier-visibility latency budget (M04.P2.T5). The kernel-core
+# RevocationView (M04.P2.T4) is the verifier-side surface so that crate
+# is pulled in here as a dev dependency only.
+chio-kernel-core = { path = "../chio-kernel-core" }
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
