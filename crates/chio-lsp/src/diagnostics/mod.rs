@@ -10,6 +10,8 @@
 //! can route by registry code.
 
 pub mod chio_yaml;
+pub mod guard_dsl;
+pub mod manifest;
 
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range, Url};
 
@@ -48,9 +50,8 @@ pub fn diagnostic_with_urn(
 pub fn validate(language: DocumentLanguage, _uri: &Url, text: &str) -> Vec<Diagnostic> {
     match language {
         DocumentLanguage::ChioYaml => chio_yaml::validate(text),
-        // Manifest + guard DSL providers land in P4.T6.
-        DocumentLanguage::Manifest | DocumentLanguage::GuardDsl | DocumentLanguage::Other => {
-            Vec::new()
-        }
+        DocumentLanguage::Manifest => manifest::validate(text),
+        DocumentLanguage::GuardDsl => guard_dsl::validate(text),
+        DocumentLanguage::Other => Vec::new(),
     }
 }
