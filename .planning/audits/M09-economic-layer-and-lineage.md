@@ -111,6 +111,62 @@ Reproduce with the `grep` invocations cited in the narrative.
   `LINEAGE_GRAPH_SCHEMA` constant and a placeholder `LineageError` type;
   the DAG schema, ingest paths, and query layer follow in M09 P5.
 
+## P1 close (2026-04-30)
+
+P1 wakes `chio-credit` against finalized signed receipts. The credit
+hook surface is owned by `chio-credit` (`hook.rs`, `local_account.rs`,
+`store_binding.rs`); the SQLite implementation of the IOU envelope
+store ships in `chio-store-sqlite::iou_store`. Both the
+`SqliteIouEnvelopeStore::open_with_pool` migration and the
+`SqliteReceiptStore::open` bootstrap apply the additive
+`iou_envelope` migration; reopening an existing store is a no-op.
+
+### Kernel callers
+
+After P1, the count of kernel callers of `chio-credit` outside its
+own crate
+(`grep -rE 'use\s+chio_credit' crates/ | grep -v 'crates/chio-credit/' | wc -l`):
+6 occurrences. The new callers are `chio-store-sqlite::iou_store` and
+its test fixtures; the kernel still does not consume `chio-credit`
+directly. The kernel observer-slot wiring is deferred to P2 along
+with the settlement hook so both economic hooks register through the
+same evaluator surface.
+
+### IOU envelope schema row
+
+Reproduce with:
+
+```bash
+sqlite3 /tmp/example.sqlite '.schema iou_envelope'
+```
+
+Column layout (additive, `CREATE TABLE IF NOT EXISTS`):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `receipt_id` | TEXT PRIMARY KEY | Stable uniqueness key. Re-processing the same finalized receipt is idempotent. |
+| `iou_id` | TEXT NOT NULL | Deterministic from `receipt_id` (sha256 prefix). |
+| `receipt_timestamp` | INTEGER NOT NULL | Carried over for cheap sort by issuance time. |
+| `tenant_id` | TEXT | NULL in single-tenant deployments. |
+| `amount_units` | INTEGER NOT NULL | Currency minor units; always > 0 for stored rows. |
+| `currency` | TEXT NOT NULL | ISO 4217 (e.g. "USD"). |
+| `issuer_key` | TEXT NOT NULL | JSON encoding of the kernel signing public key. |
+| `canonical_json` | TEXT NOT NULL | Canonical JSON of the signed envelope, used for idempotency byte-equality checks. |
+
+Indexes: `idx_iou_envelope_receipt_timestamp`,
+`idx_iou_envelope_tenant`. No existing schema columns were dropped.
+
+### Property-test coverage
+
+- `crates/chio-credit/tests/iou_invariants.rs`: 256 proptest cases
+  cover the (decision, financial metadata, cost, currency, tenant)
+  product. Exactly-one-or-zero IOU per receipt; tampered receipts
+  fail closed.
+- `crates/chio-credit/tests/legacy_receipt_migration.rs`: every
+  pre-M09 receipt shape (no financial metadata; non-financial
+  metadata) mints zero IOUs and the receipt's canonical JSON bytes
+  are byte-identical before and after evaluation.
+
 ## Wave entry status
 
 Status: P0 wave-opener landing under the W4 capstone schedule. The audit
