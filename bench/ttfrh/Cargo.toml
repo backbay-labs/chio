@@ -10,5 +10,12 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "ttfrh-bench"
+path = "src/main.rs"
+
+[dependencies]
+thiserror = { workspace = true }
+
 [lints]
 workspace = true
