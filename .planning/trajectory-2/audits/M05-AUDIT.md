@@ -173,9 +173,23 @@ below is missing a green test reference.
 
 ### Escape class inventory
 
-- libFuzzer target `wasm_guard_escape` corpus size: <fill>
-- Companion fixture escape classes: <fill at-least-25 expected>
-- All escape attempts yield typed `GuardError`: <fill yes/no>
+- libFuzzer target `wasm_guard_escape` corpus size: 8 (one hand-curated
+  seed per escape class; see `fuzz/corpus/wasm_guard_escape/`).
+- Companion fixture escape classes: 8 (pinned by
+  `crates/chio-wasm-guards/tests/escape/aggregate.rs::ESCAPE_CLASSES`).
+  The eight classes are: `undeclared_imports`, `oversize_memory`,
+  `fuel_exhaustion`, `table_grow_abuse`, `deep_recursion`,
+  `host_reentry`, `malformed_component`, `signed_but_malicious`. The
+  earlier "at-least-25" framing in this audit referenced an aspirational
+  corpus shape; M05.P3 ships the canonical eight classes named in
+  `.planning/trajectory-2/05-adversarial-escape-threat-model.md` (P3),
+  with the determinism gate at M05.P3.T5 asserting `class_count = 8`
+  on every run.
+- All escape attempts yield typed `GuardError`: yes (asserted by
+  `cargo test -p chio-wasm-guards --test escape`; the aggregate gate
+  also accepts a defensive `GuardVerdict` for classes the runtime
+  contains silently, e.g. table-grow-abuse where wasmtime returns -1
+  from the grow opcode rather than trapping).
 
 ### CI gate status at close
 

@@ -37,3 +37,7 @@ mod table_grow;
 // signed-but-malicious modules.
 mod malformed_component;
 mod signed_but_malicious;
+
+// Determinism gate (M05.P3.T5): aggregate every escape class and
+// pin the taxonomy at N=8.
+mod aggregate;
