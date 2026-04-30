@@ -33,6 +33,7 @@ include!("cli/runtime.rs");
 include!("cli/trust_commands.rs");
 include!("cli/session.rs");
 include!("cli/conformance.rs");
+include!("cli/mcp.rs");
 include!("cli/replay.rs");
 include!("cli/replay/reader.rs");
 include!("cli/replay/verify.rs");
@@ -132,6 +133,56 @@ mod cli_entrypoint_tests {
         assert!(rendered.contains("error [urn:chio:error:cli:other]: bad inputs"));
         assert!(rendered.contains(r#"context: {"domain":"cli""#));
         assert!(rendered.contains("suggested fix: Preserve the original message"));
+    }
+
+    #[test]
+    fn mcp_wrap_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "mcp",
+            "wrap",
+            "--server-id",
+            "fs",
+            "--",
+            "echo",
+            "hello",
+        ])
+        .expect("mcp wrap parses");
+
+        match cli.command {
+            Commands::Mcp {
+                command: McpCommands::Wrap(args),
+            } => {
+                assert_eq!(args.server_id, "fs");
+                assert_eq!(args.command, vec!["echo".to_string(), "hello".to_string()]);
+                assert!(args.emit_config.is_none());
+                assert!(!args.print_scopes);
+            }
+            _ => panic!("expected mcp wrap subcommand"),
+        }
+    }
+
+    #[test]
+    fn mcp_wrap_emit_config_flag_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "mcp",
+            "wrap",
+            "--emit-config",
+            "cursor",
+            "--",
+            "echo",
+        ])
+        .expect("mcp wrap emit-config parses");
+
+        match cli.command {
+            Commands::Mcp {
+                command: McpCommands::Wrap(args),
+            } => {
+                assert_eq!(args.emit_config, Some(IdeTarget::Cursor));
+            }
+            _ => panic!("expected mcp wrap subcommand"),
+        }
     }
 
     #[test]

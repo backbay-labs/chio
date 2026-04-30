@@ -1,0 +1,44 @@
+// IDE config emit targets for `arc mcp wrap`.
+//
+// Trajectory-2 M07 P2.T4. The four supported IDEs each have their own
+// configuration shape; we model the target as a `clap::ValueEnum` so the
+// CLI surface is `--emit-config <target>` and the audit doc can pin
+// the schema version per target.
+//
+// Pinned schema versions (matches the audit-doc snapshot in
+// `.planning/audits/M07-adoption-beachhead.md`, M07.P2.T4 row):
+//
+// - Cursor `~/.cursor/mcp.json`           schema: cursor.mcp/2024-12
+// - Claude Desktop `claude_desktop_config.json` schema: anthropic.mcp/2024-12
+// - Continue                              schema: continue.mcpServers/2025-01
+// - Zed                                   schema: zed.context_servers/2025-02
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[clap(rename_all = "kebab_case")]
+pub(crate) enum IdeTarget {
+    Cursor,
+    ClaudeDesktop,
+    Continue,
+    Zed,
+}
+
+impl IdeTarget {
+    pub(crate) fn schema_version(self) -> &'static str {
+        match self {
+            IdeTarget::Cursor => "cursor.mcp/2024-12",
+            IdeTarget::ClaudeDesktop => "anthropic.mcp/2024-12",
+            IdeTarget::Continue => "continue.mcpServers/2025-01",
+            IdeTarget::Zed => "zed.context_servers/2025-02",
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            IdeTarget::Cursor => "cursor",
+            IdeTarget::ClaudeDesktop => "claude-desktop",
+            IdeTarget::Continue => "continue",
+            IdeTarget::Zed => "zed",
+        }
+    }
+}
