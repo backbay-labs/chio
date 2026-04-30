@@ -1,0 +1,12 @@
+id: chio.scope_bound
+scope:
+  - chio-yaml
+  - chio-manifest
+prefix: scope-bound
+description: Scope-bound capability fragment with TTL and tenant restriction.
+body:
+  - "scope:"
+  - "  - ${1:resource.action}"
+  - "bound:"
+  - "  tenants: [\"${2:tenant_id}\"]"
+  - "  ttl_seconds: ${3:600}"
