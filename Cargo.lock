@@ -2760,6 +2760,7 @@ dependencies = [
  "chio-appraisal",
  "chio-core-types",
  "chio-underwriting",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
