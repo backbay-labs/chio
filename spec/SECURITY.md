@@ -1,7 +1,7 @@
 # Chio Security And Threat Model
 
 **Version:** 1.0  
-**Date:** 2026-04-13  
+**Date:** 2026-04-30
 **Status:** Normative shipped surface
 
 This document defines the standalone threat model for the Chio agent-kernel-tool
@@ -61,6 +61,9 @@ The required threats for the shipped Chio boundary are:
 | `cumulative_data_exfiltration` | an attacker exfiltrates data through many small requests that individually appear benign | session data flow |
 | `behavioral_sequence_attack` | an attacker chains tool invocations in dangerous sequences (e.g., execute then overwrite, or skip required initialization) | session tool sequence |
 | `wasm_guard_resource_exhaustion` | a malicious or buggy WASM guard module consumes unbounded CPU or memory | WASM guard runtime |
+| `passkey_credential_theft` | an attacker steals or abuses a passkey-backed credential path to obtain fresh capabilities | passkey issuer, capability issuance |
+| `audience_confusion` | a capability minted for one audience is presented to another runtime or tool boundary | passkey issuer, kernel admission |
+| `weights_hash_spoof` | a provider lies about loaded model weights to satisfy a signed model-card check | provider binding, model-card verification |
 
 ### 2.1 Capability Token Theft
 
@@ -435,6 +438,88 @@ Residual risk:
   memory pressure
 - compilation of WASM modules is not fuel-metered; a pathologically complex
   module could consume significant CPU during compilation
+
+### 2.13 Passkey Credential Theft
+
+Attack:
+an attacker steals, compromises, or abuses a passkey-backed credential path
+and attempts to obtain fresh Chio capabilities from the issuer.
+
+Existing controls:
+
+- browser clients do not hold root capability or signing material
+- capabilities remain signed, time-bounded, and revocable
+- kernel admission verifies capability signatures before use
+
+Required mitigations:
+
+- passkey-backed browser flows **MUST** present WebAuthn assertions to a
+  server-side issuer rather than mint authority in the browser
+- issuers **MUST** bind minted capabilities to the credential id, audience,
+  scope set, and short expiry
+- issuers **MUST** reject failed WebAuthn assertions and treat authenticator,
+  challenge, or origin ambiguity as fail-closed
+
+Residual risk:
+
+- a compromised authenticator or issuer account can still request fresh
+  capabilities until revocation propagates
+- phishing resistance depends on correct relying-party and origin
+  configuration by the deployment
+
+### 2.14 Audience Confusion
+
+Attack:
+a capability minted for one audience is replayed or presented to another
+runtime, hosted edge, or tool boundary that should not accept it.
+
+Existing controls:
+
+- Chio capabilities are signed artifacts with explicit scope and target data
+- kernel admission already evaluates the requested tool boundary before
+  invocation
+
+Required mitigations:
+
+- passkey-issued capabilities **MUST** carry an explicit audience in the
+  signed envelope
+- kernel verification **MUST** reject capabilities whose audience does not
+  match the target runtime or tool boundary
+- custody tests **SHOULD** include cross-audience presentation and envelope
+  bit-flip cases
+
+Residual risk:
+
+- deployments that reuse broad audience names across environments can create
+  operational confusion even when cryptographic checks are correct
+
+### 2.15 Weights Hash Spoof
+
+Attack:
+a provider claims to have loaded one model artifact while actually running a
+different weights blob, then relies on that false hash to satisfy model-card
+policy.
+
+Existing controls:
+
+- provider binding is mediated by the kernel before tool execution
+- Chio already has a shared attestation verifier path for signed provenance
+  evidence
+
+Required mitigations:
+
+- provider binding **MUST** require a signed model card when policy requires
+  weights identity
+- the signed card **MUST** bind the weights hash to allowed capabilities,
+  banned tools, issuer, and validity window
+- kernel binding **MUST** reject requested capabilities outside the card's
+  allowed set and any requested tool listed as banned
+
+Residual risk:
+
+- until providers expose independently recomputable loaded-weight hashes, a
+  malicious provider can lie about the loaded artifact before model-card
+  verification receives trustworthy input
 
 ## 3. Transport Security Requirements
 

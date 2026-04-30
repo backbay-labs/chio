@@ -170,6 +170,7 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 tracing = "0.1"
 hex = "0.4"
 base64 = "0.22"
+base64ct = "1.8.3"
 bs58 = "0.5"
 chacha20poly1305 = "0.10"
 ryu = "1"
@@ -178,6 +179,8 @@ reqwest = { version = "0.13.2", default-features = false }
 rusqlite = { version = "0.39", features = ["bundled"] }
 uuid = "1"
 url = "2"
+webauthn-rs = "0.5.2"
+webauthn-rs-proto = "0.5.2"
 proptest = "1.10"
 criterion = "0.5"
 dhat = "0.3"
