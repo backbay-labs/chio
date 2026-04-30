@@ -34,10 +34,16 @@ pub mod capability;
 pub mod error;
 pub mod issuer;
 pub mod mint;
+pub mod nonce_store;
 pub mod verifier;
 
 pub use capability::{PasskeyCapability, ScopeSet};
 pub use error::CustodyError;
 pub use issuer::{IssuerService, MintRequest, MintResponse};
 pub use mint::{sign_capability, signing_message};
+#[cfg(feature = "sqlite-store")]
+pub use nonce_store::SqlitePasskeyNonceStore;
+pub use nonce_store::{
+    InMemoryPasskeyNonceStore, PasskeyNonceStore, RecordOutcome, DEFAULT_CLOCK_SKEW_SECONDS,
+};
 pub use verifier::{PasskeyVerifier, VerifiedAssertion};

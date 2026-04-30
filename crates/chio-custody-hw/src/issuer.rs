@@ -41,6 +41,7 @@ use serde::{Deserialize, Serialize};
 use crate::capability::{PasskeyCapability, ScopeSet};
 use crate::error::CustodyError;
 use crate::mint::sign_capability;
+use crate::nonce_store::{PasskeyNonceStore, RecordOutcome};
 use crate::verifier::VerifiedAssertion;
 
 /// HTTP-shaped mint request. Canonical-JSON encodable.
@@ -78,6 +79,7 @@ pub struct MintResponse {
 pub struct IssuerService {
     audience: String,
     signer: Option<Arc<dyn SigningBackend>>,
+    nonce_store: Option<Arc<dyn PasskeyNonceStore>>,
 }
 
 impl IssuerService {
@@ -94,6 +96,7 @@ impl IssuerService {
         Self {
             audience: audience.into(),
             signer: None,
+            nonce_store: None,
         }
     }
 
@@ -105,7 +108,20 @@ impl IssuerService {
         Self {
             audience: audience.into(),
             signer: Some(signer),
+            nonce_store: None,
         }
+    }
+
+    /// Attach a [`PasskeyNonceStore`] for replay-attack resistance.
+    ///
+    /// Builder-style: returns the issuer with the nonce store wired.
+    /// When set, every successful mint records
+    /// `(credential_id, challenge_nonce)` keyed for replay detection;
+    /// a duplicate fails the mint with [`CustodyError::ReplayDetected`].
+    #[must_use]
+    pub fn with_nonce_store(mut self, store: Arc<dyn PasskeyNonceStore>) -> Self {
+        self.nonce_store = Some(store);
+        self
     }
 
     /// Configured audience pin for inspection.
@@ -152,6 +168,27 @@ impl IssuerService {
             request.challenge_nonce.clone(),
             now,
         );
+
+        // Replay-attack resistance (M10.P2.T2). The nonce store is keyed
+        // on (credential_id, challenge_nonce). The check happens BEFORE
+        // signing so a replayed assertion never produces a signed
+        // capability, even if the signer is fast enough to keep up.
+        // Retention is `cap.exp + clock_skew` (clock_skew = 30s default
+        // per `DEFAULT_CLOCK_SKEW_SECONDS`).
+        if let Some(store) = &self.nonce_store {
+            match store.record_if_fresh(
+                &verified.credential_id_b64,
+                &request.challenge_nonce,
+                cap.exp.timestamp(),
+            )? {
+                RecordOutcome::Fresh => {}
+                RecordOutcome::Replayed => {
+                    return Err(CustodyError::ReplayDetected {
+                        credential_id: verified.credential_id_b64.clone(),
+                    });
+                }
+            }
+        }
 
         if let Some(signer) = &self.signer {
             sign_capability(&mut cap, signer.as_ref())?;

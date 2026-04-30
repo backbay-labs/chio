@@ -21,6 +21,14 @@ default = []
 # canonical envelope (the `signature` field is the only differing slot).
 pq = ["chio-core-types/pq"]
 
+# SQLite-backed durable PasskeyNonceStore (M10.P2.T2). Re-uses the
+# rusqlite version pinned by the workspace (the same version
+# trajectory-1 chio-store-sqlite uses) so a deployment can persist the
+# replay-detection store across issuer restarts. Default-off because the
+# in-memory store is sufficient for unit tests and single-process
+# integration tests.
+sqlite-store = ["dep:rusqlite"]
+
 [dependencies]
 chio-core-types = { path = "../chio-core-types" }
 serde = { workspace = true, features = ["derive"] }
@@ -31,10 +39,12 @@ base64ct = { workspace = true, features = ["alloc"] }
 webauthn-rs = { workspace = true }
 webauthn-rs-proto = { workspace = true }
 url = { workspace = true }
+rusqlite = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
 proptest = { workspace = true }
+rusqlite = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"
