@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,6 +17,13 @@ use crate::scenario::{DeterminismWitness, Scenario, ScenarioVerdict};
 /// Arena manifest filename.
 pub const ARENA_MANIFEST_FILENAME: &str = "arena.json";
 const ARENA_BUNDLE_SCHEMA: &str = "chio.arena.bundle/v1";
+/// Schema marker used by auto-promoted M04 fixture descriptors.
+pub const ARENA_M04_FIXTURE_SCHEMA: &str = "chio.arena.m04-fixture/v1";
+/// Schema marker used by auto-promoted adversarial-suite cases.
+pub const ARENA_ADVERSARIAL_CASE_SCHEMA: &str = "chio.arena.adversarial-case/v1";
+/// Default per-run cap on auto-promoted M04 fixtures (matches trajectory-1 M04
+/// CHIO_BLESS gate per-PR cap of 5).
+pub const ARENA_M04_PROMOTE_CAP_DEFAULT: usize = 5;
 
 /// Summary returned by [`write_arena_bundle`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,6 +129,15 @@ pub enum PromoteError {
         #[source]
         source: io::Error,
     },
+    /// CHIO_BLESS gate clause refused promotion.
+    #[error("CHIO_BLESS gate refused promotion: {clause}")]
+    BlessGate {
+        /// Clause message.
+        clause: String,
+    },
+    /// Per-run cap was set to zero.
+    #[error("auto-promotion cap must be at least 1")]
+    ZeroCap,
 }
 
 /// Write an M04-compatible bundle plus `arena.json`.
@@ -264,4 +283,377 @@ fn write_canonical_manifest(
         path: path.to_path_buf(),
         source,
     })
+}
+
+/// Environment access for the CHIO_BLESS gate. Tests inject a stub.
+pub trait BlessEnv {
+    /// Read an environment variable.
+    fn var(&self, name: &str) -> Option<String>;
+}
+
+/// Process-environment implementation of [`BlessEnv`].
+pub struct ProcessBlessEnv;
+
+impl BlessEnv for ProcessBlessEnv {
+    fn var(&self, name: &str) -> Option<String> {
+        match env::var_os(name) {
+            Some(value) => OsString::into_string(value).ok(),
+            None => None,
+        }
+    }
+}
+
+/// Outcome reported by [`promote_to_m04_fixtures`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct M04PromotionSummary {
+    /// Promoted fixture paths.
+    pub fixtures: Vec<PathBuf>,
+    /// Effective `BLESS_REASON` recorded.
+    pub bless_reason: String,
+    /// Family namespace used.
+    pub family: String,
+    /// Per-run cap that was enforced.
+    pub cap: usize,
+    /// Total receipts scanned.
+    pub receipts_scanned: usize,
+    /// Receipts that were skipped because they matched the cap budget.
+    pub receipts_skipped_cap: usize,
+}
+
+/// Outcome reported by [`promote_to_adversarial_suite`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdversarialSuiteSummary {
+    /// Per-class JSON files that were written.
+    pub cases: Vec<PathBuf>,
+    /// Whether the live suite was used (true) or the soft-disabled
+    /// `target/arena/promote-pending/` holding directory.
+    pub live_target: bool,
+    /// Resolved root directory.
+    pub root: PathBuf,
+}
+
+/// Soft-gate inputs for the auto-promotion path. The trajectory-1 M04
+/// CHIO_BLESS gate is reused unchanged; this checks the env vars locally so
+/// arena callers do not need to invoke the bless script.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct M04PromotionGate {
+    /// Effective `CHIO_BLESS`.
+    pub chio_bless: String,
+    /// Effective `BLESS_REASON`.
+    pub bless_reason: String,
+    /// Whether `CI` was observed truthy.
+    pub ci: bool,
+}
+
+impl M04PromotionGate {
+    /// Read the gate inputs from the supplied environment.
+    pub fn read(env: &dyn BlessEnv) -> Result<Self, PromoteError> {
+        let chio_bless = env.var("CHIO_BLESS").unwrap_or_default();
+        if chio_bless != "1" {
+            return Err(PromoteError::BlessGate {
+                clause: "CHIO_BLESS env var must be exactly \"1\"".to_string(),
+            });
+        }
+        let bless_reason = env.var("BLESS_REASON").unwrap_or_default();
+        if bless_reason.trim().is_empty() {
+            return Err(PromoteError::BlessGate {
+                clause: "BLESS_REASON must be set and non-empty".to_string(),
+            });
+        }
+        if !bless_reason.starts_with("arena:") {
+            return Err(PromoteError::BlessGate {
+                clause: format!(
+                    "BLESS_REASON must start with arena:<scenario-id>, got {bless_reason:?}"
+                ),
+            });
+        }
+        let ci_value = env.var("CI").unwrap_or_default();
+        let ci = matches!(
+            ci_value.as_str(),
+            "1" | "true" | "TRUE" | "True" | "yes" | "YES"
+        );
+        if ci {
+            return Err(PromoteError::BlessGate {
+                clause: "CHIO_BLESS may not run in CI (CI env var observed truthy)".to_string(),
+            });
+        }
+        Ok(Self {
+            chio_bless,
+            bless_reason,
+            ci,
+        })
+    }
+}
+
+/// Per-class adversarial-suite promotion target on disk.
+fn adversarial_class_dirname(class: &str) -> String {
+    class
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Auto-promote failing arena scenarios to the trajectory-1 M04 fixture corpus
+/// under `tests/replay/fixtures/arena/<class>/<hash>.json`.
+///
+/// This function honours the trajectory-1 M04 CHIO_BLESS gate clauses:
+/// `CHIO_BLESS` must be exactly `"1"`, `BLESS_REASON` must start with
+/// `arena:<scenario-id>`, and `CI` must be unset / falsy. The per-run cap
+/// (default 5, matching the trajectory-1 M04 per-PR cap) clamps how many
+/// fixtures land in one call.
+///
+/// Only [`ScenarioVerdict::Deny`] receipts (the failures the arena is meant to
+/// graduate) are written. Allowed and rewritten steps are skipped.
+pub fn promote_to_m04_fixtures(
+    scenario: &Scenario,
+    run: &ArenaRun,
+    fixtures_root: &Path,
+    class: &str,
+    cap: usize,
+    env: &dyn BlessEnv,
+) -> Result<M04PromotionSummary, PromoteError> {
+    let gate = M04PromotionGate::read(env)?;
+    let expected_reason = format!("arena:{}", scenario.id);
+    if gate.bless_reason != expected_reason {
+        return Err(PromoteError::BlessGate {
+            clause: format!(
+                "BLESS_REASON {actual:?} does not match arena:<scenario-id> for {expected:?}",
+                actual = gate.bless_reason,
+                expected = expected_reason,
+            ),
+        });
+    }
+    if scenario.id != run.scenario_id {
+        return Err(PromoteError::ScenarioMismatch {
+            scenario_id: scenario.id.clone(),
+            run_id: run.scenario_id.clone(),
+        });
+    }
+    if cap == 0 {
+        return Err(PromoteError::ZeroCap);
+    }
+
+    let family = adversarial_class_dirname(class);
+    let class_dir = fixtures_root.join("arena").join(&family);
+    fs::create_dir_all(&class_dir).map_err(|source| PromoteError::Io {
+        path: class_dir.clone(),
+        source,
+    })?;
+
+    let mut fixtures = Vec::new();
+    let mut skipped_cap = 0;
+    for receipt in run
+        .receipts
+        .iter()
+        .filter(|r| matches!(r.verdict, ScenarioVerdict::Deny | ScenarioVerdict::Rewrite))
+    {
+        if fixtures.len() >= cap {
+            skipped_cap += 1;
+            continue;
+        }
+        let fixture = build_m04_fixture(scenario, receipt, class, &gate)?;
+        let bytes = canonical_json_bytes(&fixture)?;
+        let hash = sha256_hex(&bytes);
+        let path = class_dir.join(format!("{}.json", &hash[..16]));
+        fs::write(&path, &bytes).map_err(|source| PromoteError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        fixtures.push(path);
+    }
+
+    Ok(M04PromotionSummary {
+        fixtures,
+        bless_reason: gate.bless_reason,
+        family,
+        cap,
+        receipts_scanned: run.receipts.len(),
+        receipts_skipped_cap: skipped_cap,
+    })
+}
+
+/// Auto-promote failing scenarios to the trajectory-2 M05 chio-adversarial-suite
+/// per-class corpus.
+///
+/// When the M05 suite scaffold has not landed yet (signalled by the absence of
+/// `crates/chio-adversarial-suite/cases/`), the writer falls back to
+/// `target/arena/promote-pending/` per the soft-dep clause on M08.P5.T2. The
+/// returned summary records which target was chosen.
+pub fn promote_to_adversarial_suite(
+    scenario: &Scenario,
+    run: &ArenaRun,
+    workspace_root: &Path,
+    class: &str,
+) -> Result<AdversarialSuiteSummary, PromoteError> {
+    if scenario.id != run.scenario_id {
+        return Err(PromoteError::ScenarioMismatch {
+            scenario_id: scenario.id.clone(),
+            run_id: run.scenario_id.clone(),
+        });
+    }
+
+    let family = adversarial_class_dirname(class);
+    let live_root = workspace_root
+        .join("crates")
+        .join("chio-adversarial-suite")
+        .join("cases");
+    let live_target = live_root.is_dir();
+    let root = if live_target {
+        live_root
+    } else {
+        workspace_root
+            .join("target")
+            .join("arena")
+            .join("promote-pending")
+            .join("chio-adversarial-suite")
+            .join("cases")
+    };
+    let class_dir = root.join(&family);
+    fs::create_dir_all(&class_dir).map_err(|source| PromoteError::Io {
+        path: class_dir.clone(),
+        source,
+    })?;
+
+    let mut cases = Vec::new();
+    for receipt in run
+        .receipts
+        .iter()
+        .filter(|r| matches!(r.verdict, ScenarioVerdict::Deny | ScenarioVerdict::Rewrite))
+    {
+        let case = build_adversarial_case(scenario, receipt, class);
+        let bytes = canonical_json_bytes(&case)?;
+        let hash = sha256_hex(&bytes);
+        let path = class_dir.join(format!("{}.json", &hash[..16]));
+        fs::write(&path, &bytes).map_err(|source| PromoteError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        cases.push(path);
+    }
+
+    Ok(AdversarialSuiteSummary {
+        cases,
+        live_target,
+        root,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct M04Fixture {
+    schema_version: String,
+    family: String,
+    name: String,
+    intent: String,
+    expected_verdict: String,
+    expected_failure_class: Option<String>,
+    clock: String,
+    fixed_nonce_seed_index: u64,
+    tags: Vec<String>,
+    bless_reason: String,
+    arena: M04FixtureArena,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct M04FixtureArena {
+    scenario_id: String,
+    step_id: String,
+    request_id: String,
+    receipt_id: String,
+    verdict: String,
+    reason: Option<String>,
+    witness: DeterminismWitness,
+    receipt_sha256: String,
+}
+
+fn build_m04_fixture(
+    scenario: &Scenario,
+    receipt: &ArenaReceipt,
+    class: &str,
+    gate: &M04PromotionGate,
+) -> Result<M04Fixture, PromoteError> {
+    let receipt_bytes = canonical_json_bytes(&receipt.receipt)?;
+    let family = adversarial_class_dirname(class);
+    let name = format!("arena/{family}/{}", receipt.step_id);
+    let verdict = match receipt.verdict {
+        ScenarioVerdict::Allow => "allow",
+        ScenarioVerdict::Deny => "deny",
+        ScenarioVerdict::Rewrite => "rewrite",
+    };
+    Ok(M04Fixture {
+        schema_version: ARENA_M04_FIXTURE_SCHEMA.to_string(),
+        family: format!("arena/{family}"),
+        name,
+        intent: format!(
+            "Auto-promoted from arena scenario {} ({class} class).",
+            scenario.id
+        ),
+        expected_verdict: verdict.to_string(),
+        expected_failure_class: match receipt.verdict {
+            ScenarioVerdict::Allow => None,
+            _ => Some(class.to_string()),
+        },
+        clock: scenario.virtual_clock_start.clone(),
+        fixed_nonce_seed_index: scenario.rng_seed,
+        tags: vec!["arena".to_string(), class.to_string()],
+        bless_reason: gate.bless_reason.clone(),
+        arena: M04FixtureArena {
+            scenario_id: scenario.id.clone(),
+            step_id: receipt.step_id.clone(),
+            request_id: receipt.request_id.clone(),
+            receipt_id: receipt.receipt.id.clone(),
+            verdict: verdict.to_string(),
+            reason: receipt.reason.clone(),
+            witness: scenario.determinism_witness(),
+            receipt_sha256: sha256_hex(&receipt_bytes),
+        },
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct AdversarialCase {
+    schema_version: String,
+    case_id: String,
+    class: String,
+    scenario_id: String,
+    step_id: String,
+    receipt_id: String,
+    verdict: String,
+    reason: Option<String>,
+    witness: DeterminismWitness,
+    receipt_sha256: String,
+    metadata: BTreeMap<String, String>,
+}
+
+fn build_adversarial_case(
+    scenario: &Scenario,
+    receipt: &ArenaReceipt,
+    class: &str,
+) -> AdversarialCase {
+    let receipt_bytes = canonical_json_bytes(&receipt.receipt).unwrap_or_default();
+    let mut metadata = BTreeMap::new();
+    metadata.insert("scenario_title".to_string(), scenario.title.clone());
+    metadata.insert("origin".to_string(), "chio-arena".to_string());
+    AdversarialCase {
+        schema_version: ARENA_ADVERSARIAL_CASE_SCHEMA.to_string(),
+        case_id: format!("{}#{}", scenario.id, receipt.step_id),
+        class: class.to_string(),
+        scenario_id: scenario.id.clone(),
+        step_id: receipt.step_id.clone(),
+        receipt_id: receipt.receipt.id.clone(),
+        verdict: match receipt.verdict {
+            ScenarioVerdict::Allow => "allow".to_string(),
+            ScenarioVerdict::Deny => "deny".to_string(),
+            ScenarioVerdict::Rewrite => "rewrite".to_string(),
+        },
+        reason: receipt.reason.clone(),
+        witness: scenario.determinism_witness(),
+        receipt_sha256: sha256_hex(&receipt_bytes),
+        metadata,
+    }
 }

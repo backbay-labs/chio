@@ -5,6 +5,7 @@
 pub mod adversary;
 pub mod clock;
 pub mod coevolve;
+pub mod leaderboard;
 pub mod link;
 pub mod promote;
 pub mod rng;
@@ -37,12 +38,19 @@ pub use coevolve::{
     GenerationTraceEntry, MatrixVerdict, MutationConfig, MutationError, MutationKind, SeedArtifact,
     SeedCorpus, SeedCorpusError, SeedCorpusSources, VerdictTuple,
 };
+pub use leaderboard::{
+    render_leaderboard, Leaderboard, LeaderboardArtifacts, LeaderboardError, LeaderboardRow,
+    LEADERBOARD_JSON_FILENAME, LEADERBOARD_MARKDOWN_FILENAME, LEADERBOARD_SCHEMA,
+};
 pub use link::{
     KernelEndpoint, KernelLink, KernelMultiplexer, LinkEnvelope, LinkError, MultiplexError,
 };
 pub use promote::{
-    write_arena_bundle, ArenaBundleManifest, ArenaBundleSummary, ArenaManifestBundle,
-    ArenaManifestVerdict, PromoteError, ARENA_MANIFEST_FILENAME,
+    promote_to_adversarial_suite, promote_to_m04_fixtures, write_arena_bundle,
+    AdversarialSuiteSummary, ArenaBundleManifest, ArenaBundleSummary, ArenaManifestBundle,
+    ArenaManifestVerdict, BlessEnv, M04PromotionGate, M04PromotionSummary, ProcessBlessEnv,
+    PromoteError, ARENA_ADVERSARIAL_CASE_SCHEMA, ARENA_M04_FIXTURE_SCHEMA,
+    ARENA_M04_PROMOTE_CAP_DEFAULT, ARENA_MANIFEST_FILENAME,
 };
 pub use rng::{ArenaRng, RngError};
 pub use runtime::{
