@@ -24,11 +24,13 @@ examine_globs = [
 ]
 
 exclude_globs = [
-    "crates/chio-policy/src/models.rs",
-    "crates/chio-policy/src/version.rs",
-    "crates/chio-policy/src/rulesets/**",
-    "**/tests.rs",
-    "**/test_*.rs",
-    "**/*_test.rs",
-    "**/tests/**",
+    # rationale: pure model/constants data, embedded rulesets, and tests are
+    # validated through parser, compiler, schema, and policy test lanes.
+    "crates/chio-policy/src/models.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-policy/src/version.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-policy/src/rulesets/**", # rationale: excluded helper or verification surface.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
 ]

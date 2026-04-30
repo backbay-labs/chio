@@ -1,7 +1,8 @@
 # Mutation testing with cargo-mutants
 
-The M02 P2 mutation-testing lane runs [`cargo-mutants`](https://mutants.rs)
-as an advisory companion to the libFuzzer corpus shipped in M02 P1.
+The trust-boundary mutation-testing lane runs
+[`cargo-mutants`](https://mutants.rs) as an advisory companion to the
+libFuzzer trust-boundary corpus.
 libFuzzer searches for inputs that crash or panic; cargo-mutants searches
 for *surviving mutants* -- code edits the test suite fails to notice. A
 high libFuzzer corpus catch-rate plus a high cargo-mutants catch-ratio
@@ -13,9 +14,9 @@ fuzz infrastructure in `docs/fuzzing/`.
 
 ## Pinned version
 
-`cargo-mutants` is pinned to the **25.x** series (decision 12 in
-`.planning/trajectory/02-fuzzing-post-pr13.md`). Do **not** float to
-26.x without re-running the source-doc decision and updating the pin in
+`cargo-mutants` is pinned to the **25.x** series for compatibility with
+the current configuration layout. Do **not** float to 26.x without
+re-running the source-doc compatibility review and updating the pin in
 both this document and the CI workflow. The CI install line is:
 
 ```bash
@@ -76,7 +77,8 @@ Examined: the pure-compute verdict path (`evaluate.rs`,
 
 Excluded: `lib.rs` (re-exports), `clock.rs` / `rng.rs` (platform
 adapters), `formal_*.rs` and `kani_*.rs` (formal-methods scaffolding),
-`fuzz.rs` (libFuzzer entry points already covered by the M02 P1 lane).
+`fuzz.rs` (libFuzzer entry points already covered by the trust-boundary
+fuzz lane).
 
 #### `chio-policy`
 
@@ -117,8 +119,8 @@ cross-issuer trust packs, the issuer / trust-anchor registry, OID4VCI /
 OID4VP discovery, artifact normalization, passport verifier glue, and
 credential-side policy intersection) plus the real-`mod` `trust_tier.rs`.
 
-Excluded: `fuzz.rs` (libFuzzer entry points covered by the M02 P1
-lane).
+Excluded: `fuzz.rs` (libFuzzer entry points covered by the
+trust-boundary fuzz lane).
 
 ## Local-developer workflow
 
@@ -143,59 +145,85 @@ tests poison the report and surface as false TIMEOUT verdicts.
 
 ## CI lane
 
-Workflow: `.github/workflows/mutants.yml` (lands in **M02.P2.T2**).
+Workflow: `.github/workflows/mutants.yml`.
 Two jobs:
 
 - `mutants-pr` -- triggered on PR. Runs
   `cargo mutants --in-diff "$GIT_DIFF" --no-shuffle --jobs 4` against
   the PR diff and posts a comment via `scripts/mutants-comment.sh`.
-  Always advisory; never blocks merge.
+  The workflow sets `CHIO_MUTANTS_GATE=blocking`; the actual pass/fail
+  posture still comes from `scripts/mutants-gate.sh` and
+  `releases.toml::[mutants]`. Empty `cycle_end_tag` or a recorded
+  nightly success streak below `required_consecutive_nightly_successes`
+  keeps the lane advisory. A non-empty `cycle_end_tag` plus the required
+  streak flips the PR gate to blocking.
 - `mutants-nightly` -- scheduled `cron: '0 5 * * *'` on a 4-hour
   budget per crate. Runs the full sweep, uploads `mutants.out/` as a
-  workflow artifact, and gates against the per-crate 80% catch-ratio
-  threshold via `scripts/mutants-gate.sh`.
+  workflow artifact, and reports against the per-crate
+  `target_catch_ratio_percent` threshold via `scripts/mutants-gate.sh`.
 
-The lane is **advisory** for one release cycle, then flips to
-**blocking** automatically. The flip is driven by the `cycle_end_tag`
-field in `releases.toml` at the repo root (schema landed in M02.P2.T2):
-empty -> advisory, non-empty -> blocking.
+Both jobs run `scripts/check-mutants-rationale.sh` before spending
+mutation budget. That check fails closed if an `exclude_globs` entry in
+the workspace or per-crate `mutants.toml` files lacks a nearby
+`rationale:` comment.
 
-### Auto-flip mechanic (M02.P3.T1)
+The lane is **advisory** until the required evidence exists, then flips
+to **blocking** through a release-owned PR. The state machine is driven
+by the `[mutants]` table in `releases.toml` at the repo root:
 
-The first post-Phase-3 release performs the flip without manual edits.
-`.github/workflows/release-binaries.yml` runs a `mutants-gate-flip` job
-after the `release` job succeeds:
+- `target_catch_ratio_percent = 80`
+- `required_consecutive_nightly_successes = 2`
+- `observed_consecutive_nightly_successes = 0` until a CODEOWNERS-reviewed
+  evidence PR records the two successful nightlies
+- `cycle_end_tag = ""` until the first release after the evidence streak
 
-1. Checks out the `project/roadmap-04-25-2026` branch and reads the
-   current `cycle_end_tag` value with the same pure-bash extractor as
-   `scripts/mutants-gate.sh` (so the writer and reader cannot drift).
-2. If the value is still empty, writes the just-released tag (e.g.
+`scripts/mutants-gate.sh` stays advisory until both conditions are true:
+`cycle_end_tag` is non-empty and the observed nightly streak is at least
+the required streak.
+
+### Evidence-gated activation
+
+The first qualifying release after the evidence streak performs the flip
+without manual edits. `.github/workflows/release-binaries.yml` runs a
+`mutants-gate-flip` job after the `release` job succeeds:
+
+1. Checks out `main` and reads the
+   current `cycle_end_tag`, `target_catch_ratio_percent`,
+   `required_consecutive_nightly_successes`, and
+   `observed_consecutive_nightly_successes` values with the same
+   pure-bash extractor as `scripts/mutants-gate.sh` (so the writer and
+   reader cannot drift).
+2. If `cycle_end_tag` is still empty but the observed nightly streak is
+   below the required streak, logs `waiting for nightly evidence` and
+   opens no PR. This prevents a release from creating a false required
+   gate before the two-consecutive >= 80 condition is actually recorded.
+3. If the evidence streak is present, writes the just-released tag (e.g.
    `v0.6.0`) into `releases.toml` via a single-line regex replace
    guarded against an already-flipped file.
-3. Opens a single PR via `peter-evans/create-pull-request` titled
+4. Opens a single PR via `peter-evans/create-pull-request` titled
    `chore(mutants): activate blocking gate after cycle <tag>` against
-   `project/roadmap-04-25-2026`. Reviewer merge is what activates the
-   blocking posture; the workflow itself never pushes directly to the
-   roadmap branch.
+   `main`. Reviewer merge is what activates the blocking posture; the
+   workflow itself never pushes directly to the target branch.
 
 After merge, `scripts/mutants-gate.sh` reads the non-empty
-`cycle_end_tag` and switches `mutants-nightly` from "exit 0 on miss"
-(advisory) to "exit 1 on miss" (blocking). PR comments emitted by
-`mutants-pr` swap their advisory label for a blocking one in M02.P3.T2.
+`cycle_end_tag` and the recorded evidence streak, then switches the
+`mutants-pr` gate from "exit 0 below target" (advisory) to "exit 1
+below target" (blocking). PR comments emitted by `mutants-pr` switch
+from advisory to blocking mode once gate metadata activates blocking.
 
 If the workflow re-runs against an older tag (workflow_dispatch, repush,
 etc.) the empty-string regex guard makes the write a no-op, so a single
 release cannot accidentally overwrite a previously activated flip.
 
-### Override paths (M02.P3.T2)
+### Override paths
 
 There are two override paths once the gate is blocking. Both leave an
 audit trail; pick the one that matches the situation.
 
-**1. Label-based override (preferred / permanent).** A maintainer opens
-a PR that clears `cycle_end_tag` in `releases.toml`, labels the PR
-`mutants-gate-override`, and merges. The lane returns to advisory for
-one cycle. CODEOWNERS routes any edit on `releases.toml` to
+**1. Title-based override (preferred / permanent).** A maintainer opens
+a PR that clears `cycle_end_tag` in `releases.toml`, includes
+`mutants-gate-override` in the PR title, and merges. The lane returns to
+advisory for one cycle. CODEOWNERS routes any edit on `releases.toml` to
 `@bb-connor` (principal-engineer review), so the override cannot land
 without explicit sign-off. Use this path when the project needs to
 re-enter advisory mode for an entire release cycle (e.g. a large
@@ -236,12 +264,17 @@ override paragraph.
 
 ## Triage policy
 
-Surviving mutants beyond a per-crate budget open an issue tagged
-`mutants-survivor`. Per-crate budgets and the rolling catch-ratio target
-(>= 80%) are recorded in `releases.toml` (M02.P2.T2). When the nightly
-sweep crosses the budget the gate posts a single rollup issue rather
-than one per mutant; subsequent nightly runs update the same issue
-in-place to avoid noise.
+Surviving mutants beyond a per-crate budget open a fingerprinted issue.
+If the repository labels already exist, the filing script attaches
+`mutants-survivor` and `triage`; missing labels are skipped so issue
+filing still succeeds. Per-crate budgets and the rolling catch-ratio
+target (>= 80%) are recorded in `releases.toml` as
+`pr_survivor_issue_budget`, `nightly_wall_budget_hours_per_crate`, and
+`target_catch_ratio_percent`. On PRs, `scripts/mutants-comment.sh`
+lists the first `MUTANTS_PR_SURVIVOR_CAP` survivors inline.
+`scripts/mutants-autofile-issue.sh` files one issue per survivor beyond
+that cap, using a SHA-256 fingerprint over package, source location,
+verdict, and mutation text to dedupe repeated reports.
 
 A surviving mutant can be addressed in one of three ways:
 
@@ -255,6 +288,23 @@ A surviving mutant can be addressed in one of three ways:
    with a comment justifying the skip and a cross-reference to the
    triage issue. This requires CODEOWNERS sign-off on `.cargo/mutants.toml`.
 
+Skip comments must include `rationale:` in or near the `exclude_globs`
+entry. The rationale should name the reason the mutant is not a useful
+production-code signal, for example equivalent code, generated code,
+test-only scaffolding, fuzz harness entry points, or an integration-only
+remote-process bridge. Bare skips fail `scripts/check-mutants-rationale.sh`.
+
+## README mutation banner
+
+`README.md` carries a scoped trust-boundary mutation baseline under the
+project tagline. The value is not a project-wide current score: the
+source baseline is partial and combines full sweeps with bounded shards.
+`scripts/update-mutants-banner.sh` derives the value from
+`docs/fuzzing/trust-boundary-mutants-baseline.toml`; it does not run
+`cargo-mutants`. `.github/workflows/mutants-banner.yml` runs nightly and
+opens `chore(mutants): update kill-score banner` for maintainer review
+when that bookkeeping value changes.
+
 ## Cocoverage with the fuzz corpus
 
 The nightly `mutants-fuzz-cocoverage.yml` workflow replays the
@@ -267,7 +317,7 @@ accumulated fuzz corpus against surviving mutants. The intuition:
   (libFuzzer-accumulated adversarial inputs) that may notice the
   mutation when the unit tests didn't.
 - Cross-oracle reduction in missed-mutant count: expected **5-15%**
-  per the source doc Round-2 (NEW) section.
+  per the source-doc estimate.
 
 Workflow lives at `.github/workflows/mutants-fuzz-cocoverage.yml`.
 Implementation script at `scripts/mutants-fuzz-cocoverage.sh`.
@@ -293,19 +343,14 @@ Output artifacts (uploaded with 30-day retention):
 - `mutants-out/<package>/` - the cargo-mutants outcomes that drove
   the replay.
 
-This lane closes M02 P2 (T7).
-
 ## Cross-references
 
-- `.planning/trajectory/02-fuzzing-post-pr13.md`, sections "Mutation-testing
-  approach (phase 3 deliverable)", "Mutation-testing CI shape (Phase 3)",
-  and Round-2 (NEW) P3.T7 (re-homed to Phase 2 as M02.P2.T7).
-- `.planning/trajectory/tickets/M02/P2.yml` -- atomic ticket spec for this
-  lane (T1 = config, T2 = workflow + `releases.toml`, T7 = cocoverage).
 - `.cargo/mutants.toml` -- workspace-root config (timeouts + per-crate
   scoping consolidated into a single file; cargo-mutants 25.x does not
   load per-crate `mutants.toml`).
 - `releases.toml` -- per-crate budgets and the advisory / blocking flip
-  signal (lands with M02.P2.T2).
+  signal.
+- `docs/fuzzing/trust-boundary-mutants-baseline.toml` -- committed source
+  for the README mutation banner.
 - `docs/fuzzing/continuous.md` -- complementary libFuzzer corpus lane.
 - Upstream cargo-mutants documentation: <https://mutants.rs>.

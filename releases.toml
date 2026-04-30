@@ -5,28 +5,70 @@
 #
 # Schema:
 #   [mutants]
-#   phase3_merge_tag : tag that shipped the initial mutation-testing changes.
+#   initial_merge_tag
+#                    : tag that shipped the initial mutation-testing changes.
 #                      Recorded for provenance; unused by the gate logic.
-#   cycle_end_tag    : tag of the first release after phase3_merge_tag.
-#                      Empty string -> gate is ADVISORY (mutants-gate.sh
-#                      exits 0 unconditionally). Non-empty -> gate is
+#   target_catch_ratio_percent
+#                    : per-crate caught-ratio target required before the
+#                      gate may flip from advisory to blocking.
+#   required_consecutive_nightly_successes
+#                    : number of consecutive mutants-nightly full sweeps that
+#                      must meet target_catch_ratio_percent across every
+#                      trust-boundary crate before activation.
+#   observed_consecutive_nightly_successes
+#                    : CODEOWNERS-reviewed evidence streak observed so far.
+#                      Starts at 0; only reaches 2 after the required
+#                      mutants-nightly evidence exists.
+#   activation_evidence
+#                    : optional run URLs or issue/PR reference for the evidence
+#                      that raised observed_consecutive_nightly_successes.
+#   cycle_end_tag    : tag of the first release after initial_merge_tag.
+#                      Empty string -> gate is ADVISORY. Non-empty plus
+#                      observed_consecutive_nightly_successes >=
+#                      required_consecutive_nightly_successes -> gate is
 #                      BLOCKING (mutants-gate.sh fails the workflow when
-#                      cargo-mutants reports surviving mutants beyond the
-#                      per-crate budget).
+#                      outcomes fall below target_catch_ratio_percent).
+#   pr_survivor_issue_budget
+#                    : per-crate PR survivor count kept inline before the
+#                      auto-file issue path starts.
+#   nightly_wall_budget_hours_per_crate
+#                    : wall-clock budget for each mutants-nightly crate job.
+#   trust_boundary_crates
+#                    : crates covered by the six-crate mutation gate.
 #
 # Lifecycle:
-#   1. File lands with both tags empty; mutants.yml runs in advisory posture.
-#   2. When mutation-testing phase merges: edit phase3_merge_tag to record
-#      the merge release.
-#   3. Next release after phase3_merge_tag: release-binaries.yml writes
+#   1. File lands with cycle_end_tag empty and observed_consecutive_nightly_
+#      successes = 0; mutants.yml runs in advisory posture.
+#   2. When the mutation-testing gate merges: edit initial_merge_tag to
+#      record the merge release.
+#   3. After two consecutive mutants-nightly full sweeps report >= 80 caught
+#      ratio on every trust-boundary crate, update observed_consecutive_
+#      nightly_successes and activation_evidence in a CODEOWNERS-reviewed PR.
+#   4. Next release after initial_merge_tag: release-binaries.yml writes
 #      cycle_end_tag in a PR titled
 #      `chore(mutants): activate blocking gate after cycle <tag>`.
-#      The gate flips to blocking automatically.
-#   4. Override: clear cycle_end_tag in a PR labelled `mutants-gate-override`
-#      with CODEOWNERS approval to re-enter advisory mode for one cycle.
+#      The gate flips to blocking only when the evidence streak is also
+#      present.
+#   5. Override: clear cycle_end_tag in a PR whose title includes
+#      `mutants-gate-override` with CODEOWNERS approval to re-enter advisory
+#      mode for one cycle.
 #
 # Editing this file is gated by CODEOWNERS.
 
 [mutants]
-phase3_merge_tag = ""
+initial_merge_tag = ""
+target_catch_ratio_percent = 80
+required_consecutive_nightly_successes = 2
+observed_consecutive_nightly_successes = 0
+activation_evidence = ""
 cycle_end_tag = ""
+pr_survivor_issue_budget = 5
+nightly_wall_budget_hours_per_crate = 4
+trust_boundary_crates = [
+    "chio-policy",
+    "chio-credentials",
+    "chio-attest-verify",
+    "chio-kernel-core",
+    "chio-guards",
+    "chio-anchor",
+]

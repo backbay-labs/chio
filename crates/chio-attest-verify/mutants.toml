@@ -17,9 +17,11 @@ examine_globs = [
 ]
 
 exclude_globs = [
-    "**/tests.rs",
-    "**/test_*.rs",
-    "**/*_test.rs",
-    "**/tests/**",
-    "**/benches/**",
+    # rationale: tests and benches are verification surfaces, not Sigstore
+    # verification boundary code.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
+    "**/benches/**", # rationale: excluded helper or verification surface.
 ]

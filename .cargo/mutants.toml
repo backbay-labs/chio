@@ -62,6 +62,8 @@ minimum_test_timeout = 60
 #   2. chio-policy      (HushSpec parse/compile, evaluator)
 #   3. chio-guards      (native guard set including ShellCommandGuard)
 #   4. chio-credentials (JWT VC verify, OID4VP, SD-JWT)
+#   5. chio-attest-verify (Sigstore bundle and identity verification)
+#   6. chio-anchor (anchor publication, discovery, and verification)
 #
 # chio-kernel-core: real `mod` declarations exist for every entry below,
 # so per-file scoping is precise.
@@ -80,6 +82,10 @@ minimum_test_timeout = 60
 # into `lib.rs` via `include!`, so mutating `lib.rs` is the correct way
 # to exercise them. `fuzz.rs` is a real `mod` but is gated on a `cfg`
 # feature and is excluded below.
+#
+# chio-attest-verify and chio-anchor: entries mirror the per-crate
+# baselines and are copied here because cargo-mutants only auto-loads this
+# workspace-root config in CI.
 examine_globs = [
     # chio-kernel-core - pure-compute verdict path.
     "crates/chio-kernel-core/src/evaluate.rs",
@@ -135,36 +141,63 @@ examine_globs = [
     # (see header). trust_tier.rs is a real `mod`.
     "crates/chio-credentials/src/lib.rs",
     "crates/chio-credentials/src/trust_tier.rs",
+
+    # chio-attest-verify - Sigstore verification boundary.
+    "crates/chio-attest-verify/src/lib.rs",
+    "crates/chio-attest-verify/src/sigstore.rs",
+
+    # chio-anchor - anchoring publication and discovery boundary.
+    "crates/chio-anchor/src/lib.rs",
+    "crates/chio-anchor/src/automation.rs",
+    "crates/chio-anchor/src/bitcoin.rs",
+    "crates/chio-anchor/src/bundle.rs",
+    "crates/chio-anchor/src/discovery.rs",
+    "crates/chio-anchor/src/evm.rs",
+    "crates/chio-anchor/src/functions.rs",
+    "crates/chio-anchor/src/ops.rs",
+    "crates/chio-anchor/src/solana.rs",
 ]
 
 # Workspace-wide skip list. Pure plumbing, generated code, test/bench
 # scaffolding, formal-methods harnesses (Aeneas / Kani), platform clock /
 # rng adapters, and libFuzzer entry points.
 exclude_globs = [
-    "**/tests.rs",
-    "**/test_*.rs",
-    "**/*_test.rs",
-    "**/tests/**",
-    "**/benches/**",
-    "**/build.rs",
-    "**/fuzz.rs",
+    # rationale: tests, benches, build scripts, and fuzz targets are verification
+    # scaffolding or generated entry points rather than production decision code.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
+    "**/benches/**", # rationale: excluded helper or verification surface.
+    "**/build.rs", # rationale: excluded helper or verification surface.
+    "**/fuzz.rs", # rationale: excluded helper or verification surface.
     # chio-kernel-core: platform adapters + formal-methods scaffolding.
-    "crates/chio-kernel-core/src/clock.rs",
-    "crates/chio-kernel-core/src/rng.rs",
-    "crates/chio-kernel-core/src/formal_aeneas.rs",
-    "crates/chio-kernel-core/src/formal_core.rs",
-    "crates/chio-kernel-core/src/kani_harnesses.rs",
-    "crates/chio-kernel-core/src/kani_public_harnesses.rs",
+    # rationale: platform clocks, RNG adapters, and formal harnesses are covered
+    # by dedicated deterministic and verification lanes, not mutation scoring.
+    "crates/chio-kernel-core/src/clock.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/rng.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/formal_aeneas.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/formal_core.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/kani_harnesses.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/kani_public_harnesses.rs", # rationale: excluded helper or verification surface.
     # chio-policy: pure data + version constants + embedded YAML rulesets.
-    "crates/chio-policy/src/models.rs",
-    "crates/chio-policy/src/version.rs",
-    "crates/chio-policy/src/rulesets/**",
+    # rationale: pure models, constants, and embedded ruleset data are exercised
+    # through evaluator/compiler mutations and schema validation lanes.
+    "crates/chio-policy/src/models.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-policy/src/version.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-policy/src/rulesets/**", # rationale: excluded helper or verification surface.
     # chio-guards: pure types, pure helpers, advisory-by-design guards,
     # and the external/ adapter tree (remote-process bridges, integration-
     # tested rather than mutation-tested).
-    "crates/chio-guards/src/action.rs",
-    "crates/chio-guards/src/text_utils.rs",
-    "crates/chio-guards/src/advisory.rs",
-    "crates/chio-guards/src/spider_sense.rs",
-    "crates/chio-guards/src/external/**",
+    # rationale: these files are helper, advisory, or process-bridge surfaces
+    # with better coverage from integration and adapter tests than mutants.
+    "crates/chio-guards/src/action.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-guards/src/text_utils.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-guards/src/advisory.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-guards/src/spider_sense.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-guards/src/external/**", # rationale: excluded helper or verification surface.
+    # chio-anchor: fuzz harness is covered by the fuzz lane.
+    # rationale: fuzz harness code is the oracle input surface, not the target
+    # production anchor implementation under mutation.
+    "crates/chio-anchor/src/fuzz.rs", # rationale: excluded helper or verification surface.
 ]

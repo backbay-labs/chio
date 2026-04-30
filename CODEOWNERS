@@ -1,5 +1,5 @@
-# CODEOWNERS - GENERATED from .planning/trajectory{,-2}/OWNERS.toml. Do not hand-edit.
-# Regenerate with .planning/trajectory-2/scripts/regen-codeowners.sh.
+# CODEOWNERS - GENERATED from ownership metadata. Do not hand-edit.
+# Regenerate with the repository ownership tooling.
 # CI fails if this file drifts. Order matters in CODEOWNERS: later
 # patterns take precedence, so most-specific globs are emitted last.
 
@@ -20,6 +20,7 @@ arena/scenarios/**                           @bb-connor
 crates/chio-lsp/**                           @bb-connor
 crates/chio-tee/**                           @bb-connor
 .cargo/mutants.toml                          @bb-connor
+crates/*/mutants.toml                        @bb-connor
 editors/zed-chio/**                          @bb-connor
 rust-toolchain.toml                          @bb-connor
 crates/chio-arena/**                         @bb-connor
@@ -30,6 +31,7 @@ tests/conformance/**                         @bb-connor
 crates/chio-errors/**                        @bb-connor
 crates/chio-openai/**                        @bb-connor
 mutants-baseline.toml                        @bb-connor
+docs/fuzzing/trust-boundary-mutants-baseline.toml @bb-connor
 tests/regression_*.rs                        @bb-connor
 crates/chio-lineage/**                       @bb-connor
 crates/chio-weights/**                       @bb-connor  # trust-boundary; review_x2

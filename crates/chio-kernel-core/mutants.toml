@@ -22,16 +22,18 @@ examine_globs = [
 ]
 
 exclude_globs = [
-    "crates/chio-kernel-core/src/clock.rs",
-    "crates/chio-kernel-core/src/rng.rs",
-    "crates/chio-kernel-core/src/formal_aeneas.rs",
-    "crates/chio-kernel-core/src/formal_core.rs",
-    "crates/chio-kernel-core/src/kani_harnesses.rs",
-    "crates/chio-kernel-core/src/kani_public_harnesses.rs",
-    "crates/chio-kernel-core/src/fuzz.rs",
-    "**/tests.rs",
-    "**/test_*.rs",
-    "**/*_test.rs",
-    "**/tests/**",
-    "**/benches/**",
+    # rationale: adapters, formal harnesses, fuzz targets, tests, and benches
+    # are covered by their dedicated lanes rather than kernel mutation scoring.
+    "crates/chio-kernel-core/src/clock.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/rng.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/formal_aeneas.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/formal_core.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/kani_harnesses.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/kani_public_harnesses.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-kernel-core/src/fuzz.rs", # rationale: excluded helper or verification surface.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
+    "**/benches/**", # rationale: excluded helper or verification surface.
 ]

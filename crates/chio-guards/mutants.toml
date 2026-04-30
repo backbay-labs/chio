@@ -42,14 +42,16 @@ examine_globs = [
 ]
 
 exclude_globs = [
-    "crates/chio-guards/src/action.rs",
-    "crates/chio-guards/src/text_utils.rs",
-    "crates/chio-guards/src/advisory.rs",
-    "crates/chio-guards/src/spider_sense.rs",
-    "crates/chio-guards/src/external/**",
-    "**/tests.rs",
-    "**/test_*.rs",
-    "**/*_test.rs",
-    "**/tests/**",
-    "**/benches/**",
+    # rationale: pure helper, advisory, external bridge, test, and bench code
+    # is covered by integration or guard-specific tests instead of mutants.
+    "crates/chio-guards/src/action.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-guards/src/text_utils.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-guards/src/advisory.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-guards/src/spider_sense.rs", # rationale: excluded helper or verification surface.
+    "crates/chio-guards/src/external/**", # rationale: excluded helper or verification surface.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
+    "**/benches/**", # rationale: excluded helper or verification surface.
 ]

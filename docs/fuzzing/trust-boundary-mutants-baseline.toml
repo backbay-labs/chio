@@ -1,0 +1,15 @@
+generated_at = "2026-04-29"
+tool = "cargo-mutants"
+tool_version = "25.3.1"
+
+[aggregate]
+scope = "six-crate trust-boundary mutation baseline"
+crate_entries = 6
+listed_mutants_total = 2369
+evaluated_mutants_total = 442
+caught_total = 115
+missed_total = 259
+unviable_total = 67
+timeout_total = 1
+measured_kill_rate_excluding_unviable = 30.7
+baseline_status = "aggregate complete from existing per-crate baselines; mixed full sweeps and bounded shards"

@@ -12,6 +12,10 @@
 <p align="center">
   <strong>Governed tool access for AI systems</strong><br/>
   <em>Capability validation, fail-closed policy, budgets, and signed receipts</em>
+  <!-- chio-mutants-banner:start -->
+  <br/>
+  <strong>Mutation kill: 31%</strong> - six-crate trust-boundary mutation baseline, mixed sweep/shard n=375 viable mutants - 2026-04-29
+  <!-- chio-mutants-banner:end -->
 </p>
 
 <p align="center">

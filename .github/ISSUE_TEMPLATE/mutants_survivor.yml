@@ -1,0 +1,74 @@
+name: Mutation Survivor Triage
+description: Auto-filed surviving cargo-mutants report beyond the per-PR inline cap.
+title: "[mutants-survivor] <package>: <fingerprint>"
+projects: []
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # Mutation survivor triage report
+
+        This issue is opened automatically by `scripts/mutants-autofile-issue.sh`
+        from `.github/workflows/mutants.yml` when a PR produces more surviving
+        mutants than the inline PR comment cap. The fingerprint is derived from
+        the package, source location, verdict, and mutation description and is
+        used for dedupe before opening a new issue.
+
+        The default fix is to add or strengthen tests. Use a skip only when the
+        mutant is equivalent, generated, non-production, or otherwise
+        un-killable, and record the rationale in the relevant `mutants.toml`.
+
+  - type: input
+    id: package
+    attributes:
+      label: Package
+      placeholder: chio-kernel-core
+    validations:
+      required: true
+
+  - type: input
+    id: fingerprint
+    attributes:
+      label: Survivor fingerprint
+      description: Stable SHA-256 prefix emitted by `mutants-autofile-issue.sh`.
+      placeholder: "0123456789abcdef"
+    validations:
+      required: true
+
+  - type: input
+    id: source_location
+    attributes:
+      label: Source location
+      placeholder: crates/chio-kernel-core/src/evaluate.rs:96
+    validations:
+      required: true
+
+  - type: input
+    id: verdict
+    attributes:
+      label: Cargo-mutants verdict
+      placeholder: MissedMutant
+    validations:
+      required: true
+
+  - type: textarea
+    id: mutation
+    attributes:
+      label: Mutation
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: triage_notes
+    attributes:
+      label: Triage notes
+      placeholder: |
+        - PR:
+        - Workflow run:
+        - Planned fix:
+        - Skip rationale, if any:
+    validations:
+      required: false

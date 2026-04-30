@@ -24,10 +24,12 @@ examine_globs = [
 ]
 
 exclude_globs = [
-    "crates/chio-anchor/src/fuzz.rs",
-    "**/tests.rs",
-    "**/test_*.rs",
-    "**/*_test.rs",
-    "**/tests/**",
-    "**/benches/**",
+    # rationale: fuzz, tests, and benches are verification surfaces rather
+    # than production anchor publication or discovery logic.
+    "crates/chio-anchor/src/fuzz.rs", # rationale: excluded helper or verification surface.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
+    "**/benches/**", # rationale: excluded helper or verification surface.
 ]

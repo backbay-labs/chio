@@ -20,10 +20,12 @@ examine_globs = [
 ]
 
 exclude_globs = [
-    "crates/chio-credentials/src/fuzz.rs",
-    "**/tests.rs",
-    "**/test_*.rs",
-    "**/*_test.rs",
-    "**/tests/**",
-    "**/benches/**",
+    # rationale: fuzz, tests, and benches are verification surfaces rather
+    # than credential verification and presentation production logic.
+    "crates/chio-credentials/src/fuzz.rs", # rationale: excluded helper or verification surface.
+    "**/tests.rs", # rationale: excluded helper or verification surface.
+    "**/test_*.rs", # rationale: excluded helper or verification surface.
+    "**/*_test.rs", # rationale: excluded helper or verification surface.
+    "**/tests/**", # rationale: excluded helper or verification surface.
+    "**/benches/**", # rationale: excluded helper or verification surface.
 ]

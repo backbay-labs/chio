@@ -707,10 +707,13 @@ jobs:
 
   mutants-gate-flip:
     # Auto-flip the cargo-mutants gate from advisory to blocking on the first
-    # post-merge release. The gate posture is driven by
-    # `releases.toml::[mutants].cycle_end_tag`: empty -> advisory,
-    # non-empty -> blocking. Runs after `release` succeeds; if cycle_end_tag
-    # is still empty, writes the just-released tag and opens a PR.
+    # release after the two-consecutive-nightly >= 80% evidence
+    # streak is recorded. The gate posture is driven by
+    # `releases.toml::[mutants]`: empty cycle_end_tag or an insufficient
+    # nightly evidence streak -> advisory; non-empty cycle_end_tag plus the
+    # required streak -> blocking. Runs after `release` succeeds; if the
+    # evidence is present and cycle_end_tag is still empty, writes the
+    # just-released tag and opens a PR.
     name: Auto-flip mutants gate
     needs: release
     runs-on: ubuntu-latest
@@ -720,10 +723,10 @@ jobs:
       pull-requests: write  # open the PR
     timeout-minutes: 10
     steps:
-      - name: Checkout roadmap branch
+      - name: Checkout target branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: project/roadmap-04-25-2026
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
@@ -745,36 +748,68 @@ jobs:
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
-      - name: Read current cycle_end_tag
+      - name: Read current mutants gate state
         id: cycle
         run: |
           set -euo pipefail
           if [ ! -f releases.toml ]; then
-            echo "::error::releases.toml is missing on the roadmap branch" >&2
+            echo "::error::releases.toml is missing on main" >&2
             exit 1
           fi
           # Pure-bash extractor matching `scripts/mutants-gate.sh` so the
-          # two readers stay drift-free. Tolerates whitespace and quoting
-          # variants: `cycle_end_tag = ""` and `cycle_end_tag="vX.Y.Z"`.
-          current=""
-          while IFS= read -r line; do
-            trimmed="${line#"${line%%[![:space:]]*}"}"
-            trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-            if [[ "${trimmed}" =~ ^cycle_end_tag[[:space:]]*= ]]; then
+          # release writer and gate reader stay drift-free.
+          read_scalar() {
+            key="$1"
+            while IFS= read -r line; do
+              trimmed="${line#"${line%%[![:space:]]*}"}"
+              trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+              [[ "${trimmed}" == *=* ]] || continue
+              name="${trimmed%%=*}"
+              name="${name%"${name##*[![:space:]]}"}"
+              if [[ "${name}" != "${key}" ]]; then
+                continue
+              fi
               value="${trimmed#*=}"
+              value="${value%%#*}"
               value="${value#"${value%%[![:space:]]*}"}"
+              value="${value%"${value##*[![:space:]]}"}"
               value="${value#\"}"
               value="${value%\"}"
-              current="${value}"
-              break
+              printf '%s\n' "${value}"
+              return 0
+            done < releases.toml
+            return 0
+          }
+
+          current="$(read_scalar cycle_end_tag)"
+          target="$(read_scalar target_catch_ratio_percent)"
+          required="$(read_scalar required_consecutive_nightly_successes)"
+          observed="$(read_scalar observed_consecutive_nightly_successes)"
+          target="${target:-80}"
+          required="${required:-2}"
+          observed="${observed:-0}"
+
+          for pair in "target:${target}" "required:${required}" "observed:${observed}"; do
+            name="${pair%%:*}"
+            value="${pair#*:}"
+            if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+              echo "::error::invalid mutants gate ${name} value '${value}' in releases.toml" >&2
+              exit 1
             fi
-          done < releases.toml
-          echo "current=${current}" >> "$GITHUB_OUTPUT"
-          if [ -z "${current}" ]; then
-            echo "should_flip=true" >> "$GITHUB_OUTPUT"
+          done
+
+          if [ -z "${current}" ] && [ "${observed}" -ge "${required}" ]; then
+            should_flip=true
           else
-            echo "should_flip=false" >> "$GITHUB_OUTPUT"
+            should_flip=false
           fi
+          {
+            echo "current=${current}"
+            echo "target=${target}"
+            echo "required=${required}"
+            echo "observed=${observed}"
+            echo "should_flip=${should_flip}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Write cycle_end_tag
         if: steps.cycle.outputs.should_flip == 'true'
@@ -809,7 +844,7 @@ jobs:
         if: steps.cycle.outputs.should_flip == 'true'
         uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c
         with:
-          base: project/roadmap-04-25-2026
+          base: main
           branch: chore/mutants-gate-flip-${{ steps.tag.outputs.tag }}
           title: "chore(mutants): activate blocking gate after cycle ${{ steps.tag.outputs.tag }}"
           body: |
@@ -818,21 +853,32 @@ jobs:
             This PR writes `${{ steps.tag.outputs.tag }}` into
             `releases.toml::[mutants].cycle_end_tag`, flipping the
             cargo-mutants gate (`scripts/mutants-gate.sh`) from advisory
-            to blocking. After merge:
+            to blocking because `releases.toml` already records
+            `${{ steps.cycle.outputs.observed }}` consecutive successful
+            mutants-nightly runs against the required
+            `${{ steps.cycle.outputs.required }}` runs at the
+            `${{ steps.cycle.outputs.target }}%` caught-ratio target. After
+            merge:
 
-            - `mutants-nightly` exits 1 on a per-crate catch-ratio miss.
-            - `mutants-pr` comments switch from `advisory` to `blocking` labels.
+            - `mutants-nightly` reports a per-crate catch-ratio miss.
+            - `mutants-pr` comments switch from advisory to blocking mode.
 
             See `docs/fuzzing/mutants.md` (section "CI lane") for rationale.
 
             Override path: clear `cycle_end_tag` in a follow-up PR
-            labelled `mutants-gate-override` with CODEOWNERS approval.
+            whose title includes `mutants-gate-override` with CODEOWNERS approval.
           commit-message: "chore(mutants): activate blocking gate after cycle ${{ steps.tag.outputs.tag }}"
-          labels: mutants,release
 
       - name: Skip flip (already activated)
         if: steps.cycle.outputs.should_flip != 'true'
         env:
           CURRENT: ${{ steps.cycle.outputs.current }}
+          OBSERVED: ${{ steps.cycle.outputs.observed }}
+          REQUIRED: ${{ steps.cycle.outputs.required }}
+          TARGET: ${{ steps.cycle.outputs.target }}
         run: |
-          printf 'mutants-gate-flip: cycle_end_tag already set to %s; nothing to do\n' "${CURRENT}"
+          if [ -n "${CURRENT}" ]; then
+            printf 'mutants-gate-flip: cycle_end_tag already set to %s; nothing to do\n' "${CURRENT}"
+          else
+            printf 'mutants-gate-flip: waiting for nightly evidence %s/%s at target %s%%; nothing to do\n' "${OBSERVED}" "${REQUIRED}" "${TARGET}"
+          fi

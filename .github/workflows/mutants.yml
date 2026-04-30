@@ -1,8 +1,8 @@
-# mutants.yml - cargo-mutants advisory lane.
+# mutants.yml - cargo-mutants required lane.
 #
 # Two jobs:
 #   mutants-pr      - pull_request trigger; runs `cargo mutants --in-diff`
-#                     against the PR base ref, four crates in parallel,
+#                     against the PR base ref, six crates in parallel,
 #                     posts a Markdown summary via scripts/mutants-comment.sh,
 #                     and consults scripts/mutants-gate.sh for advisory-vs-blocking
 #                     posture (driven by releases.toml cycle_end_tag).
@@ -15,16 +15,22 @@
 # Both jobs share the 1,800 GHA runner-min/30d cap with the fuzz lanes;
 # scripts/check-fuzz-budget.sh is invoked first so the cap acts as a hard halt.
 #
+# Cutover rule:
+#   The lane flips after two consecutive nightly runs report >= 80 caught
+#   ratio on every trust-boundary crate: chio-policy, chio-credentials,
+#   chio-attest-verify, chio-kernel-core, chio-guards, and chio-anchor.
+#
 # continue-on-error policy:
 #   - mutants-pr: NOT set, so the gate script's exit code propagates.
 #     scripts/mutants-gate.sh reads releases.toml: cycle_end_tag empty ->
-#     advisory (exit 0); cycle_end_tag populated -> blocking (exit 1).
+#     advisory (exit 0); cycle_end_tag populated plus two recorded
+#     successful nightly runs at >= 80% -> blocking (exit 1 below target).
 #   - mutants-nightly: continue-on-error: true. Dashboard-only; never
 #     gates a PR merge.
 #
 # Override paths:
-#   1. Label-based (preferred): PR labelled `mutants-gate-override` clears
-#      cycle_end_tag in releases.toml (CODEOWNERS review required).
+#   1. Title-based (preferred): PR title includes `mutants-gate-override`
+#      and clears cycle_end_tag in releases.toml (CODEOWNERS review required).
 #   2. Env-var escape hatch: set MUTANTS_GATE_OVERRIDE_REASON=<reason>; the
 #      gate script downgrades a blocking-fail to a loud advisory pass. See
 #      docs/fuzzing/mutants.md "Override paths".
@@ -38,10 +44,16 @@ on:
       - "crates/chio-policy/src/**"
       - "crates/chio-guards/src/**"
       - "crates/chio-credentials/src/**"
+      - "crates/chio-attest-verify/src/**"
+      - "crates/chio-anchor/src/**"
       - "**/mutants.toml"
       - ".github/workflows/mutants.yml"
+      - ".github/ISSUE_TEMPLATE/mutants_survivor.yml"
       - "scripts/mutants-comment.sh"
+      - "scripts/mutants-autofile-issue.sh"
       - "scripts/mutants-gate.sh"
+      - "scripts/check-mutants-rationale.sh"
+      - "docs/fuzzing/mutants.md"
       - "releases.toml"
   schedule:
     # 05:00 UTC nightly. Sits after fuzz.yml (03:23) and the existing
@@ -86,6 +98,8 @@ jobs:
           - chio-policy
           - chio-guards
           - chio-credentials
+          - chio-attest-verify
+          - chio-anchor
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -95,12 +109,13 @@ jobs:
         id: forced
         env:
           FORCED_PACKAGE: ${{ inputs.package || '' }}
+          MATRIX_PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
           forced="${FORCED_PACKAGE}"
-          if [[ -n "${forced}" && "${forced}" != '${{ matrix.package }}' ]]; then
+          if [[ -n "${forced}" && "${forced}" != "${MATRIX_PACKAGE}" ]]; then
             echo "skip=true" >> "${GITHUB_OUTPUT}"
-            echo "skipping ${{ matrix.package }} (forced=${forced})"
+            echo "skipping ${MATRIX_PACKAGE} (forced=${forced})"
           else
             echo "skip=false" >> "${GITHUB_OUTPUT}"
           fi
@@ -118,6 +133,12 @@ jobs:
           set -euo pipefail
           # Keep cargo-mutants on the 25.x line; do not float to the next major.
           cargo install cargo-mutants --version '~25' --locked
+
+      - name: Check mutation skip rationales
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          bash scripts/check-mutants-rationale.sh
 
       - name: Verify shared 30-day fuzz/mutants budget
         if: steps.forced.outputs.skip == 'false'
@@ -140,7 +161,7 @@ jobs:
         id: diff
         if: steps.forced.outputs.skip == 'false'
         env:
-          BASE_REF: ${{ github.event.pull_request.base.ref || 'project/roadmap-04-25-2026' }}
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
           set -euo pipefail
           # cargo-mutants --in-diff expects a unified-diff TEXT FILE PATH,
@@ -178,38 +199,81 @@ jobs:
           echo "exit=${mutants_exit}" >> "${GITHUB_OUTPUT}"
           ls -la mutants-out/${{ matrix.package }} || true
 
-      - name: Apply gate posture (advisory or blocking per releases.toml)
+      - name: Read survivor issue budget
+        id: survivor-cap
         if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          cap="$(awk -F '=' '
+            $1 ~ /^[[:space:]]*pr_survivor_issue_budget[[:space:]]*$/ {
+              value = $2
+              gsub(/[[:space:]]/, "", value)
+              print value
+              exit
+            }
+          ' releases.toml)"
+          if [[ -z "${cap}" || ! "${cap}" =~ ^[0-9]+$ ]]; then
+            echo "::error::invalid or missing pr_survivor_issue_budget in releases.toml" >&2
+            exit 1
+          fi
+          echo "cap=${cap}" >> "${GITHUB_OUTPUT}"
+
+      - name: Apply gate posture (advisory or blocking per releases.toml)
+        id: gate
+        if: steps.forced.outputs.skip == 'false'
+        continue-on-error: true
         env:
           MUTANTS_PACKAGE: ${{ matrix.package }}
           MUTANTS_OUTPUT_DIR: mutants-out/${{ matrix.package }}
           MUTANTS_EXIT: ${{ steps.mutate.outputs.exit }}
           # Env-var override (single CI run). Setting this variable downgrades
-          # a blocking-fail to a loud advisory pass. Label-based override is
+          # a blocking-fail to a loud advisory pass. Title-based override is
           # preferred; this env-var is for in-flight CI runs only.
           MUTANTS_GATE_OVERRIDE_REASON: ${{ vars.MUTANTS_GATE_OVERRIDE_REASON }}
           GITHUB_ACTOR: ${{ github.actor }}
+          CHIO_MUTANTS_GATE: blocking
         run: |
           set -euo pipefail
           # mutants-gate.sh reads releases.toml and decides advisory
-          # (exit 0) or blocking (exit 1). Today releases.toml ships with
-          # cycle_end_tag empty, so the gate is advisory and exits 0.
-          # When M02 P3 lands and the next release populates
-          # cycle_end_tag, this step starts enforcing without any
-          # workflow edit.
+          # (exit 0) or blocking (exit 1). The result is enforced after
+          # comment and issue filing so triage evidence is preserved even
+          # when blocking mode fails.
           bash scripts/mutants-gate.sh
 
       - name: Post mutation summary as PR comment
-        if: steps.forced.outputs.skip == 'false' && github.event.pull_request.number != ''
+        if: always() && steps.forced.outputs.skip == 'false' && github.event.pull_request.number != ''
         env:
           GH_TOKEN: ${{ github.token }}
           MUTANTS_PACKAGE: ${{ matrix.package }}
           MUTANTS_OUTPUT_DIR: mutants-out/${{ matrix.package }}
+          CHIO_MUTANTS_GATE: blocking
+          MUTANTS_PR_SURVIVOR_CAP: ${{ steps.survivor-cap.outputs.cap }}
         run: |
           set -euo pipefail
           bash scripts/mutants-comment.sh \
             "${{ github.event.pull_request.number }}" \
             "mutants-out/${{ matrix.package }}"
+
+      - name: File survivor issues beyond PR cap
+        if: always() && steps.forced.outputs.skip == 'false' && github.event.pull_request.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MUTANTS_PACKAGE: ${{ matrix.package }}
+          MUTANTS_PR_SURVIVOR_CAP: ${{ steps.survivor-cap.outputs.cap }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          bash scripts/mutants-autofile-issue.sh \
+            "${{ github.event.pull_request.number }}" \
+            "mutants-out/${{ matrix.package }}"
+
+      - name: Enforce mutation gate result
+        if: always() && steps.forced.outputs.skip == 'false' && steps.gate.outcome == 'failure'
+        run: |
+          echo "::error::mutants gate failed after triage output was preserved" >&2
+          exit 1
 
       - name: Upload mutation report
         if: always() && steps.forced.outputs.skip == 'false'
@@ -236,6 +300,8 @@ jobs:
           - chio-policy
           - chio-guards
           - chio-credentials
+          - chio-attest-verify
+          - chio-anchor
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -243,12 +309,15 @@ jobs:
 
       - name: Skip when forced package does not match
         id: forced
+        env:
+          FORCED_PACKAGE: ${{ inputs.package || '' }}
+          MATRIX_PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          forced='${{ inputs.package }}'
-          if [[ -n "${forced}" && "${forced}" != '${{ matrix.package }}' ]]; then
+          forced="${FORCED_PACKAGE}"
+          if [[ -n "${forced}" && "${forced}" != "${MATRIX_PACKAGE}" ]]; then
             echo "skip=true" >> "${GITHUB_OUTPUT}"
-            echo "skipping ${{ matrix.package }} (forced=${forced})"
+            echo "skipping ${MATRIX_PACKAGE} (forced=${forced})"
           else
             echo "skip=false" >> "${GITHUB_OUTPUT}"
           fi
@@ -265,6 +334,12 @@ jobs:
         run: |
           set -euo pipefail
           cargo install cargo-mutants --version '~25' --locked
+
+      - name: Check mutation skip rationales
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          bash scripts/check-mutants-rationale.sh
 
       - name: Verify shared 30-day fuzz/mutants budget
         if: steps.forced.outputs.skip == 'false'
@@ -312,6 +387,7 @@ jobs:
           # for this run only.
           MUTANTS_GATE_OVERRIDE_REASON: ${{ vars.MUTANTS_GATE_OVERRIDE_REASON }}
           GITHUB_ACTOR: ${{ github.actor }}
+          CHIO_MUTANTS_GATE: blocking
         run: |
           set -euo pipefail
           bash scripts/mutants-gate.sh
