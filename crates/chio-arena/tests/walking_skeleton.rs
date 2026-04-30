@@ -7,6 +7,7 @@ use chio_arena::{
     load_scenario, write_arena_bundle, ArenaRuntime, KernelStepRequest, ScenarioVerdict,
     ARENA_MANIFEST_FILENAME,
 };
+use chio_core::crypto::sha256_hex;
 use chio_core::{ChioScope, Keypair, Operation, ToolGrant};
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,
@@ -89,7 +90,22 @@ async fn walking_skeleton_loads_runs_and_writes_m04_shape() -> Result<(), Box<dy
             ROOT_FILENAME.to_string(),
         ])
     );
+    let root_hex = fs::read_to_string(fixture_dir.join(ROOT_FILENAME))?;
+    assert_eq!(root_hex, summary.root_hex);
+    assert_eq!(recompute_m04_root_hex(&fixture_dir)?, summary.root_hex);
     Ok(())
+}
+
+fn recompute_m04_root_hex(dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let mut receipts = fs::read(dir.join(RECEIPTS_FILENAME))?;
+    if receipts.last() == Some(&b'\n') {
+        receipts.pop();
+    }
+    let checkpoint = fs::read(dir.join(CHECKPOINT_FILENAME))?;
+    let mut payload = Vec::with_capacity(receipts.len().saturating_add(checkpoint.len()));
+    payload.extend_from_slice(&receipts);
+    payload.extend_from_slice(&checkpoint);
+    Ok(sha256_hex(&payload))
 }
 
 struct EchoServer {

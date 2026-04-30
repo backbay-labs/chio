@@ -171,9 +171,13 @@ P1 walking-skeleton evidence:
   `arena/scenarios/walking_skeleton.toml`, drives one `ChioKernel`, and
   writes an M04-shaped bundle with `receipts.ndjson`, `checkpoint.json`,
   `root.hex`, and sibling `arena.json`.
-- The P1 test intentionally does not invoke the `chio replay` CLI. CLI
-  wiring is scoped to M08.P5, so P1 keeps a focused bundle-shape gate and
-  preserves replay-engine ownership in `chio-replay-corpus` and `chio-cli`.
+- The P1 test recomputes the M04 root from the exact `receipts.ndjson` and
+  `checkpoint.json` bytes and checks it against `root.hex`, proving
+  bit-exact replay-bundle compatibility with the M04 root derivation.
+- The P1 test intentionally does not invoke the `chio replay` CLI directly.
+  CLI wiring is scoped to M08.P5, so P1 keeps replay-engine ownership in
+  `chio-replay-corpus` and `chio-cli` while still proving the M04 byte
+  contract.
 
 This file is prose-only and does not modify ticket state, execution state,
 the generated manifest, Cargo files, or code.
