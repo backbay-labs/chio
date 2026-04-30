@@ -170,14 +170,14 @@ fn collect_wasm_browser_report(scenarios: &[VerdictScenario]) -> DriverReport {
         let scope_set_for_failure = scope_set.clone();
         let subject = Keypair::generate();
         let issuer = Keypair::generate();
-        let capability =
-            match make_browser_capability(&scenario.id, &scope_set, &subject, &issuer) {
-                Ok(capability) => capability,
-                Err(error) => panic!(
-                    "failed to build browser capability for {}: {error}",
-                    scenario.id
-                ),
-            };
+        let capability = match make_browser_capability(&scenario.id, &scope_set, &subject, &issuer)
+        {
+            Ok(capability) => capability,
+            Err(error) => panic!(
+                "failed to build browser capability for {}: {error}",
+                scenario.id
+            ),
+        };
         let arguments = match serde_json::from_str(&scenario.script.input_json) {
             Ok(arguments) => arguments,
             Err(error) => panic!(
@@ -334,8 +334,7 @@ fn rust_kernel_satisfies_required_driver_contract() {
 
     let missing_required = divergences.iter().filter(|divergence| match divergence {
         CrossLanguageDivergence::DriverVsExpected(tuple_divergence) => {
-            tuple_divergence.driver == RUST_KERNEL_DRIVER
-                && tuple_divergence.actual.is_none()
+            tuple_divergence.driver == RUST_KERNEL_DRIVER && tuple_divergence.actual.is_none()
         }
         CrossLanguageDivergence::DriverVsDriver { .. } => false,
     });

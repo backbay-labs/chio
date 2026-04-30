@@ -125,14 +125,12 @@ pub fn diff_cross_language(
         match report.drivers.get(required_driver) {
             None => {
                 for (scenario_id, expected_tuple) in expected {
-                    divergences.push(CrossLanguageDivergence::DriverVsExpected(
-                        TupleDivergence {
-                            scenario_id: scenario_id.clone(),
-                            driver: required_driver.clone(),
-                            expected: Some(expected_tuple.clone().normalized()),
-                            actual: None,
-                        },
-                    ));
+                    divergences.push(CrossLanguageDivergence::DriverVsExpected(TupleDivergence {
+                        scenario_id: scenario_id.clone(),
+                        driver: required_driver.clone(),
+                        expected: Some(expected_tuple.clone().normalized()),
+                        actual: None,
+                    }));
                 }
             }
             Some(driver_report) => {
@@ -196,14 +194,12 @@ fn driver_vs_expected_divergences(
                     // Driver emitted a tuple for a scenario the corpus
                     // does not declare. Always a divergence (catches
                     // stale fixtures).
-                    divergences.push(CrossLanguageDivergence::DriverVsExpected(
-                        TupleDivergence {
-                            scenario_id: scenario_id.clone(),
-                            driver: driver_report.driver.clone(),
-                            expected: None,
-                            actual: Some(normalized_actual),
-                        },
-                    ));
+                    divergences.push(CrossLanguageDivergence::DriverVsExpected(TupleDivergence {
+                        scenario_id: scenario_id.clone(),
+                        driver: driver_report.driver.clone(),
+                        expected: None,
+                        actual: Some(normalized_actual),
+                    }));
                 }
             }
         }
@@ -355,7 +351,10 @@ mod tests {
             &["tool:read"],
         );
         let mut report = CrossLanguageReport::new();
-        report.add_driver(driver_report("rust-kernel", &[("scenario-a", allow.clone())]));
+        report.add_driver(driver_report(
+            "rust-kernel",
+            &[("scenario-a", allow.clone())],
+        ));
         report.add_driver(driver_report(
             "wasm-browser",
             &[("scenario-a", deny.clone())],
@@ -392,7 +391,10 @@ mod tests {
         // missing required tuples.
         let allow = make_tuple(Verdict::Allow, "urn:chio:error:none", &["tool:read"]);
         let mut report = CrossLanguageReport::new();
-        report.add_driver(driver_report("rust-kernel", &[("scenario-a", allow.clone())]));
+        report.add_driver(driver_report(
+            "rust-kernel",
+            &[("scenario-a", allow.clone())],
+        ));
         report.add_driver(driver_report("typescript-node-http", &[]));
         let divergences = driver_vs_driver_divergences(&report);
         assert!(
@@ -425,7 +427,10 @@ mod tests {
         let divergences = diff_cross_language_against_expected(&expected, &report);
         let rendered = divergence_summary(&divergences);
         assert!(
-            rendered.starts_with(&format!("{} cross-language divergence(s):", divergences.len())),
+            rendered.starts_with(&format!(
+                "{} cross-language divergence(s):",
+                divergences.len()
+            )),
             "summary should start with a count line: `{rendered}`"
         );
         // scenario-a appears before scenario-b in BTree order.
