@@ -42,7 +42,7 @@
   milestone: M05
   phase: 1
   title: Ship clock-rewound, future-dated, and replayed-nonce adversarial classes (15 vectors)
-  status: review
+  status: pending
   effort_days: 2
   owner_glob:
     - crates/chio-adversarial-suite/cases/clock_rewound/**
@@ -70,7 +70,7 @@
   milestone: M05
   phase: 1
   title: Ship partial-signature, scope-superset, and revocation-rollback adversarial classes (15 vectors)
-  status: review
+  status: pending
   effort_days: 2
   owner_glob:
     - crates/chio-adversarial-suite/cases/partial_signature/**
@@ -98,7 +98,7 @@
   milestone: M05
   phase: 1
   title: Ship anchor-grafted and sigstore-bundle-payload-mismatch adversarial classes (10 vectors)
-  status: review
+  status: pending
   effort_days: 1.5
   owner_glob:
     - crates/chio-adversarial-suite/cases/anchor_grafted/**
@@ -125,7 +125,7 @@
   milestone: M05
   phase: 1
   title: Wire adversarial suite into chio-kernel-core test run as required check
-  status: review
+  status: pending
   effort_days: 1
   owner_glob:
     - crates/chio-kernel-core/Cargo.toml
@@ -151,7 +151,7 @@
   milestone: M05
   phase: 1
   title: Wire adversarial suite into chio-attest-verify test run as required check
-  status: review
+  status: pending
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/Cargo.toml
