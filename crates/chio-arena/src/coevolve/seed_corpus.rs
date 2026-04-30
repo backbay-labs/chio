@@ -131,13 +131,20 @@ impl SeedCorpus {
         self.artifacts.is_empty()
     }
 
-    /// Aggregate SHA-256 of every artifact hash, in order. Used by the
-    /// driver to record a single corpus-shape fingerprint in the run
-    /// manifest; rotation surfaces as a fingerprint mismatch.
+    /// Aggregate SHA-256 of every artifact hash and missing-source label,
+    /// in order. Used by the driver to record a single corpus-shape
+    /// fingerprint in the run manifest; rotation surfaces as a
+    /// fingerprint mismatch (whether the rotation deletes an artifact,
+    /// renames one, or marks a previously-present source as missing).
     pub fn fingerprint_hex(&self) -> String {
         let mut buffer = Vec::with_capacity(self.artifacts.len() * 65);
         for artifact in &self.artifacts {
             buffer.extend_from_slice(artifact.sha256.as_bytes());
+            buffer.push(b'\n');
+        }
+        buffer.extend_from_slice(b"--missing--\n");
+        for label in &self.missing_sources {
+            buffer.extend_from_slice(label.as_bytes());
             buffer.push(b'\n');
         }
         sha256_hex(&buffer)
