@@ -12,9 +12,9 @@ use std::sync::Arc;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, InitializeResult,
-    InitializedParams, MessageType, OneOf, ServerCapabilities, ServerInfo,
-    TextDocumentSyncCapability, TextDocumentSyncKind,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, Hover, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, MessageType,
+    OneOf, ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -89,7 +89,7 @@ impl ChioLanguageServer {
                 trigger_characters: Some(vec![":".to_string(), " ".to_string(), "-".to_string()]),
                 ..CompletionOptions::default()
             }),
-            hover_provider: None,
+            hover_provider: Some(HoverProviderCapability::Simple(true)),
             definition_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
@@ -157,6 +157,15 @@ impl LanguageServer for ChioLanguageServer {
                     .await;
             }
         }
+    }
+
+    async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        let Some(entry) = self.documents.get(uri) else {
+            return Ok(None);
+        };
+        Ok(crate::hover::hover(entry.language, &entry.text, position))
     }
 
     async fn completion(&self, params: CompletionParams) -> LspResult<Option<CompletionResponse>> {

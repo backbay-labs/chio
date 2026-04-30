@@ -20,6 +20,7 @@
 pub mod completion;
 pub mod diagnostics;
 pub mod document;
+pub mod hover;
 pub mod server;
 
 pub use document::{DocumentCache, DocumentEntry, DocumentLanguage};
