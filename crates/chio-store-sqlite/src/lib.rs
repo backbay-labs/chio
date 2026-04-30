@@ -6,6 +6,7 @@ pub mod capability_lineage;
 pub mod encrypted_blob;
 pub mod evidence_export;
 pub mod execution_nonce_store;
+pub mod iou_store;
 pub mod memory_provenance_store;
 pub mod receipt_query;
 pub mod receipt_store;
@@ -51,6 +52,7 @@ pub use encrypted_blob::{
     SqliteEncryptedBlobStore, TenantId, TenantKey,
 };
 pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceStoreError};
+pub use iou_store::{SqliteIouEnvelopeStore, IOU_ENVELOPE_MIGRATION};
 pub use memory_provenance_store::{SqliteMemoryProvenanceStore, SqliteMemoryProvenanceStoreError};
 pub use receipt_store::SqliteReceiptStore;
 pub use revocation_store::SqliteRevocationStore;

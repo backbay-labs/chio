@@ -2772,6 +2772,7 @@ dependencies = [
  "chio-appraisal",
  "chio-core-types",
  "chio-underwriting",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3494,6 +3495,7 @@ version = "0.1.0"
 dependencies = [
  "chacha20poly1305",
  "chio-core-types",
+ "chio-credit",
  "chio-kernel",
  "criterion",
  "r2d2",
@@ -3501,6 +3503,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "uuid",
  "zeroize",
 ]
