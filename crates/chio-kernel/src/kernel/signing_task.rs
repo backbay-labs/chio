@@ -44,7 +44,7 @@
 //! smaller capacity to exercise backpressure deterministically via
 //! [`SigningTaskHandle::with_capacity`].
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use chio_core::crypto::{
@@ -68,6 +68,15 @@ use crate::{ChioReceipt, ChioReceiptBody, KernelError, Keypair};
 /// knob lands in a later phase.
 pub const DEFAULT_SIGNING_CHANNEL_CAPACITY: usize = 256;
 pub(crate) const METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL: &str = "chio_signing_queue_block_total";
+static SIGNING_QUEUE_BLOCK_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn signing_queue_block_total() -> u64 {
+    SIGNING_QUEUE_BLOCK_TOTAL.load(Ordering::Relaxed)
+}
+
+fn record_signing_queue_block() {
+    SIGNING_QUEUE_BLOCK_TOTAL.fetch_add(1, Ordering::Relaxed);
+}
 
 /// One unit of work submitted to the signing task.
 ///
@@ -257,6 +266,10 @@ impl SigningTaskHandle {
             body,
             reply: reply_tx,
         };
+
+        if sender.capacity() == 0 {
+            record_signing_queue_block();
+        }
 
         sender.send(request).await.map_err(|_| {
             KernelError::Internal("receipt signing task is no longer running".to_string())
