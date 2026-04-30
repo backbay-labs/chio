@@ -370,6 +370,17 @@ pub enum AdversaryError {
     /// The DSL block referenced an unknown class.
     #[error("unknown adversary class {0}")]
     UnknownClass(String),
+    /// The DSL block (or constructor) referenced an unknown pattern within a
+    /// class (e.g. an injection pattern or replay pattern that is not in the
+    /// canonical set). Distinct from [`UnknownClass`] so callers can tell
+    /// class-level and parameter-level failures apart.
+    #[error("unknown adversary pattern {pattern} for class {class}")]
+    UnknownPattern {
+        /// Class the pattern was supplied to.
+        class: AdversaryClass,
+        /// Pattern name supplied by the caller / DSL.
+        pattern: String,
+    },
     /// The DSL block named an empty population.
     #[error("adversary population {0} is empty")]
     EmptyPopulation(String),
