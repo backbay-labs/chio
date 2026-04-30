@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
@@ -134,9 +134,43 @@ impl BoundedOtlpGrpcIngress {
         &self,
         request: OtlpGrpcTraceExport,
     ) -> Result<OtlpExporterEnqueueSummary, OTelReceiptExportError> {
-        let _flow = self.flow_lock.lock().map_err(|_| {
+        let _flow = self.lock_flow()?;
+        self.enqueue_locked(request)
+    }
+
+    pub fn drain(&self) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
+        let _flow = self.lock_flow()?;
+        self.drain_locked()
+    }
+
+    pub fn export(
+        &self,
+        request: OtlpGrpcTraceExport,
+    ) -> Result<BoundedOtlpExportSummary, OTelReceiptExportError> {
+        let _flow = self.lock_flow()?;
+        let queue = self.enqueue_locked(request)?;
+        let sink = self.drain_locked()?;
+        Ok(BoundedOtlpExportSummary { queue, sink })
+    }
+
+    pub fn snapshot(&self) -> Result<OtlpExporterQueueSnapshot, OTelReceiptExportError> {
+        let queue = self
+            .queue
+            .lock()
+            .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
+        Ok(queue.snapshot())
+    }
+
+    fn lock_flow(&self) -> Result<MutexGuard<'_, ()>, OTelReceiptExportError> {
+        self.flow_lock.lock().map_err(|_| {
             OTelReceiptExportError::Queue("OTEL queue flow mutex poisoned".to_string())
-        })?;
+        })
+    }
+
+    fn enqueue_locked(
+        &self,
+        request: OtlpGrpcTraceExport,
+    ) -> Result<OtlpExporterEnqueueSummary, OTelReceiptExportError> {
         let item = QueuedOtlpExport::new(request);
         let mut queue = self
             .queue
@@ -145,10 +179,7 @@ impl BoundedOtlpGrpcIngress {
         Ok(queue.push_drop_oldest(item, self.config))
     }
 
-    pub fn drain(&self) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
-        let _flow = self.flow_lock.lock().map_err(|_| {
-            OTelReceiptExportError::Queue("OTEL queue flow mutex poisoned".to_string())
-        })?;
+    fn drain_locked(&self) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
         let mut summary = ReceiptStoreSinkSummary::default();
         for _ in 0..self.config.drain_limit {
             let Some((export, spans)) = self.front_export()? else {
@@ -167,23 +198,6 @@ impl BoundedOtlpGrpcIngress {
             self.record_appended(spans)?;
         }
         Ok(summary)
-    }
-
-    pub fn export(
-        &self,
-        request: OtlpGrpcTraceExport,
-    ) -> Result<BoundedOtlpExportSummary, OTelReceiptExportError> {
-        let queue = self.enqueue(request)?;
-        let sink = self.drain()?;
-        Ok(BoundedOtlpExportSummary { queue, sink })
-    }
-
-    pub fn snapshot(&self) -> Result<OtlpExporterQueueSnapshot, OTelReceiptExportError> {
-        let queue = self
-            .queue
-            .lock()
-            .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
-        Ok(queue.snapshot())
     }
 
     fn pop_front(&self) -> Result<Option<QueuedOtlpExport>, OTelReceiptExportError> {
