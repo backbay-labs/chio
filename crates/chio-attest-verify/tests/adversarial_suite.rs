@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use chio_adversarial_suite::{bundled_coverage_cases, AttackClass, CaseError, ExpectedVerdict};
+use chio_adversarial_suite::{bundled_cases, AttackClass, CaseError, ExpectedVerdict};
 
 const ATTEST_CLASSES: &[AttackClass] = &[
     AttackClass::AnchorGrafted,
@@ -10,15 +10,22 @@ const ATTEST_CLASSES: &[AttackClass] = &[
 #[test]
 fn attest_verify_adversarial_suite_answer_key_denies_attestation_classes() -> Result<(), CaseError>
 {
-    let cases = bundled_coverage_cases()?;
+    // Load raw bundled cases and filter to ATTEST_CLASSES first so this gate
+    // does not couple to pending vectors in unrelated attack classes (which
+    // would otherwise fail `into_coverage_case` and break this test for
+    // reasons outside attest-verify's scope).
+    let cases = bundled_cases()?;
     let mut counts = BTreeMap::<AttackClass, usize>::new();
     let expected_classes = ATTEST_CLASSES.iter().copied().collect::<BTreeSet<_>>();
 
-    for coverage_case in cases {
-        let case = coverage_case.as_case();
+    for case in cases {
         if !expected_classes.contains(&case.class) {
             continue;
         }
+        // In-scope attestation cases must not be pending; coverage eligibility
+        // is enforced after class filtering.
+        let coverage_case = case.into_coverage_case()?;
+        let case = coverage_case.as_case();
 
         assert_eq!(
             case.expected_verdict,
