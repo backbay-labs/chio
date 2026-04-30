@@ -12,6 +12,8 @@ publish = false
 name = "chio_revocation_oracle"
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
 rs_merkle = { workspace = true }
 
 [lints.clippy]
