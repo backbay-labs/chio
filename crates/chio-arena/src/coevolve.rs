@@ -31,6 +31,14 @@
 //! action sequence. No wall-clock reads, no thread-local randomness. Two
 //! arena runs of the same scenario produce byte-identical fitness scores.
 
+pub mod mutation;
+
+pub use mutation::{
+    mutate_overrequest_population, mutate_population, mutate_prompt_injection_population,
+    mutate_replay_attempt_population, mutate_scope_escape_population, MutationConfig,
+    MutationError, MutationKind,
+};
+
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 

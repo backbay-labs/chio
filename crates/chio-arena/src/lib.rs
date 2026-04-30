@@ -21,9 +21,15 @@ pub use adversary::{
     PromptInjectionAdversary, ReplayAttemptAdversary, ScopeEscapeAdversary, ToyGuardEvaluation,
 };
 pub use clock::{ClockError, VirtualClock, DEFAULT_TICK_NANOS};
+pub use coevolve::mutation::{
+    OverrequestBlueprint, PopulationBlueprint, PromptInjectionBlueprint, ReplayAttemptBlueprint,
+    ReplayAttemptEntry, ScopeEscapeBlueprint,
+};
 pub use coevolve::{
-    evaluate_population, FitnessError, FitnessInputs, FitnessReport, FitnessSample, MatrixVerdict,
-    VerdictTuple,
+    evaluate_population, mutate_overrequest_population, mutate_population,
+    mutate_prompt_injection_population, mutate_replay_attempt_population,
+    mutate_scope_escape_population, FitnessError, FitnessInputs, FitnessReport, FitnessSample,
+    MatrixVerdict, MutationConfig, MutationError, MutationKind, VerdictTuple,
 };
 pub use link::{
     KernelEndpoint, KernelLink, KernelMultiplexer, LinkEnvelope, LinkError, MultiplexError,

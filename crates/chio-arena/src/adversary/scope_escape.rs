@@ -27,7 +27,7 @@ pub const REASON: &str = "scope-superset-denied";
 
 /// One delegated scope entry the adversary will inject. Each entry is a
 /// (server, tool) pair that escalates beyond the issuer's grant.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeEscalation {
     /// Stable variant label.
     pub label: String,
