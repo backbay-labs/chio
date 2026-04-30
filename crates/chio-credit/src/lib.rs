@@ -2,6 +2,12 @@ pub use chio_appraisal as appraisal;
 pub use chio_core_types::{capability, crypto, receipt};
 pub use chio_underwriting as underwriting;
 
+pub mod hook;
+
+pub use hook::{
+    CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,
+};
+
 use serde::{Deserialize, Serialize};
 
 use crate::appraisal::AttestationVerifierFamily;
