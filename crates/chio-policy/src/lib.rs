@@ -21,6 +21,7 @@
 
 pub mod compiler;
 pub mod conditions;
+pub mod crypto_floor;
 pub mod detection;
 pub mod evaluate;
 pub mod merge;
@@ -35,6 +36,7 @@ pub mod version;
 // Re-exports for convenience
 pub use compiler::{compile_policy, compile_policy_with_source, CompileError, CompiledPolicy};
 pub use conditions::{evaluate_condition, Condition, RuntimeContext};
+pub use crypto_floor::{CryptoFloor, CryptoFloorLoadError};
 pub use evaluate::{
     activate_panic, deactivate_panic, evaluate, evaluate_with_context, is_panic_active,
     selected_origin_profile_id, Decision, EvaluationAction, EvaluationResult, OriginContext,
