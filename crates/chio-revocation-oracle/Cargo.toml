@@ -18,6 +18,9 @@ thiserror = { workspace = true }
 rs_merkle = { workspace = true }
 sha2 = { workspace = true }
 
+[dev-dependencies]
+proptest = { workspace = true }
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
