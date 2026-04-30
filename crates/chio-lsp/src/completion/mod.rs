@@ -16,6 +16,7 @@ pub mod scopes;
 use tower_lsp::lsp_types::{CompletionItem, Position};
 
 use crate::document::DocumentLanguage;
+use crate::position::utf16_to_byte_offset;
 
 /// Compute completion items for a document at a position. The provider
 /// inspects the line prefix and any preceding section header to pick a
@@ -35,7 +36,11 @@ fn complete_chio_yaml(text: &str, position: Position) -> Vec<CompletionItem> {
     let lines: Vec<&str> = text.split('\n').collect();
     let cursor_line_idx = (position.line as usize).min(lines.len().saturating_sub(1));
     let cursor_line = lines.get(cursor_line_idx).copied().unwrap_or("");
-    let prefix_end = (position.character as usize).min(cursor_line.len());
+    // `position.character` is a UTF-16 code-unit count per the LSP
+    // spec. Translate it to a byte offset before slicing so non-ASCII
+    // text earlier on the line cannot land the index inside a UTF-8
+    // boundary and panic the completion handler.
+    let prefix_end = utf16_to_byte_offset(cursor_line, position.character);
     let prefix = &cursor_line[..prefix_end];
 
     let trimmed_prefix = prefix.trim_start();
@@ -150,5 +155,17 @@ mod tests {
     fn other_languages_offer_no_completions() {
         let items = complete(DocumentLanguage::Other, "", Position::new(0, 0));
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn non_ascii_prefix_does_not_panic_in_chio_yaml() {
+        // Pre-fix this triggered an out-of-boundary slice on the
+        // 'é' multibyte character. The LSP column 12 is past the
+        // accent in UTF-16 code units; the helper must translate it
+        // to a UTF-8 byte boundary so slicing succeeds.
+        let text = "policy: café\n  - ";
+        let pos = Position::new(0, 12);
+        // Should not panic, regardless of whether items come back.
+        let _ = complete(DocumentLanguage::ChioYaml, text, pos);
     }
 }

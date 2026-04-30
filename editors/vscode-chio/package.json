@@ -58,6 +58,20 @@
                 "path": "./syntaxes/chio.tmLanguage.json"
             }
         ],
+        "snippets": [
+            {
+                "language": "chio-yaml",
+                "path": "./snippets/chio.code-snippets"
+            },
+            {
+                "language": "chio-manifest",
+                "path": "./snippets/chio.code-snippets"
+            },
+            {
+                "language": "chio-guard",
+                "path": "./snippets/chio.code-snippets"
+            }
+        ],
         "configuration": {
             "type": "object",
             "title": "Chio",
