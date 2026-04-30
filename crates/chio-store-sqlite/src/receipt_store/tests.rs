@@ -1201,6 +1201,50 @@ fn receipt_commit_flush_waits_for_queued_receipts() -> Result<(), Box<dyn std::e
 }
 
 #[test]
+fn receipt_commit_flush_reports_queued_batch_error() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-receipts-group-flush-error");
+    let store = SqliteReceiptStore::open(&path)?;
+    let valid = sample_receipt_with_id("rcpt-group-flush-error-valid");
+    let mut invalid = sample_receipt_with_id("rcpt-group-flush-error-invalid");
+    invalid.timestamp = u64::MAX;
+    let mut results = Vec::new();
+
+    for receipt in [valid, invalid] {
+        let raw_json = serde_json::to_string(&receipt)?;
+        let (response, result) = std::sync::mpsc::sync_channel(1);
+        store
+            .receipt_commit_actor
+            .sender
+            .send(ReceiptCommitCommand::Append(Box::new(
+                ReceiptCommitRequest {
+                    receipt,
+                    raw_json,
+                    response,
+                },
+            )))
+            .map_err(|_| std::io::Error::other("send receipt append command"))?;
+        results.push(result);
+    }
+
+    let error = store.flush_receipt_writes().unwrap_err();
+    assert!(matches!(
+        error,
+        chio_kernel::ReceiptStoreError::Conflict(message)
+            if message.contains("receipt timestamp")
+    ));
+    for result in results {
+        assert!(result
+            .recv()
+            .map_err(|_| std::io::Error::other("receive receipt append result"))?
+            .is_err());
+    }
+    assert_eq!(store.tool_receipt_count()?, 0);
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
 fn append_chio_receipt_returning_seq_supports_concurrent_writers() {
     let path = unique_db_path("chio-receipts-concurrent");
     let store = Arc::new(SqliteReceiptStore::open(&path).unwrap());

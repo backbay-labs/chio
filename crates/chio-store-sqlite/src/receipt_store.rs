@@ -200,13 +200,13 @@ fn commit_receipt_batch(
     let results = append_receipt_batch(pool, &requests);
     let flush_error = results
         .iter()
-        .find_map(|result| result.as_ref().err().map(ToString::to_string));
+        .find_map(|result| result.as_ref().err().map(receipt_store_error_snapshot));
     for (request, result) in requests.into_iter().zip(results) {
         let _ = request.response.send(result);
     }
     for response in flushes {
         let result = match &flush_error {
-            Some(message) => Err(ReceiptStoreError::Conflict(message.clone())),
+            Some(error) => Err(receipt_store_error_snapshot(error)),
             None => Ok(()),
         };
         let _ = response.send(result);
@@ -249,10 +249,41 @@ fn receipt_batch_error_results(
     count: usize,
     error: ReceiptStoreError,
 ) -> Vec<Result<u64, ReceiptStoreError>> {
-    let message = error.to_string();
+    let snapshot = receipt_store_error_snapshot(&error);
+    let mut original = Some(error);
     (0..count)
-        .map(|_| Err(ReceiptStoreError::Conflict(message.clone())))
+        .map(|_| {
+            Err(original
+                .take()
+                .unwrap_or_else(|| receipt_store_error_snapshot(&snapshot)))
+        })
         .collect()
+}
+
+fn receipt_store_error_snapshot(error: &ReceiptStoreError) -> ReceiptStoreError {
+    match error {
+        ReceiptStoreError::Sqlite(error) => {
+            ReceiptStoreError::Sqlite(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                std::io::Error::other(error.to_string()),
+            )))
+        }
+        ReceiptStoreError::Pool(message) => ReceiptStoreError::Pool(message.clone()),
+        ReceiptStoreError::Json(error) => ReceiptStoreError::Json(serde_json::Error::io(
+            std::io::Error::other(error.to_string()),
+        )),
+        ReceiptStoreError::Io(error) => {
+            ReceiptStoreError::Io(std::io::Error::new(error.kind(), error.to_string()))
+        }
+        ReceiptStoreError::CryptoDecode(message) => {
+            ReceiptStoreError::CryptoDecode(message.clone())
+        }
+        ReceiptStoreError::Canonical(message) => ReceiptStoreError::Canonical(message.clone()),
+        ReceiptStoreError::InvalidOutcome(message) => {
+            ReceiptStoreError::InvalidOutcome(message.clone())
+        }
+        ReceiptStoreError::Conflict(message) => ReceiptStoreError::Conflict(message.clone()),
+        ReceiptStoreError::NotFound(message) => ReceiptStoreError::NotFound(message.clone()),
+    }
 }
 
 #[path = "receipt_store/bootstrap.rs"]
