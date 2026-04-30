@@ -1,4 +1,6 @@
 name: verdict-matrix
+# M02.P5.T5 metadata: required-on-divergence remains pending until the
+# cross-language oracle and all non-Rust verdict drivers are active.
 
 on:
   pull_request:
