@@ -1129,6 +1129,34 @@ rules:
     }
 
     #[test]
+    fn compile_secret_patterns_preserves_custom_denylist_patterns() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  secret_patterns:
+    enabled: true
+    patterns:
+      - name: internal-token
+        pattern: "INTERNAL-[0-9]{4}"
+        severity: critical
+"#,
+        )
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
+        let rule = spec
+            .rules
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("test policy should contain rules"))
+            .secret_patterns
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("test policy should contain secret patterns"));
+
+        let config = compile_output_sanitizer_config(rule);
+
+        assert_eq!(config.denylist.patterns, vec!["INTERNAL-[0-9]{4}"]);
+    }
+
+    #[test]
     fn compile_detection_prompt_injection_adds_guard() {
         let spec = HushSpec::parse(
             r#"
@@ -1385,6 +1413,35 @@ rules:
                 Constraint::MaxArgsSize(2048),
                 Constraint::RequireApprovalAbove { threshold_units: 0 }
             ]
+        );
+    }
+
+    #[test]
+    fn exact_confirmation_patterns_do_not_overlap_different_tools() {
+        let spec = HushSpec::parse(
+            r#"
+hushspec: "0.1.0"
+rules:
+  tool_access:
+    enabled: true
+    allow: [payments.charge]
+    default: block
+  human_in_loop:
+    enabled: true
+    require_confirmation: [payments.refund]
+    approve_above: 15000
+"#,
+        )
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
+        let compiled = compile_policy(&spec)
+            .unwrap_or_else(|error| unreachable!("compile should pass: {error}"));
+
+        assert_eq!(compiled.default_scope.grants.len(), 1);
+        assert_eq!(
+            compiled.default_scope.grants[0].constraints,
+            vec![Constraint::RequireApprovalAbove {
+                threshold_units: 15000
+            }]
         );
     }
 

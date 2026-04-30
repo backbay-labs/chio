@@ -362,6 +362,17 @@ mod tests {
         }
     }
 
+    fn nested_any_of_condition(depth: usize) -> Condition {
+        if depth == 0 {
+            Condition::default()
+        } else {
+            Condition {
+                any_of: Some(vec![nested_any_of_condition(depth - 1)]),
+                ..Condition::default()
+            }
+        }
+    }
+
     #[test]
     fn overnight_windows_resolve_the_previous_day_after_midnight() {
         let condition = Condition {
@@ -451,6 +462,10 @@ mod tests {
             &nested_all_of_condition(MAX_NESTING_DEPTH + 2),
             &RuntimeContext::default()
         ));
+        assert!(!evaluate_condition(
+            &nested_any_of_condition(MAX_NESTING_DEPTH + 2),
+            &RuntimeContext::default()
+        ));
     }
 
     #[test]
@@ -537,6 +552,7 @@ mod tests {
         assert_eq!(day_abbreviation(99), "mon");
 
         assert_eq!(parse_timezone_offset("UTC"), Some(0));
+        assert_eq!(parse_timezone_offset("EST"), Some(-5 * 60));
         assert_eq!(parse_timezone_offset("+05:30"), Some(5 * 60 + 30));
         assert_eq!(parse_timezone_offset("-8"), Some(-8 * 60));
         assert_eq!(parse_timezone_offset("+24:00"), None);

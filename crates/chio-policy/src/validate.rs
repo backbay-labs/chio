@@ -763,7 +763,7 @@ extensions:
         after: later
 "#,
         )
-        .expect("parse policy");
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
 
         let result = validate(&spec);
         assert_error_contains(
@@ -806,6 +806,40 @@ extensions:
     }
 
     #[test]
+    fn posture_validation_accepts_zero_budgets_and_valid_duration_suffixes() {
+        let spec: HushSpec = serde_yml::from_str(
+            r#"
+hushspec: "0.1.0"
+name: posture-validation-boundaries
+extensions:
+  posture:
+    initial: draft
+    states:
+      draft:
+        capabilities: ["tool_call"]
+        budgets:
+          tool_calls: 0
+      review:
+        capabilities: ["tool_call"]
+    transitions:
+      - from: draft
+        to: review
+        on: timeout
+        after: 15m
+"#,
+        )
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
+
+        let result = validate(&spec);
+
+        assert!(
+            result.errors.is_empty(),
+            "zero budgets and valid duration suffixes should pass validation: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
     fn posture_validation_rejects_empty_state_sets() {
         let spec: HushSpec = serde_yml::from_str(
             r#"
@@ -818,7 +852,7 @@ extensions:
     transitions: []
 "#,
         )
-        .expect("parse policy");
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
 
         let result = validate(&spec);
         assert_error_contains(&result, "posture.states must define at least one state");
@@ -849,7 +883,7 @@ extensions:
       top_k: 0
 "#,
         )
-        .expect("parse policy");
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
 
         let result = validate(&spec);
         assert_error_contains(
@@ -892,7 +926,7 @@ extensions:
       enabled: true
 "#,
         )
-        .expect("parse policy");
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
 
         let result = validate(&spec);
         assert_error_contains(
@@ -976,6 +1010,33 @@ extensions:
         assert_warning_contains(
             &result,
             "extensions.reputation.tiers.silver.max_scope.operations includes unknown operation 'escalate'",
+        );
+    }
+
+    #[test]
+    fn reputation_validation_accepts_single_point_score_range() {
+        let spec: HushSpec = serde_yml::from_str(
+            r#"
+hushspec: "0.1.0"
+name: reputation-single-point-tier
+extensions:
+  reputation:
+    tiers:
+      exact:
+        score_range: [0.5, 0.5]
+        max_scope:
+          operations: ["invoke"]
+          ttl_seconds: 60
+"#,
+        )
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
+
+        let result = validate(&spec);
+
+        assert!(
+            result.errors.is_empty(),
+            "equal reputation score_range bounds should be valid: {:?}",
+            result.errors
         );
     }
 

@@ -8,7 +8,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use chio_policy::{compile_policy, HushSpec};
+use chio_policy::{compile_policy, merge, HushSpec};
 
 fn parse(yaml: &str) -> HushSpec {
     HushSpec::parse(yaml).expect("parse hushspec")
@@ -166,5 +166,62 @@ extensions:
         compiled.guards.is_empty(),
         "chio extension should not emit guards; got {:?}",
         compiled.guard_names
+    );
+}
+
+#[test]
+fn chio_extension_merge_preserves_base_fields_when_child_adds_signing() {
+    let base = parse(
+        r#"
+hushspec: "0.1.0"
+extensions:
+  chio:
+    market_hours:
+      tz: "America/New_York"
+      open: "09:30"
+      close: "16:00"
+      days: ["mon", "tue", "wed", "thu", "fri"]
+    rollback:
+      on_guard_fail: true
+      on_timeout: false
+      strategy: "reverse-diff"
+"#,
+    );
+    let child = parse(
+        r#"
+hushspec: "0.1.0"
+extensions:
+  chio:
+    signing:
+      algo: "Ed25519"
+      required: true
+      key_ref: "chio://keys/trader"
+"#,
+    );
+
+    let merged = merge(&base, &child);
+    let Some(chio) = merged
+        .extensions
+        .as_ref()
+        .and_then(|extensions| extensions.chio.as_ref())
+    else {
+        unreachable!("merged policy should contain chio extension");
+    };
+
+    assert_eq!(
+        chio.market_hours
+            .as_ref()
+            .map(|market| market.open.as_str()),
+        Some("09:30")
+    );
+    assert_eq!(
+        chio.rollback
+            .as_ref()
+            .and_then(|rollback| rollback.strategy.as_deref()),
+        Some("reverse-diff")
+    );
+    assert_eq!(
+        chio.signing.as_ref().map(|signing| signing.algo.as_str()),
+        Some("Ed25519")
     );
 }
