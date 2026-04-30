@@ -1,7 +1,10 @@
 #![cfg(all(
     feature = "fixtures-openai",
     feature = "fixtures-anthropic",
-    feature = "fixtures-bedrock"
+    feature = "fixtures-bedrock",
+    feature = "fixtures-gemini",
+    feature = "fixtures-mistral",
+    feature = "fixtures-groq"
 ))]
 
 use std::fs;
@@ -64,6 +67,18 @@ fn weather_tool_policy_verdicts_match_across_all_providers() {
             provider: "bedrock",
             fixture_id: "bedrock_basic_single_tool_use",
         },
+        ProviderFixture {
+            provider: "gemini",
+            fixture_id: "gemini_basic_single_function_call",
+        },
+        ProviderFixture {
+            provider: "mistral",
+            fixture_id: "mistral_basic_single_tool_call",
+        },
+        ProviderFixture {
+            provider: "groq",
+            fixture_id: "groq_basic_single_tool_call",
+        },
     ];
 
     let mut captured = Vec::new();
@@ -73,17 +88,37 @@ fn weather_tool_policy_verdicts_match_across_all_providers() {
         captured.push(load_single_verdict(&path));
     }
 
-    assert_eq!(captured.len(), 3);
+    assert_eq!(captured.len(), 6);
     assert_byte_equal_normalized_receipts("weather_lookup_allow", &captured);
 }
 
 fn replay_fixture(provider: &str, path: &Path) {
-    let outcome = match provider {
-        "openai" => replay_openai_fixture(path),
-        "anthropic" => replay_anthropic_fixture(path),
-        "bedrock" => replay_bedrock_fixture(path),
+    // Providers added in M07 trajectory-2 P3 (Gemini, Mistral, Groq) ride
+    // the cross-provider matrix in advisory mode: the deep adapter replay
+    // (`replay_<provider>_fixture`) lands with the trajectory-2 P4
+    // matrix flip; this advisory pass exercises the NDJSON capture corpus
+    // through `load_single_verdict` only and asserts the kernel verdict
+    // bytes are canonical-equal across providers.
+    match provider {
+        "openai" => assert_replay(provider, path, replay_openai_fixture(path)),
+        "anthropic" => assert_replay(provider, path, replay_anthropic_fixture(path)),
+        "bedrock" => assert_replay(provider, path, replay_bedrock_fixture(path)),
+        "gemini" | "mistral" | "groq" => {
+            // Advisory NDJSON-only path; load_single_verdict downstream
+            // performs the byte-equality assertion the matrix demands.
+        }
         other => panic!("unsupported provider {other}"),
-    };
+    }
+}
+
+fn assert_replay(
+    _provider: &str,
+    path: &Path,
+    outcome: Result<
+        chio_provider_conformance::ReplayOutcome,
+        chio_provider_conformance::ReplayError,
+    >,
+) {
     let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(error) => panic!("replay {}: {error}", path.display()),

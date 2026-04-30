@@ -2930,11 +2930,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-gemini-tools-adapter"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-tool-call-fabric",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-governance"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-listing",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-groq-tools-adapter"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-tool-call-fabric",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3281,6 +3303,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-mistral-tools-adapter"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-tool-call-fabric",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-open-market"
 version = "0.1.0"
 dependencies = [
@@ -3377,7 +3410,10 @@ dependencies = [
  "chio-anthropic-tools-adapter",
  "chio-bedrock-converse-adapter",
  "chio-core-types",
+ "chio-gemini-tools-adapter",
+ "chio-groq-tools-adapter",
  "chio-manifest",
+ "chio-mistral-tools-adapter",
  "chio-openai-adapter",
  "chio-tool-call-fabric",
  "chrono",
