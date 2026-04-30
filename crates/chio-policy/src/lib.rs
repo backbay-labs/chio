@@ -32,6 +32,7 @@ pub mod resolve;
 pub mod rulesets;
 pub mod validate;
 pub mod version;
+pub mod weights;
 
 // Re-exports for convenience
 pub use compiler::{compile_policy, compile_policy_with_source, CompileError, CompiledPolicy};
@@ -51,6 +52,7 @@ pub use rulesets::{
 };
 pub use validate::{validate, ValidationError, ValidationResult};
 pub use version::HUSHSPEC_VERSION;
+pub use weights::{WeightsCardConfig, WeightsCardLoadError, WeightsCardRequired};
 
 /// Detect whether a YAML string is a HushSpec document by checking for the
 /// `hushspec` top-level key. This enables auto-detection when loading policies.
