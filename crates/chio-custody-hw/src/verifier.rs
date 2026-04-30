@@ -54,8 +54,11 @@ impl PasskeyVerifier {
     ///
     /// Errors fall through unchanged from `WebauthnBuilder::build`. Misuse
     /// at this construction step is fail-closed: an invalid origin or RPID
-    /// returns `Err(CustodyError::Encoding)` rather than producing a
-    /// verifier that silently accepts mismatched assertions.
+    /// returns `Err(CustodyError::Encoding)` (mapped to
+    /// `urn:chio:error:custody:internal-encoding`) rather than producing a
+    /// verifier that silently accepts mismatched assertions. The URN is
+    /// distinct from `assertion-rejected` so callers do not retry the
+    /// ceremony on a server-side configuration bug.
     pub fn new(rp_id: &str, rp_origin: &Url) -> Result<Self, CustodyError> {
         let builder = WebauthnBuilder::new(rp_id, rp_origin)
             .map_err(|err| CustodyError::Encoding(format!("WebauthnBuilder::new failed: {err}")))?;
@@ -119,11 +122,14 @@ mod tests {
         // An RPID that does not match the origin host is rejected by
         // webauthn-rs at build() time. We surface that as an Encoding error
         // (fail-closed; do not produce a verifier that silently accepts).
+        // The URN is `internal-encoding`, not `assertion-rejected`, because
+        // a server-side configuration bug should not advise the caller to
+        // retry the ceremony with a fresh challenge.
         let origin = parse_origin("https://example.com");
         let res = PasskeyVerifier::new("other.test", &origin);
         assert!(res.is_err(), "RPID/origin mismatch must fail-closed");
         if let Err(err) = res {
-            assert_eq!(err.urn(), crate::error::URN_ASSERTION_REJECTED);
+            assert_eq!(err.urn(), crate::error::URN_INTERNAL_ENCODING);
         }
     }
 

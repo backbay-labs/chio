@@ -22,6 +22,17 @@ pub const URN_CAPABILITY_EXPIRED: &str = "urn:chio:error:custody:capability-expi
 /// Stable URN for "WebAuthn credential bound to this capability has been revoked".
 pub const URN_CREDENTIAL_REVOKED: &str = "urn:chio:error:custody:credential-revoked";
 
+/// Stable URN for "assertion verified but did not report user verification".
+pub const URN_USER_VERIFICATION_REQUIRED: &str =
+    "urn:chio:error:custody:user-verification-required";
+
+/// Stable URN for "custody surface failed to canonicalize, encode, or decode".
+///
+/// Distinct from [`URN_ASSERTION_REJECTED`] so HTTP / JSON-RPC translation
+/// layers do not advise callers to retry with a fresh challenge for what is
+/// in fact an internal serialization bug.
+pub const URN_INTERNAL_ENCODING: &str = "urn:chio:error:custody:internal-encoding";
+
 /// All custody-side failure modes. Fail-closed: every variant denies access.
 #[derive(Debug, Error)]
 pub enum CustodyError {
@@ -55,7 +66,21 @@ pub enum CustodyError {
     #[error("custody: credential revoked")]
     CredentialRevoked,
 
+    /// The WebAuthn assertion verified cryptographically but the
+    /// authenticator did not report a user-verification gesture (PIN,
+    /// biometric). Custody issuance requires UV; this is fail-closed
+    /// distinct from a generic assertion rejection so deployments can
+    /// surface a precise re-prompt without leaking whether the credential
+    /// itself was valid.
+    #[error("custody: user verification required (UV bit not set on assertion)")]
+    UserVerificationRequired,
+
     /// Internal serialization or canonical-JSON encoding failure. Fail-closed.
+    ///
+    /// Maps to [`URN_INTERNAL_ENCODING`], not [`URN_ASSERTION_REJECTED`]:
+    /// a fresh challenge will not resolve a server-side encoding bug, so
+    /// translation layers must not advise the caller to retry the
+    /// ceremony.
     #[error("custody: encoding failure: {0}")]
     Encoding(String),
 }
@@ -68,11 +93,13 @@ impl CustodyError {
     #[must_use]
     pub fn urn(&self) -> &'static str {
         match self {
-            Self::AssertionRejected(_) | Self::Encoding(_) => URN_ASSERTION_REJECTED,
+            Self::AssertionRejected(_) => URN_ASSERTION_REJECTED,
             Self::AudienceMismatch { .. } => URN_AUDIENCE_MISMATCH,
             Self::ReplayDetected { .. } => URN_REPLAY_DETECTED,
             Self::CapabilityExpired => URN_CAPABILITY_EXPIRED,
             Self::CredentialRevoked => URN_CREDENTIAL_REVOKED,
+            Self::UserVerificationRequired => URN_USER_VERIFICATION_REQUIRED,
+            Self::Encoding(_) => URN_INTERNAL_ENCODING,
         }
     }
 }
@@ -106,6 +133,14 @@ mod tests {
             URN_CREDENTIAL_REVOKED,
             "urn:chio:error:custody:credential-revoked"
         );
+        assert_eq!(
+            URN_USER_VERIFICATION_REQUIRED,
+            "urn:chio:error:custody:user-verification-required"
+        );
+        assert_eq!(
+            URN_INTERNAL_ENCODING,
+            "urn:chio:error:custody:internal-encoding"
+        );
     }
 
     #[test]
@@ -132,6 +167,15 @@ mod tests {
         assert_eq!(
             CustodyError::AssertionRejected("x".into()).urn(),
             URN_ASSERTION_REJECTED
+        );
+        assert_eq!(
+            CustodyError::UserVerificationRequired.urn(),
+            URN_USER_VERIFICATION_REQUIRED
+        );
+        assert_eq!(
+            CustodyError::Encoding("boom".into()).urn(),
+            URN_INTERNAL_ENCODING,
+            "internal encoding errors must NOT alias to assertion-rejected"
         );
     }
 }

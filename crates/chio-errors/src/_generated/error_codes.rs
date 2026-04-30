@@ -839,6 +839,32 @@ pub const CUSTODY_CREDENTIAL_REVOKED: ErrorCodeSpec = ErrorCodeSpec {
     consumed_by: &["chio-custody-hw", "chio-kernel", "chio-revocation-oracle"],
 };
 
+pub const CUSTODY_USER_VERIFICATION_REQUIRED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:custody:user-verification-required",
+    domain: Domain::Custody,
+    severity: Severity::Error,
+    summary: "WebAuthn assertion verified cryptographically but did not report user verification.",
+    help: "Re-attempt the ceremony with a user-verifying gesture (PIN, biometric); custody issuance requires UV.",
+    legacy_string_code: "CHIO-CUSTODY-USER-VERIFICATION-REQUIRED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-custody-hw", "chio-control-plane"],
+};
+
+pub const CUSTODY_INTERNAL_ENCODING: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:custody:internal-encoding",
+    domain: Domain::Custody,
+    severity: Severity::Fatal,
+    summary: "Custody surface failed to canonicalize, encode, or decode an envelope.",
+    help: "Treat as an internal error; do not retry until the encoding bug is resolved. No fresh challenge will help.",
+    legacy_string_code: "CHIO-CUSTODY-INTERNAL-ENCODING",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-custody-hw"],
+};
+
 pub const WEIGHTS_MODEL_CARD_MISSING: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:weights:model-card-missing",
     domain: Domain::Weights,
@@ -915,6 +941,8 @@ pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     CUSTODY_REPLAY_DETECTED,
     CUSTODY_CAPABILITY_EXPIRED,
     CUSTODY_CREDENTIAL_REVOKED,
+    CUSTODY_USER_VERIFICATION_REQUIRED,
+    CUSTODY_INTERNAL_ENCODING,
     WEIGHTS_MODEL_CARD_MISSING,
 ];
 

@@ -15,6 +15,12 @@
 //! - The issuer never derives the audience from caller input outside of
 //!   the signed request body; deployments pin the audience via constructor
 //!   configuration that the caller cannot rewrite.
+//! - The issuer requires user verification on the underlying assertion.
+//!   A verified assertion that reports `user_verified = false` is rejected
+//!   fail-closed with [`CustodyError::UserVerificationRequired`]; custody
+//!   issuance is never downgraded to possession-only authentication, even
+//!   in deployments where the relying party has not pinned UV at the
+//!   WebAuthn layer.
 //! - P1 returns an unsigned capability; P2 wires `HybridBackend::sign` and
 //!   the durable `PasskeyNonceStore`.
 //!
@@ -84,6 +90,12 @@ impl IssuerService {
     ///
     /// Fail-closed paths:
     /// - audience mismatch -> [`CustodyError::AudienceMismatch`]
+    /// - assertion did not report user verification ->
+    ///   [`CustodyError::UserVerificationRequired`]. Custody issuance
+    ///   requires UV; an authenticator that verified cryptographically but
+    ///   did not perform a user-verifying gesture (PIN, biometric) is
+    ///   possession-only authentication, which the M10 trust contract
+    ///   forbids.
     pub fn mint_capability(
         &self,
         verified: &VerifiedAssertion,
@@ -95,6 +107,10 @@ impl IssuerService {
                 expected: self.audience.clone(),
                 found: request.audience.clone(),
             });
+        }
+
+        if !verified.user_verified {
+            return Err(CustodyError::UserVerificationRequired);
         }
 
         let cap = PasskeyCapability::new_stub_unsigned(
@@ -155,5 +171,33 @@ mod tests {
         };
         let res = svc.mint_capability(&verified(), &req, fixed_now());
         assert!(matches!(res, Err(CustodyError::AudienceMismatch { .. })));
+    }
+
+    #[test]
+    fn rejects_assertion_without_user_verification_fail_closed() {
+        // An authenticator that verified cryptographically but did not
+        // report a user-verifying gesture must NOT receive a capability:
+        // custody issuance requires UV to avoid silent downgrade to
+        // possession-only authentication.
+        let svc = IssuerService::new("urn:chio:audience:kernel");
+        let req = MintRequest {
+            audience: "urn:chio:audience:kernel".into(),
+            scope_set: ScopeSet::new(["tool:read"]),
+            challenge_nonce: "n".into(),
+        };
+        let assertion = VerifiedAssertion {
+            credential_id_b64: "AAAA".into(),
+            user_verified: false,
+        };
+        let res = svc.mint_capability(&assertion, &req, fixed_now());
+        let err = match res {
+            Ok(_) => panic!("missing UV must fail-closed"),
+            Err(e) => e,
+        };
+        assert!(matches!(err, CustodyError::UserVerificationRequired));
+        assert_eq!(
+            err.urn(),
+            "urn:chio:error:custody:user-verification-required"
+        );
     }
 }
