@@ -133,6 +133,193 @@ impl DelegationReceipt {
     pub fn canonical_bytes(&self) -> Result<CanonicalBytes> {
         CanonicalBytes::new(self)
     }
+
+    /// Reconstruct the complete delegation chain represented by this
+    /// receipt: the parent chain followed by the freshly-signed link.
+    /// Verifiers feed this into [`crate::capability::validate_delegation_chain`]
+    /// to check end-to-end signature continuity.
+    #[must_use]
+    pub fn complete_chain(&self) -> Vec<DelegationLink> {
+        let mut chain = Vec::with_capacity(self.parent_chain.len() + 1);
+        chain.extend(self.parent_chain.iter().cloned());
+        chain.push(self.link.clone());
+        chain
+    }
+
+    /// Depth of the child capability minted by this receipt: the count of
+    /// links in the complete delegation chain. A receipt minted against a
+    /// root capability has depth `1`.
+    #[must_use]
+    pub fn child_depth(&self) -> u32 {
+        // `+1` cannot overflow `u32` in any practical chain (depth bound
+        // is < 256 by trajectory-1 M03 assumption); saturating keeps the
+        // helper total without panicking.
+        let parent_len = u32::try_from(self.parent_chain.len()).unwrap_or(u32::MAX);
+        parent_len.saturating_add(1)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    use crate::capability::{
+        delegate, CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    };
+    use crate::crypto::Keypair;
+
+    fn parent_token(parent_kp: &Keypair, subject_kp: &Keypair) -> CapabilityToken {
+        let scope = ChioScope {
+            grants: vec![ToolGrant {
+                server_id: "srv-a".to_string(),
+                tool_name: "tool-x".to_string(),
+                operations: vec![Operation::Invoke, Operation::Delegate],
+                constraints: vec![],
+                max_invocations: Some(10),
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            ..ChioScope::default()
+        };
+        let body = CapabilityTokenBody {
+            id: "cap-parent".to_string(),
+            issuer: parent_kp.public_key(),
+            subject: subject_kp.public_key(),
+            scope,
+            issued_at: 1000,
+            expires_at: 2000,
+            delegation_chain: vec![],
+        };
+        CapabilityToken::sign(body, parent_kp).unwrap()
+    }
+
+    fn child_scope() -> ChioScope {
+        ChioScope {
+            grants: vec![ToolGrant {
+                server_id: "srv-a".to_string(),
+                tool_name: "tool-x".to_string(),
+                operations: vec![Operation::Invoke],
+                constraints: vec![],
+                max_invocations: Some(5),
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            ..ChioScope::default()
+        }
+    }
+
+    fn mint(nonce: [u8; 16]) -> DelegationReceipt {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let parent = parent_token(&issuer, &subject);
+        delegate(
+            &parent,
+            &child_scope(),
+            &subject,
+            &delegatee.public_key(),
+            ScopeAttenuation::empty(),
+            1500,
+            nonce,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn receipt_canonical_bytes_round_trip() {
+        let receipt = mint([1_u8; 16]);
+        let bytes = receipt.canonical_bytes().unwrap();
+        let decoded: DelegationReceipt = serde_json::from_slice(bytes.as_bytes()).unwrap();
+        assert_eq!(decoded.parent_capability_id, receipt.parent_capability_id);
+        assert_eq!(decoded.signed_at, receipt.signed_at);
+        assert_eq!(decoded.nonce, receipt.nonce);
+        assert_eq!(
+            decoded.link.signature.to_hex(),
+            receipt.link.signature.to_hex()
+        );
+    }
+
+    #[test]
+    fn receipt_canonical_bytes_are_byte_stable() {
+        // Two receipts that differ only in nonce must produce different
+        // canonical byte strings, while two clones of the same receipt
+        // must serialize identically.
+        let a = mint([1_u8; 16]);
+        let b = a.clone();
+        assert_eq!(
+            a.canonical_bytes().unwrap().as_bytes(),
+            b.canonical_bytes().unwrap().as_bytes()
+        );
+        let c = mint([2_u8; 16]);
+        assert_ne!(
+            a.canonical_bytes().unwrap().as_bytes(),
+            c.canonical_bytes().unwrap().as_bytes()
+        );
+    }
+
+    #[test]
+    fn receipt_rejects_unknown_fields() {
+        let receipt = mint([3_u8; 16]);
+        let mut value: serde_json::Value =
+            serde_json::from_slice(receipt.canonical_bytes().unwrap().as_bytes()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("rogue".to_string(), serde_json::Value::Bool(true));
+        let bytes = serde_json::to_vec(&value).unwrap();
+        let parsed: core::result::Result<DelegationReceipt, serde_json::Error> =
+            serde_json::from_slice(&bytes);
+        assert!(parsed.is_err(), "unknown fields must reject (deny_unknown_fields)");
+    }
+
+    #[test]
+    fn nonce_round_trips_as_hex() {
+        let receipt = mint([0xAB_u8; 16]);
+        let bytes = receipt.canonical_bytes().unwrap();
+        let s = core::str::from_utf8(bytes.as_bytes()).unwrap();
+        // 16 bytes -> 32 hex chars.
+        assert!(s.contains("\"nonce\":\"abababababababababababababababab\""));
+    }
+
+    #[test]
+    fn nonce_rejects_wrong_length_hex() {
+        let receipt = mint([0xCD_u8; 16]);
+        let mut value: serde_json::Value =
+            serde_json::from_slice(receipt.canonical_bytes().unwrap().as_bytes()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("nonce".to_string(), serde_json::Value::String("dead".to_string()));
+        let bytes = serde_json::to_vec(&value).unwrap();
+        let parsed: core::result::Result<DelegationReceipt, serde_json::Error> =
+            serde_json::from_slice(&bytes);
+        assert!(parsed.is_err(), "short nonce hex must reject");
+    }
+
+    #[test]
+    fn complete_chain_appends_minted_link() {
+        let receipt = mint([4_u8; 16]);
+        let chain = receipt.complete_chain();
+        assert_eq!(chain.len(), receipt.parent_chain.len() + 1);
+        assert_eq!(chain.last().unwrap().signature.to_hex(), receipt.link.signature.to_hex());
+        assert_eq!(receipt.child_depth(), 1);
+    }
+
+    #[test]
+    fn scope_attenuation_helpers_default_and_from_steps() {
+        let empty = ScopeAttenuation::empty();
+        assert!(empty.steps.is_empty());
+        assert!(empty.child_expires_at.is_none());
+
+        let from_steps = ScopeAttenuation::from_steps(vec![
+            crate::capability::Attenuation::ShortenExpiry { new_expires_at: 1900 },
+        ]);
+        assert_eq!(from_steps.steps.len(), 1);
+        assert!(from_steps.child_expires_at.is_none());
+    }
 }
 
 /// Hex-encoded 16-byte nonce serializer. Keeps the on-wire encoding
