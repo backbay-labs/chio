@@ -1,3 +1,5 @@
+#![cfg(feature = "tee-quotes")]
+
 use std::time::{Duration, SystemTime};
 
 use chio_attest_verify::tdx::{TdxCollateral, TdxDcapVerifier};
