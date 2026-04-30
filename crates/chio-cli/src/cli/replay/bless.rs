@@ -4,18 +4,17 @@ fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
     let into = args.into.as_ref().ok_or_else(|| {
         CliError::cli_other_error("chio replay --bless requires --into <fixture-dir>".to_string())
     })?;
-    if args.tenant_pubkey.is_none() {
-        return Err(CliError::cli_other_error(
+    let Some(tenant_pubkey_path) = args.tenant_pubkey.as_deref() else {
+        return finish_replay_failure(
+            EXIT_BAD_TENANT_SIG,
             "chio replay --bless requires --tenant-pubkey".to_string(),
-        ));
-    }
+        );
+    };
 
     require_replay_bless_capability()?;
     let scenario = validate_replay_bless_into_path(into)?;
-    let tenant_pubkey = load_tenant_pubkey(args.tenant_pubkey.as_deref().ok_or_else(|| {
-        CliError::cli_other_error("chio replay --bless requires --tenant-pubkey".to_string())
-    })?)
-    .map_err(|error| CliError::cli_other_error(format!("failed to load tenant pubkey: {error}")))?;
+    let tenant_pubkey = load_tenant_pubkey(tenant_pubkey_path)
+        .map_err(|error| CliError::cli_other_error(format!("failed to load tenant pubkey: {error}")))?;
 
     let iter = open_ndjson(log).map_err(|error| {
         CliError::cli_io_error(format!(

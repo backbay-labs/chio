@@ -148,9 +148,10 @@ fn cmd_replay_traffic_with_against(args: &TrafficArgs, against_str: &str) -> Res
     let report = match run_traffic_replay(args, &against) {
         Ok(report) => report,
         Err(ExecuteError::MissingTenantPubkey) => {
-            return Err(CliError::cli_other_error(
+            return finish_replay_failure(
+                EXIT_BAD_TENANT_SIG,
                 "chio replay traffic --against requires --tenant-pubkey".to_string(),
-            ));
+            );
         }
         Err(ExecuteError::Capture { path, source }) => {
             return Err(CliError::cli_io_error(format!(

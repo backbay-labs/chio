@@ -27,9 +27,10 @@ fn cmd_replay(args: &ReplayArgs) -> Result<(), CliError> {
 /// exits with the canonical 0/10/20/30/40/50 code.
 fn cmd_replay_legacy(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
     if args.from_tee && args.tenant_pubkey.is_none() {
-        return Err(CliError::cli_other_error(
+        return finish_replay_failure(
+            EXIT_BAD_TENANT_SIG,
             "chio replay --from-tee requires --tenant-pubkey".to_string(),
-        ));
+        );
     }
     if !args.from_tee && args.trusted_kernel_pubkey.is_none() {
         return Err(CliError::cli_other_error(

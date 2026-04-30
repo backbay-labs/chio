@@ -118,10 +118,7 @@ pub fn run_traffic_replay(
     args: &TrafficArgs,
     against: &PolicyRef,
 ) -> Result<TrafficReplayReport, ExecuteError> {
-    // 1. Resolve the policy-ref.
-    let _resolved = against.resolve()?;
-    let loaded_policy = against.load_workspace_policy()?;
-    let against_label = against.label();
+    // 1. Require tenant verification before any replay comparison work.
     let tenant_pubkey = match args.tenant_pubkey.as_deref() {
         Some(path) => load_tenant_pubkey(path).map_err(|e| {
             ExecuteError::Other(format!("failed to load tenant pubkey: {e}"))
@@ -129,7 +126,12 @@ pub fn run_traffic_replay(
         None => return Err(ExecuteError::MissingTenantPubkey),
     };
 
-    // 2. Allocate a fresh replay partition so receipt ids are
+    // 2. Resolve the policy-ref.
+    let _resolved = against.resolve()?;
+    let loaded_policy = against.load_workspace_policy()?;
+    let against_label = against.label();
+
+    // 3. Allocate a fresh replay partition so receipt ids are
     //    namespace-isolated from production.
     let store_partition = match args.run_id.as_deref() {
         Some(id) => StorePartition::replay_with_run_id(id)?,
@@ -138,13 +140,13 @@ pub fn run_traffic_replay(
     let replay_partition = ReplayPartition::new(&store_partition)?;
     let run_id = replay_partition.run_id().to_string();
 
-    // 3. Sanity-check the bidirectional refusal: a production-flagged
+    // 4. Sanity-check the bidirectional refusal: a production-flagged
     //    write against this replay partition must error.
     debug_assert!(store_partition
         .ensure_compatible_with(&StorePartition::Production)
         .is_err());
 
-    // 4. Build the ephemeral kernel.
+    // 5. Build the ephemeral kernel.
     let kernel_kp = chio_core::crypto::Keypair::generate();
     let mut kernel = build_kernel(loaded_policy, &kernel_kp);
     // Register a stub tool server so capability evaluation has a
@@ -153,7 +155,7 @@ pub fn run_traffic_replay(
         id: REPLAY_STUB_SERVER_ID.to_string(),
     }));
 
-    // 5. Iterate the NDJSON stream.
+    // 6. Iterate the NDJSON stream.
     let iter = open_ndjson(&args.from).map_err(|e| ExecuteError::Capture {
         path: args.from.display().to_string(),
         source: e,
@@ -631,11 +633,12 @@ capabilities: {}
         let kp = signing_keypair();
         let frame = signed_frame(&kp, "01H7ZZZZZZZZZZZZZZZZZZZZZZ");
         let ndjson_path = write_capture(&[frame], dir.path());
+        let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
 
         let args = TrafficArgs {
             from: ndjson_path,
             schema: "chio-tee-frame.v1".to_string(),
-            tenant_pubkey: None,
+            tenant_pubkey: Some(tenant_pubkey),
             json: false,
             against: None,
             run_id: None,
@@ -656,6 +659,30 @@ capabilities: {}
         let kp = signing_keypair();
         let frame = signed_frame(&kp, "01H7ZZZZZZZZZZZZZZZZZZZZZZ");
         let ndjson_path = write_capture(&[frame], dir.path());
+        let tenant_pubkey = write_tenant_pubkey(dir.path(), &kp);
+
+        let args = TrafficArgs {
+            from: ndjson_path,
+            schema: "chio-tee-frame.v1".to_string(),
+            tenant_pubkey: Some(tenant_pubkey),
+            json: false,
+            against: None,
+            run_id: None,
+        };
+        let against = PolicyRef::parse("path:/no/such/policy.yaml").unwrap();
+        let err = run_traffic_replay(&args, &against).unwrap_err();
+        match err {
+            ExecuteError::PolicyRef(PolicyRefError::Load(_)) => {}
+            other => panic!("expected Load, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn run_traffic_replay_requires_tenant_key_before_policy_io() {
+        let dir = tempfile::tempdir().unwrap();
+        let kp = signing_keypair();
+        let frame = signed_frame(&kp, "01H7ZZZZZZZZZZZZZZZZZZZZZZ");
+        let ndjson_path = write_capture(&[frame], dir.path());
 
         let args = TrafficArgs {
             from: ndjson_path,
@@ -667,10 +694,7 @@ capabilities: {}
         };
         let against = PolicyRef::parse("path:/no/such/policy.yaml").unwrap();
         let err = run_traffic_replay(&args, &against).unwrap_err();
-        match err {
-            ExecuteError::PolicyRef(PolicyRefError::Load(_)) => {}
-            other => panic!("expected Load, got {other:?}"),
-        }
+        assert!(matches!(err, ExecuteError::MissingTenantPubkey));
     }
 
     #[test]
