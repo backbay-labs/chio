@@ -63,6 +63,9 @@ The required threats for the shipped Chio boundary are:
 | `wasm_guard_resource_exhaustion` | a malicious or buggy WASM guard module consumes unbounded CPU or memory | WASM guard runtime |
 | `pq_signature_downgrade` | an attacker substitutes a classical-only signature where a post-quantum protected artifact is required | receipt, capability, and compliance-certificate verification |
 | `tee_quote_forgery` | an attacker forges, replays, or misbinds a TEE quote to claim execution in a trusted runtime | hosted or native attestation verification |
+| `passkey_credential_theft` | an attacker steals or abuses a passkey-backed credential path to obtain fresh capabilities | passkey issuer, capability issuance |
+| `audience_confusion` | a capability minted for one audience is presented to another runtime or tool boundary | passkey issuer, kernel admission |
+| `weights_hash_spoof` | a provider lies about loaded model weights to satisfy a signed model-card check | provider binding, model-card verification |
 
 ### 2.1 Capability Token Theft
 
@@ -499,6 +502,88 @@ Residual risk:
   shipped verifier crate
 - TEE deployment claims currently depend on external operator evidence rather
   than independent Chio quote verification
+
+### 2.15 Passkey Credential Theft
+
+Attack:
+an attacker steals, compromises, or abuses a passkey-backed credential path
+and attempts to obtain fresh Chio capabilities from the issuer.
+
+Existing controls:
+
+- capabilities remain signed, time-bounded, and revocable
+- kernel admission verifies capability signatures before use
+
+Required mitigations:
+
+- passkey-backed browser flows **MUST** present WebAuthn assertions to a
+  server-side issuer rather than mint authority in the browser
+- browser clients **MUST NOT** hold root capability or issuer signing material
+- issuers **MUST** bind minted capabilities to the credential id, audience,
+  scope set, and short expiry
+- issuers **MUST** reject failed WebAuthn assertions and treat authenticator,
+  challenge, or origin ambiguity as fail-closed
+
+Residual risk:
+
+- a compromised authenticator or issuer account can still request fresh
+  capabilities until revocation propagates
+- phishing resistance depends on correct relying-party and origin
+  configuration by the deployment
+
+### 2.16 Audience Confusion
+
+Attack:
+a capability minted for one audience is replayed or presented to another
+runtime, hosted edge, or tool boundary that should not accept it.
+
+Existing controls:
+
+- Chio capabilities are signed artifacts with explicit scope and target data
+- kernel admission already evaluates the requested tool boundary before
+  invocation
+
+Required mitigations:
+
+- passkey-issued capabilities **MUST** carry an explicit audience in the
+  signed envelope
+- kernel verification **MUST** reject capabilities whose audience does not
+  match the target runtime or tool boundary
+- custody tests **SHOULD** include cross-audience presentation and envelope
+  bit-flip cases
+
+Residual risk:
+
+- deployments that reuse broad audience names across environments can create
+  operational confusion even when cryptographic checks are correct
+
+### 2.17 Weights Hash Spoof
+
+Attack:
+a provider claims to have loaded one model artifact while actually running a
+different weights blob, then relies on that false hash to satisfy model-card
+policy.
+
+Existing controls:
+
+- provider binding is mediated by the kernel before tool execution
+- Chio already has a shared attestation verifier path for signed provenance
+  evidence
+
+Required mitigations:
+
+- provider binding **MUST** require a signed model card when policy requires
+  weights identity
+- the signed card **MUST** bind the weights hash to allowed capabilities,
+  banned tools, issuer, and validity window
+- kernel binding **MUST** reject requested capabilities outside the card's
+  allowed set and any requested tool listed as banned
+
+Residual risk:
+
+- until providers expose independently recomputable loaded-weight hashes, a
+  malicious provider can lie about the loaded artifact before model-card
+  verification receives trustworthy input
 
 ## 3. Transport Security Requirements
 

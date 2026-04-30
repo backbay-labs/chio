@@ -64,6 +64,7 @@ fn threat_model_register_lists_required_threats_with_mitigations() {
     assert_eq!(threat_model.schema, "chio.threat-model.v1");
 
     let expected_threats = BTreeSet::from([
+        "audience_confusion".to_string(),
         "capability_token_theft".to_string(),
         "agent_velocity_abuse".to_string(),
         "behavioral_sequence_attack".to_string(),
@@ -71,6 +72,7 @@ fn threat_model_register_lists_required_threats_with_mitigations() {
         "delegation_chain_abuse".to_string(),
         "kernel_impersonation".to_string(),
         "native_channel_replay".to_string(),
+        "passkey_credential_theft".to_string(),
         "pii_phi_exposure".to_string(),
         "pq_signature_downgrade".to_string(),
         "resource_exhaustion_dos".to_string(),
@@ -78,6 +80,7 @@ fn threat_model_register_lists_required_threats_with_mitigations() {
         "tee_quote_forgery".to_string(),
         "tool_server_escape".to_string(),
         "wasm_guard_resource_exhaustion".to_string(),
+        "weights_hash_spoof".to_string(),
     ]);
 
     let mut seen = BTreeSet::new();

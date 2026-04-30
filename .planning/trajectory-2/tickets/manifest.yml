@@ -1431,7 +1431,7 @@
   milestone: M02
   phase: 5
   title: TypeScript node-http SDK driver under verdict_matrix/drivers/typescript
-  status: merged
+  status: pending
   effort_days: 1.5
   owner_glob:
     - crates/chio-conformance/verdict_matrix/drivers/typescript/**
@@ -1448,10 +1448,10 @@
   agent_role: spec-typescript
   review_required:
     - "@bb-connor"
-  first_commit_sha: e8f9331455f24200436654ed722fec14feb309b4
-  merged_sha: f1d5122687fa83cc44504dc5d367ec2175971800
+  first_commit_sha: null
+  merged_sha: null
   opened_ts: null
-  merged_ts: "2026-04-30T15:09:04Z"
+  merged_ts: null
 - id: M02.P5.T3
   milestone: M02
   phase: 5
@@ -1481,7 +1481,7 @@
   milestone: M02
   phase: 5
   title: Go SDK driver under verdict_matrix/drivers/go
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-conformance/verdict_matrix/drivers/go/**
@@ -1498,10 +1498,10 @@
   agent_role: spec-go
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: e8f9331455f24200436654ed722fec14feb309b4
+  merged_sha: f1d5122687fa83cc44504dc5d367ec2175971800
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T15:09:04Z"
 - id: M02.P5.T5
   milestone: M02
   phase: 5

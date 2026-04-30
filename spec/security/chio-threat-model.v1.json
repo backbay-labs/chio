@@ -342,6 +342,77 @@
         }
       ],
       "residualRisk": "Until platform quote verification lands, TEE deployment claims depend on external operator evidence and are not independently verified by Chio."
+    },
+    {
+      "id": "passkey_credential_theft",
+      "name": "Passkey credential theft",
+      "surfaces": [
+        "trust_control",
+        "native_chio",
+        "hosted_mcp"
+      ],
+      "mitigations": [
+        {
+          "status": "planned",
+          "control": "Browser clients present WebAuthn assertions to a server-side issuer instead of holding root capability or signing material."
+        },
+        {
+          "status": "planned",
+          "control": "Issued capabilities are short-lived, bound to the credential id, and revocable through the shared revocation surface."
+        },
+        {
+          "status": "planned",
+          "control": "Issuer verification rejects failed WebAuthn assertions and treats authenticator, challenge, or origin ambiguity as fail-closed."
+        }
+      ],
+      "residualRisk": "A compromised authenticator or issuer account can still request fresh capabilities until revocation propagates, and platform phishing resistance depends on correct relying-party and origin configuration."
+    },
+    {
+      "id": "audience_confusion",
+      "name": "Audience confusion",
+      "surfaces": [
+        "trust_control",
+        "native_chio",
+        "hosted_mcp"
+      ],
+      "mitigations": [
+        {
+          "status": "planned",
+          "control": "Passkey-issued capabilities carry an explicit audience and scope set in the signed envelope."
+        },
+        {
+          "status": "planned",
+          "control": "Kernel verification rejects capabilities whose audience does not match the target runtime or tool boundary."
+        },
+        {
+          "status": "planned",
+          "control": "Audience-confusion property tests exercise cross-audience presentation and envelope bit-flips."
+        }
+      ],
+      "residualRisk": "Deployments that reuse broad audience names across environments can still create operational confusion even when cryptographic envelope checks are correct."
+    },
+    {
+      "id": "weights_hash_spoof",
+      "name": "Weights hash spoof",
+      "surfaces": [
+        "kernel_to_tool",
+        "native_chio"
+      ],
+      "mitigations": [
+        {
+          "status": "planned",
+          "control": "Provider binding requires a signed model card that binds the weights hash to allowed capabilities, banned tools, issuer, and validity window."
+        },
+        {
+          "status": "planned",
+          "control": "The kernel refuses provider bind when the requested capability set is not a subset of the model card or when a banned tool is requested."
+        },
+        {
+          "status": "planned",
+          "control": "Model-card verification reuses the existing attestation verifier path instead of introducing a parallel signature root."
+        }
+      ],
+      "residualRisk": "Until providers expose independently recomputable loaded-weight hashes, a malicious provider can still lie about the loaded artifact before model-card verification receives trustworthy input."
     }
   ],
   "transportRequirements": {
