@@ -5,6 +5,7 @@
 pub mod clock;
 pub mod link;
 pub mod promote;
+pub mod rng;
 pub mod runtime;
 pub mod scenario;
 
@@ -16,6 +17,7 @@ pub use promote::{
     write_arena_bundle, ArenaBundleManifest, ArenaBundleSummary, ArenaManifestBundle,
     ArenaManifestVerdict, PromoteError, ARENA_MANIFEST_FILENAME,
 };
+pub use rng::{ArenaRng, RngError};
 pub use runtime::{ArenaReceipt, ArenaRun, ArenaRuntime, ArenaRuntimeError, KernelStepRequest};
 pub use scenario::{
     load_scenario, parse_scenario_str, DeterminismWitness, Scenario, ScenarioError, ScenarioStep,
