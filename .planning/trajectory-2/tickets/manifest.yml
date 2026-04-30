@@ -3154,7 +3154,7 @@
   milestone: M05
   phase: 0
   title: Pin toml direct dep on chio-attest-verify and arbitrary on chio-wasm-guards tests
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - crates/chio-attest-verify/Cargo.toml
@@ -3167,14 +3167,14 @@
   gate_check:
     cmd: cargo build -p chio-attest-verify --quiet && cargo build -p chio-wasm-guards --quiet && cargo tree -p chio-attest-verify --depth 1 | grep -q '^[├└]── toml '
     timeout_seconds: 600
-  worktree_branch: wave/W2/m05/p0.t1-cargo-lock-bump-toml-arbitrary
+  worktree_branch: wave/W2/m05/p0.t1-cargo-lock-bump-toml-arbitrary-v2
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9c622022bf4197e38f12e56bac72313bc9540a6a
+  merged_sha: e8fe0d2b47dc40ca8fc1c7eeab4cd170b7183fff
+  opened_ts: "2026-04-30T15:33:39Z"
+  merged_ts: "2026-04-30T15:43:42Z"
 - id: M05.P1.T1
   milestone: M05
   phase: 1
@@ -4470,7 +4470,7 @@
   milestone: M06
   phase: 4
   title: Criterion harness guard_pool_checkout_p99 feeding bench-regression gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-wasm-guards/benches/guard_pool_checkout_p99.rs
@@ -4489,10 +4489,10 @@
   agent_role: wasm-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"
 - id: M06.P5.T1
   milestone: M06
   phase: 5
@@ -4516,10 +4516,10 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: 2fa8986e6b11ba9e95416b2c8f68ddb119ef88ed
-  opened_ts: null
-  merged_ts: "2026-04-30T13:31:04Z"
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"
 - id: M06.P5.T2
   milestone: M06
   phase: 5
@@ -4541,15 +4541,15 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: 3fa0dd127cf700f4d9b5b7463959907a489c90d0
-  opened_ts: null
-  merged_ts: "2026-04-30T13:45:32Z"
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"
 - id: M06.P5.T3
   milestone: M06
   phase: 5
   title: Sustained 30-minute p99 nightly job across kernel + store + exporter stack (close gate is seven consecutive green nightly runs, not calendar time)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - .github/workflows/m06-sustained-p99-nightly.yml
@@ -4568,15 +4568,15 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"
 - id: M06.P5.T4
   milestone: M06
   phase: 5
   title: Final audit-doc pass with after-counts and p99 deltas per metric
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .planning/audits/M06-perf-hardening.md
@@ -4592,10 +4592,10 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"
 - id: M07.P0.T1
   milestone: M07
   phase: 0

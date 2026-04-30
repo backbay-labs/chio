@@ -13,7 +13,7 @@
   milestone: M05
   phase: 0
   title: Pin toml direct dep on chio-attest-verify and arbitrary on chio-wasm-guards tests
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - crates/chio-attest-verify/Cargo.toml
@@ -26,11 +26,11 @@
   gate_check:
     cmd: cargo build -p chio-attest-verify --quiet && cargo build -p chio-wasm-guards --quiet && cargo tree -p chio-attest-verify --depth 1 | grep -q '^[├└]── toml '
     timeout_seconds: 600
-  worktree_branch: wave/W2/m05/p0.t1-cargo-lock-bump-toml-arbitrary
+  worktree_branch: wave/W2/m05/p0.t1-cargo-lock-bump-toml-arbitrary-v2
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9c622022bf4197e38f12e56bac72313bc9540a6a
+  merged_sha: e8fe0d2b47dc40ca8fc1c7eeab4cd170b7183fff
+  opened_ts: "2026-04-30T15:33:39Z"
+  merged_ts: "2026-04-30T15:43:42Z"

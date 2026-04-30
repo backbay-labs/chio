@@ -137,7 +137,7 @@
   milestone: M06
   phase: 4
   title: Criterion harness guard_pool_checkout_p99 feeding bench-regression gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-wasm-guards/benches/guard_pool_checkout_p99.rs
@@ -156,7 +156,7 @@
   agent_role: wasm-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"

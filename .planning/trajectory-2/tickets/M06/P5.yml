@@ -27,10 +27,10 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: 2fa8986e6b11ba9e95416b2c8f68ddb119ef88ed
-  opened_ts: null
-  merged_ts: "2026-04-30T13:31:04Z"
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"
 
 - id: M06.P5.T2
   milestone: M06
@@ -53,16 +53,16 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: 3fa0dd127cf700f4d9b5b7463959907a489c90d0
-  opened_ts: null
-  merged_ts: "2026-04-30T13:45:32Z"
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"
 
 - id: M06.P5.T3
   milestone: M06
   phase: 5
   title: Sustained 30-minute p99 nightly job across kernel + store + exporter stack (close gate is seven consecutive green nightly runs, not calendar time)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - .github/workflows/m06-sustained-p99-nightly.yml
@@ -81,16 +81,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"
 
 - id: M06.P5.T4
   milestone: M06
   phase: 5
   title: Final audit-doc pass with after-counts and p99 deltas per metric
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .planning/audits/M06-perf-hardening.md
@@ -106,7 +106,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 90ad9132a1d52d0e879377db1ebf7478550a2c6e
+  merged_sha: 1e2a609714dcb33436ec15dff16e3d6e5b3d2a6d
+  opened_ts: "2026-04-30T15:58:57Z"
+  merged_ts: "2026-04-30T16:04:00Z"

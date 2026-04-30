@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-2",
   "started_at": "2026-04-29T17:50:25.052347Z",
-  "last_checkpoint_at": "2026-04-30T15:09:52Z",
+  "last_checkpoint_at": "2026-04-30T16:06:10Z",
   "current_wave": "W1",
   "halt": {
     "halted": false,
@@ -42,8 +42,8 @@
       "trust_boundary": true
     },
     "M06": {
-      "status": "in_progress",
-      "phase": "P4",
+      "status": "complete",
+      "phase": "complete",
       "owner_branch": null,
       "trust_boundary": false
     },
