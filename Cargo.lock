@@ -12695,6 +12695,7 @@ version = "0.1.0"
 dependencies = [
  "chio-spec-codegen",
  "chio-spec-validate",
+ "jsonschema",
  "serde",
  "serde_json",
  "serde_yml",
