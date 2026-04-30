@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "chio.lineage.graph/v1",
+  "title": "Chio lineage DAG (v1)",
+  "description": "M09 P5.T1 schema. Graph rows are projections over signed receipts, request lineage, capability lineage, and signed receipt-lineage statements. Evidence-class is mandatory per node and edge. Truncation marker is required on bounded query results that exceed the documented depth or row caps.",
+  "type": "object",
+  "required": ["schema_version", "nodes", "edges"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "chio.lineage.graph/v1"
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Edge" }
+    },
+    "truncated": { "$ref": "#/definitions/TruncationMarker" }
+  },
+  "definitions": {
+    "EvidenceClass": {
+      "type": "string",
+      "description": "Mirrors the protocol provenance evidence classes. Asserted is caller-supplied. Observed is local kernel runtime truth. Verified is signed or proof-checked.",
+      "enum": ["asserted", "observed", "verified"]
+    },
+    "NodeKind": {
+      "type": "string",
+      "enum": ["prompt", "capability", "guard_verdict", "tool_call", "receipt"]
+    },
+    "EdgeKind": {
+      "type": "string",
+      "enum": [
+        "prompt_to_capability",
+        "capability_parent",
+        "capability_to_guard",
+        "guard_to_tool_call",
+        "tool_call_to_receipt",
+        "receipt_to_child_request",
+        "request_to_request",
+        "receipt_lineage_parent"
+      ]
+    },
+    "Node": {
+      "type": "object",
+      "required": ["id", "kind", "evidence_class"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "$ref": "#/definitions/NodeKind" },
+        "evidence_class": { "$ref": "#/definitions/EvidenceClass" },
+        "tenant_id": { "type": ["string", "null"] },
+        "recorded_at": { "type": ["integer", "null"] },
+        "label": { "type": ["string", "null"] },
+        "source_table": { "type": ["string", "null"] },
+        "source_id": { "type": ["string", "null"] }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "required": ["from", "to", "kind", "evidence_class"],
+      "additionalProperties": true,
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "kind": { "$ref": "#/definitions/EdgeKind" },
+        "evidence_class": { "$ref": "#/definitions/EvidenceClass" },
+        "source_table": { "type": ["string", "null"] },
+        "source_id": { "type": ["string", "null"] },
+        "tenant_id": { "type": ["string", "null"] },
+        "recorded_at": { "type": ["integer", "null"] }
+      }
+    },
+    "TruncationMarker": {
+      "type": "object",
+      "description": "Emitted when recursive-CTE query depth is bounded. Shape is fixed.",
+      "required": ["truncated", "depth_reached", "limit"],
+      "additionalProperties": false,
+      "properties": {
+        "truncated": { "type": "boolean", "const": true },
+        "depth_reached": { "type": "integer", "minimum": 0 },
+        "limit": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
