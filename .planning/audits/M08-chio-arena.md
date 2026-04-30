@@ -165,5 +165,15 @@ Commands used while creating this snapshot:
 - `rg -n "M04Scenario|write_m04_fixture|RECEIPTS_FILENAME|CHECKPOINT_FILENAME|ROOT_FILENAME|M04ByteSizes" crates/chio-replay-corpus/src/m04_writer.rs tests/replay`
 - `rg -n "Arc<ChioKernel>|evaluate_tool_call|async fn evaluate_tool_call|&mut self|ChioKernel" crates/chio-kernel/src/kernel/mod.rs crates/chio-kernel/src/lib.rs`
 
+P1 walking-skeleton evidence:
+
+- `cargo test -p chio-arena --test walking_skeleton -- --nocapture` loads
+  `arena/scenarios/walking_skeleton.toml`, drives one `ChioKernel`, and
+  writes an M04-shaped bundle with `receipts.ndjson`, `checkpoint.json`,
+  `root.hex`, and sibling `arena.json`.
+- The P1 test intentionally does not invoke the `chio replay` CLI. CLI
+  wiring is scoped to M08.P5, so P1 keeps a focused bundle-shape gate and
+  preserves replay-engine ownership in `chio-replay-corpus` and `chio-cli`.
+
 This file is prose-only and does not modify ticket state, execution state,
 the generated manifest, Cargo files, or code.

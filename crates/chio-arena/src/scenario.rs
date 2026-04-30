@@ -272,7 +272,10 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), ScenarioError> {
 
     for guard in &scenario.guards {
         validate_id(&guard.id)?;
-        reject_inline_secret(&format!("guards.{}.config_ref", guard.id), &guard.config_ref)?;
+        reject_inline_secret(
+            &format!("guards.{}.config_ref", guard.id),
+            &guard.config_ref,
+        )?;
     }
 
     for adversary in &scenario.adversaries {
@@ -356,7 +359,10 @@ impl SecretScan for &Value {
             Value::Object(values) => {
                 for (key, value) in values {
                     let lower_key = key.to_ascii_lowercase();
-                    if SECRET_MARKERS.iter().any(|marker| lower_key.contains(marker)) {
+                    if SECRET_MARKERS
+                        .iter()
+                        .any(|marker| lower_key.contains(marker))
+                    {
                         return Err(ScenarioError::InlineSecret {
                             path: format!("{path}.{key}"),
                         });

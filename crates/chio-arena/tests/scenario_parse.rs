@@ -72,10 +72,7 @@ fn rejects_unknown_top_level_fields() {
 
 #[test]
 fn rejects_unknown_major_schema_version() {
-    let input = valid_scenario().replace(
-        "chio.arena.scenario/v1",
-        "chio.arena.scenario/v2",
-    );
+    let input = valid_scenario().replace("chio.arena.scenario/v1", "chio.arena.scenario/v2");
     let err = parse_scenario_str(&input).err();
     assert!(matches!(
         err,
@@ -104,7 +101,10 @@ fn rejects_witness_mismatch() {
 fn rejects_unknown_step_agent() {
     let input = valid_scenario().replace("agent = \"agent-a\"", "agent = \"agent-b\"");
     let err = parse_scenario_str(&input).err();
-    assert!(matches!(err, Some(ScenarioError::UnknownBudgetAgent { .. })));
+    assert!(matches!(
+        err,
+        Some(ScenarioError::UnknownBudgetAgent { .. })
+    ));
 }
 
 #[test]

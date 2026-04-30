@@ -1,74 +1,28 @@
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 
-use chio_arena::{parse_scenario_str, ArenaRuntime, KernelStepRequest, ScenarioVerdict};
+use chio_arena::{
+    load_scenario, write_arena_bundle, ArenaRuntime, KernelStepRequest, ScenarioVerdict,
+    ARENA_MANIFEST_FILENAME,
+};
 use chio_core::{ChioScope, Keypair, Operation, ToolGrant};
 use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
+use chio_replay_corpus::{CHECKPOINT_FILENAME, RECEIPTS_FILENAME, ROOT_FILENAME};
 use serde_json::json;
 
-fn scenario_toml() -> &'static str {
-    r#"
-schema_version = "chio.arena.scenario/v1"
-id = "walking_skeleton"
-title = "Single-agent walking skeleton"
-rng_seed = 42
-virtual_clock_start = "2026-04-30T00:00:00.000Z"
-
-[determinism]
-rng_seed = 42
-virtual_clock_start = "2026-04-30T00:00:00.000Z"
-scheduler = "single-agent-v1"
-locale = "C"
-
-[[agents]]
-id = "agent-a"
-role = "operator"
-model = "recorded:test-agent"
-seed_prompt_ref = "prompts/walking-skeleton.txt"
-
-[[steps]]
-id = "step-1"
-agent = "agent-a"
-server = "filesystem"
-tool = "read_file"
-arguments = { path = "/tmp/chio-arena.txt" }
-expect_verdict = "allow"
-"#
-}
-
-struct EchoServer {
-    id: String,
-}
-
-impl ToolServerConnection for EchoServer {
-    fn server_id(&self) -> &str {
-        &self.id
-    }
-
-    fn tool_names(&self) -> Vec<String> {
-        vec!["read_file".to_string()]
-    }
-
-    fn invoke(
-        &self,
-        tool_name: &str,
-        arguments: serde_json::Value,
-        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
-    ) -> Result<serde_json::Value, KernelError> {
-        Ok(json!({
-            "tool": tool_name,
-            "echo": arguments,
-        }))
-    }
-}
-
 #[tokio::test]
-async fn runs_single_agent_scenario_and_collects_signed_receipt(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let scenario = parse_scenario_str(scenario_toml())?;
+async fn walking_skeleton_loads_runs_and_writes_m04_shape() -> Result<(), Box<dyn std::error::Error>>
+{
+    let scenario_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("arena/scenarios/walking_skeleton.toml");
+    let scenario = load_scenario(scenario_path)?;
     let subject = Keypair::generate();
     let mut kernel = ChioKernel::new(kernel_config());
     kernel.register_tool_server(Box::new(EchoServer {
@@ -97,7 +51,7 @@ async fn runs_single_agent_scenario_and_collects_signed_receipt(
         tool_name: "read_file".to_string(),
         server_id: "filesystem".to_string(),
         agent_id: capability.subject.to_hex(),
-        arguments: json!({ "path": "/tmp/chio-arena.txt" }),
+        arguments: scenario.steps[0].arguments.clone(),
         dpop_proof: None,
         governed_intent: None,
         approval_token: None,
@@ -115,17 +69,53 @@ async fn runs_single_agent_scenario_and_collects_signed_receipt(
             }],
         )
         .await?;
-
-    assert_eq!(run.scenario_id, "walking_skeleton");
     assert_eq!(run.receipts.len(), 1);
-    let receipt = &run.receipts[0];
-    assert_eq!(receipt.step_id, "step-1");
-    assert_eq!(receipt.request_id, "arena-request-1");
-    assert_eq!(receipt.verdict, ScenarioVerdict::Allow);
-    assert_eq!(receipt.receipt.tool_server, "filesystem");
-    assert_eq!(receipt.receipt.tool_name, "read_file");
-    assert!(!receipt.receipt.id.is_empty());
+    assert_eq!(run.receipts[0].verdict, ScenarioVerdict::Allow);
+
+    let tmp = tempfile::TempDir::new()?;
+    let fixture_dir = tmp.path().join("arena").join(&scenario.id);
+    let summary = write_arena_bundle(&fixture_dir, &scenario, &run)?;
+
+    assert_eq!(summary.receipt_count, 1);
+    let file_names = fs::read_dir(&fixture_dir)?
+        .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
+        .collect::<Result<BTreeSet<_>, std::io::Error>>()?;
+    assert_eq!(
+        file_names,
+        BTreeSet::from([
+            ARENA_MANIFEST_FILENAME.to_string(),
+            CHECKPOINT_FILENAME.to_string(),
+            RECEIPTS_FILENAME.to_string(),
+            ROOT_FILENAME.to_string(),
+        ])
+    );
     Ok(())
+}
+
+struct EchoServer {
+    id: String,
+}
+
+impl ToolServerConnection for EchoServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["read_file".to_string()]
+    }
+
+    fn invoke(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Ok(json!({
+            "tool": tool_name,
+            "echo": arguments,
+        }))
+    }
 }
 
 fn kernel_config() -> KernelConfig {
