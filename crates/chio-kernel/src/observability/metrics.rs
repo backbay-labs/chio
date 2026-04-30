@@ -1,6 +1,8 @@
 //! Prometheus text exposition for guard metrics.
 
-use crate::kernel::signing_task::METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL;
+use crate::kernel::signing_task::{
+    signing_queue_block_total, METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+};
 
 pub const GUARD_METRICS_PATH: &str = "/metrics";
 pub const PROMETHEUS_TEXT_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
@@ -174,7 +176,16 @@ pub fn render_guard_metrics_prometheus() -> String {
 fn render_scalar_family(output: &mut String, family: &GuardMetricFamily) {
     output.push_str(family.name);
     output.push_str(&render_empty_labels(family.labels));
-    output.push_str(" 0\n");
+    output.push(' ');
+    output.push_str(&scalar_metric_value(family).to_string());
+    output.push('\n');
+}
+
+fn scalar_metric_value(family: &GuardMetricFamily) -> u64 {
+    match family.name {
+        METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL => signing_queue_block_total(),
+        _ => 0,
+    }
 }
 
 fn render_histogram_family(output: &mut String, family: &GuardMetricFamily) {
