@@ -141,8 +141,39 @@ pub trait AttestVerifier: Send + Sync {
 }
 
 /// The single trait every TEE quote backend implements against.
+///
+/// # Trust boundary
+///
+/// Every implementation of [`QuoteVerifier::verify_quote`] is fail-closed.
+/// A method that returns `Ok(VerifiedQuote)` MUST mean that:
+///
+/// - the quote envelope was parsed and matched the backend's TEE kind,
+/// - the backend's collateral (TDX DCAP, SEV-SNP VLEK / VCEK, Nitro NSM
+///   root) chained to its trusted root,
+/// - the TCB status is acceptable per [`QuoteTcbStatus::is_acceptable`],
+/// - and the 64-byte `report_data` slot byte-matches the expected
+///   binding produced by [`expect_report_data`] for the supplied kernel
+///   signing key and receipt root.
+///
+/// Any input that does not satisfy all of those properties yields one
+/// of the [`AttestError`] variants ([`AttestError::ReportDataMismatch`],
+/// [`AttestError::QuoteRejected`], [`AttestError::TrustRoot`],
+/// [`AttestError::CertificateExpired`], or [`AttestError::Malformed`]).
+/// There is no path through any backend that returns `Ok(_)` on a
+/// partial verification.
+///
+/// # Downstream consumers
+///
+/// - M04 revocation oracle roots bind a revocation root to the kernel
+///   that signed it through [`VerifiedQuote::report_data`].
+/// - M10 hardware custody envelopes attest that the kernel taking
+///   custody runs inside a known-good TEE.
 pub trait QuoteVerifier: Send + Sync {
-    /// Verify a raw TEE quote and bind it to the kernel key plus receipt root.
+    /// Verify a raw TEE quote and bind it to the kernel key plus
+    /// receipt root. The `quote` byte slice is the on-the-wire envelope
+    /// produced by the TEE; the `context` carries the kernel signing
+    /// key and receipt root every backend MUST commit into `report_data`
+    /// before declaring success.
     fn verify_quote(
         &self,
         quote: &[u8],
