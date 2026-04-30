@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
+use std::sync::mpsc;
 use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::{canonical_json_bytes, CanonicalBytes};
@@ -88,6 +91,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub struct SqliteReceiptStore {
     pub(crate) pool: Pool<SqliteConnectionManager>,
+    receipt_commit_actor: ReceiptCommitActor,
     /// Phase 1.5 multi-tenant receipt isolation: when true, tenant-
     /// scoped queries exclude the pre-multitenant NULL-tagged set. When
     /// false, queries with `tenant_filter = Some(id)` return rows where
@@ -102,6 +106,185 @@ type FederatedShareSubjectCorpus = (
     Vec<CapabilitySnapshot>,
 );
 pub(crate) type SqliteStoreConnection = PooledConnection<SqliteConnectionManager>;
+
+const RECEIPT_GROUP_COMMIT_MAX_BATCH: usize = 64;
+const RECEIPT_GROUP_COMMIT_FLUSH_DELAY: Duration = Duration::from_micros(500);
+
+struct ReceiptCommitActor {
+    sender: mpsc::Sender<ReceiptCommitCommand>,
+}
+
+struct ReceiptCommitRequest {
+    receipt: ChioReceipt,
+    raw_json: String,
+    response: mpsc::SyncSender<Result<u64, ReceiptStoreError>>,
+}
+
+enum ReceiptCommitCommand {
+    Append(Box<ReceiptCommitRequest>),
+    Flush(mpsc::SyncSender<Result<(), ReceiptStoreError>>),
+}
+
+impl ReceiptCommitActor {
+    fn start(pool: Pool<SqliteConnectionManager>) -> Self {
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || receipt_commit_actor_loop(pool, receiver));
+        Self { sender }
+    }
+
+    fn append(&self, receipt: ChioReceipt, raw_json: String) -> Result<u64, ReceiptStoreError> {
+        let (response, result) = mpsc::sync_channel(1);
+        self.sender
+            .send(ReceiptCommitCommand::Append(Box::new(
+                ReceiptCommitRequest {
+                    receipt,
+                    raw_json,
+                    response,
+                },
+            )))
+            .map_err(|_| receipt_actor_unavailable_error())?;
+        result
+            .recv()
+            .map_err(|_| receipt_actor_unavailable_error())?
+    }
+
+    fn flush(&self) -> Result<(), ReceiptStoreError> {
+        let (response, result) = mpsc::sync_channel(1);
+        self.sender
+            .send(ReceiptCommitCommand::Flush(response))
+            .map_err(|_| receipt_actor_unavailable_error())?;
+        result
+            .recv()
+            .map_err(|_| receipt_actor_unavailable_error())?
+    }
+}
+
+fn receipt_actor_unavailable_error() -> ReceiptStoreError {
+    ReceiptStoreError::Pool("sqlite receipt commit actor is unavailable".to_string())
+}
+
+fn receipt_commit_actor_loop(
+    pool: Pool<SqliteConnectionManager>,
+    receiver: mpsc::Receiver<ReceiptCommitCommand>,
+) {
+    while let Ok(command) = receiver.recv() {
+        match command {
+            ReceiptCommitCommand::Append(request) => {
+                let mut requests = vec![*request];
+                let mut flushes = Vec::new();
+                while requests.len() < RECEIPT_GROUP_COMMIT_MAX_BATCH {
+                    match receiver.recv_timeout(RECEIPT_GROUP_COMMIT_FLUSH_DELAY) {
+                        Ok(ReceiptCommitCommand::Append(request)) => requests.push(*request),
+                        Ok(ReceiptCommitCommand::Flush(response)) => {
+                            flushes.push(response);
+                            break;
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => break,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+                commit_receipt_batch(&pool, requests, flushes);
+            }
+            ReceiptCommitCommand::Flush(response) => {
+                let _ = response.send(Ok(()));
+            }
+        }
+    }
+}
+
+fn commit_receipt_batch(
+    pool: &Pool<SqliteConnectionManager>,
+    requests: Vec<ReceiptCommitRequest>,
+    flushes: Vec<mpsc::SyncSender<Result<(), ReceiptStoreError>>>,
+) {
+    let results = append_receipt_batch(pool, &requests);
+    let flush_error = results
+        .iter()
+        .find_map(|result| result.as_ref().err().map(receipt_store_error_snapshot));
+    for (request, result) in requests.into_iter().zip(results) {
+        let _ = request.response.send(result);
+    }
+    for response in flushes {
+        let result = match &flush_error {
+            Some(error) => Err(receipt_store_error_snapshot(error)),
+            None => Ok(()),
+        };
+        let _ = response.send(result);
+    }
+}
+
+fn append_receipt_batch(
+    pool: &Pool<SqliteConnectionManager>,
+    requests: &[ReceiptCommitRequest],
+) -> Vec<Result<u64, ReceiptStoreError>> {
+    let mut connection = match pool.get() {
+        Ok(connection) => connection,
+        Err(error) => {
+            return receipt_batch_error_results(
+                requests.len(),
+                ReceiptStoreError::Pool(error.to_string()),
+            );
+        }
+    };
+    let tx = match connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+        Ok(tx) => tx,
+        Err(error) => {
+            return receipt_batch_error_results(requests.len(), ReceiptStoreError::Sqlite(error));
+        }
+    };
+    let mut results = Vec::with_capacity(requests.len());
+    for request in requests {
+        match append_chio_receipt_tx(&tx, &request.receipt, &request.raw_json) {
+            Ok(seq) => results.push(Ok(seq)),
+            Err(error) => return receipt_batch_error_results(requests.len(), error),
+        }
+    }
+    match tx.commit() {
+        Ok(()) => results,
+        Err(error) => receipt_batch_error_results(requests.len(), ReceiptStoreError::Sqlite(error)),
+    }
+}
+
+fn receipt_batch_error_results(
+    count: usize,
+    error: ReceiptStoreError,
+) -> Vec<Result<u64, ReceiptStoreError>> {
+    let snapshot = receipt_store_error_snapshot(&error);
+    let mut original = Some(error);
+    (0..count)
+        .map(|_| {
+            Err(original
+                .take()
+                .unwrap_or_else(|| receipt_store_error_snapshot(&snapshot)))
+        })
+        .collect()
+}
+
+fn receipt_store_error_snapshot(error: &ReceiptStoreError) -> ReceiptStoreError {
+    match error {
+        ReceiptStoreError::Sqlite(error) => {
+            ReceiptStoreError::Sqlite(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                std::io::Error::other(error.to_string()),
+            )))
+        }
+        ReceiptStoreError::Pool(message) => ReceiptStoreError::Pool(message.clone()),
+        ReceiptStoreError::Json(error) => ReceiptStoreError::Json(serde_json::Error::io(
+            std::io::Error::other(error.to_string()),
+        )),
+        ReceiptStoreError::Io(error) => {
+            ReceiptStoreError::Io(std::io::Error::new(error.kind(), error.to_string()))
+        }
+        ReceiptStoreError::CryptoDecode(message) => {
+            ReceiptStoreError::CryptoDecode(message.clone())
+        }
+        ReceiptStoreError::Canonical(message) => ReceiptStoreError::Canonical(message.clone()),
+        ReceiptStoreError::InvalidOutcome(message) => {
+            ReceiptStoreError::InvalidOutcome(message.clone())
+        }
+        ReceiptStoreError::Conflict(message) => ReceiptStoreError::Conflict(message.clone()),
+        ReceiptStoreError::NotFound(message) => ReceiptStoreError::NotFound(message.clone()),
+    }
+}
 
 #[path = "receipt_store/bootstrap.rs"]
 mod bootstrap;
@@ -194,90 +377,100 @@ impl SqliteReceiptStore {
         raw_json: &str,
     ) -> Result<u64, ReceiptStoreError> {
         ensure_chio_receipt_verified(receipt)?;
-        let attribution = extract_receipt_attribution(receipt);
-        let mut connection = self.connection()?;
-        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let mut subject_key = attribution.subject_key;
-        let mut issuer_key = attribution.issuer_key;
-        if subject_key.is_none() || issuer_key.is_none() {
-            if let Some((lineage_subject_key, lineage_issuer_key)) = tx
-                .query_row(
-                    "SELECT subject_key, issuer_key FROM capability_lineage WHERE capability_id = ?1",
-                    params![receipt.capability_id.as_str()],
-                    |row| {
-                        Ok((
-                            row.get::<_, Option<String>>(0)?,
-                            row.get::<_, Option<String>>(1)?,
-                        ))
-                    },
-                )
-                .optional()?
-            {
-                if subject_key.is_none() {
-                    subject_key = lineage_subject_key;
-                }
-                if issuer_key.is_none() {
-                    issuer_key = lineage_issuer_key;
-                }
+        sqlite_i64(receipt.timestamp, "receipt timestamp")?;
+        self.receipt_commit_actor
+            .append(receipt.clone(), raw_json.to_string())
+    }
+
+    pub fn flush_receipt_writes(&self) -> Result<(), ReceiptStoreError> {
+        self.receipt_commit_actor.flush()
+    }
+}
+
+fn append_chio_receipt_tx(
+    tx: &rusqlite::Transaction<'_>,
+    receipt: &ChioReceipt,
+    raw_json: &str,
+) -> Result<u64, ReceiptStoreError> {
+    let attribution = extract_receipt_attribution(receipt);
+    let mut subject_key = attribution.subject_key;
+    let mut issuer_key = attribution.issuer_key;
+    if subject_key.is_none() || issuer_key.is_none() {
+        if let Some((lineage_subject_key, lineage_issuer_key)) = tx
+            .query_row(
+                "SELECT subject_key, issuer_key FROM capability_lineage WHERE capability_id = ?1",
+                params![receipt.capability_id.as_str()],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                },
+            )
+            .optional()?
+        {
+            if subject_key.is_none() {
+                subject_key = lineage_subject_key;
+            }
+            if issuer_key.is_none() {
+                issuer_key = lineage_issuer_key;
             }
         }
-        let inserted = tx.execute(
-            r#"
-            INSERT INTO chio_tool_receipts (
-                receipt_id,
-                timestamp,
-                capability_id,
-                subject_key,
-                issuer_key,
-                grant_index,
-                tool_server,
-                tool_name,
-                decision_kind,
-                policy_hash,
-                content_hash,
-                tenant_id,
-                raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(receipt_id) DO NOTHING
-            "#,
-            params![
-                receipt.id.as_str(),
-                sqlite_i64(receipt.timestamp, "receipt timestamp")?,
-                receipt.capability_id.as_str(),
-                subject_key,
-                issuer_key,
-                attribution.grant_index.map(i64::from),
-                receipt.tool_server.as_str(),
-                receipt.tool_name.as_str(),
-                decision_kind(&receipt.decision),
-                receipt.policy_hash.as_str(),
-                receipt.content_hash.as_str(),
-                receipt.tenant_id.as_deref(),
-                raw_json,
-            ],
-        )?;
-        if inserted == 0 {
-            tx.commit()?;
-            return Ok(0);
-        }
-        let source_seq = tx.query_row(
-            "SELECT seq FROM chio_tool_receipts WHERE receipt_id = ?1",
-            params![receipt.id.as_str()],
-            |row| row.get::<_, i64>(0),
-        )?;
-        let source_seq = sqlite_u64(source_seq, "tool receipt source_seq")?;
-        let entry_seq = tx.query_row(
-            r#"
-            SELECT entry_seq
-            FROM claim_receipt_log_entries
-            WHERE receipt_kind = 'tool_receipt' AND source_seq = ?1
-            "#,
-            params![sqlite_i64(source_seq, "tool receipt source_seq")?],
-            |row| row.get::<_, i64>(0),
-        )?;
-        tx.commit()?;
-        sqlite_u64(entry_seq, "tool receipt claim log entry_seq")
     }
+    let inserted = tx.execute(
+        r#"
+        INSERT INTO chio_tool_receipts (
+            receipt_id,
+            timestamp,
+            capability_id,
+            subject_key,
+            issuer_key,
+            grant_index,
+            tool_server,
+            tool_name,
+            decision_kind,
+            policy_hash,
+            content_hash,
+            tenant_id,
+            raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(receipt_id) DO NOTHING
+        "#,
+        params![
+            receipt.id.as_str(),
+            sqlite_i64(receipt.timestamp, "receipt timestamp")?,
+            receipt.capability_id.as_str(),
+            subject_key,
+            issuer_key,
+            attribution.grant_index.map(i64::from),
+            receipt.tool_server.as_str(),
+            receipt.tool_name.as_str(),
+            decision_kind(&receipt.decision),
+            receipt.policy_hash.as_str(),
+            receipt.content_hash.as_str(),
+            receipt.tenant_id.as_deref(),
+            raw_json,
+        ],
+    )?;
+    if inserted == 0 {
+        return Ok(0);
+    }
+    let source_seq = tx.query_row(
+        "SELECT seq FROM chio_tool_receipts WHERE receipt_id = ?1",
+        params![receipt.id.as_str()],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let source_seq = sqlite_u64(source_seq, "tool receipt source_seq")?;
+    let entry_seq = tx.query_row(
+        r#"
+        SELECT entry_seq
+        FROM claim_receipt_log_entries
+        WHERE receipt_kind = 'tool_receipt' AND source_seq = ?1
+        "#,
+        params![sqlite_i64(source_seq, "tool receipt source_seq")?],
+        |row| row.get::<_, i64>(0),
+    )?;
+    sqlite_u64(entry_seq, "tool receipt claim log entry_seq")
 }
 
 fn decode_canonical_chio_receipt(

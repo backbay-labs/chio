@@ -937,6 +937,7 @@ impl SqliteReceiptStore {
             .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
 
         Ok(Self {
+            receipt_commit_actor: ReceiptCommitActor::start(pool.clone()),
             pool,
             strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
         })
