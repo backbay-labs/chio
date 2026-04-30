@@ -23,6 +23,16 @@ status = "active"
 entrypoint = "drivers/rust"
 command = "cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet"
 
+[drivers.python-sdk]
+status = "partial-capability"
+entrypoint = "drivers/python"
+command = "cd sdks/python/chio-sdk-python && python -m pytest tests/test_verdict_matrix.py -q"
+
+[drivers.go-http-sdk]
+status = "unsupported-no-local-verdict-emitter"
+entrypoint = "drivers/go"
+command = "cd sdks/go/chio-go-http && go test -run VerdictMatrix ./..."
+
 [oracle]
 tuple_fields = ["verdict", "reason_code", "scope_set"]
 reason_registry = "spec/errors/registry.yaml"

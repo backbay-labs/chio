@@ -44,6 +44,19 @@ The Rust driver fails closed:
 - unsupported scenario requirements are reported as unsupported
 - revocation, replay, scope, and guard denials produce deny or error tuples
 
+## Python and Go Driver Boundaries
+
+The Python SDK driver currently emits actual tuples only for capability subset
+scenarios. It issues a mock SDK capability, evaluates the requested tool call
+through `MockChioClient`, and derives the tuple from the returned receipt
+decision. Revocation, replay, and redaction scenarios are reported as
+unsupported until those verdict-emitting SDK surfaces exist locally.
+
+The Go HTTP SDK driver reports the current corpus as unsupported. The Go HTTP
+SDK forwards requests to a sidecar and decodes the sidecar verdict; it does not
+yet contain a local semantic verdict emitter for scope, revocation, replay, or
+redaction matrix scenarios.
+
 ## Rust Driver Boundary
 
 The Rust driver evaluates scenarios through an in-process `ChioKernel`. It
