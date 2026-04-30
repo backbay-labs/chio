@@ -91,6 +91,12 @@ impl ReputationTier {
 /// The mapping is monotonic in the input deltas (P3.T5 property test):
 /// raising any single delta never lowers the tier. Empty input returns
 /// `tier_0` (no signal -> default tier).
+///
+/// `tier_3` requires composed score AND independent evidence from at
+/// least two distinct feeds (counted by `feed_id`, not slice length).
+/// Submitting multiple deltas from the same feed cannot satisfy the
+/// Sybil-resistance gate: a flood of arena rounds alone stays at
+/// `tier_2` even when each individual delta clears the per-feed floor.
 #[must_use]
 pub fn tier_from_deltas(deltas: &[ScoreDelta]) -> ReputationTier {
     let composed = match compose_deltas(deltas) {
@@ -104,7 +110,7 @@ pub fn tier_from_deltas(deltas: &[ScoreDelta]) -> ReputationTier {
 
     if composed >= TIER_3_THRESHOLD
         && per_feed_min >= TIER_3_PER_FEED_THRESHOLD
-        && deltas.len() >= 2
+        && distinct_feed_count(deltas) >= 2
     {
         ReputationTier::Tier3
     } else if composed >= TIER_2_THRESHOLD {
@@ -114,6 +120,23 @@ pub fn tier_from_deltas(deltas: &[ScoreDelta]) -> ReputationTier {
     } else {
         ReputationTier::Tier0
     }
+}
+
+/// Count the number of distinct `feed_id` values in `deltas`.
+///
+/// O(n^2) in the worst case but bounded by the small shipped feed
+/// catalog (currently arena-survival and cross-provider-equality), so
+/// a linear scan over a `Vec` is preferable to allocating a hash set
+/// for the typical 1-3 element input.
+fn distinct_feed_count(deltas: &[ScoreDelta]) -> usize {
+    let mut seen: Vec<&'static str> = Vec::with_capacity(deltas.len());
+    for delta in deltas {
+        let id = delta.feed_id;
+        if !seen.contains(&id) {
+            seen.push(id);
+        }
+    }
+    seen.len()
 }
 
 /// Composed-score floor for a tier. Returns `MAX_FEED_DELTA + 1.0` for
@@ -208,10 +231,50 @@ mod tests {
 
     #[test]
     fn single_feed_input_cannot_reach_tier_3() {
-        // tier_3 requires deltas.len() >= 2 because the per-feed AND
-        // condition is meaningful only across multiple feeds.
+        // tier_3 requires evidence from >= 2 distinct feeds because
+        // the per-feed AND condition is meaningful only across multiple
+        // feeds.
         let deltas = [ScoreDelta::from_value("a", 0.99, 1)];
         assert_eq!(tier_from_deltas(&deltas), ReputationTier::Tier2);
+    }
+
+    #[test]
+    fn multiple_deltas_same_feed_cannot_reach_tier_3() {
+        // M09 review follow-up: PR #379 / Codex + Bugbot finding.
+        // Two strong deltas from the same feed_id must NOT promote a
+        // publisher to tier_3; the gate counts distinct feeds, not
+        // slice length.
+        let deltas = [
+            ScoreDelta::from_value("arena_survival", 0.95, 1),
+            ScoreDelta::from_value("arena_survival", 0.92, 1),
+        ];
+        assert_eq!(tier_from_deltas(&deltas), ReputationTier::Tier2);
+    }
+
+    #[test]
+    fn three_deltas_two_feeds_reach_tier_3() {
+        // Two arena_survival deltas plus one cross_provider_equality
+        // delta: distinct count is 2, composed >= 0.90, per-feed min
+        // >= 0.80, so tier_3 is reached. This documents that adding
+        // extra observations from the same feed neither helps nor
+        // hurts the distinct-feed gate.
+        let deltas = [
+            ScoreDelta::from_value("arena_survival", 0.92, 1),
+            ScoreDelta::from_value("arena_survival", 0.90, 1),
+            ScoreDelta::from_value("cross_provider_equality", 0.85, 1),
+        ];
+        assert_eq!(tier_from_deltas(&deltas), ReputationTier::Tier3);
+    }
+
+    #[test]
+    fn distinct_feed_count_dedupes_repeated_feed_ids() {
+        let deltas = [
+            ScoreDelta::from_value("a", 0.5, 1),
+            ScoreDelta::from_value("a", 0.6, 1),
+            ScoreDelta::from_value("b", 0.7, 1),
+            ScoreDelta::from_value("a", 0.8, 1),
+        ];
+        assert_eq!(distinct_feed_count(&deltas), 2);
     }
 
     #[test]

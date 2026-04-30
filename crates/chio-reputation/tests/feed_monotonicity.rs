@@ -204,6 +204,30 @@ proptest! {
             raised_tier,
         );
     }
+
+    /// M09 review follow-up (PR #379, Codex/Bugbot): tier_3 must require
+    /// distinct feed evidence. Repeating the same `feed_id` with strong
+    /// values must NEVER reach tier_3, regardless of how many copies are
+    /// submitted. This is the Sybil-resistance gate the audit doc
+    /// promises.
+    #[test]
+    fn same_feed_id_repeated_never_reaches_tier_3(
+        first_value in 0.80_f64..=1.0_f64,
+        second_value in 0.80_f64..=1.0_f64,
+        third_value in 0.80_f64..=1.0_f64,
+    ) {
+        let deltas = [
+            ScoreDelta::from_value("arena_survival", first_value, 1),
+            ScoreDelta::from_value("arena_survival", second_value, 1),
+            ScoreDelta::from_value("arena_survival", third_value, 1),
+        ];
+        let tier = tier_from_deltas(&deltas);
+        prop_assert!(
+            tier < ReputationTier::Tier3,
+            "tier_3 reached with one feed_id only: tier={:?}",
+            tier,
+        );
+    }
 }
 
 /// Targeted regression: the empty-input fallback (per ticket M09.P3.T2)

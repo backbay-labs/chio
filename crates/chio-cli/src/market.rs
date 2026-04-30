@@ -34,7 +34,7 @@ use chio_appraisal::{
     MarketplaceReputationTier,
 };
 use chio_guard_registry::{GuardPrice, MARKETPLACE_BLOCK_KEY};
-use chio_reputation::ReputationTier;
+use chio_reputation::{satisfies_floor, ReputationTier};
 use chio_underwriting::{
     compute_marketplace_credit_limit, MarketplaceCreditLimitRequest, MarketplaceLimitTier,
 };
@@ -156,10 +156,6 @@ fn tier_to_limit(tier: ReputationTier) -> MarketplaceLimitTier {
     }
 }
 
-fn satisfies_floor(tenant: ReputationTier, required: ReputationTier) -> bool {
-    tenant >= required
-}
-
 /// Output of [`market_list`]: stable, sorted, machine-readable view of
 /// the visible catalog plus per-entry effective price for the tenant.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -230,6 +226,15 @@ pub struct MarketInfoReport {
 }
 
 /// Show the current marketplace state for one digest-pinned reference.
+///
+/// Discovery is gated by tenant reputation tier. A tenant whose tier is
+/// below `entry.reputation_floor` MUST NOT see metadata for the guard,
+/// matching the visibility gate enforced by `market_list` and
+/// `market_install`. The function returns `MarketError::UnknownReference`
+/// (not a tier-specific error) so the failure mode is byte-identical to
+/// the entry simply not being present in the catalog. This preserves the
+/// undiscoverable contract: a low-tier tenant cannot use `info` to
+/// confirm or deny the existence of a guard above their floor.
 pub fn market_info(
     catalog_path: &Path,
     tenant: &MarketTenantContext,
@@ -239,7 +244,9 @@ pub fn market_info(
     let entries = read_catalog(catalog_path)?;
     let entry = entries
         .into_iter()
-        .find(|entry| entry.reference == reference)
+        .find(|entry| {
+            entry.reference == reference && satisfies_floor(tenant.tier, entry.reputation_floor)
+        })
         .ok_or_else(|| MarketError::UnknownReference(reference.to_owned()))?;
 
     let price = compute_marketplace_invocation_price(
@@ -339,19 +346,60 @@ pub fn market_install(
     Ok(record)
 }
 
+/// Build a non-lossy, traversal-safe filename for an install record.
+///
+/// `tenant_id` and `reference` are both untrusted from the perspective
+/// of this function (`market_install` is `pub`, so callers outside the
+/// CLI can supply arbitrary `MarketTenantContext` values). To keep the
+/// resulting path inside `bundle_dir` regardless of input, both fields
+/// are lowercase-hex-encoded against their SHA-256 digest, and a stable
+/// human-readable prefix derived from each field is included for
+/// operator legibility. Two distinct inputs cannot produce the same
+/// filename (collision resistance is inherited from SHA-256), and the
+/// alphabet is restricted to `[0-9a-f._-]` so no path separator,
+/// `..` segment, or shell-special byte can appear in the result. The
+/// pretty prefix is bounded to 32 bytes per field and is only present
+/// to aid grep-driven triage; the digest carries the full identity.
 fn install_record_path(bundle_dir: &Path, tenant_id: &str, reference: &str) -> PathBuf {
-    let mut name = String::with_capacity(tenant_id.len() + reference.len() + 8);
-    name.push_str(tenant_id);
-    name.push('-');
-    for byte in reference.bytes() {
-        if byte.is_ascii_alphanumeric() {
-            name.push(char::from(byte));
-        } else {
-            name.push('_');
+    use sha2::{Digest, Sha256};
+
+    let tenant_digest = hex::encode(Sha256::digest(tenant_id.as_bytes()));
+    let reference_digest = hex::encode(Sha256::digest(reference.as_bytes()));
+
+    let tenant_prefix = sanitize_prefix(tenant_id, 32);
+    let reference_prefix = sanitize_prefix(reference, 32);
+
+    let name = format!(
+        "{tenant_prefix}-{tenant_digest}.{reference_prefix}-{reference_digest}.json"
+    );
+    bundle_dir.join(name)
+}
+
+/// Render a leading slice of `input` using a restricted, traversal-safe
+/// alphabet (`[0-9a-z-]`), truncated to `max_len`. Any other byte
+/// (including `.` and `_`) is mapped to `-` to keep the result free of
+/// `.`, `..`, and path separators while remaining a valid filename
+/// component on every platform. The result is never empty: missing or
+/// empty inputs collapse to `-`. Used as the human-readable prefix of
+/// `install_record_path`; the SHA-256 digest carries the canonical
+/// identity, so prefix lossiness is fine and explicitly does not need
+/// to be reversible.
+fn sanitize_prefix(input: &str, max_len: usize) -> String {
+    let mut out = String::with_capacity(max_len);
+    for ch in input.chars() {
+        if out.len() >= max_len {
+            break;
+        }
+        match ch {
+            'a'..='z' | '0'..='9' | '-' => out.push(ch),
+            'A'..='Z' => out.push(ch.to_ascii_lowercase()),
+            _ => out.push('-'),
         }
     }
-    name.push_str(".json");
-    bundle_dir.join(name)
+    if out.is_empty() {
+        out.push('-');
+    }
+    out
 }
 
 fn tempfile_in(dir: &Path) -> std::io::Result<TempPersist> {
@@ -589,5 +637,70 @@ mod tests {
 
         let result = market_install(&catalog, &bundle, &tenant, reference, true);
         assert!(matches!(result, Err(MarketError::InstallDenied(_))));
+    }
+
+    #[test]
+    fn info_below_floor_returns_unknown_reference() {
+        // M09 review follow-up (PR #382, Codex): market_info must
+        // enforce the reputation floor so a low-tier tenant cannot
+        // retrieve metadata for an above-floor guard. The error is
+        // UnknownReference (matching the contract that the entry is
+        // simply undiscoverable for this tenant).
+        let dir = tempdir().expect("tmpdir");
+        let path = write_catalog(dir.path(), &fixture_entries());
+        let result = market_info(
+            &path,
+            &tenant_ctx(ReputationTier::Tier0),
+            "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            false,
+        );
+        assert!(matches!(result, Err(MarketError::UnknownReference(_))));
+    }
+
+    #[test]
+    fn install_record_path_distinguishes_punctuation_variants() {
+        // M09 review follow-up (PR #382, Codex): two references
+        // differing only by punctuation must NOT collide on the
+        // install-record path. The previous `_`-replacement scheme
+        // was lossy; the new digest-keyed scheme is collision-free.
+        let dir = tempdir().expect("tmpdir");
+        let bundle = dir.path().join("bundle");
+        let a = install_record_path(&bundle, "tenant", "guard-foo");
+        let b = install_record_path(&bundle, "tenant", "guard_foo");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn install_record_path_traversal_inputs_stay_in_bundle_dir() {
+        // M09 review follow-up (PR #382, Bugbot): tenant_id is
+        // untrusted because market_install is `pub`. A tenant_id
+        // containing path separators or `..` segments must NOT
+        // resolve outside `bundle_dir`.
+        let dir = tempdir().expect("tmpdir");
+        let bundle = dir.path().join("bundle");
+        let evil_tenant = "../../etc/passwd";
+        let evil_reference = "../../../boot.ini";
+        let path = install_record_path(&bundle, evil_tenant, evil_reference);
+        let parent = path.parent().expect("install path has parent");
+        assert_eq!(
+            parent, bundle,
+            "install path escaped bundle_dir: {path:?} (parent={parent:?})"
+        );
+        let filename = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .expect("filename utf8");
+        assert!(!filename.contains('/'));
+        assert!(!filename.contains('\\'));
+        assert!(!filename.contains(".."));
+    }
+
+    #[test]
+    fn install_record_path_is_deterministic() {
+        let dir = tempdir().expect("tmpdir");
+        let bundle = dir.path().join("bundle");
+        let a = install_record_path(&bundle, "tenant", "ref");
+        let b = install_record_path(&bundle, "tenant", "ref");
+        assert_eq!(a, b);
     }
 }
