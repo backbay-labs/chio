@@ -78,6 +78,15 @@ path = "verdict_matrix/tests/verdict_matrix_typescript.rs"
 name = "deployment_shape_smoke"
 path = "verdict_matrix/tests/deployment_shape_smoke.rs"
 
+[[test]]
+name = "verdict_matrix_cross_language"
+path = "verdict_matrix/tests/verdict_matrix_cross_language.rs"
+
+[dev-dependencies]
+# M02.P5.T5: cross-language verdict-matrix oracle exercises the WASM
+# browser kernel through its native (non-wasm32) cargo test surface.
+chio-kernel-browser = { version = "0.1.0", path = "../chio-kernel-browser" }
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"

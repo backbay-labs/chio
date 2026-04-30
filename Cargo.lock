@@ -2694,6 +2694,7 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-kernel",
+ "chio-kernel-browser",
  "reqwest 0.13.2",
  "serde",
  "serde_json",

@@ -42,7 +42,7 @@
   milestone: M02
   phase: 5
   title: TypeScript node-http SDK driver under verdict_matrix/drivers/typescript
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-conformance/verdict_matrix/drivers/typescript/**
@@ -59,7 +59,7 @@
   agent_role: spec-typescript
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d5115e6af103d071aeaaf2509e1012d3484a49c6
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -68,7 +68,7 @@
   milestone: M02
   phase: 5
   title: WASM browser kernel driver under verdict_matrix/drivers/wasm-browser
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-conformance/verdict_matrix/drivers/wasm-browser/**
@@ -85,7 +85,7 @@
   agent_role: wasm-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 5cf7e6b18bef79cf3a877cce902e4eb655187055
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -120,7 +120,7 @@
   milestone: M02
   phase: 5
   title: Activate cross-language diff oracle and flip CI gate to required-on-divergence
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .github/workflows/verdict-matrix.yml
@@ -140,7 +140,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 8148cc026cad8eda3a87a7df9d1c60cafd664929
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -149,7 +149,7 @@
   milestone: M02
   phase: 5
   title: Hash-pin scenario corpus into manifest.toml and document rotation process
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - crates/chio-conformance/verdict_matrix/manifest.toml
@@ -166,7 +166,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 16abff006d6254417e4249816f58361deb551364
   merged_sha: null
   opened_ts: null
   merged_ts: null
