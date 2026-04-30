@@ -82,6 +82,16 @@ pub(crate) use chio_link::{PriceOracle, PriceOracleError};
 pub(crate) use tracing::{debug, info, warn};
 
 pub(crate) use receipt_support::*;
+// M03.P2.T2: hybrid receipt signing path. The kernel boot wiring constructs
+// a `Box<dyn SigningBackend>` from `KernelCryptoFloor` plus an optional
+// ML-DSA-65 seed; consumers (kernel boot, integration tests, custody
+// envelope issuance) sign through the resulting backend so the receipt body
+// remains byte-identical across classical and hybrid paths under
+// `crypto_floor=allow_classical`.
+pub use receipt_support::{
+    kernel_signing_backend, sign_receipt_body_with_backend, KernelCryptoFloor,
+    KernelSigningBackendError,
+};
 pub(crate) use request_matching::{
     begin_child_request_in_sessions, begin_session_request_in_sessions, check_subject_binding,
     check_time_bounds, complete_session_request_with_terminal_state_in_sessions,

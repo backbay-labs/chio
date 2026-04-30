@@ -18,6 +18,11 @@ legacy-sync = []
 dhat-heap = []
 otel = ["dep:opentelemetry-semantic-conventions"]
 tokio-console-smoke = ["tokio/tracing"]
+# M03 hybrid signing path: pulls the pq cargo feature on chio-core-types so
+# the kernel boot path can construct `HybridBackend` from a rolled
+# ML-DSA-65 key. Default-off; enabled by deployments that flip
+# `policy.crypto_floor` to `allow_hybrid` or `pq_required`.
+pq = ["chio-core-types/pq", "chio-core/pq"]
 
 [dependencies]
 chio-appraisal = { path = "../chio-appraisal" }
@@ -128,6 +133,19 @@ path = "tests/dual_track_receipt_identity.rs"
 name = "tokio_console_smoke"
 path = "tests/tokio_console_smoke.rs"
 required-features = ["tokio-console-smoke"]
+
+# M03.P2.T2: hybrid receipt signing path through `&dyn SigningBackend` and
+# the kernel-side `HybridBackend` constructor.
+[[test]]
+name = "hybrid_receipt_sign"
+path = "tests/hybrid_receipt_sign.rs"
+required-features = ["pq"]
+
+# M03.P2.T4: hybrid signing for SessionComplianceCertificate issuance.
+[[test]]
+name = "compliance_certificate_hybrid"
+path = "tests/compliance_certificate_hybrid.rs"
+required-features = ["pq"]
 
 [lints.clippy]
 unwrap_used = "deny"

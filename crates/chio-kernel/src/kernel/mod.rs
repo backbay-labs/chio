@@ -861,6 +861,73 @@ pub struct KernelConfig {
     pub retention_config: Option<crate::receipt_store::RetentionConfig>,
 }
 
+// ---------------------------------------------------------------------------
+// M03.P2.T2: hybrid signing helper attached to the kernel
+// ---------------------------------------------------------------------------
+
+/// Boot-time configuration for the kernel-side hybrid signing path.
+///
+/// Mirrors the wire form of `chio_policy::CryptoFloor` (`allow_classical`,
+/// `allow_hybrid`, `pq_required`) and pairs the floor with the operator's
+/// 32-byte ML-DSA-65 keygen seed. Construct one of these from a parsed
+/// HushSpec policy plus the boot-loaded PQ seed and pass it to
+/// [`ChioKernel::with_hybrid_signing_backend`] to obtain a `Box<dyn
+/// SigningBackend>` for hybrid receipt signing.
+///
+/// Kept as a separate input rather than folded into [`KernelConfig`] so the
+/// trajectory-1 struct literal stays byte-identical for legacy callers
+/// (workspace-wide migration is owned by M03.P5.T3 once the
+/// `CanonicalBytes` newtype lands).
+#[derive(Debug, Clone, Default)]
+pub struct HybridSigningConfig {
+    /// Minimum cryptographic posture enforced on receipts, capability
+    /// tokens, and compliance certificates. Default
+    /// [`KernelCryptoFloor::AllowClassical`].
+    pub crypto_floor: KernelCryptoFloor,
+
+    /// Optional 32-byte ML-DSA-65 keygen seed. Required when
+    /// `crypto_floor` is [`KernelCryptoFloor::AllowHybrid`] or
+    /// [`KernelCryptoFloor::PqRequired`]; ignored under
+    /// [`KernelCryptoFloor::AllowClassical`].
+    pub pq_signing_seed: Option<[u8; 32]>,
+}
+
+impl ChioKernel {
+    /// Construct the hybrid signing backend the kernel would use under
+    /// `hybrid`'s configured floor and PQ key material.
+    ///
+    /// Threads the kernel's classical Ed25519 keypair into a
+    /// [`chio_core::crypto::Ed25519Backend`] under
+    /// [`KernelCryptoFloor::AllowClassical`], or composes it with an
+    /// [`chio_core::crypto::MlDsa65Backend`] derived from `hybrid.pq_signing_seed`
+    /// into a [`chio_core::crypto::HybridBackend`] under
+    /// [`KernelCryptoFloor::AllowHybrid`] or [`KernelCryptoFloor::PqRequired`].
+    ///
+    /// Receipt body construction continues to flow through the existing
+    /// inline path (`build_and_sign_receipt`); callers that opt in to
+    /// hybrid signing pass the returned backend through
+    /// [`crate::sign_receipt_body_with_backend`] before persistence.
+    /// M03.P5.T3 finalizes the wiring once `CanonicalBytes` lands.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KernelSigningBackendError::HybridFloorRequiresPqKey`] if
+    /// the configured floor needs a PQ key but `hybrid.pq_signing_seed` is
+    /// `None`. Mirrors the policy-level check in
+    /// `chio_policy::CryptoFloor::validate_with_pq_key` so the boot path
+    /// catches the misconfiguration even when the policy crate is bypassed.
+    pub fn with_hybrid_signing_backend(
+        &self,
+        hybrid: &HybridSigningConfig,
+    ) -> Result<Box<dyn chio_core::crypto::SigningBackend>, KernelSigningBackendError> {
+        crate::kernel_signing_backend(
+            hybrid.crypto_floor,
+            self.config.keypair.clone(),
+            hybrid.pq_signing_seed.as_ref(),
+        )
+    }
+}
+
 pub const DEFAULT_MAX_STREAM_DURATION_SECS: u64 = 300;
 pub const DEFAULT_MAX_STREAM_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 pub const DEFAULT_CHECKPOINT_BATCH_SIZE: u64 = 100;
