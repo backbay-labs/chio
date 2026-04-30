@@ -9,6 +9,8 @@
 //! trusted on its own (useful for operators who only have a `.sig` file).
 
 use std::fs;
+#[cfg(test)]
+use std::fmt::Display;
 use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
@@ -236,11 +238,38 @@ mod tests {
     use super::*;
 
     const MINIMAL_WASM: &[u8] = b"\x00asm\x01\x00\x00\x00";
+    const CLI_IO_CODE: &str = "urn:chio:error:cli:io";
+    const MANIFEST_SCHEMA_INVALID_CODE: &str = "urn:chio:error:manifest:schema-invalid";
+    const MANIFEST_SIGNATURE_INVALID_CODE: &str = "urn:chio:error:manifest:signature-invalid";
 
     fn write_minimal_wasm(dir: &Path, filename: &str) -> PathBuf {
         let p = dir.join(filename);
         fs::write(&p, MINIMAL_WASM).unwrap();
         p
+    }
+
+    fn assert_registry_error(err: &CliError, expected_code: &str, expected_domain: &str) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected_code);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    fn must<T, E: Display>(result: Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("{context}: {err}"),
+        }
+    }
+
+    fn must_cli_err<T>(result: Result<T, CliError>, context: &str) -> CliError {
+        match result {
+            Ok(_) => panic!("{context}: expected error"),
+            Err(err) => err,
+        }
     }
 
     #[test]
@@ -328,7 +357,8 @@ mod tests {
         );
         fs::write(dir.path().join("guard-manifest.yaml"), manifest).unwrap();
 
-        let err = cmd_guard_verify(&wasm).unwrap_err();
+        let err = must_cli_err(cmd_guard_verify(&wasm), "verify with mismatched signer");
+        assert_registry_error(&err, MANIFEST_SIGNATURE_INVALID_CODE, "manifest");
         let msg = err.to_string();
         assert!(msg.contains("signature verification failed"), "{msg}");
     }
@@ -337,9 +367,42 @@ mod tests {
     fn verify_fails_when_sidecar_missing() {
         let dir = tempfile::tempdir().unwrap();
         let wasm = write_minimal_wasm(dir.path(), "g.wasm");
-        let err = cmd_guard_verify(&wasm).unwrap_err();
+        let err = must_cli_err(cmd_guard_verify(&wasm), "verify unsigned wasm");
+        assert_registry_error(&err, MANIFEST_SIGNATURE_INVALID_CODE, "manifest");
         let msg = err.to_string();
         assert!(msg.contains("not signed"), "{msg}");
+    }
+
+    #[test]
+    fn verify_fails_with_cli_io_when_wasm_missing() {
+        let dir = must(tempfile::tempdir(), "create tempdir");
+        let wasm = dir.path().join("missing.wasm");
+        let err = must_cli_err(cmd_guard_verify(&wasm), "verify missing wasm");
+        assert_registry_error(&err, CLI_IO_CODE, "cli");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to read wasm module"), "{msg}");
+    }
+
+    #[test]
+    fn verify_fails_with_manifest_schema_when_adjacent_manifest_is_invalid() {
+        let dir = must(tempfile::tempdir(), "create tempdir");
+        let wasm = write_minimal_wasm(dir.path(), "g.wasm");
+        let seed_path = dir.path().join("key.seed");
+        let _sk = must(write_random_seed(&seed_path), "write seed");
+
+        must(cmd_guard_sign(&wasm, &seed_path, "g", "0.1.0"), "sign wasm");
+        must(
+            fs::write(dir.path().join("guard-manifest.yaml"), "name: ["),
+            "write invalid manifest",
+        );
+
+        let err = must_cli_err(cmd_guard_verify(&wasm), "verify invalid manifest");
+        assert_registry_error(&err, MANIFEST_SCHEMA_INVALID_CODE, "manifest");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("failed to load adjacent guard-manifest.yaml"),
+            "{msg}"
+        );
     }
 
     #[test]
@@ -356,7 +419,8 @@ mod tests {
         tampered.push(0xAA);
         fs::write(&wasm, &tampered).unwrap();
 
-        let err = cmd_guard_verify(&wasm).unwrap_err();
+        let err = must_cli_err(cmd_guard_verify(&wasm), "verify tampered wasm");
+        assert_registry_error(&err, MANIFEST_SIGNATURE_INVALID_CODE, "manifest");
         let msg = err.to_string();
         assert!(
             msg.contains("verification failed") || msg.contains("hash"),
@@ -369,7 +433,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let seed_path = dir.path().join("bad.seed");
         fs::write(&seed_path, "not-hex!!!").unwrap();
-        let err = load_signing_key(&seed_path).unwrap_err();
+        let err = must_cli_err(load_signing_key(&seed_path), "load invalid hex seed");
+        assert_registry_error(&err, MANIFEST_SIGNATURE_INVALID_CODE, "manifest");
         let msg = err.to_string();
         assert!(msg.contains("not valid hex"), "{msg}");
     }
@@ -379,7 +444,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let seed_path = dir.path().join("short.seed");
         fs::write(&seed_path, "aabbccdd").unwrap();
-        let err = load_signing_key(&seed_path).unwrap_err();
+        let err = must_cli_err(load_signing_key(&seed_path), "load short seed");
+        assert_registry_error(&err, MANIFEST_SIGNATURE_INVALID_CODE, "manifest");
         let msg = err.to_string();
         assert!(msg.contains("must contain 32 bytes"), "{msg}");
     }

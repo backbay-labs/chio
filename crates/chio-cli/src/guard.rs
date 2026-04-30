@@ -1059,6 +1059,23 @@ mod tests {
         assert_eq!(sanitize_package_name("a--b"), "a-b");
     }
 
+    fn assert_registry_error(err: &CliError, expected_code: &str, expected_domain: &str) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected_code);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    fn must_cli_err<T>(result: Result<T, CliError>, context: &str) -> CliError {
+        match result {
+            Ok(_) => panic!("{context}: expected error"),
+            Err(err) => err,
+        }
+    }
+
     #[test]
     fn cmd_guard_new_creates_project_directory() {
         let dir = tempfile::tempdir().unwrap();
@@ -1102,7 +1119,10 @@ mod tests {
         fs::write(project_path.join("some-file.txt"), "content").unwrap();
 
         let result = cmd_guard_new(project_path.to_str().unwrap());
-        assert!(result.is_err());
+        let err = must_cli_err(result, "scaffold into non-empty directory");
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("refusing to scaffold"), "{msg}");
     }
 
     #[test]
@@ -1461,8 +1481,11 @@ wasm_sha256: "deadbeef"
     fn test_pack_fails_without_manifest() {
         let project_dir = tempfile::tempdir().unwrap();
         // No guard-manifest.yaml created
-        let result = pack_from_dir(project_dir.path());
-        assert!(result.is_err(), "pack should fail without manifest");
+        let err = must_cli_err(pack_from_dir(project_dir.path()), "pack without manifest");
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to read"), "{msg}");
+        assert!(msg.contains("guard-manifest.yaml"), "{msg}");
     }
 
     #[test]
@@ -1482,15 +1505,22 @@ wasm_sha256: "deadbeef"
         )
         .unwrap();
 
-        let result = pack_from_dir(project_dir.path());
-        assert!(result.is_err(), "pack should fail with missing wasm");
+        let err = must_cli_err(pack_from_dir(project_dir.path()), "pack with missing wasm");
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to read wasm file"), "{msg}");
     }
 
     #[test]
     fn test_install_fails_with_missing_archive() {
         let install_dir = tempfile::tempdir().unwrap();
         let bogus_path = install_dir.path().join("nonexistent.arcguard");
-        let result = cmd_guard_install(&bogus_path, install_dir.path());
-        assert!(result.is_err(), "install should fail with missing archive");
+        let err = must_cli_err(
+            cmd_guard_install(&bogus_path, install_dir.path()),
+            "install missing archive",
+        );
+        assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to open"), "{msg}");
     }
 }

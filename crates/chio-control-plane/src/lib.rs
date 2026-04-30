@@ -629,6 +629,55 @@ mod tests {
         std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
     }
 
+    fn assert_registry_error(
+        err: &CliError,
+        expected: &'static ErrorCodeSpec,
+        expected_domain: &str,
+    ) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected.urn);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn migrated_cli_error_helpers_emit_registry_codes_and_domains() {
+        let cases = [
+            (
+                CliError::manifest_signature_error("bad manifest signature"),
+                &MANIFEST_SIGNATURE_INVALID,
+                "manifest",
+            ),
+            (
+                CliError::manifest_schema_error("bad manifest schema"),
+                &MANIFEST_SCHEMA_INVALID,
+                "manifest",
+            ),
+            (
+                CliError::guard_error("guard denied request"),
+                &GUARD_DENIED,
+                "guard",
+            ),
+            (
+                CliError::cli_io_error("could not read input"),
+                &CLI_IO,
+                "cli",
+            ),
+            (
+                CliError::cli_yaml_error("could not parse yaml"),
+                &CLI_YAML,
+                "cli",
+            ),
+        ];
+
+        for (err, expected, expected_domain) in cases {
+            assert_registry_error(&err, expected, expected_domain);
+        }
+    }
+
     #[test]
     fn web3_evidence_requires_local_receipt_store() {
         let mut kernel = make_kernel(true);
