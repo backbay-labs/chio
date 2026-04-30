@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "revocation-rollback-002",
+  "class": "revocation_rollback",
+  "expected_verdict": "DENY",
+  "expected_reason": "revocation_root_rollback",
+  "threat_id": "delegation_chain_abuse",
+  "pending": false,
+  "artifact": {
+    "case_kind": "root_replay",
+    "algebra_oracle": "revoked_grant_remains_revoked",
+    "grant_id": "grant-revocation-rollback-002",
+    "current_root": {
+      "epoch": 43,
+      "contains_revocation": true,
+      "root": "merkle:revocation-rollback-002-current"
+    },
+    "candidate_root": {
+      "epoch": 42,
+      "contains_revocation": false,
+      "root": "merkle:revocation-rollback-002-old"
+    }
+  },
+  "notes": ["algebra-oracle: revoked_grant_remains_revoked"]
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "replayed-nonce-002",
+  "class": "replayed_nonce",
+  "expected_verdict": "DENY",
+  "expected_reason": "nonce_replayed",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "capability_nonce_reuse",
+    "capability": {
+      "id": "cap-replayed-nonce-002",
+      "nonce": "rn-002",
+      "scopes": ["tool:invoke:mail.read"],
+      "expires_at": "2026-04-30T15:05:00Z"
+    },
+    "requests": [
+      {
+        "tool": "mail.read",
+        "received_at": "2026-04-30T15:01:00Z"
+      },
+      {
+        "tool": "mail.read",
+        "received_at": "2026-04-30T15:01:05Z"
+      }
+    ]
+  }
+}

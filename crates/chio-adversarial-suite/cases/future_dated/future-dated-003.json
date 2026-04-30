@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "future-dated-003",
+  "class": "future_dated",
+  "expected_verdict": "DENY",
+  "expected_reason": "future_dated_checkpoint",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "merkle_checkpoint",
+    "receipt": {
+      "id": "rcpt-future-dated-003",
+      "decision": "ALLOW",
+      "observed_at": "2026-04-30T15:02:00Z",
+      "signature": "ed25519:future-dated-003"
+    },
+    "checkpoint": {
+      "root": "merkle:future-dated-003",
+      "tree_size": 128,
+      "committed_at": "2026-05-01T00:00:00Z"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "future-dated-001",
+  "class": "future_dated",
+  "expected_verdict": "DENY",
+  "expected_reason": "future_dated_receipt_window",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "capability_receipt",
+    "capability": {
+      "id": "cap-future-dated-001",
+      "issuer": "did:chio:authority:m05",
+      "not_before": "2026-04-30T15:00:00Z",
+      "expires_at": "2026-04-30T15:05:00Z",
+      "nonce": "fd-001",
+      "scopes": ["tool:read"]
+    },
+    "receipt": {
+      "decision": "ALLOW",
+      "observed_at": "2026-04-30T15:00:05Z",
+      "signed_at": "2026-05-01T00:00:00Z",
+      "signature": "ed25519:future-dated-001"
+    }
+  }
+}

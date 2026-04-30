@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "replayed-nonce-003",
+  "class": "replayed_nonce",
+  "expected_verdict": "DENY",
+  "expected_reason": "nonce_replayed_across_sessions",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "session_replay",
+    "nonce": "rn-003",
+    "first_session": {
+      "id": "session-rn-003-a",
+      "sender_binding": "did:chio:agent:original"
+    },
+    "second_session": {
+      "id": "session-rn-003-b",
+      "sender_binding": "did:chio:agent:attacker"
+    },
+    "candidate_receipt": {
+      "decision": "ALLOW",
+      "signature": "ed25519:replayed-nonce-003"
+    }
+  }
+}

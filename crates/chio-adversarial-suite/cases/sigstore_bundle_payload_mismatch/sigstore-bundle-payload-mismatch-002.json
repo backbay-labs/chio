@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "sigstore-bundle-payload-mismatch-002",
+  "class": "sigstore_bundle_payload_mismatch",
+  "expected_verdict": "DENY",
+  "expected_reason": "sigstore_bundle_payload_mismatch",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "sigstore_rekor_entry",
+    "bundle": {
+      "rekor_uuid": "rekor-sigstore-bundle-payload-mismatch-002",
+      "integrated_time": 1777561260,
+      "subject_digest": "sha256:release-manifest"
+    },
+    "payload": {
+      "manifest_digest": "sha256:patched-manifest",
+      "manifest_name": "chio-release.json"
+    }
+  }
+}

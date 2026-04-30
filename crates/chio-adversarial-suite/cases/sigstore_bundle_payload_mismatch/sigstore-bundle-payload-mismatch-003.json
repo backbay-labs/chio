@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "sigstore-bundle-payload-mismatch-003",
+  "class": "sigstore_bundle_payload_mismatch",
+  "expected_verdict": "DENY",
+  "expected_reason": "sigstore_bundle_payload_mismatch",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "sigstore_dsse",
+    "bundle": {
+      "dsse_payload_type": "application/vnd.in-toto+json",
+      "signed_subject": "sha256:trusted-policy-bundle",
+      "certificate_identity": "release@chio.dev"
+    },
+    "payload": {
+      "decoded_subject": "sha256:modified-policy-bundle",
+      "policy_name": "tenant-default.toml"
+    }
+  }
+}

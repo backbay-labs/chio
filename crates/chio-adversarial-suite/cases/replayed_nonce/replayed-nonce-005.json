@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "replayed-nonce-005",
+  "class": "replayed_nonce",
+  "expected_verdict": "DENY",
+  "expected_reason": "nonce_replayed_after_revocation",
+  "threat_id": "delegation_chain_abuse",
+  "pending": false,
+  "artifact": {
+    "case_kind": "revoked_nonce_reuse",
+    "nonce": "rn-005",
+    "revocation": {
+      "grant_id": "grant-rn-005",
+      "revoked_at": "2026-04-30T15:01:00Z",
+      "revocation_root": "merkle:rn-005-revoked"
+    },
+    "candidate_receipt": {
+      "observed_at": "2026-04-30T15:02:00Z",
+      "decision": "ALLOW",
+      "signature": "ed25519:replayed-nonce-005"
+    }
+  }
+}

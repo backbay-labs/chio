@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "anchor-grafted-004",
+  "class": "anchor_grafted",
+  "expected_verdict": "DENY",
+  "expected_reason": "anchor_grafted_proof_path",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "inclusion_proof",
+    "receipt": {
+      "id": "rcpt-anchor-grafted-004",
+      "canonical_digest": "sha256:anchor-grafted-004-receipt"
+    },
+    "anchor": {
+      "root": "merkle:anchor-grafted-004-root",
+      "tree_size": 4096
+    },
+    "proof": {
+      "leaf_index": 88,
+      "path": ["aa", "bb", "cc", "dd"],
+      "computed_root": "merkle:anchor-grafted-004-foreign"
+    }
+  }
+}

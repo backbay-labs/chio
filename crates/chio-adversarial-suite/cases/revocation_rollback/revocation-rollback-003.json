@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "revocation-rollback-003",
+  "class": "revocation_rollback",
+  "expected_verdict": "DENY",
+  "expected_reason": "revocation_timestamp_rollback",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "revocation_timestamp",
+    "algebra_oracle": "revocation_observation_time_is_monotonic",
+    "observed_revocation": {
+      "grant_id": "grant-revocation-rollback-003",
+      "revoked_at": "2026-04-30T15:04:00Z"
+    },
+    "candidate_status": {
+      "checked_at": "2026-04-30T15:03:00Z",
+      "status": "active"
+    }
+  },
+  "notes": ["algebra-oracle: revocation_observation_time_is_monotonic"]
+}

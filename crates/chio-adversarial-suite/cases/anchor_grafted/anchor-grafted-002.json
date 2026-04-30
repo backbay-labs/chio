@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "anchor-grafted-002",
+  "class": "anchor_grafted",
+  "expected_verdict": "DENY",
+  "expected_reason": "anchor_grafted_checkpoint_signature",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "checkpoint_anchor",
+    "checkpoint": {
+      "root": "merkle:anchor-grafted-002",
+      "tree_size": 1024,
+      "committed_at": "2026-04-30T15:01:00Z"
+    },
+    "anchor_signature": {
+      "key_id": "did:chio:authority:foreign#anchor",
+      "signature": "ed25519:anchor-grafted-002"
+    },
+    "expected_authority": "did:chio:authority:m05#anchor"
+  }
+}

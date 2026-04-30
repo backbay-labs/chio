@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "replayed-nonce-004",
+  "class": "replayed_nonce",
+  "expected_verdict": "DENY",
+  "expected_reason": "nonce_replayed_with_scope_change",
+  "threat_id": "delegation_chain_abuse",
+  "pending": false,
+  "artifact": {
+    "case_kind": "delegated_nonce_reuse",
+    "nonce": "rn-004",
+    "original_grant": {
+      "id": "grant-rn-004-a",
+      "scopes": ["tool:read"]
+    },
+    "candidate_grant": {
+      "id": "grant-rn-004-b",
+      "scopes": ["tool:read", "tool:write"]
+    },
+    "receipt": {
+      "decision": "ALLOW",
+      "signature": "ed25519:replayed-nonce-004"
+    }
+  }
+}

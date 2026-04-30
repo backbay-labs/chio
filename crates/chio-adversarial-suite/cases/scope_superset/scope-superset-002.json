@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "scope-superset-002",
+  "class": "scope_superset",
+  "expected_verdict": "DENY",
+  "expected_reason": "scope_superset_wildcard",
+  "threat_id": "delegation_chain_abuse",
+  "pending": false,
+  "artifact": {
+    "case_kind": "wildcard_scope",
+    "algebra_oracle": "wildcard_scope_cannot_be_introduced_by_child",
+    "parent": {
+      "id": "grant-scope-superset-002-parent",
+      "scopes": ["tool:invoke:files.read"]
+    },
+    "child": {
+      "id": "grant-scope-superset-002-child",
+      "scopes": ["tool:invoke:*"]
+    }
+  },
+  "notes": ["algebra-oracle: wildcard_scope_cannot_be_introduced_by_child"]
+}

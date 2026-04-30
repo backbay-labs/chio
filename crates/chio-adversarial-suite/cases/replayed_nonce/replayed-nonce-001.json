@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "replayed-nonce-001",
+  "class": "replayed_nonce",
+  "expected_verdict": "DENY",
+  "expected_reason": "nonce_replayed",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "receipt_replay",
+    "nonce": "rn-001",
+    "prior_receipt": {
+      "id": "rcpt-replayed-nonce-001-a",
+      "observed_at": "2026-04-30T15:00:00Z",
+      "decision": "DENY"
+    },
+    "candidate_receipt": {
+      "id": "rcpt-replayed-nonce-001-b",
+      "observed_at": "2026-04-30T15:00:10Z",
+      "decision": "ALLOW",
+      "signature": "ed25519:replayed-nonce-001"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "clock-rewound-003",
+  "class": "clock_rewound",
+  "expected_verdict": "DENY",
+  "expected_reason": "clock_rewound_receipt_sequence",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "receipt_log_entry",
+    "receipt": {
+      "id": "rcpt-clock-rewound-003",
+      "previous_id": "rcpt-clock-rewound-002",
+      "observed_at": "2026-04-30T14:59:58Z",
+      "log_index": 73,
+      "decision": "ALLOW",
+      "signature": "ed25519:clock-rewound-003"
+    },
+    "log_checkpoint": {
+      "committed_at": "2026-04-30T15:00:10Z",
+      "root": "merkle:clock-rewound-003"
+    }
+  }
+}

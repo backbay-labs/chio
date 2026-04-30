@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "clock-rewound-002",
+  "class": "clock_rewound",
+  "expected_verdict": "DENY",
+  "expected_reason": "clock_rewound_capability_window",
+  "threat_id": "capability_token_theft",
+  "pending": false,
+  "artifact": {
+    "case_kind": "delegated_capability_receipt",
+    "parent_capability": {
+      "id": "cap-clock-parent-002",
+      "not_before": "2026-04-30T15:00:00Z",
+      "expires_at": "2026-04-30T15:10:00Z",
+      "scopes": ["tool:read", "tool:list"]
+    },
+    "child_capability": {
+      "id": "cap-clock-child-002",
+      "not_before": "2026-04-30T15:00:30Z",
+      "expires_at": "2026-04-30T15:04:30Z",
+      "nonce": "cr-002",
+      "scopes": ["tool:read"]
+    },
+    "receipt": {
+      "decision": "ALLOW",
+      "observed_at": "2026-04-30T14:59:59Z",
+      "signature": "ed25519:clock-rewound-002"
+    }
+  }
+}

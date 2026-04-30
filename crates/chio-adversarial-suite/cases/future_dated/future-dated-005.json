@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "future-dated-005",
+  "class": "future_dated",
+  "expected_verdict": "DENY",
+  "expected_reason": "future_dated_authority_signature",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "authority_signature",
+    "authority": {
+      "id": "did:chio:authority:m05",
+      "key_id": "chio-key-future-dated-005"
+    },
+    "signature_envelope": {
+      "payload_digest": "sha256:future-dated-005",
+      "signed_at": "2026-05-01T00:00:00Z",
+      "signature": "ed25519:future-dated-005"
+    },
+    "request": {
+      "received_at": "2026-04-30T15:03:00Z"
+    }
+  }
+}

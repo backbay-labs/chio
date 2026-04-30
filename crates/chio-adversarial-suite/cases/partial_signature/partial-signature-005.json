@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "partial-signature-005",
+  "class": "partial_signature",
+  "expected_verdict": "DENY",
+  "expected_reason": "partial_signature_missing_expiry_claim",
+  "threat_id": "capability_token_theft",
+  "pending": false,
+  "artifact": {
+    "case_kind": "expiry_signature",
+    "algebra_oracle": "capability_expiry_is_signed",
+    "signed_payload": {
+      "id": "cap-partial-signature-005",
+      "issuer": "did:chio:authority:m05",
+      "subject": "did:chio:agent:partial"
+    },
+    "unsigned_expiry": "2026-05-01T00:00:00Z",
+    "signature": "ed25519:partial-signature-005"
+  },
+  "notes": ["algebra-oracle: capability_expiry_is_signed"]
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "scope-superset-005",
+  "class": "scope_superset",
+  "expected_verdict": "DENY",
+  "expected_reason": "scope_superset_admin",
+  "threat_id": "capability_token_theft",
+  "pending": false,
+  "artifact": {
+    "case_kind": "privilege_escalation_scope",
+    "algebra_oracle": "admin_scope_requires_parent_admin_scope",
+    "parent": {
+      "id": "grant-scope-superset-005-parent",
+      "scopes": ["tool:read", "tool:list"]
+    },
+    "child": {
+      "id": "grant-scope-superset-005-child",
+      "scopes": ["tool:read", "tool:list", "admin:policy.write"]
+    }
+  },
+  "notes": ["algebra-oracle: admin_scope_requires_parent_admin_scope"]
+}
