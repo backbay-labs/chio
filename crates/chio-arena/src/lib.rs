@@ -22,7 +22,10 @@ pub use promote::{
     ArenaManifestVerdict, PromoteError, ARENA_MANIFEST_FILENAME,
 };
 pub use rng::{ArenaRng, RngError};
-pub use runtime::{ArenaReceipt, ArenaRun, ArenaRuntime, ArenaRuntimeError, KernelStepRequest};
+pub use runtime::{
+    shared_kernel_bindings, AgentKernelBinding, ArenaReceipt, ArenaRun, ArenaRuntime,
+    ArenaRuntimeError, KernelStepRequest,
+};
 pub use scenario::{
     load_scenario, parse_scenario_str, DeterminismWitness, Scenario, ScenarioError, ScenarioStep,
     ScenarioVerdict,
