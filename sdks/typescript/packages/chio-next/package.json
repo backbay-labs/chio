@@ -2,8 +2,18 @@
   "name": "@chio/next",
   "version": "0.1.0",
   "type": "module",
-  "description": "Chio App Router route-handler and server-action wrappers for Next.js",
+  "description": "Chio App Router route-handler and server-action wrappers for Next.js. Streaming-friendly on Allow, typed denial response on Deny. App Router only.",
   "license": "Apache-2.0",
+  "keywords": [
+    "chio",
+    "nextjs",
+    "app-router",
+    "route-handler",
+    "server-action",
+    "verdict",
+    "agent-protocol"
+  ],
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
