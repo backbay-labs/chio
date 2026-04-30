@@ -1,0 +1,23 @@
+# Bootstrap tenant policy (M05.P4.T2).
+#
+# This file is the chicken-and-egg seed every operator inherits before
+# authoring a tenant-specific override. It is signed by the workspace
+# release identity (the same identity M06 uses for binary releases) and
+# its hash is recorded in the M05 audit doc at
+# `docs/security/expected-identity-migration.md` (M05.P4.T4).
+#
+# In the in-tree fixture form the `signature` field is a placeholder; the
+# loader integration tests substitute a mock `AttestVerifier` that
+# round-trips canonical bytes against the placeholder to exercise the
+# fail-closed path. Production deployments MUST replace this file with
+# one signed by their release identity before booting the kernel; the
+# default loader staleness horizon is 90 days.
+tenant_id = "bootstrap"
+version = 1
+identity_regexps = [
+    "https://github\\.com/backbay/chio/\\.github/workflows/release-binaries\\.yml@refs/tags/v.*",
+]
+oidc_issuers = ["https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "PLACEHOLDER-SIGNATURE-OVERRIDE-IN-PRODUCTION"
+pq_identity_regexps = []
