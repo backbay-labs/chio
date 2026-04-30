@@ -5,21 +5,34 @@
 # Reads fuzz/owners.toml to find the owning crate for the named fuzz
 # target, computes sha256 of the input seed, then either:
 #
-#   --mode libfuzzer  Writes a libtest #[test] fn that calls the fuzz
-#                     wrapper directly with the seed bytes. Output:
-#                     crates/<owner>/tests/regression_<target>_<sha16>.rs.
-#                     The 16-hex prefix plus target component avoids
-#                     filename collisions when one owner crate hosts
-#                     multiple targets or accumulates multiple promoted
-#                     seeds.
+#   --mode libfuzzer    Writes a libtest #[test] fn that calls the fuzz
+#                       wrapper directly with the seed bytes. Output:
+#                       crates/<owner>/tests/regression_<target>_<sha16>.rs.
+#                       The 16-hex prefix plus target component avoids
+#                       filename collisions when one owner crate hosts
+#                       multiple targets or accumulates multiple promoted
+#                       seeds.
 #
-#   --mode proptest   Writes the same regression test plus a paired
-#                     proptest property when the owner crate has proptest
-#                     in [dev-dependencies]. When proptest is missing,
-#                     emits the plain regression test and prints a warning.
+#   --mode proptest     Writes the same regression test plus a paired
+#                       proptest property when the owner crate has proptest
+#                       in [dev-dependencies]. When proptest is missing,
+#                       emits the plain regression test and prints a warning.
 #
-# In both modes the seed is moved into fuzz/corpus/<target>/<sha>.bin so
-# future fuzz runs continue exercising it. Re-promoting a seed whose
+#   --mode adversarial  Promotes a libFuzzer crash that decodes cleanly
+#                       through one of M05's trust-boundary surfaces into
+#                       a triage-pending case under
+#                       crates/chio-adversarial-suite/cases/<class>/<sha>.json
+#                       with `expected_verdict: "DENY"` placeholder and
+#                       `pending: true`. Requires --class (one of the
+#                       eight M05 attack classes) and --threat-id (a
+#                       chio-threat-model.v1.json identifier). The
+#                       pending flag is stripped only by a human triager
+#                       (see M05.P5.T6). No regression .rs file is
+#                       emitted; the M05 adversarial harnesses already
+#                       iterate the bundled cases.
+#
+# In all three modes the seed is moved into fuzz/corpus/<target>/<sha>.bin
+# so future fuzz runs continue exercising it. Re-promoting a seed whose
 # --input path already resolves to the canonical corpus location is a
 # no-op (the script does not delete the corpus seed under itself).
 #
@@ -29,7 +42,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: promote_fuzz_seed.sh --target <name> --input <path> --mode {libfuzzer|proptest} [--severity LEVEL]
+Usage: promote_fuzz_seed.sh --target <name> --input <path> --mode {libfuzzer|proptest|adversarial} [options]
 
 Promotes a fuzz seed into a permanent regression test:
   - Reads fuzz/owners.toml to find the owning crate.
@@ -41,6 +54,11 @@ Promotes a fuzz seed into a permanent regression test:
     proptest property when the owner crate has proptest in
     [dev-dependencies]. When proptest is missing, falls back to the
     plain regression and warns.
+  - In adversarial mode: writes a triage-pending case under
+    crates/chio-adversarial-suite/cases/<class>/<sha>.json with
+    `expected_verdict: "DENY"` and `pending: true`. Requires --class
+    (one of the eight M05 attack classes) and --threat-id (a
+    chio-threat-model.v1.json identifier).
   - Moves the seed file into fuzz/corpus/<target>/<sha>.bin so future
     fuzz runs continue exercising it. Re-promoting a seed that already
     lives at the canonical corpus path is a no-op rather than a delete.
@@ -48,8 +66,16 @@ Promotes a fuzz seed into a permanent regression test:
 Args:
   --target NAME     fuzz target (e.g. jwt_vc_verify)
   --input PATH      path to crash input file
-  --mode MODE       libfuzzer|proptest
+  --mode MODE       libfuzzer|proptest|adversarial
   --severity LEVEL  Critical|High|Medium|Low (default Medium)
+  --class CLASS     adversarial attack class (clock_rewound,
+                    future_dated, replayed_nonce, partial_signature,
+                    scope_superset, revocation_rollback, anchor_grafted,
+                    sigstore_bundle_payload_mismatch). Required for
+                    --mode adversarial; rejected for other modes.
+  --threat-id ID    threat-model identifier (lowercase, digits, '_').
+                    Required for --mode adversarial; rejected for other
+                    modes.
   --help            show this help
 EOF
 }
@@ -59,6 +85,8 @@ TARGET=""
 INPUT=""
 MODE=""
 SEVERITY="Medium"
+CLASS=""
+THREAT_ID=""
 
 # Argument parser. Long-options only; matches the documented CLI.
 while [[ $# -gt 0 ]]; do
@@ -77,6 +105,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --severity)
             SEVERITY="${2:-}"
+            shift 2
+            ;;
+        --class)
+            CLASS="${2:-}"
+            shift 2
+            ;;
+        --threat-id)
+            THREAT_ID="${2:-}"
             shift 2
             ;;
         --help|-h)
@@ -104,9 +140,9 @@ if [[ -z "$TARGET" || -z "$INPUT" || -z "$MODE" ]]; then
 fi
 
 case "$MODE" in
-    libfuzzer|proptest) ;;
+    libfuzzer|proptest|adversarial) ;;
     *)
-        echo "promote_fuzz_seed.sh: --mode must be 'libfuzzer' or 'proptest', got '$MODE'" >&2
+        echo "promote_fuzz_seed.sh: --mode must be 'libfuzzer', 'proptest', or 'adversarial', got '$MODE'" >&2
         exit 2
         ;;
 esac
@@ -118,6 +154,36 @@ case "$SEVERITY" in
         exit 2
         ;;
 esac
+
+# Mode-specific argument shape. Adversarial mode needs --class and
+# --threat-id; the other modes must not accept them.
+ADVERSARIAL_CLASSES=" clock_rewound future_dated replayed_nonce partial_signature scope_superset revocation_rollback anchor_grafted sigstore_bundle_payload_mismatch "
+if [[ "$MODE" == "adversarial" ]]; then
+    if [[ -z "$CLASS" ]]; then
+        echo "promote_fuzz_seed.sh: --mode adversarial requires --class" >&2
+        usage >&2
+        exit 2
+    fi
+    if [[ "$ADVERSARIAL_CLASSES" != *" $CLASS "* ]]; then
+        echo "promote_fuzz_seed.sh: --class '$CLASS' is not a recognised adversarial class" >&2
+        echo "promote_fuzz_seed.sh: valid classes are:$ADVERSARIAL_CLASSES" >&2
+        exit 2
+    fi
+    if [[ -z "$THREAT_ID" ]]; then
+        echo "promote_fuzz_seed.sh: --mode adversarial requires --threat-id" >&2
+        usage >&2
+        exit 2
+    fi
+    if [[ ! "$THREAT_ID" =~ ^[a-z][a-z0-9_]*$ ]]; then
+        echo "promote_fuzz_seed.sh: --threat-id '$THREAT_ID' must be lowercase ASCII, digits, or '_' starting with a letter" >&2
+        exit 2
+    fi
+else
+    if [[ -n "$CLASS" || -n "$THREAT_ID" ]]; then
+        echo "promote_fuzz_seed.sh: --class and --threat-id are only accepted with --mode adversarial" >&2
+        exit 2
+    fi
+fi
 
 if [[ ! -f "$OWNERS_TOML" ]]; then
     echo "promote_fuzz_seed.sh: missing fuzz/owners.toml at $OWNERS_TOML" >&2
@@ -184,10 +250,35 @@ SHA16="${SHA:0:16}"
 TARGET_IDENT="$(printf '%s' "$TARGET" | tr -c 'A-Za-z0-9_' '_')"
 
 TESTS_DIR="$OWNER_DIR/tests"
-mkdir -p "$TESTS_DIR"
+if [[ "$MODE" != "adversarial" ]]; then
+    mkdir -p "$TESTS_DIR"
+fi
 
 CORPUS_DIR="$REPO_ROOT/fuzz/corpus/$TARGET"
 mkdir -p "$CORPUS_DIR"
+
+# Encode bytes as a JSON string literal. Used by the adversarial-mode
+# artifact emitter when the seed bytes do not parse as a JSON object.
+# Outputs a quoted string with escapes per RFC 8259 (no embedded
+# control codes survive). Reads stdin, writes the literal to stdout.
+json_string_escape() {
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c '
+import json, sys
+sys.stdout.write(json.dumps(sys.stdin.buffer.read().decode("latin-1")))
+'
+    else
+        # Fallback: hex-encode each byte. Always valid JSON, never lossy.
+        local hex
+        hex="$(od -An -v -tx1 | tr -d ' \n')"
+        printf '"%s"' "$hex"
+    fi
+}
+
+# Stamp ISO-8601 UTC timestamps in the adversarial case envelope.
+adversarial_now() {
+    date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
 
 # The fuzz wrapper convention from fuzz/fuzz_targets/<target>.rs is
 # `<crate_underscored>::fuzz::fuzz_<target>` (e.g. `chio_credentials::fuzz::fuzz_jwt_vc_verify`).
@@ -290,6 +381,79 @@ fn regression_${TARGET_IDENT}_${SHA16}() {
 EOF
         fi
         ;;
+    adversarial)
+        # Triage gate: emit a pending case under
+        # crates/chio-adversarial-suite/cases/<class>/<sha16>.json so a
+        # human triager can confirm the verdict, fill in expected_reason,
+        # and strip the pending flag (M05.P5.T6 enforces this gate).
+        CASES_DIR="$REPO_ROOT/crates/chio-adversarial-suite/cases/$CLASS"
+        mkdir -p "$CASES_DIR"
+        CASE_ID="${CLASS//_/-}-${SHA16}"
+        OUT="$CASES_DIR/${CASE_ID}.json"
+        TIMESTAMP="$(adversarial_now)"
+        SOURCE_NOTE="auto-promoted from fuzz/${TARGET} crash on ${TIMESTAMP} via promote_fuzz_seed.sh --mode adversarial"
+        TRIAGE_NOTE="pending: human triager must confirm expected_reason and clear the pending flag before this case counts toward threat-model coverage"
+        SEVERITY_NOTE="severity ${SEVERITY}"
+
+        # Encode the artifact: try to round-trip the seed as a JSON object
+        # first (libFuzzer crashes that decode cleanly are valuable triage
+        # inputs); fall back to wrapping the raw bytes in a string-typed
+        # field so the artifact field stays a non-empty object per schema.
+        ARTIFACT=""
+        if command -v python3 >/dev/null 2>&1 \
+            && python3 -c '
+import json, sys
+data = sys.stdin.buffer.read()
+try:
+    decoded = json.loads(data)
+except Exception:
+    sys.exit(1)
+if not isinstance(decoded, dict) or not decoded:
+    sys.exit(1)
+sys.stdout.write(json.dumps({
+    "case_kind": "fuzz_crash",
+    "fuzz_target": sys.argv[1],
+    "decoded": decoded,
+}, sort_keys=True))
+' "$TARGET" <"$INPUT" >"${INPUT}.artifact.json" 2>/dev/null; then
+            ARTIFACT="$(cat "${INPUT}.artifact.json")"
+            rm -f "${INPUT}.artifact.json"
+        else
+            rm -f "${INPUT}.artifact.json"
+            ENCODED_BYTES="$(json_string_escape <"$INPUT")"
+            ARTIFACT="{\"case_kind\":\"fuzz_crash\",\"fuzz_target\":\"$TARGET\",\"raw_bytes\":$ENCODED_BYTES}"
+        fi
+
+        if [[ -e "$OUT" ]]; then
+            # Idempotent re-run: same hash, same class, same threat is
+            # the expected re-promotion path. Different threat at the
+            # same hash is a triager-visible collision.
+            if grep -q "\"threat_id\": \"$THREAT_ID\"" "$OUT"; then
+                echo "promote_fuzz_seed.sh: case $OUT already exists for threat '$THREAT_ID'; leaving it untouched"
+            else
+                echo "promote_fuzz_seed.sh: case $OUT exists but cites a different threat_id; refusing to overwrite" >&2
+                exit 1
+            fi
+        else
+            cat >"$OUT" <<EOF
+{
+  "schema_version": 1,
+  "id": "${CASE_ID}",
+  "class": "${CLASS}",
+  "expected_verdict": "DENY",
+  "expected_reason": "pending_triage_${CLASS}",
+  "threat_id": "${THREAT_ID}",
+  "pending": true,
+  "artifact": ${ARTIFACT},
+  "notes": [
+    "${SOURCE_NOTE}",
+    "${TRIAGE_NOTE}",
+    "${SEVERITY_NOTE}"
+  ]
+}
+EOF
+        fi
+        ;;
 esac
 
 # Refuse to silently clobber a previously promoted regression test for a
@@ -338,5 +502,9 @@ else
 fi
 
 echo "promote_fuzz_seed.sh: promoted $TARGET seed $SHA16 ($MODE, $SEVERITY)"
-echo "  test:   $OUT"
+if [[ "$MODE" == "adversarial" ]]; then
+    echo "  case:   $OUT"
+else
+    echo "  test:   $OUT"
+fi
 echo "  corpus: $DEST"
