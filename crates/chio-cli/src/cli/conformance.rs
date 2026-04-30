@@ -47,7 +47,7 @@ fn parse_report_format(report: Option<&str>) -> Result<bool, CliError> {
             } else if value.eq_ignore_ascii_case("human") {
                 Ok(false)
             } else {
-                Err(CliError::provider_error(format!(
+                Err(CliError::cli_other_error(format!(
                     "unsupported --report value `{value}`; expected `json` or `human`",
                 )))
             }
@@ -67,7 +67,7 @@ fn parse_peer_selection(peer: &str) -> Result<Vec<chio_conformance::PeerTarget>,
         "python" => Ok(vec![chio_conformance::PeerTarget::Python]),
         "go" => Ok(vec![chio_conformance::PeerTarget::Go]),
         "cpp" => Ok(vec![chio_conformance::PeerTarget::Cpp]),
-        other => Err(CliError::provider_error(format!(
+        other => Err(CliError::cli_other_error(format!(
             "unsupported --peer value `{other}`; expected one of js, python, go, cpp, all",
         ))),
     }
@@ -420,29 +420,29 @@ fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), 
 mod conformance_error_tests {
     use super::*;
 
-    fn assert_provider_error(err: CliError, expected_message: &str) {
+    fn assert_cli_error(err: CliError, expected_message: &str) {
         match err {
             CliError::Chio(chio) => {
-                assert_eq!(chio.code().as_str(), "urn:chio:error:provider:tool-server-error");
-                assert_eq!(chio.domain().as_str(), "provider");
+                assert_eq!(chio.code().as_str(), "urn:chio:error:cli:other");
+                assert_eq!(chio.domain().as_str(), "cli");
                 assert!(
                     chio.to_string().contains(expected_message),
                     "message: {chio}",
                 );
             }
-            other => panic!("expected registry-backed provider error, got {other:?}"),
+            other => panic!("expected registry-backed CLI error, got {other:?}"),
         }
     }
 
     #[test]
-    fn invalid_report_format_uses_provider_registry_domain() {
+    fn invalid_report_format_uses_cli_registry_domain() {
         let err = parse_report_format(Some("xml")).unwrap_err();
-        assert_provider_error(err, "unsupported --report value");
+        assert_cli_error(err, "unsupported --report value");
     }
 
     #[test]
-    fn invalid_peer_selection_uses_provider_registry_domain() {
+    fn invalid_peer_selection_uses_cli_registry_domain() {
         let err = parse_peer_selection("ruby").unwrap_err();
-        assert_provider_error(err, "unsupported --peer value");
+        assert_cli_error(err, "unsupported --peer value");
     }
 }

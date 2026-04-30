@@ -231,6 +231,7 @@ fn run_trajectory(args: Vec<String>) -> Result<(), XtaskError> {
     }
 }
 
+#[rustfmt::skip]
 fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_only = false;
     let mut target = TrajectoryManifest::Trajectory1;
@@ -306,10 +307,7 @@ fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
     };
     let new_content = format!(
         "{}\n{body}",
-        target.manifest_header(
-            phase_files.len(),
-            count_top_level_sequence_entries_from_body(&body)
-        )
+        target.manifest_header(phase_files.len(), count_top_level_sequence_entries_from_body(&body))
     );
 
     if check_only {
