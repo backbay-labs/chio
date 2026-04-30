@@ -13,6 +13,13 @@ fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), Receip
 
 impl SqliteReceiptStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ReceiptStoreError> {
+        Self::open_with_pool_config(path, crate::SqlitePoolConfig::default())
+    }
+
+    pub fn open_with_pool_config(
+        path: impl AsRef<Path>,
+        pool_config: crate::SqlitePoolConfig,
+    ) -> Result<Self, ReceiptStoreError> {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -925,24 +932,48 @@ impl SqliteReceiptStore {
 
         drop(connection);
 
-        let manager = SqliteConnectionManager::file(path).with_init(|connection| {
-            configure_sqlite_connection(connection).map_err(|error| match error {
-                ReceiptStoreError::Sqlite(error) => error,
-                other => rusqlite::Error::InvalidParameterName(other.to_string()),
-            })
-        });
-        let pool = Pool::builder()
-            .max_size(8)
-            .build(manager)
-            .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
+        let reader_pool = build_receipt_pool(path, pool_config.reader_pool_max_size)?;
+        let writer_pool = build_receipt_pool(path, pool_config.writer_pool_max_size)?;
 
         Ok(Self {
-            receipt_commit_actor: ReceiptCommitActor::start(pool.clone()),
-            pool,
+            receipt_commit_actor: ReceiptCommitActor::start(writer_pool),
+            pool: reader_pool,
             strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
         })
     }
 
+    pub fn open_with_pool_sizes(
+        path: impl AsRef<Path>,
+        reader_pool_max_size: u32,
+        writer_pool_max_size: u32,
+    ) -> Result<Self, ReceiptStoreError> {
+        Self::open_with_pool_config(
+            path,
+            crate::SqlitePoolConfig {
+                reader_pool_max_size,
+                writer_pool_max_size,
+            },
+        )
+    }
+}
+
+fn build_receipt_pool(
+    path: &Path,
+    max_size: u32,
+) -> Result<Pool<SqliteConnectionManager>, ReceiptStoreError> {
+    let manager = SqliteConnectionManager::file(path).with_init(|connection| {
+        configure_sqlite_connection(connection).map_err(|error| match error {
+            ReceiptStoreError::Sqlite(error) => error,
+            other => rusqlite::Error::InvalidParameterName(other.to_string()),
+        })
+    });
+    Pool::builder()
+        .max_size(max_size)
+        .build(manager)
+        .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
+}
+
+impl SqliteReceiptStore {
     pub fn tool_receipt_count(&self) -> Result<u64, ReceiptStoreError> {
         let count =
             self.connection()?
