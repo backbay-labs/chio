@@ -3,12 +3,26 @@ status = "prepared-blocked-by-m02-pr-352"
 blocked_on = "M02.P5.T2 TypeScript verdict driver shape, tracked by PR #352"
 tuple_fields = ["verdict", "reason_code", "scope_set"]
 
+# Both drivers compose the @chio-protocol/node-http transport-client driver
+# from M02.P5.T2 (drivers/typescript/run_scenarios.ts). They activate once
+# M02.P5.T2 lands; until then they ship as prepared registrations so
+# orchestrator manifests and matrix tooling can enumerate the future
+# verdict-tuple emitters.
+
 [[drivers]]
 id = "typescript-ai-sdk-middleware"
 package = "@chio/ai-sdk-middleware"
 entrypoint = "ai_sdk_middleware.ts"
+transport = "node-http-sidecar"
+status = "prepared"
+matrix_role = "framework-wrapper"
+underlying_driver = "typescript-node-http"
 
 [[drivers]]
 id = "typescript-chio-next"
 package = "@chio/next"
 entrypoint = "chio_next.ts"
+transport = "node-http-sidecar"
+status = "prepared"
+matrix_role = "framework-wrapper"
+underlying_driver = "typescript-node-http"

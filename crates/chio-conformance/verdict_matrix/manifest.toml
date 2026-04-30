@@ -40,6 +40,26 @@ entrypoint = "drivers/typescript"
 command = "cd sdks/typescript/packages/conformance && npm test -- verdict_matrix"
 requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]
 
+# Framework wrappers (M07.P1.T5). Both delegate to typescript-node-http and
+# assert the verdict tuple is preserved across the wrapper. While M02.P5.T2
+# is still in flight, status stays `prepared` so matrix tooling enumerates
+# the entries without attempting execution.
+[drivers.typescript-ai-sdk-middleware]
+status = "prepared"
+entrypoint = "drivers/typescript/ai_sdk_middleware.ts"
+underlying_driver = "typescript-node-http"
+package = "@chio/ai-sdk-middleware"
+matrix_role = "framework-wrapper"
+blocked_on = "M02.P5.T2 TypeScript verdict driver shape"
+
+[drivers.typescript-chio-next]
+status = "prepared"
+entrypoint = "drivers/typescript/chio_next.ts"
+underlying_driver = "typescript-node-http"
+package = "@chio/next"
+matrix_role = "framework-wrapper"
+blocked_on = "M02.P5.T2 TypeScript verdict driver shape"
+
 [drivers.wasm-browser]
 status = "partial"
 entrypoint = "drivers/wasm-browser"

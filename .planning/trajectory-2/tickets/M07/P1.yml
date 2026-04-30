@@ -36,9 +36,9 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 70ac7c4afe5bee1d43b224e1e3931742053def7e
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:00:00Z
   merged_ts: null
 
 - id: M07.P1.T2
@@ -64,9 +64,9 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: b2a1fc2e8274695222f386a282a827fcd6ceab20
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:00:00Z
   merged_ts: null
 
 - id: M07.P1.T3
@@ -93,9 +93,9 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 98ebecdac23d7f804cde48a4c65d39e23a7a6cd6
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:00:00Z
   merged_ts: null
 
 - id: M07.P1.T4
@@ -120,9 +120,9 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 53a7cbc137f9d3f09d71539fa9856174758b838f
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:00:00Z
   merged_ts: null
 
 - id: M07.P1.T5
@@ -147,9 +147,9 @@
   agent_role: spec-typescript
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: bf0a3c796bce698e1d726731c75fc611c7267268
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:00:00Z
   merged_ts: null
 
 - id: M07.P1.T6
@@ -174,7 +174,7 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 6918914cd9dca48fae5c88c30402a3f5475146ab
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T18:00:00Z
   merged_ts: null
