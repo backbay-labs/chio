@@ -72,6 +72,7 @@ members = [
     "crates/chio-reputation",
     #
     # Observability & ops
+    "crates/chio-lineage",
     "crates/chio-metering",
     "crates/chio-otel-receipt-exporter",
     "crates/chio-siem",
@@ -208,3 +209,6 @@ tower-lsp = "0.20.0"
 lsp-types = "0.95.1"
 notify = "6.1.1"
 opentelemetry-semantic-conventions = { version = "=0.29.0", default-features = false, features = ["semconv_experimental"] }
+# M09 wave-opener: lineage DAG (petgraph) and marketplace CSV exports (csv).
+petgraph = "0.6"
+csv = "1"

@@ -11,6 +11,15 @@ publish = false
 [lib]
 name = "chio_guard_registry"
 
+[features]
+default = []
+# M09 marketplace: gates the optional `price: GuardPrice` and
+# `reputation_floor: ReputationTier` manifest fields. Default-off so the
+# trajectory-1 M06 cosign-gated publish and pull paths keep working
+# unchanged. Enabling this feature in M09 P4 wires the marketplace
+# discovery surface; P0 lands the gate only.
+marketplace = []
+
 [dependencies]
 chio-attest-verify = { path = "../chio-attest-verify" }
 oci-distribution = { version = "0.11", default-features = false, features = ["rustls-tls"] }

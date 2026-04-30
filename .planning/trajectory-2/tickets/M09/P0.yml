@@ -34,9 +34,9 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: bf43ebae6
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T13:54:29-04:00
   merged_ts: null
 
 - id: M09.P0.T2
@@ -60,9 +60,9 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 1d060a020
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T13:55:26-04:00
   merged_ts: null
 
 - id: M09.P0.T3
@@ -85,9 +85,9 @@
   agent_role: econ-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 3570c384b
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T13:57:16-04:00
   merged_ts: null
 
 - id: M09.P0.T4
@@ -109,7 +109,7 @@
   agent_role: econ-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 3d0b41d49
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T13:59:04-04:00
   merged_ts: null
