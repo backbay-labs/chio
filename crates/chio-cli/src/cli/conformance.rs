@@ -413,29 +413,78 @@ fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), 
 mod conformance_error_tests {
     use super::*;
 
-    fn assert_cli_error(err: CliError, expected_message: &str) {
+    fn assert_registry_error(
+        err: CliError,
+        expected_code: &str,
+        expected_domain: &str,
+        expected_message: &str,
+    ) {
         match err {
             CliError::Chio(chio) => {
-                assert_eq!(chio.code().as_str(), "urn:chio:error:cli:other");
-                assert_eq!(chio.domain().as_str(), "cli");
+                assert_eq!(chio.code().as_str(), expected_code);
+                assert_eq!(chio.domain().as_str(), expected_domain);
                 assert!(
                     chio.to_string().contains(expected_message),
                     "message: {chio}",
                 );
             }
-            other => panic!("expected registry-backed CLI error, got {other:?}"),
+            other => panic!("expected registry-backed error, got {other:?}"),
+        }
+    }
+
+    fn assert_cli_error(err: CliError, expected_message: &str) {
+        assert_registry_error(err, "urn:chio:error:cli:other", "cli", expected_message);
+    }
+
+    fn sample_summary() -> chio_conformance::ConformanceRunSummary {
+        chio_conformance::ConformanceRunSummary {
+            listen: std::net::SocketAddr::from(([127, 0, 0, 1], 0)),
+            results_dir: PathBuf::from("results"),
+            report_output: PathBuf::from("report.md"),
+            peer_result_files: vec![PathBuf::from("peer.json")],
         }
     }
 
     #[test]
     fn invalid_report_format_uses_cli_registry_domain() {
-        let err = parse_report_format(Some("xml")).unwrap_err();
+        let err = match parse_report_format(Some("xml")) {
+            Ok(value) => panic!("expected invalid report format to fail, got {value}"),
+            Err(err) => err,
+        };
         assert_cli_error(err, "unsupported --report value");
     }
 
     #[test]
     fn invalid_peer_selection_uses_cli_registry_domain() {
-        let err = parse_peer_selection("ruby").unwrap_err();
+        let err = match parse_peer_selection("ruby") {
+            Ok(value) => panic!("expected invalid peer selection to fail, got {value:?}"),
+            Err(err) => err,
+        };
         assert_cli_error(err, "unsupported --peer value");
+    }
+
+    #[test]
+    fn json_report_parent_write_failure_uses_cli_io_domain() {
+        let temp = match tempfile::tempdir() {
+            Ok(temp) => temp,
+            Err(error) => panic!("failed to create temp dir: {error}"),
+        };
+        let blocked_parent = temp.path().join("blocked-parent");
+        if let Err(error) = fs::write(&blocked_parent, b"not a directory") {
+            panic!("failed to create blocked parent fixture: {error}");
+        }
+        let output = blocked_parent.join("report.json");
+
+        let err = match write_json_report(&sample_summary(), &[], &[], None, Some(&output)) {
+            Ok(()) => panic!("expected blocked report parent to fail"),
+            Err(err) => err,
+        };
+
+        assert_registry_error(
+            err,
+            "urn:chio:error:cli:io",
+            "cli",
+            "failed to create report parent directory",
+        );
     }
 }
