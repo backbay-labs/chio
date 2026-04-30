@@ -1100,6 +1100,107 @@ fn append_100_receipts_seqs_span_1_to_100() {
 }
 
 #[test]
+fn append_receipt_batch_commits_multiple_receipts_together(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-receipts-group-batch");
+    let store = SqliteReceiptStore::open(&path)?;
+
+    let mut requests = Vec::new();
+    for i in 0..4usize {
+        let receipt = sample_receipt_with_id(&format!("rcpt-group-batch-{i}"));
+        let raw_json = serde_json::to_string(&receipt)?;
+        let (response, _result) = std::sync::mpsc::sync_channel(1);
+        requests.push(ReceiptCommitRequest {
+            receipt,
+            raw_json,
+            response,
+        });
+    }
+
+    let seqs: Vec<u64> = append_receipt_batch(&store.pool, &requests)
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
+
+    assert_eq!(seqs, vec![1, 2, 3, 4]);
+    assert_eq!(store.tool_receipt_count()?, 4);
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
+fn append_receipt_batch_rolls_back_all_receipts_on_batch_error(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-receipts-group-rollback");
+    let store = SqliteReceiptStore::open(&path)?;
+    let mut requests = Vec::new();
+
+    for receipt in [sample_receipt_with_id("rcpt-group-rollback-valid"), {
+        let mut receipt = sample_receipt_with_id("rcpt-group-rollback-invalid");
+        receipt.timestamp = u64::MAX;
+        receipt
+    }] {
+        let raw_json = serde_json::to_string(&receipt)?;
+        let (response, _result) = std::sync::mpsc::sync_channel(1);
+        requests.push(ReceiptCommitRequest {
+            receipt,
+            raw_json,
+            response,
+        });
+    }
+
+    let results = append_receipt_batch(&store.pool, &requests);
+
+    assert!(results.into_iter().all(|result| result.is_err()));
+    assert_eq!(store.tool_receipt_count()?, 0);
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
+fn receipt_commit_flush_waits_for_queued_receipts() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-receipts-group-flush");
+    let store = SqliteReceiptStore::open(&path)?;
+    let mut results = Vec::new();
+
+    for i in 0..3usize {
+        let receipt = sample_receipt_with_id(&format!("rcpt-group-flush-{i}"));
+        let raw_json = serde_json::to_string(&receipt)?;
+        let (response, result) = std::sync::mpsc::sync_channel(1);
+        store
+            .receipt_commit_actor
+            .sender
+            .send(ReceiptCommitCommand::Append(Box::new(
+                ReceiptCommitRequest {
+                    receipt,
+                    raw_json,
+                    response,
+                },
+            )))
+            .map_err(|_| std::io::Error::other("send receipt append command"))?;
+        results.push(result);
+    }
+
+    store.flush_receipt_writes()?;
+    let seqs: Vec<u64> = results
+        .into_iter()
+        .map(|result| {
+            result
+                .recv()
+                .map_err(|_| std::io::Error::other("receive receipt append result"))?
+                .map_err(Box::<dyn std::error::Error>::from)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    assert_eq!(seqs, vec![1, 2, 3]);
+    assert_eq!(store.tool_receipt_count()?, 3);
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
 fn append_chio_receipt_returning_seq_supports_concurrent_writers() {
     let path = unique_db_path("chio-receipts-concurrent");
     let store = Arc::new(SqliteReceiptStore::open(&path).unwrap());
