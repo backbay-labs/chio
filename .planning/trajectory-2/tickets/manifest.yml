@@ -1559,7 +1559,7 @@
   milestone: M03
   phase: 0
   title: Pin fips204, dcap-rs, sev, coset crates in workspace Cargo.toml
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/Cargo.toml
@@ -1577,15 +1577,15 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: e6e14021db8500b554afb10e6ef3152cab665002
+  merged_sha: a08db4dfc4b6d55f8421ecbeb9194e0d02c89d65
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:55:51Z"
 - id: M03.P0.T2
   milestone: M03
   phase: 0
   title: Add pq cargo feature to chio-core-types and chio-attest-verify (default-off)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - crates/chio-core-types/Cargo.toml
@@ -1601,15 +1601,15 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: e6e14021db8500b554afb10e6ef3152cab665002
+  merged_sha: a08db4dfc4b6d55f8421ecbeb9194e0d02c89d65
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:55:51Z"
 - id: M03.P0.T3
   milestone: M03
   phase: 0
   title: Open M03 audit doc with starting counts (lib lines, PQ variants, quote backends)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M03-pq-hybrid-and-tee-quote-verifier.md
@@ -1624,15 +1624,15 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: e6e14021db8500b554afb10e6ef3152cab665002
+  merged_sha: a08db4dfc4b6d55f8421ecbeb9194e0d02c89d65
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:55:51Z"
 - id: M03.P0.T4
   milestone: M03
   phase: 0
   title: Append pq_signature_downgrade and tee_quote_forgery rows to threat model
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - spec/security/chio-threat-model.v1.json
@@ -1649,15 +1649,15 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: e6e14021db8500b554afb10e6ef3152cab665002
+  merged_sha: a08db4dfc4b6d55f8421ecbeb9194e0d02c89d65
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:55:51Z"
 - id: M03.P0.T5
   milestone: M03
   phase: 0
   title: Re-check fips204 vs RustCrypto ml-dsa ecosystem state and confirm or amend D08 pin
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M03-pq-hybrid-and-tee-quote-verifier.md
@@ -1673,10 +1673,10 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
+  first_commit_sha: e6e14021db8500b554afb10e6ef3152cab665002
+  merged_sha: a08db4dfc4b6d55f8421ecbeb9194e0d02c89d65
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T14:55:51Z"
 - id: M03.P1.T1
   milestone: M03
   phase: 1
