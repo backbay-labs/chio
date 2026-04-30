@@ -17,6 +17,7 @@ path = "src/bin/chio.rs"
 
 [dependencies]
 chio-appraisal = { path = "../chio-appraisal" }
+chio-arena = { path = "../chio-arena" }
 chio-api-protect = { path = "../chio-api-protect" }
 chio-control-plane = { path = "../chio-control-plane" }
 chio-acp-proxy = { path = "../chio-acp-proxy" }

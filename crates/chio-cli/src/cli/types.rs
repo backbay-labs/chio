@@ -253,6 +253,71 @@ enum Commands {
     /// warning, 1 for error, 2 for fatal. The optional `--fix` flag
     /// runs idempotent repairs only; destructive operations are rejected.
     Doctor(DoctorArgs),
+
+    /// chio-arena coliseum: run scenarios, replay bundles, evolve adversaries.
+    ///
+    /// `arc arena run scenarios/<name>.toml` loads a scenario, drives the
+    /// kernel via the trajectory-1 M05 async surface, and writes a receipt
+    /// bundle byte-compatible with the trajectory-1 M04 replay corpus under
+    /// `target/arena/<scenario-id>/`. `arc arena replay <scenario-id>`
+    /// resolves the bundle directory and delegates to `chio replay`.
+    /// `arc arena evolve scenarios/<seed>.toml --generations N` runs the
+    /// co-evolution driver under the bounded-budget gate.
+    Arena {
+        #[command(subcommand)]
+        command: ArenaCommands,
+    },
+}
+
+/// Sub-subcommands for `arc arena`.
+#[derive(clap::Subcommand)]
+enum ArenaCommands {
+    /// Run a scenario file and write an arena bundle under target/arena/.
+    Run {
+        /// Path to the scenario TOML file.
+        scenario: PathBuf,
+        /// Override the bundle output root (default `target/arena/`).
+        #[arg(long, value_name = "DIR")]
+        output_root: Option<PathBuf>,
+        /// Emit the run summary as JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Replay a previously emitted arena bundle by scenario id.
+    ///
+    /// Resolves `target/arena/<scenario-id>/` and delegates to the
+    /// trajectory-1 M04 `chio replay` engine. Use `--bundle-dir` to point
+    /// at a non-default bundle location.
+    Replay {
+        /// Scenario id to replay.
+        scenario_id: String,
+        /// Override the bundle output root.
+        #[arg(long, value_name = "DIR")]
+        output_root: Option<PathBuf>,
+        /// Resolved bundle directory (overrides `--output-root` plus id).
+        #[arg(long, value_name = "DIR")]
+        bundle_dir: Option<PathBuf>,
+        /// Emit the resolved bundle metadata as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run the co-evolution loop for a scenario seed.
+    Evolve {
+        /// Path to the seed scenario TOML file.
+        seed: PathBuf,
+        /// Number of generations to run (the bounded-budget gate clamps).
+        #[arg(long, default_value_t = 5)]
+        generations: u32,
+        /// Maximum wall-clock budget in seconds.
+        #[arg(long, default_value_t = 1800)]
+        wall_seconds: u64,
+        /// Override the leaderboard output root (default `target/arena/`).
+        #[arg(long, value_name = "DIR")]
+        output_root: Option<PathBuf>,
+        /// Emit the evolve summary as JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Arguments for the `chio replay` subcommand.

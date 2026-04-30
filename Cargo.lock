@@ -2550,6 +2550,7 @@ dependencies = [
  "chio-acp-proxy",
  "chio-api-protect",
  "chio-appraisal",
+ "chio-arena",
  "chio-conformance",
  "chio-control-plane",
  "chio-core",
