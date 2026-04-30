@@ -60,3 +60,69 @@ non-M04 work touching either set of paths.
 
 Security x2 review is required for P0 and every later M04 PR because M04 is
 a trust-boundary milestone.
+
+## P3 SDK Breakage Audit (M04.P3.T5)
+
+P3 introduces three new public symbols in `chio-core-types`:
+
+- `chio_core_types::delegate(...)` (mint helper)
+- `chio_core_types::DelegationReceipt` (signed-receipt envelope)
+- `chio_core_types::ScopeAttenuation` (mint input request)
+
+All three are gated behind a new cargo feature `delegation_v2` (default
+OFF). Without the feature, the `delegation_receipt` module is not
+compiled and the `delegate` re-export is absent, so existing SDK
+consumers see byte-identical type and function tables to pre-M04.P3.
+
+`Operation::Delegate` (the existing `Operation` enum variant) is NOT
+new in P3 - it predates this milestone and remains unchanged. The doc
+text "Capability::Delegate variant" in
+`.planning/trajectory-2/04-recursive-delegation-revocation-oracle.md`
+refers to the new `delegate` mint helper surface introduced in this
+phase, not a new enum variant on `Operation` or `CapabilityToken`.
+
+### Migration path for downstream consumers
+
+To opt into recursive delegation:
+
+1. Add the feature to your Cargo.toml dependency on `chio-core-types`:
+
+   ```toml
+   chio-core-types = { workspace = true, features = ["delegation_v2"] }
+   ```
+
+2. (Optional) enable the kernel-side oracle consultation by also
+   flipping the `chio-kernel` feature:
+
+   ```toml
+   chio-kernel = { workspace = true, features = ["delegation_v2"] }
+   ```
+
+3. Install a `chio_kernel_core::RevocationView` snapshot via
+   `ChioKernel::set_revocation_view(view)` so dispatch consults the
+   federation-gossiped revocation set on every delegated request.
+
+4. Mint child capabilities by calling `chio_core_types::delegate(...)`
+   instead of building `DelegationLink::sign` calls by hand. The
+   helper enforces scope subset, expiry monotonicity, and budget
+   monotonicity at mint time.
+
+### Gate verification
+
+Both feature axes build:
+
+- `cargo build -p chio-core-types --no-default-features` keeps the
+  legacy SDK shape (no `delegate`, no `DelegationReceipt`).
+- `cargo build -p chio-core-types --features delegation_v2` links the
+  new mint helper and receipt envelope.
+
+Trajectory-2 M07 framework adapters opt in explicitly per the M04
+plan; this audit row records the gating decision and the migration
+contract that downstream SDKs follow.
+
+### Trajectory-2 M06 CanonicalBytes integration
+
+The `DelegationReceipt::canonical_bytes()` method returns
+`chio_core_types::CanonicalBytes`. M06's CanonicalBytes newtype is
+preferred and already in place, so the soft-dep listed on M04.P3.T2
+is satisfied at this audit's writing.
