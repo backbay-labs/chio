@@ -46,5 +46,18 @@
         "required": ["url"]
       }
     }
-  ]
+  ],
+  "responses": {
+    "echo": {
+      "content": [
+        { "type": "text", "text": "echoed: hello" }
+      ]
+    },
+    "read_file": {
+      "content": [
+        { "type": "text", "text": "file contents" }
+      ]
+    }
+  },
+  "allow": ["echo", "read_file"]
 }
