@@ -19,6 +19,8 @@ extern crate alloc;
 pub mod canonical;
 pub mod capability;
 pub mod crypto;
+#[cfg(feature = "delegation_v2")]
+pub mod delegation_receipt;
 pub mod error;
 pub mod hashing;
 pub mod manifest;
@@ -50,6 +52,10 @@ pub use capability::{
 pub use crypto::{
     sha256_hex, Ed25519Backend, Keypair, PublicKey, Signature, SigningAlgorithm, SigningBackend,
 };
+#[cfg(feature = "delegation_v2")]
+pub use capability::delegate;
+#[cfg(feature = "delegation_v2")]
+pub use delegation_receipt::{DelegationReceipt, ScopeAttenuation};
 #[cfg(feature = "pq")]
 pub use crypto::{HybridBackend, MlDsa65Backend};
 #[cfg(feature = "fips")]

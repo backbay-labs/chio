@@ -2458,6 +2458,87 @@ pub fn validate_attenuation(parent: &ChioScope, child: &ChioScope) -> Result<()>
     }
 }
 
+/// M04 Phase 3 recursive-delegation mint helper.
+///
+/// `delegate` wraps [`DelegationLink::sign`] with fail-closed attenuation
+/// enforcement and emits a [`DelegationReceipt`] alongside the signed
+/// link. Returns `Err` (denying the mint) when any of:
+///
+/// * The proposed `child_scope` is not a subset of the parent token's
+///   scope (rejected by [`validate_attenuation`]).
+/// * The requested `child_expires_at` is greater than the parent's
+///   `expires_at` (rejected as an [`Error::AttenuationViolation`]).
+/// * `delegator_keypair.public_key() != parent.subject` (the mint helper
+///   is fail-closed: only the parent capability's bound subject may
+///   delegate further).
+///
+/// The helper is intentionally pure with respect to the local clock:
+/// callers pass `signed_at` and `nonce` explicitly so unit tests, replay
+/// proofs, and proptest-driven invariants stay deterministic.
+///
+/// This function is gated behind the `delegation_v2` feature flag (M04
+/// SDK breakage audit). Callers must opt in explicitly.
+#[cfg(feature = "delegation_v2")]
+pub fn delegate(
+    parent: &CapabilityToken,
+    child_scope: &ChioScope,
+    delegator_keypair: &Keypair,
+    delegatee: &PublicKey,
+    attenuation: crate::delegation_receipt::ScopeAttenuation,
+    signed_at: u64,
+    nonce: [u8; 16],
+) -> Result<crate::delegation_receipt::DelegationReceipt> {
+    if delegator_keypair.public_key() != parent.subject {
+        return Err(Error::AttenuationViolation {
+            reason: alloc::format!(
+                "delegator key {} does not match parent capability subject {}",
+                delegator_keypair.public_key().to_hex(),
+                parent.subject.to_hex()
+            ),
+        });
+    }
+
+    validate_attenuation(&parent.scope, child_scope)?;
+
+    let child_expires_at = attenuation.child_expires_at.unwrap_or(parent.expires_at);
+    if child_expires_at > parent.expires_at {
+        return Err(Error::AttenuationViolation {
+            reason: alloc::format!(
+                "child expires_at {} exceeds parent expires_at {}",
+                child_expires_at,
+                parent.expires_at
+            ),
+        });
+    }
+    if signed_at >= parent.expires_at {
+        return Err(Error::AttenuationViolation {
+            reason: alloc::format!(
+                "signed_at {} is at or beyond parent expires_at {}",
+                signed_at,
+                parent.expires_at
+            ),
+        });
+    }
+
+    let body = DelegationLinkBody {
+        capability_id: parent.id.clone(),
+        delegator: parent.subject.clone(),
+        delegatee: delegatee.clone(),
+        attenuations: attenuation.steps.clone(),
+        timestamp: signed_at,
+    };
+    let link = DelegationLink::sign(body, delegator_keypair)?;
+
+    Ok(crate::delegation_receipt::DelegationReceipt {
+        parent_chain: parent.delegation_chain.clone(),
+        attenuation,
+        signed_at,
+        nonce,
+        link,
+        parent_capability_id: parent.id.clone(),
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -3921,5 +4002,191 @@ mod tests {
         let token = GovernedApprovalToken::sign_with_backend(body, &backend).unwrap();
         assert_eq!(token.algorithm, Some(crate::crypto::SigningAlgorithm::P256));
         assert!(token.verify_signature().unwrap());
+    }
+
+    // ----- M04 Phase 3: `delegate` mint helper ----------------------
+
+    #[cfg(feature = "delegation_v2")]
+    fn delegate_parent_token(
+        parent_kp: &Keypair,
+        subject_kp: &Keypair,
+        scope: ChioScope,
+        issued_at: u64,
+        expires_at: u64,
+    ) -> CapabilityToken {
+        let body = CapabilityTokenBody {
+            id: "cap-parent".to_string(),
+            issuer: parent_kp.public_key(),
+            subject: subject_kp.public_key(),
+            scope,
+            issued_at,
+            expires_at,
+            delegation_chain: vec![],
+        };
+        CapabilityToken::sign(body, parent_kp).unwrap()
+    }
+
+    #[cfg(feature = "delegation_v2")]
+    #[test]
+    fn delegate_mints_signed_link_for_subset_scope() {
+        use crate::delegation_receipt::ScopeAttenuation;
+
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let parent_scope = make_scope(vec![make_grant(
+            "srv-a",
+            "tool-x",
+            vec![Operation::Invoke, Operation::Delegate],
+        )]);
+        let parent =
+            delegate_parent_token(&issuer, &subject, parent_scope.clone(), 1000, 2000);
+        let child_scope =
+            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+
+        let receipt = delegate(
+            &parent,
+            &child_scope,
+            &subject,
+            &delegatee.public_key(),
+            ScopeAttenuation::empty(),
+            1500,
+            [7_u8; 16],
+        )
+        .unwrap();
+
+        assert_eq!(receipt.parent_capability_id, parent.id);
+        assert_eq!(receipt.signed_at, 1500);
+        assert!(receipt.link.verify_signature().unwrap());
+        assert_eq!(receipt.link.delegator, parent.subject);
+        assert_eq!(receipt.link.delegatee, delegatee.public_key());
+    }
+
+    #[cfg(feature = "delegation_v2")]
+    #[test]
+    fn delegate_rejects_widening_scope() {
+        use crate::delegation_receipt::ScopeAttenuation;
+
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let parent_scope =
+            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let parent =
+            delegate_parent_token(&issuer, &subject, parent_scope, 1000, 2000);
+        // Child tries to add `Operation::Delegate`, widening the parent.
+        let widened = make_scope(vec![make_grant(
+            "srv-a",
+            "tool-x",
+            vec![Operation::Invoke, Operation::Delegate],
+        )]);
+
+        let err = delegate(
+            &parent,
+            &widened,
+            &subject,
+            &delegatee.public_key(),
+            ScopeAttenuation::empty(),
+            1500,
+            [0_u8; 16],
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::AttenuationViolation { .. }));
+    }
+
+    #[cfg(feature = "delegation_v2")]
+    #[test]
+    fn delegate_rejects_extending_expiry() {
+        use crate::delegation_receipt::ScopeAttenuation;
+
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let scope =
+            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let parent =
+            delegate_parent_token(&issuer, &subject, scope.clone(), 1000, 2000);
+
+        let attenuation = crate::delegation_receipt::ScopeAttenuation {
+            steps: vec![],
+            child_expires_at: Some(3000), // > parent.expires_at
+        };
+        let err = delegate(
+            &parent,
+            &scope,
+            &subject,
+            &delegatee.public_key(),
+            attenuation,
+            1500,
+            [0_u8; 16],
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::AttenuationViolation { .. }));
+
+        // sanity: at-or-below parent expiry is accepted.
+        let ok = delegate(
+            &parent,
+            &scope,
+            &subject,
+            &delegatee.public_key(),
+            ScopeAttenuation {
+                steps: vec![],
+                child_expires_at: Some(1800),
+            },
+            1500,
+            [0_u8; 16],
+        );
+        assert!(ok.is_ok());
+    }
+
+    #[cfg(feature = "delegation_v2")]
+    #[test]
+    fn delegate_rejects_wrong_delegator_key() {
+        use crate::delegation_receipt::ScopeAttenuation;
+
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let imposter = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let scope =
+            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let parent = delegate_parent_token(&issuer, &subject, scope.clone(), 1000, 2000);
+
+        let err = delegate(
+            &parent,
+            &scope,
+            &imposter, // not parent.subject
+            &delegatee.public_key(),
+            ScopeAttenuation::empty(),
+            1500,
+            [0_u8; 16],
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::AttenuationViolation { .. }));
+    }
+
+    #[cfg(feature = "delegation_v2")]
+    #[test]
+    fn delegate_rejects_signed_at_at_or_after_parent_expiry() {
+        use crate::delegation_receipt::ScopeAttenuation;
+
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let scope =
+            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let parent = delegate_parent_token(&issuer, &subject, scope.clone(), 1000, 2000);
+
+        let err = delegate(
+            &parent,
+            &scope,
+            &subject,
+            &delegatee.public_key(),
+            ScopeAttenuation::empty(),
+            2000, // == parent.expires_at
+            [0_u8; 16],
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::AttenuationViolation { .. }));
     }
 }
