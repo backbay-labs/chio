@@ -69,6 +69,7 @@ members = [
     "crates/chio-did",
     "crates/chio-federation",
     "crates/chio-governance",
+    "crates/chio-revocation-oracle",
     "crates/chio-reputation",
     #
     # Observability & ops
@@ -186,6 +187,7 @@ ryu = "1"
 sha2 = "0.10"
 reqwest = { version = "0.13.2", default-features = false }
 rusqlite = { version = "0.39", features = ["bundled"] }
+rs_merkle = "1.5"
 uuid = "1"
 url = "2"
 webauthn-rs = "=0.5.2"

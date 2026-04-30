@@ -1,0 +1,19 @@
+[package]
+name = "chio-revocation-oracle"
+description = "Chio revocation oracle scaffold"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_revocation_oracle"
+
+[dependencies]
+rs_merkle = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
