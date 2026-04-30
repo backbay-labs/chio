@@ -172,6 +172,8 @@
   opened_ts: "2026-04-30T07:59:43Z"
   merged_ts: null
   notes: "Closed via the M01.P2.T3 bundle PR #342. Workspace grep gate (CliError::Other across crates/chio-cli/src/, crates/chio-control-plane/src/, crates/chio-hosted-mcp/src/) verified at 0 locally on branch wave/W1/m01/p2.bundle-domain-migration."
+
+- id: M01.P2.T6
   milestone: M01
   phase: 2
   title: Regenerate provider README error-taxonomy tables from registry and add drift-check
