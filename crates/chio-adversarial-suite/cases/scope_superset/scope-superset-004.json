@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "scope-superset-004",
+  "class": "scope_superset",
+  "expected_verdict": "DENY",
+  "expected_reason": "scope_superset_cross_protocol",
+  "threat_id": "delegation_chain_abuse",
+  "pending": false,
+  "artifact": {
+    "case_kind": "cross_protocol_scope",
+    "algebra_oracle": "protocol_scope_cannot_expand_across_adapter",
+    "parent": {
+      "id": "grant-scope-superset-004-parent",
+      "scopes": ["mcp:tool:read"]
+    },
+    "child": {
+      "id": "grant-scope-superset-004-child",
+      "scopes": ["mcp:tool:read", "a2a:task:write"]
+    }
+  },
+  "notes": ["algebra-oracle: protocol_scope_cannot_expand_across_adapter"]
+}

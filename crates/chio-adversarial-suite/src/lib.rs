@@ -100,6 +100,66 @@ pub const BUNDLED_CASES: &[BundledCase] = &[
         path: "cases/replayed_nonce/replayed-nonce-005.json",
         contents: include_str!("../cases/replayed_nonce/replayed-nonce-005.json"),
     },
+    BundledCase {
+        path: "cases/partial_signature/partial-signature-001.json",
+        contents: include_str!("../cases/partial_signature/partial-signature-001.json"),
+    },
+    BundledCase {
+        path: "cases/partial_signature/partial-signature-002.json",
+        contents: include_str!("../cases/partial_signature/partial-signature-002.json"),
+    },
+    BundledCase {
+        path: "cases/partial_signature/partial-signature-003.json",
+        contents: include_str!("../cases/partial_signature/partial-signature-003.json"),
+    },
+    BundledCase {
+        path: "cases/partial_signature/partial-signature-004.json",
+        contents: include_str!("../cases/partial_signature/partial-signature-004.json"),
+    },
+    BundledCase {
+        path: "cases/partial_signature/partial-signature-005.json",
+        contents: include_str!("../cases/partial_signature/partial-signature-005.json"),
+    },
+    BundledCase {
+        path: "cases/scope_superset/scope-superset-001.json",
+        contents: include_str!("../cases/scope_superset/scope-superset-001.json"),
+    },
+    BundledCase {
+        path: "cases/scope_superset/scope-superset-002.json",
+        contents: include_str!("../cases/scope_superset/scope-superset-002.json"),
+    },
+    BundledCase {
+        path: "cases/scope_superset/scope-superset-003.json",
+        contents: include_str!("../cases/scope_superset/scope-superset-003.json"),
+    },
+    BundledCase {
+        path: "cases/scope_superset/scope-superset-004.json",
+        contents: include_str!("../cases/scope_superset/scope-superset-004.json"),
+    },
+    BundledCase {
+        path: "cases/scope_superset/scope-superset-005.json",
+        contents: include_str!("../cases/scope_superset/scope-superset-005.json"),
+    },
+    BundledCase {
+        path: "cases/revocation_rollback/revocation-rollback-001.json",
+        contents: include_str!("../cases/revocation_rollback/revocation-rollback-001.json"),
+    },
+    BundledCase {
+        path: "cases/revocation_rollback/revocation-rollback-002.json",
+        contents: include_str!("../cases/revocation_rollback/revocation-rollback-002.json"),
+    },
+    BundledCase {
+        path: "cases/revocation_rollback/revocation-rollback-003.json",
+        contents: include_str!("../cases/revocation_rollback/revocation-rollback-003.json"),
+    },
+    BundledCase {
+        path: "cases/revocation_rollback/revocation-rollback-004.json",
+        contents: include_str!("../cases/revocation_rollback/revocation-rollback-004.json"),
+    },
+    BundledCase {
+        path: "cases/revocation_rollback/revocation-rollback-005.json",
+        contents: include_str!("../cases/revocation_rollback/revocation-rollback-005.json"),
+    },
 ];
 
 /// One malicious-but-well-formed case consumed by test harnesses.

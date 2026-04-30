@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "partial-signature-003",
+  "class": "partial_signature",
+  "expected_verdict": "DENY",
+  "expected_reason": "partial_signature_missing_nonce_claim",
+  "threat_id": "native_channel_replay",
+  "pending": false,
+  "artifact": {
+    "case_kind": "nonce_binding_signature",
+    "algebra_oracle": "nonce_binding_is_injective",
+    "signed_payload": {
+      "receipt_id": "rcpt-partial-signature-003",
+      "capability_id": "cap-partial-signature-003"
+    },
+    "unsigned_nonce": "ps-003",
+    "signature": "ed25519:partial-signature-003"
+  },
+  "notes": ["algebra-oracle: nonce_binding_is_injective"]
+}

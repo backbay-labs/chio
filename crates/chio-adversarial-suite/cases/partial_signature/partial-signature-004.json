@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "partial-signature-004",
+  "class": "partial_signature",
+  "expected_verdict": "DENY",
+  "expected_reason": "partial_signature_missing_parent_link",
+  "threat_id": "delegation_chain_abuse",
+  "pending": false,
+  "artifact": {
+    "case_kind": "delegation_signature",
+    "algebra_oracle": "delegation_parent_binding_is_total",
+    "signed_child": {
+      "id": "grant-partial-signature-004-child",
+      "scopes": ["tool:read"],
+      "expires_at": "2026-04-30T15:05:00Z"
+    },
+    "unsigned_parent_id": "grant-partial-signature-004-parent",
+    "signature": "ed25519:partial-signature-004"
+  },
+  "notes": ["algebra-oracle: delegation_parent_binding_is_total"]
+}

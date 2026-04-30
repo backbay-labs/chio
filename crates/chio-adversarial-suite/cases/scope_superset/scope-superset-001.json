@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "scope-superset-001",
+  "class": "scope_superset",
+  "expected_verdict": "DENY",
+  "expected_reason": "scope_superset",
+  "threat_id": "delegation_chain_abuse",
+  "pending": false,
+  "artifact": {
+    "case_kind": "delegation_scope",
+    "algebra_oracle": "delegated_scope_is_subset_of_parent",
+    "parent": {
+      "id": "grant-scope-superset-001-parent",
+      "scopes": ["tool:read"]
+    },
+    "child": {
+      "id": "grant-scope-superset-001-child",
+      "scopes": ["tool:read", "tool:write"]
+    }
+  },
+  "notes": ["algebra-oracle: delegated_scope_is_subset_of_parent"]
+}

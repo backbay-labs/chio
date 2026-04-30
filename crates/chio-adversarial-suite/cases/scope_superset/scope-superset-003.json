@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "scope-superset-003",
+  "class": "scope_superset",
+  "expected_verdict": "DENY",
+  "expected_reason": "scope_superset_resource",
+  "threat_id": "capability_token_theft",
+  "pending": false,
+  "artifact": {
+    "case_kind": "resource_scope",
+    "algebra_oracle": "resource_scope_attenuation_is_monotonic",
+    "parent": {
+      "id": "grant-scope-superset-003-parent",
+      "scopes": ["resource:project-a:read"]
+    },
+    "child": {
+      "id": "grant-scope-superset-003-child",
+      "scopes": ["resource:project-a:read", "resource:project-b:read"]
+    }
+  },
+  "notes": ["algebra-oracle: resource_scope_attenuation_is_monotonic"]
+}

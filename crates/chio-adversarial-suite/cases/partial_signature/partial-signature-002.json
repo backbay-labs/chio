@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "partial-signature-002",
+  "class": "partial_signature",
+  "expected_verdict": "DENY",
+  "expected_reason": "partial_signature_missing_scope_claim",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "capability_signature",
+    "algebra_oracle": "capability_identity_commits_to_scope",
+    "signed_fields": ["id", "issuer", "subject", "expires_at"],
+    "unsigned_fields": {
+      "scopes": ["tool:invoke:billing.write"]
+    },
+    "signature": {
+      "algorithm": "ed25519",
+      "bytes": "ed25519:partial-signature-002"
+    }
+  },
+  "notes": ["algebra-oracle: capability_identity_commits_to_scope"]
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "partial-signature-001",
+  "class": "partial_signature",
+  "expected_verdict": "DENY",
+  "expected_reason": "partial_signature_envelope",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "case_kind": "receipt_signature",
+    "algebra_oracle": "signed_payload_identity_is_total",
+    "payload": {
+      "receipt_id": "rcpt-partial-signature-001",
+      "decision": "ALLOW",
+      "canonical_digest": "sha256:partial-signature-001"
+    },
+    "signature": {
+      "algorithm": "ed25519",
+      "key_id": "did:chio:authority:m05#signing",
+      "bytes": "ed25519:truncated"
+    }
+  },
+  "notes": ["algebra-oracle: signed_payload_identity_is_total"]
+}
