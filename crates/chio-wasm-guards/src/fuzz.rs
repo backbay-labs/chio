@@ -139,3 +139,99 @@ pub fn fuzz_wit_host_call_boundary(data: &[u8]) {
     // deser site (see runtime.rs read_structured_deny_reason).
     let _ = serde_json::from_slice::<GuestDenyResponse>(data);
 }
+
+// ---------------------------------------------------------------------------
+// WASM guard escape fuzzer (M05.P3)
+// ---------------------------------------------------------------------------
+
+/// Tiny fuel ceiling used for the escape harness `evaluate` step.
+///
+/// Distinct from [`FUZZ_FUEL_LIMIT`] (which is the preinstantiate-validate
+/// fuel field; that path never consumes fuel). The escape harness actually
+/// runs guest code, so fuel must be small enough that an adversarial
+/// deep-recursion or unbounded-loop module is denied with
+/// [`crate::error::WasmGuardError::FuelExhausted`] rather than dragging the
+/// fuzzer into a multi-second iteration. 50k units lets a `chio_alloc` stub
+/// plus a handful of guest instructions clear without giving an attacker
+/// enough budget to amplify a fuel-bomb seed.
+const ESCAPE_FUZZ_FUEL_LIMIT: u64 = 50_000;
+
+/// Drive arbitrary bytes through the WASM guard runtime-execution surface.
+///
+/// Companion to [`fuzz_wasm_preinstantiate_validate`]: that target validates
+/// the pre-execution parse + import-namespace check; this one drives the
+/// post-load runtime path through a single `evaluate` call. Together they
+/// span the eight escape classes catalogued at
+/// `.planning/trajectory-2/05-adversarial-escape-threat-model.md` (P3):
+/// undeclared host imports, oversized linear memory, fuel-budget exhaustion,
+/// table grow/abuse, stack overflow via deep recursion, host reentry,
+/// malformed component-model encoding, and signed-but-malicious modules.
+///
+/// # Coverage shape
+///
+/// On every iteration the same `data` byte slice is driven through:
+///
+/// 1. [`crate::runtime::wasmtime_backend::detect_wasm_format`] - format
+///    sniff; rejects pure garbage early so the escape signal is concentrated
+///    on well-formed-but-malicious modules.
+/// 2. [`crate::component::ComponentBackend::load_module`] - Component
+///    Model preinstantiate-validate; the malformed-component-encoding class
+///    lands here.
+/// 3. [`crate::runtime::wasmtime_backend::WasmtimeBackend::load_module`] -
+///    core-module preinstantiate-validate plus the WGSEC-02
+///    import-namespace check; the undeclared-imports class lands here.
+/// 4. **(Escape-specific)** When step 3 succeeds, drive the loaded module
+///    through one `evaluate` call against a constant minimal
+///    [`crate::abi::GuardRequest`]. The fuel cap is fixed at
+///    [`ESCAPE_FUZZ_FUEL_LIMIT`] so fuel-exhaustion, deep-recursion,
+///    table-grow-abuse, and host-reentry escapes surface as typed
+///    [`crate::error::WasmGuardError`] values rather than libFuzzer-visible
+///    timeouts or aborts.
+///
+/// # Post-condition
+///
+/// Every iteration MUST conclude with the host process intact. Errors at
+/// every step are silently consumed; the only failures are panics, aborts,
+/// or sanitizer-reported memory escapes (which libFuzzer treats as crashes).
+pub fn fuzz_wasm_guard_escape(data: &[u8]) {
+    use crate::abi::{GuardRequest, WasmGuardAbi};
+
+    let Some(engine) = engine() else {
+        return;
+    };
+
+    // Surface 1: format sniff. Pure garbage falls out here.
+    let _ = detect_wasm_format(data);
+
+    // Surface 2: Component Model preinstantiate-validate. The
+    // malformed-component-encoding class lands here.
+    let mut component_backend = ComponentBackend::with_engine(Arc::clone(engine));
+    let _ = component_backend.load_module(data, ESCAPE_FUZZ_FUEL_LIMIT);
+
+    // Surface 3: core-module preinstantiate-validate. The undeclared-
+    // imports, oversize-memory, and signed-but-malicious classes (which
+    // all parse cleanly) land here. On successful load we proceed to
+    // surface 4.
+    let mut wasmtime_backend = WasmtimeBackend::with_engine(Arc::clone(engine));
+    if wasmtime_backend
+        .load_module(data, ESCAPE_FUZZ_FUEL_LIMIT)
+        .is_ok()
+    {
+        // Surface 4: runtime execution. Drives fuel-exhaustion, deep-
+        // recursion, table-grow-abuse, and host-reentry classes through
+        // the `evaluate` boundary.
+        let request = GuardRequest {
+            tool_name: String::new(),
+            server_id: String::new(),
+            agent_id: "fuzz".to_string(),
+            arguments: serde_json::Value::Null,
+            scopes: Vec::new(),
+            action_type: None,
+            extracted_path: None,
+            extracted_target: None,
+            filesystem_roots: Vec::new(),
+            matched_grant_index: None,
+        };
+        let _ = wasmtime_backend.evaluate(&request);
+    }
+}

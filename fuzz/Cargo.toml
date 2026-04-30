@@ -145,6 +145,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "wasm_guard_escape"
+path = "fuzz_targets/wasm_guard_escape.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "wit_host_call_boundary"
 path = "fuzz_targets/wit_host_call_boundary.rs"
 test = false
