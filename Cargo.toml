@@ -41,6 +41,7 @@ members = [
     "crates/chio-mcp-adapter",
     "crates/chio-mcp-edge",
     "crates/chio-mistral-tools-adapter",
+    "crates/chio-ollama-tools-adapter",
     "crates/chio-openai",
     "crates/chio-openapi",
     "crates/chio-openapi-mcp-bridge",

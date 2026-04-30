@@ -3316,6 +3316,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-ollama-tools-adapter"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-tool-call-fabric",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-open-market"
 version = "0.1.0"
 dependencies = [
