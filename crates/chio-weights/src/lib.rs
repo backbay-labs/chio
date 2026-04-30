@@ -34,3 +34,9 @@
 #![forbid(unsafe_code)]
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
+
+pub mod card;
+pub mod error;
+
+pub use card::{weights_hash_of, ModelCard, StringSet, CARD_VERSION_V1};
+pub use error::WeightsError;

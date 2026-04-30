@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/model-card.v1.json",
+  "title": "Chio Model Card v1",
+  "description": "Signed declaration that binds a model's loaded weights to an allowed capability set, banned tools, and training-data class. Locked under the M10 P4 trust-boundary milestone. The kernel refuses to bind a provider whose loaded weights or requested scopes do not match a card.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "card_version",
+    "weights_hash",
+    "allowed_capability_set",
+    "banned_tools",
+    "training_data_class",
+    "issuer",
+    "issued_at",
+    "expires_at"
+  ],
+  "properties": {
+    "card_version": {
+      "description": "Schema version of this model card. Must be the literal string '1' for v1 cards.",
+      "type": "string",
+      "const": "1"
+    },
+    "weights_hash": {
+      "description": "Lowercase hexadecimal SHA-256 digest of the canonical weights blob. The kernel recomputes this digest from the loaded weights at provider bind and rejects the bind on mismatch.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "allowed_capability_set": {
+      "description": "Sorted unique-string set of capability scopes the kernel is permitted to grant against a provider bound under this card. Provider bind rejects when the requested capability set is not a subset of this field.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "banned_tools": {
+      "description": "Sorted unique-string set of tool identifiers the kernel MUST NOT route to under this card. Provider bind rejects when the requested capability set intersects this field. Banned tools reject at bind, not at first call.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "training_data_class": {
+      "description": "Coarse-grained training data classification (free-form string), surfaced to operators for compliance reasoning. Not interpreted by the kernel.",
+      "type": "string",
+      "minLength": 1
+    },
+    "issuer": {
+      "description": "Logical issuer identity (URI / OIDC subject / SAN). Cosign bundle verification (P4.T3) pins this against the verified Fulcio certificate identity supplied by the caller.",
+      "type": "string",
+      "minLength": 1
+    },
+    "issued_at": {
+      "description": "RFC 3339 UTC timestamp at which the issuer minted this card.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "description": "RFC 3339 UTC timestamp at which this card expires. Provider bind rejects expired cards fail-closed.",
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
