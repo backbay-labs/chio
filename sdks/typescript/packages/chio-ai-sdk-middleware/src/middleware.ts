@@ -53,8 +53,38 @@ export class ChioMiddlewareDeniedError extends Error {
   }
 }
 
-export function createChioMiddleware(options: ChioMiddlewareOptions = {}) {
+/// AI SDK language-model middleware bundle. Consumers pass this object
+/// into the AI SDK's `wrapLanguageModel({ model, middleware })` and the
+/// SDK invokes `wrapGenerate`/`wrapStream` for every doGenerate/doStream
+/// call. The `wrapLanguageModel` method on the returned object is a
+/// convenience for callers that want to wrap a model directly without
+/// going through the AI SDK helper.
+export interface ChioAiSdkMiddleware {
+  /// AI SDK middleware hook invoked once per `doGenerate` call.
+  wrapGenerate: <Args extends LanguageModelInvocation, Result>(input: {
+    doGenerate: (args: Args) => Promise<Result>;
+    params: Args;
+  }) => Promise<Result>;
+  /// AI SDK middleware hook invoked once per `doStream` call.
+  wrapStream: <Args extends LanguageModelInvocation, Result>(input: {
+    doStream: (args: Args) => Promise<Result>;
+    params: Args;
+  }) => Promise<Result>;
+  /// Convenience helper that wraps a model directly with the same
+  /// verdict-evaluation pipeline. Equivalent to `wrapWithChio(model, opts)`.
+  wrapLanguageModel: <Model extends LanguageModelLike>(model: Model) => Model;
+}
+
+export function createChioMiddleware(options: ChioMiddlewareOptions = {}): ChioAiSdkMiddleware {
   return {
+    async wrapGenerate({ doGenerate, params }) {
+      await evaluateToolBoundary(params, options);
+      return doGenerate(params);
+    },
+    async wrapStream({ doStream, params }) {
+      await evaluateToolBoundary(params, options);
+      return doStream(params);
+    },
     wrapLanguageModel<Model extends LanguageModelLike>(model: Model): Model {
       return wrapWithChio(model, options);
     },

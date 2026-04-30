@@ -2,6 +2,7 @@ export {
   ChioMiddlewareDeniedError,
   createChioMiddleware,
   wrapWithChio,
+  type ChioAiSdkMiddleware,
   type ChioEvaluation,
   type ChioEvaluator,
   type ChioMiddlewareOptions,
