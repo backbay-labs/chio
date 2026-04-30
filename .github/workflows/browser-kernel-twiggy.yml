@@ -1,11 +1,11 @@
-name: m06-twiggy-bundle
+name: browser-kernel-twiggy
 
 on:
   pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: m06-twiggy-bundle-${{ github.workflow }}-${{ github.ref }}
+  group: browser-kernel-twiggy-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      BUNDLE_OUT: target/m06-twiggy-browser-kernel
+      BUNDLE_OUT: target/browser-kernel-twiggy
       CARGO_TERM_COLOR: always
       TWIGGY_VERSION: "0.8.0"
     steps:
@@ -40,7 +40,7 @@ jobs:
         shell: bash
         env:
           CARGO_INCREMENTAL: "0"
-          CARGO_TARGET_DIR: ${{ runner.temp }}/m06-twiggy-target
+          CARGO_TARGET_DIR: ${{ runner.temp }}/browser-kernel-twiggy-target
         run: |
           set -euo pipefail
           bash sdks/typescript/scripts/build-wasm.sh --package browser --target web
@@ -79,19 +79,19 @@ jobs:
             echo "- wasm_gzip_bytes: ${wasm_gzip_bytes}"
             echo "- wasm_sha256: ${wasm_sha256}"
             echo "- twiggy_report: twiggy-top.txt"
-            echo "- budget_enforcement: deferred-to-m07"
+            echo "- budget_enforcement: advisory"
           } > "${BUNDLE_OUT}/bundle-summary.md"
 
           cat > "${BUNDLE_OUT}/manifest.json" <<EOF
           {
-            "schema": "chio.m06.browser-kernel-twiggy.v1",
+            "schema": "chio.browser-kernel-twiggy.v1",
             "commit": "${COMMIT_SHA}",
             "pull_request": "${pr_number}",
             "wasm_path": "${wasm_path}",
             "wasm_bytes": ${wasm_bytes},
             "wasm_gzip_bytes": ${wasm_gzip_bytes},
             "wasm_sha256": "${wasm_sha256}",
-            "budget_enforcement": "deferred-to-m07"
+            "budget_enforcement": "advisory"
           }
           EOF
 
@@ -101,7 +101,7 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: m06-twiggy-browser-kernel-${{ github.event.pull_request.number || github.run_id }}
+          name: browser-kernel-twiggy-${{ github.event.pull_request.number || github.run_id }}
           if-no-files-found: error
           retention-days: 14
-          path: target/m06-twiggy-browser-kernel/
+          path: target/browser-kernel-twiggy/
