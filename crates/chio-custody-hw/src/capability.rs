@@ -79,14 +79,19 @@ impl ScopeSet {
 
 /// Audience-pinned capability envelope.
 ///
-/// Canonical-JSON encoding rules:
+/// Canonical-JSON encoding rules (RFC 8785 / JCS, via
+/// [`chio_core_types::canonical::canonical_json_bytes`]):
 ///
-/// - field order is fixed by serde struct order,
+/// - object keys sorted lexicographically by UTF-16 code units,
 /// - timestamps are RFC 3339 UTC with `Z` suffix,
 /// - `scope_set` is a sorted JSON array of unique strings,
 /// - `signature` is base64url-no-pad,
-/// - no extra whitespace beyond `serde_json::to_vec` output (which produces
-///   no inter-token whitespace).
+/// - no inter-token whitespace.
+///
+/// The serde field declaration order is therefore irrelevant to the
+/// on-the-wire byte layout; signatures are computed over the RFC 8785 form
+/// so any compliant implementation (Rust, TypeScript, Python, Go) produces
+/// the same bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PasskeyCapability {
     /// Logical audience pin (kernel identity URI). Mismatch is fail-closed.
@@ -139,19 +144,24 @@ impl PasskeyCapability {
         now < self.exp
     }
 
-    /// Encode to canonical JSON bytes.
+    /// Encode to canonical JSON bytes (RFC 8785 / JCS).
     ///
-    /// Deterministic: identical inputs produce byte-identical outputs.
-    /// `serde_json::to_vec` with our struct (no maps, no `Value` round
-    /// trips) emits fields in declared order with no inter-token
-    /// whitespace.
+    /// Deterministic: identical inputs produce byte-identical outputs across
+    /// any RFC 8785 compliant implementation. Object keys are sorted by
+    /// UTF-16 code units, so the byte layout does not depend on the serde
+    /// struct field declaration order. P2 signatures are taken over these
+    /// bytes.
     pub fn to_canonical_json(&self) -> Result<Vec<u8>, CustodyError> {
-        serde_json::to_vec(self)
+        chio_core_types::canonical::canonical_json_bytes(self)
             .map_err(|err| CustodyError::Encoding(format!("canonical-json encode: {err}")))
     }
 
     /// Decode from canonical JSON bytes. Round-trip with
     /// [`Self::to_canonical_json`].
+    ///
+    /// `serde_json::from_slice` is used because RFC 8785 output is itself a
+    /// valid JSON byte sequence; canonicalization is a property of the
+    /// encoder, not the decoder.
     pub fn from_canonical_json(bytes: &[u8]) -> Result<Self, CustodyError> {
         serde_json::from_slice(bytes)
             .map_err(|err| CustodyError::Encoding(format!("canonical-json decode: {err}")))

@@ -53,22 +53,27 @@ fn canonical_json_field_order_locked() {
         Ok(s) => s,
         Err(e) => panic!("encoded bytes must be utf-8: {e}"),
     };
-    // Lock the field order so signatures over the canonical bytes survive
-    // serde-version churn. Order: audience, credential_id, scope_set, iat,
-    // exp, challenge_nonce, signature.
+    // RFC 8785 sorts top-level object keys by UTF-16 code unit comparison.
+    // Lexicographic order of the seven envelope keys: audience,
+    // challenge_nonce, credential_id, exp, iat, scope_set, signature.
+    // Locking this order keeps signatures (wired in P2) bit-stable against
+    // any compliant RFC 8785 implementation.
     let audience_at = s.find("\"audience\"");
-    let credential_at = s.find("\"credential_id\"");
-    let scope_at = s.find("\"scope_set\"");
-    let iat_at = s.find("\"iat\"");
-    let exp_at = s.find("\"exp\"");
     let nonce_at = s.find("\"challenge_nonce\"");
+    let credential_at = s.find("\"credential_id\"");
+    let exp_at = s.find("\"exp\"");
+    let iat_at = s.find("\"iat\"");
+    let scope_at = s.find("\"scope_set\"");
     let sig_at = s.find("\"signature\"");
-    assert!(audience_at < credential_at, "audience before credential_id");
-    assert!(credential_at < scope_at, "credential_id before scope_set");
-    assert!(scope_at < iat_at, "scope_set before iat");
-    assert!(iat_at < exp_at, "iat before exp");
-    assert!(exp_at < nonce_at, "exp before challenge_nonce");
-    assert!(nonce_at < sig_at, "challenge_nonce before signature");
+    assert!(audience_at < nonce_at, "audience before challenge_nonce");
+    assert!(
+        nonce_at < credential_at,
+        "challenge_nonce before credential_id"
+    );
+    assert!(credential_at < exp_at, "credential_id before exp");
+    assert!(exp_at < iat_at, "exp before iat");
+    assert!(iat_at < scope_at, "iat before scope_set");
+    assert!(scope_at < sig_at, "scope_set before signature");
 }
 
 #[test]

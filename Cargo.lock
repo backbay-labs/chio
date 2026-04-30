@@ -2846,6 +2846,7 @@ name = "chio-custody-hw"
 version = "0.1.0"
 dependencies = [
  "base64ct",
+ "chio-core-types",
  "chrono",
  "serde",
  "serde_json",
