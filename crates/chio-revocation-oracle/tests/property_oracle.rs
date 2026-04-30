@@ -1,7 +1,10 @@
+use std::collections::BTreeSet;
+
 use chio_revocation_oracle::{
     DigestRootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,
     SubjectId,
 };
+use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 
@@ -9,20 +12,51 @@ fn key(subject: String, nonce: u64) -> RevocationKey {
     RevocationKey::new(SubjectId::new(subject), EpochNonce::new(nonce))
 }
 
+/// Generate between 2 and 16 distinct (subject, nonce) pairs, ensuring multi-leaf
+/// trees so the sibling collection logic in `proof_bytes_for_index` is exercised.
+fn distinct_keys_strategy() -> impl Strategy<Value = Vec<RevocationKey>> {
+    vec(("[a-z0-9]{1,24}", 0_u64..10_000_u64), 2..16).prop_map(|raw| {
+        let mut seen: BTreeSet<(String, u64)> = BTreeSet::new();
+        let mut out: Vec<RevocationKey> = Vec::new();
+        for (subject, nonce) in raw {
+            if seen.insert((subject.clone(), nonce)) {
+                out.push(key(subject, nonce));
+            }
+        }
+        // Guarantee at least two distinct leaves even after dedup.
+        let mut filler_nonce: u64 = 1_000_000;
+        while out.len() < 2 {
+            let candidate = (format!("filler-{filler_nonce}"), filler_nonce);
+            if seen.insert(candidate.clone()) {
+                out.push(key(candidate.0, candidate.1));
+            }
+            filler_nonce += 1;
+        }
+        out
+    })
+}
+
 proptest! {
     #[test]
-    fn inclusion_proof_soundness(subject in "[a-z0-9]{1,24}", nonce in 0_u64..10_000) {
+    fn inclusion_proof_soundness(keys in distinct_keys_strategy()) {
         let mut oracle = InMemoryRevocationOracle::new();
-        let key = key(subject, nonce);
-        oracle
-            .insert(key.clone(), 10)
-            .map_err(|err| TestCaseError::fail(format!("insert failed: {err}")))?;
+        let mut now: u64 = 10;
+        for k in &keys {
+            oracle
+                .insert(k.clone(), now)
+                .map_err(|err| TestCaseError::fail(format!("insert failed: {err}")))?;
+            now += 1;
+        }
 
-        let proof = oracle
-            .inclusion_proof(&key)
-            .map_err(|err| TestCaseError::fail(format!("proof failed: {err}")))?;
-
-        prop_assert!(InMemoryRevocationOracle::verify_inclusion(&proof).is_ok());
+        // Verify inclusion proofs for every leaf so that multi-leaf sibling paths
+        // (proof_bytes_for_index with len > 1) are exercised, not just trivial roots.
+        for k in &keys {
+            let proof = oracle
+                .inclusion_proof(k)
+                .map_err(|err| TestCaseError::fail(format!("proof failed: {err}")))?;
+            prop_assert!(InMemoryRevocationOracle::verify_inclusion(&proof).is_ok());
+            prop_assert!(!proof.proof_bytes.is_empty() || keys.len() == 1);
+        }
     }
 
     #[test]
@@ -61,11 +95,11 @@ proptest! {
     #[test]
     fn epoch_monotone(subject_a in "[a-z0-9]{1,24}", subject_b in "[a-z0-9]{1,24}") {
         let mut oracle = InMemoryRevocationOracle::new();
+        // RevocationKey equality covers (subject_id, epoch_nonce); using distinct
+        // nonces (1 vs 2) guarantees the two keys are distinct regardless of the
+        // generated subject strings, so no collision guard is required.
         let first = key(subject_a, 1);
-        let mut second = key(subject_b, 2);
-        if second == first {
-            second = key("fallback-subject".to_string(), 3);
-        }
+        let second = key(subject_b, 2);
 
         let root_one = oracle
             .insert(first, 10)
