@@ -40,12 +40,21 @@ coset = { workspace = true, optional = true }
 
 [features]
 default = []
-pq = ["dep:fips204"]
+pq = ["dep:fips204", "chio-core-types/pq"]
 tee-quotes = ["dep:dcap-rs", "dep:sev", "dep:coset"]
 
 [dev-dependencies]
 chio-adversarial-suite = { path = "../chio-adversarial-suite" }
 tempfile = { workspace = true }
+
+# M03.P2.T5: v3.18 receipt bundle migration test. Locks the byte-equivalence
+# contract between trajectory-1 classical receipts and the trajectory-2
+# hybrid signing path under crypto_floor=allow_classical, then proves the
+# rolled hybrid bundle re-verifies under crypto_floor=pq_required.
+[[test]]
+name = "v318_migration"
+path = "tests/v318_migration.rs"
+required-features = ["pq"]
 
 [lints.clippy]
 unwrap_used = "deny"

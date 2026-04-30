@@ -1,0 +1,20 @@
+{
+  "id": "rcpt-v318-fixture-001",
+  "timestamp": 1700000001,
+  "capability_id": "cap-v318-fixture",
+  "tool_server": "audit-server",
+  "tool_name": "report",
+  "action": {
+    "parameters": {
+      "q": "audit"
+    },
+    "parameter_hash": "ebf9c5c0628a826f83556a43b2c52a9e5f62d454f876ac471d37297e1fa574a2"
+  },
+  "decision": {
+    "verdict": "allow"
+  },
+  "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "policy_hash": "policy-v318-fixture",
+  "kernel_key": "6faf81b89c5b8a683096efcbe39a6ab66ddef934d561aed4c3cc43b43ba635d3",
+  "signature": "30af057ec88adb289951b8d9ea24d20c56f855f0c93e74925b494797eb2ee5cdb3b11b04d9624068f28660b2014007df87b704131149615c37b07ab2d3533007"
+}
