@@ -24,6 +24,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
+[[bench]]
+name = "verdict_latency"
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"

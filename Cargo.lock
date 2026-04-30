@@ -2930,6 +2930,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-gemini-tools-adapter"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-tool-call-fabric",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-governance"
 version = "0.1.0"
 dependencies = [
@@ -3377,6 +3388,7 @@ dependencies = [
  "chio-anthropic-tools-adapter",
  "chio-bedrock-converse-adapter",
  "chio-core-types",
+ "chio-gemini-tools-adapter",
  "chio-manifest",
  "chio-openai-adapter",
  "chio-tool-call-fabric",
