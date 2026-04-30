@@ -52,6 +52,7 @@ Cargo.toml                                   @bb-connor
 Cargo.lock                                   @bb-connor
 deny.toml                                    @bb-connor
 .github/workflows/ci.yml                     @bb-connor
+.github/workflows/browser-kernel-twiggy.yml  @bb-connor
 CODEOWNERS                                   @bb-connor
 README.md                                    @bb-connor
 AGENTS.md                                    @bb-connor

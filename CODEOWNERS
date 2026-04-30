@@ -38,6 +38,7 @@ spec/schemas/**/*.json                       @bb-connor
 .planning/trajectory/**                      @bb-connor
 tests/replay/goldens/**                      @bb-connor
 .github/workflows/ci.yml                     @bb-connor
+.github/workflows/browser-kernel-twiggy.yml  @bb-connor
 crates/chio-tee-frame/**                     @bb-connor
 tests/replay/fixtures/**                     @bb-connor
 wit/chio-guard/world.wit                     @bb-connor

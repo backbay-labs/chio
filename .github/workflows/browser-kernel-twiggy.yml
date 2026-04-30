@@ -65,7 +65,7 @@ jobs:
           twiggy top "${wasm_path}" > "${BUNDLE_OUT}/twiggy-top.txt"
 
           wasm_bytes="$(wc -c < "${wasm_path}" | tr -d '[:space:]')"
-          wasm_gzip_bytes="$(gzip -c "${wasm_path}" | wc -c | tr -d '[:space:]')"
+          wasm_gzip_bytes="$(gzip -c -9 -n "${wasm_path}" | wc -c | tr -d '[:space:]')"
           wasm_sha256="$(sha256sum "${wasm_path}" | awk '{print $1}')"
           pr_number="${PR_NUMBER:-manual}"
 
