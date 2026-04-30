@@ -135,15 +135,52 @@ find sdks -maxdepth 3 -type d | sort
 - [x] P0.T1: Open this audit doc and snapshot trajectory-1 M02.P3 advisory
   state.
 - [ ] P0.T2: Verify Cargo.lock bump and cargo-mutants 25.x re-pin.
-- [ ] P1: Capture mutation baseline and missed-mutant classes per crate.
+- [x] P1: Capture mutation baseline and missed-mutant classes per crate.
 - [x] P1.T3: Capture `chio-attest-verify` mutation baseline.
 - [x] P1.T5: Capture `chio-guards` and `chio-anchor` bounded baseline.
+- [x] P1.T6: Aggregate the six D06 crate baselines in
+  `mutants-baseline.toml`.
 - [ ] P2: Raise each target crate to >= 80% kill rate.
 - [ ] P3: Flip mutation gate, PR comment, issue filing, skip rationale, and
   README headline.
 - [ ] P4: Add verdict-matrix harness, Rust driver, manifest, and CI.
 - [ ] P5: Add Python, TypeScript, WASM browser, and Go drivers plus required
   cross-language diff.
+
+## Aggregate Mutation Baseline Status
+
+Snapshot date: 2026-04-30.
+
+Source: `.planning/trajectory-2/mutants-baseline.toml`.
+
+M02.P1.T6 aggregates the existing per-crate baseline entries only. No
+additional `cargo-mutants` campaign was run for this bookkeeping ticket. The
+aggregate file contains exactly six D06 crate entries.
+
+| Crate | Listed mutants | Baseline coverage |
+|-------|----------------|-------------------|
+| `chio-policy` | 418 | Bounded shard 1/16 |
+| `chio-credentials` | 28 | Full sweep |
+| `chio-attest-verify` | 72 | Full sweep |
+| `chio-kernel-core` | 304 | Full sweep |
+| `chio-guards` | 1298 | Bounded shard 1/32 with partial outcomes |
+| `chio-anchor` | 249 | Bounded shard 1/32 with partial outcomes |
+
+| Aggregate metric | Count |
+|------------------|-------|
+| Crate entries | 6 |
+| Listed mutants | 2369 |
+| Evaluated mutants | 442 |
+| Caught | 115 |
+| Missed | 259 |
+| Unviable | 67 |
+| Timeout | 1 |
+| Measured kill rate, excluding unviable | 30.7% |
+
+The aggregate kill rate is a measured-status summary, not the final M02 gate
+score, because the file combines full sweeps with bounded shard baselines.
+P2 owns the targeted test work that raises each crate to the required >= 80%
+kill rate before P3 promotes the lane to required CI.
 
 ## chio-policy Mutation Baseline
 

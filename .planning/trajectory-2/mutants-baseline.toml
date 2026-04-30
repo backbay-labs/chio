@@ -2,6 +2,28 @@ generated_at = "2026-04-29"
 tool = "cargo-mutants"
 tool_version = "25.3.1"
 
+[aggregate]
+scope = "M02.P1 trust-boundary D06 crates"
+crate_entries = 6
+listed_mutants_total = 2369
+evaluated_mutants_total = 442
+caught_total = 115
+missed_total = 259
+unviable_total = 67
+timeout_total = 1
+measured_kill_rate_excluding_unviable = 30.7
+baseline_status = "aggregate complete from existing per-crate baselines; mixed full sweeps and bounded shards"
+count_source = "existing per-crate baseline entries; no M02.P1.T6 cargo-mutants campaign run"
+
+candidate_counts = [
+  { package = "chio-policy", listed_mutants = 418, coverage = "bounded shard 1/16" },
+  { package = "chio-credentials", listed_mutants = 28, coverage = "full sweep" },
+  { package = "chio-attest-verify", listed_mutants = 72, coverage = "full sweep" },
+  { package = "chio-kernel-core", listed_mutants = 304, coverage = "full sweep" },
+  { package = "chio-guards", listed_mutants = 1298, coverage = "bounded shard 1/32 partial outcomes" },
+  { package = "chio-anchor", listed_mutants = 249, coverage = "bounded shard 1/32 partial outcomes" },
+]
+
 [crate.chio-policy]
 package = "chio-policy"
 config = "crates/chio-policy/mutants.toml"
