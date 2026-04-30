@@ -4,6 +4,7 @@ import { passThroughStreamingResponse } from "./streaming.js";
 export interface ChioRouteEvaluation {
   verdict: "allow" | "deny";
   reason?: string | undefined;
+  reasonCode?: string | undefined;
   receiptId?: string | undefined;
 }
 
@@ -27,6 +28,7 @@ export function withChio(
     if (evaluation.verdict !== "allow") {
       return createDenialResponse({
         reason: evaluation.reason,
+        reasonCode: evaluation.reasonCode,
         receiptId: evaluation.receiptId,
         status: options.denialStatus,
       });
