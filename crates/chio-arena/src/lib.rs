@@ -14,6 +14,9 @@ pub mod scheduler;
 pub const ARENA_SCENARIO_SCHEMA: &str = "chio.arena.scenario/v1";
 
 pub use clock::{ClockError, VirtualClock, DEFAULT_TICK_NANOS};
+pub use link::{
+    KernelEndpoint, KernelLink, KernelMultiplexer, LinkEnvelope, LinkError, MultiplexError,
+};
 pub use promote::{
     write_arena_bundle, ArenaBundleManifest, ArenaBundleSummary, ArenaManifestBundle,
     ArenaManifestVerdict, PromoteError, ARENA_MANIFEST_FILENAME,
