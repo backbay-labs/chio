@@ -3401,6 +3401,7 @@ dependencies = [
  "chio-core-types",
  "chio-gemini-tools-adapter",
  "chio-manifest",
+ "chio-mistral-tools-adapter",
  "chio-openai-adapter",
  "chio-tool-call-fabric",
  "chrono",
