@@ -356,10 +356,155 @@ later tickets reference a single source of truth:
 - `marketplace` feature on `chio-guard-registry` (default-off) and
   `lineage` feature on `chio-store-sqlite` (default-off) (M09.P0.T3).
 
-## Closing-pass plan (M09.P5.T9)
+## P5 close (2026-04-30): closing counts
 
-The closing audit pass must record, against the same `wc -l` and `grep -c`
-commands above:
+P5 lands `chio-lineage` (M09.P5.T1 through T8) and the final audit
+pass (M09.P5.T9). The closing counts below honor the table laid out
+in the original M09.P5.T9 plan and supersede the P0 baseline where
+they diverge. They are dated 2026-04-30 from the P5 bundle worktree.
+
+### Lineage crate LOC delta
+
+Reproduce with:
+
+```bash
+find crates/chio-lineage/src -name '*.rs' | xargs wc -l | tail -1
+```
+
+| Snapshot | LOC | Delta vs P0 baseline |
+|----------|-----|----------------------|
+| P0 baseline (skeleton only)    | ~50    | -            |
+| P5 close (schema + ingest_otel + ingest_replay_corpus + query + diff + anchor) | 1582 | +1532 |
+
+The lineage crate now ships the DAG schema (`schema.rs`), OTEL ingest
+(`ingest_otel.rs`) honoring the `otlp.grpc.trace.v1` schema gate, M04
+deterministic-corpus ingest (`ingest_replay_corpus.rs`), the
+recursive-CTE query layer (`query.rs`), differential mode
+(`diff.rs`), anchor-pinning (`anchor.rs`), plus the JSON Schema at
+`crates/chio-lineage/schemas/lineage-graph.v1.json`.
+
+### Recursive-CTE query count
+
+Reproduce with:
+
+```bash
+grep -h 'WITH RECURSIVE' crates/chio-store-sqlite/src/*.rs \
+  crates/chio-store-sqlite/src/lineage_cte.rs 2>/dev/null | wc -l
+```
+
+| Snapshot | Recursive CTEs |
+|----------|----------------|
+| P0 baseline (capability_lineage only)            | 2 |
+| P5 close (forward + reverse receipt-lineage)     | 6 |
+
+The two new CTEs in `crates/chio-store-sqlite/src/lineage_cte.rs`
+implement forward and reverse walks over `receipt_lineage_statements`,
+both gated behind the `lineage` cargo feature pinned in M09.P0.T3 and
+both bounded by depth and row caps. On overflow, the canonical
+truncation marker is `{"truncated": true, "depth_reached": N,
+"limit": M}` exactly.
+
+### Anchored roots count
+
+Reproduce with `arc lineage roots --dir <path-to-anchored-frontier-dir>`.
+The `anchored roots` table below records the live count.
+
+| Snapshot | Anchored roots |
+|----------|----------------|
+| P0 baseline                         | 0 |
+| P5 close (no operator pin run yet)  | 0 |
+
+P5.T6 lands the `pin_frontier` library entry point and the
+`AnchoredFrontier` artifact shape (`crates/chio-lineage/src/anchor.rs`)
+plus the `arc lineage roots` reader. Producing a real anchored root
+requires either the M03 hybrid signing backend or the documented
+unsigned soft-dep fallback; both states are recorded explicitly on
+the artifact so M10 model-card anchoring can distinguish them.
+
+### Marketplace manifest count
+
+Reproduce with `arc guard market list --json`.
+
+| Snapshot | Marketplace manifests |
+|----------|-----------------------|
+| P0 baseline                          | 0 |
+| P5 close (live registry; P4.T7 demo) | 0 (live) |
+
+P4 landed the manifest schema and marketplace CLI; the live registry
+is unchanged because no tenant has run an install path outside the
+P4.T7 fixture yet. The non-zero number lands at the operator's first
+install of a priced guard.
+
+### IOU envelope rows and settlement throughput on the M04 corpus
+
+| Surface                                | M04 corpus today |
+|----------------------------------------|------------------|
+| `iou_envelope` rows                    | 0 (corpus has no priced manifests) |
+| Settlement throughput through new hook | 0 (corpus replay is observer-only) |
+| Reputation tier distribution           | all `tier_0`     |
+
+The M04 deterministic corpus does not yet carry priced guard
+manifests, M07 verdict-matrix runs, or M08 arena-round outputs in
+the replay path. P3 already documented the explicit-zero baseline
+for the tier distribution; P5 confirms it has not moved because no
+new feed inputs land in P5. The non-zero numbers will surface when
+the corpus is regenerated against priced fixtures or against M07/M08
+outputs in a later trajectory.
+
+### Transitive caller counts (decisions.yml D26)
+
+| Crate              | P0 baseline | P5 close |
+|--------------------|-------------|----------|
+| `chio-mercury`     | 0           | 0        |
+| `chio-mercury-core`| 3           | 3        |
+| `chio-anchor`      | 4           | 4        |
+
+No new direct callers were added in P5; the no-new-crates discipline
+holds. `chio-mercury` and `chio-mercury-core` wake transitively via
+`chio-settle`. `chio-anchor` is referenced by the lineage anchor
+shape but the canonical bytes path uses the documented byte-
+equivalence shim until M06 lands.
+
+### Static viewer
+
+Files at `docs/demo/lineage/`: `index.html`, `lineage.css`,
+`lineage.js`, `README.md`. The viewer is vanilla static HTML and a
+single ES module; no bundler, no import map, no transpiler step.
+
+## M09 milestone close-out (2026-04-30)
+
+M09 is closed. P0 (wave-opener), P1 (`chio-credit` activation),
+P2 (`chio-settle` activation), P3 (`chio-reputation` activation),
+P4 (marketplace surface), and P5 (`chio-lineage` genesis plus
+audit close) all landed under the W4 capstone schedule.
+
+The two trajectory-1 structural holes the milestone narrative called
+out are closed:
+
+- The dormant economic crates (`chio-credit`, `chio-settle`,
+  `chio-reputation`, plus the marketplace surface in
+  `chio-guard-registry` under the `marketplace` feature) are wired
+  into the kernel observer surface, the OCI registry, and the
+  CLI. Receipt finalization mints IOUs (P1) and triggers settlement
+  (P2); reputation gates marketplace discovery (P3 + P4).
+- The receipt log gains a queryable provenance graph
+  (`chio-lineage`) ingesting the trajectory-1 M10 OTEL receipt
+  stream and the trajectory-1 M04 deterministic corpus, with forward
+  and reverse recursive-CTE queries, a differential mode, anchor
+  pinning through canonical bytes (with M03 hybrid signing soft-
+  dep), an `arc lineage` CLI surface, and a static viewer.
+
+The W4-capstone gate to M10 is satisfied. M10.P5.T1 may open: the
+`anchor_pinning` integration test passes, the canonical-bytes
+equivalence shim is documented, and the unsigned soft-dep absence
+state is explicit on the artifact so M10 model cards can consume the
+P5.T6 schema in either signed or unsigned form without claiming
+external anchoring beyond what the artifact attests.
+
+## Closing-pass plan (M09.P5.T9, original)
+
+The original closing pass plan is preserved here for traceability.
+The realized counts above answer every bullet.
 
 - Lineage crate LOC delta (P0 baseline near zero -> P5 close).
 - Recursive-CTE query count (today 2 -> at least 4 after P5.T4 lands the

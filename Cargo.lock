@@ -2565,6 +2565,7 @@ dependencies = [
  "chio-guards",
  "chio-hosted-mcp",
  "chio-kernel",
+ "chio-lineage",
  "chio-listing",
  "chio-mcp-adapter",
  "chio-open-market",

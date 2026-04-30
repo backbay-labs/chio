@@ -1,27 +1,32 @@
-//! Chio lineage and provenance DAG (M09 wave-opener skeleton).
+//! Chio lineage and provenance DAG (M09).
 //!
-//! This crate is the M09 lineage substrate. Phase 0 lands only the crate
-//! genesis: workspace registration, the schema-name constant, and the
-//! placeholder error type. Subsequent M09 phases (P5.T1 through P5.T9) ship
-//! the DAG schema, OTEL ingest path, M04 corpus ingest path, recursive-CTE
-//! query layer, differential mode, and CLI surface.
+//! Indexes signed receipts, capability lineage, and signed receipt-lineage
+//! statements into a provenance DAG. Source feeds are the trajectory-1
+//! M10 OTEL receipt exporter NDJSON stream and the trajectory-1 M04
+//! deterministic replay corpus.
 //!
 //! Source of truth: `.planning/trajectory-2/09-economic-layer-and-lineage.md`.
 
 #![forbid(unsafe_code)]
 
-/// JSON Schema name reserved for the lineage DAG. The schema artifact lands
-/// at `crates/chio-lineage/schemas/lineage-graph.v1.json` in M09 P5.T1.
+pub mod anchor;
+pub mod diff;
+pub mod ingest_otel;
+pub mod ingest_replay_corpus;
+pub mod query;
+pub mod schema;
+
+/// JSON Schema name reserved for the lineage DAG. Schema artifact lives at
+/// `crates/chio-lineage/schemas/lineage-graph.v1.json`.
 pub const LINEAGE_GRAPH_SCHEMA: &str = "chio.lineage.graph/v1";
 
-/// Errors surfaced by the lineage indexer. Phase 0 lands the variant skeleton
-/// so downstream callers compile against the public type without churn.
+/// Errors surfaced by the lineage indexer.
 #[derive(Debug, thiserror::Error)]
 pub enum LineageError {
-    /// The OTEL ingest path or M04 corpus ingest path has not been
-    /// implemented yet. M09 P5.T2 and P5.T3 land the real paths.
-    #[error("lineage ingest path not yet implemented")]
-    NotYetImplemented,
+    #[error("OTEL ingest failed: {0}")]
+    OtelIngest(#[from] ingest_otel::OtelIngestError),
+    #[error("M04 corpus ingest failed: {0}")]
+    CorpusIngest(#[from] ingest_replay_corpus::CorpusIngestError),
 }
 
 #[cfg(test)]
@@ -31,11 +36,5 @@ mod tests {
     #[test]
     fn schema_name_is_versioned() {
         assert_eq!(LINEAGE_GRAPH_SCHEMA, "chio.lineage.graph/v1");
-    }
-
-    #[test]
-    fn not_yet_implemented_renders() {
-        let err = LineageError::NotYetImplemented;
-        assert_eq!(err.to_string(), "lineage ingest path not yet implemented");
     }
 }

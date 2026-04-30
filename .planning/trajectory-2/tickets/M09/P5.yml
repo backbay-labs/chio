@@ -27,9 +27,9 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 4af7a5ff3
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null
 
 - id: M09.P5.T2
@@ -53,9 +53,9 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 44a65ae66
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null
 
 - id: M09.P5.T3
@@ -78,9 +78,9 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 44a65ae66
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null
 
 - id: M09.P5.T4
@@ -103,9 +103,9 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: adb52e94b
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null
 
 - id: M09.P5.T5
@@ -129,9 +129,9 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 8e8f014a7
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null
 
 - id: M09.P5.T6
@@ -156,9 +156,9 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 635bd5463
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null
 
 - id: M09.P5.T7
@@ -181,9 +181,9 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 75caaf023
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null
 
 - id: M09.P5.T8
@@ -209,9 +209,9 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: c82a5b1eb
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null
 
 - id: M09.P5.T9
@@ -233,7 +233,7 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: a7bedaf5f
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-04-30T20:43:22Z
   merged_ts: null

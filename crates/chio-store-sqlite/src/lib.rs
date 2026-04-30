@@ -8,6 +8,8 @@ pub mod encrypted_blob;
 pub mod evidence_export;
 pub mod execution_nonce_store;
 pub mod iou_store;
+#[cfg(feature = "lineage")]
+pub mod lineage_cte;
 pub mod memory_provenance_store;
 pub mod receipt_query;
 pub mod receipt_store;
