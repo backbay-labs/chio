@@ -279,13 +279,66 @@ where
                 };
                 writeln!(writer, "{response}")?;
             }
-            _ => {
+            // Notifications carry no `id` per JSON-RPC 2.0 and must not
+            // receive a response. The MCP handshake notification
+            // `notifications/initialized` falls in this bucket.
+            method if id.is_none() => {
+                summary.passthrough += 1;
+                // Silently swallow the notification (the wrapped child has
+                // already received it from the IDE-facing client in the
+                // out-of-band initialize handshake driven by the transport).
+            }
+            // Well-known JSON-RPC handshake methods that the e2e fixture
+            // transport does not implement directly. Returning a minimal
+            // success keeps IDEs that re-issue these methods over our
+            // wrapped stdio happy without lying about a generic passthrough.
+            "ping" => {
                 summary.passthrough += 1;
                 let response = serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": id,
-                    "result": { "passthrough": method },
+                    "result": {},
                 });
+                writeln!(writer, "{response}")?;
+            }
+            "initialize" => {
+                summary.passthrough += 1;
+                // Surface the wrapped child's tools/list capabilities so
+                // re-initialization handshakes don't claim an empty server.
+                let tools = transport.list_tools().unwrap_or_default();
+                let response = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "serverInfo": {
+                            "name": "chio-mcp-wrap",
+                            "version": env!("CARGO_PKG_VERSION"),
+                        },
+                        "capabilities": {
+                            "tools": { "listChanged": false },
+                        },
+                        "tools": tools,
+                    },
+                });
+                writeln!(writer, "{response}")?;
+            }
+            other => {
+                // Unknown methods get a JSON-RPC method-not-found error
+                // (-32601) instead of a synthetic success. Returning a fake
+                // success would mask client-side bugs and let unsupported
+                // RPCs appear to work.
+                summary.passthrough += 1;
+                let response = json_rpc_error(
+                    id,
+                    -32601,
+                    "urn:chio:error:transport:method-not-found",
+                    &format!(
+                        "MCP method `{other}` is not supported by `chio mcp wrap`; only \
+                         `tools/list`, `tools/call`, `initialize`, `ping`, and \
+                         JSON-RPC notifications are recognised"
+                    ),
+                );
                 writeln!(writer, "{response}")?;
             }
         }

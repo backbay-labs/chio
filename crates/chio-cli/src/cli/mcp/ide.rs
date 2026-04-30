@@ -14,7 +14,7 @@
 // - Zed                                   schema: zed.context_servers/2025-02
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-#[clap(rename_all = "kebab_case")]
+#[clap(rename_all = "kebab-case")]
 pub(crate) enum IdeTarget {
     Cursor,
     ClaudeDesktop,
