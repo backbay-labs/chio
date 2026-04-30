@@ -66,4 +66,80 @@ describe("wrapWithChio", () => {
       },
     })).toBe(true);
   });
+
+  it("skips evaluation when the request carries no tool-use surface", async () => {
+    let evaluations = 0;
+    let modelCalls = 0;
+    const wrapped = wrapWithChio({
+      async doGenerate() {
+        modelCalls += 1;
+        return { text: "no-tools" };
+      },
+    }, {
+      evaluate: () => {
+        evaluations += 1;
+        return { verdict: "allow" };
+      },
+    });
+
+    const result = await wrapped.doGenerate({ prompt: "hello" });
+
+    expect(result).toEqual({ text: "no-tools" });
+    expect(evaluations).toBe(0);
+    expect(modelCalls).toBe(1);
+  });
+
+  it("evaluates each named tool once when multiple tools are present", async () => {
+    const seen: string[] = [];
+    const wrapped = wrapWithChio({
+      async doGenerate() {
+        return { text: "ok" };
+      },
+    }, {
+      evaluate: ({ toolUse }) => {
+        seen.push(toolUse?.name ?? "<missing>");
+        return { verdict: "allow" };
+      },
+    });
+
+    await wrapped.doGenerate({
+      tools: {
+        search: {},
+        fetch_url: {},
+      },
+    });
+
+    // Names are sorted to stabilize evaluation order across runtimes.
+    expect(seen).toEqual(["fetch_url", "search"]);
+  });
+
+  it("denies on the first denying tool and stops invoking the model", async () => {
+    let modelCalls = 0;
+    const seen: string[] = [];
+    const wrapped = wrapWithChio({
+      async doGenerate() {
+        modelCalls += 1;
+        return { text: "should not run" };
+      },
+    }, {
+      evaluate: ({ toolUse }) => {
+        seen.push(toolUse?.name ?? "<missing>");
+        if (toolUse?.name === "fetch_url") {
+          return { verdict: "deny", reason: "domain not on allowlist" };
+        }
+        return { verdict: "allow" };
+      },
+    });
+
+    await expect(wrapped.doGenerate({
+      toolCalls: [
+        { toolName: "search" },
+        { toolName: "fetch_url" },
+        { toolName: "execute" },
+      ],
+    })).rejects.toThrow(ChioMiddlewareDeniedError);
+
+    expect(seen).toEqual(["search", "fetch_url"]);
+    expect(modelCalls).toBe(0);
+  });
 });
