@@ -70,6 +70,10 @@ path = "verdict_matrix/tests/verdict_matrix_rust_driver.rs"
 name = "diff_oracle_self_test"
 path = "verdict_matrix/tests/diff_oracle_self_test.rs"
 
+[[test]]
+name = "verdict_matrix_typescript"
+path = "verdict_matrix/tests/verdict_matrix_typescript.rs"
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
