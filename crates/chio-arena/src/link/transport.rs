@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -15,12 +13,12 @@ pub struct LinkEnvelope {
     pub payload: Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct KernelEndpoint {
     id: String,
     peer_id: String,
     tx: mpsc::Sender<LinkEnvelope>,
-    rx: Arc<Mutex<mpsc::Receiver<LinkEnvelope>>>,
+    rx: Mutex<mpsc::Receiver<LinkEnvelope>>,
 }
 
 impl KernelEndpoint {
@@ -77,13 +75,13 @@ impl KernelLink {
                 id: left_id.clone(),
                 peer_id: right_id.clone(),
                 tx: left_tx,
-                rx: Arc::new(Mutex::new(left_rx)),
+                rx: Mutex::new(left_rx),
             },
             right: KernelEndpoint {
                 id: right_id,
                 peer_id: left_id,
                 tx: right_tx,
-                rx: Arc::new(Mutex::new(right_rx)),
+                rx: Mutex::new(right_rx),
             },
         }
     }
