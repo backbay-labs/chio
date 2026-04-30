@@ -3,8 +3,9 @@ use chio_credentials::{
     build_agent_passport, create_passport_presentation_challenge,
     create_signed_passport_verifier_policy, ensure_signed_passport_verifier_policy_active,
     issue_reputation_credential, respond_to_passport_presentation_challenge, verify_agent_passport,
-    verify_passport_presentation_response, AttestationWindow, ChioCredentialEvidence,
-    CredentialError, PassportPresentationOptions, PassportVerifierPolicy,
+    verify_passport_presentation_challenge, verify_passport_presentation_response,
+    verify_signed_passport_verifier_policy, AgentPassport, AttestationWindow,
+    ChioCredentialEvidence, CredentialError, PassportPresentationOptions, PassportVerifierPolicy,
 };
 use chio_did::DidChio;
 use chio_reputation::{
@@ -89,6 +90,21 @@ fn sample_evidence() -> ChioCredentialEvidence {
         uncheckpointed_receipts: 0,
         runtime_attestation: None,
     }
+}
+
+fn sample_passport(subject_seed: u8, issuer_seed: u8) -> Result<AgentPassport, CredentialError> {
+    let subject = Keypair::from_seed(&[subject_seed; 32]);
+    let issuer = Keypair::from_seed(&[issuer_seed; 32]);
+    let subject_did = did_from_public_key(subject.public_key());
+    let credential = issue_reputation_credential(
+        &issuer,
+        sample_scorecard(&subject.public_key().to_hex()),
+        sample_evidence(),
+        1_710_000_000,
+        1_710_086_400,
+    )?;
+
+    build_agent_passport(&subject_did.to_string(), vec![credential])
 }
 
 #[test]
@@ -190,4 +206,79 @@ fn signed_verifier_policy_activation_window_is_inclusive() {
         .expect("created_at boundary should be valid");
     ensure_signed_passport_verifier_policy_active(&document, 1_710_000_300)
         .expect("expires_at boundary should be valid");
+}
+
+#[test]
+fn unknown_passport_schema_rejects_before_verify() -> Result<(), CredentialError> {
+    let mut passport = sample_passport(11, 12)?;
+    passport.schema = "chio.agent-passport.v99".to_string();
+
+    assert!(matches!(
+        verify_agent_passport(&passport, 1_710_000_100),
+        Err(CredentialError::InvalidPassportSchema)
+    ));
+    Ok(())
+}
+
+#[test]
+fn unknown_signed_verifier_policy_schema_rejects_before_signature() -> Result<(), CredentialError> {
+    let signer = Keypair::from_seed(&[13_u8; 32]);
+    let mut document = create_signed_passport_verifier_policy(
+        &signer,
+        "rp-default",
+        "https://verifier.example.com",
+        1_710_000_000,
+        1_710_000_300,
+        PassportVerifierPolicy::default(),
+    )?;
+    document.body.schema = "chio.passport-verifier-policy.v99".to_string();
+
+    assert!(matches!(
+        verify_signed_passport_verifier_policy(&document),
+        Err(CredentialError::InvalidSignedVerifierPolicySchema)
+    ));
+    Ok(())
+}
+
+#[test]
+fn unknown_presentation_challenge_schema_rejects_before_window_check() -> Result<(), CredentialError>
+{
+    let mut challenge = create_passport_presentation_challenge(
+        "https://verifier.example.com",
+        "nonce-123",
+        1_710_000_110,
+        1_710_000_410,
+        PassportPresentationOptions::default(),
+        None,
+    )?;
+    challenge.schema = "chio.agent-passport-presentation-challenge.v99".to_string();
+
+    assert!(matches!(
+        verify_passport_presentation_challenge(&challenge, 1_710_000_120),
+        Err(CredentialError::InvalidChallengeSchema)
+    ));
+    Ok(())
+}
+
+#[test]
+fn unknown_presentation_response_schema_rejects_before_signature() -> Result<(), CredentialError> {
+    let holder = Keypair::from_seed(&[17_u8; 32]);
+    let passport = sample_passport(17, 18)?;
+    let challenge = create_passport_presentation_challenge(
+        "https://verifier.example.com",
+        "nonce-123",
+        1_710_000_110,
+        1_710_000_410,
+        PassportPresentationOptions::default(),
+        None,
+    )?;
+    let mut response =
+        respond_to_passport_presentation_challenge(&holder, &passport, &challenge, 1_710_000_120)?;
+    response.schema = "chio.agent-passport-presentation-response.v99".to_string();
+
+    assert!(matches!(
+        verify_passport_presentation_response(&response, Some(&challenge), 1_710_000_120),
+        Err(CredentialError::InvalidPresentationSchema)
+    ));
+    Ok(())
 }
