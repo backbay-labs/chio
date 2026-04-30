@@ -2,24 +2,23 @@
 
 fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
     let into = args.into.as_ref().ok_or_else(|| {
-        CliError::replay_mismatch_error("chio replay --bless requires --into <fixture-dir>".to_string())
+        CliError::cli_other_error("chio replay --bless requires --into <fixture-dir>".to_string())
     })?;
     if args.tenant_pubkey.is_none() {
-        return finish_replay_failure(
-            EXIT_BAD_TENANT_SIG,
+        return Err(CliError::cli_other_error(
             "chio replay --bless requires --tenant-pubkey".to_string(),
-        );
+        ));
     }
 
     require_replay_bless_capability()?;
     let scenario = validate_replay_bless_into_path(into)?;
     let tenant_pubkey = load_tenant_pubkey(args.tenant_pubkey.as_deref().ok_or_else(|| {
-        CliError::replay_mismatch_error("chio replay --bless requires --tenant-pubkey".to_string())
+        CliError::cli_other_error("chio replay --bless requires --tenant-pubkey".to_string())
     })?)
-    .map_err(|error| CliError::replay_mismatch_error(format!("failed to load tenant pubkey: {error}")))?;
+    .map_err(|error| CliError::cli_other_error(format!("failed to load tenant pubkey: {error}")))?;
 
     let iter = open_ndjson(log).map_err(|error| {
-        CliError::replay_mismatch_error(format!(
+        CliError::cli_io_error(format!(
             "failed to open TEE capture {}: {error}",
             log.display()
         ))
@@ -32,9 +31,7 @@ fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
                 log.display()
             ))
         })?;
-        if let Err(err) =
-            validate_frame(&record.frame, "chio-tee-frame.v1", Some(&tenant_pubkey))
-        {
+        if let Err(err) = validate_frame(&record.frame, "chio-tee-frame.v1", Some(&tenant_pubkey)) {
             return finish_replay_failure(
                 err.exit_code(),
                 format!(
@@ -47,7 +44,7 @@ fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
     }
 
     let summary = chio_replay_corpus::write_m04_fixture(into, frames)
-        .map_err(|error| CliError::replay_mismatch_error(format!("replay bless failed: {error}")))?;
+        .map_err(map_replay_fixture_error)?;
 
     let mut stdout = std::io::stdout().lock();
     writeln!(
@@ -57,17 +54,17 @@ fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
         scenario.name,
         summary.dir.display(),
     )
-    .map_err(|error| CliError::replay_mismatch_error(format!("write stdout: {error}")))?;
+    .map_err(|error| CliError::cli_io_error(format!("write stdout: {error}")))?;
     writeln!(
         stdout,
         "  frames:        {} input, {} after dedupe",
         summary.frames_in, summary.frames_after_dedupe,
     )
-    .map_err(|error| CliError::replay_mismatch_error(format!("write stdout: {error}")))?;
+    .map_err(|error| CliError::cli_io_error(format!("write stdout: {error}")))?;
     writeln!(stdout, "  receipts:      {}", summary.receipt_count)
-        .map_err(|error| CliError::replay_mismatch_error(format!("write stdout: {error}")))?;
+        .map_err(|error| CliError::cli_io_error(format!("write stdout: {error}")))?;
     writeln!(stdout, "  root:          {}", summary.root_hex)
-        .map_err(|error| CliError::replay_mismatch_error(format!("write stdout: {error}")))?;
+        .map_err(|error| CliError::cli_io_error(format!("write stdout: {error}")))?;
     Ok(())
 }
 
@@ -76,8 +73,8 @@ fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
 mod replay_bless_tests {
     use super::*;
     use base64::Engine;
-    use chio_tool_call_fabric::{Principal, ProviderId, ProvenanceStamp, ToolInvocation};
     use chio_tee_frame::{Frame, FrameInputs, Otel, Provenance, Upstream, UpstreamSystem, Verdict};
+    use chio_tool_call_fabric::{Principal, ProvenanceStamp, ProviderId, ToolInvocation};
     use ed25519_dalek::{Signer, SigningKey};
     use std::time::SystemTime;
 

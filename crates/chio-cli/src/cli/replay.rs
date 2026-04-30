@@ -8,7 +8,7 @@ fn cmd_replay(args: &ReplayArgs) -> Result<(), CliError> {
 
     // Legacy surface requires the positional `log` path.
     let Some(log) = args.log.as_ref() else {
-        return Err(CliError::replay_mismatch_error(
+        return Err(CliError::cli_other_error(
             "chio replay requires a positional <log> path or the `traffic` sub-subcommand"
                 .to_string(),
         ));
@@ -27,27 +27,25 @@ fn cmd_replay(args: &ReplayArgs) -> Result<(), CliError> {
 /// exits with the canonical 0/10/20/30/40/50 code.
 fn cmd_replay_legacy(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
     if args.from_tee && args.tenant_pubkey.is_none() {
-        return finish_replay_failure(
-            EXIT_BAD_TENANT_SIG,
+        return Err(CliError::cli_other_error(
             "chio replay --from-tee requires --tenant-pubkey".to_string(),
-        );
+        ));
     }
     if !args.from_tee && args.trusted_kernel_pubkey.is_none() {
-        return finish_replay_failure(
-            EXIT_BAD_SIGNATURE,
+        return Err(CliError::cli_other_error(
             "chio replay receipt logs require --trusted-kernel-pubkey".to_string(),
-        );
+        ));
     }
 
     let tenant_pubkey = match args.tenant_pubkey.as_deref() {
         Some(path) => Some(load_tenant_pubkey(path).map_err(|e| {
-            CliError::replay_mismatch_error(format!("failed to load tenant pubkey: {e}"))
+            CliError::cli_other_error(format!("failed to load tenant pubkey: {e}"))
         })?),
         None => None,
     };
     let trusted_kernel_key = match args.trusted_kernel_pubkey.as_deref() {
         Some(path) => Some(load_trusted_kernel_pubkey(path).map_err(|e| {
-            CliError::replay_mismatch_error(format!("failed to load trusted kernel pubkey: {e}"))
+            CliError::cli_other_error(format!("failed to load trusted kernel pubkey: {e}"))
         })?),
         None => None,
     };
@@ -63,10 +61,10 @@ fn cmd_replay_legacy(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
     let mut stdout = std::io::stdout().lock();
     if args.json {
         render_json(&mut stdout, &report)
-            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
     } else {
         render_replay_human(&mut stdout, &report)
-            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
     }
 
     if report.exit_code == 0 {
@@ -77,10 +75,7 @@ fn cmd_replay_legacy(args: &ReplayArgs, log: &Path) -> Result<(), CliError> {
         .as_ref()
         .and_then(|d| d.detail.clone())
         .unwrap_or_else(|| "replay diverged".to_string());
-    finish_replay_failure(
-        report.exit_code,
-        format!("chio replay: {detail}"),
-    )
+    finish_replay_failure(report.exit_code, format!("chio replay: {detail}"))
 }
 
 /// Run the legacy receipt-log replay pipeline against `log` and produce a
@@ -98,7 +93,7 @@ fn run_legacy_replay(
 
     if from_tee {
         let Some(tenant_pubkey) = tenant_pubkey else {
-            return Err(CliError::replay_mismatch_error(
+            return Err(CliError::cli_other_error(
                 "chio replay --from-tee requires --tenant-pubkey".to_string(),
             ));
         };
@@ -106,10 +101,7 @@ fn run_legacy_replay(
     }
 
     let reader = ReceiptLogReader::open(log).map_err(|e| {
-        CliError::replay_mismatch_error(format!(
-            "failed to open receipt log {}: {e}",
-            log.display()
-        ))
+        CliError::cli_io_error(format!("failed to open receipt log {}: {e}", log.display()))
     })?;
     let iter = match reader.iter() {
         Ok(it) => it,
@@ -144,7 +136,7 @@ fn run_legacy_replay(
             )));
         }
         Err(ReadError::Io(e)) => {
-            return Err(CliError::replay_mismatch_error(format!(
+            return Err(CliError::cli_io_error(format!(
                 "io error while reading receipt log: {e}",
             )));
         }
@@ -183,7 +175,7 @@ fn run_legacy_replay(
                 )));
             }
             Err(ReadError::Io(e)) => {
-                return Err(CliError::replay_mismatch_error(format!(
+                return Err(CliError::cli_io_error(format!(
                     "io error while reading receipt log: {e}",
                 )));
             }
@@ -199,10 +191,7 @@ fn run_legacy_replay(
                     byte_offset: None,
                     expected: Some(SUPPORTED_RECEIPT_SCHEMA.to_string()),
                     observed: Some(observed),
-                    detail: Some(
-                        "receipt schema_version is unsupported by this build"
-                            .to_string(),
-                    ),
+                    detail: Some("receipt schema_version is unsupported by this build".to_string()),
                 },
                 ReceiptGateError::RedactionMismatch { .. } => {
                     return Err(CliError::replay_mismatch_error(
@@ -231,8 +220,7 @@ fn run_legacy_replay(
                     expected: Some(SUPPORTED_RECEIPT_REDACTION_PASS_ID.to_string()),
                     observed: Some(observed),
                     detail: Some(
-                        "receipt redaction_pass_id is unavailable in this build"
-                            .to_string(),
+                        "receipt redaction_pass_id is unavailable in this build".to_string(),
                     ),
                 },
                 ReceiptGateError::SchemaMismatch { .. } => {
@@ -251,8 +239,7 @@ fn run_legacy_replay(
             ));
         }
 
-        let receipt: chio_core::receipt::ChioReceipt = match serde_json::from_value(value.clone())
-        {
+        let receipt: chio_core::receipt::ChioReceipt = match serde_json::from_value(value.clone()) {
             Ok(r) => r,
             Err(error) => {
                 let divergence = Divergence {
@@ -351,7 +338,9 @@ fn run_legacy_replay(
                 ));
             }
             Err(other) => {
-                return Err(CliError::replay_mismatch_error(format!("verdict re-derive failed: {other}")));
+                return Err(CliError::replay_mismatch_error(format!(
+                    "verdict re-derive failed: {other}"
+                )));
             }
         }
 
@@ -407,10 +396,7 @@ fn run_legacy_replay_from_tee(
     tenant_pubkey: &[u8; 32],
 ) -> Result<ReplayReport, CliError> {
     let iter = open_ndjson(log).map_err(|e| {
-        CliError::replay_mismatch_error(format!(
-            "failed to open tee capture {}: {e}",
-            log.display()
-        ))
+        CliError::cli_io_error(format!("failed to open tee capture {}: {e}", log.display()))
     })?;
 
     let mut acc = MerkleAccumulator::new();
@@ -610,14 +596,8 @@ mod replay_parser_tests {
 
     #[test]
     fn replay_parses_from_tee_and_json_flags() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "replay",
-            "capture.ndjson",
-            "--from-tee",
-            "--json",
-        ])
-        .unwrap();
+        let cli = Cli::try_parse_from(["chio", "replay", "capture.ndjson", "--from-tee", "--json"])
+            .unwrap();
         match cli.command {
             Commands::Replay(args) => {
                 assert!(args.from_tee);
@@ -629,8 +609,7 @@ mod replay_parser_tests {
 
     #[test]
     fn replay_parses_bless_flag() {
-        let cli =
-            Cli::try_parse_from(["chio", "replay", "./receipts/", "--bless"]).unwrap();
+        let cli = Cli::try_parse_from(["chio", "replay", "./receipts/", "--bless"]).unwrap();
         match cli.command {
             Commands::Replay(args) => {
                 assert!(args.bless);
@@ -664,14 +643,8 @@ mod replay_parser_tests {
 
     #[test]
     fn replay_parses_traffic_subcommand() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "replay",
-            "traffic",
-            "--from",
-            "capture.ndjson",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["chio", "replay", "traffic", "--from", "capture.ndjson"]).unwrap();
         match cli.command {
             Commands::Replay(args) => {
                 assert!(args.log.is_none(), "positional <log> absent under traffic");

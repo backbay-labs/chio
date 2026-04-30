@@ -57,7 +57,7 @@ fn cmd_run(
 
     let (cmd, args) = command
         .split_first()
-        .ok_or_else(|| CliError::transport_error("empty command".to_string()))?;
+        .ok_or_else(|| CliError::cli_other_error("empty command".to_string()))?;
 
     let mut child = Command::new(cmd)
         .args(args)
@@ -69,11 +69,11 @@ fn cmd_run(
     let child_stdin = child
         .stdin
         .take()
-        .ok_or_else(|| CliError::transport_error("failed to open child stdin".to_string()))?;
+        .ok_or_else(|| CliError::cli_io_error("failed to open child stdin".to_string()))?;
     let child_stdout = child
         .stdout
         .take()
-        .ok_or_else(|| CliError::transport_error("failed to open child stdout".to_string()))?;
+        .ok_or_else(|| CliError::cli_io_error("failed to open child stdout".to_string()))?;
 
     let mut transport = ChioTransport::new(child_stdout, child_stdin);
 
@@ -136,7 +136,9 @@ fn cmd_run(
         Ok(())
     } else {
         let code = status.code().unwrap_or(1);
-        Err(CliError::transport_error(format!("agent exited with code {code}")))
+        Err(CliError::transport_error(format!(
+            "agent exited with code {code}"
+        )))
     }
 }
 
@@ -150,7 +152,9 @@ fn cmd_api_protect(
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(|error| CliError::transport_error(format!("failed to start async runtime: {error}")))?;
+        .map_err(|error| {
+            CliError::transport_error(format!("failed to start async runtime: {error}"))
+        })?;
 
     runtime.block_on(async move {
         let sidecar_control_token = std::env::var("CHIO_SIDECAR_CONTROL_TOKEN")
@@ -173,10 +177,9 @@ fn cmd_api_protect(
             signer_seed_hex,
             trusted_capability_issuers,
         };
-        ProtectProxy::new(config)
-            .run()
-            .await
-            .map_err(|error| CliError::transport_error(format!("failed to start chio api protect: {error}")))
+        ProtectProxy::new(config).run().await.map_err(|error| {
+            CliError::transport_error(format!("failed to start chio api protect: {error}"))
+        })
     })
 }
 
@@ -389,21 +392,19 @@ fn cmd_mcp_serve(
         (Some(_), None) => None,
         (None, Some(name)) => {
             let preset = policies::McpPreset::from_name(name).ok_or_else(|| {
-                CliError::transport_error(format!(
-                    "unknown --preset {name:?} (known: code-agent)"
-                ))
+                CliError::cli_other_error(format!("unknown --preset {name:?} (known: code-agent)"))
             })?;
             Some(preset.materialize_to_temp()?)
         }
         (Some(_), Some(_)) => {
             // clap's `conflicts_with` should prevent this, but we
             // guard defensively in case the CLI wiring ever drifts.
-            return Err(CliError::transport_error(
+            return Err(CliError::cli_other_error(
                 "--policy and --preset are mutually exclusive".to_string(),
             ));
         }
         (None, None) => {
-            return Err(CliError::transport_error(
+            return Err(CliError::cli_other_error(
                 "either --policy <path> or --preset <name> is required".to_string(),
             ));
         }
@@ -451,7 +452,7 @@ fn cmd_mcp_serve(
 
     let (wrapped_cmd, wrapped_args) = command
         .split_first()
-        .ok_or_else(|| CliError::transport_error("empty MCP server command".to_string()))?;
+        .ok_or_else(|| CliError::cli_other_error("empty MCP server command".to_string()))?;
     let wrapped_arg_refs = wrapped_args.iter().map(String::as_str).collect::<Vec<_>>();
 
     let manifest_public_key = manifest_public_key
@@ -573,7 +574,7 @@ fn cmd_mcp_serve_http(
 
     let (wrapped_cmd, wrapped_args) = command
         .split_first()
-        .ok_or_else(|| CliError::transport_error("empty MCP server command".to_string()))?;
+        .ok_or_else(|| CliError::cli_other_error("empty MCP server command".to_string()))?;
 
     remote_mcp::serve_http(remote_mcp::RemoteServeHttpConfig {
         listen,
@@ -1695,10 +1696,12 @@ fn cmd_trust_credit_facility_list(
         agent_subject: args.agent_subject.map(ToOwned::to_owned),
         tool_server: args.tool_server.map(ToOwned::to_owned),
         tool_name: args.tool_name.map(ToOwned::to_owned),
-        disposition: args.disposition
+        disposition: args
+            .disposition
             .map(parse_credit_facility_disposition)
             .transpose()?,
-        lifecycle_state: args.lifecycle_state
+        lifecycle_state: args
+            .lifecycle_state
             .map(parse_credit_facility_lifecycle_state)
             .transpose()?,
         limit: Some(args.limit),
@@ -1923,7 +1926,10 @@ fn cmd_trust_credit_bond_list(
         agent_subject: args.agent_subject.map(ToOwned::to_owned),
         tool_server: args.tool_server.map(ToOwned::to_owned),
         tool_name: args.tool_name.map(ToOwned::to_owned),
-        disposition: args.disposition.map(parse_credit_bond_disposition).transpose()?,
+        disposition: args
+            .disposition
+            .map(parse_credit_bond_disposition)
+            .transpose()?,
         lifecycle_state: args
             .lifecycle_state
             .map(parse_credit_bond_lifecycle_state)

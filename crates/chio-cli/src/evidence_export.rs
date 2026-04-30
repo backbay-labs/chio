@@ -227,19 +227,39 @@ fn unix_now() -> u64 {
 fn ensure_clean_output_dir(path: &Path) -> Result<(), CliError> {
     if path.exists() {
         if !path.is_dir() {
-            return Err(CliError::attest_error(format!(
+            return Err(CliError::cli_other_error(format!(
                 "evidence export output path must be a directory: {}",
                 path.display()
             )));
         }
-        if fs::read_dir(path)?.next().is_some() {
-            return Err(CliError::attest_error(format!(
-                "evidence export output directory must be empty: {}",
+        let mut entries = fs::read_dir(path).map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to inspect evidence export output directory {}: {error}",
                 path.display()
-            )));
+            ))
+        })?;
+        match entries.next() {
+            Some(Ok(_)) => {
+                return Err(CliError::cli_other_error(format!(
+                    "evidence export output directory must be empty: {}",
+                    path.display()
+                )));
+            }
+            Some(Err(error)) => {
+                return Err(CliError::cli_io_error(format!(
+                    "failed to inspect evidence export output directory {}: {error}",
+                    path.display()
+                )));
+            }
+            None => {}
         }
     } else {
-        fs::create_dir_all(path)?;
+        fs::create_dir_all(path).map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to create evidence export output directory {}: {error}",
+                path.display()
+            ))
+        })?;
     }
     Ok(())
 }
@@ -1769,6 +1789,45 @@ mod tests {
             }
             other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
         }
+    }
+
+    fn unique_test_dir(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "chio-evidence-{name}-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn output_path_file_uses_cli_domain() {
+        let temp = unique_test_dir("file-output");
+        std::fs::create_dir_all(&temp).expect("create temp dir");
+        let output = temp.join("evidence-output");
+        std::fs::write(&output, b"not a directory").expect("write output file");
+
+        let error = ensure_clean_output_dir(&output).expect_err("file output path should fail");
+
+        assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn output_path_nonempty_directory_uses_cli_domain() {
+        let temp = unique_test_dir("nonempty-output");
+        std::fs::create_dir_all(&temp).expect("create temp dir");
+        let output = temp.join("evidence-output");
+        std::fs::create_dir_all(&output).expect("create output dir");
+        std::fs::write(output.join("existing.json"), b"{}").expect("write existing file");
+
+        let error =
+            ensure_clean_output_dir(&output).expect_err("non-empty output path should fail");
+
+        assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+        let _ = std::fs::remove_dir_all(&temp);
     }
 
     fn sample_receipt() -> ChioReceipt {

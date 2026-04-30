@@ -16,13 +16,13 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
     }
     let pubkey = match args.tenant_pubkey.as_deref() {
         Some(path) => Some(load_tenant_pubkey(path).map_err(|e| {
-            CliError::replay_mismatch_error(format!("failed to load tenant pubkey: {e}"))
+            CliError::cli_other_error(format!("failed to load tenant pubkey: {e}"))
         })?),
         None => None,
     };
 
     let iter = open_ndjson(&args.from).map_err(|e| {
-        CliError::replay_mismatch_error(format!(
+        CliError::cli_io_error(format!(
             "failed to open ndjson capture {}: {e}",
             args.from.display()
         ))
@@ -40,46 +40,36 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
             args.from.display(),
             args.schema,
         )
-        .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
+        .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
     }
 
     for record in iter {
         total = total.saturating_add(1);
         match record {
-            Ok(record) => {
-                match validate_frame(&record.frame, &args.schema, pubkey.as_ref()) {
-                    Ok(()) => {
-                        passes = passes.saturating_add(1);
-                        if !args.json {
-                            writeln!(
-                                stdout,
-                                "  line {:>4}: ok ({})",
-                                record.line, record.frame.event_id,
-                            )
-                            .map_err(|e| {
-                                CliError::replay_mismatch_error(format!("write stdout: {e}"))
-                            })?;
-                        }
-                    }
-                    Err(err) => {
-                        let exit = err.exit_code();
-                        let msg = err.to_string();
-                        if first_error.is_none() {
-                            first_error = Some((record.line, msg.clone(), exit));
-                        }
-                        if !args.json {
-                            writeln!(
-                                stdout,
-                                "  line {:>4}: FAIL exit={exit} {msg}",
-                                record.line,
-                            )
-                            .map_err(|e| {
-                                CliError::replay_mismatch_error(format!("write stdout: {e}"))
-                            })?;
-                        }
+            Ok(record) => match validate_frame(&record.frame, &args.schema, pubkey.as_ref()) {
+                Ok(()) => {
+                    passes = passes.saturating_add(1);
+                    if !args.json {
+                        writeln!(
+                            stdout,
+                            "  line {:>4}: ok ({})",
+                            record.line, record.frame.event_id,
+                        )
+                        .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
                     }
                 }
-            }
+                Err(err) => {
+                    let exit = err.exit_code();
+                    let msg = err.to_string();
+                    if first_error.is_none() {
+                        first_error = Some((record.line, msg.clone(), exit));
+                    }
+                    if !args.json {
+                        writeln!(stdout, "  line {:>4}: FAIL exit={exit} {msg}", record.line,)
+                            .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
+                    }
+                }
+            },
             Err(err) => {
                 let line = err.line();
                 let msg = err.to_string();
@@ -93,7 +83,7 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
                         "  line {:>4}: FAIL exit={EXIT_PARSE_ERROR} {msg}",
                         line,
                     )
-                    .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
+                    .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
                 }
             }
         }
@@ -124,15 +114,15 @@ fn cmd_replay_traffic(args: &TrafficArgs) -> Result<(), CliError> {
             }),
         });
         let serialized = serde_json::to_string(&payload)
-            .map_err(|e| CliError::replay_mismatch_error(format!("serialize report: {e}")))?;
+            .map_err(|e| CliError::cli_other_error(format!("serialize report: {e}")))?;
         writeln!(stdout, "{serialized}")
-            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
     } else {
         writeln!(
             stdout,
             "chio replay traffic: {passes}/{total} frames passed",
         )
-        .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
+        .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
     }
 
     if let Some((line, msg, exit)) = first_error {
@@ -152,24 +142,34 @@ const EXIT_PARSE_ERROR: i32 = 30;
 ///
 /// Parses `against_str` into a [`PolicyRef`], runs [`run_traffic_replay`],
 /// and renders a human or `--json` diff report.
-fn cmd_replay_traffic_with_against(
-    args: &TrafficArgs,
-    against_str: &str,
-) -> Result<(), CliError> {
+fn cmd_replay_traffic_with_against(args: &TrafficArgs, against_str: &str) -> Result<(), CliError> {
     let against = PolicyRef::parse(against_str)
-        .map_err(|e| CliError::replay_mismatch_error(format!("--against parse failed: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("--against parse failed: {e}")))?;
     let report = match run_traffic_replay(args, &against) {
         Ok(report) => report,
         Err(ExecuteError::MissingTenantPubkey) => {
-            return finish_replay_failure(
-                EXIT_BAD_TENANT_SIG,
-                "chio replay traffic --against requires --tenant-pubkey"
-                    .to_string(),
-            );
+            return Err(CliError::cli_other_error(
+                "chio replay traffic --against requires --tenant-pubkey".to_string(),
+            ));
         }
-        Err(err) => {
-            return Err(CliError::replay_mismatch_error(format!(
-                "chio replay traffic --against: {err}"
+        Err(ExecuteError::Capture { path, source }) => {
+            return Err(CliError::cli_io_error(format!(
+                "chio replay traffic --against: failed to open NDJSON capture {path}: {source}"
+            )));
+        }
+        Err(ExecuteError::PolicyRef(error)) => {
+            return Err(CliError::cli_other_error(format!(
+                "chio replay traffic --against: policy-ref invalid: {error}"
+            )));
+        }
+        Err(ExecuteError::Partition(error)) => {
+            return Err(CliError::cli_other_error(format!(
+                "chio replay traffic --against: partition error: {error}"
+            )));
+        }
+        Err(ExecuteError::Other(error)) => {
+            return Err(CliError::cli_other_error(format!(
+                "chio replay traffic --against: execute error: {error}"
             )));
         }
     };
@@ -178,10 +178,10 @@ fn cmd_replay_traffic_with_against(
     let mut stdout = std::io::stdout().lock();
     if args.json {
         render_traffic_diff_json(&mut stdout, &diff)
-            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
     } else {
         render_traffic_diff_human(&mut stdout, &diff)
-            .map_err(|e| CliError::replay_mismatch_error(format!("write stdout: {e}")))?;
+            .map_err(|e| CliError::cli_io_error(format!("write stdout: {e}")))?;
     }
 
     if !diff.ok() {
@@ -239,7 +239,10 @@ mod replay_traffic_tests {
     fn assert_replay_error(err: CliError, expected_message: &str) {
         match err {
             CliError::Chio(chio) => {
-                assert_eq!(chio.code().as_str(), "urn:chio:error:replay:deterministic-mismatch");
+                assert_eq!(
+                    chio.code().as_str(),
+                    "urn:chio:error:replay:deterministic-mismatch"
+                );
                 assert_eq!(chio.domain().as_str(), "replay");
                 assert!(
                     chio.to_string().contains(expected_message),
@@ -255,9 +258,7 @@ mod replay_traffic_tests {
     }
 
     fn canonical_invocation() -> serde_json::Value {
-        use chio_tool_call_fabric::{
-            Principal, ProviderId, ProvenanceStamp, ToolInvocation,
-        };
+        use chio_tool_call_fabric::{Principal, ProvenanceStamp, ProviderId, ToolInvocation};
         use std::time::SystemTime;
         let invocation = ToolInvocation {
             provider: ProviderId::OpenAi,
@@ -307,8 +308,7 @@ mod replay_traffic_tests {
         };
         let payload = signing_payload(&frame).unwrap();
         let sig = kp.sign(&payload);
-        let encoded =
-            base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
+        let encoded = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
         frame.tenant_sig = format!("ed25519:{encoded}");
         frame
     }
