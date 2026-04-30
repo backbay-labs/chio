@@ -906,6 +906,21 @@ impl SqliteReceiptStore {
                 ON federated_share_capability_lineage(capability_id);
             CREATE INDEX IF NOT EXISTS idx_federated_share_lineage_subject
                 ON federated_share_capability_lineage(subject_key);
+
+            CREATE TABLE IF NOT EXISTS iou_envelope (
+                receipt_id TEXT PRIMARY KEY,
+                iou_id TEXT NOT NULL,
+                receipt_timestamp INTEGER NOT NULL,
+                tenant_id TEXT,
+                amount_units INTEGER NOT NULL,
+                currency TEXT NOT NULL,
+                issuer_key TEXT NOT NULL,
+                canonical_json TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_iou_envelope_receipt_timestamp
+                ON iou_envelope(receipt_timestamp);
+            CREATE INDEX IF NOT EXISTS idx_iou_envelope_tenant
+                ON iou_envelope(tenant_id);
             "#,
         )?;
         ensure_tool_receipt_attribution_columns(&connection)?;

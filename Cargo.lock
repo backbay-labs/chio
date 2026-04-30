@@ -3482,6 +3482,7 @@ version = "0.1.0"
 dependencies = [
  "chacha20poly1305",
  "chio-core-types",
+ "chio-credit",
  "chio-kernel",
  "criterion",
  "r2d2",
@@ -3489,6 +3490,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "uuid",
  "zeroize",
 ]

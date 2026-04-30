@@ -4,11 +4,13 @@ pub use chio_underwriting as underwriting;
 
 pub mod hook;
 pub mod local_account;
+pub mod store_binding;
 
 pub use hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,
 };
 pub use local_account::LocalCreditAccount;
+pub use store_binding::{IouEnvelopeStore, IouEnvelopeStoreError};
 
 use serde::{Deserialize, Serialize};
 
