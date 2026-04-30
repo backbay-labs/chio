@@ -11,7 +11,7 @@ publish = false
 [lib]
 name = "chio_otel_receipt_exporter"
 
-[dependencies]
+[target.'cfg(not(loom))'.dependencies]
 chio-core = { path = "../chio-core" }
 chio-kernel = { path = "../chio-kernel" }
 serde = { workspace = true }
@@ -19,6 +19,12 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 
+[dev-dependencies]
+loom = { workspace = true }
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }

@@ -3096,6 +3096,7 @@ version = "0.1.0"
 dependencies = [
  "chio-core",
  "chio-kernel",
+ "loom",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
