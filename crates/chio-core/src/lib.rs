@@ -27,6 +27,8 @@ pub mod identity_network;
 pub use chio_core_types::manifest;
 pub use chio_core_types::merkle;
 pub use chio_core_types::message;
+#[cfg(feature = "pq")]
+pub use chio_core_types::pq;
 pub use chio_core_types::receipt;
 pub use chio_core_types::session;
 pub use chio_listing as listing;
@@ -174,6 +176,8 @@ pub use crypto::{
     Keypair, PublicKey, SharedCanonicalBytes, Signature, SignedCanonicalPayload, SigningAlgorithm,
     SigningBackend,
 };
+#[cfg(feature = "pq")]
+pub use crypto::{HybridBackend, MlDsa65Backend};
 pub use error::Error;
 pub use extension::{
     negotiate_extension, validate_extension_inventory, validate_extension_manifest,

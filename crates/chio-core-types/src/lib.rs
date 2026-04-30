@@ -26,6 +26,8 @@ pub mod merkle;
 pub mod message;
 pub mod oracle;
 pub mod plan;
+#[cfg(feature = "pq")]
+pub mod pq;
 pub mod receipt;
 pub mod runtime_attestation;
 pub mod session;
@@ -48,6 +50,8 @@ pub use capability::{
 pub use crypto::{
     sha256_hex, Ed25519Backend, Keypair, PublicKey, Signature, SigningAlgorithm, SigningBackend,
 };
+#[cfg(feature = "pq")]
+pub use crypto::{HybridBackend, MlDsa65Backend};
 #[cfg(feature = "fips")]
 pub use crypto::{P256Backend, P384Backend};
 pub use error::{Error, Result};
