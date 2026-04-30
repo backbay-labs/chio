@@ -16,7 +16,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
 use chio_guards::{
-    behavioral_profile::{BehavioralMetric, BehavioralProfileConfig, ReceiptFeedSource},
+    behavioral_profile::{
+        BehavioralMetric, BehavioralProfileConfig, InMemoryReceiptFeed, ReceiptFeedSource,
+    },
     BehavioralProfileGuard, DEFAULT_SIGMA_THRESHOLD,
 };
 use chio_kernel::{KernelError, ReceiptStore};
@@ -147,6 +149,31 @@ fn ema_baseline_stabilizes_under_steady_calls() {
         .unwrap()
         .expect("baseline should exist");
     assert_eq!(final_baseline.sample_count, 20);
+}
+
+#[test]
+fn in_memory_receipt_feed_persists_and_filters_by_agent_and_window() -> Result<(), KernelError> {
+    let feed = InMemoryReceiptFeed::new();
+    let receipt = make_receipt("r-feed-1", "cap-feed", 1_700_000_010, Decision::Allow);
+
+    assert_eq!(feed.len()?, 0);
+    assert!(feed.is_empty()?);
+    feed.push("agent-feed", receipt)?;
+
+    assert_eq!(feed.len()?, 1);
+    assert!(!feed.is_empty()?);
+
+    let matching = feed.receipts_for_agent("agent-feed", 1_700_000_000, 1_700_000_020)?;
+    assert_eq!(matching.len(), 1);
+    assert_eq!(matching[0].id, "r-feed-1");
+
+    let wrong_agent = feed.receipts_for_agent("agent-other", 1_700_000_000, 1_700_000_020)?;
+    assert!(wrong_agent.is_empty());
+
+    let wrong_window = feed.receipts_for_agent("agent-feed", 1_700_000_011, 1_700_000_020)?;
+    assert!(wrong_window.is_empty());
+
+    Ok(())
 }
 
 #[test]
