@@ -133,24 +133,50 @@ impl LanguageServer for ChioLanguageServer {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let td = params.text_document;
-        self.documents
+        let uri = td.uri.clone();
+        let entry = self
+            .documents
             .open(td.uri, td.text, td.version, Some(td.language_id.as_str()));
+        self.publish_diagnostics(&uri, &entry).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         // We negotiated FULL sync; the client sends one change with the
         // entire document body.
         if let Some(change) = params.content_changes.into_iter().next() {
-            self.documents.replace(
+            if let Some(entry) = self.documents.replace(
                 &params.text_document.uri,
                 change.text,
                 params.text_document.version,
-            );
+            ) {
+                self.publish_diagnostics(&params.text_document.uri, &entry)
+                    .await;
+            }
         }
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         self.documents.close(&params.text_document.uri);
+        // Clear diagnostics for the closed document.
+        self.client
+            .publish_diagnostics(params.text_document.uri, Vec::new(), None)
+            .await;
+    }
+}
+
+impl ChioLanguageServer {
+    /// Run validation on a cached document and publish the resulting
+    /// diagnostics to the client. Other diagnostic providers (manifest,
+    /// guard DSL) hook in via `crate::diagnostics::validate`.
+    pub async fn publish_diagnostics(
+        &self,
+        uri: &tower_lsp::lsp_types::Url,
+        entry: &crate::document::DocumentEntry,
+    ) {
+        let diags = crate::diagnostics::validate(entry.language, uri, &entry.text);
+        self.client
+            .publish_diagnostics(uri.clone(), diags, Some(entry.version))
+            .await;
     }
 }
 
