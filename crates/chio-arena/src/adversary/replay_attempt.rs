@@ -59,7 +59,10 @@ impl ReplayAttemptAdversary {
             .iter()
             .copied()
             .find(|candidate| *candidate == pattern)
-            .ok_or_else(|| AdversaryError::UnknownClass(pattern.to_string()))?;
+            .ok_or_else(|| AdversaryError::UnknownPattern {
+                class: AdversaryClass::ReplayAttempt,
+                pattern: pattern.to_string(),
+            })?;
         Ok(Self {
             population: population.into(),
             pattern: canonical,
@@ -166,7 +169,10 @@ pub fn population_from_block(
                 .iter()
                 .copied()
                 .find(|candidate| *candidate == name)
-                .ok_or_else(|| AdversaryError::UnknownClass(name.to_string()))?;
+                .ok_or_else(|| AdversaryError::UnknownPattern {
+                    class: AdversaryClass::ReplayAttempt,
+                    pattern: name.to_string(),
+                })?;
             resolved.push(canonical);
         }
         if resolved.is_empty() {

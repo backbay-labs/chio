@@ -14,8 +14,13 @@
 //!
 //! Determinism contract: same RNG sub-stream and same parents produce
 //! byte-identical offspring. The split index is sampled from
-//! `rng.gen_range(1..=parent_len)` so the suffix taken from parent B is
-//! always non-empty when parent B has members.
+//! `1..=min(parent_a.len(), parent_b.len())` so the prefix taken from
+//! parent A and the suffix taken from parent B are both non-empty when
+//! both parents have members. Sampling the upper bound from the shorter
+//! parent guarantees `parent_b[split..]` is a strictly shorter suffix
+//! than `parent_b` itself, so the offspring always mixes material from
+//! both parents (the prior bound `1..=parent_a.len()` could collapse the
+//! suffix to empty when `parent_a` was longer than `parent_b`).
 
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
@@ -70,13 +75,10 @@ pub fn crossover_prompt_injection_population(
     if parent_a.patterns.is_empty() || parent_b.patterns.is_empty() {
         return Err(CrossoverError::EmptyParent);
     }
-    let split = rng.gen_range(1..=parent_a.patterns.len());
+    let upper = parent_a.patterns.len().min(parent_b.patterns.len());
+    let split = rng.gen_range(1..=upper);
     let mut patterns: Vec<&'static str> = parent_a.patterns[..split].to_vec();
-    patterns.extend_from_slice(&parent_b.patterns[split.min(parent_b.patterns.len())..]);
-    if patterns.is_empty() {
-        // Fallback: at least take one entry from parent A.
-        patterns.push(parent_a.patterns[0]);
-    }
+    patterns.extend_from_slice(&parent_b.patterns[split..]);
     Ok(PromptInjectionBlueprint {
         population: parent_a.population.clone(),
         patterns,
@@ -92,12 +94,10 @@ pub fn crossover_overrequest_population(
     if parent_a.variants.is_empty() || parent_b.variants.is_empty() {
         return Err(CrossoverError::EmptyParent);
     }
-    let split = rng.gen_range(1..=parent_a.variants.len());
+    let upper = parent_a.variants.len().min(parent_b.variants.len());
+    let split = rng.gen_range(1..=upper);
     let mut variants = parent_a.variants[..split].to_vec();
-    variants.extend_from_slice(&parent_b.variants[split.min(parent_b.variants.len())..]);
-    if variants.is_empty() {
-        variants.push(parent_a.variants[0].clone());
-    }
+    variants.extend_from_slice(&parent_b.variants[split..]);
     Ok(OverrequestBlueprint {
         population: parent_a.population.clone(),
         variants,
@@ -113,12 +113,10 @@ pub fn crossover_replay_attempt_population(
     if parent_a.entries.is_empty() || parent_b.entries.is_empty() {
         return Err(CrossoverError::EmptyParent);
     }
-    let split = rng.gen_range(1..=parent_a.entries.len());
+    let upper = parent_a.entries.len().min(parent_b.entries.len());
+    let split = rng.gen_range(1..=upper);
     let mut entries = parent_a.entries[..split].to_vec();
-    entries.extend_from_slice(&parent_b.entries[split.min(parent_b.entries.len())..]);
-    if entries.is_empty() {
-        entries.push(parent_a.entries[0].clone());
-    }
+    entries.extend_from_slice(&parent_b.entries[split..]);
     Ok(ReplayAttemptBlueprint {
         population: parent_a.population.clone(),
         entries,
@@ -134,12 +132,10 @@ pub fn crossover_scope_escape_population(
     if parent_a.escalations.is_empty() || parent_b.escalations.is_empty() {
         return Err(CrossoverError::EmptyParent);
     }
-    let split = rng.gen_range(1..=parent_a.escalations.len());
+    let upper = parent_a.escalations.len().min(parent_b.escalations.len());
+    let split = rng.gen_range(1..=upper);
     let mut escalations = parent_a.escalations[..split].to_vec();
-    escalations.extend_from_slice(&parent_b.escalations[split.min(parent_b.escalations.len())..]);
-    if escalations.is_empty() {
-        escalations.push(parent_a.escalations[0].clone());
-    }
+    escalations.extend_from_slice(&parent_b.escalations[split..]);
     Ok(ScopeEscapeBlueprint {
         population: parent_a.population.clone(),
         escalations,

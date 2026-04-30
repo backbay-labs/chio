@@ -64,12 +64,20 @@ async fn reference_scenarios_emit_byte_identical_artifacts_across_runs(
             scenario.id
         );
 
-        // 2. Schedule equality across two builds.
-        let schedule_a = canonical_schedule_bytes(&scenario)?;
-        let schedule_b = canonical_schedule_bytes(&scenario)?;
+        // 2. Schedule equality across two builds. We track both the
+        // canonical byte image (so byte-equality is asserted) and the
+        // step count (so the clock trace ticks once per step, matching
+        // the runtime's behaviour).
+        let (schedule_a, step_count_a) = canonical_schedule(&scenario)?;
+        let (schedule_b, step_count_b) = canonical_schedule(&scenario)?;
         assert_eq!(
             schedule_a, schedule_b,
             "scenario {} schedule diverged across builds",
+            scenario.id
+        );
+        assert_eq!(
+            step_count_a, step_count_b,
+            "scenario {} schedule step count diverged",
             scenario.id
         );
 
@@ -82,9 +90,12 @@ async fn reference_scenarios_emit_byte_identical_artifacts_across_runs(
             scenario.id
         );
 
-        // 4. Virtual clock progression equality.
-        let clock_a = clock_trace(&scenario, schedule_a.len())?;
-        let clock_b = clock_trace(&scenario, schedule_b.len())?;
+        // 4. Virtual clock progression equality. The runtime advances the
+        // clock by exactly one tick per scheduled step, so the trace
+        // length must be the step count - not the schedule's serialised
+        // byte length.
+        let clock_a = clock_trace(&scenario, step_count_a)?;
+        let clock_b = clock_trace(&scenario, step_count_b)?;
         assert_eq!(
             clock_a, clock_b,
             "scenario {} clock progression diverged",
@@ -105,14 +116,15 @@ async fn reference_scenarios_emit_byte_identical_artifacts_across_runs(
     Ok(())
 }
 
-fn canonical_schedule_bytes(scenario: &Scenario) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+/// Build the canonical byte image of the scheduler's output along with the
+/// number of scheduled steps. The byte image is the hardened equality
+/// witness; the step count is required so the virtual-clock trace ticks
+/// once per step, matching `ArenaRuntime::run_multi_agent`'s behaviour.
+fn canonical_schedule(scenario: &Scenario) -> Result<(Vec<u8>, usize), Box<dyn std::error::Error>> {
     let scheduler = DeterministicScheduler::from_scenario(scenario)?;
-    let lines: Vec<String> = scheduler
-        .schedule()
-        .iter()
-        .map(format_schedule_line)
-        .collect();
-    Ok(lines.join("\n").into_bytes())
+    let steps = scheduler.schedule();
+    let lines: Vec<String> = steps.iter().map(format_schedule_line).collect();
+    Ok((lines.join("\n").into_bytes(), steps.len()))
 }
 
 fn format_schedule_line(step: &ScheduledStep) -> String {
@@ -136,6 +148,10 @@ fn rng_snapshot(scenario: &Scenario) -> Result<Vec<u8>, Box<dyn std::error::Erro
     Ok(bytes)
 }
 
+/// Render a clock trace by ticking once per scheduled step. The runtime
+/// advances the virtual clock at every step boundary, so the trace's
+/// `tick_count` must equal the schedule's step count (not the byte image's
+/// length).
 fn clock_trace(
     scenario: &Scenario,
     tick_count: usize,

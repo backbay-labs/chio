@@ -120,6 +120,26 @@ impl Adversary for CapabilityOverrequestAdversary {
             "capability_overrequest".to_string(),
             Value::Object(overrequest),
         );
+        // Derive the expected verdict from the mutated target relative to
+        // the base step's (server, tool) instead of hardcoding `Deny`. A
+        // variant whose target equals the base step's scope is in-scope
+        // and the toy guard will return `Allow`; hardcoding `Deny` in that
+        // case would emit a self-contradictory action and produce false
+        // fail-open signals. Constructor-level validation cannot reject
+        // these variants in advance because the issued scope is bound to
+        // the scenario step, not the population block. The
+        // `default_variants` list and `population_from_block` keep an
+        // additional invariant: variants supplied at construction time
+        // must escalate beyond the canonical filesystem allowlist used by
+        // P1/P2 reference scenarios, so default-built populations always
+        // emit `Deny`.
+        let in_scope = self.variant.target_server == base_step.server
+            && self.variant.target_tool == base_step.tool;
+        let expected_verdict = if in_scope {
+            ScenarioVerdict::Allow
+        } else {
+            ScenarioVerdict::Deny
+        };
         let mutated_step = ScenarioStep {
             id: format!(
                 "{}::{}::{}",
@@ -129,13 +149,13 @@ impl Adversary for CapabilityOverrequestAdversary {
             server: self.variant.target_server.clone(),
             tool: self.variant.target_tool.clone(),
             arguments: Value::Object(arguments_map),
-            expect_verdict: ScenarioVerdict::Deny,
+            expect_verdict: expected_verdict,
         };
         AdversaryAction {
             class: AdversaryClass::CapabilityOverrequest,
             population: self.population.clone(),
             mutated_step,
-            expected_verdict: ScenarioVerdict::Deny,
+            expected_verdict,
             reason_marker: REASON.to_string(),
         }
     }

@@ -448,10 +448,13 @@ pub fn promote_to_m04_fixtures(
 
     let mut fixtures = Vec::new();
     let mut skipped_cap = 0;
+    // Match the documented contract: only `Deny` receipts are graduated to
+    // M04 fixtures. `Allow` and `Rewrite` are skipped so downstream M04
+    // replay consumers do not receive unexpected fixture types.
     for receipt in run
         .receipts
         .iter()
-        .filter(|r| matches!(r.verdict, ScenarioVerdict::Deny | ScenarioVerdict::Rewrite))
+        .filter(|r| matches!(r.verdict, ScenarioVerdict::Deny))
     {
         if fixtures.len() >= cap {
             skipped_cap += 1;
@@ -526,7 +529,7 @@ pub fn promote_to_adversarial_suite(
         .iter()
         .filter(|r| matches!(r.verdict, ScenarioVerdict::Deny | ScenarioVerdict::Rewrite))
     {
-        let case = build_adversarial_case(scenario, receipt, class);
+        let case = build_adversarial_case(scenario, receipt, class)?;
         let bytes = canonical_json_bytes(&case)?;
         let hash = sha256_hex(&bytes);
         let path = class_dir.join(format!("{}.json", &hash[..16]));
@@ -634,12 +637,17 @@ fn build_adversarial_case(
     scenario: &Scenario,
     receipt: &ArenaReceipt,
     class: &str,
-) -> AdversarialCase {
-    let receipt_bytes = canonical_json_bytes(&receipt.receipt).unwrap_or_default();
+) -> Result<AdversarialCase, PromoteError> {
+    // Propagate canonical-JSON serialisation failure instead of silently
+    // hashing the empty byte string, which would emit an
+    // attacker-friendly "all-zeros" `receipt_sha256` while still claiming
+    // the case promoted successfully. The analogous `build_m04_fixture`
+    // already propagates this error.
+    let receipt_bytes = canonical_json_bytes(&receipt.receipt)?;
     let mut metadata = BTreeMap::new();
     metadata.insert("scenario_title".to_string(), scenario.title.clone());
     metadata.insert("origin".to_string(), "chio-arena".to_string());
-    AdversarialCase {
+    Ok(AdversarialCase {
         schema_version: ARENA_ADVERSARIAL_CASE_SCHEMA.to_string(),
         case_id: format!("{}#{}", scenario.id, receipt.step_id),
         class: class.to_string(),
@@ -655,5 +663,5 @@ fn build_adversarial_case(
         witness: scenario.determinism_witness(),
         receipt_sha256: sha256_hex(&receipt_bytes),
         metadata,
-    }
+    })
 }

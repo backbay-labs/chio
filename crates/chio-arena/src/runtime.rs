@@ -108,13 +108,35 @@ impl ArenaRuntime {
         let mut rng = ArenaRng::new(scenario.rng_seed);
         rng.register_agents(scenario.agents.iter().map(|agent| agent.id.as_str()))?;
 
+        // Reject duplicate or surplus step requests. The multi-agent runtime
+        // dispatches one tool call per scheduled step; collapsing requests
+        // into a `BTreeMap` keyed by `step_id` would silently overwrite
+        // earlier entries and ignore extras, which can corrupt experiment
+        // outputs. Cardinality must equal the schedule length, and each
+        // `step_id` must appear at most once. We also defer the
+        // schedule-step ID match to the dispatch loop, but reject duplicates
+        // up front so the failure points at the caller, not the schedule.
+        if requests.len() != schedule.len() {
+            return Err(ArenaRuntimeError::RequestCountMismatch {
+                requests: requests.len(),
+                steps: schedule.len(),
+            });
+        }
         let mut request_lookup: BTreeMap<String, ToolCallRequest> = BTreeMap::new();
         for request in requests {
-            request_lookup.insert(request.step_id, request.request);
+            let step_id = request.step_id;
+            if request_lookup.contains_key(&step_id) {
+                return Err(ArenaRuntimeError::DuplicateStepRequest { step_id });
+            }
+            request_lookup.insert(step_id, request.request);
         }
         let mut kernel_lookup: BTreeMap<String, Arc<ChioKernel>> = BTreeMap::new();
         for binding in bindings {
-            kernel_lookup.insert(binding.agent_id, binding.kernel);
+            let agent_id = binding.agent_id;
+            if kernel_lookup.contains_key(&agent_id) {
+                return Err(ArenaRuntimeError::DuplicateAgentBinding { agent_id });
+            }
+            kernel_lookup.insert(agent_id, binding.kernel);
         }
 
         let mut receipts = Vec::with_capacity(schedule.len());
@@ -216,6 +238,10 @@ pub enum ArenaRuntimeError {
     MissingAgentKernel(String),
     #[error("multi-agent runtime missing request for step {step_id}")]
     MissingStepRequest { step_id: String },
+    #[error("multi-agent runtime received duplicate step request {step_id}")]
+    DuplicateStepRequest { step_id: String },
+    #[error("multi-agent runtime received duplicate kernel binding for agent {agent_id}")]
+    DuplicateAgentBinding { agent_id: String },
 }
 
 fn validate_single_agent_runtime_inputs(
