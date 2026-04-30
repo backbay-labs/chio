@@ -11,9 +11,10 @@ use std::sync::Arc;
 
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::{
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    InitializeParams, InitializeResult, InitializedParams, MessageType, OneOf, ServerCapabilities,
-    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+    CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, InitializeResult,
+    InitializedParams, MessageType, OneOf, ServerCapabilities, ServerInfo,
+    TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -84,7 +85,10 @@ impl ChioLanguageServer {
     pub fn capabilities() -> ServerCapabilities {
         ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-            completion_provider: None,
+            completion_provider: Some(CompletionOptions {
+                trigger_characters: Some(vec![":".to_string(), " ".to_string(), "-".to_string()]),
+                ..CompletionOptions::default()
+            }),
             hover_provider: None,
             definition_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
@@ -152,6 +156,20 @@ impl LanguageServer for ChioLanguageServer {
                 self.publish_diagnostics(&params.text_document.uri, &entry)
                     .await;
             }
+        }
+    }
+
+    async fn completion(&self, params: CompletionParams) -> LspResult<Option<CompletionResponse>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let Some(entry) = self.documents.get(uri) else {
+            return Ok(None);
+        };
+        let items = crate::completion::complete(entry.language, &entry.text, position);
+        if items.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(CompletionResponse::Array(items)))
         }
     }
 

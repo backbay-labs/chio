@@ -1,0 +1,154 @@
+//! Completion provider for chio-lsp.
+//!
+//! Offers three completion classes, each backed by a small static
+//! catalog so completions are deterministic and registry-driven:
+//!
+//! - capability scopes (the `scopes` and `tools` keys),
+//! - guard identifiers (the `guards` key, native and WASM),
+//! - policy keys (top-level keys in `chio.yaml`).
+//!
+//! The catalog stays small in P4.T3; downstream tickets and milestones
+//! contribute additional entries.
+
+pub mod guards;
+pub mod scopes;
+
+use tower_lsp::lsp_types::{CompletionItem, Position};
+
+use crate::document::DocumentLanguage;
+
+/// Compute completion items for a document at a position. The provider
+/// inspects the line prefix and any preceding section header to pick a
+/// class; if no class matches it returns an empty list rather than
+/// guess.
+#[must_use]
+pub fn complete(language: DocumentLanguage, text: &str, position: Position) -> Vec<CompletionItem> {
+    match language {
+        DocumentLanguage::ChioYaml => complete_chio_yaml(text, position),
+        DocumentLanguage::Manifest | DocumentLanguage::GuardDsl | DocumentLanguage::Other => {
+            Vec::new()
+        }
+    }
+}
+
+fn complete_chio_yaml(text: &str, position: Position) -> Vec<CompletionItem> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let cursor_line_idx = (position.line as usize).min(lines.len().saturating_sub(1));
+    let cursor_line = lines.get(cursor_line_idx).copied().unwrap_or("");
+    let prefix_end = (position.character as usize).min(cursor_line.len());
+    let prefix = &cursor_line[..prefix_end];
+
+    let trimmed_prefix = prefix.trim_start();
+    let in_list_or_indented =
+        trimmed_prefix.starts_with('-') || (prefix.starts_with(' ') && trimmed_prefix.is_empty());
+
+    if in_list_or_indented {
+        if let Some(section) = nearest_top_level_section(&lines, cursor_line_idx) {
+            return match section {
+                "scopes" | "tools" | "capabilities" => scopes::items(),
+                "guards" => guards::items(),
+                _ => Vec::new(),
+            };
+        }
+    }
+
+    // Otherwise offer the top-level policy keys.
+    policy_keys()
+}
+
+/// Walk upward from `cursor_line` looking for the nearest line that
+/// looks like `key:` at column 0. The check stays cheap because P4.T3
+/// keeps the YAML model lightweight; P4.T6 swaps in a real AST.
+fn nearest_top_level_section<'a>(lines: &[&'a str], cursor_line: usize) -> Option<&'a str> {
+    let mut idx = cursor_line;
+    loop {
+        let line = lines.get(idx).copied().unwrap_or("");
+        if !line.starts_with([' ', '-', '\t']) && !line.is_empty() {
+            if let Some((key, _)) = line.split_once(':') {
+                return Some(key.trim());
+            }
+        }
+        if idx == 0 {
+            return None;
+        }
+        idx -= 1;
+    }
+}
+
+/// Top-level keys recognised in `chio.yaml`. Mirrors the doctor
+/// `REQUIRED_KEYS` plus the optional companion keys the registry
+/// references.
+#[must_use]
+pub fn policy_keys() -> Vec<CompletionItem> {
+    use tower_lsp::lsp_types::{CompletionItemKind, MarkupContent, MarkupKind};
+
+    const KEYS: &[(&str, &str)] = &[
+        ("version", "Schema version of this chio.yaml document."),
+        ("policy", "Path to the policy file or inline policy block."),
+        (
+            "capabilities",
+            "List of capabilities granted to this project.",
+        ),
+        (
+            "guards",
+            "List of guard identifiers active for this project.",
+        ),
+        ("manifest", "Path to the tool / capability manifest."),
+    ];
+
+    KEYS.iter()
+        .map(|(label, help)| CompletionItem {
+            label: (*label).to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some("chio.yaml top-level key".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: (*help).to_string(),
+                },
+            )),
+            insert_text: Some(format!("{label}: ")),
+            ..CompletionItem::default()
+        })
+        .collect()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_chio_yaml_offers_top_level_keys() {
+        let items = complete(DocumentLanguage::ChioYaml, "", Position::new(0, 0));
+        let labels: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.contains(&"version"));
+        assert!(labels.contains(&"policy"));
+    }
+
+    #[test]
+    fn under_scopes_section_offers_capability_scopes() {
+        let text = "scopes:\n  - ";
+        let pos = Position::new(1, 4);
+        let items = complete(DocumentLanguage::ChioYaml, text, pos);
+        assert!(!items.is_empty());
+        let labels: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.iter().any(|l| l.starts_with("urn:chio:scope:")));
+    }
+
+    #[test]
+    fn under_guards_section_offers_guard_identifiers() {
+        let text = "guards:\n  - ";
+        let pos = Position::new(1, 4);
+        let items = complete(DocumentLanguage::ChioYaml, text, pos);
+        assert!(!items.is_empty());
+        let labels: Vec<_> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(labels.iter().any(|l| l.starts_with("urn:chio:guard:")));
+    }
+
+    #[test]
+    fn other_languages_offer_no_completions() {
+        let items = complete(DocumentLanguage::Other, "", Position::new(0, 0));
+        assert!(items.is_empty());
+    }
+}

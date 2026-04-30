@@ -17,6 +17,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod completion;
 pub mod diagnostics;
 pub mod document;
 pub mod server;

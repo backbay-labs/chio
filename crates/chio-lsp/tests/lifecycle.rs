@@ -18,6 +18,8 @@ fn server_advertises_text_document_sync_full() {
         snap.text_document_sync_full,
         "P4.T1 negotiates FULL text document sync"
     );
+    // P4.T1 lights up definition; T3 lights up completion.
+    assert!(snap.definition);
 }
 
 #[test]
