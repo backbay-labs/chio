@@ -1,0 +1,14 @@
+schema = "chio.verdict-matrix.typescript.prep.v1"
+status = "prepared-blocked-by-m02-pr-352"
+blocked_on = "M02.P5.T2 TypeScript verdict driver shape, tracked by PR #352"
+tuple_fields = ["verdict", "reason_code", "scope_set"]
+
+[[drivers]]
+id = "typescript-ai-sdk-middleware"
+package = "@chio/ai-sdk-middleware"
+entrypoint = "ai_sdk_middleware.ts"
+
+[[drivers]]
+id = "typescript-chio-next"
+package = "@chio/next"
+entrypoint = "chio_next.ts"

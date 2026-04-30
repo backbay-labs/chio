@@ -44,6 +44,11 @@ pub enum ProviderId {
     OpenAi,
     Anthropic,
     Bedrock,
+    Gemini,
+    Mistral,
+    Groq,
+    Ollama,
+    Cohere,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -201,6 +206,16 @@ mod tests {
         assert_eq!(json, "\"anthropic\"");
         let json = serde_json::to_string(&ProviderId::Bedrock).unwrap();
         assert_eq!(json, "\"bedrock\"");
+        let json = serde_json::to_string(&ProviderId::Gemini).unwrap();
+        assert_eq!(json, "\"gemini\"");
+        let json = serde_json::to_string(&ProviderId::Mistral).unwrap();
+        assert_eq!(json, "\"mistral\"");
+        let json = serde_json::to_string(&ProviderId::Groq).unwrap();
+        assert_eq!(json, "\"groq\"");
+        let json = serde_json::to_string(&ProviderId::Ollama).unwrap();
+        assert_eq!(json, "\"ollama\"");
+        let json = serde_json::to_string(&ProviderId::Cohere).unwrap();
+        assert_eq!(json, "\"cohere\"");
     }
 
     #[test]

@@ -1,0 +1,23 @@
+{
+  "name": "next-ai-sdk-receipts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "../../packages/chio-ai-sdk-middleware",
+    "../../packages/chio-next"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@chio/ai-sdk-middleware": "workspace:*",
+    "@chio/next": "workspace:*",
+    "ai": ">=4.0 <6",
+    "next": ">=14.2 <16",
+    "react": ">=18.2 <20",
+    "react-dom": ">=18.2 <20"
+  }
+}
