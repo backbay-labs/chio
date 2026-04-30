@@ -27,7 +27,7 @@ pub fn cmd_cert_generate(
     // Open the receipt store and load receipts for the session.
     let db_path = receipt_db.to_string_lossy();
     let conn = rusqlite::Connection::open(receipt_db)
-        .map_err(|e| CliError::Other(format!("failed to open receipt db {db_path}: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("failed to open receipt db {db_path}: {e}")))?;
 
     let receipts = load_session_receipts(&conn, session_id)?;
 
@@ -38,14 +38,14 @@ pub fn cmd_cert_generate(
     };
 
     let cert = generate_compliance_certificate(session_id, &receipts, &config, &keypair)
-        .map_err(|e| CliError::Other(format!("certificate generation failed: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("certificate generation failed: {e}")))?;
 
     let cert_json = serde_json::to_string_pretty(&cert)
-        .map_err(|e| CliError::Other(format!("serialization failed: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("serialization failed: {e}")))?;
 
     if let Some(out_path) = output {
         std::fs::write(out_path, &cert_json)
-            .map_err(|e| CliError::Other(format!("failed to write output: {e}")))?;
+            .map_err(|e| CliError::cli_other_error(format!("failed to write output: {e}")))?;
         if !json_output {
             eprintln!(
                 "compliance certificate for session {} written to {}",
@@ -70,10 +70,10 @@ pub fn cmd_cert_verify(
     json_output: bool,
 ) -> Result<(), CliError> {
     let cert_text = std::fs::read_to_string(certificate_path)
-        .map_err(|e| CliError::Other(format!("failed to read certificate: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("failed to read certificate: {e}")))?;
 
     let cert: ComplianceCertificate = serde_json::from_str(&cert_text)
-        .map_err(|e| CliError::Other(format!("failed to parse certificate: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("failed to parse certificate: {e}")))?;
 
     let mode = if full {
         VerificationMode::FullBundle
@@ -84,11 +84,11 @@ pub fn cmd_cert_verify(
     let receipts = if full {
         if let Some(db_path) = receipt_db {
             let conn = rusqlite::Connection::open(db_path)
-                .map_err(|e| CliError::Other(format!("failed to open receipt db: {e}")))?;
+                .map_err(|e| CliError::cli_other_error(format!("failed to open receipt db: {e}")))?;
             let entries = load_session_receipts(&conn, &cert.body.session_id)?;
             Some(entries)
         } else {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "full-bundle verification requires --receipt-db".to_string(),
             ));
         }
@@ -100,7 +100,7 @@ pub fn cmd_cert_verify(
 
     if json_output {
         let result_json = serde_json::to_string_pretty(&result)
-            .map_err(|e| CliError::Other(format!("serialization failed: {e}")))?;
+            .map_err(|e| CliError::cli_other_error(format!("serialization failed: {e}")))?;
         println!("{result_json}");
     } else if result.passed {
         println!("PASS: {}", result.summary);
@@ -118,16 +118,16 @@ pub fn cmd_cert_verify(
 /// `chio cert inspect` -- display certificate contents.
 pub fn cmd_cert_inspect(certificate_path: &Path, json_output: bool) -> Result<(), CliError> {
     let cert_text = std::fs::read_to_string(certificate_path)
-        .map_err(|e| CliError::Other(format!("failed to read certificate: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("failed to read certificate: {e}")))?;
 
     let cert: ComplianceCertificate = serde_json::from_str(&cert_text)
-        .map_err(|e| CliError::Other(format!("failed to parse certificate: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("failed to parse certificate: {e}")))?;
 
     if json_output {
         println!(
             "{}",
             serde_json::to_string_pretty(&cert.body)
-                .map_err(|e| CliError::Other(format!("serialization failed: {e}")))?
+                .map_err(|e| CliError::cli_other_error(format!("serialization failed: {e}")))?
         );
     } else {
         println!("Session ID:     {}", cert.body.session_id);
@@ -212,7 +212,7 @@ fn load_session_receipts(
         .prepare(
             "SELECT rowid, json_data FROM chio_receipts WHERE capability_id LIKE ?1 ORDER BY rowid",
         )
-        .map_err(|e| CliError::Other(format!("SQL prepare failed: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("SQL prepare failed: {e}")))?;
 
     let rows = stmt
         .query_map([format!("{capability_prefix}%")], |row| {
@@ -220,13 +220,13 @@ fn load_session_receipts(
             let json_data: String = row.get(1)?;
             Ok((seq as u64, json_data))
         })
-        .map_err(|e| CliError::Other(format!("SQL query failed: {e}")))?;
+        .map_err(|e| CliError::cli_other_error(format!("SQL query failed: {e}")))?;
 
     let mut entries = Vec::new();
     for row in rows {
-        let (seq, json_data) = row.map_err(|e| CliError::Other(format!("row read failed: {e}")))?;
+        let (seq, json_data) = row.map_err(|e| CliError::cli_other_error(format!("row read failed: {e}")))?;
         let receipt: chio_core::receipt::ChioReceipt = serde_json::from_str(&json_data)
-            .map_err(|e| CliError::Other(format!("receipt parse failed: {e}")))?;
+            .map_err(|e| CliError::cli_other_error(format!("receipt parse failed: {e}")))?;
         entries.push(ComplianceReceiptEntry { receipt, seq });
     }
 

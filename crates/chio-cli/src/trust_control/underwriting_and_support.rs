@@ -1125,7 +1125,7 @@ pub fn list_underwriting_decisions(
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .query_underwriting_decisions(query)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 pub fn create_underwriting_appeal(
@@ -1135,7 +1135,7 @@ pub fn create_underwriting_appeal(
     let mut receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .create_underwriting_appeal(request)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 pub fn resolve_underwriting_appeal(
@@ -1145,7 +1145,7 @@ pub fn resolve_underwriting_appeal(
     let mut receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     receipt_store
         .resolve_underwriting_appeal(request)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 fn build_exposure_ledger_receipt_entry(
@@ -2045,13 +2045,13 @@ fn load_behavioral_feed_signing_keypair(
     authority_db_path: Option<&Path>,
 ) -> Result<Keypair, CliError> {
     match (authority_seed_path, authority_db_path) {
-        (Some(_), Some(_)) => Err(CliError::Other(
+        (Some(_), Some(_)) => Err(CliError::cli_other_error(
             "behavioral feed export requires either --authority-seed-file or --authority-db, not both"
                 .to_string(),
         )),
         (Some(path), None) => load_or_create_authority_keypair(path),
         (None, Some(path)) => Ok(SqliteCapabilityAuthority::open(path)?.local_keypair()?),
-        (None, None) => Err(CliError::Other(
+        (None, None) => Err(CliError::cli_other_error(
             "behavioral feed export requires --authority-seed-file or --authority-db so the export can be signed"
                 .to_string(),
         )),

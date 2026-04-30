@@ -19,7 +19,7 @@ pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
         .and_then(|name| name.to_str())
         .filter(|name| !name.trim().is_empty())
         .ok_or_else(|| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "could not derive a project name from `{}`",
                 path.display()
             ))
@@ -60,13 +60,13 @@ pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
 fn ensure_target_dir(path: &Path) -> Result<(), CliError> {
     if path.exists() {
         if !path.is_dir() {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "refusing to scaffold into non-directory `{}`",
                 path.display()
             )));
         }
         if path.read_dir()?.next().is_some() {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "refusing to scaffold into non-empty directory `{}`",
                 path.display()
             )));

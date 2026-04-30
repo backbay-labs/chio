@@ -10,10 +10,10 @@ fn require_replay_bless_capability() -> Result<(), CliError> {
 fn validate_replay_bless_capability(value: Option<String>) -> Result<(), CliError> {
     match value {
         Some(value) if value == REPLAY_BLESS_CAPABILITY => Ok(()),
-        Some(value) => Err(CliError::Other(format!(
+        Some(value) => Err(CliError::replay_mismatch_error(format!(
             "`{REPLAY_BLESS_CAPABILITY_ENV}` must be `{REPLAY_BLESS_CAPABILITY}` for replay bless, got `{value}`"
         ))),
-        None => Err(CliError::Other(format!(
+        None => Err(CliError::replay_mismatch_error(format!(
             "replay bless requires `{REPLAY_BLESS_CAPABILITY_ENV}={REPLAY_BLESS_CAPABILITY}`"
         ))),
     }

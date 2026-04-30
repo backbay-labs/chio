@@ -19,7 +19,7 @@ pub fn serve(config: TrustServiceConfig) -> Result<(), CliError> {
         // during request validation and response serialization.
         .thread_stack_size(8 * 1024 * 1024)
         .build()
-        .map_err(|error| CliError::Other(format!("failed to start async runtime: {error}")))?;
+        .map_err(|error| CliError::cli_other_error(format!("failed to start async runtime: {error}")))?;
     runtime.block_on(async move { serve_async(config).await })
 }
 
@@ -71,7 +71,7 @@ fn configured_enterprise_provider_registry_path(
     config: &TrustServiceConfig,
 ) -> Result<&Path, CliError> {
     config.enterprise_providers_file.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "enterprise provider admin requires --enterprise-providers-file on the trust-control service"
                 .to_string(),
         )
@@ -82,7 +82,7 @@ fn configured_federation_policy_registry_path(
     config: &TrustServiceConfig,
 ) -> Result<&Path, CliError> {
     config.federation_policies_file.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "permissionless federation administration requires --federation-policies-file on the trust-control service"
                 .to_string(),
         )
@@ -91,7 +91,7 @@ fn configured_federation_policy_registry_path(
 
 fn configured_scim_lifecycle_registry_path(config: &TrustServiceConfig) -> Result<&Path, CliError> {
     config.scim_lifecycle_file.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "scim lifecycle automation requires --scim-lifecycle-file on the trust-control service"
                 .to_string(),
         )
@@ -102,7 +102,7 @@ fn configured_verifier_policy_registry_path(
     config: &TrustServiceConfig,
 ) -> Result<&Path, CliError> {
     config.verifier_policies_file.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "verifier policy administration requires --verifier-policies-file on the trust-control service"
                 .to_string(),
         )
@@ -111,7 +111,7 @@ fn configured_verifier_policy_registry_path(
 
 fn configured_verifier_challenge_db_path(config: &TrustServiceConfig) -> Result<&Path, CliError> {
     config.verifier_challenge_db_path.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "remote verifier challenge flows require --verifier-challenge-db on the trust-control service"
                 .to_string(),
         )
@@ -122,7 +122,7 @@ fn configured_passport_status_registry_path(
     config: &TrustServiceConfig,
 ) -> Result<&Path, CliError> {
     config.passport_statuses_file.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "passport lifecycle administration requires --passport-statuses-file on the trust-control service"
                 .to_string(),
         )
@@ -133,7 +133,7 @@ fn configured_passport_issuance_registry_path(
     config: &TrustServiceConfig,
 ) -> Result<&Path, CliError> {
     config.passport_issuance_offers_file.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "passport issuance requires --passport-issuance-offers-file on the trust-control service"
                 .to_string(),
         )
@@ -144,7 +144,7 @@ fn configured_passport_credential_issuer(
     config: &TrustServiceConfig,
 ) -> Result<Oid4vciCredentialIssuerMetadata, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "passport issuance requires --advertise-url on the trust-control service".to_string(),
         )
     })?;
@@ -165,7 +165,7 @@ fn configured_passport_credential_issuer(
 
 fn configured_certification_registry_path(config: &TrustServiceConfig) -> Result<&Path, CliError> {
     config.certification_registry_file.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "certification registry administration requires --certification-registry-file on the trust-control service"
                 .to_string(),
         )
@@ -174,7 +174,7 @@ fn configured_certification_registry_path(config: &TrustServiceConfig) -> Result
 
 fn configured_certification_discovery_path(config: &TrustServiceConfig) -> Result<&Path, CliError> {
     config.certification_discovery_file.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "certification discovery requires --certification-discovery-file on the trust-control service"
                 .to_string(),
         )
@@ -185,14 +185,14 @@ fn configured_public_certification_metadata(
     config: &TrustServiceConfig,
 ) -> Result<CertificationPublicMetadata, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "public certification metadata requires --advertise-url on the trust-control service"
                 .to_string(),
         )
     })?;
     let registry_url = advertise_url.trim_end_matches('/').to_string();
     if registry_url.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "public certification metadata requires a non-empty advertise_url".to_string(),
         ));
     }
@@ -227,14 +227,14 @@ fn public_generic_registry_publisher(
     config: &TrustServiceConfig,
 ) -> Result<GenericRegistryPublisher, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "generic registry listings require --advertise-url on the trust-control service"
                 .to_string(),
         )
     })?;
     let registry_url = normalize_namespace(advertise_url);
     if registry_url.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "generic registry listings require a non-empty advertise_url".to_string(),
         ));
     }
@@ -245,7 +245,7 @@ fn public_generic_registry_publisher(
         registry_url,
         upstream_registry_urls: Vec::new(),
     };
-    publisher.validate().map_err(CliError::Other)?;
+    publisher.validate().map_err(CliError::cli_other_error)?;
     Ok(publisher)
 }
 
@@ -266,14 +266,14 @@ fn configured_generic_namespace_ownership(
     registered_at: u64,
 ) -> Result<GenericNamespaceOwnership, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "generic registry listings require --advertise-url on the trust-control service"
                 .to_string(),
         )
     })?;
     let namespace = normalize_namespace(advertise_url);
     if namespace.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "generic registry listings require a non-empty advertise_url".to_string(),
         ));
     }
@@ -286,7 +286,7 @@ fn configured_generic_namespace_ownership(
         registered_at,
         transferred_from_owner_id: None,
     };
-    ownership.validate().map_err(CliError::Other)?;
+    ownership.validate().map_err(CliError::cli_other_error)?;
     Ok(ownership)
 }
 
@@ -307,7 +307,7 @@ fn build_signed_generic_namespace(
         &ownership.registry_url,
         &ownership.signer_public_key,
     ))
-    .map_err(|error| CliError::Other(error.to_string()))?;
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     let artifact = GenericNamespaceArtifact {
         schema: GENERIC_NAMESPACE_ARTIFACT_SCHEMA.to_string(),
         namespace_id: format!("ns-{}", sha256_hex(&namespace_id_input)),
@@ -315,9 +315,9 @@ fn build_signed_generic_namespace(
         ownership,
         boundary: public_generic_listing_boundary(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     SignedGenericNamespace::sign(artifact, &signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign generic namespace artifact: {error}"
         ))
     })
@@ -336,7 +336,7 @@ fn generic_listing_id(
         actor_id,
         source_artifact_id,
     ))
-    .map_err(|error| CliError::Other(error.to_string()))?;
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(format!("gl-{}", sha256_hex(&listing_id_input)))
 }
 
@@ -400,9 +400,9 @@ fn build_signed_generic_listing_from_certification_entry(
         },
         boundary: public_generic_listing_boundary(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     SignedGenericListing::sign(artifact, signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign generic listing projection for certification `{}`: {error}",
             entry.artifact_id
         ))
@@ -415,7 +415,7 @@ fn build_signed_generic_listing_from_public_issuer(
     signer_keypair: &Keypair,
 ) -> Result<SignedGenericListing, CliError> {
     let source_sha256 = sha256_hex(
-        &canonical_json_bytes(document).map_err(|error| CliError::Other(error.to_string()))?,
+        &canonical_json_bytes(document).map_err(|error| CliError::cli_other_error(error.to_string()))?,
     );
     let listing_id = generic_listing_id(
         &ownership.namespace,
@@ -451,9 +451,9 @@ fn build_signed_generic_listing_from_public_issuer(
         },
         boundary: public_generic_listing_boundary(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     SignedGenericListing::sign(artifact, signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign generic listing projection for issuer `{}`: {error}",
             document.body.discovery_id
         ))
@@ -466,7 +466,7 @@ fn build_signed_generic_listing_from_public_verifier(
     signer_keypair: &Keypair,
 ) -> Result<SignedGenericListing, CliError> {
     let source_sha256 = sha256_hex(
-        &canonical_json_bytes(document).map_err(|error| CliError::Other(error.to_string()))?,
+        &canonical_json_bytes(document).map_err(|error| CliError::cli_other_error(error.to_string()))?,
     );
     let listing_id = generic_listing_id(
         &ownership.namespace,
@@ -497,9 +497,9 @@ fn build_signed_generic_listing_from_public_verifier(
         },
         boundary: public_generic_listing_boundary(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     SignedGenericListing::sign(artifact, signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign generic listing projection for verifier `{}`: {error}",
             document.body.discovery_id
         ))
@@ -512,7 +512,7 @@ fn build_signed_generic_listing_from_liability_provider(
     signer_keypair: &Keypair,
 ) -> Result<SignedGenericListing, CliError> {
     let source_sha256 = sha256_hex(
-        &canonical_json_bytes(&row.provider).map_err(|error| CliError::Other(error.to_string()))?,
+        &canonical_json_bytes(&row.provider).map_err(|error| CliError::cli_other_error(error.to_string()))?,
     );
     let provider = &row.provider.body;
     let listing_id = generic_listing_id(
@@ -544,9 +544,9 @@ fn build_signed_generic_listing_from_liability_provider(
         },
         boundary: public_generic_listing_boundary(),
     };
-    artifact.validate().map_err(CliError::Other)?;
+    artifact.validate().map_err(CliError::cli_other_error)?;
     SignedGenericListing::sign(artifact, signer_keypair).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to sign generic listing projection for provider `{}`: {error}",
             provider.provider_record_id
         ))
@@ -610,7 +610,7 @@ fn build_public_generic_listing_report(
     }
 
     ensure_generic_listing_namespace_consistency(listings.iter().map(|listing| &listing.body))
-        .map_err(CliError::Other)?;
+        .map_err(CliError::cli_other_error)?;
 
     listings.sort_by(|left, right| {
         left.body
@@ -791,13 +791,13 @@ fn resolve_verifier_policy_for_challenge(
         return Ok((None, None));
     };
     let Some(registry) = registry else {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "verifier policy reference requires a configured verifier policy registry".to_string(),
         ));
     };
     let document = registry.active_policy(&reference.policy_id, now)?;
     if document.body.verifier != challenge.verifier {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "verifier policy `{}` is bound to verifier `{}` but challenge expects `{}`",
             document.body.policy_id, document.body.verifier, challenge.verifier
         )));
@@ -888,7 +888,7 @@ fn passport_presentation_transport_for_service(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "public holder transport requires challenges to include a non-empty challenge_id"
                     .to_string(),
             )
@@ -907,7 +907,7 @@ fn consume_challenge_if_configured(
 ) -> Result<Option<String>, CliError> {
     let Some(path) = config.verifier_challenge_db_path.as_deref() else {
         if challenge.policy_ref.is_some() {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "stored verifier challenges require --verifier-challenge-db on the trust-control service"
                     .to_string(),
             ));
@@ -936,7 +936,7 @@ fn oid4vp_wallet_exchange_url(
     request_id: &str,
 ) -> Result<String, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "wallet exchange descriptor requires --advertise-url on the trust-control service"
                 .to_string(),
         )
@@ -957,7 +957,7 @@ fn oid4vp_cross_device_url(
     request_uri: &str,
 ) -> Result<String, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "OID4VP verifier requests require --advertise-url on the trust-control service"
                 .to_string(),
         )
@@ -985,10 +985,10 @@ fn build_oid4vp_wallet_exchange_response(
         cross_device_url,
         Some(cross_device_url),
     )
-    .map_err(|error| CliError::Other(error.to_string()))?;
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     transaction
         .validate()
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(WalletExchangeStatusResponse {
         descriptor,
         transaction,
@@ -1005,7 +1005,7 @@ fn authority_status_for_config(
     }
 
     let Some(path) = config.authority_seed_path.as_deref() else {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "OID4VP verifier trust material requires --authority-seed-file or --authority-db"
                 .to_string(),
         ));
@@ -1020,7 +1020,7 @@ fn authority_status_for_config(
             applies_to_future_sessions_only: true,
             trusted_public_keys: vec![public_key.to_hex()],
         }),
-        None => Err(CliError::Other(
+        None => Err(CliError::cli_other_error(
             "OID4VP verifier trust material requires a configured authority public key".to_string(),
         )),
     }
@@ -1030,7 +1030,7 @@ fn trusted_public_keys_from_status(
     status: &TrustAuthorityStatus,
 ) -> Result<Vec<PublicKey>, CliError> {
     if !status.configured {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "OID4VP verifier trust material requires a configured authority".to_string(),
         ));
     }
@@ -1046,7 +1046,7 @@ fn trusted_public_keys_from_status(
         }
     }
     if trusted.is_empty() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "OID4VP verifier trust material did not publish any signing keys".to_string(),
         ));
     }
@@ -1063,7 +1063,7 @@ fn build_oid4vp_verifier_metadata(
     config: &TrustServiceConfig,
 ) -> Result<Oid4vpVerifierMetadata, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "OID4VP verifier metadata requires --advertise-url on the trust-control service"
                 .to_string(),
         )
@@ -1089,26 +1089,26 @@ fn build_oid4vp_verifier_metadata(
     };
     metadata
         .validate()
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(metadata)
 }
 
 fn build_oid4vp_verifier_jwks(config: &TrustServiceConfig) -> Result<PortableJwkSet, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "OID4VP verifier jwks requires --advertise-url on the trust-control service"
                 .to_string(),
         )
     })?;
     let trusted_public_keys = resolve_oid4vp_verifier_trusted_public_keys(config)?;
     build_portable_jwks(advertise_url, &trusted_public_keys)
-        .map_err(|error| CliError::Other(error.to_string()))
+        .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 fn now_unix_secs() -> Result<u64, CliError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|error| CliError::Other(format!("system clock error: {error}")))
+        .map_err(|error| CliError::cli_other_error(format!("system clock error: {error}")))
         .map(|duration| duration.as_secs())
 }
 
@@ -1195,7 +1195,7 @@ fn build_public_discovery_transparency(
     let verifier = build_public_verifier_discovery(config)?;
     let now = now_unix_secs()?;
     let publisher = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "public discovery transparency requires --advertise-url on the trust-control service"
                 .to_string(),
         )
@@ -1239,7 +1239,7 @@ fn build_oid4vp_request_for_service(
     now: u64,
 ) -> Result<Oid4vpRequestObject, CliError> {
     let advertise_url = config.advertise_url.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "OID4VP verifier requests require --advertise-url on the trust-control service"
                 .to_string(),
         )
@@ -1276,12 +1276,12 @@ fn build_oid4vp_request_for_service(
         .as_ref()
         .map(|assertion| {
             if assertion.subject.trim().is_empty() {
-                return Err(CliError::Other(
+                return Err(CliError::cli_other_error(
                     "OID4VP identity assertion subject must not be empty".to_string(),
                 ));
             }
             if assertion.continuity_id.trim().is_empty() {
-                return Err(CliError::Other(
+                return Err(CliError::cli_other_error(
                     "OID4VP identity assertion continuity_id must not be empty".to_string(),
                 ));
             }
@@ -1290,7 +1290,7 @@ fn build_oid4vp_request_for_service(
                 .as_deref()
                 .is_some_and(|value| value.trim().is_empty())
             {
-                return Err(CliError::Other(
+                return Err(CliError::cli_other_error(
                     "OID4VP identity assertion provider must not be empty when present".to_string(),
                 ));
             }
@@ -1299,7 +1299,7 @@ fn build_oid4vp_request_for_service(
                 .as_deref()
                 .is_some_and(|value| value.trim().is_empty())
             {
-                return Err(CliError::Other(
+                return Err(CliError::cli_other_error(
                     "OID4VP identity assertion session_hint must not be empty when present"
                         .to_string(),
                 ));
@@ -1319,7 +1319,7 @@ fn build_oid4vp_request_for_service(
             };
             identity_assertion
                 .validate_at(now)
-                .map_err(CliError::Other)?;
+                .map_err(CliError::cli_other_error)?;
             Ok(identity_assertion)
         })
         .transpose()?;
@@ -1348,7 +1348,7 @@ fn build_oid4vp_request_for_service(
     };
     request
         .validate(now)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(request)
 }
 
@@ -1357,7 +1357,7 @@ fn resolve_oid4vp_verifier_signing_key(config: &TrustServiceConfig) -> Result<Ke
         return Ok(SqliteCapabilityAuthority::open(path)?.local_keypair()?);
     }
     let path = config.authority_seed_path.as_deref().ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "OID4VP verifier requests require a configured authority signing seed".to_string(),
         )
     })?;
@@ -1375,22 +1375,22 @@ fn resolve_portable_issuer_public_keys(
     let response = ureq::get(&jwks_url).call().map_err(|error| match error {
         ureq::Error::Status(status, response) => {
             let body = response.into_string().unwrap_or_default();
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to fetch portable issuer JWKS from `{jwks_url}` with status {status}: {body}"
             ))
         }
-        ureq::Error::Transport(transport) => CliError::Other(format!(
+        ureq::Error::Transport(transport) => CliError::cli_other_error(format!(
             "failed to fetch portable issuer JWKS from `{jwks_url}`: {transport}"
         )),
     })?;
     let jwks: chio_credentials::PortableJwkSet = serde_json::from_reader(response.into_reader())
         .map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to decode portable issuer JWKS from `{jwks_url}`: {error}"
             ))
         })?;
     jwks.keys.first().ok_or_else(|| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "portable issuer JWKS at `{jwks_url}` did not publish any keys"
         ))
     })?;
@@ -1400,11 +1400,11 @@ fn resolve_portable_issuer_public_keys(
             entry
                 .jwk
                 .to_public_key()
-                .map_err(|error| CliError::Other(error.to_string()))?,
+                .map_err(|error| CliError::cli_other_error(error.to_string()))?,
         );
     }
     if public_keys.is_empty() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "portable issuer JWKS at `{jwks_url}` did not publish any keys"
         )));
     }
@@ -1429,7 +1429,7 @@ fn resolve_oid4vp_passport_lifecycle(
         .first()
         .cloned()
         .ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "OID4VP passport status validation requires at least one resolve URL".to_string(),
             )
         })?;
@@ -1441,23 +1441,23 @@ fn resolve_oid4vp_passport_lifecycle(
     let response = ureq::get(&url).call().map_err(|error| match error {
         ureq::Error::Status(status, response) => {
             let body = response.into_string().unwrap_or_default();
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to resolve portable passport lifecycle from `{url}` with status {status}: {body}"
             ))
         }
-        ureq::Error::Transport(transport) => CliError::Other(format!(
+        ureq::Error::Transport(transport) => CliError::cli_other_error(format!(
             "failed to resolve portable passport lifecycle from `{url}`: {transport}"
         )),
     })?;
     let lifecycle: PassportLifecycleResolution = serde_json::from_reader(response.into_reader())
         .map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to decode portable passport lifecycle from `{url}`: {error}"
             ))
         })?;
     lifecycle
         .validate()
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     Ok(Some(lifecycle))
 }
 
@@ -1568,14 +1568,14 @@ fn validated_scim_provider_for_request(
         .as_deref()
         .is_some_and(|value| value != extension.provider_id)
     {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "scim user chio extension providerRecordId must match providerId when present"
                 .to_string(),
         ));
     }
     let (_, registry) = load_enterprise_provider_registry_for_admin(config)?;
     let Some(provider) = registry.validated_provider(&extension.provider_id).cloned() else {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "validated scim provider `{}` was not found",
             extension.provider_id
         )));
@@ -1600,13 +1600,13 @@ fn resolve_scim_lifecycle_record_for_federated_issue(
         .find_by_identity(&provider.provider_id, &identity.subject_key)
         .cloned()
     else {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "scim lifecycle registry has no Chio identity for provider `{}` and subject `{}`",
             provider.provider_id, identity.subject_key
         )));
     };
     if !record.active() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "scim lifecycle identity `{}` is inactive",
             record.user_id
         )));
@@ -1627,7 +1627,7 @@ fn bind_scim_capability_to_identity(
     let mut registry = ScimLifecycleRegistry::load(path)?;
     let bound = registry.bind_capability(provider_id, subject_key, capability_id, now)?;
     if !bound {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "scim lifecycle registry has no Chio identity for provider `{provider_id}` and subject `{subject_key}`"
         )));
     }

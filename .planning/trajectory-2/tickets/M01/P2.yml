@@ -103,10 +103,11 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d842e970576b4ded7398cf58974250adfe931992
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T07:59:43Z"
   merged_ts: null
+  notes: "Bundled with T4/T5/T6 in PR #342 on branch wave/W1/m01/p2.bundle-domain-migration. Local gates green; T5 workspace grep gate verified at 0 across crates/chio-cli/src/, crates/chio-control-plane/src/, crates/chio-hosted-mcp/src/."
 
 - id: M01.P2.T4
   milestone: M01
@@ -133,10 +134,11 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d842e970576b4ded7398cf58974250adfe931992
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T07:59:43Z"
   merged_ts: null
+  notes: "Closed via the M01.P2.T3 bundle PR #342 (branch wave/W1/m01/p2.bundle-domain-migration). All five owner_glob files verified at 0 CliError::Other call sites locally."
 
 - id: M01.P2.T5
   milestone: M01
@@ -165,10 +167,11 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d842e970576b4ded7398cf58974250adfe931992
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T07:59:43Z"
   merged_ts: null
+  notes: "Closed via the M01.P2.T3 bundle PR #342. Workspace grep gate (CliError::Other across crates/chio-cli/src/, crates/chio-control-plane/src/, crates/chio-hosted-mcp/src/) verified at 0 locally on branch wave/W1/m01/p2.bundle-domain-migration."
 
 - id: M01.P2.T6
   milestone: M01
@@ -193,7 +196,8 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d842e970576b4ded7398cf58974250adfe931992
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T07:59:43Z"
   merged_ts: null
+  notes: "Closed via the M01.P2.T3 bundle PR #342. Provider README taxonomy tables regenerated (chio-openai, chio-anthropic-tools-adapter, chio-bedrock-converse-adapter); cargo run -p xtask -- errors regen --check passes locally."

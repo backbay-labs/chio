@@ -14,7 +14,7 @@ use crate::{
 
 fn require_enterprise_providers_file(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "provider admin requires --enterprise-providers-file when --control-url is not set"
                 .to_string(),
         )
@@ -23,7 +23,7 @@ fn require_enterprise_providers_file(path: Option<&Path>) -> Result<&Path, CliEr
 
 fn require_certification_registry_file(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "certification registry commands require --certification-registry-file when --control-url is not set"
                 .to_string(),
         )
@@ -32,7 +32,7 @@ fn require_certification_registry_file(path: Option<&Path>) -> Result<&Path, Cli
 
 fn require_federation_policies_file(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "federation policy commands require --federation-policies-file when --control-url is not set"
                 .to_string(),
         )
@@ -64,7 +64,7 @@ pub(crate) fn load_admission_policy(path: &Path) -> Result<Option<chio_policy::H
     if chio_policy::is_hushspec_format(&contents) {
         return chio_policy::resolve_from_path(path)
             .map(Some)
-            .map_err(|error| CliError::Other(error.to_string()));
+            .map_err(|error| CliError::cli_other_error(error.to_string()));
     }
     Ok(None)
 }
@@ -124,7 +124,7 @@ pub(crate) fn cmd_trust_provider_get(
             .get(provider_id)
             .cloned()
             .ok_or_else(|| {
-                CliError::Other(format!("enterprise provider `{provider_id}` was not found"))
+                CliError::cli_other_error(format!("enterprise provider `{provider_id}` was not found"))
             })?
     };
 
@@ -172,7 +172,7 @@ pub(crate) fn cmd_trust_provider_upsert(
             .get(&provider.provider_id)
             .cloned()
             .ok_or_else(|| {
-                CliError::Other("provider upsert did not persist the requested record".to_string())
+                CliError::cli_other_error("provider upsert did not persist the requested record".to_string())
             })?
     };
 
@@ -269,7 +269,7 @@ pub(crate) fn cmd_trust_federation_policy_get(
         let path = require_federation_policies_file(federation_policies_file)?;
         let registry = load_federation_policy_registry_local(path)?;
         registry.get(policy_id).cloned().ok_or_else(|| {
-            CliError::Other(format!("federation policy `{policy_id}` was not found"))
+            CliError::cli_other_error(format!("federation policy `{policy_id}` was not found"))
         })?
     };
 
@@ -315,7 +315,7 @@ pub(crate) fn cmd_trust_federation_policy_upsert(
             .get(&record.policy.body.policy_id)
             .cloned()
             .ok_or_else(|| {
-                CliError::Other(
+                CliError::cli_other_error(
                     "federation policy upsert did not persist the requested record".to_string(),
                 )
             })?
@@ -371,7 +371,7 @@ pub(crate) fn cmd_trust_federation_policy_evaluate(
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let control_url = control_url.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "federation policy evaluation requires --control-url so trust-control can enforce centralized anti-sybil state"
                 .to_string(),
         )
@@ -582,7 +582,7 @@ pub(crate) fn cmd_trust_federated_issue(
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
     let control_url = control_url.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "federated issuance requires --control-url so the trust-control service enforces verifier and issuance policy centrally"
                 .to_string(),
         )
@@ -723,11 +723,11 @@ fn load_single_default_capability(path: &Path) -> Result<DefaultCapability, CliE
     let loaded = load_policy(path)?;
     match loaded.default_capabilities.as_slice() {
         [capability] => Ok(capability.clone()),
-        [] => Err(CliError::Other(
+        [] => Err(CliError::cli_other_error(
             "federated issuance requires a capability policy with exactly one default capability"
                 .to_string(),
         )),
-        _ => Err(CliError::Other(
+        _ => Err(CliError::cli_other_error(
             "federated issuance currently supports exactly one default capability per request"
                 .to_string(),
         )),

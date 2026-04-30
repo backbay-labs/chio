@@ -5,10 +5,11 @@ use std::path::Path;
 
 use chio_core::crypto::Keypair;
 use chio_errors::_generated::error_codes::{
-    CAPABILITY_SCOPE_EXCEEDED, CAPABILITY_SUBJECT_MISMATCH, CLI_IO, CLI_JSON, CLI_OTHER, CLI_YAML,
-    GUARD_DENIED, GUARD_WASM_TRAP, MANIFEST_SCHEMA_INVALID, MANIFEST_SIGNATURE_INVALID,
-    POLICY_CONSTRAINT_INVALID, POLICY_DECISION_DENIED, TRANSPORT_HTTP_FAILED,
-    TRANSPORT_INVALID_REQUEST_SHAPE,
+    ATTEST_PROVENANCE_MISSING, CAPABILITY_SCOPE_EXCEEDED, CAPABILITY_SUBJECT_MISMATCH, CLI_IO,
+    CLI_JSON, CLI_OTHER, CLI_YAML, GUARD_DENIED, GUARD_WASM_TRAP, MANIFEST_SCHEMA_INVALID,
+    MANIFEST_SIGNATURE_INVALID, POLICY_CONSTRAINT_INVALID, POLICY_DECISION_DENIED,
+    PROVIDER_TOOL_SERVER_ERROR, REPLAY_DETERMINISTIC_MISMATCH, REPLAY_FIXTURE_DRIFT,
+    REPLAY_TRACE_NOT_FOUND, TRANSPORT_HTTP_FAILED, TRANSPORT_INVALID_REQUEST_SHAPE,
 };
 use chio_errors::{ChioError, ErrorCodeSpec};
 use chio_kernel::transport::TransportError;
@@ -152,6 +153,26 @@ impl CliError {
 
     pub fn guard_wasm_error(message: impl Into<String>) -> Self {
         Self::registry_error(&GUARD_WASM_TRAP, message)
+    }
+
+    pub fn replay_trace_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&REPLAY_TRACE_NOT_FOUND, message)
+    }
+
+    pub fn replay_mismatch_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&REPLAY_DETERMINISTIC_MISMATCH, message)
+    }
+
+    pub fn replay_fixture_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&REPLAY_FIXTURE_DRIFT, message)
+    }
+
+    pub fn provider_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&PROVIDER_TOOL_SERVER_ERROR, message)
+    }
+
+    pub fn attest_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&ATTEST_PROVENANCE_MISSING, message)
     }
 
     pub fn manifest_schema_error(message: impl Into<String>) -> Self {
@@ -372,7 +393,7 @@ pub fn configure_receipt_store(
 ) -> Result<(), CliError> {
     match (receipt_db_path, control_url) {
         (Some(_), Some(_)) => {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "use either --receipt-db or --control-url for receipt persistence, not both"
                     .to_string(),
             ));
@@ -398,7 +419,7 @@ pub fn configure_revocation_store(
 ) -> Result<(), CliError> {
     match (revocation_db_path, control_url) {
         (Some(_), Some(_)) => {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "use either --revocation-db or --control-url for revocation state, not both"
                     .to_string(),
             ));
@@ -430,13 +451,13 @@ pub fn configure_capability_authority(
     runtime_assurance_policy: Option<policy::RuntimeAssuranceIssuancePolicy>,
 ) -> Result<(), CliError> {
     if control_url.is_some() && (authority_seed_path.is_some() || authority_db_path.is_some()) {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "use either local authority flags or --control-url, not both".to_string(),
         ));
     }
     if let Some(url) = control_url {
         if issuance_policy.is_some() || runtime_assurance_policy.is_some() {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "policy-gated issuance must be enforced by the trust-control service itself; start `chio trust serve --policy <path>` instead of relying on client-side --control-url issuance".to_string(),
             ));
         }
@@ -449,7 +470,7 @@ pub fn configure_capability_authority(
 
     match (authority_seed_path, authority_db_path) {
         (Some(_), Some(_)) => {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "use either --authority-seed-file or --authority-db, not both".to_string(),
             ));
         }
@@ -500,7 +521,7 @@ pub fn configure_budget_store(
 ) -> Result<(), CliError> {
     match (budget_db_path, control_url) {
         (Some(_), Some(_)) => {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "use either --budget-db or --control-url for budget state, not both".to_string(),
             ));
         }
@@ -518,7 +539,7 @@ pub fn configure_budget_store(
 
 pub fn require_control_token(control_token: Option<&str>) -> Result<&str, CliError> {
     control_token.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "--control-url requires --control-token so trust-service authentication is explicit"
                 .to_string(),
         )
@@ -567,7 +588,9 @@ pub fn issue_default_capabilities(
             kernel
                 .issue_capability(agent_pk, default_capability.scope, default_capability.ttl)
                 .map_err(|error| {
-                    CliError::Other(format!("failed to issue initial capability: {error}"))
+                    CliError::cli_other_error(format!(
+                        "failed to issue initial capability: {error}"
+                    ))
                 })
         })
         .collect()
@@ -660,6 +683,16 @@ mod tests {
                 CliError::guard_error("guard denied request"),
                 &GUARD_DENIED,
                 "guard",
+            ),
+            (
+                CliError::replay_mismatch_error("replay diverged"),
+                &REPLAY_DETERMINISTIC_MISMATCH,
+                "replay",
+            ),
+            (
+                CliError::provider_error("provider adapter failed"),
+                &PROVIDER_TOOL_SERVER_ERROR,
+                "provider",
             ),
             (
                 CliError::cli_io_error("could not read input"),

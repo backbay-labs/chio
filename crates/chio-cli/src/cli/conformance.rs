@@ -15,15 +15,15 @@ fn cmd_conformance_run(
     options.peers = parse_peer_selection(peer)?;
 
     let summary = chio_conformance::run_conformance_harness(&options).map_err(|error| {
-        CliError::Other(format!("conformance harness failed: {error}"))
+        CliError::provider_error(format!("conformance harness failed: {error}"))
     })?;
 
-    let scenarios = chio_conformance::load_scenarios_from_dir(&options.scenarios_dir).map_err(
-        |error| CliError::Other(format!("failed to load scenarios: {error}")),
-    )?;
-    let mut results = chio_conformance::load_results_from_dir(&summary.results_dir).map_err(
-        |error| CliError::Other(format!("failed to load peer results: {error}")),
-    )?;
+    let scenarios = chio_conformance::load_scenarios_from_dir(&options.scenarios_dir)
+        .map_err(|error| CliError::cli_io_error(format!("failed to load scenarios: {error}")))?;
+    let mut results =
+        chio_conformance::load_results_from_dir(&summary.results_dir).map_err(|error| {
+            CliError::cli_io_error(format!("failed to load peer results: {error}"))
+        })?;
     if let Some(filter) = scenario {
         results.retain(|result| result.scenario_id == filter);
     }
@@ -47,7 +47,7 @@ fn parse_report_format(report: Option<&str>) -> Result<bool, CliError> {
             } else if value.eq_ignore_ascii_case("human") {
                 Ok(false)
             } else {
-                Err(CliError::Other(format!(
+                Err(CliError::cli_other_error(format!(
                     "unsupported --report value `{value}`; expected `json` or `human`",
                 )))
             }
@@ -67,7 +67,7 @@ fn parse_peer_selection(peer: &str) -> Result<Vec<chio_conformance::PeerTarget>,
         "python" => Ok(vec![chio_conformance::PeerTarget::Python]),
         "go" => Ok(vec![chio_conformance::PeerTarget::Go]),
         "cpp" => Ok(vec![chio_conformance::PeerTarget::Cpp]),
-        other => Err(CliError::Other(format!(
+        other => Err(CliError::cli_other_error(format!(
             "unsupported --peer value `{other}`; expected one of js, python, go, cpp, all",
         ))),
     }
@@ -96,14 +96,14 @@ fn write_json_report(
     });
 
     let rendered = serde_json::to_string_pretty(&envelope).map_err(|error| {
-        CliError::Other(format!("failed to serialise conformance report: {error}"))
+        CliError::cli_other_error(format!("failed to serialise conformance report: {error}"))
     })?;
 
     if let Some(path) = output {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    CliError::Other(format!(
+                    CliError::cli_io_error(format!(
                         "failed to create report parent directory `{}`: {error}",
                         parent.display(),
                     ))
@@ -111,7 +111,7 @@ fn write_json_report(
             }
         }
         fs::write(path, &rendered).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_io_error(format!(
                 "failed to write report to `{}`: {error}",
                 path.display(),
             ))
@@ -119,7 +119,7 @@ fn write_json_report(
     } else {
         let mut stdout = std::io::stdout().lock();
         writeln!(stdout, "{rendered}").map_err(|error| {
-            CliError::Other(format!("failed to write report to stdout: {error}"))
+            CliError::cli_io_error(format!("failed to write report to stdout: {error}"))
         })?;
     }
     Ok(())
@@ -133,14 +133,8 @@ fn write_human_report(
 ) -> Result<(), CliError> {
     let mut buffer = String::new();
     buffer.push_str(&format!("listen: {}\n", summary.listen));
-    buffer.push_str(&format!(
-        "results: {}\n",
-        summary.results_dir.display()
-    ));
-    buffer.push_str(&format!(
-        "report:  {}\n",
-        summary.report_output.display()
-    ));
+    buffer.push_str(&format!("results: {}\n", summary.results_dir.display()));
+    buffer.push_str(&format!("report:  {}\n", summary.report_output.display()));
     for peer_result in &summary.peer_result_files {
         buffer.push_str(&format!("peer:    {}\n", peer_result.display()));
     }
@@ -163,7 +157,7 @@ fn write_human_report(
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    CliError::Other(format!(
+                    CliError::cli_io_error(format!(
                         "failed to create report parent directory `{}`: {error}",
                         parent.display(),
                     ))
@@ -171,7 +165,7 @@ fn write_human_report(
             }
         }
         fs::write(path, &buffer).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_io_error(format!(
                 "failed to write report to `{}`: {error}",
                 path.display(),
             ))
@@ -179,7 +173,7 @@ fn write_human_report(
     } else {
         let mut stdout = std::io::stdout().lock();
         write!(stdout, "{buffer}").map_err(|error| {
-            CliError::Other(format!("failed to write report to stdout: {error}"))
+            CliError::cli_io_error(format!("failed to write report to stdout: {error}"))
         })?;
     }
     Ok(())
@@ -213,18 +207,18 @@ fn cmd_conformance_fetch_peers(
 ) -> Result<(), CliError> {
     let lock_path = resolve_peers_lock_path(lockfile);
     let lock = chio_conformance::PeersLock::load(&lock_path).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to load peers lockfile `{}`: {error}",
             lock_path.display(),
         ))
     })?;
     lock.validate().map_err(|error| {
-        CliError::Other(format!("peers lockfile is invalid: {error}"))
+        CliError::cli_other_error(format!("peers lockfile is invalid: {error}"))
     })?;
 
     if let Some(filter) = language {
         if !chio_conformance::SUPPORTED_LANGUAGES.contains(&filter) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "unsupported --language value `{filter}`; expected one of {:?}",
                 chio_conformance::SUPPORTED_LANGUAGES,
             )));
@@ -247,7 +241,7 @@ fn cmd_conformance_fetch_peers(
             lock.schema,
         )
         .map_err(|error| {
-            CliError::Other(format!("failed to write check summary: {error}"))
+            CliError::cli_io_error(format!("failed to write check summary: {error}"))
         })?;
         writeln!(
             stdout,
@@ -258,24 +252,28 @@ fn cmd_conformance_fetch_peers(
             language.unwrap_or("<none>"),
         )
         .map_err(|error| {
-            CliError::Other(format!("failed to write check summary: {error}"))
+            CliError::cli_io_error(format!("failed to write check summary: {error}"))
         })?;
         for entry in &entries {
-            let marker = if entry.published { "" } else { " (unpublished, will skip)" };
+            let marker = if entry.published {
+                ""
+            } else {
+                " (unpublished, will skip)"
+            };
             writeln!(
                 stdout,
                 "  - {} {} -> {}{}",
                 entry.language, entry.target, entry.url, marker,
             )
             .map_err(|error| {
-                CliError::Other(format!("failed to write check entry: {error}"))
+                CliError::cli_io_error(format!("failed to write check entry: {error}"))
             })?;
         }
         return Ok(());
     }
 
     fs::create_dir_all(out).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_io_error(format!(
             "failed to create output dir `{}`: {error}",
             out.display(),
         ))
@@ -284,10 +282,12 @@ fn cmd_conformance_fetch_peers(
     // Bound the HTTP client timeout so a stalled release-asset mirror
     // cannot hang the CLI indefinitely.
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(FETCH_PEERS_HTTP_TIMEOUT_SECS))
+        .timeout(std::time::Duration::from_secs(
+            FETCH_PEERS_HTTP_TIMEOUT_SECS,
+        ))
         .build()
         .map_err(|error| {
-            CliError::Other(format!("failed to build http client: {error}"))
+            CliError::cli_other_error(format!("failed to build http client: {error}"))
         })?;
 
     {
@@ -299,7 +299,7 @@ fn cmd_conformance_fetch_peers(
                 entry.language, entry.target,
             )
             .map_err(|error| {
-                CliError::Other(format!("failed to write skip line: {error}"))
+                CliError::cli_io_error(format!("failed to write skip line: {error}"))
             })?;
         }
     }
@@ -316,50 +316,43 @@ fn download_and_verify(
     out: &Path,
 ) -> Result<(), CliError> {
     let response = client.get(&entry.url).send().map_err(|error| {
-        CliError::Other(format!(
+        CliError::provider_error(format!(
             "failed to GET `{}` ({}): {error}",
             entry.url, entry.language,
         ))
     })?;
     if !response.status().is_success() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::provider_error(format!(
             "non-success status {} fetching `{}`",
             response.status(),
             entry.url,
         )));
     }
     let bytes = response.bytes().map_err(|error| {
-        CliError::Other(format!(
-            "failed to read body of `{}`: {error}",
-            entry.url,
-        ))
+        CliError::provider_error(format!("failed to read body of `{}`: {error}", entry.url,))
     })?;
     let actual = chio_conformance::sha256_hex(&bytes);
     if actual != entry.sha256 {
-        return Err(CliError::Other(format!(
+        return Err(CliError::provider_error(format!(
             "sha256 mismatch for `{}`: expected {}, got {}",
             entry.url, entry.sha256, actual,
         )));
     }
 
     // Derive a deterministic filename from the URL's last path segment.
-    let filename = entry
-        .url
-        .rsplit('/')
-        .next()
-        .unwrap_or("peer.bin");
+    let filename = entry.url.rsplit('/').next().unwrap_or("peer.bin");
     // Bundles land under `<out>/<language>-<target>/` so consumers find
     // the extracted binary at a stable path.
     let extract_dir = out.join(format!("{}-{}", entry.language, entry.target));
     fs::create_dir_all(&extract_dir).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_io_error(format!(
             "failed to create `{}`: {error}",
             extract_dir.display(),
         ))
     })?;
     let archive_path = extract_dir.join(filename);
     fs::write(&archive_path, &bytes).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_io_error(format!(
             "failed to write `{}`: {error}",
             archive_path.display(),
         ))
@@ -381,7 +374,7 @@ fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), 
 
     if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
         let archive_file = fs::File::open(archive).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_io_error(format!(
                 "failed to open archive `{}`: {error}",
                 archive.display(),
             ))
@@ -389,7 +382,7 @@ fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), 
         let decompressed = flate2::read::GzDecoder::new(archive_file);
         let mut tar = tar::Archive::new(decompressed);
         tar.unpack(dest).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_io_error(format!(
                 "failed to extract `{}` into `{}`: {error}",
                 archive.display(),
                 dest.display(),
@@ -397,7 +390,7 @@ fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), 
         })?;
         Ok(())
     } else if lower.ends_with(".zip") {
-        Err(CliError::Other(format!(
+        Err(CliError::cli_other_error(format!(
             "zip archives are not yet supported (got `{}` from `{source_url}`)",
             archive.display(),
         )))
@@ -412,5 +405,86 @@ fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), 
             archive.display(),
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod conformance_error_tests {
+    use super::*;
+
+    fn assert_registry_error(
+        err: CliError,
+        expected_code: &str,
+        expected_domain: &str,
+        expected_message: &str,
+    ) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected_code);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+                assert!(
+                    chio.to_string().contains(expected_message),
+                    "message: {chio}",
+                );
+            }
+            other => panic!("expected registry-backed error, got {other:?}"),
+        }
+    }
+
+    fn assert_cli_error(err: CliError, expected_message: &str) {
+        assert_registry_error(err, "urn:chio:error:cli:other", "cli", expected_message);
+    }
+
+    fn sample_summary() -> chio_conformance::ConformanceRunSummary {
+        chio_conformance::ConformanceRunSummary {
+            listen: std::net::SocketAddr::from(([127, 0, 0, 1], 0)),
+            results_dir: PathBuf::from("results"),
+            report_output: PathBuf::from("report.md"),
+            peer_result_files: vec![PathBuf::from("peer.json")],
+        }
+    }
+
+    #[test]
+    fn invalid_report_format_uses_cli_registry_domain() {
+        let err = match parse_report_format(Some("xml")) {
+            Ok(value) => panic!("expected invalid report format to fail, got {value}"),
+            Err(err) => err,
+        };
+        assert_cli_error(err, "unsupported --report value");
+    }
+
+    #[test]
+    fn invalid_peer_selection_uses_cli_registry_domain() {
+        let err = match parse_peer_selection("ruby") {
+            Ok(value) => panic!("expected invalid peer selection to fail, got {value:?}"),
+            Err(err) => err,
+        };
+        assert_cli_error(err, "unsupported --peer value");
+    }
+
+    #[test]
+    fn json_report_parent_write_failure_uses_cli_io_domain() {
+        let temp = match tempfile::tempdir() {
+            Ok(temp) => temp,
+            Err(error) => panic!("failed to create temp dir: {error}"),
+        };
+        let blocked_parent = temp.path().join("blocked-parent");
+        if let Err(error) = fs::write(&blocked_parent, b"not a directory") {
+            panic!("failed to create blocked parent fixture: {error}");
+        }
+        let output = blocked_parent.join("report.json");
+
+        let err = match write_json_report(&sample_summary(), &[], &[], None, Some(&output)) {
+            Ok(()) => panic!("expected blocked report parent to fail"),
+            Err(err) => err,
+        };
+
+        assert_registry_error(
+            err,
+            "urn:chio:error:cli:io",
+            "cli",
+            "failed to create report parent directory",
+        );
     }
 }

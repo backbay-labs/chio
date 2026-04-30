@@ -4,9 +4,12 @@ use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use reqwest::blocking::Client;
+
+static TRUST_SERVICE_START_LOCK: Mutex<()> = Mutex::new(());
 
 fn unique_dir(prefix: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -52,19 +55,6 @@ fn read_child_stderr(child: &mut Child) -> String {
     output
 }
 
-fn spawn_trust_service(
-    listen: std::net::SocketAddr,
-    service_token: &str,
-    enterprise_providers_file: &PathBuf,
-) -> ServerGuard {
-    spawn_trust_service_with_policy_registry(
-        listen,
-        service_token,
-        Some(enterprise_providers_file),
-        None,
-    )
-}
-
 fn spawn_trust_service_with_policy_registry(
     listen: std::net::SocketAddr,
     service_token: &str,
@@ -101,20 +91,60 @@ fn spawn_trust_service_with_policy_registry(
     ServerGuard { child }
 }
 
-fn wait_for_trust_service(client: &Client, base_url: &str, service: &mut ServerGuard) {
+fn start_trust_service(
+    service_token: &str,
+    enterprise_providers_file: &PathBuf,
+) -> (ServerGuard, Client, String) {
+    start_trust_service_with_policy_registry(service_token, Some(enterprise_providers_file), None)
+}
+
+fn start_trust_service_with_policy_registry(
+    service_token: &str,
+    enterprise_providers_file: Option<&PathBuf>,
+    verifier_policies_file: Option<&PathBuf>,
+) -> (ServerGuard, Client, String) {
+    let _lock = TRUST_SERVICE_START_LOCK
+        .lock()
+        .expect("trust service start lock poisoned");
+    let client = Client::builder().build().expect("build reqwest client");
+
+    for _ in 0..10 {
+        let listen = reserve_listen_addr();
+        let mut service = spawn_trust_service_with_policy_registry(
+            listen,
+            service_token,
+            enterprise_providers_file,
+            verifier_policies_file,
+        );
+        let base_url = format!("http://{listen}");
+        match wait_for_trust_service(&client, &base_url, &mut service) {
+            Ok(()) => return (service, client, base_url),
+            Err(error) if error.contains("Address already in use") => continue,
+            Err(error) => panic!("{error}"),
+        }
+    }
+
+    panic!("trust service could not reserve an unused listen port");
+}
+
+fn wait_for_trust_service(
+    client: &Client,
+    base_url: &str,
+    service: &mut ServerGuard,
+) -> Result<(), String> {
     for _ in 0..300 {
         if let Some(status) = service.child.try_wait().expect("poll trust service child") {
-            panic!(
+            return Err(format!(
                 "trust service exited before becoming ready (status {status}): {}",
                 read_child_stderr(&mut service.child)
-            );
+            ));
         }
         match client.get(format!("{base_url}/health")).send() {
-            Ok(response) if response.status() == reqwest::StatusCode::OK => return,
+            Ok(response) if response.status() == reqwest::StatusCode::OK => return Ok(()),
             Ok(_) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(100)),
         }
     }
-    panic!("trust service did not become ready");
+    Err("trust service did not become ready".to_string())
 }
 
 fn provider_record_json(
@@ -298,12 +328,8 @@ fn provider_admin_http_lists_invalid_provider_records_with_validation_errors() {
         &[provider_record_json("enterprise-login", true, None)],
     );
 
-    let listen = reserve_listen_addr();
     let service_token = "provider-admin-http-token";
-    let mut service = spawn_trust_service(listen, service_token, &registry_path);
-    let client = Client::builder().build().expect("build reqwest client");
-    let base_url = format!("http://{listen}");
-    wait_for_trust_service(&client, &base_url, &mut service);
+    let (_service, client, base_url) = start_trust_service(service_token, &registry_path);
 
     let list = client
         .get(format!("{base_url}/v1/federation/providers"))
@@ -368,12 +394,8 @@ fn provider_admin_cli_supports_remote_reserved_identifier_paths() {
     )
     .expect("write provider input");
 
-    let listen = reserve_listen_addr();
     let service_token = "provider-admin-remote-reserved-token";
-    let mut service = spawn_trust_service(listen, service_token, &registry_path);
-    let client = Client::builder().build().expect("build reqwest client");
-    let base_url = format!("http://{listen}");
-    wait_for_trust_service(&client, &base_url, &mut service);
+    let (_service, _client, base_url) = start_trust_service(service_token, &registry_path);
 
     let upsert = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -466,17 +488,12 @@ fn passport_policy_admin_cli_supports_remote_upsert_list_get_and_delete() {
 
     fs::write(&raw_policy_path, "{}\n").expect("write raw verifier policy");
 
-    let listen = reserve_listen_addr();
     let service_token = "passport-policy-admin-http-token";
-    let mut service = spawn_trust_service_with_policy_registry(
-        listen,
+    let (_service, _client, base_url) = start_trust_service_with_policy_registry(
         service_token,
         None,
         Some(&verifier_policies_path),
     );
-    let client = Client::builder().build().expect("build reqwest client");
-    let base_url = format!("http://{listen}");
-    wait_for_trust_service(&client, &base_url, &mut service);
 
     let policy_id = "rp/default?prod#1";
 
@@ -620,17 +637,12 @@ fn trust_service_health_reports_enterprise_and_verifier_policy_state() {
     );
     fs::write(&raw_policy_path, "{}\n").expect("write raw verifier policy");
 
-    let listen = reserve_listen_addr();
     let service_token = "trust-health-token";
-    let mut service = spawn_trust_service_with_policy_registry(
-        listen,
+    let (_service, client, base_url) = start_trust_service_with_policy_registry(
         service_token,
         Some(&enterprise_providers_path),
         Some(&verifier_policies_path),
     );
-    let client = Client::builder().build().expect("build reqwest client");
-    let base_url = format!("http://{listen}");
-    wait_for_trust_service(&client, &base_url, &mut service);
 
     let create = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())

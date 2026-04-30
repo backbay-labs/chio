@@ -57,7 +57,7 @@ pub fn cmd_reputation_local(command: ReputationLocalCommand<'_>) -> Result<(), C
 
     let mut inspection = if let Some(url) = control_url {
         if policy_path.is_some() {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "reputation queries against --control-url use the trust service's configured policy; omit --policy"
                     .to_string(),
             ));
@@ -196,7 +196,7 @@ pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(
         .transpose()?;
     let comparison = if let Some(url) = control_url {
         if local_policy_path.is_some() {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "reputation compare against --control-url uses the trust service's configured local scoring; omit --local-policy"
                     .to_string(),
             ));
@@ -269,7 +269,7 @@ pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(
 
 fn require_receipt_db_path(receipt_db_path: Option<&Path>) -> Result<&Path, CliError> {
     receipt_db_path.ok_or_else(|| {
-        CliError::Other(
+        CliError::cli_other_error(
             "reputation commands require --receipt-db <path> when not using --control-url"
                 .to_string(),
         )
@@ -286,7 +286,7 @@ fn load_passport_verifier_policy(path: &Path) -> Result<PassportVerifierPolicy, 
         serde_yml::from_str(&contents)?
     } else if let Ok(document) = serde_json::from_str::<SignedPassportVerifierPolicy>(&contents) {
         verify_signed_passport_verifier_policy(&document)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         document.body.policy
     } else {
         serde_json::from_str(&contents).or_else(|_| serde_yml::from_str(&contents))?
@@ -307,7 +307,7 @@ pub(crate) fn build_reputation_comparison(
         .map(|policy| evaluate_agent_passport(passport, now, policy))
         .transpose()?;
     let local_did = DidChio::from_public_key(PublicKey::from_hex(&local.subject_key)?)
-        .map_err(|error| CliError::Other(error.to_string()))?
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?
         .to_string();
     let subject_matches = local_did == passport.subject;
     let credential_drifts = passport
@@ -434,7 +434,7 @@ fn capability_snapshot_to_lineage(
         delegation_depth: snapshot.delegation_depth,
         parent_capability_id: snapshot.parent_capability_id,
     })
-    .map_err(|error| CliError::Other(error.to_string()))
+    .map_err(|error| CliError::cli_other_error(error.to_string()))
 }
 
 fn build_credential_drift(

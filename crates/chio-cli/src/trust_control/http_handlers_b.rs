@@ -739,7 +739,7 @@ async fn handle_issue_liability_provider(
         request.supersedes_provider_record_id.as_deref(),
     ) {
         Ok(provider) => Json::<SignedLiabilityProvider>(provider).into_response(),
-        Err(CliError::Other(message)) => plain_http_error(StatusCode::BAD_REQUEST, &message),
+        Err(error @ CliError::Chio(_)) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -808,7 +808,7 @@ async fn handle_issue_liability_quote_request(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityQuoteRequest>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -839,7 +839,7 @@ async fn handle_issue_liability_quote_response(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityQuoteResponse>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -870,7 +870,7 @@ async fn handle_issue_liability_placement(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityPlacement>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -901,7 +901,7 @@ async fn handle_issue_liability_pricing_authority(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityPricingAuthority>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -932,7 +932,7 @@ async fn handle_issue_liability_bound_coverage(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityBoundCoverage>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -963,7 +963,7 @@ async fn handle_issue_liability_auto_bind(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityAutoBindDecision>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1013,7 +1013,7 @@ async fn handle_issue_liability_claim_package(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimPackage>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1044,7 +1044,7 @@ async fn handle_issue_liability_claim_response(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimResponse>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1075,7 +1075,7 @@ async fn handle_issue_liability_claim_dispute(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimDispute>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1106,7 +1106,7 @@ async fn handle_issue_liability_claim_adjudication(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimAdjudication>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1137,7 +1137,7 @@ async fn handle_issue_liability_claim_payout_instruction(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimPayoutInstruction>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1168,7 +1168,7 @@ async fn handle_issue_liability_claim_payout_receipt(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimPayoutReceipt>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1199,7 +1199,7 @@ async fn handle_issue_liability_claim_settlement_instruction(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimSettlementInstruction>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1230,7 +1230,7 @@ async fn handle_issue_liability_claim_settlement_receipt(
         &request,
     ) {
         Ok(artifact) => Json::<SignedLiabilityClaimSettlementReceipt>(artifact).into_response(),
-        Err(CliError::Other(message)) => liability_market_http_error(&message),
+        Err(error @ CliError::Chio(_)) => liability_market_http_error(&error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1270,7 +1270,7 @@ async fn handle_runtime_attestation_appraisal_report(
         &request.runtime_attestation,
     ) {
         Ok(report) => Json::<SignedRuntimeAttestationAppraisalReport>(report).into_response(),
-        Err(CliError::Other(message)) => plain_http_error(StatusCode::BAD_REQUEST, &message),
+        Err(error @ CliError::Chio(_)) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }
@@ -1291,7 +1291,7 @@ async fn handle_runtime_attestation_appraisal_result_export(
         &request,
     ) {
         Ok(result) => Json::<SignedRuntimeAttestationAppraisalResult>(result).into_response(),
-        Err(CliError::Other(message)) => plain_http_error(StatusCode::BAD_REQUEST, &message),
+        Err(error @ CliError::Chio(_)) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }

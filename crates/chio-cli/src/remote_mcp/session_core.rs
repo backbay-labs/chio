@@ -900,7 +900,7 @@ fn validate_identity_provider_url(url: &Url, field_name: &str) -> Result<(), Cli
     if scheme == "https" || (scheme == "http" && localhost) {
         Ok(())
     } else {
-        Err(CliError::Other(format!(
+        Err(CliError::cli_other_error(format!(
             "{field_name} must use https, or localhost http during local testing: {url}"
         )))
     }
@@ -908,7 +908,7 @@ fn validate_identity_provider_url(url: &Url, field_name: &str) -> Result<(), Cli
 
 fn parse_identity_provider_url(value: &str, field_name: &str) -> Result<Url, CliError> {
     let url = Url::parse(value)
-        .map_err(|error| CliError::Other(format!("{field_name} is not a valid URL: {error}")))?;
+        .map_err(|error| CliError::cli_other_error(format!("{field_name} is not a valid URL: {error}")))?;
     validate_identity_provider_url(&url, field_name)?;
     Ok(url)
 }
@@ -932,10 +932,10 @@ fn fetch_identity_provider_json<T: DeserializeOwned>(
         .timeout(Duration::from_secs(IDENTITY_PROVIDER_FETCH_TIMEOUT_SECS))
         .build();
     let response = agent.get(url.as_str()).call().map_err(|error| {
-        CliError::Other(format!("failed to fetch {field_name} `{}`: {error}", url))
+        CliError::cli_other_error(format!("failed to fetch {field_name} `{}`: {error}", url))
     })?;
     response.into_json::<T>().map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to parse JSON from {field_name} `{}`: {error}",
             url
         ))
@@ -950,7 +950,7 @@ fn resolve_identity_provider_discovery_url(
     }
     if config.auth_jwt_provider_profile.is_some() {
         let issuer = config.auth_jwt_issuer.as_deref().ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "--auth-jwt-provider-profile requires --auth-jwt-issuer or --auth-jwt-discovery-url"
                     .to_string(),
             )
@@ -984,7 +984,7 @@ fn resolve_jwks_key_set(jwks_uri: &Url, field_name: &str) -> Result<JwtJwksKeySe
         }
     }
     if keys_by_kid.is_empty() && anonymous_keys.is_empty() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{field_name} `{}` did not expose any supported signing keys",
             jwks_uri
         )));
@@ -1002,7 +1002,7 @@ fn decode_jwk_component(
     field_name: &str,
 ) -> Result<Vec<u8>, CliError> {
     URL_SAFE_NO_PAD.decode(value).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "failed to decode {component_name} from {field_name} `{}`: {error}",
             jwks_uri
         ))
@@ -1017,7 +1017,7 @@ fn decode_fixed_jwk_component<const N: usize>(
 ) -> Result<[u8; N], CliError> {
     let bytes = decode_jwk_component(value, component_name, jwks_uri, field_name)?;
     if bytes.len() != N {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{component_name} from {field_name} `{}` had invalid length {}, expected {}",
             jwks_uri,
             bytes.len(),
@@ -1055,7 +1055,7 @@ fn resolve_jwk_public_key(
             encoded[33..65].copy_from_slice(&y);
             JwtResolvedPublicKey::P256(P256VerifyingKey::from_sec1_bytes(&encoded).map_err(
                 |error| {
-                    CliError::Other(format!(
+                    CliError::cli_other_error(format!(
                         "failed to parse P-256 JWK from {field_name} `{}`: {error}",
                         jwks_uri
                     ))
@@ -1074,7 +1074,7 @@ fn resolve_jwk_public_key(
             encoded[49..97].copy_from_slice(&y);
             JwtResolvedPublicKey::P384(P384VerifyingKey::from_sec1_bytes(&encoded).map_err(
                 |error| {
-                    CliError::Other(format!(
+                    CliError::cli_other_error(format!(
                         "failed to parse P-384 JWK from {field_name} `{}`: {error}",
                         jwks_uri
                     ))
@@ -1090,7 +1090,7 @@ fn resolve_jwk_public_key(
             let exponent =
                 BigUint::from_bytes_be(&decode_jwk_component(e, "e", jwks_uri, field_name)?);
             JwtResolvedPublicKey::Rsa(JwtRsaPublicKey::new(modulus, exponent).map_err(|error| {
-                CliError::Other(format!(
+                CliError::cli_other_error(format!(
                     "failed to parse RSA JWK from {field_name} `{}`: {error}",
                     jwks_uri
                 ))
@@ -1116,7 +1116,7 @@ fn resolve_discovered_identity_provider(
     let issuer = canonicalize_federated_issuer(issuer_url.as_str());
     if let Some(expected_issuer) = config.auth_jwt_issuer.as_deref() {
         if canonicalize_federated_issuer(expected_issuer) != issuer {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "OIDC discovery issuer `{issuer}` did not match configured --auth-jwt-issuer `{expected_issuer}`"
             )));
         }
@@ -1137,7 +1137,7 @@ fn resolve_discovered_identity_provider(
         && config.auth_introspection_url.is_none()
     {
         let jwks_uri = jwks_uri.as_ref().ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "OIDC discovery metadata did not include `jwks_uri` for JWT verification"
                     .to_string(),
             )
@@ -1519,7 +1519,7 @@ fn fingerprint_remote_auth_contract(config: &RemoteServeHttpConfig) -> Result<St
         let verification_key_identity = authority_public_key_from_seed_file(seed_path)?
             .map(|public_key| public_key.to_hex())
             .ok_or_else(|| {
-                CliError::Other(format!(
+                CliError::cli_other_error(format!(
                     "auth server seed file `{}` did not yield a public key",
                     seed_path.display()
                 ))
@@ -1565,7 +1565,7 @@ fn fingerprint_remote_auth_contract(config: &RemoteServeHttpConfig) -> Result<St
     };
 
     let encoded = canonical_json_bytes(&fingerprint).map_err(|error| {
-        CliError::Other(format!("serialize auth contract fingerprint: {error}"))
+        CliError::cli_other_error(format!("serialize auth contract fingerprint: {error}"))
     })?;
     Ok(sha256_hex(&encoded))
 }
@@ -1584,7 +1584,7 @@ fn fingerprint_remote_policy_contract(
         "runtime_assurance_policy": loaded_policy.runtime_assurance_policy,
     });
     let encoded = canonical_json_bytes(&fingerprint).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "serialize resumable policy contract fingerprint: {error}"
         ))
     })?;
@@ -1637,10 +1637,10 @@ fn derive_resume_record_integrity_seed(
 ) -> Result<Option<[u8; 32]>, CliError> {
     if let Some(path) = config.authority_db_path.as_deref() {
         let authority = chio_store_sqlite::SqliteCapabilityAuthority::open(path)
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         let keypair = authority
             .local_keypair()
-            .map_err(|error| CliError::Other(error.to_string()))?;
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         return Ok(Some(keypair.seed_bytes()));
     }
     if let Some(seed_path) = [
@@ -1705,7 +1705,7 @@ fn compute_resume_record_integrity_tag(
         issued_capabilities: &record.issued_capabilities,
     };
     let canonical = canonical_json_bytes(&envelope)
-        .map_err(|error| CliError::Other(format!("serialize resumable session envelope: {error}")))?;
+        .map_err(|error| CliError::cli_other_error(format!("serialize resumable session envelope: {error}")))?;
     let mut hasher = Sha256::new();
     hasher.update(REMOTE_SESSION_RESUME_INTEGRITY_LABEL);
     hasher.update([0u8]);
@@ -1720,20 +1720,20 @@ fn validate_resume_record_integrity(
     record: &RemoteSessionResumeRecord,
 ) -> Result<(), CliError> {
     let Some(stored_tag) = record.resume_integrity_tag.as_deref() else {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "stored MCP session {} predates resumable integrity binding and must be re-initialized",
             record.session_id
         )));
     };
     let Some(seed) = derive_resume_record_integrity_seed(config)? else {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "stored MCP session {} cannot be restored because this server has no local secret material for resumable session integrity",
             record.session_id
         )));
     };
     let expected_tag = compute_resume_record_integrity_tag(&seed, record)?;
     if stored_tag != expected_tag {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "stored MCP session {} failed resumable integrity validation",
             record.session_id
         )));
@@ -1746,7 +1746,7 @@ fn validate_restored_peer_capabilities(
 ) -> Result<PeerCapabilities, CliError> {
     let derived = parse_remote_session_peer_capabilities(&record.initialize_params);
     if derived != record.peer_capabilities {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "stored MCP session {} failed peer capability re-validation against initialize params",
             record.session_id
         )));
@@ -2125,7 +2125,7 @@ impl RemoteSession {
     fn send(&self, message: Value) -> Result<(), CliError> {
         self.input_tx
             .send(message)
-            .map_err(|_| CliError::Other("remote MCP session worker is unavailable".to_string()))
+            .map_err(|_| CliError::cli_other_error("remote MCP session worker is unavailable".to_string()))
     }
 
     fn subscribe(&self) -> broadcast::Receiver<RemoteSessionEvent> {
@@ -2528,7 +2528,7 @@ impl RemoteSessionFactory {
 
     fn shared_upstream_owner(&self) -> Result<Arc<SharedUpstreamOwner>, CliError> {
         let mut guard = self.shared_upstream_owner.lock().map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "failed to lock shared remote MCP upstream owner cache: {error}"
             ))
         })?;
@@ -2704,7 +2704,7 @@ impl RemoteSessionFactory {
         validate_resume_record_integrity(&self.config, record)?;
         let configured_hosted_isolation = self.configured_hosted_isolation();
         if configured_hosted_isolation != record.hosted_isolation {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "stored MCP session {} expects hosted isolation {:?} but the server is configured for {:?}",
                 record.session_id, record.hosted_isolation, configured_hosted_isolation
             )));
@@ -2713,7 +2713,7 @@ impl RemoteSessionFactory {
             expected_resume_agent_id(&self.config, &record.auth_context)?
         {
             if expected_agent_id != record.agent_id {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "stored MCP session {} failed authenticated principal re-validation during restore",
                     record.session_id
                 )));
@@ -2728,13 +2728,13 @@ impl RemoteSessionFactory {
         match record.auth_mode_fingerprint.as_deref() {
             Some(stored) if stored == auth_mode_fingerprint => {}
             Some(_) => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "stored MCP session {} was created under different serve-http auth settings",
                     record.session_id
                 )));
             }
             None => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "stored MCP session {} predates auth contract fingerprinting and must be re-initialized",
                     record.session_id
                 )));
@@ -3036,7 +3036,7 @@ impl RemoteSessionLedger {
         match state {
             RemoteSessionState::Deleted | RemoteSessionState::Expired | RemoteSessionState::Closed => {}
             RemoteSessionState::Initializing | RemoteSessionState::Ready | RemoteSessionState::Draining => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "unsupported terminal MCP session state: {}",
                     state.as_str()
                 )));
@@ -3076,7 +3076,7 @@ impl RemoteSessionLedger {
             } else {
                 let tombstone_error = tombstone_error
                     .unwrap_or_else(|| "terminal tombstone was not persisted".to_string());
-                return Err(CliError::Other(format!(
+                return Err(CliError::cli_other_error(format!(
                     "failed to terminalize MCP session {}: {tombstone_error}; active resume delete failed: {delete_error}",
                     session.session_id
                 )));

@@ -127,7 +127,7 @@ impl FederationAdmissionPolicyRegistry {
             Ok(bytes) => {
                 let mut registry: Self = serde_json::from_slice(&bytes)?;
                 if registry.version != FEDERATION_ADMISSION_POLICY_REGISTRY_VERSION {
-                    return Err(CliError::Other(format!(
+                    return Err(CliError::cli_other_error(format!(
                         "unsupported federation admission policy registry version: {}",
                         registry.version
                     )));
@@ -171,22 +171,22 @@ pub fn verify_federation_admission_policy_record(
     record: &FederationAdmissionPolicyRecord,
 ) -> Result<(), CliError> {
     if record.schema != FEDERATION_ADMISSION_POLICY_RECORD_SCHEMA {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "unsupported federation admission policy schema: {}",
             record.schema
         )));
     }
     if !record.policy.verify_signature()? {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "federation admission policy signature verification failed".to_string(),
         ));
     }
     validate_federated_open_admission_policy(&record.policy.body)
-        .map_err(|error| CliError::Other(error.to_string()))?;
+        .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     validate_anti_sybil_controls(&record.anti_sybil, &record.policy.body)?;
     if let Some(score) = record.minimum_reputation_score {
         if !score.is_finite() || !(0.0..=1.0).contains(&score) {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "minimum_reputation_score must be between 0.0 and 1.0".to_string(),
             ));
         }
@@ -213,19 +213,19 @@ fn validate_anti_sybil_controls(
 ) -> Result<(), CliError> {
     if let Some(limit) = controls.rate_limit.as_ref() {
         if limit.max_requests == 0 {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "anti_sybil.rate_limit.max_requests must be non-zero".to_string(),
             ));
         }
         if limit.window_seconds == 0 {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "anti_sybil.rate_limit.window_seconds must be non-zero".to_string(),
             ));
         }
     }
     if let Some(bits) = controls.proof_of_work_bits {
         if bits == 0 || bits > 24 {
-            return Err(CliError::Other(
+            return Err(CliError::cli_other_error(
                 "anti_sybil.proof_of_work_bits must be between 1 and 24".to_string(),
             ));
         }
@@ -235,7 +235,7 @@ fn validate_anti_sybil_controls(
             .allowed_admission_classes
             .contains(&GenericTrustAdmissionClass::BondBacked)
     {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "bond_backed_only requires the signed policy to allow bond_backed admission"
                 .to_string(),
         ));
@@ -257,4 +257,109 @@ fn leading_zero_bits(hex_digest: &str) -> u32 {
         break;
     }
     bits
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod federation_policy_error_tests {
+    use super::*;
+    use chio_core::crypto::Keypair;
+    use chio_core::federation::{
+        FederatedOpenAdmissionPolicyArtifact, FederationArtifactKind, FederationArtifactReference,
+        CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA,
+    };
+
+    fn assert_cli_other_error(error: CliError, expected_message: &str) {
+        match error {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), "urn:chio:error:cli:other");
+                assert_eq!(chio.domain().as_str(), "cli");
+                assert!(
+                    chio.to_string().contains(expected_message),
+                    "message: {chio}",
+                );
+            }
+            other => panic!("expected registry-backed CLI error, got {other:?}"),
+        }
+    }
+
+    fn reference(
+        kind: FederationArtifactKind,
+        schema: &str,
+        artifact_id: &str,
+    ) -> FederationArtifactReference {
+        FederationArtifactReference {
+            kind,
+            schema: schema.to_string(),
+            artifact_id: artifact_id.to_string(),
+            operator_id: "operator-alpha".to_string(),
+            sha256: "ab".repeat(32),
+            uri: Some(format!("https://operator.example/{artifact_id}")),
+        }
+    }
+
+    fn signed_record() -> FederationAdmissionPolicyRecord {
+        let artifact = FederatedOpenAdmissionPolicyArtifact {
+            schema: CHIO_FEDERATION_OPEN_ADMISSION_POLICY_SCHEMA.to_string(),
+            policy_id: "open-admission-alpha".to_string(),
+            issued_at: 1_700_000_000,
+            namespace: "chio://federation/open".to_string(),
+            governing_operator_id: "operator-alpha".to_string(),
+            allowed_admission_classes: vec![GenericTrustAdmissionClass::PublicUntrusted],
+            stake_requirements: Vec::new(),
+            governing_charter_ref: reference(
+                FederationArtifactKind::GovernanceCharter,
+                "chio.governance-charter.v1",
+                "charter-alpha",
+            ),
+            fee_schedule_ref: reference(
+                FederationArtifactKind::OpenMarketFeeSchedule,
+                "chio.open-market-fee-schedule.v1",
+                "fees-alpha",
+            ),
+            explicit_local_review_required: true,
+            visibility_only_without_activation: true,
+            note: None,
+        };
+        let keypair = Keypair::generate();
+        let policy = SignedFederatedOpenAdmissionPolicy::sign(artifact, &keypair).unwrap();
+        FederationAdmissionPolicyRecord {
+            schema: FEDERATION_ADMISSION_POLICY_RECORD_SCHEMA.to_string(),
+            published_at: 1_700_000_100,
+            policy,
+            anti_sybil: FederationAdmissionAntiSybilControls::default(),
+            minimum_reputation_score: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn invalid_record_schema_uses_cli_registry_domain() {
+        let mut record = signed_record();
+        record.schema = "unsupported".to_string();
+
+        let error = verify_federation_admission_policy_record(&record).unwrap_err();
+
+        assert_cli_other_error(error, "unsupported federation admission policy schema");
+    }
+
+    #[test]
+    fn invalid_reputation_score_uses_cli_registry_domain() {
+        let mut record = signed_record();
+        record.minimum_reputation_score = Some(1.1);
+
+        let error = verify_federation_admission_policy_record(&record).unwrap_err();
+
+        assert_cli_other_error(error, "minimum_reputation_score");
+    }
+
+    #[test]
+    fn invalid_anti_sybil_controls_use_cli_registry_domain() {
+        let mut record = signed_record();
+        record.anti_sybil.proof_of_work_bits = Some(25);
+
+        let error = verify_federation_admission_policy_record(&record).unwrap_err();
+
+        assert_cli_other_error(error, "anti_sybil.proof_of_work_bits");
+    }
 }

@@ -1,6 +1,6 @@
 pub fn serve_http(config: RemoteServeHttpConfig) -> Result<(), CliError> {
     let runtime = tokio::runtime::Runtime::new()
-        .map_err(|error| CliError::Other(format!("failed to start async runtime: {error}")))?;
+        .map_err(|error| CliError::cli_other_error(format!("failed to start async runtime: {error}")))?;
     runtime.block_on(async move { serve_http_async(config).await })
 }
 
@@ -250,7 +250,7 @@ async fn serve_http_async(config: RemoteServeHttpConfig) -> Result<(), CliError>
         router.into_make_service_with_connect_info::<SocketAddr>(),
     )
         .await
-        .map_err(|error| CliError::Other(format!("remote MCP edge server failed: {error}")))
+        .map_err(|error| CliError::cli_other_error(format!("remote MCP edge server failed: {error}")))
 }
 
 async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> Response {
@@ -1216,7 +1216,7 @@ fn build_remote_auth_state(
     } else if let Some(token) = config.auth_token.as_deref() {
         Some(Arc::<str>::from(token.to_string()))
     } else {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "bearer-authenticated remote MCP edge requires --admin-token for admin APIs"
                 .to_string(),
         ));
@@ -1228,7 +1228,7 @@ fn build_remote_auth_state(
 fn build_chio_oauth_authorization_profile_metadata() -> Result<Value, CliError> {
     let mut value =
         serde_json::to_value(ChioOAuthAuthorizationProfile::default()).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "serialize Chio authorization profile metadata: {error}"
             ))
         })?;
@@ -1243,22 +1243,22 @@ fn validate_chio_oauth_authorization_profile_metadata(
     let expected_profile = ChioOAuthAuthorizationProfile::default();
     let profile: ChioOAuthAuthorizationProfile =
         serde_json::from_value(value.clone()).map_err(|error| {
-            CliError::Other(format!(
+            CliError::cli_other_error(format!(
                 "{source} contains invalid Chio authorization profile metadata: {error}"
             ))
         })?;
     if profile.schema != CHIO_OAUTH_AUTHORIZATION_PROFILE_SCHEMA {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio authorization profile schema `{CHIO_OAUTH_AUTHORIZATION_PROFILE_SCHEMA}`"
         )));
     }
     if profile.id != CHIO_OAUTH_AUTHORIZATION_PROFILE_ID {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio authorization profile id `{CHIO_OAUTH_AUTHORIZATION_PROFILE_ID}`"
         )));
     }
     if profile.sender_constraints.subject_binding != CHIO_OAUTH_SENDER_BINDING_CAPABILITY_SUBJECT {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise subject binding `{CHIO_OAUTH_SENDER_BINDING_CAPABILITY_SUBJECT}`"
         )));
     }
@@ -1268,37 +1268,37 @@ fn validate_chio_oauth_authorization_profile_metadata(
         .iter()
         .any(|proof| proof == CHIO_OAUTH_SENDER_PROOF_CHIO_DPOP)
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio sender proof type `{CHIO_OAUTH_SENDER_PROOF_CHIO_DPOP}`"
         )));
     }
     if profile.portable_claim_catalog != expected_profile.portable_claim_catalog {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio's supported portable claim catalog"
         )));
     }
     if profile.portable_identity_binding != expected_profile.portable_identity_binding {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio's supported portable identity binding contract"
         )));
     }
     if profile.governed_auth_binding != expected_profile.governed_auth_binding {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio's governed authorization binding contract"
         )));
     }
     if profile.request_time_contract != expected_profile.request_time_contract {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio's request-time authorization contract"
         )));
     }
     if profile.resource_binding != expected_profile.resource_binding {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio's resource indicator binding contract"
         )));
     }
     if profile.artifact_boundary != expected_profile.artifact_boundary {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "{source} must advertise Chio's runtime artifact boundary contract"
         )));
     }
@@ -1317,7 +1317,7 @@ fn validate_chio_oauth_discovery_metadata_pair(
         .document
         .get("chio_authorization_profile")
         .ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "authorization-server metadata must publish chio_authorization_profile".to_string(),
             )
         })?;
@@ -1326,7 +1326,7 @@ fn validate_chio_oauth_discovery_metadata_pair(
         "authorization-server metadata",
     )?;
     if authorization_profile != &protected_resource_metadata.chio_authorization_profile {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "authorization-server metadata chio_authorization_profile must match protected-resource metadata"
                 .to_string(),
         ));
@@ -1336,7 +1336,7 @@ fn validate_chio_oauth_discovery_metadata_pair(
         .get("issuer")
         .and_then(Value::as_str)
         .ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "authorization-server metadata must include an issuer for Chio discovery validation"
                     .to_string(),
             )
@@ -1346,7 +1346,7 @@ fn validate_chio_oauth_discovery_metadata_pair(
         .iter()
         .any(|server| server == issuer)
     {
-        return Err(CliError::Other(format!(
+        return Err(CliError::cli_other_error(format!(
             "protected-resource metadata does not advertise authorization server issuer `{issuer}`"
         )));
     }
@@ -1374,7 +1374,7 @@ fn build_protected_resource_metadata(
     } else if let Some(issuer) = config.auth_jwt_issuer.clone() {
         vec![issuer]
     } else {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "bearer-authenticated remote MCP edge requires --auth-server or --auth-jwt-issuer so protected-resource metadata can advertise an authorization server".to_string(),
         ));
     };
@@ -1404,7 +1404,7 @@ fn build_authorization_server_metadata(
 
     if let Some(issuer) = resolve_local_auth_issuer(config, local_addr)? {
         let issuer = Url::parse(&issuer)
-            .map_err(|error| CliError::Other(format!("invalid local auth issuer: {error}")))?;
+            .map_err(|error| CliError::cli_other_error(format!("invalid local auth issuer: {error}")))?;
         let metadata_path = metadata_path_for_issuer(&issuer);
         let base_url = normalize_public_base_url(config.public_base_url.as_deref(), local_addr)?;
         let chio_authorization_profile = build_chio_oauth_authorization_profile_metadata()?;
@@ -1461,7 +1461,7 @@ fn build_authorization_server_metadata(
     };
 
     let issuer = Url::parse(issuer).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "invalid --auth-jwt-issuer for authorization-server metadata: {error}"
         ))
     })?;
@@ -1470,7 +1470,7 @@ fn build_authorization_server_metadata(
         local_addr,
     )?)
     .map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "invalid public base URL for authorization-server metadata: {error}"
         ))
     })?;
@@ -1540,14 +1540,14 @@ fn build_remote_auth_mode(
             || has_external_discovery
             || has_introspection)
     {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "use either --auth-token or OAuth bearer auth flags, not both".to_string(),
         ));
     }
     if config.auth_server_seed_path.is_some()
         && (config.auth_jwt_public_key.is_some() || has_external_discovery || has_introspection)
     {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "use either --auth-jwt-public-key / discovery flags or --auth-server-seed-file, not both"
                 .to_string(),
         ));
@@ -1555,13 +1555,13 @@ fn build_remote_auth_mode(
     if config.auth_introspection_client_id.is_some()
         != config.auth_introspection_client_secret.is_some()
     {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "--auth-introspection-client-id and --auth-introspection-client-secret must be provided together"
                 .to_string(),
         ));
     }
     if has_introspection && config.auth_jwt_public_key.is_some() {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "use either JWT verification flags or --auth-introspection-url, not both".to_string(),
         ));
     }
@@ -1605,7 +1605,7 @@ fn build_remote_auth_mode(
                     .timeout(Duration::from_secs(TOKEN_INTROSPECTION_TIMEOUT_SECS))
                     .build()
                     .map_err(|error| {
-                        CliError::Other(format!(
+                        CliError::cli_other_error(format!(
                             "failed to build token introspection client: {error}"
                         ))
                     })?,
@@ -1645,13 +1645,13 @@ fn build_remote_auth_mode(
         JwtVerificationKeySource::Static(PublicKey::from_hex(public_key_hex)?)
     } else if let Some(discovered) = discovered_identity_provider {
         JwtVerificationKeySource::Jwks(discovered.jwks_keys.clone().ok_or_else(|| {
-            CliError::Other(
+            CliError::cli_other_error(
                 "OIDC discovery did not resolve any compatible signing keys for JWT verification"
                     .to_string(),
             )
         })?)
     } else {
-        return Err(CliError::Other(
+        return Err(CliError::cli_other_error(
             "remote MCP edge requires either --auth-token, --auth-jwt-public-key, --auth-jwt-discovery-url, --auth-introspection-url, or --auth-server-seed-file"
                 .to_string(),
         ));
@@ -1716,7 +1716,7 @@ fn build_local_auth_server(
     };
     let signing_key = load_or_create_authority_keypair(seed_path)?;
     let issuer = resolve_local_auth_issuer(config, local_addr)?
-        .ok_or_else(|| CliError::Other("failed to resolve local auth issuer".to_string()))?;
+        .ok_or_else(|| CliError::cli_other_error("failed to resolve local auth issuer".to_string()))?;
     let base_url = normalize_public_base_url(config.public_base_url.as_deref(), local_addr)?;
     let default_audience = effective_resource_indicator(config, &base_url);
     let (sender_dpop_nonce_store, sender_dpop_config) = build_sender_dpop_runtime();
@@ -1742,7 +1742,7 @@ fn normalize_public_base_url(
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| format!("http://{local_addr}"));
     let parsed = Url::parse(&base_url).map_err(|error| {
-        CliError::Other(format!(
+        CliError::cli_other_error(format!(
             "invalid --public-base-url for remote MCP edge: {error}"
         ))
     })?;

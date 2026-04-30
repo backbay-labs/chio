@@ -227,32 +227,52 @@ fn unix_now() -> u64 {
 fn ensure_clean_output_dir(path: &Path) -> Result<(), CliError> {
     if path.exists() {
         if !path.is_dir() {
-            return Err(CliError::Other(format!(
+            return Err(CliError::cli_other_error(format!(
                 "evidence export output path must be a directory: {}",
                 path.display()
             )));
         }
-        if fs::read_dir(path)?.next().is_some() {
-            return Err(CliError::Other(format!(
-                "evidence export output directory must be empty: {}",
+        let mut entries = fs::read_dir(path).map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to inspect evidence export output directory {}: {error}",
                 path.display()
-            )));
+            ))
+        })?;
+        match entries.next() {
+            Some(Ok(_)) => {
+                return Err(CliError::cli_other_error(format!(
+                    "evidence export output directory must be empty: {}",
+                    path.display()
+                )));
+            }
+            Some(Err(error)) => {
+                return Err(CliError::cli_io_error(format!(
+                    "failed to inspect evidence export output directory {}: {error}",
+                    path.display()
+                )));
+            }
+            None => {}
         }
     } else {
-        fs::create_dir_all(path)?;
+        fs::create_dir_all(path).map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to create evidence export output directory {}: {error}",
+                path.display()
+            ))
+        })?;
     }
     Ok(())
 }
 
 fn ensure_existing_dir(path: &Path, label: &str) -> Result<(), CliError> {
     if !path.exists() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "{label} directory does not exist: {}",
             path.display()
         )));
     }
     if !path.is_dir() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "{label} path must be a directory: {}",
             path.display()
         )));
@@ -321,7 +341,9 @@ fn read_ndjson_file<T: for<'de> Deserialize<'de>>(
         return Ok(Vec::new());
     }
     String::from_utf8(bytes)
-        .map_err(|error| CliError::Other(format!("{} is not valid UTF-8: {error}", relative_path)))?
+        .map_err(|error| {
+            CliError::attest_error(format!("{} is not valid UTF-8: {error}", relative_path))
+        })?
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| serde_json::from_str(line).map_err(CliError::from))
@@ -442,7 +464,7 @@ pub(crate) fn render_missing_proofs_error(records: &[EvidenceUncheckpointedRecei
         .map(|record| format!("{}@{}", record.receipt_id, record.seq))
         .collect::<Vec<_>>()
         .join(", ");
-    CliError::Other(format!(
+    CliError::attest_error(format!(
         "evidence export requires checkpoint coverage, but {} receipt(s) are uncheckpointed: {}",
         records.len(),
         sample
@@ -451,13 +473,13 @@ pub(crate) fn render_missing_proofs_error(records: &[EvidenceUncheckpointedRecei
 
 pub(crate) fn verify_federation_policy(policy: &FederationPolicyDocument) -> Result<(), CliError> {
     if !is_supported_federation_policy_schema(&policy.body.schema) {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported federation policy schema: expected {} or {}, got {}",
             FEDERATION_POLICY_SCHEMA, LEGACY_FEDERATION_POLICY_SCHEMA, policy.body.schema
         )));
     }
     if policy.body.created_at > policy.body.expires_at {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "federation policy created_at must be less than or equal to expires_at".to_string(),
         ));
     }
@@ -466,7 +488,7 @@ pub(crate) fn verify_federation_policy(policy: &FederationPolicyDocument) -> Res
         .signer_public_key
         .verify_canonical(&policy.body, &policy.signature)?
     {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "federation policy signature verification failed".to_string(),
         ));
     }
@@ -519,7 +541,7 @@ pub(crate) fn merge_export_query(
     };
     if let (Some(since), Some(until)) = (since, until) {
         if since > until {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "federation policy scope and requested export window do not overlap".to_string(),
             ));
         }
@@ -539,7 +561,7 @@ fn merge_exact_scope(
     field: &str,
 ) -> Result<Option<String>, CliError> {
     match (policy_value, cli_value) {
-        (Some(policy), Some(cli)) if policy != cli => Err(CliError::Other(format!(
+        (Some(policy), Some(cli)) if policy != cli => Err(CliError::attest_error(format!(
             "requested export {field} falls outside the signed federation policy"
         ))),
         (Some(policy), _) => Ok(Some(policy.to_string())),
@@ -555,32 +577,32 @@ pub(crate) fn ensure_query_within_federation_policy(
     if policy_query.capability_id.is_some()
         && policy_query.capability_id != export_query.capability_id
     {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence package query exceeds federation policy capability scope".to_string(),
         ));
     }
     if policy_query.agent_subject.is_some()
         && policy_query.agent_subject != export_query.agent_subject
     {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence package query exceeds federation policy agent scope".to_string(),
         ));
     }
     if policy_query.tenant.is_some() && policy_query.tenant != export_query.tenant {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence package query exceeds federation policy tenant scope".to_string(),
         ));
     }
     if let Some(policy_since) = policy_query.since {
         if export_query.since.unwrap_or(0) < policy_since {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "evidence package query starts before the federation policy window".to_string(),
             ));
         }
     }
     if let Some(policy_until) = policy_query.until {
         if export_query.until.unwrap_or(u64::MAX) > policy_until {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "evidence package query ends after the federation policy window".to_string(),
             ));
         }
@@ -625,7 +647,7 @@ pub(crate) fn validate_evidence_bundle_requirements(
 fn safe_relative_path(relative_path: &str) -> Result<PathBuf, CliError> {
     let path = Path::new(relative_path);
     if path.is_absolute() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "evidence package manifest path must be relative: {relative_path}"
         )));
     }
@@ -633,7 +655,7 @@ fn safe_relative_path(relative_path: &str) -> Result<PathBuf, CliError> {
         match component {
             Component::Normal(_) | Component::CurDir => {}
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err(CliError::Other(format!(
+                return Err(CliError::attest_error(format!(
                     "evidence package manifest path escapes the package root: {relative_path}"
                 )))
             }
@@ -649,7 +671,7 @@ fn verify_manifest_file_hashes(
     let mut seen = BTreeSet::new();
     for file in &manifest.files {
         if !seen.insert(file.path.as_str()) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "duplicate file entry in evidence manifest: {}",
                 file.path
             )));
@@ -659,13 +681,13 @@ fn verify_manifest_file_hashes(
         let actual_hash = sha256_hex(&bytes);
         let actual_bytes = bytes.len() as u64;
         if actual_hash != file.sha256 {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "evidence package file hash mismatch for {}",
                 file.path
             )));
         }
         if actual_bytes != file.bytes {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "evidence package byte length mismatch for {}",
                 file.path
             )));
@@ -683,7 +705,7 @@ fn verify_query_scope(
 ) -> Result<(), CliError> {
     let expected_child_scope = query.child_receipt_scope();
     if child_receipt_scope != expected_child_scope {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "child receipt scope mismatch: manifest says {:?}, query implies {:?}",
             child_receipt_scope, expected_child_scope
         )));
@@ -693,7 +715,7 @@ fn verify_query_scope(
         EvidenceChildReceiptScope::OmittedNoJoinPath
     ) && !child_receipts.is_empty()
     {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "child receipts were exported despite an omitted child-receipt scope".to_string(),
         ));
     }
@@ -701,7 +723,7 @@ fn verify_query_scope(
     for record in tool_receipts {
         if let Some(capability_id) = &query.capability_id {
             if &record.receipt.capability_id != capability_id {
-                return Err(CliError::Other(format!(
+                return Err(CliError::attest_error(format!(
                     "tool receipt {} is outside capability filter {}",
                     record.receipt.id, capability_id
                 )));
@@ -709,7 +731,7 @@ fn verify_query_scope(
         }
         if let Some(since) = query.since {
             if record.receipt.timestamp < since {
-                return Err(CliError::Other(format!(
+                return Err(CliError::attest_error(format!(
                     "tool receipt {} predates query lower bound {}",
                     record.receipt.id, since
                 )));
@@ -717,7 +739,7 @@ fn verify_query_scope(
         }
         if let Some(until) = query.until {
             if record.receipt.timestamp > until {
-                return Err(CliError::Other(format!(
+                return Err(CliError::attest_error(format!(
                     "tool receipt {} exceeds query upper bound {}",
                     record.receipt.id, until
                 )));
@@ -727,13 +749,13 @@ fn verify_query_scope(
             let snapshot = lineage_by_capability
                 .get(record.receipt.capability_id.as_str())
                 .ok_or_else(|| {
-                    CliError::Other(format!(
+                    CliError::attest_error(format!(
                         "missing capability lineage for receipt capability {}",
                         record.receipt.capability_id
                     ))
                 })?;
             if &snapshot.subject_key != agent_subject {
-                return Err(CliError::Other(format!(
+                return Err(CliError::attest_error(format!(
                     "tool receipt {} lineage subject {} does not match agent filter {}",
                     record.receipt.id, snapshot.subject_key, agent_subject
                 )));
@@ -744,7 +766,7 @@ fn verify_query_scope(
     for record in child_receipts {
         if let Some(since) = query.since {
             if record.receipt.timestamp < since {
-                return Err(CliError::Other(format!(
+                return Err(CliError::attest_error(format!(
                     "child receipt {} predates query lower bound {}",
                     record.receipt.id, since
                 )));
@@ -752,7 +774,7 @@ fn verify_query_scope(
         }
         if let Some(until) = query.until {
             if record.receipt.timestamp > until {
-                return Err(CliError::Other(format!(
+                return Err(CliError::attest_error(format!(
                     "child receipt {} exceeds query upper bound {}",
                     record.receipt.id, until
                 )));
@@ -769,19 +791,19 @@ fn verify_tool_receipts(
     let mut by_seq = BTreeMap::new();
     for record in tool_receipts {
         if by_seq.insert(record.seq, &record.receipt).is_some() {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "duplicate tool receipt seq in evidence package: {}",
                 record.seq
             )));
         }
         if !record.receipt.verify_signature()? {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "tool receipt signature verification failed: {}",
                 record.receipt.id
             )));
         }
         if !record.receipt.action.verify_hash()? {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "tool receipt action hash verification failed: {}",
                 record.receipt.id
             )));
@@ -794,13 +816,13 @@ fn verify_child_receipts(child_receipts: &[EvidenceChildReceiptRecord]) -> Resul
     let mut seen = BTreeSet::new();
     for record in child_receipts {
         if !seen.insert(record.seq) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "duplicate child receipt seq in evidence package: {}",
                 record.seq
             )));
         }
         if !record.receipt.verify_signature()? {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "child receipt signature verification failed: {}",
                 record.receipt.id
             )));
@@ -815,31 +837,31 @@ fn verify_checkpoints(
     let mut by_seq = BTreeMap::<u64, &KernelCheckpoint>::new();
     for checkpoint in checkpoints {
         if !is_supported_checkpoint_schema(&checkpoint.body.schema) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "unsupported checkpoint schema in evidence package: {}",
                 checkpoint.body.schema
             )));
         }
         if !verify_checkpoint_signature(checkpoint)? {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "checkpoint signature verification failed: {}",
                 checkpoint.body.checkpoint_seq
             )));
         }
         if let Some(existing) = by_seq.get(&checkpoint.body.checkpoint_seq) {
             let existing_sha256 = checkpoint_body_sha256(&existing.body).map_err(|error| {
-                CliError::Other(format!("checkpoint digest computation failed: {error}"))
+                CliError::attest_error(format!("checkpoint digest computation failed: {error}"))
             })?;
             let checkpoint_sha256 = checkpoint_body_sha256(&checkpoint.body).map_err(|error| {
-                CliError::Other(format!("checkpoint digest computation failed: {error}"))
+                CliError::attest_error(format!("checkpoint digest computation failed: {error}"))
             })?;
             if existing_sha256 != checkpoint_sha256 {
-                return Err(CliError::Other(format!(
+                return Err(CliError::attest_error(format!(
                     "checkpoint transparency equivocation detected: checkpoint_seq {} has conflicting digests {} and {}",
                     checkpoint.body.checkpoint_seq, existing_sha256, checkpoint_sha256
                 )));
             }
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "duplicate checkpoint_seq in evidence package: {}",
                 checkpoint.body.checkpoint_seq
             )));
@@ -858,7 +880,7 @@ fn verify_lineage(
             .insert(snapshot.capability_id.clone(), snapshot)
             .is_some()
         {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "duplicate capability lineage snapshot in evidence package: {}",
                 snapshot.capability_id
             )));
@@ -871,7 +893,7 @@ fn validate_checkpoint_transparency_summary(
     checkpoints: &[KernelCheckpoint],
 ) -> Result<CheckpointTransparencySummary, CliError> {
     validate_checkpoint_transparency(checkpoints).map_err(|error| {
-        CliError::Other(format!(
+        CliError::attest_error(format!(
             "checkpoint transparency verification failed: {error}"
         ))
     })
@@ -894,7 +916,7 @@ fn verify_checkpoint_transparency_records(
         },
     )
     .map_err(|error| {
-        CliError::Other(format!(
+        CliError::attest_error(format!(
             "checkpoint transparency verification failed: {error}"
         ))
     })
@@ -908,11 +930,11 @@ fn verify_transparency_claim_boundary(
     let Some(expected) = expected else {
         return Ok(());
     };
-    expected.validate().map_err(CliError::Other)?;
+    expected.validate().map_err(CliError::attest_error)?;
     let actual =
         build_evidence_transparency_claims(bundle, transparency, expected.trust_anchor.as_deref());
     if expected != &actual {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence package transparency claim boundary does not match the exported data"
                 .to_string(),
         ));
@@ -931,7 +953,7 @@ fn verify_inclusion_proofs(
         let checkpoint = checkpoints_by_seq
             .get(&proof.checkpoint_seq)
             .ok_or_else(|| {
-                CliError::Other(format!(
+                CliError::attest_error(format!(
                     "inclusion proof references missing checkpoint {}",
                     proof.checkpoint_seq
                 ))
@@ -939,19 +961,19 @@ fn verify_inclusion_proofs(
         let receipt = tool_receipts_by_seq
             .get(&proof.receipt_seq)
             .ok_or_else(|| {
-                CliError::Other(format!(
+                CliError::attest_error(format!(
                     "inclusion proof references missing receipt seq {}",
                     proof.receipt_seq
                 ))
             })?;
         if proof.merkle_root != checkpoint.body.merkle_root {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "inclusion proof root mismatch for receipt seq {}",
                 proof.receipt_seq
             )));
         }
         if proof.leaf_index >= checkpoint.body.tree_size {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "inclusion proof leaf index {} exceeds checkpoint tree size {}",
                 proof.leaf_index, checkpoint.body.tree_size
             )));
@@ -959,20 +981,20 @@ fn verify_inclusion_proofs(
         if proof.receipt_seq < checkpoint.body.batch_start_seq
             || proof.receipt_seq > checkpoint.body.batch_end_seq
         {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "inclusion proof receipt seq {} falls outside checkpoint batch {}-{}",
                 proof.receipt_seq, checkpoint.body.batch_start_seq, checkpoint.body.batch_end_seq
             )));
         }
         if !proved_receipt_seqs.insert(proof.receipt_seq) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "duplicate inclusion proof for receipt seq {}",
                 proof.receipt_seq
             )));
         }
         let canonical = canonical_json_bytes(*receipt)?;
         if !proof.verify(&canonical, &checkpoint.body.merkle_root) {
-            return Err(CliError::Other(format!(
+            return Err(CliError::attest_error(format!(
                 "inclusion proof verification failed for receipt seq {}",
                 proof.receipt_seq
             )));
@@ -983,7 +1005,7 @@ fn verify_inclusion_proofs(
         .len()
         .saturating_sub(proved_receipt_seqs.len()) as u64;
     if derived_uncheckpointed != expected_uncheckpointed_receipts {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "uncheckpointed receipt count mismatch: manifest says {}, derived {}",
             expected_uncheckpointed_receipts, derived_uncheckpointed
         )));
@@ -1007,7 +1029,7 @@ fn verify_manifest_counts(
         || counts.capability_lineage != capability_lineage.len() as u64
         || counts.inclusion_proofs != inclusion_proofs.len() as u64
     {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence package manifest counts do not match exported data".to_string(),
         ));
     }
@@ -1017,7 +1039,7 @@ fn verify_manifest_counts(
     if manifest.proof_coverage.checkpointed_receipts != checkpointed_receipts
         || manifest.proof_coverage.uncheckpointed_receipts != counts.uncheckpointed_receipts
     {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence package proof coverage summary does not match receipt counts".to_string(),
         ));
     }
@@ -1033,13 +1055,13 @@ fn verify_policy_attachment(
     };
     let metadata: PolicyAttachmentMetadata = read_json_file(input_dir, "policy/metadata.json")?;
     if &metadata != expected_policy {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "policy metadata file does not match evidence manifest".to_string(),
         ));
     }
     let relative = safe_relative_path(&expected_policy.source_path)?;
     if !input_dir.join(relative).exists() {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "policy source file referenced by manifest is missing: {}",
             expected_policy.source_path
         )));
@@ -1057,21 +1079,21 @@ fn verify_federation_policy_attachment(
     let policy = read_federation_policy(&input_dir.join(federation_policy_relative_path()))?;
     let actual_metadata = federation_policy_metadata(&policy);
     if &actual_metadata != expected_policy {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "federation policy metadata does not match evidence manifest".to_string(),
         ));
     }
     if manifest.exported_at < policy.body.created_at
         || manifest.exported_at > policy.body.expires_at
     {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence package export timestamp falls outside the federation policy validity window"
                 .to_string(),
         ));
     }
     ensure_query_within_federation_policy(&policy.body.query, &manifest.query)?;
     if policy.body.require_proofs && manifest.counts.uncheckpointed_receipts != 0 {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "federation policy requires full checkpoint coverage, but the evidence package contains uncheckpointed receipts".to_string(),
         ));
     }
@@ -1082,7 +1104,7 @@ pub(crate) fn validate_import_package_data(
     package: &EvidenceImportPackage,
 ) -> Result<(), CliError> {
     if !is_supported_evidence_export_manifest_schema(&package.manifest.schema) {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported evidence manifest schema: expected {} or {}, got {}",
             EVIDENCE_EXPORT_MANIFEST_SCHEMA,
             LEGACY_EVIDENCE_EXPORT_MANIFEST_SCHEMA,
@@ -1090,7 +1112,7 @@ pub(crate) fn validate_import_package_data(
         )));
     }
     if package.bundle.query != package.manifest.query {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence import package query does not match the embedded manifest".to_string(),
         ));
     }
@@ -1107,7 +1129,7 @@ pub(crate) fn validate_import_package_data(
         .as_ref()
         .map(federation_policy_metadata);
     if actual_federation_metadata != package.manifest.federation_policy {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "evidence import federation policy metadata does not match the embedded manifest"
                 .to_string(),
         ));
@@ -1117,14 +1139,14 @@ pub(crate) fn validate_import_package_data(
         if package.manifest.exported_at < policy.body.created_at
             || package.manifest.exported_at > policy.body.expires_at
         {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "evidence import package export timestamp falls outside the federation policy validity window"
                     .to_string(),
             ));
         }
         ensure_query_within_federation_policy(&policy.body.query, &package.manifest.query)?;
         if policy.body.require_proofs && package.manifest.counts.uncheckpointed_receipts != 0 {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "federation policy requires full checkpoint coverage, but the evidence import package contains uncheckpointed receipts".to_string(),
             ));
         }
@@ -1140,7 +1162,7 @@ pub(crate) fn validate_import_package_data(
             summary,
         )
         .map_err(|error| {
-            CliError::Other(format!(
+            CliError::attest_error(format!(
                 "checkpoint transparency verification failed: {error}"
             ))
         })?,
@@ -1172,7 +1194,7 @@ fn load_verified_evidence_package(input: &Path) -> Result<EvidenceImportPackage,
 
     let manifest: EvidenceExportManifest = read_json_file(input, "manifest.json")?;
     if !is_supported_evidence_export_manifest_schema(&manifest.schema) {
-        return Err(CliError::Other(format!(
+        return Err(CliError::attest_error(format!(
             "unsupported evidence manifest schema: expected {} or {}, got {}",
             EVIDENCE_EXPORT_MANIFEST_SCHEMA,
             LEGACY_EVIDENCE_EXPORT_MANIFEST_SCHEMA,
@@ -1183,7 +1205,7 @@ fn load_verified_evidence_package(input: &Path) -> Result<EvidenceImportPackage,
     verify_manifest_file_hashes(input, &manifest)?;
     let query: EvidenceExportQuery = read_json_file(input, "query.json")?;
     if query != manifest.query {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "query.json does not match the evidence manifest query".to_string(),
         ));
     }
@@ -1290,7 +1312,7 @@ pub(crate) fn build_federated_share_import(
     package: &EvidenceImportPackage,
 ) -> Result<chio_kernel::FederatedEvidenceShareImport, CliError> {
     let federation_policy = package.federation_policy.as_ref().ok_or_else(|| {
-        CliError::Other(
+        CliError::attest_error(
             "evidence import requires a signed attached federation policy so remote receipt sharing stays bilateral and explicit".to_string(),
         )
     })?;
@@ -1493,13 +1515,13 @@ pub fn cmd_evidence_federation_policy_create(
     let keypair = load_or_create_authority_keypair(args.signing_seed_file)?;
     let created_at = unix_now();
     if created_at > args.expires_at {
-        return Err(CliError::Other(
+        return Err(CliError::attest_error(
             "--expires-at must be greater than or equal to the current Unix timestamp".to_string(),
         ));
     }
     if let (Some(since), Some(until)) = (args.since, args.until) {
         if since > until {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "federation policy since must be less than or equal to until".to_string(),
             ));
         }
@@ -1573,7 +1595,7 @@ pub fn cmd_evidence_export(
 
     let response = match (receipt_db, control_url) {
         (Some(_), Some(_)) => {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "use either --receipt-db or --control-url for evidence export, not both"
                     .to_string(),
             ));
@@ -1600,7 +1622,7 @@ pub fn cmd_evidence_export(
             })?
         }
         (None, None) => {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "evidence export requires either --receipt-db <path> or --control-url <url>"
                     .to_string(),
             ));
@@ -1628,7 +1650,7 @@ pub fn cmd_evidence_import(
 
     let share = match (receipt_db, control_url) {
         (Some(_), Some(_)) => {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "use either --receipt-db or --control-url for evidence import, not both"
                     .to_string(),
             ));
@@ -1645,7 +1667,7 @@ pub fn cmd_evidence_import(
                 .share
         }
         (None, None) => {
-            return Err(CliError::Other(
+            return Err(CliError::attest_error(
                 "evidence import requires either --receipt-db <path> or --control-url <url>"
                     .to_string(),
             ));
@@ -1676,7 +1698,7 @@ pub fn cmd_evidence_verify(input: &Path, json_output: bool) -> Result<(), CliErr
             summary,
         )
         .map_err(|error| {
-            CliError::Other(format!(
+            CliError::attest_error(format!(
                 "checkpoint transparency verification failed: {error}"
             ))
         })?,
@@ -1758,6 +1780,55 @@ mod tests {
         EvidenceChildReceiptScope, EvidenceExportBundle, EvidenceExportQuery,
         EvidenceRetentionMetadata, EvidenceToolReceiptRecord,
     };
+
+    fn assert_registry_error(err: &CliError, expected_code: &str, expected_domain: &str) {
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), expected_code);
+                assert_eq!(chio.domain().as_str(), expected_domain);
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    fn unique_test_dir(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "chio-evidence-{name}-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn output_path_file_uses_cli_domain() {
+        let temp = unique_test_dir("file-output");
+        std::fs::create_dir_all(&temp).expect("create temp dir");
+        let output = temp.join("evidence-output");
+        std::fs::write(&output, b"not a directory").expect("write output file");
+
+        let error = ensure_clean_output_dir(&output).expect_err("file output path should fail");
+
+        assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn output_path_nonempty_directory_uses_cli_domain() {
+        let temp = unique_test_dir("nonempty-output");
+        std::fs::create_dir_all(&temp).expect("create temp dir");
+        let output = temp.join("evidence-output");
+        std::fs::create_dir_all(&output).expect("create output dir");
+        std::fs::write(output.join("existing.json"), b"{}").expect("write existing file");
+
+        let error =
+            ensure_clean_output_dir(&output).expect_err("non-empty output path should fail");
+
+        assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+        let _ = std::fs::remove_dir_all(&temp);
+    }
 
     fn sample_receipt() -> ChioReceipt {
         let keypair = Keypair::generate();
@@ -1976,6 +2047,25 @@ mod tests {
             error.to_string().contains("claim boundary does not match"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn transparency_claim_boundary_validation_uses_attest_domain() {
+        let bundle = sample_bundle();
+        let transparency = match validate_checkpoint_transparency_summary(&bundle.checkpoints) {
+            Ok(summary) => summary,
+            Err(error) => panic!("failed to build transparency summary: {error}"),
+        };
+        let mut claims = build_evidence_transparency_claims(&bundle, &transparency, None);
+        claims.schema = "invalid-schema".to_string();
+
+        let error = match verify_transparency_claim_boundary(Some(&claims), &bundle, &transparency)
+        {
+            Ok(()) => panic!("invalid transparency claims should fail closed"),
+            Err(error) => error,
+        };
+
+        assert_registry_error(&error, "urn:chio:error:attest:provenance-missing", "attest");
     }
 
     #[test]

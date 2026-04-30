@@ -231,6 +231,7 @@ fn run_trajectory(args: Vec<String>) -> Result<(), XtaskError> {
     }
 }
 
+#[rustfmt::skip]
 fn regen_manifest(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_only = false;
     let mut target = TrajectoryManifest::Trajectory1;
