@@ -96,6 +96,16 @@ export async function runVerdictMatrixScenarios(
       });
       continue;
     }
+    const unsupported = unsupportedRequirement(scenario.requires ?? []);
+    if (unsupported != null) {
+      outcomes.push({
+        scenario_id: scenario.id,
+        status: "unsupported",
+        expected,
+        diagnostic: `unsupported requirement \`${unsupported}\``,
+      });
+      continue;
+    }
 
     let actual: VerdictTuple;
     try {
@@ -255,6 +265,21 @@ function resolveDriverSidecarUrl(options: RunOptions): string | undefined {
     return undefined;
   }
   return explicit;
+}
+
+function unsupportedRequirement(requirements: string[]): string | undefined {
+  for (const requirement of requirements) {
+    switch (requirement) {
+      case "rust-kernel":
+      case "kernel-semantics":
+      case "typescript-node-http":
+      case "typescript-sdk":
+        break;
+      default:
+        return requirement;
+    }
+  }
+  return undefined;
 }
 
 function capabilityTokenForScenario(scenario: VerdictScenario): string {

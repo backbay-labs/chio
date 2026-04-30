@@ -221,6 +221,8 @@ struct VerdictScenario {
     schema: String,
     id: String,
     category: String,
+    #[serde(default)]
+    requires: Vec<String>,
     script: ScenarioScript,
     expected: VerdictTuple,
 }
@@ -311,6 +313,11 @@ fn evaluate_browser_scenario(scenario: &VerdictScenario) -> DriverOutcome {
                 scenario.script.capability_scopes.clone(),
             ),
         };
+    }
+    if let Some(unsupported) = unsupported_requirement(&scenario.requires) {
+        return DriverOutcome::Unsupported(format!(
+            "browser evaluate_pure does not support requirement `{unsupported}`"
+        ));
     }
     if scenario.category != "capability" {
         return DriverOutcome::Unsupported(format!(
@@ -409,6 +416,16 @@ fn deny_reason_code(reason: Option<&str>) -> &'static str {
     } else {
         REASON_KERNEL_INTERNAL
     }
+}
+
+fn unsupported_requirement(requirements: &[String]) -> Option<&str> {
+    for requirement in requirements {
+        match requirement.as_str() {
+            "rust-kernel" | "kernel-semantics" | "wasm-browser-kernel" => {}
+            other => return Some(other),
+        }
+    }
+    None
 }
 
 fn make_capability(

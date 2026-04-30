@@ -13,13 +13,22 @@ const scenarioRoot = join(repoRoot, "crates/chio-conformance/verdict_matrix/scen
 
 describe("verdict matrix TypeScript node-http driver", () => {
   it("reports scenarios as unsupported without a live sidecar", async () => {
-    const outcomes = await runVerdictMatrixScenarios(scenarioRoot);
-    const unsupported = outcomes.filter((outcome) => outcome.status === "unsupported");
-    const failures = outcomes.filter((outcome) => outcome.status === "fail");
+    const previousMatrixSidecarUrl = process.env.CHIO_VERDICT_MATRIX_SIDECAR_URL;
+    const previousSidecarUrl = process.env.CHIO_SIDECAR_URL;
+    delete process.env.CHIO_VERDICT_MATRIX_SIDECAR_URL;
+    delete process.env.CHIO_SIDECAR_URL;
+    try {
+      const outcomes = await runVerdictMatrixScenarios(scenarioRoot);
+      const unsupported = outcomes.filter((outcome) => outcome.status === "unsupported");
+      const failures = outcomes.filter((outcome) => outcome.status === "fail");
 
-    expect(outcomes).toHaveLength(48);
-    expect(unsupported).toHaveLength(48);
-    expect(failures).toEqual([]);
+      expect(outcomes).toHaveLength(48);
+      expect(unsupported).toHaveLength(48);
+      expect(failures).toEqual([]);
+    } finally {
+      restoreEnv("CHIO_VERDICT_MATRIX_SIDECAR_URL", previousMatrixSidecarUrl);
+      restoreEnv("CHIO_SIDECAR_URL", previousSidecarUrl);
+    }
   });
 
   it("adapts neutral tool calls into node-http SDK requests", () => {
@@ -115,3 +124,11 @@ describe("verdict matrix TypeScript node-http driver", () => {
     });
   });
 });
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value == null) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
