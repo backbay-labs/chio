@@ -172,6 +172,9 @@ dcap-rs = "0.1.0"
 sev = { version = "7.1.0", default-features = false, features = ["snp", "crypto_nossl"] }
 coset = { version = "0.4.2", default-features = false }
 rand_core = { version = "0.6", features = ["getrandom"] }
+rand = "0.8"
+rand_chacha = "0.3"
+toml = "0.8"
 tracing = "0.1"
 hex = "0.4"
 base64 = "0.22"
