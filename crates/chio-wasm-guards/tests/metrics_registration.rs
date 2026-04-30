@@ -5,8 +5,10 @@ use chio_wasm_guards::{
     LABEL_HOST_FN, LABEL_OUTCOME, LABEL_REASON_CLASS, LABEL_VERDICT, METRIC_CHIO_GUARD_DENY_TOTAL,
     METRIC_CHIO_GUARD_EVAL_DURATION_SECONDS, METRIC_CHIO_GUARD_FUEL_CONSUMED_TOTAL,
     METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS, METRIC_CHIO_GUARD_MODULE_BYTES,
-    METRIC_CHIO_GUARD_RELOAD_TOTAL, METRIC_CHIO_GUARD_VERDICT_TOTAL, REASON_CLASS_LABEL_VALUES,
-    RELOAD_OUTCOME_LABEL_VALUES, VERDICT_LABEL_VALUES,
+    METRIC_CHIO_GUARD_RELOAD_TOTAL, METRIC_CHIO_GUARD_VERDICT_TOTAL,
+    METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
+    METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL, REASON_CLASS_LABEL_VALUES, RELOAD_OUTCOME_LABEL_VALUES,
+    RUNTIME_METRIC_FAMILIES, VERDICT_LABEL_VALUES,
 };
 
 fn family<'a>(families: &'a [MetricFamilyDescriptor], name: &str) -> &'a MetricFamilyDescriptor {
@@ -86,6 +88,31 @@ fn registers_locked_kinds_labels_units_and_buckets() {
     assert_eq!(module_bytes.labels, &[LABEL_GUARD_ID, LABEL_EPOCH]);
     assert_eq!(module_bytes.unit, Some("bytes"));
     assert!(module_bytes.buckets.is_empty());
+}
+
+#[test]
+fn runtime_metric_descriptors_lock_counter_names_and_units() {
+    let names = RUNTIME_METRIC_FAMILIES
+        .iter()
+        .map(|family| family.name)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        names,
+        vec![
+            METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+            METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL,
+            METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
+        ]
+    );
+
+    for name in names {
+        let descriptor = family(RUNTIME_METRIC_FAMILIES, name);
+        assert_eq!(descriptor.kind, MetricFamilyKind::Counter);
+        assert!(descriptor.labels.is_empty());
+        assert_eq!(descriptor.unit, Some("count"));
+        assert!(descriptor.buckets.is_empty());
+    }
 }
 
 #[test]
