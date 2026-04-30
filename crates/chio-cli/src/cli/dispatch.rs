@@ -2274,6 +2274,51 @@ fn main() {
                 guards::sign::cmd_guard_sign(&wasm, &key, &name, &version)
             }
             GuardCommands::Verify { wasm } => guards::sign::cmd_guard_verify(&wasm),
+            GuardCommands::Market { command } => match command {
+                GuardMarketCommands::List {
+                    catalog,
+                    tenant,
+                    tier,
+                    currency,
+                    json,
+                } => cmd_market_list(&catalog, &tenant, &tier, &currency, json || json_output),
+                GuardMarketCommands::Info {
+                    catalog,
+                    reference,
+                    tenant,
+                    tier,
+                    currency,
+                    publisher_revoked,
+                    json,
+                } => cmd_market_info(
+                    &catalog,
+                    &reference,
+                    &tenant,
+                    &tier,
+                    &currency,
+                    publisher_revoked,
+                    json || json_output,
+                ),
+                GuardMarketCommands::Install {
+                    catalog,
+                    bundle_dir,
+                    reference,
+                    tenant,
+                    tier,
+                    currency,
+                    publisher_revoked,
+                    json,
+                } => cmd_market_install(
+                    &catalog,
+                    &bundle_dir,
+                    &reference,
+                    &tenant,
+                    &tier,
+                    &currency,
+                    publisher_revoked,
+                    json || json_output,
+                ),
+            },
         },
         Commands::Conformance { command } => match command {
             ConformanceCommands::Run {
@@ -2371,4 +2416,121 @@ fn write_cli_error(
         writeln!(writer, "context: {}", report.context)?;
         writeln!(writer, "suggested fix: {}", report.suggested_fix)
     }
+}
+
+fn parse_market_tier(value: &str) -> Result<chio_reputation::ReputationTier, CliError> {
+    match value {
+        "tier0" | "tier_0" => Ok(chio_reputation::ReputationTier::Tier0),
+        "tier1" | "tier_1" => Ok(chio_reputation::ReputationTier::Tier1),
+        "tier2" | "tier_2" => Ok(chio_reputation::ReputationTier::Tier2),
+        "tier3" | "tier_3" => Ok(chio_reputation::ReputationTier::Tier3),
+        other => Err(CliError::Other(format!(
+            "unknown reputation tier '{other}'; expected tier0..tier3"
+        ))),
+    }
+}
+
+fn cmd_market_list(
+    catalog: &Path,
+    tenant: &str,
+    tier_str: &str,
+    currency: &str,
+    json: bool,
+) -> Result<(), CliError> {
+    let tier = parse_market_tier(tier_str)?;
+    let context = market::MarketTenantContext {
+        tenant_id: tenant.to_owned(),
+        tier,
+        currency: currency.to_owned(),
+    };
+    let report = market::market_list(catalog, &context)
+        .map_err(|err| CliError::Other(format!("market list: {err}")))?;
+    if json {
+        let bytes = serde_json::to_vec_pretty(&report)
+            .map_err(|err| CliError::Other(format!("market list serialize: {err}")))?;
+        std::io::Write::write_all(&mut std::io::stdout(), &bytes)
+            .map_err(|err| CliError::Other(format!("market list write: {err}")))?;
+        std::io::Write::write_all(&mut std::io::stdout(), b"\n")
+            .map_err(|err| CliError::Other(format!("market list write: {err}")))?;
+    } else {
+        let table = market::render_list_table(&report);
+        std::io::Write::write_all(&mut std::io::stdout(), table.as_bytes())
+            .map_err(|err| CliError::Other(format!("market list write: {err}")))?;
+    }
+    Ok(())
+}
+
+fn cmd_market_info(
+    catalog: &Path,
+    reference: &str,
+    tenant: &str,
+    tier_str: &str,
+    currency: &str,
+    publisher_revoked: bool,
+    json: bool,
+) -> Result<(), CliError> {
+    let tier = parse_market_tier(tier_str)?;
+    let context = market::MarketTenantContext {
+        tenant_id: tenant.to_owned(),
+        tier,
+        currency: currency.to_owned(),
+    };
+    let report = market::market_info(catalog, &context, reference, publisher_revoked)
+        .map_err(|err| CliError::Other(format!("market info: {err}")))?;
+    if json {
+        let bytes = serde_json::to_vec_pretty(&report)
+            .map_err(|err| CliError::Other(format!("market info serialize: {err}")))?;
+        std::io::Write::write_all(&mut std::io::stdout(), &bytes)
+            .map_err(|err| CliError::Other(format!("market info write: {err}")))?;
+        std::io::Write::write_all(&mut std::io::stdout(), b"\n")
+            .map_err(|err| CliError::Other(format!("market info write: {err}")))?;
+    } else {
+        let text = market::render_info_text(&report);
+        std::io::Write::write_all(&mut std::io::stdout(), text.as_bytes())
+            .map_err(|err| CliError::Other(format!("market info write: {err}")))?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_market_install(
+    catalog: &Path,
+    bundle_dir: &Path,
+    reference: &str,
+    tenant: &str,
+    tier_str: &str,
+    currency: &str,
+    publisher_revoked: bool,
+    json: bool,
+) -> Result<(), CliError> {
+    let tier = parse_market_tier(tier_str)?;
+    let context = market::MarketTenantContext {
+        tenant_id: tenant.to_owned(),
+        tier,
+        currency: currency.to_owned(),
+    };
+    let record =
+        market::market_install(catalog, bundle_dir, &context, reference, publisher_revoked)
+            .map_err(|err| CliError::Other(format!("market install: {err}")))?;
+    if json {
+        let bytes = serde_json::to_vec_pretty(&record)
+            .map_err(|err| CliError::Other(format!("market install serialize: {err}")))?;
+        std::io::Write::write_all(&mut std::io::stdout(), &bytes)
+            .map_err(|err| CliError::Other(format!("market install write: {err}")))?;
+        std::io::Write::write_all(&mut std::io::stdout(), b"\n")
+            .map_err(|err| CliError::Other(format!("market install write: {err}")))?;
+    } else {
+        let line = format!(
+            "installed {} for tenant {} at {} {} (limit {} {})\n",
+            record.reference,
+            record.tenant_id,
+            record.registered_price_units,
+            record.registered_price_currency,
+            record.credit_limit_units,
+            record.credit_limit_currency,
+        );
+        std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes())
+            .map_err(|err| CliError::Other(format!("market install write: {err}")))?;
+    }
+    Ok(())
 }

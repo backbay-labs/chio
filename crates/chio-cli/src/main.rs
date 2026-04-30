@@ -22,6 +22,7 @@ mod did;
 mod doctor;
 mod guard;
 mod guards;
+mod market;
 mod passport;
 mod policies;
 mod scaffold;

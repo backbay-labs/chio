@@ -18,10 +18,11 @@ default = []
 # trajectory-1 M06 cosign-gated publish and pull paths keep working
 # unchanged. Enabling this feature in M09 P4 wires the marketplace
 # discovery surface; P0 lands the gate only.
-marketplace = []
+marketplace = ["dep:chio-reputation"]
 
 [dependencies]
 chio-attest-verify = { path = "../chio-attest-verify" }
+chio-reputation = { path = "../chio-reputation", optional = true }
 oci-distribution = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

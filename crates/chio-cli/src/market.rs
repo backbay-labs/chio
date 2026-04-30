@@ -1,0 +1,593 @@
+//! `arc guard market {list,info,install}` CLI subcommands (M09 P4.T4-T6).
+//!
+//! The marketplace surface reuses the chio-guard-registry pull path
+//! (trajectory-1 M06) for fetching artifacts. Listing and info read from
+//! a local marketplace catalog file ("the catalog") that records, for
+//! each guard ref, the manifest fields landed in M09.P4.T1
+//! (`GuardPrice`, `ReputationTier`) plus a recent settlement summary
+//! emitted by the M09 P2 settlement observer.
+//!
+//! The catalog format is intentionally simple: a JSON array of
+//! [`MarketCatalogEntry`] under the path resolved by
+//! `arc guard market --catalog <PATH>`. The end-to-end demo test
+//! (M09.P4.T7) writes this catalog directly. A production deployment
+//! refreshes the catalog by walking the OCI registry and indexing
+//! manifests; that loop is deliberately out of scope for this phase.
+//!
+//! Three contracts the marketplace preserves:
+//!
+//! - Discovery is gated by tenant reputation tier; publication is
+//!   gated by the existing trajectory-1 M06 cosign bundle path. Tier
+//!   gating filters output but never weakens cosign verification.
+//! - `install` consults the M04 revocation oracle by way of the
+//!   underwriting credit-limit helper; `publisher_revoked = true`
+//!   denies regardless of tier.
+//! - Re-installing the same ref is idempotent.
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use chio_appraisal::{
+    compute_marketplace_invocation_price, MarketplaceBasePrice, MarketplacePricingContext,
+    MarketplaceReputationTier,
+};
+use chio_guard_registry::{GuardPrice, MARKETPLACE_BLOCK_KEY};
+use chio_reputation::ReputationTier;
+use chio_underwriting::{
+    compute_marketplace_credit_limit, MarketplaceCreditLimitRequest, MarketplaceLimitTier,
+};
+use serde::{Deserialize, Serialize};
+
+/// Schema string emitted on the wire for the JSON output of
+/// `arc guard market list`.
+pub const MARKET_LIST_REPORT_SCHEMA: &str = "chio.market.list-report.v1";
+
+/// Schema string emitted on the wire for `arc guard market info` JSON.
+pub const MARKET_INFO_REPORT_SCHEMA: &str = "chio.market.info-report.v1";
+
+/// Schema string emitted on the wire for `arc guard market install` JSON.
+pub const MARKET_INSTALL_REPORT_SCHEMA: &str = "chio.market.install-report.v1";
+
+/// One entry in the local marketplace catalog.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MarketCatalogEntry {
+    /// Digest-pinned OCI ref, for example
+    /// `oci://ghcr.io/chio/pii-mask@sha256:...`.
+    pub reference: String,
+    /// Human-readable name shown in the TTY table.
+    pub name: String,
+    /// Manifest base price (per the marketplace block landed in P4.T1).
+    pub price: GuardPrice,
+    /// Reputation floor required to discover this guard.
+    pub reputation_floor: ReputationTier,
+    /// Cosign bundle status surfaced for `info`. Pre-rendered as a
+    /// short verdict string so the catalog stays decoupled from
+    /// chio-attest-verify.
+    #[serde(default)]
+    pub cosign_status: String,
+    /// Recent settlement summary count for the tenant, surfaced by
+    /// `info`. Zero when there have been no settlements yet.
+    #[serde(default)]
+    pub recent_settlement_count: u64,
+}
+
+/// Tenant context the marketplace consumes for filtering, pricing, and
+/// limit evaluation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarketTenantContext {
+    /// Tenant identifier surfaced in audit-trail JSON.
+    pub tenant_id: String,
+    /// Tenant's effective reputation tier.
+    pub tier: ReputationTier,
+    /// Currency the tenant pays in. ISO 4217.
+    pub currency: String,
+}
+
+/// Local installation record persisted by `arc guard market install`.
+///
+/// The record binds a tenant bundle entry to a (reference, price,
+/// applied_tier) triple so the kernel-level pricing machinery can
+/// charge per-invocation prices for guards in the bundle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarketInstallRecord {
+    /// Schema tag.
+    pub schema: String,
+    /// Reference that was installed.
+    pub reference: String,
+    /// Tenant who installed it.
+    pub tenant_id: String,
+    /// Per-invocation price registered for this guard at install time.
+    pub registered_price_units: u64,
+    /// Currency for the registered price.
+    pub registered_price_currency: String,
+    /// Reputation tier applied at install time.
+    pub applied_tier: ReputationTier,
+    /// Approved credit ceiling for this tenant in minor units.
+    pub credit_limit_units: u64,
+    /// Currency for the credit limit.
+    pub credit_limit_currency: String,
+    /// Whether the install was a fresh write or a no-op idempotent
+    /// re-install. The CLI surfaces this in JSON output so callers
+    /// can assert idempotence.
+    pub idempotent_replay: bool,
+}
+
+/// Errors raised by the market subcommands.
+#[derive(Debug, thiserror::Error)]
+pub enum MarketError {
+    #[error("market catalog read failed: {0}")]
+    CatalogIo(String),
+    #[error("market catalog parse failed: {0}")]
+    CatalogParse(String),
+    #[error("install record write failed: {0}")]
+    InstallIo(String),
+    #[error("install record serialize failed: {0}")]
+    InstallSerialize(String),
+    #[error("guard reference not present in catalog: {0}")]
+    UnknownReference(String),
+    #[error("install denied: {0}")]
+    InstallDenied(String),
+}
+
+fn read_catalog(path: &Path) -> Result<Vec<MarketCatalogEntry>, MarketError> {
+    let bytes = fs::read(path).map_err(|err| MarketError::CatalogIo(err.to_string()))?;
+    let entries: Vec<MarketCatalogEntry> = serde_json::from_slice(&bytes)
+        .map_err(|err| MarketError::CatalogParse(err.to_string()))?;
+    Ok(entries)
+}
+
+fn tier_to_pricing(tier: ReputationTier) -> MarketplaceReputationTier {
+    match tier {
+        ReputationTier::Tier0 => MarketplaceReputationTier::Tier0,
+        ReputationTier::Tier1 => MarketplaceReputationTier::Tier1,
+        ReputationTier::Tier2 => MarketplaceReputationTier::Tier2,
+        ReputationTier::Tier3 => MarketplaceReputationTier::Tier3,
+    }
+}
+
+fn tier_to_limit(tier: ReputationTier) -> MarketplaceLimitTier {
+    match tier {
+        ReputationTier::Tier0 => MarketplaceLimitTier::Tier0,
+        ReputationTier::Tier1 => MarketplaceLimitTier::Tier1,
+        ReputationTier::Tier2 => MarketplaceLimitTier::Tier2,
+        ReputationTier::Tier3 => MarketplaceLimitTier::Tier3,
+    }
+}
+
+fn satisfies_floor(tenant: ReputationTier, required: ReputationTier) -> bool {
+    tenant >= required
+}
+
+/// Output of [`market_list`]: stable, sorted, machine-readable view of
+/// the visible catalog plus per-entry effective price for the tenant.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MarketListReport {
+    pub schema: String,
+    pub tenant_id: String,
+    pub tenant_tier: ReputationTier,
+    pub entries: Vec<MarketListEntry>,
+}
+
+/// One row of [`MarketListReport`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MarketListEntry {
+    pub reference: String,
+    pub name: String,
+    pub effective_price_units: u64,
+    pub currency: String,
+    pub reputation_floor: ReputationTier,
+}
+
+/// Filter the catalog by tenant reputation tier and emit a stable,
+/// sorted list view.
+pub fn market_list(
+    catalog_path: &Path,
+    tenant: &MarketTenantContext,
+) -> Result<MarketListReport, MarketError> {
+    let entries = read_catalog(catalog_path)?;
+    let mut visible: Vec<MarketListEntry> = entries
+        .into_iter()
+        .filter(|entry| satisfies_floor(tenant.tier, entry.reputation_floor))
+        .map(|entry| {
+            let price = compute_marketplace_invocation_price(
+                &MarketplaceBasePrice::new(entry.price.units, entry.price.currency.clone()),
+                &MarketplacePricingContext::new(&tenant.tenant_id, tier_to_pricing(tenant.tier)),
+            );
+            MarketListEntry {
+                reference: entry.reference,
+                name: entry.name,
+                effective_price_units: price.units,
+                currency: price.currency,
+                reputation_floor: entry.reputation_floor,
+            }
+        })
+        .collect();
+    visible.sort_by(|a, b| a.reference.cmp(&b.reference));
+
+    Ok(MarketListReport {
+        schema: MARKET_LIST_REPORT_SCHEMA.to_owned(),
+        tenant_id: tenant.tenant_id.clone(),
+        tenant_tier: tenant.tier,
+        entries: visible,
+    })
+}
+
+/// Output of [`market_info`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MarketInfoReport {
+    pub schema: String,
+    pub reference: String,
+    pub name: String,
+    pub effective_price_units: u64,
+    pub currency: String,
+    pub reputation_floor: ReputationTier,
+    pub cosign_status: String,
+    pub recent_settlement_count: u64,
+    pub credit_limit_units: u64,
+    pub credit_limit_currency: String,
+}
+
+/// Show the current marketplace state for one digest-pinned reference.
+pub fn market_info(
+    catalog_path: &Path,
+    tenant: &MarketTenantContext,
+    reference: &str,
+    publisher_revoked: bool,
+) -> Result<MarketInfoReport, MarketError> {
+    let entries = read_catalog(catalog_path)?;
+    let entry = entries
+        .into_iter()
+        .find(|entry| entry.reference == reference)
+        .ok_or_else(|| MarketError::UnknownReference(reference.to_owned()))?;
+
+    let price = compute_marketplace_invocation_price(
+        &MarketplaceBasePrice::new(entry.price.units, entry.price.currency.clone()),
+        &MarketplacePricingContext::new(&tenant.tenant_id, tier_to_pricing(tenant.tier)),
+    );
+
+    let limit = compute_marketplace_credit_limit(&MarketplaceCreditLimitRequest {
+        tenant_id: tenant.tenant_id.clone(),
+        reputation_tier: tier_to_limit(tenant.tier),
+        currency: tenant.currency.clone(),
+        publisher_revoked,
+    });
+
+    Ok(MarketInfoReport {
+        schema: MARKET_INFO_REPORT_SCHEMA.to_owned(),
+        reference: entry.reference,
+        name: entry.name,
+        effective_price_units: price.units,
+        currency: price.currency,
+        reputation_floor: entry.reputation_floor,
+        cosign_status: entry.cosign_status,
+        recent_settlement_count: entry.recent_settlement_count,
+        credit_limit_units: limit.limit_units,
+        credit_limit_currency: limit.currency,
+    })
+}
+
+/// Bind a pulled guard to the tenant bundle and registered price.
+///
+/// Idempotent: invoking install twice with the same `(tenant, reference)`
+/// produces a record byte-identical to the first invocation, modulo the
+/// `idempotent_replay` flag flipping to `true` on the second call.
+pub fn market_install(
+    catalog_path: &Path,
+    bundle_dir: &Path,
+    tenant: &MarketTenantContext,
+    reference: &str,
+    publisher_revoked: bool,
+) -> Result<MarketInstallRecord, MarketError> {
+    let entries = read_catalog(catalog_path)?;
+    let entry = entries
+        .into_iter()
+        .find(|entry| entry.reference == reference)
+        .ok_or_else(|| MarketError::UnknownReference(reference.to_owned()))?;
+
+    if !satisfies_floor(tenant.tier, entry.reputation_floor) {
+        return Err(MarketError::InstallDenied(format!(
+            "tenant tier {:?} below required floor {:?}",
+            tenant.tier, entry.reputation_floor
+        )));
+    }
+
+    let price = compute_marketplace_invocation_price(
+        &MarketplaceBasePrice::new(entry.price.units, entry.price.currency.clone()),
+        &MarketplacePricingContext::new(&tenant.tenant_id, tier_to_pricing(tenant.tier)),
+    );
+
+    let limit = compute_marketplace_credit_limit(&MarketplaceCreditLimitRequest {
+        tenant_id: tenant.tenant_id.clone(),
+        reputation_tier: tier_to_limit(tenant.tier),
+        currency: tenant.currency.clone(),
+        publisher_revoked,
+    });
+    if limit.limit_units == 0 {
+        return Err(MarketError::InstallDenied(format!(
+            "credit limit denied: {}",
+            limit.reason
+        )));
+    }
+
+    fs::create_dir_all(bundle_dir).map_err(|err| MarketError::InstallIo(err.to_string()))?;
+    let install_path = install_record_path(bundle_dir, &tenant.tenant_id, reference);
+    let idempotent_replay = install_path.exists();
+
+    let record = MarketInstallRecord {
+        schema: MARKET_INSTALL_REPORT_SCHEMA.to_owned(),
+        reference: entry.reference,
+        tenant_id: tenant.tenant_id.clone(),
+        registered_price_units: price.units,
+        registered_price_currency: price.currency.clone(),
+        applied_tier: tenant.tier,
+        credit_limit_units: limit.limit_units,
+        credit_limit_currency: limit.currency,
+        idempotent_replay,
+    };
+
+    let bytes = serde_json::to_vec_pretty(&record)
+        .map_err(|err| MarketError::InstallSerialize(err.to_string()))?;
+    let mut tmp =
+        tempfile_in(bundle_dir).map_err(|err| MarketError::InstallIo(err.to_string()))?;
+    tmp.write_all(&bytes)
+        .map_err(|err| MarketError::InstallIo(err.to_string()))?;
+    tmp.persist(&install_path)
+        .map_err(|err| MarketError::InstallIo(err.to_string()))?;
+
+    Ok(record)
+}
+
+fn install_record_path(bundle_dir: &Path, tenant_id: &str, reference: &str) -> PathBuf {
+    let mut name = String::with_capacity(tenant_id.len() + reference.len() + 8);
+    name.push_str(tenant_id);
+    name.push('-');
+    for byte in reference.bytes() {
+        if byte.is_ascii_alphanumeric() {
+            name.push(char::from(byte));
+        } else {
+            name.push('_');
+        }
+    }
+    name.push_str(".json");
+    bundle_dir.join(name)
+}
+
+fn tempfile_in(dir: &Path) -> std::io::Result<TempPersist> {
+    let mut path = dir.to_path_buf();
+    path.push(format!(".market-install-{}.tmp", uuid_like()));
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)?;
+    Ok(TempPersist { file, path })
+}
+
+fn uuid_like() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{nanos:032x}")
+}
+
+struct TempPersist {
+    file: fs::File,
+    path: PathBuf,
+}
+
+impl TempPersist {
+    fn write_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.file.write_all(bytes)?;
+        self.file.sync_all()?;
+        Ok(())
+    }
+
+    fn persist(self, dest: &Path) -> std::io::Result<()> {
+        drop(self.file);
+        fs::rename(&self.path, dest)?;
+        Ok(())
+    }
+}
+
+/// Render a `MarketListReport` as a TTY-friendly text table.
+#[must_use]
+pub fn render_list_table(report: &MarketListReport) -> String {
+    let mut output = String::new();
+    output.push_str("REFERENCE\tNAME\tPRICE\tFLOOR\n");
+    for entry in &report.entries {
+        let row = format!(
+            "{}\t{}\t{} {}\t{}\n",
+            entry.reference,
+            entry.name,
+            entry.effective_price_units,
+            entry.currency,
+            entry.reputation_floor.as_str()
+        );
+        output.push_str(&row);
+    }
+    output
+}
+
+/// Render a `MarketInfoReport` as a TTY-friendly text view.
+#[must_use]
+pub fn render_info_text(report: &MarketInfoReport) -> String {
+    let mut lines = BTreeMap::new();
+    lines.insert("reference", report.reference.clone());
+    lines.insert("name", report.name.clone());
+    lines.insert(
+        "effective_price",
+        format!("{} {}", report.effective_price_units, report.currency),
+    );
+    lines.insert(
+        "reputation_floor",
+        report.reputation_floor.as_str().to_owned(),
+    );
+    lines.insert("cosign_status", report.cosign_status.clone());
+    lines.insert(
+        "recent_settlement_count",
+        report.recent_settlement_count.to_string(),
+    );
+    lines.insert(
+        "credit_limit",
+        format!("{} {}", report.credit_limit_units, report.credit_limit_currency),
+    );
+    let mut output = String::new();
+    for (key, value) in lines {
+        output.push_str(&format!("{key}: {value}\n"));
+    }
+    output
+}
+
+/// Mark the marketplace catalog block key as referenced from this
+/// module so a future reader sees the link with the registry crate.
+pub const fn _marketplace_block_key_link() -> &'static str {
+    MARKETPLACE_BLOCK_KEY
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn write_catalog(dir: &Path, entries: &[MarketCatalogEntry]) -> PathBuf {
+        let path = dir.join("catalog.json");
+        let bytes = serde_json::to_vec_pretty(entries).expect("serialize catalog");
+        fs::write(&path, bytes).expect("write catalog");
+        path
+    }
+
+    fn fixture_entries() -> Vec<MarketCatalogEntry> {
+        vec![
+            MarketCatalogEntry {
+                reference:
+                    "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                        .to_owned(),
+                name: "pii-mask".to_owned(),
+                price: GuardPrice::new(1_000, "USD"),
+                reputation_floor: ReputationTier::Tier0,
+                cosign_status: "verified".to_owned(),
+                recent_settlement_count: 0,
+            },
+            MarketCatalogEntry {
+                reference:
+                    "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+                        .to_owned(),
+                name: "exfil-blocker".to_owned(),
+                price: GuardPrice::new(500, "USD"),
+                reputation_floor: ReputationTier::Tier2,
+                cosign_status: "verified".to_owned(),
+                recent_settlement_count: 0,
+            },
+        ]
+    }
+
+    fn tenant_ctx(tier: ReputationTier) -> MarketTenantContext {
+        MarketTenantContext {
+            tenant_id: "tenant-a".to_owned(),
+            tier,
+            currency: "USD".to_owned(),
+        }
+    }
+
+    #[test]
+    fn list_filters_by_reputation_tier() {
+        let dir = tempdir().expect("tmpdir");
+        let path = write_catalog(dir.path(), &fixture_entries());
+        let report = market_list(&path, &tenant_ctx(ReputationTier::Tier0))
+            .expect("list runs");
+        assert_eq!(report.entries.len(), 1);
+        assert_eq!(report.entries[0].name, "pii-mask");
+    }
+
+    #[test]
+    fn list_includes_higher_floor_for_higher_tier() {
+        let dir = tempdir().expect("tmpdir");
+        let path = write_catalog(dir.path(), &fixture_entries());
+        let report = market_list(&path, &tenant_ctx(ReputationTier::Tier3))
+            .expect("list runs");
+        assert_eq!(report.entries.len(), 2);
+        // Sorted lexically by reference.
+        assert!(report.entries[0].reference < report.entries[1].reference);
+    }
+
+    #[test]
+    fn info_emits_effective_price_and_credit_limit() {
+        let dir = tempdir().expect("tmpdir");
+        let path = write_catalog(dir.path(), &fixture_entries());
+        let report = market_info(
+            &path,
+            &tenant_ctx(ReputationTier::Tier1),
+            "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            false,
+        )
+        .expect("info runs");
+        // Tier1 -> 5% discount, 1000 -> 950.
+        assert_eq!(report.effective_price_units, 950);
+        assert_eq!(report.credit_limit_units, 50_000);
+        assert_eq!(report.cosign_status, "verified");
+    }
+
+    #[test]
+    fn info_unknown_reference_errors() {
+        let dir = tempdir().expect("tmpdir");
+        let path = write_catalog(dir.path(), &fixture_entries());
+        let result = market_info(
+            &path,
+            &tenant_ctx(ReputationTier::Tier1),
+            "oci://ghcr.io/chio/missing@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            false,
+        );
+        assert!(matches!(result, Err(MarketError::UnknownReference(_))));
+    }
+
+    #[test]
+    fn install_is_idempotent_on_replay() {
+        let dir = tempdir().expect("tmpdir");
+        let catalog = write_catalog(dir.path(), &fixture_entries());
+        let bundle = dir.path().join("bundle");
+        let tenant = tenant_ctx(ReputationTier::Tier1);
+        let reference =
+            "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+        let first = market_install(&catalog, &bundle, &tenant, reference, false)
+            .expect("install runs");
+        assert!(!first.idempotent_replay);
+        assert_eq!(first.registered_price_units, 950);
+        assert_eq!(first.credit_limit_units, 50_000);
+
+        let second = market_install(&catalog, &bundle, &tenant, reference, false)
+            .expect("re-install runs");
+        assert!(second.idempotent_replay);
+        assert_eq!(second.registered_price_units, first.registered_price_units);
+    }
+
+    #[test]
+    fn install_denied_below_floor() {
+        let dir = tempdir().expect("tmpdir");
+        let catalog = write_catalog(dir.path(), &fixture_entries());
+        let bundle = dir.path().join("bundle");
+        let tenant = tenant_ctx(ReputationTier::Tier0);
+        let reference =
+            "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222";
+
+        let result = market_install(&catalog, &bundle, &tenant, reference, false);
+        assert!(matches!(result, Err(MarketError::InstallDenied(_))));
+    }
+
+    #[test]
+    fn install_denied_when_publisher_revoked() {
+        let dir = tempdir().expect("tmpdir");
+        let catalog = write_catalog(dir.path(), &fixture_entries());
+        let bundle = dir.path().join("bundle");
+        let tenant = tenant_ctx(ReputationTier::Tier3);
+        let reference =
+            "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222";
+
+        let result = market_install(&catalog, &bundle, &tenant, reference, true);
+        assert!(matches!(result, Err(MarketError::InstallDenied(_))));
+    }
+}
