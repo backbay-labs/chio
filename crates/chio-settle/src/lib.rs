@@ -11,6 +11,7 @@ mod automation;
 mod ccip;
 mod config;
 mod evm;
+mod hook;
 mod observe;
 mod ops;
 mod payments;
@@ -45,6 +46,10 @@ pub use evm::{
     EvmSignature, EvmTransactionReceipt, PreparedBondExpiry, PreparedBondImpair, PreparedBondLock,
     PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval, PreparedEscrowCreate,
     PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
+};
+pub use hook::{
+    SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome,
+    SETTLEMENT_OBSERVATION_SCHEMA, SETTLEMENT_OUTCOME_SCHEMA,
 };
 pub use observe::{
     inspect_finality, inspect_finality_for_receipt, observe_bond, project_escrow_execution_receipt,
