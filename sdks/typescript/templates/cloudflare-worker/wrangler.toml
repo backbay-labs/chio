@@ -1,0 +1,15 @@
+name = "chio-cloudflare-worker-template"
+main = "src/index.ts"
+compatibility_date = "2026-04-30"
+compatibility_flags = ["nodejs_compat"]
+
+# The receipt sink defaults to a local Workers KV namespace. The TTFRH
+# bench provisions an ephemeral binding through `wrangler dev`; production
+# deployments rebind RECEIPTS_KV to a durable namespace.
+[[kv_namespaces]]
+binding = "RECEIPTS_KV"
+id = "REPLACE_WITH_LOCAL_KV_ID"
+preview_id = "REPLACE_WITH_PREVIEW_KV_ID"
+
+[vars]
+CHIO_TELEMETRY_FREE_FIRST_RUN = "true"

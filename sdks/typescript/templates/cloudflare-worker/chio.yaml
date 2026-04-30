@@ -1,0 +1,22 @@
+# Chio template manifest for cloudflare-worker.
+# Consumed by `npx create-chio-app cloudflare-worker` and by the
+# bench/ttfrh runner that enforces the < 60 s p99 TTFRH budget.
+
+template: cloudflare-worker
+runtime: workers
+description: |
+  Cloudflare Worker consuming @chio-protocol/workers and
+  @chio/ai-sdk-middleware. Receipts persist to a local KV namespace by
+  default; production rebinds RECEIPTS_KV to a durable namespace.
+
+telemetry_free: true
+allowed_hosts: []
+
+ttfrh:
+  bench: bench/ttfrh/runners/cloudflare_worker.rs
+  budget_ms: 60000
+  buffer_pct: 10
+
+bootstrap:
+  install: "bun install --frozen-lockfile"
+  build: "bun run build"
