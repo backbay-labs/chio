@@ -68,6 +68,7 @@ fn main() {
             ),
         },
         Commands::Mcp { command } => match command {
+            McpCommands::Wrap(args) => cmd_mcp_wrap(&args),
             McpCommands::Serve {
                 policy,
                 preset,

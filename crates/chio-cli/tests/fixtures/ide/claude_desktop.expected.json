@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "demo": {
+      "args": [
+        "mcp",
+        "wrap",
+        "--server-id",
+        "demo",
+        "--",
+        "node",
+        "server.js"
+      ],
+      "chio_schema": "anthropic.mcp/2024-12",
+      "command": "chio"
+    }
+  }
+}

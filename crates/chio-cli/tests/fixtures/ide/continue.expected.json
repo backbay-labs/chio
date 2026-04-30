@@ -1,0 +1,20 @@
+{
+  "mcpServers": [
+    {
+      "args": [
+        "mcp",
+        "wrap",
+        "--server-id",
+        "demo",
+        "--",
+        "node",
+        "server.js"
+      ],
+      "chio": {
+        "schema": "continue.mcpServers/2025-01"
+      },
+      "command": "chio",
+      "name": "Demo MCP"
+    }
+  ]
+}

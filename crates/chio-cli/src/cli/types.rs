@@ -557,6 +557,14 @@ enum GuardBlocklistCommands {
 
 #[derive(Subcommand)]
 enum McpCommands {
+    /// Wrap a stdio MCP server with verdict gating and emit IDE configs.
+    ///
+    /// Trajectory-2 M07 P2 surface. Spawns the wrapped server, gates each
+    /// `tools/call` through the manifest scaffold, and (when
+    /// `--emit-config` is set) prints a paste-ready blob for Cursor /
+    /// Claude Desktop / Continue / Zed.
+    Wrap(McpWrapArgs),
+
     /// Wrap an MCP server subprocess and expose a secured MCP edge over stdio.
     Serve {
         /// Path to the policy YAML file. Mutually exclusive with `--preset`.

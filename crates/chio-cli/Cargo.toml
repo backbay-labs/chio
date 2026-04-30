@@ -59,6 +59,7 @@ base64 = "0.22"
 reqwest = { workspace = true, features = ["blocking", "form", "json", "query", "rustls"] }
 ureq = { version = "2.10", features = ["json"] }
 serde_urlencoded = "0.7"
+toml = "0.8"
 rusqlite = { workspace = true }
 chio-siem = { path = "../chio-siem", optional = true }
 tower-http = { version = "0.6", features = ["fs", "set-header"] }
