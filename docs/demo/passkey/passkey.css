@@ -1,0 +1,32 @@
+/*
+ * docs/demo/passkey overrides. Inherits the engineering-output banner and
+ * .demo layout from ../styles.css; this file only adds the controls strip
+ * and revocation-state styling.
+ */
+
+.controls {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+.controls button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border: 1px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+}
+
+.controls button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-state='ok'] {
+  color: #1a7f37;
+}
+
+[data-state='fail'] {
+  color: #b42318;
+}

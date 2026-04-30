@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chio passkey custody demo (engineering output)</title>
+    <meta
+      name="description"
+      content="Engineering demo: presents a WebAuthn passkey assertion to a Chio issuer and exercises the audience-pinned PasskeyCapability flow."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="./passkey.css" />
+  </head>
+  <body>
+    <!--
+      Banner contract: see .planning/trajectory/08-browser-edge-sdk.md, "Demo
+      path lock". The text and DOM shape are normative; do not paraphrase.
+      Playwright / bun e2e asserts the banner is visible above the fold on a
+      1080p viewport and that it is the first child of <body>.
+    -->
+    <div role="note" class="engineering-output-banner" data-testid="engineering-output-banner">
+      This page is engineering output, not a release. It demonstrates the
+      @chio/passkey browser-to-issuer flow: a passkey assertion is presented
+      to a Chio issuer that mints an audience-pinned PasskeyCapability. The
+      browser holds zero key material and never signs anything. It is not a
+      substitute for an audited release of the SDK.
+    </div>
+
+    <main class="demo">
+      <header>
+        <h1>Chio passkey custody (browser)</h1>
+        <p class="subtitle">
+          Calls <code>navigator.credentials.get</code> for an issuer-bound
+          challenge, POSTs the assertion to the issuer, and renders the
+          minted <code>PasskeyCapability</code>. Then revokes the credential
+          at the issuer test-double and replays the kernel call to show the
+          revocation cascade through the M04 oracle.
+        </p>
+      </header>
+
+      <section class="controls">
+        <button id="run-flow" type="button" data-testid="run-flow">
+          Run passkey flow
+        </button>
+        <button id="revoke-flow" type="button" data-testid="revoke-flow" disabled>
+          Revoke credential and replay
+        </button>
+      </section>
+
+      <section class="result" aria-label="Capability mint result">
+        <dl>
+          <dt>Audience</dt>
+          <dd id="audience" data-testid="audience">(pending)</dd>
+
+          <dt>Credential id</dt>
+          <dd id="credential-id" data-testid="credential-id" class="mono">(pending)</dd>
+
+          <dt>Scope set</dt>
+          <dd id="scope-set" data-testid="scope-set">(pending)</dd>
+
+          <dt>Issued at</dt>
+          <dd id="iat" data-testid="iat">(pending)</dd>
+
+          <dt>Expires at</dt>
+          <dd id="exp" data-testid="exp">(pending)</dd>
+
+          <dt>Kernel verdict (fresh)</dt>
+          <dd id="verdict-fresh" data-testid="verdict-fresh">(pending)</dd>
+
+          <dt>Kernel verdict (after revoke)</dt>
+          <dd id="verdict-revoked" data-testid="verdict-revoked">(pending)</dd>
+
+          <dt>Revocation cascade urn</dt>
+          <dd id="revocation-urn" data-testid="revocation-urn" class="mono">(pending)</dd>
+        </dl>
+
+        <pre id="raw-result" data-testid="raw-result" class="mono raw">(pending)</pre>
+      </section>
+
+      <footer>
+        <p class="footnote">
+          Source:
+          <a href="https://github.com/bb-connor/arc/tree/main/docs/demo/passkey">docs/demo/passkey/</a>.
+          Trust boundary:
+          <a href="../../trust-boundary-browser-signing.md">browser-signing verdict</a>
+          (rejected 2026-04-27); this demo satisfies its named evidence
+          requirements via a server-side issuer.
+        </p>
+      </footer>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
