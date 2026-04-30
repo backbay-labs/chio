@@ -9,6 +9,10 @@
 pub mod denylist;
 #[cfg(not(loom))]
 pub mod ingress;
+#[cfg(loom)]
+pub mod queue_core;
+#[cfg(not(loom))]
+mod queue_core;
 #[cfg(not(loom))]
 pub mod sink;
 
