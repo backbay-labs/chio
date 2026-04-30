@@ -143,9 +143,63 @@ find sdks -maxdepth 3 -type d | sort
 - [ ] P2: Raise each target crate to >= 80% kill rate.
 - [ ] P3: Flip mutation gate, PR comment, issue filing, skip rationale, and
   README headline.
-- [ ] P4: Add verdict-matrix harness, Rust driver, manifest, and CI.
+- [x] P4: Add verdict-matrix harness, Rust driver, manifest, and CI.
 - [ ] P5: Add Python, TypeScript, WASM browser, and Go drivers plus required
-  cross-language diff.
+  cross-language diff. Local closeout bookkeeping records a partial P5 state
+  below.
+
+## P5 Closeout Bookkeeping Snapshot
+
+Snapshot date: 2026-04-30.
+
+No mutation campaign was started for this closeout pass. Mutation status is
+limited to the per-crate baselines already recorded above and in
+`.planning/trajectory-2/mutants-baseline.toml`.
+
+### P5 Driver Status
+
+Manifest source: `.planning/trajectory-2/tickets/M02/P5.yml`.
+
+Live-file source: `crates/chio-conformance/verdict_matrix/manifest.toml`,
+`docs/conformance/verdict-matrix.md`, `.github/workflows/verdict-matrix.yml`,
+and driver/test paths listed by each P5 ticket.
+
+| Ticket | Manifest status | Local closeout status | Evidence |
+|--------|-----------------|-----------------------|----------|
+| `M02.P5.T1` | `merged` | Present, partial-capability only | `drivers/python/run_scenarios.py` and `sdks/python/chio-sdk-python/tests/test_verdict_matrix.py` exist. `manifest.toml` records `python-sdk` as `partial-capability`, and the doc says only capability-subset scenarios emit actual tuples locally. |
+| `M02.P5.T2` | `merged` | Not satisfied locally | `drivers/typescript/run_scenarios.ts` and `sdks/typescript/packages/conformance/test/verdict_matrix.test.ts` are absent in this worktree. |
+| `M02.P5.T3` | `pending` | Not satisfied locally | `drivers/wasm-browser/run.sh` and `crates/chio-kernel-browser/tests/verdict_matrix_wasm.rs` are absent in this worktree. |
+| `M02.P5.T4` | `pending` | Present as unsupported metadata only | `drivers/go/run_scenarios.go` and `sdks/go/chio-go-http/verdict_matrix_test.go` exist, but `manifest.toml` records `go-http-sdk` as `unsupported-no-local-verdict-emitter`. |
+| `M02.P5.T5` | `pending` | Not satisfied locally | `crates/chio-conformance/verdict_matrix/src/cross_language.rs` and `tests/verdict_matrix_cross_language.rs` are absent. The workflow has only Rust-kernel jobs, with required-on-divergence metadata pending. |
+| `M02.P5.T6` | `pending` | Bookkeeping satisfied, dependency still pending | The corpus hash is pinned in `manifest.toml` as `corpus_sha256`, and the docs now contain the corpus rotation process. The ticket still depends on `M02.P5.T5`, which is not locally satisfied. |
+
+### Active Corpus Closeout
+
+| Corpus field | Value |
+|--------------|-------|
+| Scenario count | 48 |
+| `capability_subset` | 12 |
+| `revocation_propagation` | 12 |
+| `replay_verdict` | 12 |
+| `redaction_determinism` | 12 |
+| `scenario_index_hash` | `sha256:47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f` |
+| `corpus_sha256` | `47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f` |
+
+The hash is the diff-oracle scenario index hash over sorted paths relative to
+`crates/chio-conformance/verdict_matrix/scenarios/`, with each row encoded as
+`relative/path.json<TAB>file_sha256<LF>`.
+
+### Rotation Process
+
+Corpus rotation is documentation and manifest bookkeeping plus test proof:
+
+1. Update only the intended JSON scenarios under
+   `crates/chio-conformance/verdict_matrix/scenarios/`.
+2. Recompute the sorted scenario index hash.
+3. Update `scenario_index_hash`, `corpus_sha256`, scenario counts, this audit,
+   and `docs/conformance/verdict-matrix.md`.
+4. Run the diff-oracle self test and any ticket-local gate for the changed
+   driver or corpus surface.
 
 ## Aggregate Mutation Baseline Status
 

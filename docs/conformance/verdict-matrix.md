@@ -22,8 +22,20 @@ over sorted relative paths and each file SHA-256 digest:
 relative/path.json<TAB>file_sha256<LF>
 ```
 
+The active `corpus_sha256` is
+`47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f`.
+
 The manifest also records the active drivers and the tuple fields asserted by
 the oracle.
+
+## Corpus rotation
+
+The corpus rotation process is intentionally narrow. A rotation changes one or
+more files under `crates/chio-conformance/verdict_matrix/scenarios/`, recomputes
+the sorted scenario index hash, updates both `scenario_index_hash` and
+`corpus_sha256` in `manifest.toml`, and updates this page plus the M02 audit
+with the new scenario count and hash. The diff-oracle self test must pass before
+the rotated corpus can be treated as active.
 
 ## Tuple Contract
 
