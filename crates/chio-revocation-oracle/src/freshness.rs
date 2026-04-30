@@ -31,8 +31,7 @@ impl FreshnessConfig {
 
     #[must_use]
     fn allowed_age_ms(self) -> u64 {
-        self.max_staleness_ms
-            .saturating_add(self.offline_grace_ms)
+        self.max_staleness_ms.saturating_add(self.offline_grace_ms)
     }
 }
 

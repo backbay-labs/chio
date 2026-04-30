@@ -1,6 +1,6 @@
 use chio_revocation_oracle::{
-    verify_fresh_epoch_root, EpochNonce, FreshnessConfig, InMemoryRevocationOracle,
-    RevocationKey, RevocationOracle, SubjectId,
+    verify_fresh_epoch_root, EpochNonce, FreshnessConfig, InMemoryRevocationOracle, RevocationKey,
+    RevocationOracle, SubjectId,
 };
 
 #[test]

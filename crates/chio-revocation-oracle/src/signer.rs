@@ -1,7 +1,7 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::{EpochRoot, Result, RootSignature, RevocationOracleError};
+use crate::{EpochRoot, Result, RevocationOracleError, RootSignature};
 
 pub trait EpochRootSigner {
     fn signer_id(&self) -> &str;
