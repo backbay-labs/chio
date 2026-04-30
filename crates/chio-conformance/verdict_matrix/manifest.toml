@@ -34,6 +34,18 @@ status = "unsupported-no-local-verdict-emitter"
 entrypoint = "drivers/go"
 command = "cd sdks/go/chio-go-http && go test -run VerdictMatrix ./..."
 
+[drivers.typescript-node-http]
+status = "transport-client"
+entrypoint = "drivers/typescript"
+command = "cd sdks/typescript/packages/conformance && npm test -- verdict_matrix"
+requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]
+
+[drivers.wasm-browser]
+status = "partial"
+entrypoint = "drivers/wasm-browser"
+command = "crates/chio-conformance/verdict_matrix/drivers/wasm-browser/run.sh"
+supported_categories = ["capability"]
+
 [oracle]
 tuple_fields = ["verdict", "reason_code", "scope_set"]
 reason_registry = "spec/errors/registry.yaml"

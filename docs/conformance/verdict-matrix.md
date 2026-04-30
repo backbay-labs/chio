@@ -86,6 +86,19 @@ to existing kernel surfaces:
   mapped from the strict-mode missing-nonce gate because the current kernel
   response type does not expose an error verdict.
 
+## TypeScript And Browser Driver Boundary
+
+The TypeScript node-http driver is a transport client around
+`ChioSidecarClient.evaluate`. It reports scenarios as unsupported unless
+`CHIO_VERDICT_MATRIX_SIDECAR_URL` or `CHIO_SIDECAR_URL` points to a live sidecar
+that emits verdict matrix receipt metadata. It does not patch `globalThis.fetch`
+or derive verdicts from scenario fields.
+
+The WASM browser driver exercises the real `chio-kernel-browser` `evaluate_pure`
+path for the capability subset. It reports revocation propagation, replay
+verdict, and redaction determinism as unsupported because that browser surface
+does not include a revocation store, execution nonce store, or guard pipeline.
+
 ## Local Gates
 
 Run the same gates used by the workflow:
