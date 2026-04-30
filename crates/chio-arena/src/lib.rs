@@ -28,10 +28,11 @@ pub use coevolve::mutation::{
 pub use coevolve::{
     crossover_overrequest_population, crossover_populations, crossover_prompt_injection_population,
     crossover_replay_attempt_population, crossover_scope_escape_population, evaluate_population,
-    mutate_overrequest_population, mutate_population, mutate_prompt_injection_population,
-    mutate_replay_attempt_population, mutate_scope_escape_population, CrossoverError, FitnessError,
-    FitnessInputs, FitnessReport, FitnessSample, MatrixVerdict, MutationConfig, MutationError,
-    MutationKind, VerdictTuple,
+    load_seed_corpus, mutate_overrequest_population, mutate_population,
+    mutate_prompt_injection_population, mutate_replay_attempt_population,
+    mutate_scope_escape_population, CrossoverError, FitnessError, FitnessInputs, FitnessReport,
+    FitnessSample, MatrixVerdict, MutationConfig, MutationError, MutationKind, SeedArtifact,
+    SeedCorpus, SeedCorpusError, SeedCorpusSources, VerdictTuple,
 };
 pub use link::{
     KernelEndpoint, KernelLink, KernelMultiplexer, LinkEnvelope, LinkError, MultiplexError,

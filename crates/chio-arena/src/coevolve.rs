@@ -33,6 +33,7 @@
 
 pub mod crossover;
 pub mod mutation;
+pub mod seed_corpus;
 
 pub use crossover::{
     crossover_overrequest_population, crossover_populations, crossover_prompt_injection_population,
@@ -42,6 +43,9 @@ pub use mutation::{
     mutate_overrequest_population, mutate_population, mutate_prompt_injection_population,
     mutate_replay_attempt_population, mutate_scope_escape_population, MutationConfig,
     MutationError, MutationKind,
+};
+pub use seed_corpus::{
+    load_seed_corpus, SeedArtifact, SeedCorpus, SeedCorpusError, SeedCorpusSources,
 };
 
 use std::cmp::Ordering;
