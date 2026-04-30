@@ -5,11 +5,18 @@
 //! Sigstore verification is delegated to `chio-attest-verify`.
 
 pub mod cache;
+#[cfg(feature = "marketplace")]
+pub mod marketplace;
 pub mod oci;
 pub mod offline;
 pub mod publish;
 pub mod pull;
 pub mod verify;
+
+#[cfg(feature = "marketplace")]
+pub use marketplace::{
+    GuardMarketplaceBlock, GuardPrice, DEFAULT_GUARD_PRICE_CURRENCY, MARKETPLACE_BLOCK_KEY,
+};
 
 pub use chio_attest_verify::{
     AttestError, AttestVerifier, ExpectedIdentity, SigstoreVerifier, VerifiedAttestation,

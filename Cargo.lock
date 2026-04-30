@@ -2979,6 +2979,7 @@ name = "chio-guard-registry"
 version = "0.1.0"
 dependencies = [
  "chio-attest-verify",
+ "chio-reputation",
  "oci-distribution",
  "serde",
  "serde_json",
