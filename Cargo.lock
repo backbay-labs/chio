@@ -3499,6 +3499,7 @@ dependencies = [
  "chio-core-types",
  "chio-credit",
  "chio-kernel",
+ "chio-settle",
  "criterion",
  "r2d2",
  "r2d2_sqlite",
@@ -3506,6 +3507,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 1.0.69",
  "uuid",
  "zeroize",
 ]

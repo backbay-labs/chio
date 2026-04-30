@@ -15,6 +15,7 @@ mod hook;
 mod observe;
 mod ops;
 mod payments;
+mod retry;
 mod solana;
 
 use chio_core::capability::MonetaryAmount;
@@ -71,6 +72,11 @@ pub use payments::{
     Erc4337PaymasterPolicy, PreparedCircleNanopayment, PreparedPaymasterCompatibility,
     PreparedTransferWithAuthorization, TransferWithAuthorizationInput, X402PaymentRequirements,
     X402SettlementMode,
+};
+pub use retry::{
+    classify_attempt, DeadLetterRecord, RetryDecision, RetryPolicy, DEFAULT_BACKOFF_CAP_MS,
+    DEFAULT_BACKOFF_MULTIPLIER, DEFAULT_INITIAL_BACKOFF_MS, DEFAULT_MAX_RETRIES,
+    SETTLE_DEAD_LETTER_SCHEMA,
 };
 pub use solana::{
     compare_commitments, prepare_solana_settlement, verify_solana_binding_and_receipt,
