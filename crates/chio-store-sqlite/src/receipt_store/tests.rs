@@ -1226,7 +1226,10 @@ fn receipt_commit_flush_reports_queued_batch_error() -> Result<(), Box<dyn std::
         results.push(result);
     }
 
-    let error = store.flush_receipt_writes().unwrap_err();
+    let error = match store.flush_receipt_writes() {
+        Ok(()) => panic!("expected timestamp conflict when flushing receipt writes"),
+        Err(error) => error,
+    };
     assert!(matches!(
         error,
         chio_kernel::ReceiptStoreError::Conflict(message)
