@@ -31,6 +31,12 @@ serde_json = { version = "1", default-features = false, features = ["alloc"] }
 # `fuzz/fuzz_targets/receipt_log_replay.rs` via
 # `chio-kernel-core = { features = ["fuzz"] }`.
 arbitrary = { version = "1", features = ["derive"], optional = true }
+# `arc-swap` powers the `RevocationView` read-only cache (M04.P2.T4):
+# the gossip task swaps a fresh snapshot in atomically while dispatch
+# readers hold a no-lock reference. Requires `std` at link time so it is
+# only pulled in via the `revocation-view` feature, which itself implies
+# `std`. The portable `no_std + alloc` proof never observes this surface.
+arc-swap = { workspace = true, optional = true }
 # `dudect-bencher` is gated behind the `dudect` feature so default builds
 # never pull it in. Used by the timing-leak harnesses at
 # `tests/dudect/{mac_eq,scope_subset}.rs`, wired as `harness = false` test
@@ -41,8 +47,16 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 dudect-bencher = { version = "0.7", optional = true }
 
 [features]
-default = ["std"]
+default = ["std", "revocation-view"]
 std = ["chio-core-types/std", "serde/std", "serde_json/std"]
+# Enables the `revocation_view` module: an arc-swap-backed read-only
+# snapshot of the revocation oracle's most recent signed epoch root that
+# dispatch consults on every call. Implies `std` because `arc-swap`
+# itself requires std; the portable no_std + alloc proof leaves the
+# module out and falls back to a denylist-only path. The `revocation-view`
+# feature is on by default for hosted builds and explicitly disabled by
+# the wasm portable proof via `--no-default-features`.
+revocation-view = ["dep:arc-swap", "std"]
 # Enables `chio_kernel_core::fuzz`, the libFuzzer entry-point module for the
 # receipt-log replay verifier. Implies `std` because libFuzzer itself only
 # runs in a hosted environment, so the `no_std + alloc` portable proof never
