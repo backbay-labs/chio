@@ -35,8 +35,10 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
+pub mod bundle;
 pub mod card;
 pub mod error;
 
+pub use bundle::{verify_model_card_bundle, VerifiedModelCard};
 pub use card::{weights_hash_of, ModelCard, StringSet, CARD_VERSION_V1};
 pub use error::WeightsError;
