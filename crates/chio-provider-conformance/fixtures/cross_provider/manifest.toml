@@ -1,0 +1,48 @@
+# M07.P4.T5 cross-provider verdict-equality oracle manifest.
+#
+# The oracle in `tests/cross_provider_equality.rs` asserts that the
+# kernel verdict bytes recorded for the canonical
+# `weather_lookup_allow` scenario are byte-identical across every
+# provider listed below. This manifest is the source of truth for
+# matrix cardinality; bumping the cardinality requires re-recording
+# every provider's fixture corpus and updating the test in lockstep.
+#
+# Trajectory-1 M07.P4.T6 shipped this oracle for 3 providers
+# (OpenAI, Anthropic, Bedrock). Trajectory-2 M07.P4.T5 expands the
+# matrix to 8 providers without modifying the oracle surface.
+
+schema = "chio-provider-conformance.cross-provider.v1"
+matrix_id = "weather_lookup_allow"
+required_ci = true
+
+[[providers]]
+provider = "openai"
+fixture_id = "openai_basic_single_tool_call"
+
+[[providers]]
+provider = "anthropic"
+fixture_id = "anthropic_basic_single_tool_use"
+
+[[providers]]
+provider = "bedrock"
+fixture_id = "bedrock_basic_single_tool_use"
+
+[[providers]]
+provider = "gemini"
+fixture_id = "gemini_basic_single_function_call"
+
+[[providers]]
+provider = "mistral"
+fixture_id = "mistral_basic_single_tool_call"
+
+[[providers]]
+provider = "groq"
+fixture_id = "groq_basic_single_tool_call"
+
+[[providers]]
+provider = "ollama"
+fixture_id = "ollama_basic_single_tool_call"
+
+[[providers]]
+provider = "cohere"
+fixture_id = "cohere_basic_single_tool_call"
