@@ -3,10 +3,12 @@ pub use chio_core_types::{capability, crypto, receipt};
 pub use chio_underwriting as underwriting;
 
 pub mod hook;
+pub mod local_account;
 
 pub use hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,
 };
+pub use local_account::LocalCreditAccount;
 
 use serde::{Deserialize, Serialize};
 
