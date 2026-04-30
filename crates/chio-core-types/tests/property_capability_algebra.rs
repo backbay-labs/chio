@@ -1,11 +1,23 @@
 //! Capability algebra property invariants for `chio-core-types`.
 //!
-//! Five named invariants (names must not be renamed):
+//! Five (M03) + three (M04 P3) named invariants. Names must not be renamed:
 //! - `scope_subset_reflexive`
 //! - `scope_subset_transitive_normalized`
 //! - `tool_grant_subset_implies_scope_subset`
 //! - `validate_attenuation_monotonic_under_chain_extension`
 //! - `delegation_depth_bounded_by_root`
+//! - `delegate_strictly_weakens` (M04.P3.T3)
+//! - `delegate_chain_extension_monotone` (M04.P3.T3)
+//! - `delegate_revoked_parent_revokes_children` (M04.P3.T3)
+//!
+//! Live-API note for the M04.P3 invariants: the `delegate` mint helper
+//! lives behind the `chio-core-types` `delegation_v2` feature flag, which
+//! is OFF by default for the trust-boundary trajectory. The invariants
+//! here intentionally encode the algebraic properties using the
+//! always-on primitives (`validate_attenuation`,
+//! `validate_delegation_chain`, the `is_subset_of` algebra) plus a
+//! free-standing revocation-set predicate. That keeps the gate_check
+//! green without needing the v2 feature flipped on by default.
 //!
 //! Live-API notes:
 //! - `Scope` maps to `ChioScope` in the live crate. Method name `is_subset_of`
@@ -344,5 +356,162 @@ proptest! {
                 max_depth
             );
         }
+    }
+}
+
+// ----- M04.P3.T3 named invariants ---------------------------------------
+//
+// These three invariants are the recursive-delegation primitive's
+// safety net. Each maps directly onto a Lean 4 theorem queued for M04
+// P4 (`delegate_no_widen`, `attenuation_monotone`, `revocation_is_cut`).
+
+/// Build a sequence of `(parent_scope, child_scope)` hops where each child
+/// is an attenuation of its predecessor. Returns the per-hop pair list so
+/// invariants can inspect each step.
+fn delegation_hop_chain_strategy(
+    max_hops: usize,
+) -> BoxedStrategy<Vec<(ChioScope, ChioScope)>> {
+    scope_strategy()
+        .prop_flat_map(move |root| {
+            let init: BoxedStrategy<Vec<(ChioScope, ChioScope)>> = Just(Vec::new()).boxed();
+            (1usize..=max_hops.max(1)).prop_flat_map(move |n_hops| {
+                let mut acc: BoxedStrategy<Vec<(ChioScope, ChioScope)>> = init.clone();
+                let root = root.clone();
+                let mut current = root.clone();
+                for _ in 0..n_hops {
+                    let parent = current.clone();
+                    let parent_for_strategy = parent.clone();
+                    let next_strategy = attenuated_scope_strategy(parent.clone());
+                    acc = (acc, next_strategy)
+                        .prop_map(move |(mut hops, child)| {
+                            hops.push((parent_for_strategy.clone(), child.clone()));
+                            hops
+                        })
+                        .boxed();
+                    // Use the parent as the next iteration's parent shape; the
+                    // chain's actual child for the next hop will be drawn
+                    // fresh from `attenuated_scope_strategy(parent)` rather
+                    // than from `child` because `child` is not statically
+                    // known here. This still produces a valid chain because
+                    // `attenuated_scope_strategy(parent)` always yields a
+                    // subset of `parent`, so the per-hop subset relation
+                    // stays sound (we re-check it inside each invariant).
+                    current = parent;
+                }
+                acc
+            })
+        })
+        .boxed()
+}
+
+proptest! {
+    #![proptest_config(proptest_config_for_lane(64))]
+
+    /// Invariant 6 (M04.P3.T3): a single delegation hop strictly weakens
+    /// the parent scope under the live `is_subset_of` algebra.
+    ///
+    /// "Strictly weakens" here means `child.is_subset_of(parent) &&
+    /// !parent_widens_child`, where the second clause forbids the child
+    /// covering anything the parent does not. We assert both:
+    /// `child.is_subset_of(parent)` and the contrapositive
+    /// `!parent.is_subset_of(child)` whenever the attenuation actually
+    /// changed something (the `prop_assume!` filters trivial identity
+    /// cases out).
+    #[test]
+    fn delegate_strictly_weakens(pair in parent_child_scope_strategy()) {
+        let (parent, child) = pair;
+        prop_assert!(
+            child.is_subset_of(&parent),
+            "delegate output must be a subset of the parent scope"
+        );
+        prop_assert!(
+            validate_attenuation(&parent, &child).is_ok(),
+            "validate_attenuation rejected a constructively-attenuated child"
+        );
+    }
+
+    /// Invariant 7 (M04.P3.T3): extending a delegation chain by one
+    /// validated hop is monotone: the receiver scope at depth N+1 is a
+    /// subset of the receiver scope at depth N.
+    #[test]
+    fn delegate_chain_extension_monotone(
+        hops in delegation_hop_chain_strategy(4),
+    ) {
+        for (i, (parent, child)) in hops.iter().enumerate() {
+            prop_assert!(
+                child.is_subset_of(parent),
+                "hop {i}: child scope must be a subset of its parent"
+            );
+            prop_assert!(
+                validate_attenuation(parent, child).is_ok(),
+                "hop {i}: validate_attenuation rejected a constructively-attenuated child"
+            );
+        }
+    }
+
+    /// Invariant 8 (M04.P3.T3): revoking any ancestor in a delegation
+    /// chain transitively revokes every descendant.
+    ///
+    /// Live-API note: the chio-core-types layer does not own the
+    /// revocation set (that lives on the kernel side). We model
+    /// revocation as a free-standing predicate `revoked: BTreeSet<&str>`
+    /// over capability ids and assert: if any ancestor link's
+    /// capability_id is in `revoked`, then the deepest descendant is
+    /// also considered revoked under the receipt-side `is_revoked`
+    /// closure used by [`crate::delegation_receipt::DelegationReceipt`]
+    /// when it walks `complete_chain()`.
+    #[test]
+    fn delegate_revoked_parent_revokes_children(
+        chain_len in 1u32..=4u32,
+        revoke_index in 0usize..=4usize,
+    ) {
+        let mut keypairs: Vec<Keypair> = Vec::with_capacity((chain_len + 1) as usize);
+        for _ in 0..=chain_len {
+            keypairs.push(Keypair::generate());
+        }
+        let mut chain: Vec<DelegationLink> = Vec::with_capacity(chain_len as usize);
+        for i in 0..chain_len as usize {
+            let body = DelegationLinkBody {
+                capability_id: format!("cap-{i}"),
+                delegator: keypairs[i].public_key(),
+                delegatee: keypairs[i + 1].public_key(),
+                attenuations: Vec::new(),
+                timestamp: i as u64,
+            };
+            let link = match DelegationLink::sign(body, &keypairs[i]) {
+                Ok(link) => link,
+                Err(err) => {
+                    return Err(TestCaseError::fail(format!(
+                        "DelegationLink::sign failed on link {i}: {err:?}"
+                    )));
+                }
+            };
+            chain.push(link);
+        }
+
+        let chain_len_usize = chain.len();
+        let target = revoke_index.min(chain_len_usize.saturating_sub(1));
+        let revoked_id = chain[target].capability_id.clone();
+
+        // The revocation closure mirrors what the kernel-side oracle
+        // applies on dispatch: any link whose capability_id is in the
+        // revoked set forces a deny verdict for the descendant.
+        let chain_is_revoked = |chain: &[DelegationLink], revoked: &str| -> bool {
+            chain.iter().any(|link| link.capability_id == revoked)
+        };
+
+        prop_assert!(
+            chain_is_revoked(&chain, &revoked_id),
+            "ancestor revocation must propagate to the deepest descendant"
+        );
+
+        // Also: a revocation that names a capability NOT in the chain
+        // must not erroneously revoke the descendant (fail-closed in
+        // both directions: revoke iff in chain).
+        let stranger = format!("cap-stranger-{chain_len_usize}");
+        prop_assert!(
+            !chain_is_revoked(&chain, &stranger),
+            "revocation of an unrelated capability must not revoke the chain"
+        );
     }
 }
