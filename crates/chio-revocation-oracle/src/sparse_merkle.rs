@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
-use rs_merkle::{algorithms::Sha256, Hasher, MerkleProof, MerkleTree};
+use rs_merkle::{algorithms::Sha256, Hasher, MerkleProof};
 
 use crate::api::{
     EpochRoot, InclusionProof, NonInclusionProof, Result, RevocationKey, RevocationOracle,
@@ -16,9 +16,9 @@ struct LeafRecord {
 
 #[derive(Clone)]
 pub struct InMemoryRevocationOracle {
-    tree: MerkleTree<Sha256>,
+    layers: Vec<Vec<[u8; 32]>>,
     leaves: Vec<[u8; 32]>,
-    records: BTreeMap<RevocationKey, LeafRecord>,
+    records: HashMap<RevocationKey, LeafRecord>,
     epoch: u64,
     issued_at_unix_ms: u64,
 }
@@ -32,10 +32,15 @@ impl Default for InMemoryRevocationOracle {
 impl InMemoryRevocationOracle {
     #[must_use]
     pub fn new() -> Self {
+        Self::with_capacity(0)
+    }
+
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            tree: MerkleTree::new(),
-            leaves: Vec::new(),
-            records: BTreeMap::new(),
+            layers: Vec::new(),
+            leaves: Vec::with_capacity(capacity),
+            records: HashMap::with_capacity(capacity),
             epoch: 0,
             issued_at_unix_ms: 0,
         }
@@ -63,17 +68,76 @@ impl InMemoryRevocationOracle {
     }
 
     fn current_root_hash(&self) -> [u8; 32] {
-        self.tree.root().unwrap_or([0_u8; 32])
+        self.layers
+            .last()
+            .and_then(|layer| layer.first())
+            .copied()
+            .unwrap_or([0_u8; 32])
     }
 
     fn leaf_hash(key: &RevocationKey) -> Result<[u8; 32]> {
-        let bytes = serde_json::to_vec(key)
-            .map_err(|err| RevocationOracleError::Serialization(err.to_string()))?;
+        let subject = key.subject_id.as_str().as_bytes();
+        let mut bytes = Vec::with_capacity(subject.len() + 16);
+        bytes.extend_from_slice(&(subject.len() as u64).to_be_bytes());
+        bytes.extend_from_slice(subject);
+        bytes.extend_from_slice(&key.epoch_nonce.get().to_be_bytes());
         Ok(Sha256::hash(&bytes))
     }
 
     pub fn signed_epoch_root(&self, signer: &impl EpochRootSigner) -> Result<SignedEpochRoot> {
         SignedEpochRoot::sign(self.epoch_root(), signer)
+    }
+
+    fn append_leaf(&mut self, hash: [u8; 32]) {
+        if self.layers.is_empty() {
+            self.layers.push(Vec::new());
+        }
+        self.layers[0].push(hash);
+
+        let mut level = 0;
+        let mut index = self.layers[0].len() - 1;
+        loop {
+            let parent_index = index / 2;
+            let left_index = parent_index * 2;
+            let right_index = left_index + 1;
+            let Some(left) = self.layers[level].get(left_index).copied() else {
+                break;
+            };
+            let parent = Sha256::concat_and_hash(&left, self.layers[level].get(right_index));
+            if self.layers.len() == level + 1 {
+                self.layers.push(Vec::new());
+            }
+            if parent_index < self.layers[level + 1].len() {
+                self.layers[level + 1][parent_index] = parent;
+            } else {
+                self.layers[level + 1].push(parent);
+            }
+
+            level += 1;
+            index = parent_index;
+            if self.layers[level].len() == 1 {
+                break;
+            }
+        }
+    }
+
+    fn proof_bytes_for_index(&self, mut index: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for layer in &self.layers {
+            if layer.len() <= 1 {
+                break;
+            }
+            let sibling_index = if index.is_multiple_of(2) {
+                index + 1
+            } else {
+                index.saturating_sub(1)
+            };
+            if let Some(sibling) = layer.get(sibling_index) {
+                bytes.extend_from_slice(sibling);
+            }
+            index /= 2;
+        }
+        bytes
     }
 }
 
@@ -85,7 +149,7 @@ impl RevocationOracle for InMemoryRevocationOracle {
 
         let hash = Self::leaf_hash(&key)?;
         let index = self.leaves.len();
-        self.tree.insert(hash).commit();
+        self.append_leaf(hash);
         self.leaves.push(hash);
         self.records.insert(key, LeafRecord { index, hash });
         self.epoch = self.epoch.saturating_add(1);
@@ -111,13 +175,12 @@ impl RevocationOracle for InMemoryRevocationOracle {
             .records
             .get(key)
             .ok_or(RevocationOracleError::NotRevoked)?;
-        let proof = self.tree.proof(&[record.index]);
         Ok(InclusionProof {
             key: key.clone(),
             epoch_root: self.epoch_root(),
             leaf_index: record.index,
             leaf_hash: record.hash,
-            proof_bytes: proof.to_bytes(),
+            proof_bytes: self.proof_bytes_for_index(record.index),
         })
     }
 

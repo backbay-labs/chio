@@ -19,7 +19,12 @@ rs_merkle = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 proptest = { workspace = true }
+
+[[bench]]
+name = "oracle_throughput"
+harness = false
 
 [lints.clippy]
 unwrap_used = "deny"
