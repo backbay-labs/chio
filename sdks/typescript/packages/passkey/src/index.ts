@@ -23,5 +23,12 @@
 //     kernel's job.
 
 export type { RequestCapabilityOptions, PasskeyCapability } from './request.js';
-export { requestCapability } from './request.js';
+export { requestCapability, RequestCapabilityError } from './request.js';
 export { parseCapabilityToken } from './parse.js';
+export {
+  CHIO_CUSTODY_ERROR_CODES,
+  ChioCustodyError,
+  isCustodyErrorCode,
+  toChioCustodyError,
+} from './errors.js';
+export type { CustodyErrorCode } from './errors.js';

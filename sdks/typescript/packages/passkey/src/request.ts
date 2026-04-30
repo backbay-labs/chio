@@ -20,6 +20,7 @@
 //     issuer rejects audience confusion fail-closed (P2.T4 proptest).
 
 import { parseCapabilityToken, type PasskeyCapabilityShape } from './parse.js';
+import { type CustodyErrorCode, isCustodyErrorCode } from './errors.js';
 
 /** Options for requestCapability. */
 export interface RequestCapabilityOptions {
@@ -47,11 +48,13 @@ export interface RequestCapabilityOptions {
 export type PasskeyCapability = PasskeyCapabilityShape;
 
 /** Stable error class for browser-side failures. The `code` field carries
- *  the urn:chio:error:custody:* code matching the kernel registry. */
+ *  a typed urn:chio:error:custody:* code matching the M01 registry; the
+ *  union is enforced by the M01 LSP-driven typed-enum codegen via
+ *  CustodyErrorCode in errors.ts. */
 export class RequestCapabilityError extends Error {
-  readonly code: string;
+  readonly code: CustodyErrorCode;
   readonly cause?: unknown;
-  constructor(code: string, message: string, cause?: unknown) {
+  constructor(code: CustodyErrorCode, message: string, cause?: unknown) {
     super(message);
     this.name = 'RequestCapabilityError';
     this.code = code;
@@ -287,12 +290,15 @@ async function postMint(
   if (res.status === 401 || res.status === 403) {
     // The issuer signals revoked or stale credentials with 401/403; the
     // exact code disambiguation is encoded in the response body when the
-    // issuer follows the M10 contract. Fail-closed regardless.
-    let urn = 'urn:chio:error:custody:assertion-rejected';
+    // issuer follows the M10 contract. Fail-closed regardless: an unknown
+    // urn collapses to assertion-rejected (the conservative bucket) so the
+    // caller cannot be tricked into a treat-as-success path by a wire
+    // value outside the typed enum.
+    let urn: CustodyErrorCode = 'urn:chio:error:custody:assertion-rejected';
     try {
       const body = (await res.clone().json()) as { error?: { code?: string } };
       const code = body?.error?.code;
-      if (typeof code === 'string' && code.startsWith('urn:chio:error:custody:')) {
+      if (isCustodyErrorCode(code)) {
         urn = code;
       }
     } catch {
@@ -333,11 +339,10 @@ async function postMint(
   } catch (cause) {
     if (cause instanceof Error && 'code' in cause) {
       const code = (cause as { code?: unknown }).code;
-      throw new RequestCapabilityError(
-        typeof code === 'string' ? code : 'urn:chio:error:custody:internal-encoding',
-        cause.message,
-        cause,
-      );
+      const typed: CustodyErrorCode = isCustodyErrorCode(code)
+        ? code
+        : 'urn:chio:error:custody:internal-encoding';
+      throw new RequestCapabilityError(typed, cause.message, cause);
     }
     throw new RequestCapabilityError(
       'urn:chio:error:custody:internal-encoding',
