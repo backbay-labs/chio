@@ -3,13 +3,26 @@ version = 1
 scenario_spec = "chio.verdict-matrix.scenario.v1"
 
 [corpus]
-status = "scaffold"
-scenario_count = 0
+status = "active"
+scenario_count = 48
 scenario_root = "scenarios"
+scenario_index_algorithm = "sha256(relative-path-tab-file-sha256-newline)"
+scenario_index_hash = "sha256:47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f"
+
+[corpus.categories]
+capability_subset = 12
+revocation_propagation = 12
+replay_verdict = 12
+redaction_determinism = 12
 
 [drivers]
-required = []
+required = ["rust-kernel"]
 
 [drivers.rust-kernel]
-status = "planned"
+status = "active"
 entrypoint = "drivers/rust"
+command = "cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet"
+
+[oracle]
+tuple_fields = ["verdict", "reason_code", "scope_set"]
+reason_registry = "spec/errors/registry.yaml"

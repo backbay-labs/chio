@@ -56,10 +56,19 @@ chio-core = { package = "chio-core-types", version = "0.1.0", path = "../chio-co
 chio-kernel = { version = "0.1.0", path = "../chio-kernel" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 toml = "0.8"
 reqwest = { workspace = true, features = ["blocking", "form", "query", "rustls"] }
 tiny_http = "0.12"
+
+[[test]]
+name = "verdict_matrix_rust_driver"
+path = "verdict_matrix/tests/verdict_matrix_rust_driver.rs"
+
+[[test]]
+name = "diff_oracle_self_test"
+path = "verdict_matrix/tests/diff_oracle_self_test.rs"
 
 [lints.clippy]
 unwrap_used = "deny"

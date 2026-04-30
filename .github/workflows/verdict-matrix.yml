@@ -1,0 +1,70 @@
+name: verdict-matrix
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-conformance/verdict_matrix/**"
+      - "crates/chio-kernel*/**"
+      - "sdks/python/chio-sdk-python/**"
+      - "sdks/typescript/packages/**"
+      - "sdks/go/**"
+      - ".github/workflows/verdict-matrix.yml"
+      - "docs/conformance/verdict-matrix.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/chio-conformance/verdict_matrix/**"
+      - "crates/chio-kernel*/**"
+      - "sdks/python/chio-sdk-python/**"
+      - "sdks/typescript/packages/**"
+      - "sdks/go/**"
+      - ".github/workflows/verdict-matrix.yml"
+      - "docs/conformance/verdict-matrix.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verdict-matrix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-kernel:
+    name: verdict_matrix rust-kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Verify scenario counts
+        run: |
+          set -euo pipefail
+          test -d crates/chio-conformance/verdict_matrix/scenarios/capability_subset
+          test -d crates/chio-conformance/verdict_matrix/scenarios/revocation_propagation
+          test -d crates/chio-conformance/verdict_matrix/scenarios/replay_verdict
+          test -d crates/chio-conformance/verdict_matrix/scenarios/redaction_determinism
+          test "$(find crates/chio-conformance/verdict_matrix/scenarios/capability_subset -name '*.json' | wc -l)" -ge 12
+          test "$(find crates/chio-conformance/verdict_matrix/scenarios/revocation_propagation -name '*.json' | wc -l)" -ge 12
+          test "$(find crates/chio-conformance/verdict_matrix/scenarios/replay_verdict -name '*.json' | wc -l)" -ge 12
+          test "$(find crates/chio-conformance/verdict_matrix/scenarios/redaction_determinism -name '*.json' | wc -l)" -ge 12
+
+      - name: Run Rust kernel verdict driver
+        run: cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet
+
+      - name: Run diff oracle self test
+        run: cargo test -p chio-conformance --test diff_oracle_self_test --quiet
+
+      - name: Verify workflow and docs registration
+        run: |
+          set -euo pipefail
+          test -f .github/workflows/verdict-matrix.yml
+          grep -q 'verdict_matrix' .github/workflows/verdict-matrix.yml
+          test -f docs/conformance/verdict-matrix.md

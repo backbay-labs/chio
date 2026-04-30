@@ -7,10 +7,9 @@ pieces must share.
 
 ## File Layout
 
-Scenarios are TOML files under `scenarios/`. Each file contains one scenario.
-The manifest at `manifest.toml` records the active scenario root and driver
-set. Later corpus work may add hash pins to the manifest, but the scaffold does
-not require them.
+Scenarios are JSON files under `scenarios/`. Each file contains one scenario.
+The manifest at `manifest.toml` records the active scenario root, driver set,
+scenario count, and corpus hash pin.
 
 ## Required Fields
 
@@ -54,24 +53,28 @@ additional diagnostics, but the diff oracle compares only this tuple.
 The `script` table is driver-neutral. It must describe the same logical
 operation for every SDK without naming SDK internals.
 
-```toml
-schema = "chio.verdict-matrix.scenario.v1"
-id = "capability-read-only-allows-read"
-title = "Read-only capability allows read"
-category = "capability"
-description = "A read-only scope permits a read operation and no broader access."
-tags = ["scaffold-example"]
-
-[script]
-operation = "tool.call"
-tool = "files.read"
-input_json = '{"path":"README.md"}'
-capability_scopes = ["tool:read"]
-
-[expected]
-verdict = "allow"
-reason_code = "urn:chio:error:none"
-scope_set = ["tool:read"]
+```json
+{
+  "schema": "chio.verdict-matrix.scenario.v1",
+  "id": "capability-read-only-allows-read",
+  "title": "Read-only capability allows read",
+  "category": "capability",
+  "description": "A read-only scope permits a read operation and no broader access.",
+  "tags": ["scaffold-example"],
+  "requires": ["rust-kernel"],
+  "script": {
+    "operation": "tool.call",
+    "tool": "files.read",
+    "input_json": "{\"path\":\"README.md\"}",
+    "capability_scopes": ["tool:read"],
+    "required_scope": "tool:read"
+  },
+  "expected": {
+    "verdict": "allow",
+    "reason_code": "urn:chio:error:none",
+    "scope_set": ["tool:read"]
+  }
+}
 ```
 
 ## Compatibility Rules
