@@ -173,7 +173,7 @@ aggregate file contains exactly six D06 crate entries.
 | Evaluated mutants | 442 |
 | Caught | 115 |
 | Missed | 259 |
-| Unviable | 65 |
+| Unviable | 67 |
 | Timeout | 1 |
 | Measured kill rate, excluding unviable | 30.7% |
 
