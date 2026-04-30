@@ -228,17 +228,32 @@ theorem attenuation_monotone (s0 s1 s2 : ChioScope)
 
     Revoking an ancestor in the delegation chain forces every descendant
     to deny.  Concretely: when the revocation store records any
-    delegator from a child capability's chain, `checkRevocation` returns
-    an error.  This is the recursive analogue of
-    `Chio.Proofs.Revocation` results restricted to
-    direct-token revocation. -/
+    delegator from a child capability's chain, `checkRevocation`
+    returns an `Except.error`.  The specific error string depends on
+    whether the cap's own id is also revoked (the first guard fires);
+    the load-bearing point is that no `.ok ()` reachable.
+
+    This is the recursive analogue of the single-step revocation
+    results in `Chio.Proofs.Revocation`. -/
 theorem revocation_is_cut
     (store : RevocationStore) (cap : CapabilityToken)
     (link : DelegationLink)
     (h_in_chain : link ∈ cap.delegationChain)
     (h_revoked : store.isRevoked link.delegator = true) :
-    checkRevocation store cap = .error "delegation chain contains revoked ancestor" := by
-  sorry
+    ∃ msg, checkRevocation store cap = .error msg := by
+  unfold checkRevocation
+  by_cases h_id : store.isRevoked cap.id
+  · -- The cap's own id is revoked: the first branch fires.
+    rw [if_pos h_id]
+    exact ⟨_, rfl⟩
+  · -- The cap's id is not revoked: the second branch fires because
+    -- `link` witnesses an ancestor being revoked.
+    rw [if_neg h_id]
+    have h_any : cap.delegationChain.any (fun l => store.isRevoked l.delegator) = true := by
+      apply List.any_eq_true.mpr
+      exact ⟨link, h_in_chain, h_revoked⟩
+    rw [if_pos h_any]
+    exact ⟨_, rfl⟩
 
 /-! ## Theorem 4: `compose_preserves_algebra`
 
@@ -253,7 +268,7 @@ theorem compose_preserves_algebra
     (s_initial s_mid s_final : ChioScope)
     (h_mid_in_initial : s_mid.isSubsetOf s_initial = true)
     (h_final_in_mid : s_final.isSubsetOf s_mid = true) :
-    s_final.isSubsetOf s_initial = true := by
-  sorry
+    s_final.isSubsetOf s_initial = true :=
+  ChioScope.isSubsetOf_trans s_final s_mid s_initial h_final_in_mid h_mid_in_initial
 
 end Chio.Capability
