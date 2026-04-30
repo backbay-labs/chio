@@ -1,10 +1,14 @@
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
 use chio_store_sqlite::SqliteReceiptStore;
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
+
+const RECEIPTS_PER_BATCH: usize = 64;
+const APPENDER_THREADS: usize = 8;
 
 fn unique_db_path() -> std::path::PathBuf {
     let nonce = match SystemTime::now().duration_since(UNIX_EPOCH) {
@@ -57,15 +61,15 @@ fn bench_store_receipt_write_throughput(c: &mut Criterion) {
     c.bench_function("store_receipt_write_throughput", |b| {
         b.iter_batched(
             || {
-                let index = receipt_index.fetch_add(1, Ordering::Relaxed);
-                receipt_for_index(index)
+                let first_index =
+                    receipt_index.fetch_add(RECEIPTS_PER_BATCH as u64, Ordering::Relaxed);
+                (0..RECEIPTS_PER_BATCH)
+                    .map(|offset| receipt_for_index(first_index + offset as u64))
+                    .collect::<Vec<_>>()
             },
-            |receipt| {
-                let seq = match store.append_chio_receipt_returning_seq(&receipt) {
-                    Ok(seq) => seq,
-                    Err(error) => fail_bench(&format!("append receipt: {error}")),
-                };
-                black_box(seq);
+            |receipts| {
+                let seqs = append_receipts_concurrently(&store, &receipts);
+                black_box(seqs);
             },
             BatchSize::SmallInput,
         );
@@ -75,6 +79,33 @@ fn bench_store_receipt_write_throughput(c: &mut Criterion) {
         fail_bench(&format!("flush receipt writes: {error}"));
     }
     let _ = std::fs::remove_file(path);
+}
+
+fn append_receipts_concurrently(store: &SqliteReceiptStore, receipts: &[ChioReceipt]) -> Vec<u64> {
+    thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for chunk in receipts.chunks(RECEIPTS_PER_BATCH / APPENDER_THREADS) {
+            handles.push(scope.spawn(move || {
+                chunk
+                    .iter()
+                    .map(
+                        |receipt| match store.append_chio_receipt_returning_seq(receipt) {
+                            Ok(seq) => seq,
+                            Err(error) => fail_bench(&format!("append receipt: {error}")),
+                        },
+                    )
+                    .collect::<Vec<_>>()
+            }));
+        }
+
+        handles
+            .into_iter()
+            .flat_map(|handle| match handle.join() {
+                Ok(seqs) => seqs,
+                Err(_) => fail_bench("append thread panicked"),
+            })
+            .collect()
+    })
 }
 
 fn fail_bench(message: &str) -> ! {
