@@ -1,8 +1,12 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
+use crate::queue_core::{
+    BoundedDropOldestQueue, BoundedQueueItem, BoundedQueueLimits, BoundedQueuePushSummary,
+    BoundedQueueSnapshot,
+};
 use crate::sink::{OTelReceiptExportError, ReceiptStoreSink, ReceiptStoreSinkSummary};
 
 /// Synchronous OTLP gRPC trace ingress facade.
@@ -75,6 +79,14 @@ impl OtlpExporterQueueConfig {
             drain_limit: self.drain_limit.max(1),
         }
     }
+
+    fn queue_limits(self) -> BoundedQueueLimits {
+        BoundedQueueLimits {
+            max_queued_batches: self.max_queued_batches,
+            max_queued_spans: self.max_queued_spans,
+            max_queued_bytes: self.max_queued_bytes,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -105,6 +117,42 @@ pub struct OtlpExporterEnqueueSummary {
     pub queued_batches: usize,
     pub queued_spans: usize,
     pub queued_bytes: usize,
+}
+
+impl From<BoundedQueuePushSummary> for OtlpExporterEnqueueSummary {
+    fn from(summary: BoundedQueuePushSummary) -> Self {
+        Self {
+            enqueued_batches: summary.enqueued_batches,
+            enqueued_spans: summary.enqueued_spans,
+            dropped_oldest_batches: summary.dropped_oldest_batches,
+            dropped_oldest_spans: summary.dropped_oldest_spans,
+            dropped_incoming_batches: summary.dropped_incoming_batches,
+            dropped_incoming_spans: summary.dropped_incoming_spans,
+            queued_batches: summary.queued_batches,
+            queued_spans: summary.queued_spans,
+            queued_bytes: summary.queued_bytes,
+        }
+    }
+}
+
+impl From<BoundedQueueSnapshot> for OtlpExporterQueueSnapshot {
+    fn from(snapshot: BoundedQueueSnapshot) -> Self {
+        Self {
+            queued_batches: snapshot.queued_batches,
+            queued_spans: snapshot.queued_spans,
+            queued_bytes: snapshot.queued_bytes,
+            accepted_batches: snapshot.accepted_batches,
+            accepted_spans: snapshot.accepted_spans,
+            dropped_oldest_batches: snapshot.dropped_oldest_batches,
+            dropped_oldest_spans: snapshot.dropped_oldest_spans,
+            dropped_incoming_batches: snapshot.dropped_incoming_batches,
+            dropped_incoming_spans: snapshot.dropped_incoming_spans,
+            appended_batches: snapshot.appended_batches,
+            appended_spans: snapshot.appended_spans,
+            append_error_batches: snapshot.append_error_batches,
+            append_error_spans: snapshot.append_error_spans,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -158,7 +206,7 @@ impl BoundedOtlpGrpcIngress {
             .queue
             .lock()
             .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
-        Ok(queue.snapshot())
+        Ok(queue.snapshot().into())
     }
 
     fn lock_flow(&self) -> Result<MutexGuard<'_, ()>, OTelReceiptExportError> {
@@ -176,7 +224,9 @@ impl BoundedOtlpGrpcIngress {
             .queue
             .lock()
             .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
-        Ok(queue.push_drop_oldest(item, self.config))
+        Ok(queue
+            .push_drop_oldest(item, self.config.queue_limits())
+            .into())
     }
 
     fn drain_locked(&self) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
@@ -213,10 +263,7 @@ impl BoundedOtlpGrpcIngress {
             .queue
             .lock()
             .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
-        Ok(queue
-            .queue
-            .front()
-            .map(|item| (item.export.clone(), item.spans)))
+        Ok(queue.front().map(|item| (item.export.clone(), item.spans)))
     }
 
     fn record_appended(&self, spans: usize) -> Result<(), OTelReceiptExportError> {
@@ -224,8 +271,7 @@ impl BoundedOtlpGrpcIngress {
             .queue
             .lock()
             .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
-        queue.appended_batches += 1;
-        queue.appended_spans += spans as u64;
+        queue.record_appended(spans);
         Ok(())
     }
 
@@ -234,101 +280,12 @@ impl BoundedOtlpGrpcIngress {
             .queue
             .lock()
             .map_err(|_| OTelReceiptExportError::Queue("OTEL queue mutex poisoned".to_string()))?;
-        queue.append_error_batches += 1;
-        queue.append_error_spans += spans as u64;
+        queue.record_append_error(spans);
         Ok(())
     }
 }
 
-#[derive(Default)]
-struct BoundedOtlpQueue {
-    queue: VecDeque<QueuedOtlpExport>,
-    queued_spans: usize,
-    queued_bytes: usize,
-    accepted_batches: u64,
-    accepted_spans: u64,
-    dropped_oldest_batches: u64,
-    dropped_oldest_spans: u64,
-    dropped_incoming_batches: u64,
-    dropped_incoming_spans: u64,
-    appended_batches: u64,
-    appended_spans: u64,
-    append_error_batches: u64,
-    append_error_spans: u64,
-}
-
-impl BoundedOtlpQueue {
-    fn push_drop_oldest(
-        &mut self,
-        item: QueuedOtlpExport,
-        config: OtlpExporterQueueConfig,
-    ) -> OtlpExporterEnqueueSummary {
-        let mut summary = OtlpExporterEnqueueSummary::default();
-        if item.spans > config.max_queued_spans
-            || item.bytes > config.max_queued_bytes
-            || config.max_queued_batches == 0
-        {
-            self.dropped_incoming_batches += 1;
-            self.dropped_incoming_spans += item.spans as u64;
-            summary.dropped_incoming_batches = 1;
-            summary.dropped_incoming_spans = item.spans;
-            summary.queued_batches = self.queue.len();
-            summary.queued_spans = self.queued_spans;
-            summary.queued_bytes = self.queued_bytes;
-            return summary;
-        }
-
-        while self.queue.len() + 1 > config.max_queued_batches
-            || self.queued_spans + item.spans > config.max_queued_spans
-            || self.queued_bytes + item.bytes > config.max_queued_bytes
-        {
-            let Some(dropped) = self.pop_front() else {
-                break;
-            };
-            self.dropped_oldest_batches += 1;
-            self.dropped_oldest_spans += dropped.spans as u64;
-            summary.dropped_oldest_batches += 1;
-            summary.dropped_oldest_spans += dropped.spans;
-        }
-
-        summary.enqueued_batches = 1;
-        summary.enqueued_spans = item.spans;
-        self.accepted_batches += 1;
-        self.accepted_spans += item.spans as u64;
-        self.queued_spans += item.spans;
-        self.queued_bytes += item.bytes;
-        self.queue.push_back(item);
-        summary.queued_batches = self.queue.len();
-        summary.queued_spans = self.queued_spans;
-        summary.queued_bytes = self.queued_bytes;
-        summary
-    }
-
-    fn pop_front(&mut self) -> Option<QueuedOtlpExport> {
-        let item = self.queue.pop_front()?;
-        self.queued_spans = self.queued_spans.saturating_sub(item.spans);
-        self.queued_bytes = self.queued_bytes.saturating_sub(item.bytes);
-        Some(item)
-    }
-
-    fn snapshot(&self) -> OtlpExporterQueueSnapshot {
-        OtlpExporterQueueSnapshot {
-            queued_batches: self.queue.len(),
-            queued_spans: self.queued_spans,
-            queued_bytes: self.queued_bytes,
-            accepted_batches: self.accepted_batches,
-            accepted_spans: self.accepted_spans,
-            dropped_oldest_batches: self.dropped_oldest_batches,
-            dropped_oldest_spans: self.dropped_oldest_spans,
-            dropped_incoming_batches: self.dropped_incoming_batches,
-            dropped_incoming_spans: self.dropped_incoming_spans,
-            appended_batches: self.appended_batches,
-            appended_spans: self.appended_spans,
-            append_error_batches: self.append_error_batches,
-            append_error_spans: self.append_error_spans,
-        }
-    }
-}
+type BoundedOtlpQueue = BoundedDropOldestQueue<QueuedOtlpExport>;
 
 struct QueuedOtlpExport {
     export: OtlpGrpcTraceExport,
@@ -345,6 +302,16 @@ impl QueuedOtlpExport {
             spans,
             bytes,
         }
+    }
+}
+
+impl BoundedQueueItem for QueuedOtlpExport {
+    fn spans(&self) -> usize {
+        self.spans
+    }
+
+    fn bytes(&self) -> usize {
+        self.bytes
     }
 }
 
