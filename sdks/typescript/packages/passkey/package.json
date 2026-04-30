@@ -1,0 +1,40 @@
+{
+  "name": "@chio/passkey",
+  "version": "0.1.0",
+  "description": "Chio passkey browser helper. Thin wrapper around navigator.credentials.get + fetch to a server-side issuer that mints audience-pinned PasskeyCapability envelopes. Holds zero key material; never signs in the browser.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "peerDependencies": {
+    "@chio-protocol/browser": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@chio-protocol/browser": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "bun test",
+    "size-budget": "bash ../../scripts/size-budget.sh passkey",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

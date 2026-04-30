@@ -1,6 +1,6 @@
 {
   "schema": "chio.size-budget/v1",
-  "comment": "Per-runtime gzipped wasm size ceilings for the Chio TypeScript SDK. Numbers come from .planning/trajectory/08-browser-edge-sdk.md success criteria. The size-budget.sh wrapper iterates this table, gzips each declared wasm artifact, and fails the build if any entry exceeds its ceiling. Missing artifacts soft-skip when the wasm-pack output has not been generated yet.",
+  "comment": "Per-runtime gzipped size ceilings for the Chio TypeScript SDK. Most entries pin the wasm artifact (numbers come from .planning/trajectory/08-browser-edge-sdk.md success criteria); the passkey entry pins the package's compiled JS bundle because the package ships no wasm (M10.P3.T5). The size-budget.sh wrapper iterates this table, gzips each declared artifact, and fails the build if any entry exceeds its ceiling. Missing artifacts soft-skip when wasm-pack or tsc has not been run yet.",
   "budgets": {
     "browser": {
       "package": "@chio-protocol/browser",
@@ -25,6 +25,12 @@
       "wasm_path": "sdks/typescript/packages/deno/pkg/chio_kernel_browser_bg.wasm",
       "gzipped_kb": 400,
       "rationale": "Deno Deploy isolate limit is 50 MB; ceiling kept at 400 KB to bound cold-start cost rather than fit a hard limit."
+    },
+    "passkey": {
+      "package": "@chio/passkey",
+      "wasm_path": "sdks/typescript/packages/passkey/dist/index.js",
+      "gzipped_kb": 30,
+      "rationale": "M10.P3.T5: thin call site (navigator.credentials.get + fetch + parseCapabilityToken). The package ships zero wasm; the gate measures the gzipped TypeScript build output to bound cold-start cost. 30 KB sits well inside the trajectory-1 M08 cross-package ceilings (300 KB browser / 350 KB workers) so the budget fires cleanly without bumping totals. If this entry trips, the package is doing too much."
     }
   }
 }
