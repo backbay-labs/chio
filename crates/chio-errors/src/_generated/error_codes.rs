@@ -773,6 +773,72 @@ pub const CUSTODY_HARDWARE_KEY_UNAVAILABLE: ErrorCodeSpec = ErrorCodeSpec {
     consumed_by: &["chio-tee", "chio-attest-verify"],
 };
 
+pub const CUSTODY_ASSERTION_REJECTED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:custody:assertion-rejected",
+    domain: Domain::Custody,
+    severity: Severity::Error,
+    summary: "WebAuthn assertion failed structural or signature verification.",
+    help:
+        "Treat the assertion as untrusted; do not retry without a fresh challenge from the issuer.",
+    legacy_string_code: "CHIO-CUSTODY-ASSERTION-REJECTED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-custody-hw", "chio-control-plane"],
+};
+
+pub const CUSTODY_AUDIENCE_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:custody:audience-mismatch",
+    domain: Domain::Custody,
+    severity: Severity::Error,
+    summary: "Capability presented to a different audience than it was minted for.",
+    help: "Issue or request a capability whose audience pin matches the verifier identity.",
+    legacy_string_code: "CHIO-CUSTODY-AUDIENCE-MISMATCH",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-custody-hw", "chio-kernel"],
+};
+
+pub const CUSTODY_REPLAY_DETECTED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:custody:replay-detected",
+    domain: Domain::Custody,
+    severity: Severity::Error,
+    summary: "WebAuthn challenge nonce was previously redeemed for this credential.",
+    help: "Obtain a fresh challenge from the issuer; replayed assertions are denied fail-closed.",
+    legacy_string_code: "CHIO-CUSTODY-REPLAY-DETECTED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-custody-hw", "chio-control-plane"],
+};
+
+pub const CUSTODY_CAPABILITY_EXPIRED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:custody:capability-expired",
+    domain: Domain::Custody,
+    severity: Severity::Error,
+    summary: "Passkey capability expired before the verifier evaluated the request.",
+    help: "Mint a fresh capability; passkey capabilities are pinned to a five-minute lifetime.",
+    legacy_string_code: "CHIO-CUSTODY-CAPABILITY-EXPIRED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-custody-hw", "chio-kernel"],
+};
+
+pub const CUSTODY_CREDENTIAL_REVOKED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:custody:credential-revoked",
+    domain: Domain::Custody,
+    severity: Severity::Error,
+    summary: "WebAuthn credential bound to this capability has been revoked.",
+    help: "Re-enroll the user's authenticator and request a freshly-issued capability.",
+    legacy_string_code: "CHIO-CUSTODY-CREDENTIAL-REVOKED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-custody-hw", "chio-kernel", "chio-revocation-oracle"],
+};
+
 pub const WEIGHTS_MODEL_CARD_MISSING: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:weights:model-card-missing",
     domain: Domain::Weights,
@@ -844,6 +910,11 @@ pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     ECONOMY_METERING_UNAVAILABLE,
     LINEAGE_ANCESTOR_MISSING,
     CUSTODY_HARDWARE_KEY_UNAVAILABLE,
+    CUSTODY_ASSERTION_REJECTED,
+    CUSTODY_AUDIENCE_MISMATCH,
+    CUSTODY_REPLAY_DETECTED,
+    CUSTODY_CAPABILITY_EXPIRED,
+    CUSTODY_CREDENTIAL_REVOKED,
     WEIGHTS_MODEL_CARD_MISSING,
 ];
 

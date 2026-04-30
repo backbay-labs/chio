@@ -57,9 +57,8 @@ domains:
     reserved_for: "Lineage and provenance graph."
     description: "Lineage graph, anchor, and ancestry failures."
   - id: custody
-    class: reserved
-    reserved_for: "Hardware custody workflows."
-    description: "Hardware key, custody envelope, and quote custody failures."
+    class: core
+    description: "Hardware custody, WebAuthn assertion, and audience-pinned capability envelope failures."
   - id: weights
     class: reserved
     reserved_for: "Model-card and weight custody workflows."
@@ -709,6 +708,62 @@ codes:
     consumed_by:
       - chio-tee
       - chio-attest-verify
+  - urn: "urn:chio:error:custody:assertion-rejected"
+    domain: custody
+    severity: error
+    summary: "WebAuthn assertion failed structural or signature verification."
+    help: "Treat the assertion as untrusted; do not retry without a fresh challenge from the issuer."
+    legacy_string_code: "CHIO-CUSTODY-ASSERTION-REJECTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-control-plane
+  - urn: "urn:chio:error:custody:audience-mismatch"
+    domain: custody
+    severity: error
+    summary: "Capability presented to a different audience than it was minted for."
+    help: "Issue or request a capability whose audience pin matches the verifier identity."
+    legacy_string_code: "CHIO-CUSTODY-AUDIENCE-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel
+  - urn: "urn:chio:error:custody:replay-detected"
+    domain: custody
+    severity: error
+    summary: "WebAuthn challenge nonce was previously redeemed for this credential."
+    help: "Obtain a fresh challenge from the issuer; replayed assertions are denied fail-closed."
+    legacy_string_code: "CHIO-CUSTODY-REPLAY-DETECTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-control-plane
+  - urn: "urn:chio:error:custody:capability-expired"
+    domain: custody
+    severity: error
+    summary: "Passkey capability expired before the verifier evaluated the request."
+    help: "Mint a fresh capability; passkey capabilities are pinned to a five-minute lifetime."
+    legacy_string_code: "CHIO-CUSTODY-CAPABILITY-EXPIRED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel
+  - urn: "urn:chio:error:custody:credential-revoked"
+    domain: custody
+    severity: error
+    summary: "WebAuthn credential bound to this capability has been revoked."
+    help: "Re-enroll the user's authenticator and request a freshly-issued capability."
+    legacy_string_code: "CHIO-CUSTODY-CREDENTIAL-REVOKED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-custody-hw
+      - chio-kernel
+      - chio-revocation-oracle
   - urn: "urn:chio:error:weights:model-card-missing"
     domain: weights
     severity: error
