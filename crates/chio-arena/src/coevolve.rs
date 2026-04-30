@@ -32,12 +32,17 @@
 //! arena runs of the same scenario produce byte-identical fitness scores.
 
 pub mod crossover;
+pub mod driver;
 pub mod mutation;
 pub mod seed_corpus;
 
 pub use crossover::{
     crossover_overrequest_population, crossover_populations, crossover_prompt_injection_population,
     crossover_replay_attempt_population, crossover_scope_escape_population, CrossoverError,
+};
+pub use driver::{
+    blueprint_to_population, run_coevolution, CoevolutionBudget, CoevolutionConfig,
+    CoevolutionOutcome, CoevolutionRun, DriverError, GenerationTrace, GenerationTraceEntry,
 };
 pub use mutation::{
     mutate_overrequest_population, mutate_population, mutate_prompt_injection_population,
