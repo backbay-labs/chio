@@ -51,7 +51,6 @@ pub struct VerdictTuple {
 impl VerdictTuple {
     pub fn normalized(mut self) -> Self {
         self.scope_set.sort();
-        self.scope_set.dedup();
         self
     }
 }
@@ -79,7 +78,7 @@ mod tests {
     }
 
     #[test]
-    fn verdict_tuple_normalizes_scope_set() {
+    fn verdict_tuple_normalizes_scope_set_without_deduping() {
         let tuple = VerdictTuple {
             verdict: Verdict::Allow,
             reason_code: String::from("urn:chio:error:none"),
@@ -92,7 +91,11 @@ mod tests {
 
         assert_eq!(
             tuple.normalized().scope_set,
-            vec![String::from("tool:read"), String::from("tool:write")]
+            vec![
+                String::from("tool:read"),
+                String::from("tool:read"),
+                String::from("tool:write")
+            ]
         );
     }
 }

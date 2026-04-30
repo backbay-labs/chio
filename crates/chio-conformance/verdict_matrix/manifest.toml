@@ -8,7 +8,7 @@ scenario_count = 0
 scenario_root = "scenarios"
 
 [drivers]
-required = ["rust-kernel"]
+required = []
 
 [drivers.rust-kernel]
 status = "planned"
