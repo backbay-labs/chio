@@ -36,7 +36,7 @@ pub fn cmd_guard_sign(
     version: &str,
 ) -> Result<(), CliError> {
     let wasm_bytes = fs::read(wasm_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::cli_io_error(format!(
             "failed to read wasm module {}: {e}",
             wasm_path.display()
         ))
@@ -59,7 +59,7 @@ pub fn cmd_guard_sign(
 
     let wasm_path_str = wasm_path_to_str(wasm_path)?;
     let sidecar_path = write_signature_sidecar(wasm_path_str, &signed)
-        .map_err(|e| CliError::Other(format!("failed to write signature sidecar: {e}")))?;
+        .map_err(|e| CliError::manifest_signature_error(format!("failed to write signature sidecar: {e}")))?;
 
     println!("signed {}", wasm_path.display());
     println!("  sidecar:   {}", sidecar_path.display());
@@ -79,7 +79,7 @@ pub fn cmd_guard_sign(
 /// embedded key is trusted on its own.
 pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
     let wasm_bytes = fs::read(wasm_path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::cli_io_error(format!(
             "failed to read wasm module {}: {e}",
             wasm_path.display()
         ))
@@ -88,9 +88,9 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
     let wasm_path_str = wasm_path_to_str(wasm_path)?;
 
     let signed = load_signature_sidecar(wasm_path_str)
-        .map_err(|e| CliError::Other(format!("failed to load signature sidecar: {e}")))?
+        .map_err(|e| CliError::manifest_signature_error(format!("failed to load signature sidecar: {e}")))?
         .ok_or_else(|| {
-            CliError::Other(format!(
+            CliError::manifest_signature_error(format!(
                 "guard module {} is not signed (missing {}.sig sidecar)",
                 wasm_path.display(),
                 wasm_path.display()
@@ -103,7 +103,7 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
     // fail-closed so a malformed or unreadable manifest cannot silently
     // bypass the pinned trust anchor.
     let manifest_parent = wasm_path.parent().ok_or_else(|| {
-        CliError::Other(format!(
+        CliError::manifest_schema_error(format!(
             "wasm path {} has no parent directory; cannot locate adjacent guard-manifest.yaml",
             wasm_path.display()
         ))
@@ -116,7 +116,7 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
     let manifest_exists = match manifest_path.try_exists() {
         Ok(v) => v,
         Err(e) => {
-            return Err(CliError::Other(format!(
+            return Err(CliError::manifest_schema_error(format!(
                 "failed to stat adjacent guard-manifest.yaml at {}: {e}",
                 manifest_path.display()
             )));
@@ -125,7 +125,7 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
 
     let trusted_key = if manifest_exists {
         let manifest = load_manifest(wasm_path_str).map_err(|e| {
-            CliError::Other(format!(
+            CliError::manifest_schema_error(format!(
                 "failed to load adjacent guard-manifest.yaml for {}: {e}",
                 wasm_path.display()
             ))
@@ -135,7 +135,7 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
             None => {
                 // Manifest exists but does not pin a signer -- reject per
                 // fail-closed policy so operators add the key to the manifest.
-                return Err(CliError::Other(format!(
+                return Err(CliError::manifest_signature_error(format!(
                     "adjacent guard-manifest.yaml does not declare signer_public_key; \
                      refusing to verify {}",
                     wasm_path.display()
@@ -150,7 +150,7 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
     };
 
     verify_signed_module(&wasm_bytes, &signed, &trusted_key).map_err(|e| {
-        CliError::Other(format!(
+        CliError::manifest_signature_error(format!(
             "signature verification failed for {}: {e}",
             wasm_path.display()
         ))
@@ -170,7 +170,7 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
 
 fn wasm_path_to_str(path: &Path) -> Result<&str, CliError> {
     path.to_str().ok_or_else(|| {
-        CliError::Other(format!(
+        CliError::manifest_schema_error(format!(
             "wasm path is not valid UTF-8: {}",
             path.display()
         ))
@@ -184,7 +184,7 @@ fn wasm_path_to_str(path: &Path) -> Result<&str, CliError> {
 /// by other CLI commands.
 fn load_signing_key(path: &Path) -> Result<SigningKey, CliError> {
     let contents = fs::read_to_string(path).map_err(|e| {
-        CliError::Other(format!(
+        CliError::cli_io_error(format!(
             "failed to read signing key file {}: {e}",
             path.display()
         ))
@@ -192,13 +192,13 @@ fn load_signing_key(path: &Path) -> Result<SigningKey, CliError> {
     let trimmed = contents.trim();
     let hex_str = trimmed.strip_prefix("0x").unwrap_or(trimmed);
     let bytes = hex::decode(hex_str).map_err(|e| {
-        CliError::Other(format!(
+        CliError::manifest_signature_error(format!(
             "signing key file {} is not valid hex: {e}",
             path.display()
         ))
     })?;
     if bytes.len() != 32 {
-        return Err(CliError::Other(format!(
+        return Err(CliError::manifest_signature_error(format!(
             "signing key file {} must contain 32 bytes (got {})",
             path.display(),
             bytes.len()
@@ -218,7 +218,7 @@ fn write_random_seed(path: &Path) -> Result<SigningKey, CliError> {
     let sk = SigningKey::generate(&mut OsRng);
     let hex_seed = hex::encode(sk.to_bytes());
     fs::write(path, hex_seed).map_err(|e| {
-        CliError::Other(format!(
+        CliError::cli_io_error(format!(
             "failed to write seed file {}: {e}",
             path.display()
         ))
@@ -329,12 +329,8 @@ mod tests {
         fs::write(dir.path().join("guard-manifest.yaml"), manifest).unwrap();
 
         let err = cmd_guard_verify(&wasm).unwrap_err();
-        match err {
-            CliError::Other(msg) => {
-                assert!(msg.contains("signature verification failed"), "{msg}");
-            }
-            other => panic!("expected CliError::Other, got: {other:?}"),
-        }
+        let msg = err.to_string();
+        assert!(msg.contains("signature verification failed"), "{msg}");
     }
 
     #[test]
@@ -342,12 +338,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wasm = write_minimal_wasm(dir.path(), "g.wasm");
         let err = cmd_guard_verify(&wasm).unwrap_err();
-        match err {
-            CliError::Other(msg) => {
-                assert!(msg.contains("not signed"), "{msg}");
-            }
-            other => panic!("expected CliError::Other, got: {other:?}"),
-        }
+        let msg = err.to_string();
+        assert!(msg.contains("not signed"), "{msg}");
     }
 
     #[test]
@@ -365,15 +357,11 @@ mod tests {
         fs::write(&wasm, &tampered).unwrap();
 
         let err = cmd_guard_verify(&wasm).unwrap_err();
-        match err {
-            CliError::Other(msg) => {
-                assert!(
-                    msg.contains("verification failed") || msg.contains("hash"),
-                    "{msg}"
-                );
-            }
-            other => panic!("expected CliError::Other, got: {other:?}"),
-        }
+        let msg = err.to_string();
+        assert!(
+            msg.contains("verification failed") || msg.contains("hash"),
+            "{msg}"
+        );
     }
 
     #[test]
@@ -382,10 +370,8 @@ mod tests {
         let seed_path = dir.path().join("bad.seed");
         fs::write(&seed_path, "not-hex!!!").unwrap();
         let err = load_signing_key(&seed_path).unwrap_err();
-        match err {
-            CliError::Other(msg) => assert!(msg.contains("not valid hex"), "{msg}"),
-            other => panic!("expected Other, got: {other:?}"),
-        }
+        let msg = err.to_string();
+        assert!(msg.contains("not valid hex"), "{msg}");
     }
 
     #[test]
@@ -394,9 +380,7 @@ mod tests {
         let seed_path = dir.path().join("short.seed");
         fs::write(&seed_path, "aabbccdd").unwrap();
         let err = load_signing_key(&seed_path).unwrap_err();
-        match err {
-            CliError::Other(msg) => assert!(msg.contains("must contain 32 bytes"), "{msg}"),
-            other => panic!("expected Other, got: {other:?}"),
-        }
+        let msg = err.to_string();
+        assert!(msg.contains("must contain 32 bytes"), "{msg}");
     }
 }

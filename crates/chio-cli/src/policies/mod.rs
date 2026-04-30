@@ -63,9 +63,9 @@ impl McpPreset {
         let dir = tempdir_in_ci_friendly()?;
         let path = dir.join(self.filename());
         let mut file = fs::File::create(&path)
-            .map_err(|e| CliError::Other(format!("failed to materialize preset: {e}")))?;
+            .map_err(|e| CliError::cli_io_error(format!("failed to materialize preset: {e}")))?;
         file.write_all(self.yaml().as_bytes())
-            .map_err(|e| CliError::Other(format!("failed to write preset yaml: {e}")))?;
+            .map_err(|e| CliError::cli_yaml_error(format!("failed to write preset yaml: {e}")))?;
         Ok(MaterializedPreset {
             path,
             _dir: dir,
@@ -126,7 +126,7 @@ fn tempdir_in_ci_friendly() -> Result<PresetDir, CliError> {
     let pid = std::process::id();
     let path = std::env::temp_dir().join(format!("chio-preset-{pid}-{stamp}-{suffix}"));
     fs::create_dir_all(&path)
-        .map_err(|e| CliError::Other(format!("failed to create preset temp dir: {e}")))?;
+        .map_err(|e| CliError::cli_io_error(format!("failed to create preset temp dir: {e}")))?;
     Ok(PresetDir { path })
 }
 
