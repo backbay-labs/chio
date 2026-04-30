@@ -1,0 +1,12 @@
+name = "Chio"
+grammar = "chio"
+path_suffixes = ["chio.yaml", "chio-manifest.yaml", "chio-guard.yaml"]
+line_comments = ["# "]
+autoclose_before = ";:.,=}])>"
+
+[brackets]
+open = ["{", "[", "\"", "'"]
+close = ["}", "]", "\"", "'"]
+
+[indent]
+tab_size = 2

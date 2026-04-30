@@ -90,6 +90,8 @@ use serde::de::Error as _;
 use serde_yml::Value;
 use sha2::{Digest, Sha256};
 
+mod snippets_subcommand;
+
 const TRAJECTORY_1_MANIFEST_HEADER: &str = "\
 # GENERATED from per-phase files under .planning/trajectory/tickets/M{nn}/P{n}.yml
 # Do not hand-edit. Regenerate with `cargo xtask trajectory regen-manifest`.
@@ -187,6 +189,7 @@ fn main() -> ExitCode {
         "freeze-vectors" => freeze_vectors(args.collect()),
         "codegen" => run_codegen(args.collect()),
         "errors" => run_errors(args.collect()),
+        "snippets" => run_snippets(args.collect()),
         "" | "help" | "--help" | "-h" => {
             print_help();
             return ExitCode::SUCCESS;
@@ -208,6 +211,7 @@ fn print_help() {
     println!("  validate-scenarios");
     println!("  freeze-vectors [--check]");
     println!("  errors regen [--check]");
+    println!("  snippets regen [--check]");
     println!("  codegen rust [--check]");
     println!("  codegen --check");
     println!("  codegen --lang rust [--check]");
@@ -786,6 +790,11 @@ fn run_codegen(args: Vec<String>) -> Result<(), XtaskError> {
             "codegen: unknown language: {other} (expected rust|python|ts|go)"
         ))),
     }
+}
+
+fn run_snippets(args: Vec<String>) -> Result<(), XtaskError> {
+    let workspace_root = workspace_root()?;
+    snippets_subcommand::run(args, &workspace_root)
 }
 
 fn run_errors(args: Vec<String>) -> Result<(), XtaskError> {

@@ -116,3 +116,59 @@ Local gates run for the P3 close-out:
 - `cargo run -p chio-cli --bin chio -- doctor --help | grep -q 'Probe'`
 - `cargo clippy -p chio-cli --bin chio -- -D warnings`
 - `cargo fmt --all -- --check`
+
+## P5 Closeout Evidence
+
+Measured: 2026-04-30 on `wave/W1/m01/p5.bundle`.
+
+Scope: M01 P5.T1 through P5.T4. The phase shipped first-party VSCode
+and Zed extensions that spawn the `chio-lsp` binary, a tool-neutral
+snippet source under `editors/snippets/` regenerated into each editor's
+native format via `cargo xtask snippets regen`, and the
+`editors/README.md` LSP-binary contract that third-party editors
+(Neovim, Helix, JetBrains, Emacs lsp-mode) can adopt without
+first-party packaging.
+
+| Surface | P5 result | Reproduce |
+| ------- | --------- | --------- |
+| VSCode extension | scaffolded at `editors/vscode-chio/`, vitest contract suite green | `cd editors/vscode-chio && npm install --silent && npm run compile && npm test -- --run` |
+| Zed extension | scaffolded at `editors/zed-chio/`, host-side integration suite green | `cargo build -p zed-chio --quiet && cargo test -p zed-chio --test integration` |
+| Snippet source files | 4 canonical YAML sources validated against `editors/snippets/snippet.schema.json` | `ls editors/snippets/*.snippet.yaml \| wc -l` |
+| Snippet regen pipeline | `cargo xtask snippets regen --check` green; CI fails on drift between YAML source and native outputs | `cargo run -p xtask --quiet -- snippets regen --check` |
+
+## Milestone Closeout
+
+Measured: 2026-04-30 on `wave/W1/m01/p5.bundle`. M01 closes with P5.
+
+| Surface | M01 baseline | M01 outcome |
+| ------- | ------------ | ----------- |
+| Unstructured CLI errors (`CliError::Other`) | 976 | 0 in workspace source (P2 grep gate enforces zero) |
+| Stable string-code mentions (`"CHIO-`) | 20 in `chio-control-plane/src/lib.rs` | 20 preserved, all routed through registry codes |
+| URN registry entries (`urn:chio:error:*`) | 0 | 58 codes spanning 18 domains in `spec/errors/registry.yaml` |
+| Numeric wire registry | 11 entries | 11 preserved; bridged into URN registry via `jsonrpc_code` field |
+| Wire schemas | 9 directories | 10 directories (added `errors/` for the URN registry) |
+| `chio doctor` probes | absent | 6 shipped (toolchain, OCI, cosign, OTEL, kernel runtime, `chio.yaml`) with `--json` and `--fix` flags |
+| `chio-lsp` server | absent | tower-lsp server with diagnostics + completion + hover + go-to-definition over `chio.yaml`, manifest, and guard DSL documents |
+| First-party editor extensions | none | `editors/vscode-chio/` and `editors/zed-chio/` both spawn `chio-lsp` and surface registry-coded diagnostics |
+| Snippet pack | none | 4 tool-neutral YAML sources regenerated into both extensions via `cargo xtask snippets regen` |
+
+Local gates run for the M01 close-out:
+
+- `cd editors/vscode-chio && npm install --silent && npm run compile && npm test -- --run`
+- `cargo build -p zed-chio --quiet && cargo test -p zed-chio --test integration`
+- `cargo run -p xtask --quiet -- snippets regen --check`
+- `grep -q 'chio-lsp' editors/README.md`
+- `grep -q 'urn:chio:error:' editors/README.md`
+- `cargo clippy --workspace --tests -- -D warnings`
+- `cargo fmt --all -- --check`
+
+Follow-on items (deferred to later milestones, none block M01 close):
+
+- Live-host VSCode integration test (boots a real VSCode extension
+  host and asserts diagnostics flow through unchanged) is gated on a
+  CI host with VSCode preinstalled; the contract suite under vitest
+  pins the wiring helpers in the meantime.
+- Wasm bundle for `zed-chio` is built by the user via `zed extension
+  publish`; `cargo build -p zed-chio` only compiles the host-visible
+  rlib because `zed_extension_api` requires the wasm32 target.
+

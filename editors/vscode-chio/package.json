@@ -1,0 +1,99 @@
+{
+    "name": "vscode-chio",
+    "displayName": "Chio",
+    "description": "Chio language support: chio.yaml, manifests, and guard DSL diagnostics powered by chio-lsp.",
+    "version": "0.1.0",
+    "publisher": "backbay",
+    "license": "Apache-2.0",
+    "private": true,
+    "engines": {
+        "vscode": "^1.80.0",
+        "node": ">=18.0.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Linters"
+    ],
+    "activationEvents": [
+        "onLanguage:chio-yaml",
+        "onLanguage:chio-manifest",
+        "onLanguage:chio-guard"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "languages": [
+            {
+                "id": "chio-yaml",
+                "aliases": ["Chio Config"],
+                "filenames": ["chio.yaml"],
+                "configuration": "./language-configuration.json"
+            },
+            {
+                "id": "chio-manifest",
+                "aliases": ["Chio Manifest"],
+                "extensions": [".chio-manifest.yaml"],
+                "configuration": "./language-configuration.json"
+            },
+            {
+                "id": "chio-guard",
+                "aliases": ["Chio Guard DSL"],
+                "extensions": [".chio-guard.yaml"],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "chio-yaml",
+                "scopeName": "source.chio.yaml",
+                "path": "./syntaxes/chio.tmLanguage.json"
+            },
+            {
+                "language": "chio-manifest",
+                "scopeName": "source.chio.yaml",
+                "path": "./syntaxes/chio.tmLanguage.json"
+            },
+            {
+                "language": "chio-guard",
+                "scopeName": "source.chio.yaml",
+                "path": "./syntaxes/chio.tmLanguage.json"
+            }
+        ],
+        "configuration": {
+            "type": "object",
+            "title": "Chio",
+            "properties": {
+                "chio.lsp.path": {
+                    "type": "string",
+                    "default": "chio-lsp",
+                    "description": "Path to the chio-lsp binary. Resolved on PATH when left as the default."
+                },
+                "chio.lsp.args": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "default": [],
+                    "description": "Extra arguments forwarded to chio-lsp on spawn."
+                },
+                "chio.trace.server": {
+                    "type": "string",
+                    "enum": ["off", "messages", "verbose"],
+                    "default": "off",
+                    "description": "Traces the LSP communication with chio-lsp."
+                }
+            }
+        }
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "test": "vitest"
+    },
+    "dependencies": {
+        "vscode-languageclient": "^9.0.1"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@types/vscode": "^1.80.0",
+        "typescript": "^5.4.0",
+        "vitest": "^1.6.0"
+    }
+}

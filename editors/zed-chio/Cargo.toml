@@ -1,0 +1,30 @@
+[package]
+name = "zed-chio"
+description = "Zed editor extension for Chio: spawns chio-lsp via Zed's LSP adapter API."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "zed_chio"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+# `zed_extension_api` ships wit-bindgen-generated bindings that only link
+# under `wasm32-*`. The extension wires it in for the wasm target so the
+# editor can load the `cdylib`. On host targets the crate compiles to a
+# plain rlib so `cargo build -p zed-chio` works inside the Chio
+# workspace and the integration test below can exercise the host-visible
+# manifest contract.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+zed_extension_api = "0.7.0"
+
+[dev-dependencies]
+toml = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

@@ -124,6 +124,9 @@ members = [
     # Tooling
     "bench/ttfrh",
     "xtask",
+    #
+    # Editor extensions
+    "editors/zed-chio",
 ]
 
 [workspace.package]

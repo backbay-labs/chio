@@ -39,9 +39,9 @@
   agent_role: lsp-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: e835fe8077dc812bbf9c14a3087077b64e406fa6
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T18:28:00Z"
   merged_ts: null
 
 - id: M01.P5.T2
@@ -68,9 +68,9 @@
   agent_role: lsp-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 920310b9861a2d34891d47cdff8eb727cd7eae03
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T18:28:00Z"
   merged_ts: null
 
 - id: M01.P5.T3
@@ -99,9 +99,9 @@
   agent_role: lsp-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: aaff233b583d08195d97edbf791cc3f2a2796ecd
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T18:28:00Z"
   merged_ts: null
 
 - id: M01.P5.T4
@@ -124,7 +124,7 @@
   agent_role: lsp-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 81d9da91be0bee9d0bb3b51368806fbcda9f0204
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T18:28:00Z"
   merged_ts: null

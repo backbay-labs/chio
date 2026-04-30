@@ -1,0 +1,16 @@
+id: chio.manifest_skeleton
+scope:
+  - chio-manifest
+prefix: manifest-skeleton
+description: Minimal Chio manifest with policy, capabilities, and guard references.
+body:
+  - "version: 1"
+  - "name: ${1:manifest_name}"
+  - "policy:"
+  - "  default: ${2:deny}"
+  - "capabilities:"
+  - "  - id: ${3:capability_id}"
+  - "    scope:"
+  - "      - ${4:scope.action}"
+  - "guards:"
+  - "  - ref: ${5:guard.identifier}"

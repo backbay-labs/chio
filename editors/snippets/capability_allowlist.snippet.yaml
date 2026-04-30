@@ -1,0 +1,16 @@
+id: chio.capability_allowlist
+scope:
+  - chio-yaml
+  - chio-manifest
+prefix: capability-allowlist
+description: Capability allowlist scaffold with explicit scope bounds.
+body:
+  - "capabilities:"
+  - "  - id: ${1:capability_id}"
+  - "    scope:"
+  - "      - ${2:scope.read}"
+  - "    bound:"
+  - "      tenants: [\"${3:tenant_id}\"]"
+  - "      ttl_seconds: ${4:3600}"
+  - "    allowlist:"
+  - "      - ${5:caller_principal}"

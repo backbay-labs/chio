@@ -1,0 +1,17 @@
+id: chio.guard_pipeline
+scope:
+  - chio-yaml
+  - chio-guard
+prefix: guard-pipeline
+description: Guard pipeline composing input, decision, and output stages.
+body:
+  - "guards:"
+  - "  - id: ${1:pipeline_id}"
+  - "    stages:"
+  - "      - kind: input"
+  - "        ref: ${2:guard.input_pii_redactor}"
+  - "      - kind: decision"
+  - "        ref: ${3:guard.policy_check}"
+  - "      - kind: output"
+  - "        ref: ${4:guard.output_redactor}"
+  - "    on_violation: ${5:deny}"

@@ -1,0 +1,41 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://chio.dev/schemas/editors/snippet.schema.json",
+    "title": "Chio editor snippet",
+    "description": "Tool-neutral snippet source consumed by both editors/vscode-chio and editors/zed-chio. The xtask `snippets regen` pass renders one of these documents into each editor's native snippet format at install time.",
+    "type": "object",
+    "required": ["id", "scope", "prefix", "description", "body"],
+    "additionalProperties": false,
+    "properties": {
+        "id": {
+            "type": "string",
+            "description": "Stable identifier for the snippet, in `chio.<topic>` form.",
+            "pattern": "^chio\\.[a-z0-9_-]+$"
+        },
+        "scope": {
+            "type": "array",
+            "description": "Editor language IDs the snippet activates for. Mirrors the contributed language IDs in editors/vscode-chio/package.json and editors/zed-chio/extension.toml.",
+            "minItems": 1,
+            "items": {
+                "type": "string",
+                "enum": ["chio-yaml", "chio-manifest", "chio-guard"]
+            }
+        },
+        "prefix": {
+            "type": "string",
+            "description": "Trigger keyword the user types to expand the snippet.",
+            "minLength": 1
+        },
+        "description": {
+            "type": "string",
+            "description": "One-line snippet description rendered in completion popups.",
+            "minLength": 1
+        },
+        "body": {
+            "type": "array",
+            "description": "Snippet body in the LSP-compatible placeholder syntax (`${1:label}`).",
+            "minItems": 1,
+            "items": { "type": "string" }
+        }
+    }
+}
