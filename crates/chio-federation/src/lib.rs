@@ -10,12 +10,16 @@ pub use chio_listing as listing;
 pub use chio_open_market as open_market;
 
 pub mod bilateral;
+pub mod revocation_gossip;
 pub mod trust_establishment;
 
 pub use bilateral::{
     co_sign_with_origin, BilateralCoSigningError, BilateralCoSigningProtocol, CoSigningBody,
     CoSigningRequest, CoSigningResponse, DualSignedReceipt, InProcessCoSigner,
     BILATERAL_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
+};
+pub use revocation_gossip::{
+    RevocationGossipError, RevocationRootGossip, REVOCATION_ROOT_GOSSIP_SCHEMA,
 };
 pub use trust_establishment::{
     FederationPeer, FederationPeerStore, HandshakeChallenge, InMemoryPeerStore,

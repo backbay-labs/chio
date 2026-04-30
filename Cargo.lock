@@ -2992,6 +2992,7 @@ dependencies = [
  "chio-core-types",
  "chio-listing",
  "chio-open-market",
+ "chio-revocation-oracle",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
