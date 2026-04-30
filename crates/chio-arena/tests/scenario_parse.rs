@@ -98,13 +98,35 @@ fn rejects_witness_mismatch() {
 }
 
 #[test]
-fn rejects_unknown_step_agent() {
+fn rejects_unknown_budget_agent() {
+    // Replacing every `agent = "agent-a"` flips both the [[budgets]] and
+    // [[steps]] entries; budget validation runs first so the surfaced error
+    // is UnknownBudgetAgent. This guards the budget-side path.
     let input = valid_scenario().replace("agent = \"agent-a\"", "agent = \"agent-b\"");
     let err = parse_scenario_str(&input).err();
     assert!(matches!(
         err,
         Some(ScenarioError::UnknownBudgetAgent { .. })
     ));
+}
+
+#[test]
+fn rejects_unknown_step_agent() {
+    // Only flip the agent inside [[steps]] so budgets remain valid. Without
+    // this scoping the step-level validation never fires because
+    // UnknownBudgetAgent would mask it, leaving UnknownStepAgent uncovered.
+    let mut input = valid_scenario().to_owned();
+    let steps_marker = "[[steps]]\nid = \"step-1\"\nagent = \"agent-a\"";
+    let replacement = "[[steps]]\nid = \"step-1\"\nagent = \"agent-b\"";
+    let Some(position) = input.find(steps_marker) else {
+        panic!("valid_scenario must contain the [[steps]] marker");
+    };
+    input.replace_range(position..position + steps_marker.len(), replacement);
+    let err = parse_scenario_str(&input).err();
+    assert!(
+        matches!(err, Some(ScenarioError::UnknownStepAgent { .. })),
+        "expected UnknownStepAgent, got {err:?}",
+    );
 }
 
 #[test]
