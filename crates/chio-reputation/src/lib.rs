@@ -25,4 +25,9 @@ include!("tests.rs");
 
 pub mod feed;
 pub mod feeds;
+pub mod tier;
 pub use feed::{compose_deltas, min_delta, ReputationFeed, ScoreDelta, MAX_FEED_DELTA};
+pub use tier::{
+    satisfies_floor, tier_from_deltas, tier_threshold, ReputationTier, MAX_COMPOSED_SCORE,
+    TIER_1_THRESHOLD, TIER_2_THRESHOLD, TIER_3_PER_FEED_THRESHOLD, TIER_3_THRESHOLD,
+};
