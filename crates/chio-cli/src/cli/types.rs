@@ -641,6 +641,89 @@ enum GuardCommands {
         /// Path to the `.wasm` file to verify.
         wasm: PathBuf,
     },
+
+    /// M09 P4 marketplace surface: list, info, install priced guards.
+    Market {
+        #[command(subcommand)]
+        command: GuardMarketCommands,
+    },
+}
+
+/// Subcommands under `arc guard market`.
+#[derive(Subcommand)]
+enum GuardMarketCommands {
+    /// List guards visible to the tenant under the tenant's reputation
+    /// tier (M09 P4.T4).
+    List {
+        /// Path to the marketplace catalog JSON file.
+        #[arg(long, value_name = "PATH")]
+        catalog: PathBuf,
+        /// Tenant identifier surfaced in audit-trail output.
+        #[arg(long, value_name = "ID", default_value = "default")]
+        tenant: String,
+        /// Tenant reputation tier (`tier0`/`tier1`/`tier2`/`tier3`).
+        #[arg(long, value_name = "TIER", default_value = "tier0")]
+        tier: String,
+        /// Currency the tenant pays in (ISO 4217).
+        #[arg(long, value_name = "CCY", default_value = "USD")]
+        currency: String,
+        /// Emit a stable JSON report on stdout instead of a TTY table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show price, reputation floor, cosign status, recent settlements
+    /// (M09 P4.T5).
+    Info {
+        /// Path to the marketplace catalog JSON file.
+        #[arg(long, value_name = "PATH")]
+        catalog: PathBuf,
+        /// Digest-pinned guard reference.
+        #[arg(long = "ref", value_name = "OCI_REF")]
+        reference: String,
+        /// Tenant identifier surfaced in audit-trail output.
+        #[arg(long, value_name = "ID", default_value = "default")]
+        tenant: String,
+        /// Tenant reputation tier.
+        #[arg(long, value_name = "TIER", default_value = "tier0")]
+        tier: String,
+        /// Tenant currency.
+        #[arg(long, value_name = "CCY", default_value = "USD")]
+        currency: String,
+        /// Treat the publisher as revoked by the M04 oracle.
+        #[arg(long)]
+        publisher_revoked: bool,
+        /// Emit a stable JSON report on stdout instead of plain text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Bind a pulled guard to the tenant bundle and registered price
+    /// (M09 P4.T6). Idempotent on replay.
+    Install {
+        /// Path to the marketplace catalog JSON file.
+        #[arg(long, value_name = "PATH")]
+        catalog: PathBuf,
+        /// Path to the tenant bundle directory (created if missing).
+        #[arg(long, value_name = "DIR")]
+        bundle_dir: PathBuf,
+        /// Digest-pinned guard reference to install.
+        #[arg(long = "ref", value_name = "OCI_REF")]
+        reference: String,
+        /// Tenant identifier.
+        #[arg(long, value_name = "ID", default_value = "default")]
+        tenant: String,
+        /// Tenant reputation tier.
+        #[arg(long, value_name = "TIER", default_value = "tier0")]
+        tier: String,
+        /// Tenant currency.
+        #[arg(long, value_name = "CCY", default_value = "USD")]
+        currency: String,
+        /// Treat the publisher as revoked by the M04 oracle.
+        #[arg(long)]
+        publisher_revoked: bool,
+        /// Emit a stable JSON record on stdout.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
