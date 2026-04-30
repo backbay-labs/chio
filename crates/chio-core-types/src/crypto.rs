@@ -37,6 +37,7 @@
 //!   their own key material.
 //! - No `unsafe` code is introduced by this module.
 
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
