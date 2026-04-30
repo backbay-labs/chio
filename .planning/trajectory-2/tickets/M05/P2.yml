@@ -8,7 +8,7 @@
   milestone: M05
   phase: 2
   title: Add --mode adversarial to scripts/promote_fuzz_seed.sh with pending-flag triage gate
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - scripts/promote_fuzz_seed.sh
@@ -25,16 +25,16 @@
   agent_role: fuzz-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "5487efeb35fc4d8a3c5fbc9a6ee4e7786a8b2761"
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T22:24:00Z"
   merged_ts: null
 
 - id: M05.P2.T2
   milestone: M05
   phase: 2
   title: Add fuzz/corpus_metadata.toml indexing every seed by source, class, and threat_id
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
     - fuzz/corpus_metadata.toml
@@ -50,16 +50,16 @@
   agent_role: fuzz-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "c18c096353af49f03d0f06ce6763df74fcb0d581"
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T22:24:00Z"
   merged_ts: null
 
 - id: M05.P2.T3
   milestone: M05
   phase: 2
   title: Run cargo fuzz cmin on adversarial-promoted corpora and record minimization report
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
     - docs/security/corpus-minimization.md
@@ -75,16 +75,16 @@
   agent_role: fuzz-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "1e5a095db34369ae5573d3d48cfb83203cc677a6"
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T22:24:00Z"
   merged_ts: null
 
 - id: M05.P2.T4
   milestone: M05
   phase: 2
   title: Emit chio-adversarial-suite manifest.json producer for trajectory-2 M02 verdict matrix
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-adversarial-suite/src/manifest.rs
@@ -102,7 +102,7 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "7c6d6789ce75934bcf11b7dc7e288b44ef7cc900"
   merged_sha: null
-  opened_ts: null
+  opened_ts: "2026-04-30T22:24:00Z"
   merged_ts: null
