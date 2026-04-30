@@ -4497,7 +4497,7 @@
   milestone: M06
   phase: 5
   title: Add dhat allocation-count harness on dispatch-allow bench gated on cfg(dhat)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-kernel/benches/dispatch_allow_dhat.rs
@@ -4517,14 +4517,14 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 2fa8986e6b11ba9e95416b2c8f68ddb119ef88ed
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T13:31:04Z"
 - id: M06.P5.T2
   milestone: M06
   phase: 5
   title: Add twiggy CI job uploading browser-kernel bundle artifact per PR
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .github/workflows/m06-twiggy-bundle.yml
@@ -4542,9 +4542,9 @@
   review_required:
     - "@bb-connor"
   first_commit_sha: null
-  merged_sha: null
+  merged_sha: 3fa0dd127cf700f4d9b5b7463959907a489c90d0
   opened_ts: null
-  merged_ts: null
+  merged_ts: "2026-04-30T13:45:32Z"
 - id: M06.P5.T3
   milestone: M06
   phase: 5
