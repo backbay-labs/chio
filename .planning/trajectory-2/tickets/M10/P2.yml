@@ -22,7 +22,7 @@
   milestone: M10
   phase: 2
   title: Wire M03 HybridBackend into issuer mint_capability path under crypto_floor policy
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-custody-hw/src/issuer.rs
@@ -41,7 +41,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: e300e2fdc0ac6a3f3154153179dc0f32f9a15a1a
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -50,7 +50,7 @@
   milestone: M10
   phase: 2
   title: PasskeyNonceStore trait plus in-memory and SQLite implementations (replay-attack resistance)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-custody-hw/src/nonce_store.rs
@@ -64,7 +64,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: d4eb2768535392341bea89b34f29a681e99f9066
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -73,7 +73,7 @@
   milestone: M10
   phase: 2
   title: Revocation cascade through M04 chio-revocation-oracle on credential revoke
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-custody-hw/src/revocation.rs
@@ -91,7 +91,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: be30641edd3e4748b36feca7cc57d0d20433741b
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -100,7 +100,7 @@
   milestone: M10
   phase: 2
   title: Audience-confusion proptest enforcing audience-bit-flip rejection across capability envelope
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-custody-hw/tests/audience_confusion.rs
@@ -115,7 +115,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 5ad23f78cbcb8a5f0062c4f1e2729e82c2e37cdc
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -124,7 +124,7 @@
   milestone: M10
   phase: 2
   title: Kernel-side PasskeyCapabilityVerifier integration delegating to chio-custody-hw
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-kernel/src/custody.rs
@@ -142,7 +142,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 041894291f90441fddc0efb11c112e5670319ceb
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -151,7 +151,7 @@
   milestone: M10
   phase: 2
   title: End-to-end issuer-to-kernel test (passkey -> capability -> kernel call -> revoke -> deny within M04 epoch)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-custody-hw/tests/end_to_end.rs
@@ -168,7 +168,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: b280e38e42adf108e7322d261e5d37efd6856a43
   merged_sha: null
   opened_ts: null
   merged_ts: null
