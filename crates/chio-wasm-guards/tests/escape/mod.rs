@@ -26,3 +26,9 @@ mod common;
 mod fuel_exhaustion;
 mod oversize_memory;
 mod undeclared_imports;
+
+// Second batch (M05.P3.T3): table grow / abuse, stack overflow via
+// deep recursion, host re-entry abuse.
+mod deep_recursion;
+mod host_reentry;
+mod table_grow;
