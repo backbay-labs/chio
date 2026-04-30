@@ -16,6 +16,8 @@ chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-kernel = { path = "../chio-kernel" }
 chio-replay-corpus = { path = "../chio-replay-corpus" }
 chio-tee-frame = { path = "../chio-tee-frame" }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

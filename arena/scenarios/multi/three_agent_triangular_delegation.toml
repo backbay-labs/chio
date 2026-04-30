@@ -1,0 +1,105 @@
+schema_version = "chio.arena.scenario/v1"
+id = "three_agent_triangular_delegation"
+title = "Three agents triangular delegation"
+rng_seed = 2002
+virtual_clock_start = "2026-04-30T00:00:00.000Z"
+
+[determinism]
+rng_seed = 2002
+virtual_clock_start = "2026-04-30T00:00:00.000Z"
+scheduler = "deterministic-multi-v1"
+locale = "C"
+
+[[agents]]
+id = "agent-a"
+role = "operator"
+model = "recorded:test-agent"
+seed_prompt_ref = "prompts/three-agent/agent-a.txt"
+
+[[agents]]
+id = "agent-b"
+role = "delegator"
+model = "recorded:test-agent"
+seed_prompt_ref = "prompts/three-agent/agent-b.txt"
+
+[[agents]]
+id = "agent-c"
+role = "delegate"
+model = "recorded:test-agent"
+seed_prompt_ref = "prompts/three-agent/agent-c.txt"
+
+[[budgets]]
+agent = "agent-a"
+server = "filesystem"
+tool = "read_file"
+max_invocations = 2
+
+[[budgets]]
+agent = "agent-b"
+server = "filesystem"
+tool = "read_file"
+max_invocations = 2
+
+[[budgets]]
+agent = "agent-c"
+server = "filesystem"
+tool = "read_file"
+max_invocations = 2
+
+[[guards]]
+id = "native-allowlist"
+mode = "enforce"
+config_ref = "guards/native-allowlist.toml"
+
+[[steps]]
+id = "step-a-1"
+agent = "agent-a"
+server = "filesystem"
+tool = "read_file"
+arguments = { path = "/tmp/three-agent/agent-a-1.txt" }
+expect_verdict = "allow"
+
+[[steps]]
+id = "step-b-1"
+agent = "agent-b"
+server = "filesystem"
+tool = "read_file"
+arguments = { path = "/tmp/three-agent/agent-b-1.txt" }
+expect_verdict = "allow"
+
+[[steps]]
+id = "step-c-1"
+agent = "agent-c"
+server = "filesystem"
+tool = "read_file"
+arguments = { path = "/tmp/three-agent/agent-c-1.txt" }
+expect_verdict = "allow"
+
+[[steps]]
+id = "step-a-2"
+agent = "agent-a"
+server = "filesystem"
+tool = "read_file"
+arguments = { path = "/tmp/three-agent/agent-a-2.txt" }
+expect_verdict = "allow"
+
+[[steps]]
+id = "step-b-2"
+agent = "agent-b"
+server = "filesystem"
+tool = "read_file"
+arguments = { path = "/tmp/three-agent/agent-b-2.txt" }
+expect_verdict = "allow"
+
+[[steps]]
+id = "step-c-2"
+agent = "agent-c"
+server = "filesystem"
+tool = "read_file"
+arguments = { path = "/tmp/three-agent/agent-c-2.txt" }
+expect_verdict = "allow"
+
+[[adversaries]]
+class = "three-agent-baseline"
+population = "none"
+seed_ref = "none"
