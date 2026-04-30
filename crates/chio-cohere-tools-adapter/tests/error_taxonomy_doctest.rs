@@ -101,8 +101,8 @@ fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
     }))?);
     require_provider_error(bad_args, "BadToolArgs")?;
 
-    let nonjson =
-        adapter.gate_sse_stream(b"event: tool-call-end\ndata: not-json\n\n", |_invocation| {
+    let nonjson = adapter
+        .gate_sse_stream(b"event: tool-call-end\ndata: not-json\n\n", |_invocation| {
             Ok(allow_verdict())
         });
     require_provider_error(nonjson, "Malformed")?;

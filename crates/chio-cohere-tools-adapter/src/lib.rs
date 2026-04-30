@@ -124,12 +124,13 @@ impl CohereAdapter {
         call: &ToolCallBlock,
     ) -> Result<ToolInvocation, ProviderError> {
         validate_tool_call(call)?;
-        let parsed_args: Value = serde_json::from_str(&call.function.arguments).map_err(|error| {
-            ProviderError::BadToolArgs(format!(
-                "Cohere tool_call `{}` arguments did not parse as JSON: {error}",
-                call.function.name
-            ))
-        })?;
+        let parsed_args: Value =
+            serde_json::from_str(&call.function.arguments).map_err(|error| {
+                ProviderError::BadToolArgs(format!(
+                    "Cohere tool_call `{}` arguments did not parse as JSON: {error}",
+                    call.function.name
+                ))
+            })?;
         if !parsed_args.is_object() {
             return Err(ProviderError::BadToolArgs(format!(
                 "Cohere tool_call `{}` arguments did not parse as a JSON object",
