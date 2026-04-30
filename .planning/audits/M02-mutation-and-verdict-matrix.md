@@ -721,3 +721,185 @@ Unviable mutants:
 | `crates/chio-anchor/src/discovery.rs:167:68` | replace `!=` with `==` in `build_anchor_discovery_artifact` |
 | `crates/chio-anchor/src/functions.rs:255:27` | replace `!=` with `==` in `assess_functions_verification` |
 | `crates/chio-anchor/src/bitcoin.rs:132:5` | replace `verify_ots_proof_for_submission` with `Ok(Default::default())` |
+
+## Milestone Close-Out (2026-04-30)
+
+This section closes the M02 audit now that all six phases (P0 through P5)
+are merged. Source of truth for ticket status is each YAML at
+`.planning/trajectory-2/tickets/M02/P{0..5}.yml`. Source of truth for
+mutation configuration is `.cargo/mutants.toml`, `releases.toml`, and
+`scripts/mutants-gate.sh`. Source of truth for the verdict-matrix corpus
+and driver registration is
+`crates/chio-conformance/verdict_matrix/manifest.toml`.
+
+### Per-Phase Merged-PR Table
+
+Compiled from each ticket's `status: merged` and `merged_sha` field. PR
+numbers and merge-commit hashes are taken from the workspace `git log`
+that landed each `merged_sha` on `main`. The two `null` `merged_sha`
+fields in `P5.yml` (T2, T3, T5, T6) reflect ledger reconciliation drift
+where the squash-merge subsumed several drivers under a single PR; the
+work landed under the bundle PR `#391`
+(`4b235abb0`, "Merge pull request #391 from
+bb-connor/wave/W1/m02/p5.phase-verdict-matrix-finish") and the
+companion bundle `#360`
+(`9e39a12ce`, "Merge pull request #360 from
+bb-connor/codex/m02-p5-closeout-bookkeeping").
+
+| Phase | Tickets | Merged commit / bundle PR | Notes |
+|-------|---------|---------------------------|-------|
+| P0 | T1, T2 | `dc5688f41` (PR #307), `e5ff9b969` (PR #314) | Audit doc opener and `cargo-mutants` 25.x re-pin. |
+| P1 | T1..T6 | `9e1ecf4b2` (PR #319), `c11d129ae` (T2), `42313d7dc` (T3), `83b7a8152` (T4), `6b8308868` (T5), `d5b451d7d` (PR #335, T6) | Six per-crate mutation baselines aggregated into `.planning/trajectory-2/mutants-baseline.toml`. |
+| P2 | T1..T6 | `866eb0b81` (PR #339, T1), `e118673ed` (PR #343, T2..T6 bundle) | Targeted-test work. P2 ticket gates assert `cargo test -p <crate>` and `cargo clippy -p <crate> -- -D warnings` only; the >= 80% nightly evidence streak is an orchestrator-level rule and is the principal outstanding follow-up below. |
+| P3 | T1..T5 | `ef1fec343` (PR #345) | Required-gate flip into `.github/workflows/mutants.yml` (`CHIO_MUTANTS_GATE: blocking`), PR-comment surface, auto-file issue path, skip-with-rationale process, README headline banner with nightly auto-update PR (`@bb-connor` single-reviewer, no auto-merge / no force-push). |
+| P4 | T1..T5 | `247515524` (PR #334, T1 scaffold), `679e1cd26` (PR #347, T2..T5 bundle) | Verdict-matrix harness scaffold, scenario corpus genesis (>= 12 per category, four categories), Rust kernel driver, diff oracle, hash-pinned manifest, CI integration. |
+| P5 | T1..T6 | `f1d512268` (T1, T4), `4b235abb0` (PR #391, T2..T6 bundle), `9e39a12ce` (PR #360 closeout bookkeeping) | Python, TypeScript node-http, WASM browser, Go drivers; cross-language diff oracle activated; corpus hash pinned. |
+
+### Mutation Kill Scores
+
+The two-consecutive-night >= 80% evidence streak that promotes the lane
+from advisory to required (per `releases.toml` and
+`scripts/mutants-gate.sh`) has not been observed in this snapshot.
+`releases.toml` still records `cycle_end_tag = ""` and
+`observed_consecutive_nightly_successes = 0`, which is the advisory
+posture. Configured target per crate is >= 80% caught ratio
+(`target_catch_ratio_percent = 80`). The most recent measured baseline
+data on disk is the per-crate `cargo-mutants` runs captured above and
+aggregated in `.planning/trajectory-2/mutants-baseline.toml`. CI
+artefacts from the two consecutive nightly runs that would feed the
+gate flip are not pinned in the repo (workflow uploads are
+`retention-days: 30` ephemeral artefacts), so the close-out below
+records configured targets and on-disk per-crate baselines rather than
+the activation-grade nightly streak.
+
+| Crate | Configured target | On-disk baseline (kill rate excluding unviable) | Coverage on disk |
+|-------|-------------------|--------------------------------------------------|------------------|
+| `chio-kernel-core` | >= 80% | 33.1% | full sweep, 304 listed mutants |
+| `chio-policy` | >= 80% | 56.0% | bounded shard 1/16, 27 of 418 listed |
+| `chio-guards` | >= 80% | 100.0% (5 of 5 evaluated) | bounded shard 1/32 partial outcomes, 1298 listed |
+| `chio-credentials` | >= 80% | 40.7% | full sweep, 28 listed mutants |
+| `chio-attest-verify` | >= 80% | 0.0% | full sweep, 72 listed mutants |
+| `chio-anchor` | >= 80% | 100.0% (2 of 6 evaluated) | bounded shard 1/32 partial outcomes, 249 listed |
+
+The aggregate measured-status snapshot from
+`.planning/trajectory-2/mutants-baseline.toml` is 30.7% (115 caught,
+259 missed, 67 unviable, 1 timeout across 442 evaluated mutants of
+2369 listed). This is a measured-status summary across mixed full
+sweeps and bounded shards, not the activation kill score; the lane is
+still advisory until two consecutive `mutants-nightly` full sweeps
+report >= 80% per crate.
+
+### Verdict-Matrix Scenario Count and Corpus Hash
+
+Source: `crates/chio-conformance/verdict_matrix/manifest.toml`.
+
+| Field | Value |
+|-------|-------|
+| Schema | `chio.verdict-matrix.manifest.v1` |
+| Scenario spec | `chio.verdict-matrix.scenario.v1` |
+| Total scenarios | 48 |
+| `capability_subset` | 12 |
+| `revocation_propagation` | 12 |
+| `replay_verdict` | 12 |
+| `redaction_determinism` | 12 |
+| `corpus_sha256` | `47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f` |
+| `scenario_index_hash` | `sha256:47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f` |
+| Index algorithm | `sha256(relative-path-tab-file-sha256-newline)` |
+
+The index hash is recomputed and asserted against the manifest by the
+diff-oracle self-test
+(`crates/chio-conformance/verdict_matrix/tests/diff_oracle_self_test.rs`),
+so unauthorised corpus drift fails CI.
+
+### Driver Inventory
+
+Source: `crates/chio-conformance/verdict_matrix/drivers/` and
+`manifest.toml`.
+
+| Driver | Path | Manifest registration | Status |
+|--------|------|------------------------|--------|
+| Rust kernel | `drivers/rust/` (entrypoint), `crates/chio-conformance/verdict_matrix/src/driver.rs` | `[drivers.rust-kernel]`, listed in `required = ["rust-kernel"]` | `active` |
+| Python SDK | `drivers/python/run_scenarios.py`, `sdks/python/chio-sdk-python/tests/test_verdict_matrix.py` | `[drivers.python-sdk]` | `partial-capability` (capability-subset scenarios emit local tuples). |
+| TypeScript node-http | `drivers/typescript/run_scenarios.ts`, `sdks/typescript/packages/conformance/test/verdict_matrix.test.ts` | `[drivers.typescript-node-http]`, `requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]` | `transport-client` (all 48 scenarios reported as `unsupported` without a live sidecar). |
+| WASM browser | `drivers/wasm-browser/run.sh`, `crates/chio-kernel-browser/tests/verdict_matrix_wasm.rs` | `[drivers.wasm-browser]`, `supported_categories = ["capability"]` | `partial` (12 capability-subset scenarios via `evaluate_pure`; 36 unsupported). |
+| Go SDK | `drivers/go/run_scenarios.go`, `sdks/go/chio-go-http/verdict_matrix_test.go` | `[drivers.go-http-sdk]` | `unsupported-no-local-verdict-emitter`. |
+
+The five primary kernels named in the M02 P5 narrative (Rust + four
+non-Rust) are all registered. Two TypeScript framework wrappers
+(`typescript-ai-sdk-middleware` for `@chio/ai-sdk-middleware`, and
+`typescript-chio-next` for `@chio/next`) are registered as `prepared`
+matrix-role `framework-wrapper` drivers that delegate to
+`typescript-node-http`; they were lifted in by M07.P1.T5 and are not
+M02 deliverables. Four deployment-shape drivers (`jvm`, `dotnet`,
+`lambda`, `k8s`) are also registered as `prepared`; they close the
+M02 D07 deferral under M07.P6 (operator-tactical sidecar wiring is
+the remaining gate).
+
+### CI Gate State
+
+Source: `.github/workflows/mutants.yml`,
+`.github/workflows/verdict-matrix.yml`, `releases.toml`,
+`scripts/mutants-gate.sh`.
+
+| Lane | Trigger | Required vs advisory | Notes |
+|------|---------|----------------------|-------|
+| `mutants-pr` | `pull_request` paths-filtered, six-crate matrix | Advisory until `releases.toml: cycle_end_tag` is set AND `observed_consecutive_nightly_successes >= 2`. Today both conditions are unmet so `scripts/mutants-gate.sh` exits 0. | Workflow already wires `CHIO_MUTANTS_GATE: blocking` and the gate-script path; activation is a `releases.toml` edit, not a workflow edit. |
+| `mutants-nightly` | `schedule: 0 5 * * *`, `workflow_dispatch` | `continue-on-error: true` (dashboard-only, never gates a PR merge). | Uploads outcomes JSON / report as 30-day artefacts. |
+| `verdict-matrix.rust-kernel` | `pull_request` and `push` to `main` paths-filtered | Required (no `continue-on-error`); runs the Rust kernel driver and the diff-oracle self-test. | |
+| `verdict-matrix.deployment-shape-smoke` | Same triggers, `needs: rust-kernel` | Required (`required: true` flag in the workflow asserts the deployment-shape registration shape and the verdict-tuple equality contract). | Closes the M02 D07 deferral under M07.P6. |
+| Cross-language verdict diff (`crates/chio-conformance/verdict_matrix/src/cross_language.rs`) | Exercised by `cargo test -p chio-conformance --test verdict_matrix_cross_language` from the `verdict-matrix` workflow path filters. | Fail-closed semantics on divergence (required drivers MUST emit a tuple per scenario; whenever any driver emits a tuple it must agree with the expected value AND every other emitted tuple). | M02.P5.T5 wired this; the `required: true` flag is in place. |
+| README mutation kill banner | `.github/workflows/mutants-banner.yml` nightly auto-update PR against `main` with `@bb-connor` as the only reviewer; never auto-merge or force-push. | Documentation lane, advisory. | |
+
+### Outstanding Follow-Ups
+
+1. The mutation-lane required-gate flip
+   (advisory -> blocking) is gated on two consecutive `mutants-nightly`
+   sweeps reporting >= 80% caught ratio across all six trust-boundary
+   crates AND a CODEOWNERS-reviewed edit to `releases.toml`
+   (`cycle_end_tag` populated, `observed_consecutive_nightly_successes`
+   raised to 2, `activation_evidence` recorded). Today's measured
+   per-crate kill rates on disk are well under 80% on the full sweeps
+   (`chio-attest-verify` 0.0%, `chio-kernel-core` 33.1%,
+   `chio-credentials` 40.7%) and use bounded-shard partial outcomes on
+   the larger crates. P2 added targeted tests but the ticket gates only
+   asserted `cargo test` / `cargo clippy` green; the orchestrator-level
+   rule that promotes the lane to required requires the nightly
+   evidence to land first. The flip itself is a `releases.toml` edit
+   only; no further workflow changes are needed.
+2. The TypeScript node-http driver (`typescript-node-http`) is
+   registered as `transport-client` and reports all 48 scenarios as
+   `unsupported` without a live sidecar. M07.P6 owns the operator-
+   tactical sidecar wiring that turns it into a verdict-emitting
+   driver.
+3. The Go SDK driver (`go-http-sdk`) is registered as
+   `unsupported-no-local-verdict-emitter`. The Go kernel surface does
+   not yet expose a local verdict-emitting entrypoint; the M02 P5.T4
+   driver wraps the SDK but currently emits unsupported diagnostics
+   only.
+4. The WASM browser driver covers 12 of 48 scenarios (capability
+   subset). The remaining 36 require a revocation store, an execution
+   nonce store, and the guard pipeline in the browser surface; these
+   are scoped to follow-on browser-kernel work, not M02.
+5. The Python SDK driver is registered as `partial-capability`; only
+   the capability-subset scenarios emit verdict tuples locally.
+6. M04.P2 deferred items captured in
+   `.planning/trajectory-2/deferred/m04-p2-deferred.md`
+   (`chio-core-types --no-default-features` build) are unrelated to
+   M02 but shared the trajectory-2 deferred catalog; tracked for
+   visibility.
+7. Per-crate `mutants.toml` files were created under
+   `crates/<name>/mutants.toml` to hold per-crate examine-glob /
+   skip-list rationale even though `cargo-mutants` 25.x reads only
+   `.cargo/mutants.toml` at workspace root. The CODEOWNERS rationale
+   gate (`scripts/check-mutants-rationale.sh`) walks both surfaces.
+8. CI artefact retention for `mutants-nightly` outcomes is 30 days
+   (`actions/upload-artifact@... retention-days: 30`); the activation-
+   grade nightly streak therefore needs to be referenced via run URLs
+   in `releases.toml: activation_evidence` rather than committed to
+   the repo.
+
+M02 milestone is documentation-complete in this audit. The mutation
+half is materially staged for activation pending the nightly evidence
+streak; the verdict-matrix half is wired with required CI on the
+Rust-kernel driver, the cross-language diff oracle, and the
+deployment-shape smoke gate.
