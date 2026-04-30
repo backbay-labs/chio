@@ -161,7 +161,7 @@ fn cmd_trust_credit_loss_lifecycle_evaluate(
         trust_control::build_client(url, token)?.credit_loss_lifecycle_report(&query)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "credit loss lifecycle evaluation requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -248,7 +248,7 @@ fn cmd_trust_credit_loss_lifecycle_issue(
         trust_control::build_client(url, token)?.issue_credit_loss_lifecycle(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "credit loss lifecycle issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -302,7 +302,7 @@ fn cmd_trust_credit_loss_lifecycle_list(
         trust_control::build_client(url, token)?.list_credit_loss_lifecycle(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "credit loss lifecycle list requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -378,7 +378,7 @@ fn cmd_trust_credit_backtest_export(
         trust_control::build_client(url, token)?.credit_backtest(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "credit backtest export requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -438,7 +438,7 @@ fn cmd_trust_provider_risk_package_export(
         trust_control::build_client(url, token)?.credit_provider_risk_package(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "provider risk package export requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -498,7 +498,7 @@ fn cmd_trust_liability_provider_issue(
         trust_control::build_client(url, token)?.issue_liability_provider(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability provider issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -554,7 +554,7 @@ fn cmd_trust_liability_provider_list(
         trust_control::build_client(url, token)?.list_liability_providers(&query)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability provider list requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -601,7 +601,7 @@ fn cmd_trust_liability_provider_resolve(
         trust_control::build_client(url, token)?.resolve_liability_provider(&query)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability provider resolution requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -649,7 +649,7 @@ fn cmd_trust_liability_quote_request_issue(
         trust_control::build_client(url, token)?.issue_liability_quote_request(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability quote request issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -701,7 +701,7 @@ fn cmd_trust_liability_quote_response_issue(
         trust_control::build_client(url, token)?.issue_liability_quote_response(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability quote response issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -749,7 +749,7 @@ fn cmd_trust_liability_pricing_authority_issue(
         trust_control::build_client(url, token)?.issue_liability_pricing_authority(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability pricing authority issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -795,7 +795,7 @@ fn cmd_trust_liability_placement_issue(
         trust_control::build_client(url, token)?.issue_liability_placement(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability placement issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -838,7 +838,7 @@ fn cmd_trust_liability_bound_coverage_issue(
         trust_control::build_client(url, token)?.issue_liability_bound_coverage(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability bound coverage issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -880,7 +880,7 @@ fn cmd_trust_liability_auto_bind_issue(
         trust_control::build_client(url, token)?.issue_liability_auto_bind(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability auto-bind issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -940,7 +940,7 @@ fn cmd_trust_liability_claim_issue(
         trust_control::build_client(url, token)?.issue_liability_claim_package(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claim issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -982,7 +982,7 @@ fn cmd_trust_liability_claim_response_issue(
         trust_control::build_client(url, token)?.issue_liability_claim_response(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claim response issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1024,7 +1024,7 @@ fn cmd_trust_liability_claim_dispute_issue(
         trust_control::build_client(url, token)?.issue_liability_claim_dispute(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claim dispute issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1066,7 +1066,7 @@ fn cmd_trust_liability_claim_adjudication_issue(
         trust_control::build_client(url, token)?.issue_liability_claim_adjudication(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claim adjudication issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1112,7 +1112,7 @@ fn cmd_trust_liability_claim_payout_instruction_issue(
             .issue_liability_claim_payout_instruction(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claim payout instruction issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1164,7 +1164,7 @@ fn cmd_trust_liability_claim_payout_receipt_issue(
         trust_control::build_client(url, token)?.issue_liability_claim_payout_receipt(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claim payout receipt issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1217,7 +1217,7 @@ fn cmd_trust_liability_claim_settlement_instruction_issue(
             .issue_liability_claim_settlement_instruction(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claim settlement instruction issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1270,7 +1270,7 @@ fn cmd_trust_liability_claim_settlement_receipt_issue(
             .issue_liability_claim_settlement_receipt(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claim settlement receipt issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1329,7 +1329,7 @@ fn cmd_trust_liability_market_list(
         trust_control::build_client(url, token)?.liability_market_workflows(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability market list requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1418,7 +1418,7 @@ fn cmd_trust_liability_claims_list(
         trust_control::build_client(url, token)?.liability_claim_workflows(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "liability claims list requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1526,7 +1526,7 @@ fn cmd_trust_underwriting_input_export(
         trust_control::build_client(url, token)?.underwriting_policy_input(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "underwriting input export requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1594,7 +1594,7 @@ fn cmd_trust_underwriting_decision_evaluate(
         trust_control::build_client(url, token)?.underwriting_decision(&query)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "underwriting decision evaluation requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -1648,7 +1648,7 @@ fn cmd_trust_underwriting_decision_simulate(
         trust_control::build_client(url, token)?.simulate_underwriting_decision(&request)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "underwriting simulation requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -2150,7 +2150,7 @@ fn cmd_trust_underwriting_decision_issue(
         trust_control::build_client(url, token)?.issue_underwriting_decision(&request)?
     } else {
         let receipt_db_path = backend.query.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "underwriting decision issuance requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -2215,7 +2215,7 @@ fn cmd_trust_underwriting_decision_list(
         trust_control::build_client(url, token)?.list_underwriting_decisions(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "underwriting decision list requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -2270,7 +2270,7 @@ fn cmd_trust_underwriting_appeal_create(
         trust_control::build_client(url, token)?.create_underwriting_appeal(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "underwriting appeal create requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -2305,7 +2305,7 @@ fn cmd_trust_underwriting_appeal_resolve(
         trust_control::build_client(url, token)?.resolve_underwriting_appeal(&request)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "underwriting appeal resolve requires --receipt-db <path> when --control-url is not set"
                     .to_string(),
             )
@@ -2358,7 +2358,7 @@ fn cmd_receipt_list(
         }
     } else {
         let path = backend.receipt_db_path.ok_or_else(|| {
-            CliError::capability_error(
+            CliError::cli_other_error(
                 "receipt commands require --receipt-db <path> or --control-url".to_string(),
             )
         })?;

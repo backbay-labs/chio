@@ -5,8 +5,9 @@ use std::path::Path;
 
 use chio_core::crypto::Keypair;
 use chio_errors::_generated::error_codes::{
-    CAPABILITY_SCOPE_EXCEEDED, CLI_JSON, CLI_OTHER, POLICY_CONSTRAINT_INVALID,
-    POLICY_DECISION_DENIED, TRANSPORT_HTTP_FAILED, TRANSPORT_INVALID_REQUEST_SHAPE,
+    CAPABILITY_SCOPE_EXCEEDED, CAPABILITY_SUBJECT_MISMATCH, CLI_JSON, CLI_OTHER,
+    POLICY_CONSTRAINT_INVALID, POLICY_DECISION_DENIED, TRANSPORT_HTTP_FAILED,
+    TRANSPORT_INVALID_REQUEST_SHAPE,
 };
 use chio_errors::{ChioError, ErrorCodeSpec};
 use chio_kernel::transport::TransportError;
@@ -125,7 +126,15 @@ impl CliError {
     }
 
     pub fn capability_error(message: impl Into<String>) -> Self {
+        Self::cli_other_error(message)
+    }
+
+    pub fn capability_scope_error(message: impl Into<String>) -> Self {
         Self::registry_error(&CAPABILITY_SCOPE_EXCEEDED, message)
+    }
+
+    pub fn capability_subject_error(message: impl Into<String>) -> Self {
+        Self::registry_error(&CAPABILITY_SUBJECT_MISMATCH, message)
     }
 
     pub fn policy_error(message: impl Into<String>) -> Self {
