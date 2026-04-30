@@ -2,6 +2,13 @@ pub use chio_core_types::{canonical, capability, crypto, error, receipt, Error};
 
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod marketplace_pricing;
+
+pub use marketplace_pricing::{
+    compute_marketplace_invocation_price, MarketplaceBasePrice, MarketplaceInvocationPrice,
+    MarketplacePricingContext, MarketplaceReputationTier, TIER_DISCOUNT_PER_HUNDRED,
+};
+
 pub use chio_core_types::runtime_attestation::AttestationVerifierFamily;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
