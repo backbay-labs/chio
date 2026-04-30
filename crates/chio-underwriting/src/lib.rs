@@ -1,7 +1,12 @@
 pub use chio_appraisal as appraisal;
 pub use chio_core_types::{canonical, capability, crypto, receipt};
 
+pub mod marketplace_limits;
 pub mod premium;
+pub use marketplace_limits::{
+    compute_marketplace_credit_limit, MarketplaceCreditLimitDecision,
+    MarketplaceCreditLimitRequest, MarketplaceLimitTier, MARKETPLACE_TIER_LIMIT_UNITS,
+};
 pub use premium::{
     price_premium, risk_multiplier, LookbackWindow, PremiumDeclineReason, PremiumInputs,
     PremiumQuote, DEFAULT_BEHAVIORAL_PENALTY_CAP, DEFAULT_BEHAVIORAL_PENALTY_PER_SIGMA,
