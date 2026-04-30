@@ -11,6 +11,9 @@ use std::{fs, path::Path};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod manifest;
+pub use manifest::{Manifest, ManifestEntry, MANIFEST_PRODUCER, MANIFEST_SCHEMA_VERSION};
+
 /// Schema version accepted by this crate.
 pub const CASE_SCHEMA_VERSION: u32 = 1;
 
@@ -390,6 +393,8 @@ pub enum CaseError {
     InvalidArtifact,
     #[error("pending adversarial case {0} is not coverage-eligible")]
     PendingCase(String),
+    #[error("manifest drift: case id '{case_id}' does not match bundled path '{path}'")]
+    ManifestDrift { case_id: String, path: String },
 }
 
 fn is_valid_case_id(id: &str) -> bool {
