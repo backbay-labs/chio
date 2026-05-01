@@ -3,21 +3,19 @@
 
 //! Cross-backend conformance test.
 //!
-//! M03.P4.T5: each backend's verifier rejects fixtures meant for
-//! the other two backends. Catches type-confusion bugs that an
-//! attacker could exploit by mislabelling a quote (e.g. presenting
-//! a SEV-SNP envelope to a TDX verifier).
+//! Each backend's verifier rejects fixtures meant for the other two
+//! backends. Catches type-confusion bugs that an attacker could exploit
+//! by mislabelling a quote (e.g. presenting a SEV-SNP envelope to a TDX
+//! verifier).
 //!
 //! The contract is mechanical: each fixture's kind is determined
 //! by which directory tree it lives in. Fixtures under
 //! `fixtures/quotes/tdx/` are TDX. Fixtures under
 //! `fixtures/quotes/sev_snp/` are SEV-SNP. Fixtures under
-//! `fixtures/quotes/nitro/` are Nitro. Each backend MUST reject
-//! every fixture not produced for its own kind. The wave-opening
-//! note in M03.P4.T5 also calls for a filename prefix convention
-//! (`tdx_*.bin`, `sev_snp_*.bin`, `nitro_*.bin`) for forward
-//! corpora; the SEV-SNP and Nitro fixtures shipped by P4.T2 and
-//! P4.T4 already follow that convention, so the gate-side
+//! `fixtures/quotes/nitro/` are Nitro. Each backend MUST reject every
+//! fixture not produced for its own kind. The corpus also follows a
+//! filename prefix convention (`tdx_*.bin`, `sev_snp_*.bin`,
+//! `nitro_*.bin`) so the gate-side
 //! `grep -qE '/(tdx_|sev_snp_|nitro_)'` check passes.
 //!
 //! Backends are configured with the same collateral shapes their

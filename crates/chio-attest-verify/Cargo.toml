@@ -1,6 +1,6 @@
 [package]
 name = "chio-attest-verify"
-description = "Chio shared Sigstore verification surface (M09 supply-chain attestation)"
+description = "Chio shared Sigstore verification surface (supply-chain attestation)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -47,10 +47,10 @@ tee-quotes = ["dep:dcap-rs", "dep:sev", "dep:coset"]
 chio-adversarial-suite = { path = "../chio-adversarial-suite" }
 tempfile = { workspace = true }
 
-# M03.P2.T5: v3.18 receipt bundle migration test. Locks the byte-equivalence
-# contract between trajectory-1 classical receipts and the trajectory-2
-# hybrid signing path under crypto_floor=allow_classical, then proves the
-# rolled hybrid bundle re-verifies under crypto_floor=pq_required.
+# v3.18 receipt bundle migration test. Locks the byte-equivalence contract
+# between classical receipts and the hybrid signing path under
+# crypto_floor=allow_classical, then proves the rolled hybrid bundle
+# re-verifies under crypto_floor=pq_required.
 [[test]]
 name = "v318_migration"
 path = "tests/v318_migration.rs"

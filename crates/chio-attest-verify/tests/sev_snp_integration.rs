@@ -3,9 +3,9 @@
 //! Consumes the pinned fixture corpus written by the
 //! `generate_sev_snp_fixtures` example. Each fixture envelope mirrors
 //! the deterministic subset of the AMD SEV-SNP attestation report
-//! shape exercised by `tests/sev_snp_unit.rs`. The corpus is the gate
-//! M03.P4.T2 ships to lock the file path, role, role tag, and SHA256
-//! contract reviewers diff against.
+//! shape exercised by `tests/sev_snp_unit.rs`. The corpus locks the
+//! file path, role, role tag, and SHA256 contract reviewers diff
+//! against.
 //!
 //! Positive coverage: every fixture under
 //! `fixtures/quotes/sev_snp/positive/` verifies under the kernel
@@ -16,8 +16,8 @@
 //! `fixtures/quotes/sev_snp/negative/` is rejected by the verifier
 //! with the expected fail-closed reason. The corpus pins both stale
 //! TCB (`amd-sev-snp-stale-tcb-marker`) and mismatched launch digest
-//! (`amd-sev-snp-launch-digest-mismatch`) cases, so the M03.P4.T2 gate
-//! check trips when either rejection regresses.
+//! (`amd-sev-snp-launch-digest-mismatch`) cases; the gate check trips
+//! when either rejection regresses.
 //!
 //! Manifest contract: every binary file referenced by MANIFEST.toml
 //! is re-hashed at test time and compared to the manifest's pinned

@@ -1,11 +1,11 @@
-//! v3.18 receipt bundle migration test (M03.P2.T5).
+//! v3.18 receipt bundle migration test.
 //!
 //! Pins three contracts in one test:
 //!
 //! 1. **Byte-equivalence under `crypto_floor=allow_classical`.** A v3.18
 //!    receipt bundle (classical Ed25519 envelope) re-verifies under the
-//!    M03 classical path with byte-identical canonical-JSON. Trajectory-1
-//!    deployments that have not provisioned a PQ key keep working.
+//!    classical path with byte-identical canonical-JSON. Deployments
+//!    that have not provisioned a PQ key keep working.
 //!
 //! 2. **Hybrid round-trip under `crypto_floor=pq_required`.** The same
 //!    receipt body re-signed via a `HybridBackend` re-verifies under
@@ -24,8 +24,6 @@
 //! signed Ed25519 receipt produced from the seed
 //! `b"chio-v318-fixture-seed-receipt-v"` so the byte-equivalence contract
 //! is reproducible across CI runs without depending on system entropy.
-//!
-//! Trust-boundary milestone: M03 P2.T5.
 
 #![cfg(feature = "pq")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -110,7 +108,7 @@ fn rebuild_v318_fixture() -> ChioReceipt {
 /// to refresh the checked-in fixture if the canonical-JSON encoding rules
 /// ever change. The `regenerate_fixture` ignored test is the documented
 /// recovery procedure if a future encoding bump intentionally moves the
-/// byte oracle (M01 vector corpus signs off on every bump).
+/// byte oracle (the canonical vector corpus signs off on every bump).
 #[test]
 #[ignore]
 fn regenerate_fixture() {
@@ -138,10 +136,7 @@ fn v318_fixture_round_trips_under_allow_classical() {
         SigningAlgorithm::Ed25519,
         "v3.18 fixture must be classical Ed25519"
     );
-    assert_eq!(
-        fixture.signature.algorithm(),
-        rebuilt.signature.algorithm()
-    );
+    assert_eq!(fixture.signature.algorithm(), rebuilt.signature.algorithm());
 
     // Body bytes byte-identical (ignoring the signature itself).
     let fixture_body = ChioReceiptBody {
@@ -239,8 +234,8 @@ fn v318_fixture_rejected_under_pq_required() {
 #[test]
 fn rolled_hybrid_bundle_rejected_under_allow_classical() {
     // Symmetric contract: a hybrid bundle MUST reject under
-    // `crypto_floor=allow_classical`. The cell completes the 2x2 sketch
-    // M03.P5.T2 escalates into a full E2E migration suite.
+    // `crypto_floor=allow_classical`. This cell completes the 2x2
+    // matrix that the full E2E migration suite expands on.
     let classical_kp = Keypair::from_seed(&fixture_classical_seed());
     let classical_backend = Ed25519Backend::new(classical_kp);
     let pq = MlDsa65Backend::from_seed(&fixture_pq_seed());
