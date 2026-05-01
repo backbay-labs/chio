@@ -18,6 +18,9 @@
 
 use std::time::SystemTime;
 
+use crate::tee_signature::{
+    verify_p256_signature_with_attestation_key, verify_p384_signature_with_attestation_key,
+};
 use crate::{
     expect_report_data, AttestError, QuoteTcbStatus, QuoteVerificationContext, QuoteVerifier,
     TeeKind, VerifiedQuote,
@@ -31,6 +34,7 @@ const TD10_REPORT_DATA_OFFSET: usize = QUOTE_HEADER_LEN + 520;
 const TD10_REPORT_DATA_END: usize = TD10_REPORT_DATA_OFFSET + 64;
 const SIGNATURE_LEN_OFFSET: usize = QUOTE_HEADER_LEN + TD10_REPORT_LEN;
 const SIGNATURE_BYTES_OFFSET: usize = SIGNATURE_LEN_OFFSET + 4;
+const TDX_SIGNATURE_DATA_MAX_LEN: usize = 128 * 1024;
 
 /// Intel SGX Quoting Enclave vendor id, embedded in TDX v4 quote
 /// headers at bytes 12..28. Source: Intel TDX Quote Generation
@@ -159,6 +163,28 @@ impl QuoteVerifier for TdxDcapVerifier {
     ) -> Result<VerifiedQuote, AttestError> {
         let tcb_status = self.verify_collateral()?;
         let parsed = ParsedTdxQuote::parse(quote)?;
+        let attestation_key = self
+            .collateral
+            .pck_certificate_chain_der
+            .first()
+            .ok_or(AttestError::TrustRoot)?;
+        match parsed.att_key_type {
+            ATT_KEY_TYPE_ECDSA_P256 => verify_p256_signature_with_attestation_key(
+                attestation_key,
+                &parsed.signed_message,
+                &parsed.signature,
+            )?,
+            ATT_KEY_TYPE_ECDSA_P384 => verify_p384_signature_with_attestation_key(
+                attestation_key,
+                &parsed.signed_message,
+                &parsed.signature,
+            )?,
+            other => {
+                return Err(AttestError::Malformed(format!(
+                    "tdx quote att_key_type {other} is not supported"
+                )))
+            }
+        }
         let expected_report_data = expect_report_data(context.kernel_pk, context.receipt_root);
 
         if parsed.report_data != expected_report_data {
@@ -176,7 +202,10 @@ impl QuoteVerifier for TdxDcapVerifier {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedTdxQuote {
+    att_key_type: u16,
     report_data: [u8; 64],
+    signed_message: Vec<u8>,
+    signature: Vec<u8>,
 }
 
 impl ParsedTdxQuote {
@@ -223,6 +252,11 @@ impl ParsedTdxQuote {
                 "tdx quote signature data is empty".to_string(),
             ));
         }
+        if signature_len > TDX_SIGNATURE_DATA_MAX_LEN {
+            return Err(AttestError::Malformed(
+                "tdx quote signature data exceeds maximum length".to_string(),
+            ));
+        }
         let expected_len = SIGNATURE_BYTES_OFFSET
             .checked_add(signature_len)
             .ok_or_else(|| AttestError::Malformed("tdx quote length overflow".to_string()))?;
@@ -234,8 +268,15 @@ impl ParsedTdxQuote {
 
         let mut report_data = [0u8; 64];
         report_data.copy_from_slice(&quote[TD10_REPORT_DATA_OFFSET..TD10_REPORT_DATA_END]);
+        let signed_message = quote[..SIGNATURE_LEN_OFFSET].to_vec();
+        let signature = quote[SIGNATURE_BYTES_OFFSET..expected_len].to_vec();
 
-        Ok(Self { report_data })
+        Ok(Self {
+            att_key_type,
+            report_data,
+            signed_message,
+            signature,
+        })
     }
 }
 

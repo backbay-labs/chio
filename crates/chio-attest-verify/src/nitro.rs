@@ -65,6 +65,13 @@ pub const NITRO_USER_DATA_LEN: usize = 64;
 /// Required length of the PCR0 (and other PCR) field.
 pub const NITRO_PCR_LEN: usize = 48;
 
+const NITRO_TIMESTAMP_MAX_SKEW: Duration = Duration::from_secs(300);
+const NITRO_QUOTE_MAX_LEN: usize = 1024 * 1024;
+const NITRO_PAYLOAD_MAX_LEN: usize = 512 * 1024;
+const NITRO_MODULE_ID_MAX_LEN: usize = 256;
+const NITRO_CERTIFICATE_MAX_LEN: usize = 64 * 1024;
+const NITRO_CABUNDLE_MAX_ENTRIES: usize = 16;
+
 /// AWS Nitro NSM collateral bundle.
 ///
 /// Carries the embedded AWS Nitro root certificate bytes (DER) and
@@ -195,6 +202,11 @@ impl QuoteVerifier for NitroVerifier {
         quote: &[u8],
         context: &QuoteVerificationContext<'_>,
     ) -> Result<VerifiedQuote, AttestError> {
+        if quote.len() > NITRO_QUOTE_MAX_LEN {
+            return Err(AttestError::Malformed(
+                "nitro cose_sign1 envelope exceeds maximum length".to_string(),
+            ));
+        }
         let cose = CoseSign1::from_slice(quote)
             .map_err(|e| AttestError::Malformed(format!("nitro cose_sign1 parse failed: {e}")))?;
 
@@ -202,6 +214,11 @@ impl QuoteVerifier for NitroVerifier {
             .payload
             .as_ref()
             .ok_or_else(|| AttestError::Malformed("nitro cose_sign1 has no payload".to_string()))?;
+        if payload_bytes.len() > NITRO_PAYLOAD_MAX_LEN {
+            return Err(AttestError::Malformed(
+                "nitro payload exceeds maximum length".to_string(),
+            ));
+        }
 
         // Reject empty signatures up front: a real NSM emits a
         // non-empty ECDSA P-384 signature blob.
@@ -237,12 +254,8 @@ impl QuoteVerifier for NitroVerifier {
             return Err(AttestError::ReportDataMismatch);
         }
 
-        // signed_at is derived from the NSM-emitted timestamp when
-        // it is reasonable; otherwise we fall back to the verifier's
-        // configured verification_time.
-        let signed_at = SystemTime::UNIX_EPOCH
-            .checked_add(Duration::from_millis(parsed.timestamp_millis))
-            .unwrap_or(self.verification_time);
+        let signed_at = nitro_timestamp_millis_to_system_time(parsed.timestamp_millis)?;
+        self.verify_document_timestamp(signed_at)?;
 
         Ok(VerifiedQuote {
             tee_kind: TeeKind::AwsNitro,
@@ -251,6 +264,37 @@ impl QuoteVerifier for NitroVerifier {
             signed_at,
         })
     }
+}
+
+impl NitroVerifier {
+    fn verify_document_timestamp(&self, signed_at: SystemTime) -> Result<(), AttestError> {
+        let oldest_allowed = match self.verification_time.checked_sub(NITRO_TIMESTAMP_MAX_SKEW) {
+            Some(bound) => bound,
+            None => SystemTime::UNIX_EPOCH,
+        };
+        let newest_allowed = self
+            .verification_time
+            .checked_add(NITRO_TIMESTAMP_MAX_SKEW)
+            .ok_or_else(|| {
+                AttestError::Malformed("nitro timestamp freshness window overflows".to_string())
+            })?;
+
+        if signed_at < oldest_allowed || signed_at > newest_allowed {
+            return Err(AttestError::QuoteRejected(
+                "nitro timestamp is outside the freshness window".to_string(),
+            ));
+        }
+        if signed_at < self.collateral.not_before || signed_at > self.collateral.not_after {
+            return Err(AttestError::CertificateExpired);
+        }
+        Ok(())
+    }
+}
+
+fn nitro_timestamp_millis_to_system_time(timestamp_millis: u64) -> Result<SystemTime, AttestError> {
+    SystemTime::UNIX_EPOCH
+        .checked_add(Duration::from_millis(timestamp_millis))
+        .ok_or_else(|| AttestError::Malformed("nitro timestamp overflows SystemTime".to_string()))
 }
 
 /// Decoded fields of an AWS Nitro NSM attestation document. The
@@ -266,6 +310,11 @@ struct ParsedNitroDocument {
 
 impl ParsedNitroDocument {
     fn parse(payload: &[u8]) -> Result<Self, AttestError> {
+        if payload.len() > NITRO_PAYLOAD_MAX_LEN {
+            return Err(AttestError::Malformed(
+                "nitro payload exceeds maximum length".to_string(),
+            ));
+        }
         let value: CborValue = coset::cbor::de::from_reader(payload)
             .map_err(|e| AttestError::Malformed(format!("nitro payload not CBOR: {e}")))?;
         let map = match value {
@@ -281,6 +330,7 @@ impl ParsedNitroDocument {
         let mut timestamp_millis: Option<u64> = None;
         let mut pcr0: Option<[u8; NITRO_PCR_LEN]> = None;
         let mut certificate: Option<Vec<u8>> = None;
+        let mut cabundle_seen = false;
         let mut user_data: Option<[u8; NITRO_USER_DATA_LEN]> = None;
 
         for (k, v) in map {
@@ -291,6 +341,11 @@ impl ParsedNitroDocument {
             match key.as_str() {
                 "module_id" => {
                     if let CborValue::Text(s) = v {
+                        if s.len() > NITRO_MODULE_ID_MAX_LEN {
+                            return Err(AttestError::Malformed(
+                                "nitro module_id exceeds maximum length".to_string(),
+                            ));
+                        }
                         module_id = Some(s);
                     }
                 }
@@ -356,6 +411,11 @@ impl ParsedNitroDocument {
                                 "nitro certificate field is empty".to_string(),
                             ));
                         }
+                        if b.len() > NITRO_CERTIFICATE_MAX_LEN {
+                            return Err(AttestError::Malformed(
+                                "nitro certificate field exceeds maximum length".to_string(),
+                            ));
+                        }
                         certificate = Some(b);
                     }
                     _ => {
@@ -364,6 +424,37 @@ impl ParsedNitroDocument {
                         ))
                     }
                 },
+                "cabundle" => {
+                    let entries = match v {
+                        CborValue::Array(entries) => entries,
+                        _ => {
+                            return Err(AttestError::Malformed(
+                                "nitro cabundle is not a CBOR array".to_string(),
+                            ))
+                        }
+                    };
+                    if entries.is_empty() || entries.len() > NITRO_CABUNDLE_MAX_ENTRIES {
+                        return Err(AttestError::Malformed(
+                            "nitro cabundle length is outside bounds".to_string(),
+                        ));
+                    }
+                    for entry in entries {
+                        let bytes = match entry {
+                            CborValue::Bytes(bytes) => bytes,
+                            _ => {
+                                return Err(AttestError::Malformed(
+                                    "nitro cabundle entry is not a CBOR byte string".to_string(),
+                                ))
+                            }
+                        };
+                        if bytes.is_empty() || bytes.len() > NITRO_CERTIFICATE_MAX_LEN {
+                            return Err(AttestError::Malformed(
+                                "nitro cabundle entry length is outside bounds".to_string(),
+                            ));
+                        }
+                    }
+                    cabundle_seen = true;
+                }
                 "user_data" => match v {
                     CborValue::Bytes(b) => {
                         if b.len() != NITRO_USER_DATA_LEN {
@@ -400,6 +491,11 @@ impl ParsedNitroDocument {
         let certificate = certificate.ok_or_else(|| {
             AttestError::Malformed("nitro payload missing certificate".to_string())
         })?;
+        if !cabundle_seen {
+            return Err(AttestError::Malformed(
+                "nitro payload missing cabundle".to_string(),
+            ));
+        }
         let user_data = user_data
             .ok_or_else(|| AttestError::Malformed("nitro payload missing user_data".to_string()))?;
 

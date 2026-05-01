@@ -8,12 +8,38 @@ use chio_attest_verify::{
     TeeKind,
 };
 use chio_core_types::crypto::Keypair;
+use p256::ecdsa::{
+    signature::Signer as _, Signature as P256Signature, SigningKey as P256SigningKey,
+    VerifyingKey as P256VerifyingKey,
+};
+use p384::ecdsa::{
+    Signature as P384Signature, SigningKey as P384SigningKey, VerifyingKey as P384VerifyingKey,
+};
 
 const QUOTE_HEADER_LEN: usize = 48;
 const TD10_REPORT_LEN: usize = 584;
 const TD10_REPORT_DATA_OFFSET: usize = QUOTE_HEADER_LEN + 520;
 const SIGNATURE_LEN_OFFSET: usize = QUOTE_HEADER_LEN + TD10_REPORT_LEN;
 const SIGNATURE_BYTES_OFFSET: usize = SIGNATURE_LEN_OFFSET + 4;
+const P256_ATTESTATION_KEY_SEED: [u8; 32] = [0x25; 32];
+const P384_ATTESTATION_KEY_SEED: [u8; 48] = [0x38; 48];
+
+#[derive(Clone, Copy)]
+enum FixtureAttKeyType {
+    P256,
+    P384,
+    Epid,
+}
+
+impl FixtureAttKeyType {
+    fn wire_value(self) -> u16 {
+        match self {
+            Self::P256 => 2,
+            Self::P384 => 3,
+            Self::Epid => 1,
+        }
+    }
+}
 
 #[test]
 fn tdx_verifier_accepts_bound_quote_with_current_collateral() -> Result<(), String> {
@@ -38,6 +64,37 @@ fn tdx_verifier_accepts_bound_quote_with_current_collateral() -> Result<(), Stri
     );
     assert_eq!(verified.tcb_status, QuoteTcbStatus::UpToDate);
     assert_eq!(verified.signed_at, now);
+    Ok(())
+}
+
+#[test]
+fn tdx_verifier_accepts_bound_p384_quote_with_current_collateral() -> Result<(), String> {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
+    let receipt_root = [8u8; 32];
+    let quote = fixture_quote_with_att_key(
+        expect_report_data(&kernel, &receipt_root),
+        FixtureAttKeyType::P384,
+    );
+    let verifier = TdxDcapVerifier::with_verification_time(
+        collateral_for(now, FixtureAttKeyType::P384),
+        7,
+        now,
+    );
+
+    let verified = verifier
+        .verify_quote(
+            &quote,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .map_err(|error| format!("{error}"))?;
+
+    assert_eq!(verified.tee_kind, TeeKind::IntelTdx);
+    assert_eq!(
+        verified.report_data,
+        expect_report_data(&kernel, &receipt_root)
+    );
+    assert_eq!(verified.tcb_status, QuoteTcbStatus::UpToDate);
     Ok(())
 }
 
@@ -122,9 +179,59 @@ fn tdx_verifier_rejects_unsupported_att_key_type() {
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
     let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
     let receipt_root = [8u8; 32];
+    let quote = fixture_quote_with_att_key(
+        expect_report_data(&kernel, &receipt_root),
+        FixtureAttKeyType::Epid,
+    );
+    let verifier = TdxDcapVerifier::with_verification_time(collateral(now), 7, now);
+
+    let error = verifier
+        .verify_quote(
+            &quote,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn tdx_verifier_rejects_signature_mismatch() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
+    let receipt_root = [8u8; 32];
     let mut quote = fixture_quote(expect_report_data(&kernel, &receipt_root));
-    // EPID-style (1) is invalid for TDX; backend MUST reject.
-    quote[2..4].copy_from_slice(&1u16.to_le_bytes());
+    let Some(last) = quote.last_mut() else {
+        panic!("fixture quote carries a signature byte");
+    };
+    *last ^= 0x01;
+    let verifier = TdxDcapVerifier::with_verification_time(collateral(now), 7, now);
+
+    let error = verifier
+        .verify_quote(
+            &quote,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::SignatureMismatch)));
+}
+
+#[test]
+fn tdx_verifier_rejects_oversized_signature_data() {
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let kernel = Keypair::from_seed(&[9u8; 32]).public_key();
+    let receipt_root = [8u8; 32];
+    let oversized_len = 128 * 1024 + 1;
+    let mut quote = vec![0u8; SIGNATURE_BYTES_OFFSET + oversized_len];
+    quote[0..2].copy_from_slice(&4u16.to_le_bytes());
+    quote[2..4].copy_from_slice(&FixtureAttKeyType::P256.wire_value().to_le_bytes());
+    quote[4..8].copy_from_slice(&0x0000_0081u32.to_le_bytes());
+    quote[12..28].copy_from_slice(&INTEL_SGX_QE_VENDOR_ID);
+    quote[TD10_REPORT_DATA_OFFSET..TD10_REPORT_DATA_OFFSET + 64]
+        .copy_from_slice(&expect_report_data(&kernel, &receipt_root));
+    quote[SIGNATURE_LEN_OFFSET..SIGNATURE_LEN_OFFSET + 4]
+        .copy_from_slice(&(oversized_len as u32).to_le_bytes());
     let verifier = TdxDcapVerifier::with_verification_time(collateral(now), 7, now);
 
     let error = verifier
@@ -209,10 +316,14 @@ fn tdx_verifier_rejects_malformed_or_wrong_tee_quote() {
 }
 
 fn collateral(now: SystemTime) -> TdxCollateral {
+    collateral_for(now, FixtureAttKeyType::P256)
+}
+
+fn collateral_for(now: SystemTime, att_key_type: FixtureAttKeyType) -> TdxCollateral {
     let root = b"intel-root-ca-fixture".to_vec();
     TdxCollateral::new(
         root.clone(),
-        vec![b"pck-leaf-fixture".to_vec(), root.clone()],
+        vec![attestation_public_key(att_key_type), root.clone()],
         vec![b"tcb-info-signing-fixture".to_vec(), root],
         7,
         QuoteTcbStatus::UpToDate,
@@ -226,15 +337,64 @@ const INTEL_SGX_QE_VENDOR_ID: [u8; 16] = [
 ];
 
 fn fixture_quote(report_data: [u8; 64]) -> Vec<u8> {
-    let signature_len = 1usize;
+    fixture_quote_with_att_key(report_data, FixtureAttKeyType::P256)
+}
+
+fn fixture_quote_with_att_key(report_data: [u8; 64], att_key_type: FixtureAttKeyType) -> Vec<u8> {
+    let signature_len = match att_key_type {
+        FixtureAttKeyType::P384 => 96usize,
+        FixtureAttKeyType::P256 | FixtureAttKeyType::Epid => 64usize,
+    };
     let mut quote = vec![0u8; SIGNATURE_BYTES_OFFSET + signature_len];
     quote[0..2].copy_from_slice(&4u16.to_le_bytes());
-    quote[2..4].copy_from_slice(&2u16.to_le_bytes());
+    quote[2..4].copy_from_slice(&att_key_type.wire_value().to_le_bytes());
     quote[4..8].copy_from_slice(&0x0000_0081u32.to_le_bytes());
     quote[12..28].copy_from_slice(&INTEL_SGX_QE_VENDOR_ID);
     quote[TD10_REPORT_DATA_OFFSET..TD10_REPORT_DATA_OFFSET + 64].copy_from_slice(&report_data);
     quote[SIGNATURE_LEN_OFFSET..SIGNATURE_LEN_OFFSET + 4]
         .copy_from_slice(&(signature_len as u32).to_le_bytes());
-    quote[SIGNATURE_BYTES_OFFSET] = 0xA5;
+    let signature = sign_quote(att_key_type, &quote[..SIGNATURE_LEN_OFFSET]);
+    quote[SIGNATURE_BYTES_OFFSET..SIGNATURE_BYTES_OFFSET + signature_len]
+        .copy_from_slice(&signature);
     quote
+}
+
+fn p256_signing_key() -> P256SigningKey {
+    match P256SigningKey::from_bytes((&P256_ATTESTATION_KEY_SEED).into()) {
+        Ok(key) => key,
+        Err(error) => panic!("fixture P-256 signing key seed is invalid: {error}"),
+    }
+}
+
+fn p384_signing_key() -> P384SigningKey {
+    match P384SigningKey::from_bytes((&P384_ATTESTATION_KEY_SEED).into()) {
+        Ok(key) => key,
+        Err(error) => panic!("fixture P-384 signing key seed is invalid: {error}"),
+    }
+}
+
+fn attestation_public_key(att_key_type: FixtureAttKeyType) -> Vec<u8> {
+    match att_key_type {
+        FixtureAttKeyType::P384 => {
+            let verifying_key = P384VerifyingKey::from(&p384_signing_key());
+            verifying_key.to_encoded_point(false).as_bytes().to_vec()
+        }
+        FixtureAttKeyType::P256 | FixtureAttKeyType::Epid => {
+            let verifying_key = P256VerifyingKey::from(&p256_signing_key());
+            verifying_key.to_encoded_point(false).as_bytes().to_vec()
+        }
+    }
+}
+
+fn sign_quote(att_key_type: FixtureAttKeyType, message: &[u8]) -> Vec<u8> {
+    match att_key_type {
+        FixtureAttKeyType::P384 => {
+            let signature: P384Signature = p384_signing_key().sign(message);
+            signature.to_vec()
+        }
+        FixtureAttKeyType::P256 | FixtureAttKeyType::Epid => {
+            let signature: P256Signature = p256_signing_key().sign(message);
+            signature.to_vec()
+        }
+    }
 }

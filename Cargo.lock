@@ -2529,6 +2529,7 @@ dependencies = [
  "coset",
  "dcap-rs",
  "fips204",
+ "p256 0.13.2",
  "p384",
  "pem",
  "regex",

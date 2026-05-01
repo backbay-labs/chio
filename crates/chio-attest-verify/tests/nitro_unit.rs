@@ -109,6 +109,34 @@ fn build_document(opts: &DocOpts) -> Vec<u8> {
     payload
 }
 
+fn build_document_without_cabundle(opts: &DocOpts) -> Vec<u8> {
+    let mut entries: Vec<(CborValue, CborValue)> = Vec::new();
+    entries.push((
+        CborValue::Text("module_id".to_string()),
+        CborValue::Text(opts.module_id.clone()),
+    ));
+    entries.push((
+        CborValue::Text("timestamp".to_string()),
+        CborValue::Integer(opts.timestamp.into()),
+    ));
+    let pcrs = vec![(
+        CborValue::Integer(0_i64.into()),
+        CborValue::Bytes(opts.pcr0.to_vec()),
+    )];
+    entries.push((CborValue::Text("pcrs".to_string()), CborValue::Map(pcrs)));
+    entries.push((
+        CborValue::Text("certificate".to_string()),
+        CborValue::Bytes(opts.certificate.clone()),
+    ));
+    entries.push((
+        CborValue::Text("user_data".to_string()),
+        CborValue::Bytes(opts.user_data.to_vec()),
+    ));
+    let mut payload = Vec::new();
+    coset::cbor::ser::into_writer(&CborValue::Map(entries), &mut payload).unwrap();
+    payload
+}
+
 fn build_envelope(opts: &DocOpts) -> Vec<u8> {
     let payload = build_document(opts);
     signed_envelope(payload)
@@ -337,6 +365,151 @@ fn nitro_verifier_rejects_empty_signature() {
     let bound = expect_report_data(&kernel, &receipt_root);
     let payload = build_document(&DocOpts::bound(bound, PINNED_PCR0));
     let envelope = raw_envelope(payload, Vec::new());
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn nitro_verifier_rejects_far_future_timestamp() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let mut opts = DocOpts::bound(bound, PINNED_PCR0);
+    opts.timestamp = TIMESTAMP_MS + 10 * 60 * 1000;
+    let envelope = build_envelope(&opts);
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::QuoteRejected(_))));
+}
+
+#[test]
+fn nitro_verifier_rejects_stale_timestamp() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let mut opts = DocOpts::bound(bound, PINNED_PCR0);
+    opts.timestamp = TIMESTAMP_MS - 10 * 60 * 1000;
+    let envelope = build_envelope(&opts);
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::QuoteRejected(_))));
+}
+
+#[test]
+fn nitro_verifier_rejects_extreme_future_timestamp() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let mut opts = DocOpts::bound(bound, PINNED_PCR0);
+    opts.timestamp = u64::MAX;
+    let envelope = build_envelope(&opts);
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::QuoteRejected(_))));
+}
+
+#[test]
+fn nitro_verifier_rejects_oversized_outer_envelope() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let oversized = vec![0u8; 1024 * 1024 + 1];
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &oversized,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn nitro_verifier_rejects_oversized_payload() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let envelope = signed_envelope(vec![0u8; 512 * 1024 + 1]);
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn nitro_verifier_rejects_oversized_module_id() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let mut opts = DocOpts::bound(bound, PINNED_PCR0);
+    opts.module_id = "m".repeat(257);
+    let envelope = build_envelope(&opts);
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn nitro_verifier_rejects_oversized_certificate_field() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let mut opts = DocOpts::bound(bound, PINNED_PCR0);
+    opts.certificate = vec![0xAB; 64 * 1024 + 1];
+    let envelope = build_envelope(&opts);
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn nitro_verifier_rejects_missing_cabundle() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let opts = DocOpts::bound(bound, PINNED_PCR0);
+    let envelope = signed_envelope(build_document_without_cabundle(&opts));
     let v = verifier(now());
 
     let error = v
