@@ -13,12 +13,18 @@ use verdict_matrix::diff_oracle::{
     DriverReport,
 };
 use verdict_matrix::driver::{
-    category_counts, load_scenarios, DriverStatus, RustKernelDriver, RUST_KERNEL_DRIVER,
+    category_counts, load_scenarios, DriverStatus, RustKernelDriver, VerdictScenario,
+    RUST_KERNEL_DRIVER,
 };
 use verdict_matrix::ScenarioCategory;
 
 fn verdict_matrix_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("verdict_matrix")
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if manifest_dir.join(verdict_matrix::MANIFEST_PATH).is_file() {
+        manifest_dir.to_path_buf()
+    } else {
+        manifest_dir.join("verdict_matrix")
+    }
 }
 
 fn load_manifest_and_corpus() -> (
@@ -49,6 +55,17 @@ fn load_corpus() -> Vec<verdict_matrix::driver::VerdictScenario> {
     scenarios
 }
 
+fn first_capability_scenario() -> VerdictScenario {
+    let scenarios = load_corpus();
+    match scenarios
+        .into_iter()
+        .find(|scenario| scenario.category == ScenarioCategory::Capability)
+    {
+        Some(scenario) => scenario,
+        None => panic!("corpus does not contain a capability scenario"),
+    }
+}
+
 #[test]
 fn corpus_satisfies_verdict_matrix_counts() {
     let scenarios = load_corpus();
@@ -62,6 +79,43 @@ fn corpus_satisfies_verdict_matrix_counts() {
         (ScenarioCategory::Redaction, 12),
     ]);
     assert_eq!(counts, expected_counts);
+}
+
+#[test]
+fn rust_kernel_supports_kernel_capability_requirements() {
+    let mut scenario = first_capability_scenario();
+    scenario.requires = vec![
+        String::from("kernel-semantics"),
+        String::from("capability-authority"),
+        String::from("revocation-store"),
+        String::from("replay-nonce"),
+        String::from("execution-nonce-store"),
+        String::from("guard-pipeline"),
+        String::from("receipt-log"),
+    ];
+
+    let driver = RustKernelDriver;
+    let outcome = driver.run(&scenario);
+    assert_ne!(
+        outcome.status,
+        DriverStatus::Unsupported,
+        "rust-kernel should satisfy kernel capability requirements: {:?}",
+        outcome.diagnostic
+    );
+}
+
+#[test]
+fn rust_kernel_reports_unknown_driver_requirements_as_unsupported() {
+    let mut scenario = first_capability_scenario();
+    scenario.requires = vec![String::from("sidecar-only-driver")];
+
+    let driver = RustKernelDriver;
+    let outcome = driver.run(&scenario);
+    assert_eq!(outcome.status, DriverStatus::Unsupported);
+    assert_eq!(
+        outcome.diagnostic.as_deref(),
+        Some("unsupported requirement `sidecar-only-driver`")
+    );
 }
 
 #[test]
