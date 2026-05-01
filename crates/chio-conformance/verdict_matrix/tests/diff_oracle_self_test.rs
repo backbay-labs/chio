@@ -11,7 +11,7 @@ mod verdict_matrix;
 use verdict_matrix::diff_oracle::{
     diff_expected_reports, diff_manifest_reports, expected_tuple_map, load_error_registry_urns,
     load_manifest, scenario_index_hash, validate_reason_codes, verify_manifest_corpus_hash,
-    DriverReport,
+    DiffOracleError, DriverReport, ManifestCorpus, ManifestDrivers, VerdictMatrixManifest,
 };
 use verdict_matrix::driver::{load_scenarios, REASON_NONE};
 use verdict_matrix::{Verdict, VerdictTuple};
@@ -81,6 +81,44 @@ fn manifest_hash_pins_current_scenario_index() {
         Err(error) => panic!("failed to hash scenario index: {error}"),
     };
     assert_eq!(actual_hash, manifest.corpus.scenario_index_hash);
+    let Some(actual_digest) = actual_hash.strip_prefix("sha256:") else {
+        panic!("scenario_index_hash missing sha256 prefix: {actual_hash}");
+    };
+    assert_eq!(actual_digest, manifest.corpus.corpus_sha256);
+}
+
+#[test]
+fn manifest_validation_rejects_corpus_digest_drift() {
+    let manifest = VerdictMatrixManifest {
+        schema: verdict_matrix::MANIFEST_SCHEMA.to_string(),
+        version: 1,
+        scenario_spec: verdict_matrix::SCENARIO_SCHEMA.to_string(),
+        corpus: ManifestCorpus {
+            status: String::from("active"),
+            scenario_count: 1,
+            scenario_root: String::from("scenarios"),
+            scenario_index_algorithm: String::from("sha256(relative-path-tab-file-sha256-newline)"),
+            scenario_index_hash: String::from(
+                "sha256:47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f",
+            ),
+            corpus_sha256: String::from(
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            ),
+            categories: BTreeMap::from([(String::from("capability_subset"), 1)]),
+        },
+        drivers: ManifestDrivers::default(),
+        oracle: None,
+    };
+
+    let error = match manifest.validate() {
+        Ok(()) => panic!("manifest accepted a drifted corpus_sha256"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, DiffOracleError::Manifest(_)));
+    assert!(
+        error.to_string().contains("corpus_sha256"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]

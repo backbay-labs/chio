@@ -114,7 +114,28 @@ test "$(find crates/chio-conformance/verdict_matrix/scenarios/replay_verdict -na
 test "$(find crates/chio-conformance/verdict_matrix/scenarios/redaction_determinism -name '*.json' | wc -l)" -ge 12
 cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet
 cargo test -p chio-conformance --test diff_oracle_self_test --quiet
+cargo test -p chio-conformance --test verdict_matrix_cross_language --quiet
 test -f .github/workflows/verdict-matrix.yml
-grep -q 'verdict_matrix' .github/workflows/verdict-matrix.yml
 test -f docs/conformance/verdict-matrix.md
+python3 - <<'PY'
+from pathlib import Path
+
+workflow = Path(".github/workflows/verdict-matrix.yml").read_text()
+docs = Path("docs/conformance/verdict-matrix.md").read_text()
+cross_language = "verdict_matrix_" + "cross_language"
+workflow_command = (
+    "run: cargo test -p chio-conformance --test "
+    + cross_language
+    + " --quiet"
+)
+docs_command = (
+    "cargo test -p chio-conformance --test "
+    + cross_language
+    + " --quiet"
+)
+if workflow_command not in workflow:
+    raise SystemExit("cross-language verdict-matrix workflow step is missing")
+if docs_command not in docs:
+    raise SystemExit("cross-language verdict-matrix docs gate is missing")
+PY
 ```

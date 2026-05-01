@@ -8,6 +8,8 @@ use thiserror::Error;
 use super::driver::{VerdictScenario, REASON_NONE};
 use super::{VerdictTuple, MANIFEST_SCHEMA, SCENARIO_SCHEMA};
 
+const SCENARIO_INDEX_ALGORITHM: &str = "sha256(relative-path-tab-file-sha256-newline)";
+
 #[derive(Debug, Error)]
 pub enum DiffOracleError {
     #[error("failed to read {path}: {source}")]
@@ -65,10 +67,39 @@ impl VerdictMatrixManifest {
                 "corpus.scenario_count must be greater than zero",
             )));
         }
-        if self.corpus.scenario_index_hash.trim().is_empty() {
+        if self.corpus.scenario_root.trim().is_empty() {
             return Err(DiffOracleError::Manifest(String::from(
-                "corpus.scenario_index_hash must be set",
+                "corpus.scenario_root must be set",
             )));
+        }
+        if self.corpus.scenario_index_algorithm != SCENARIO_INDEX_ALGORITHM {
+            return Err(DiffOracleError::Manifest(format!(
+                "corpus.scenario_index_algorithm must be `{SCENARIO_INDEX_ALGORITHM}`"
+            )));
+        }
+        let Some(index_digest) = scenario_index_digest(&self.corpus.scenario_index_hash) else {
+            return Err(DiffOracleError::Manifest(String::from(
+                "corpus.scenario_index_hash must be a sha256-prefixed lowercase hex digest",
+            )));
+        };
+        if !is_sha256_hex(&self.corpus.corpus_sha256) {
+            return Err(DiffOracleError::Manifest(String::from(
+                "corpus.corpus_sha256 must be a lowercase hex SHA-256 digest",
+            )));
+        }
+        if self.corpus.corpus_sha256 != index_digest {
+            return Err(DiffOracleError::Manifest(String::from(
+                "corpus.corpus_sha256 must match the digest in corpus.scenario_index_hash",
+            )));
+        }
+        if !self.corpus.categories.is_empty() {
+            let category_total: usize = self.corpus.categories.values().copied().sum();
+            if category_total != self.corpus.scenario_count {
+                return Err(DiffOracleError::Manifest(format!(
+                    "corpus.categories sums to {category_total}, but scenario_count is {}",
+                    self.corpus.scenario_count
+                )));
+            }
         }
         Ok(())
     }
@@ -81,6 +112,7 @@ pub struct ManifestCorpus {
     pub scenario_root: String,
     pub scenario_index_algorithm: String,
     pub scenario_index_hash: String,
+    pub corpus_sha256: String,
     #[serde(default)]
     pub categories: BTreeMap<String, usize>,
 }
@@ -166,6 +198,17 @@ pub fn verify_manifest_corpus_hash(
     if expected_hash != actual_hash {
         return Err(DiffOracleError::Manifest(format!(
             "scenario_index_hash mismatch: expected {expected_hash}, actual {actual_hash}"
+        )));
+    }
+    let Some(actual_digest) = scenario_index_digest(&actual_hash) else {
+        return Err(DiffOracleError::Manifest(format!(
+            "computed scenario_index_hash has invalid format: {actual_hash}"
+        )));
+    };
+    if manifest.corpus.corpus_sha256 != actual_digest {
+        return Err(DiffOracleError::Manifest(format!(
+            "corpus_sha256 mismatch: expected {}, actual {actual_digest}",
+            manifest.corpus.corpus_sha256
         )));
     }
     Ok(())
@@ -353,4 +396,21 @@ fn path_to_slash(path: &Path) -> String {
         .map(|component| component.as_os_str().to_string_lossy().into_owned())
         .collect::<Vec<String>>()
         .join("/")
+}
+
+fn scenario_index_digest(index_hash: &str) -> Option<&str> {
+    let digest = index_hash.strip_prefix("sha256:")?;
+    if is_sha256_hex(digest) {
+        Some(digest)
+    } else {
+        None
+    }
+}
+
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
 }
