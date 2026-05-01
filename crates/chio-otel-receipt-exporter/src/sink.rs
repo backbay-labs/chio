@@ -124,6 +124,15 @@ pub enum OTelReceiptExportError {
     ReceiptStore(#[from] ReceiptStoreError),
 }
 
+impl OTelReceiptExportError {
+    pub(crate) fn is_retryable_batch_error(&self) -> bool {
+        matches!(
+            self,
+            Self::ReceiptStore(ReceiptStoreError::Pool(_)) | Self::Queue(_)
+        )
+    }
+}
+
 pub struct ReceiptStoreSink {
     sink: Arc<dyn CanonicalReceiptSink>,
     config: ReceiptStoreSinkConfig,
