@@ -257,6 +257,12 @@ impl ModelCard {
         let card: Self = serde_json::from_slice(bytes)
             .map_err(|err| WeightsError::Encoding(format!("canonical-json decode: {err}")))?;
         card.validate()?;
+        let canonical = card.to_canonical_json()?;
+        if canonical.as_slice() != bytes {
+            return Err(WeightsError::Encoding(
+                "model card bytes are not RFC 8785 canonical JSON".to_string(),
+            ));
+        }
         Ok(card)
     }
 }
@@ -474,6 +480,20 @@ mod tests {
             Err(e) => panic!("re-encode must succeed: {e}"),
         };
         assert_eq!(bytes, bytes2, "canonical-json bytes must round-trip stably");
+    }
+
+    #[test]
+    fn from_canonical_json_rejects_noncanonical_whitespace() {
+        let card = good_card();
+        let pretty = match serde_json::to_vec_pretty(&card) {
+            Ok(bytes) => bytes,
+            Err(e) => panic!("pretty encode must succeed: {e}"),
+        };
+        let res = ModelCard::from_canonical_json(&pretty);
+        assert!(
+            matches!(res, Err(WeightsError::Encoding(_))),
+            "signed model cards must be presented as RFC 8785 canonical bytes"
+        );
     }
 
     #[test]

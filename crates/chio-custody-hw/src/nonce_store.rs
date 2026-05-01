@@ -48,6 +48,18 @@ use crate::error::CustodyError;
 /// retains entries for `exp + clock_skew` seconds.
 pub const DEFAULT_CLOCK_SKEW_SECONDS: i64 = 30;
 
+/// Default hard capacity for retained passkey nonces.
+///
+/// Replay entries are short-lived, but a malicious issuer client can still
+/// present an unbounded stream of distinct challenges. The store therefore
+/// fails closed once this many entries are retained and relies on the
+/// explicit GC path to reopen capacity.
+pub const DEFAULT_MAX_NONCE_ENTRIES: usize = 65_536;
+
+/// Maximum transport length for a base64url credential id or challenge
+/// nonce accepted by the replay store.
+pub const MAX_NONCE_KEY_BYTES: usize = 512;
+
 /// Outcome of a [`PasskeyNonceStore::record_if_fresh`] call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordOutcome {
@@ -99,12 +111,41 @@ pub trait PasskeyNonceStore: Send + Sync {
 /// clock-skew tolerance) past which the entry is GC-able.
 type NonceMap = HashMap<(String, String), i64>;
 
+fn validate_nonce_key_part(label: &str, value: &str) -> Result<(), CustodyError> {
+    if value.is_empty() {
+        return Err(CustodyError::Encoding(format!(
+            "{label} must be a non-empty base64url string"
+        )));
+    }
+    if value.len() > MAX_NONCE_KEY_BYTES {
+        return Err(CustodyError::Encoding(format!(
+            "{label} length {} exceeds {MAX_NONCE_KEY_BYTES} bytes",
+            value.len()
+        )));
+    }
+    if !value
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+    {
+        return Err(CustodyError::Encoding(format!(
+            "{label} must contain only base64url characters"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_nonce_key(credential_id: &str, challenge_nonce: &str) -> Result<(), CustodyError> {
+    validate_nonce_key_part("credential_id", credential_id)?;
+    validate_nonce_key_part("challenge_nonce", challenge_nonce)
+}
+
 /// Process-local replay-detection store.
 ///
 /// Backed by `Mutex<NonceMap>`.
 pub struct InMemoryPasskeyNonceStore {
     inner: Mutex<NonceMap>,
     clock_skew_seconds: i64,
+    max_entries: usize,
 }
 
 impl Default for InMemoryPasskeyNonceStore {
@@ -123,9 +164,22 @@ impl InMemoryPasskeyNonceStore {
     /// Build a fresh store with a custom clock-skew tolerance.
     #[must_use]
     pub fn with_clock_skew(clock_skew_seconds: i64) -> Self {
+        Self::with_limits(clock_skew_seconds, DEFAULT_MAX_NONCE_ENTRIES)
+    }
+
+    /// Build a fresh store with a custom hard capacity.
+    #[must_use]
+    pub fn with_max_entries(max_entries: usize) -> Self {
+        Self::with_limits(DEFAULT_CLOCK_SKEW_SECONDS, max_entries)
+    }
+
+    /// Build a fresh store with custom clock-skew and capacity limits.
+    #[must_use]
+    pub fn with_limits(clock_skew_seconds: i64, max_entries: usize) -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
             clock_skew_seconds,
+            max_entries,
         }
     }
 
@@ -143,6 +197,7 @@ impl PasskeyNonceStore for InMemoryPasskeyNonceStore {
         challenge_nonce: &str,
         exp_unix_seconds: i64,
     ) -> Result<RecordOutcome, CustodyError> {
+        validate_nonce_key(credential_id, challenge_nonce)?;
         let mut guard = self.lock()?;
         let key = (credential_id.to_string(), challenge_nonce.to_string());
         let retain_until = exp_unix_seconds.saturating_add(self.clock_skew_seconds);
@@ -155,6 +210,13 @@ impl PasskeyNonceStore for InMemoryPasskeyNonceStore {
         // could be observed as accepting a replay.
         if guard.contains_key(&key) {
             return Ok(RecordOutcome::Replayed);
+        }
+        if guard.len() >= self.max_entries {
+            return Err(CustodyError::Encoding(format!(
+                "nonce store capacity exceeded: {} retained entries (max {})",
+                guard.len(),
+                self.max_entries
+            )));
         }
         guard.insert(key, retain_until);
         Ok(RecordOutcome::Fresh)
@@ -202,7 +264,9 @@ mod sqlite {
 
     use rusqlite::{params, Connection, OpenFlags};
 
-    use super::{PasskeyNonceStore, RecordOutcome, DEFAULT_CLOCK_SKEW_SECONDS};
+    use super::{
+        PasskeyNonceStore, RecordOutcome, DEFAULT_CLOCK_SKEW_SECONDS, DEFAULT_MAX_NONCE_ENTRIES,
+    };
     use crate::error::CustodyError;
 
     /// Durable [`PasskeyNonceStore`] backed by a single SQLite
@@ -210,6 +274,7 @@ mod sqlite {
     pub struct SqlitePasskeyNonceStore {
         conn: Mutex<Connection>,
         clock_skew_seconds: i64,
+        max_entries: usize,
     }
 
     impl SqlitePasskeyNonceStore {
@@ -225,23 +290,34 @@ mod sqlite {
             path: &str,
             clock_skew_seconds: i64,
         ) -> Result<Self, CustodyError> {
+            Self::open_with_limits(path, clock_skew_seconds, DEFAULT_MAX_NONCE_ENTRIES)
+        }
+
+        /// Open or create a SQLite-backed nonce store at `path` with
+        /// custom clock-skew and hard-cap limits.
+        pub fn open_with_limits(
+            path: &str,
+            clock_skew_seconds: i64,
+            max_entries: usize,
+        ) -> Result<Self, CustodyError> {
             let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
             let conn = Connection::open_with_flags(path, flags).map_err(|err| {
                 CustodyError::Encoding(format!("sqlite open {path} failed: {err}"))
             })?;
-            Self::with_connection(conn, clock_skew_seconds)
+            Self::with_connection(conn, clock_skew_seconds, max_entries)
         }
 
         /// Open an in-memory SQLite store. Used by tests.
         pub fn open_in_memory() -> Result<Self, CustodyError> {
             let conn = Connection::open_in_memory()
                 .map_err(|err| CustodyError::Encoding(format!("sqlite mem open: {err}")))?;
-            Self::with_connection(conn, DEFAULT_CLOCK_SKEW_SECONDS)
+            Self::with_connection(conn, DEFAULT_CLOCK_SKEW_SECONDS, DEFAULT_MAX_NONCE_ENTRIES)
         }
 
         fn with_connection(
             conn: Connection,
             clock_skew_seconds: i64,
+            max_entries: usize,
         ) -> Result<Self, CustodyError> {
             conn.execute_batch(
                 "CREATE TABLE IF NOT EXISTS chio_custody_nonces (
@@ -257,6 +333,7 @@ mod sqlite {
             Ok(Self {
                 conn: Mutex::new(conn),
                 clock_skew_seconds,
+                max_entries,
             })
         }
 
@@ -274,6 +351,7 @@ mod sqlite {
             challenge_nonce: &str,
             exp_unix_seconds: i64,
         ) -> Result<RecordOutcome, CustodyError> {
+            super::validate_nonce_key(credential_id, challenge_nonce)?;
             let retain_until = exp_unix_seconds.saturating_add(self.clock_skew_seconds);
 
             // INSERT OR IGNORE atomically detects the duplicate. The
@@ -281,6 +359,32 @@ mod sqlite {
             // drops entries; the record path never prunes so replay
             // decisions stay decoupled from the wall clock.
             let guard = self.lock()?;
+            let existing: i64 = guard
+                .query_row(
+                    "SELECT EXISTS(
+                        SELECT 1 FROM chio_custody_nonces
+                        WHERE credential_id = ?1 AND challenge_nonce = ?2
+                    )",
+                    params![credential_id, challenge_nonce],
+                    |row| row.get(0),
+                )
+                .map_err(|err| CustodyError::Encoding(format!("sqlite exists: {err}")))?;
+            if existing != 0 {
+                return Ok(RecordOutcome::Replayed);
+            }
+            let retained: i64 = guard
+                .query_row("SELECT COUNT(*) FROM chio_custody_nonces", [], |row| {
+                    row.get(0)
+                })
+                .map_err(|err| CustodyError::Encoding(format!("sqlite count: {err}")))?;
+            let retained = usize::try_from(retained)
+                .map_err(|err| CustodyError::Encoding(format!("sqlite count overflow: {err}")))?;
+            if retained >= self.max_entries {
+                return Err(CustodyError::Encoding(format!(
+                    "sqlite nonce store capacity exceeded: {retained} retained entries (max {})",
+                    self.max_entries
+                )));
+            }
             let inserted = guard
                 .execute(
                     "INSERT OR IGNORE INTO chio_custody_nonces
@@ -393,5 +497,48 @@ mod tests {
             Err(e) => panic!("len: {e}"),
         };
         assert_eq!(len, 1);
+    }
+
+    #[test]
+    fn oversized_nonce_key_rejects_fail_closed() {
+        let store = InMemoryPasskeyNonceStore::new();
+        let too_long = "a".repeat(MAX_NONCE_KEY_BYTES + 1);
+        let err = store.record_if_fresh("cred", &too_long, unwrap_clock() + 300);
+        assert!(
+            matches!(err, Err(CustodyError::Encoding(_))),
+            "oversized nonce keys must not allocate into the replay store"
+        );
+    }
+
+    #[test]
+    fn hard_cap_rejects_new_keys_until_explicit_gc() {
+        let store = InMemoryPasskeyNonceStore::with_limits(0, 1);
+        let now = unwrap_clock();
+        if let Err(e) = store.record_if_fresh("cred", "old", now - 100) {
+            panic!("old record: {e}");
+        }
+
+        let replay = match store.record_if_fresh("cred", "old", now + 300) {
+            Ok(outcome) => outcome,
+            Err(e) => panic!("replay at cap should still classify as replay: {e}"),
+        };
+        assert_eq!(replay, RecordOutcome::Replayed);
+
+        let capped = store.record_if_fresh("cred", "new", now + 300);
+        assert!(
+            matches!(capped, Err(CustodyError::Encoding(_))),
+            "new key must fail closed while retained entries are at cap"
+        );
+
+        let pruned = match store.gc_expired(now) {
+            Ok(n) => n,
+            Err(e) => panic!("gc: {e}"),
+        };
+        assert_eq!(pruned, 1);
+        let fresh = match store.record_if_fresh("cred", "new", now + 300) {
+            Ok(outcome) => outcome,
+            Err(e) => panic!("fresh after gc: {e}"),
+        };
+        assert_eq!(fresh, RecordOutcome::Fresh);
     }
 }

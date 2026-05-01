@@ -107,7 +107,7 @@ pub struct ModelCardLineageAnchor {
 pub fn anchor_projection_bytes(
     card_bytes: &[u8],
     attestation: &chio_attest_verify::VerifiedAttestation,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, WeightsError> {
     let card_sha = sha256_hex(card_bytes);
     let subject_sha = hex::encode(attestation.subject_digest_sha256);
     // Use serde_json's BTreeMap-equivalent: build a sorted Map by hand to
@@ -123,7 +123,8 @@ pub fn anchor_projection_bytes(
         "schema_version": MODEL_CARD_ANCHOR_SCHEMA,
         "subject_digest_sha256": subject_sha,
     });
-    serde_json::to_vec(&payload).unwrap_or_default()
+    chio_core_types::canonical::canonical_json_bytes(&payload)
+        .map_err(|err| WeightsError::Encoding(format!("anchor projection encode: {err}")))
 }
 
 /// SHA-256 hex of a byte slice. Mirrors the lineage anchor surface so the
@@ -158,7 +159,7 @@ pub fn anchor_model_card(
         ));
     }
 
-    let projection = anchor_projection_bytes(card_bytes, &verified.attestation);
+    let projection = anchor_projection_bytes(card_bytes, &verified.attestation)?;
     let digest_hex = sha256_hex(&projection);
 
     let signing = match signer_hint {
@@ -211,7 +212,7 @@ pub fn verify_model_card_anchor(
             anchor.digest.algo
         )));
     }
-    let expected_hex = sha256_hex(&anchor_projection_bytes(card_bytes, attestation));
+    let expected_hex = sha256_hex(&anchor_projection_bytes(card_bytes, attestation)?);
     if expected_hex != anchor.digest.hex {
         return Err(WeightsError::BundleRejected(format!(
             "model card anchor digest mismatch: expected {expected_hex}, got {}",
@@ -520,8 +521,14 @@ mod tests {
         let mut digest = [0u8; 32];
         digest.copy_from_slice(&Sha256::digest(&bytes));
         let att = good_attestation(digest);
-        let a = sha256_hex(&anchor_projection_bytes(&bytes, &att));
-        let b = sha256_hex(&anchor_projection_bytes(&bytes, &att));
+        let a = match anchor_projection_bytes(&bytes, &att) {
+            Ok(bytes) => sha256_hex(&bytes),
+            Err(e) => panic!("projection A: {e}"),
+        };
+        let b = match anchor_projection_bytes(&bytes, &att) {
+            Ok(bytes) => sha256_hex(&bytes),
+            Err(e) => panic!("projection B: {e}"),
+        };
         assert_eq!(a, b);
     }
 }

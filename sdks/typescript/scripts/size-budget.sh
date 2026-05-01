@@ -99,7 +99,7 @@ for runtime in "${RUNTIMES[@]}"; do
 
   wasm_abs="${REPO_ROOT}/${wasm_rel}"
 
-  if [[ ! -f "${wasm_abs}" ]]; then
+  if [[ ! -e "${wasm_abs}" ]]; then
     printf '%-10s  %-10s  %-10s  %s\n' \
       "${runtime}" "-" "${ceiling_kb}KB" "SKIP (no artifact at ${wasm_rel})"
     skipped=$((skipped + 1))
@@ -107,7 +107,18 @@ for runtime in "${RUNTIMES[@]}"; do
   fi
 
   # gzip -c -9 -n: max compression, omit timestamp/name for reproducibility.
-  gz_bytes="$(gzip -c -9 -n "${wasm_abs}" | wc -c | tr -d ' ')"
+  if [[ -d "${wasm_abs}" ]]; then
+    gz_bytes="$(
+      find "${wasm_abs}" -type f -print \
+        | LC_ALL=C sort \
+        | xargs cat \
+        | gzip -c -9 -n \
+        | wc -c \
+        | tr -d ' '
+    )"
+  else
+    gz_bytes="$(gzip -c -9 -n "${wasm_abs}" | wc -c | tr -d ' ')"
+  fi
   # Round up to KB so 1024 bytes reads as 1 KB and 1025 bytes reads as 2 KB.
   gz_kb=$(( (gz_bytes + 1023) / 1024 ))
   ceiling_bytes=$(( ceiling_kb * 1024 ))
