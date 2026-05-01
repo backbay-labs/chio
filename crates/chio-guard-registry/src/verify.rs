@@ -191,6 +191,18 @@ impl GuardVerificationReport {
 /// Callers should construct this once when loading registry configuration and
 /// then reuse it for every verification call. The returned type is the
 /// `chio-attest-verify` source-of-truth type, not a guard-registry shadow.
+///
+/// # M05.P4.T3 migration
+///
+/// Production callers SHOULD prefer
+/// [`chio_attest_verify::TenantPolicyResolver::expected_for_tenant`] so
+/// that every accepted identity flows from a Sigstore-signed per-tenant
+/// policy file rather than an inline regex spliced into operator
+/// configuration. This helper is retained for legacy operator deployments
+/// that have not yet authored per-tenant policy files; it routes through
+/// the doc-hidden inline constructor so that the workspace grep gate
+/// (`! grep -rE 'ExpectedIdentity\s*\{'`) keeps every remaining inline
+/// site visible to reviewers.
 pub fn expected_identity_from_config(
     fulcio_subject_regex: impl Into<String>,
     fulcio_oidc_issuer: impl Into<String>,
@@ -198,10 +210,11 @@ pub fn expected_identity_from_config(
 where
     ExpectedIdentity: Sized,
 {
-    chio_attest_verify::ExpectedIdentity {
-        certificate_identity_regexp: fulcio_subject_regex.into(),
-        certificate_oidc_issuer: fulcio_oidc_issuer.into(),
-    }
+    // Routes through the doc-hidden constructor (M05.P4.T3).
+    chio_attest_verify::ExpectedIdentity::doc_hidden_inline(
+        fulcio_subject_regex,
+        fulcio_oidc_issuer,
+    )
 }
 
 /// Guard-registry wrapper around the shared attestation verifier.
