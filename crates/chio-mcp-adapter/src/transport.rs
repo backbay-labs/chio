@@ -29,6 +29,8 @@ const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const UPSTREAM_REQUEST_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const TASK_POLL_INTERVAL_MILLIS: u64 = 500;
 const MAX_BACKGROUND_TASKS_PER_TICK: usize = 8;
+const MAX_STDIO_MCP_FRAME_BYTES: usize = 1024 * 1024;
+const MAX_STDIO_MCP_BUFFERED_MESSAGES: usize = 128;
 const RELATED_TASK_META_KEY: &str = "io.modelcontextprotocol/related-task";
 
 struct TransportInner {
@@ -469,8 +471,8 @@ impl NestedFlowTaskRuntime {
 /// The child process is killed on drop if it is still running.
 pub struct StdioMcpTransport {
     inner: Mutex<TransportInner>,
-    active_request: Arc<Mutex<Option<mpsc::Sender<RequestMessage>>>>,
-    notification_tx: mpsc::Sender<serde_json::Value>,
+    active_request: Arc<Mutex<Option<mpsc::SyncSender<RequestMessage>>>>,
+    notification_tx: mpsc::SyncSender<serde_json::Value>,
     notification_rx: Mutex<mpsc::Receiver<serde_json::Value>>,
     capabilities: McpServerCapabilities,
 }
@@ -514,8 +516,9 @@ impl StdioMcpTransport {
             });
         }
 
-        let active_request = Arc::new(Mutex::new(None::<mpsc::Sender<RequestMessage>>));
-        let (notification_tx, notification_rx) = mpsc::channel();
+        let active_request = Arc::new(Mutex::new(None::<mpsc::SyncSender<RequestMessage>>));
+        let (notification_tx, notification_rx) =
+            mpsc::sync_channel(MAX_STDIO_MCP_BUFFERED_MESSAGES);
         let reader_notification_tx = notification_tx.clone();
         let reader_active_request = Arc::clone(&active_request);
         std::thread::spawn(move || {
@@ -526,7 +529,8 @@ impl StdioMcpTransport {
                     Err(error) => {
                         if let Ok(mut active_request) = reader_active_request.lock() {
                             if let Some(sender) = active_request.take() {
-                                let _ = sender.send(RequestMessage::ReadError(error.to_string()));
+                                let _ =
+                                    sender.try_send(RequestMessage::ReadError(error.to_string()));
                             }
                         }
                         break;
@@ -539,7 +543,7 @@ impl StdioMcpTransport {
                     .and_then(|active_request| active_request.clone());
                 if let Some(sender) = active_sender {
                     if sender
-                        .send(RequestMessage::Message(message.clone()))
+                        .try_send(RequestMessage::Message(message.clone()))
                         .is_ok()
                     {
                         continue;
@@ -550,7 +554,12 @@ impl StdioMcpTransport {
                 }
 
                 if message.get("id").is_none() {
-                    let _ = reader_notification_tx.send(message);
+                    if reader_notification_tx.try_send(message).is_err() {
+                        warn!(
+                            target: "chio_mcp_adapter::transport",
+                            "dropping upstream MCP notification because the bounded queue is full"
+                        );
+                    }
                 } else {
                     warn!(target: "chio_mcp_adapter::transport", "unexpected upstream message without an active request: {message}");
                 }
@@ -620,7 +629,7 @@ impl StdioMcpTransport {
             .lock()
             .map_err(|e| AdapterError::ConnectionFailed(format!("lock poisoned: {e}")))?;
         let mut nested_flow_bridge = nested_flow_bridge;
-        let (request_tx, request_rx) = mpsc::channel();
+        let (request_tx, request_rx) = mpsc::sync_channel(MAX_STDIO_MCP_BUFFERED_MESSAGES);
 
         {
             let mut active_request = self
@@ -751,9 +760,16 @@ impl StdioMcpTransport {
     }
 
     fn queue_notification(&self, message: serde_json::Value) -> Result<(), AdapterError> {
-        self.notification_tx.send(message).map_err(|_| {
-            AdapterError::ConnectionFailed("upstream notification queue disconnected".into())
-        })
+        self.notification_tx
+            .try_send(message)
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => {
+                    AdapterError::ConnectionFailed("upstream notification queue is full".into())
+                }
+                mpsc::TrySendError::Disconnected(_) => AdapterError::ConnectionFailed(
+                    "upstream notification queue disconnected".into(),
+                ),
+            })
     }
 
     /// Send a JSON-RPC notification (no id, no response expected).
@@ -1403,21 +1419,62 @@ fn jsonrpc_request_id_label(request_id: &serde_json::Value) -> String {
 
 /// Read a single newline-terminated JSON line from the reader.
 fn read_line(reader: &mut impl BufRead) -> Result<serde_json::Value, AdapterError> {
-    let mut line = String::new();
-    let bytes_read = reader
-        .read_line(&mut line)
-        .map_err(|e| AdapterError::ConnectionFailed(format!("failed to read from stdout: {e}")))?;
-
-    if bytes_read == 0 {
+    let Some(line) = read_bounded_line(reader, MAX_STDIO_MCP_FRAME_BYTES)? else {
         return Err(AdapterError::ConnectionFailed(
             "MCP server closed stdout (EOF)".into(),
         ));
-    }
+    };
 
     debug!("<- {}", line.trim_end());
 
     serde_json::from_str(line.trim())
         .map_err(|e| AdapterError::ParseError(format!("invalid JSON from MCP server: {e}")))
+}
+
+fn read_bounded_line(
+    reader: &mut impl BufRead,
+    max_bytes: usize,
+) -> Result<Option<String>, AdapterError> {
+    let mut bytes = Vec::new();
+    loop {
+        let (take, has_newline, exceeds_limit) = {
+            let available = reader.fill_buf().map_err(|e| {
+                AdapterError::ConnectionFailed(format!("failed to read from stdout: {e}"))
+            })?;
+            if available.is_empty() {
+                if bytes.is_empty() {
+                    return Ok(None);
+                }
+                break;
+            }
+
+            let take = match available.iter().position(|byte| *byte == b'\n') {
+                Some(index) => index + 1,
+                None => available.len(),
+            };
+            let has_newline = available.get(take.saturating_sub(1)) == Some(&b'\n');
+            let exceeds_limit = bytes.len().saturating_add(take) > max_bytes;
+            if !exceeds_limit {
+                bytes.extend_from_slice(&available[..take]);
+            }
+            (take, has_newline, exceeds_limit)
+        };
+
+        reader.consume(take);
+        if exceeds_limit {
+            return Err(AdapterError::ParseError(format!(
+                "MCP JSON-RPC frame exceeded {max_bytes} bytes"
+            )));
+        }
+
+        if has_newline {
+            break;
+        }
+    }
+
+    String::from_utf8(bytes).map(Some).map_err(|error| {
+        AdapterError::ParseError(format!("MCP JSON-RPC frame was not UTF-8: {error}"))
+    })
 }
 
 #[cfg(test)]
@@ -1523,6 +1580,20 @@ mod tests {
         assert!(
             matches!(err, AdapterError::ParseError(_)),
             "expected ParseError, got: {err}"
+        );
+    }
+
+    #[test]
+    fn read_line_rejects_oversized_frame() {
+        let input = format!("{}\n", "x".repeat(MAX_STDIO_MCP_FRAME_BYTES + 1));
+        let mut reader = BufReader::new(input.as_bytes());
+        let err = match read_line(&mut reader) {
+            Ok(value) => panic!("oversized frame must fail closed, got: {value}"),
+            Err(err) => err,
+        };
+        assert!(
+            matches!(err, AdapterError::ParseError(_)),
+            "expected ParseError for oversized frame, got: {err}"
         );
     }
 

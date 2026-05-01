@@ -199,14 +199,22 @@ fn post_ollama_chat(host: &str, model: &str) -> Result<String, String> {
 
 fn response_has_chat_shape(body: &str) -> bool {
     match serde_json::from_str::<Value>(body) {
-        Ok(value) => {
-            value.get("message").is_some()
-                || value.get("done").is_some()
-                || value.is_object()
-                || value.is_array()
-        }
+        Ok(value) => value
+            .as_object()
+            .is_some_and(|object| object.get("message").is_some() || object.get("done").is_some()),
         Err(_) => false,
     }
+}
+
+#[test]
+fn response_has_chat_shape_rejects_unrelated_json() {
+    assert!(!response_has_chat_shape(r#"{"status":"ok"}"#));
+    assert!(!response_has_chat_shape(
+        r#"[{"message":{"role":"assistant"}}]"#
+    ));
+    assert!(response_has_chat_shape(
+        r#"{"message":{"role":"assistant","content":"OK"},"done":true}"#
+    ));
 }
 
 #[test]
