@@ -32,13 +32,16 @@ use chio_attest_verify::sev_snp::{SevSnpCollateral, SevSnpVerifier};
 use chio_attest_verify::tdx::{TdxCollateral, TdxDcapVerifier};
 use chio_attest_verify::{AttestError, QuoteTcbStatus, QuoteVerificationContext, QuoteVerifier};
 use chio_core_types::crypto::Keypair;
+use p384::ecdsa::{SigningKey, VerifyingKey};
 
 const KERNEL_SEED: [u8; 32] = [9u8; 32];
 const RECEIPT_ROOT: [u8; 32] = [8u8; 32];
 const SEV_SNP_PINNED_LAUNCH_DIGEST: [u8; 48] = [0x4Cu8; 48];
 const NITRO_PINNED_PCR0: [u8; 48] = [0x77u8; 48];
 
-const NITRO_LEAF_FIXTURE: &[u8] = b"aws-nitro-leaf-fixture";
+const NITRO_ATTESTATION_KEY_SEED: [u8; 48] = [0x42u8; 48];
+const VCEK_ATTESTATION_KEY_SEED: [u8; 48] = [0x43u8; 48];
+const VLEK_ATTESTATION_KEY_SEED: [u8; 48] = [0x44u8; 48];
 const NITRO_INTERMEDIATE_FIXTURE: &[u8] = b"aws-nitro-intermediate-fixture";
 
 fn now() -> SystemTime {
@@ -74,6 +77,12 @@ fn aws_nitro_root_bytes() -> Vec<u8> {
     pem.to_vec()
 }
 
+fn attestation_public_key(seed: &[u8; 48]) -> Vec<u8> {
+    let signing_key = SigningKey::from_bytes(seed.into()).unwrap();
+    let verifying_key = VerifyingKey::from(&signing_key);
+    verifying_key.to_encoded_point(false).as_bytes().to_vec()
+}
+
 fn tdx_verifier(now: SystemTime) -> TdxDcapVerifier {
     let root = b"intel-root-ca-fixture".to_vec();
     let collateral = TdxCollateral::new(
@@ -92,8 +101,11 @@ fn sev_snp_verifier(now: SystemTime) -> SevSnpVerifier {
     let root = b"amd-kds-root-fixture".to_vec();
     let collateral = SevSnpCollateral::new(
         root.clone(),
-        vec![b"amd-vcek-leaf-fixture".to_vec(), root.clone()],
-        vec![b"amd-vlek-leaf-fixture".to_vec(), root],
+        vec![
+            attestation_public_key(&VCEK_ATTESTATION_KEY_SEED),
+            root.clone(),
+        ],
+        vec![attestation_public_key(&VLEK_ATTESTATION_KEY_SEED), root],
         7,
         QuoteTcbStatus::UpToDate,
         now - Duration::from_secs(60),
@@ -106,7 +118,7 @@ fn nitro_verifier(now: SystemTime) -> NitroVerifier {
     let collateral = NitroCollateral::new(
         aws_nitro_root_bytes(),
         vec![
-            NITRO_LEAF_FIXTURE.to_vec(),
+            attestation_public_key(&NITRO_ATTESTATION_KEY_SEED),
             NITRO_INTERMEDIATE_FIXTURE.to_vec(),
             aws_nitro_root_bytes(),
         ],

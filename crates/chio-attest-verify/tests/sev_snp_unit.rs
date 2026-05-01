@@ -17,6 +17,7 @@ use chio_attest_verify::{
     TeeKind,
 };
 use chio_core_types::crypto::Keypair;
+use p384::ecdsa::{signature::Signer as _, Signature as P384Signature, SigningKey, VerifyingKey};
 
 const SEV_SNP_HEADER_AND_BODY_LEN: usize = 0x300;
 const SEV_SNP_VERSION_OFFSET: usize = 0;
@@ -33,6 +34,8 @@ const KEY_SELECT_VCEK: u8 = 0x00;
 const KEY_SELECT_VLEK: u8 = 0x01;
 
 const PINNED_LAUNCH_DIGEST: [u8; 48] = [0x4Cu8; 48];
+const VCEK_ATTESTATION_KEY_SEED: [u8; 48] = [0x43u8; 48];
+const VLEK_ATTESTATION_KEY_SEED: [u8; 48] = [0x44u8; 48];
 
 #[derive(Clone, Copy)]
 struct EnvelopeOpts {
@@ -43,7 +46,6 @@ struct EnvelopeOpts {
     reported_tcb: u32,
     measurement: [u8; 48],
     report_data: [u8; 64],
-    sig_byte: u8,
 }
 
 impl EnvelopeOpts {
@@ -56,7 +58,6 @@ impl EnvelopeOpts {
             reported_tcb: 0x1234_5678,
             measurement,
             report_data,
-            sig_byte: 0xA1,
         }
     }
 
@@ -69,13 +70,35 @@ impl EnvelopeOpts {
             reported_tcb: 0x1234_5678,
             measurement,
             report_data,
-            sig_byte: 0xA2,
         }
     }
 }
 
+fn signing_key(seed: &[u8; 48]) -> SigningKey {
+    match SigningKey::from_bytes(seed.into()) {
+        Ok(key) => key,
+        Err(error) => panic!("fixture P-384 signing key seed is invalid: {error}"),
+    }
+}
+
+fn attestation_public_key(seed: &[u8; 48]) -> Vec<u8> {
+    let signing_key = signing_key(seed);
+    let verifying_key = VerifyingKey::from(&signing_key);
+    verifying_key.to_encoded_point(false).as_bytes().to_vec()
+}
+
+fn sign_report(key_select: u8, message: &[u8]) -> Vec<u8> {
+    let seed = if key_select == KEY_SELECT_VLEK {
+        &VLEK_ATTESTATION_KEY_SEED
+    } else {
+        &VCEK_ATTESTATION_KEY_SEED
+    };
+    let signature: P384Signature = signing_key(seed).sign(message);
+    signature.to_vec()
+}
+
 fn build_envelope(opts: EnvelopeOpts) -> Vec<u8> {
-    let signature_len = 1usize;
+    let signature_len = 96usize;
     let mut quote = vec![0u8; SEV_SNP_SIGNATURE_BYTES_OFFSET + signature_len];
     quote[SEV_SNP_VERSION_OFFSET..SEV_SNP_VERSION_OFFSET + 4]
         .copy_from_slice(&opts.version.to_le_bytes());
@@ -91,7 +114,9 @@ fn build_envelope(opts: EnvelopeOpts) -> Vec<u8> {
         .copy_from_slice(&opts.report_data);
     quote[SEV_SNP_SIGNATURE_LEN_OFFSET..SEV_SNP_SIGNATURE_LEN_OFFSET + 4]
         .copy_from_slice(&(signature_len as u32).to_le_bytes());
-    quote[SEV_SNP_SIGNATURE_BYTES_OFFSET] = opts.sig_byte;
+    let signature = sign_report(opts.key_select, &quote[..SEV_SNP_HEADER_AND_BODY_LEN]);
+    quote[SEV_SNP_SIGNATURE_BYTES_OFFSET..SEV_SNP_SIGNATURE_BYTES_OFFSET + signature_len]
+        .copy_from_slice(&signature);
     quote
 }
 
@@ -99,8 +124,11 @@ fn collateral(now: SystemTime) -> SevSnpCollateral {
     let root = b"amd-kds-root-fixture".to_vec();
     SevSnpCollateral::new(
         root.clone(),
-        vec![b"amd-vcek-leaf-fixture".to_vec(), root.clone()],
-        vec![b"amd-vlek-leaf-fixture".to_vec(), root],
+        vec![
+            attestation_public_key(&VCEK_ATTESTATION_KEY_SEED),
+            root.clone(),
+        ],
+        vec![attestation_public_key(&VLEK_ATTESTATION_KEY_SEED), root],
         7,
         QuoteTcbStatus::UpToDate,
         now - Duration::from_secs(60),
@@ -400,6 +428,27 @@ fn sev_snp_verifier_rejects_short_envelope() {
         .err();
 
     assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn sev_snp_verifier_rejects_signature_mismatch() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let mut envelope = build_envelope(EnvelopeOpts::vcek_bound(bound, PINNED_LAUNCH_DIGEST));
+    match envelope.last_mut() {
+        Some(last) => *last ^= 0x01,
+        None => panic!("fixture envelope must carry a signature byte"),
+    }
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::SignatureMismatch)));
 }
 
 #[test]

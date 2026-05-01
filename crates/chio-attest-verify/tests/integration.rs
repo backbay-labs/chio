@@ -94,8 +94,7 @@ fn verify_bytes_distinguishes_non_certificate_pem() -> Result<(), AttestError> {
     let result = verifier.verify_bytes(b"artifact", b"AAAA", input, &expected);
 
     let Err(AttestError::Malformed(message)) = result else {
-        assert!(false, "non-certificate PEM must be rejected as malformed");
-        return Ok(());
+        panic!("non-certificate PEM must be rejected as malformed");
     };
     assert!(
         message.contains("neither PEM nor DER"),
@@ -113,8 +112,7 @@ fn verify_bytes_reports_der_parse_for_der_like_garbage() -> Result<(), AttestErr
     let result = verifier.verify_bytes(b"artifact", b"AAAA", &input, &expected);
 
     let Err(AttestError::Malformed(message)) = result else {
-        assert!(false, "DER-like garbage must be rejected as malformed");
-        return Ok(());
+        panic!("DER-like garbage must be rejected as malformed");
     };
     assert!(
         message.contains("leaf cert DER parse"),

@@ -20,16 +20,32 @@ use chio_attest_verify::{
 use chio_core_types::crypto::Keypair;
 use coset::cbor::Value as CborValue;
 use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder};
+use p384::ecdsa::{signature::Signer as _, Signature as P384Signature, SigningKey, VerifyingKey};
 
 const PINNED_PCR0: [u8; NITRO_PCR_LEN] = [0x77u8; NITRO_PCR_LEN];
 const TIMESTAMP_MS: u64 = 1_700_000_000_000;
 
-const NITRO_LEAF_FIXTURE: &[u8] = b"aws-nitro-leaf-fixture";
+const NITRO_ATTESTATION_KEY_SEED: [u8; 48] = [0x42u8; 48];
 const NITRO_INTERMEDIATE_FIXTURE: &[u8] = b"aws-nitro-intermediate-fixture";
 
 fn aws_nitro_root_bytes() -> Vec<u8> {
     let pem = include_bytes!("../fixtures/nitro/aws-nitro-root.pem");
     pem.to_vec()
+}
+
+fn nitro_attestation_signing_key() -> SigningKey {
+    SigningKey::from_bytes((&NITRO_ATTESTATION_KEY_SEED).into()).unwrap()
+}
+
+fn nitro_attestation_public_key() -> Vec<u8> {
+    let signing_key = nitro_attestation_signing_key();
+    let verifying_key = VerifyingKey::from(&signing_key);
+    verifying_key.to_encoded_point(false).as_bytes().to_vec()
+}
+
+fn sign_nitro_message(message: &[u8]) -> Vec<u8> {
+    let signature: P384Signature = nitro_attestation_signing_key().sign(message);
+    signature.to_vec()
 }
 
 #[derive(Clone, Debug)]
@@ -47,7 +63,7 @@ impl DocOpts {
             module_id: "i-0123456789abcdef0-enc01234567890abcd".to_string(),
             timestamp: TIMESTAMP_MS,
             pcr0,
-            certificate: NITRO_LEAF_FIXTURE.to_vec(),
+            certificate: nitro_attestation_public_key(),
             user_data,
         }
     }
@@ -95,7 +111,21 @@ fn build_document(opts: &DocOpts) -> Vec<u8> {
 
 fn build_envelope(opts: &DocOpts) -> Vec<u8> {
     let payload = build_document(opts);
-    raw_envelope(payload, vec![0xAB; 96])
+    signed_envelope(payload)
+}
+
+fn signed_envelope(payload: Vec<u8>) -> Vec<u8> {
+    CoseSign1Builder::new()
+        .protected(
+            HeaderBuilder::new()
+                .algorithm(coset::iana::Algorithm::ES384)
+                .build(),
+        )
+        .payload(payload)
+        .create_signature(b"", sign_nitro_message)
+        .build()
+        .to_vec()
+        .unwrap()
 }
 
 fn raw_envelope(payload: Vec<u8>, signature: Vec<u8>) -> Vec<u8> {
@@ -128,7 +158,7 @@ fn collateral(now: SystemTime) -> NitroCollateral {
     NitroCollateral::new(
         aws_nitro_root_bytes(),
         vec![
-            NITRO_LEAF_FIXTURE.to_vec(),
+            nitro_attestation_public_key(),
             NITRO_INTERMEDIATE_FIXTURE.to_vec(),
             aws_nitro_root_bytes(),
         ],
@@ -248,7 +278,7 @@ fn nitro_verifier_rejects_chain_with_empty_link() {
     let envelope = build_envelope(&DocOpts::bound(bound, PINNED_PCR0));
     let mut bad = collateral(now());
     bad.chain_der = vec![
-        NITRO_LEAF_FIXTURE.to_vec(),
+        nitro_attestation_public_key(),
         Vec::new(),
         aws_nitro_root_bytes(),
     ];
@@ -281,6 +311,24 @@ fn nitro_verifier_rejects_document_certificate_not_matching_chain_leaf() {
         .err();
 
     assert!(matches!(error, Some(AttestError::TrustRoot)));
+}
+
+#[test]
+fn nitro_verifier_rejects_signature_mismatch() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let payload = build_document(&DocOpts::bound(bound, PINNED_PCR0));
+    let envelope = raw_envelope(payload, vec![0xAB; 96]);
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::SignatureMismatch)));
 }
 
 #[test]
@@ -320,7 +368,7 @@ fn nitro_verifier_rejects_user_data_wrong_length() {
     entries.push((CborValue::Text("pcrs".to_string()), CborValue::Map(pcrs)));
     entries.push((
         CborValue::Text("certificate".to_string()),
-        CborValue::Bytes(NITRO_LEAF_FIXTURE.to_vec()),
+        CborValue::Bytes(nitro_attestation_public_key()),
     ));
     entries.push((
         CborValue::Text("user_data".to_string()),
@@ -362,7 +410,7 @@ fn nitro_verifier_rejects_pcr0_wrong_length() {
     entries.push((CborValue::Text("pcrs".to_string()), CborValue::Map(pcrs)));
     entries.push((
         CborValue::Text("certificate".to_string()),
-        CborValue::Bytes(NITRO_LEAF_FIXTURE.to_vec()),
+        CborValue::Bytes(nitro_attestation_public_key()),
     ));
     entries.push((
         CborValue::Text("user_data".to_string()),

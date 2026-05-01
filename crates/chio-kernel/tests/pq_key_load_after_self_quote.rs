@@ -33,7 +33,11 @@ use chio_kernel::boot::{
     load_kernel_signing_backend_after_self_quote, KernelBootError, KernelSelfQuoteOutcome,
     KernelSelfQuoteVerifier, RECEIPT_ROOT_GENESIS,
 };
-use chio_kernel::{KernelCryptoFloor, KernelSigningBackendError};
+use chio_kernel::{
+    ChioKernel, HybridSigningConfig, KernelConfig, KernelCryptoFloor, KernelSigningBackendError,
+    DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
+    DEFAULT_MAX_STREAM_TOTAL_BYTES,
+};
 
 /// Mock verifier that always accepts. Captures the classical public key
 /// it was asked about so the test can assert the boot path threaded the
@@ -116,6 +120,23 @@ fn fixture_pq_seed() -> [u8; 32] {
     out
 }
 
+fn kernel_config(keypair: Keypair) -> KernelConfig {
+    KernelConfig {
+        keypair,
+        ca_public_keys: Vec::new(),
+        max_delegation_depth: 5,
+        policy_hash: "policy-hash".to_string(),
+        allow_sampling: false,
+        allow_sampling_tool_use: false,
+        allow_elicitation: false,
+        max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
+        max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        require_web3_evidence: false,
+        checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
+        retention_config: None,
+    }
+}
+
 #[test]
 fn allow_classical_skips_verifier_and_returns_classical_backend() {
     // Contract 1: the classical floor never consults the verifier.
@@ -190,6 +211,56 @@ fn pq_required_loads_pq_only_after_verified_self_quote() {
     .expect("pq_required must unlock the hybrid backend on a verified self-quote");
     assert_eq!(backend.algorithm(), SigningAlgorithm::Hybrid);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn kernel_helper_routes_hybrid_signing_through_self_quote_gate() {
+    let kp = Keypair::generate();
+    let classical_pk = kp.public_key();
+    let kernel = ChioKernel::new(kernel_config(kp));
+    let verifier = AcceptingVerifier::new();
+    let seen_pk = verifier.seen_classical_pk.clone();
+    let calls = verifier.call_count.clone();
+    let pq_seed = fixture_pq_seed();
+    let hybrid = HybridSigningConfig {
+        crypto_floor: KernelCryptoFloor::AllowHybrid,
+        pq_signing_seed: Some(pq_seed),
+    };
+
+    let backend = kernel
+        .with_hybrid_signing_backend(&hybrid, b"kernel-self-quote", &verifier)
+        .expect("kernel helper must unlock hybrid backend after self-quote");
+
+    assert_eq!(backend.algorithm(), SigningAlgorithm::Hybrid);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let seen_pk_value = seen_pk.lock().unwrap();
+    assert_eq!(
+        seen_pk_value.as_ref().expect("verifier saw kernel pk"),
+        &classical_pk,
+        "kernel helper MUST thread the classical kernel public key into the verifier"
+    );
+}
+
+#[test]
+fn kernel_helper_rejects_hybrid_signing_when_self_quote_rejects() {
+    let kp = Keypair::generate();
+    let kernel = ChioKernel::new(kernel_config(kp));
+    let verifier = RejectingVerifier::new("self-quote-report-data-mismatch");
+    let pq_seed = fixture_pq_seed();
+    let hybrid = HybridSigningConfig {
+        crypto_floor: KernelCryptoFloor::PqRequired,
+        pq_signing_seed: Some(pq_seed),
+    };
+
+    let result = kernel.with_hybrid_signing_backend(&hybrid, b"bad-self-quote", &verifier);
+
+    match result {
+        Err(KernelBootError::SelfQuoteRejected { diagnostic }) => {
+            assert_eq!(diagnostic, "self-quote-report-data-mismatch");
+        }
+        Ok(_) => panic!("kernel helper MUST NOT load PQ material after rejected self-quote"),
+        Err(other) => panic!("expected SelfQuoteRejected, got {other:?}"),
+    }
 }
 
 #[test]

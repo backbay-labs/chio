@@ -131,6 +131,26 @@ fn hybrid_certificate_under_allow_classical_rejects_at_verification() {
 }
 
 #[test]
+fn tampered_algorithm_field_rejects_before_signature_verification() {
+    let backend = hybrid_backend();
+    let body = body_with_floor(KernelCryptoFloor::AllowHybrid);
+    let mut cert =
+        issue_session_compliance_certificate(body, KernelCryptoFloor::AllowHybrid, &backend)
+            .unwrap();
+    cert.algorithm = SigningAlgorithm::Ed25519;
+
+    let err = verify_session_compliance_certificate(&cert, KernelCryptoFloor::AllowHybrid)
+        .expect_err("declared algorithm must match signature material");
+    assert!(matches!(
+        err,
+        ComplianceCertificateError::AlgorithmMismatch {
+            declared: "ed25519",
+            actual: "hybrid",
+        }
+    ));
+}
+
+#[test]
 fn tampered_body_rejects_signature_verification() {
     let backend = classical_backend();
     let body = body_with_floor(KernelCryptoFloor::AllowClassical);

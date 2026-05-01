@@ -25,13 +25,14 @@ use chio_attest_verify::{
     AttestError, QuoteTcbStatus, QuoteVerificationContext, QuoteVerifier, TeeKind,
 };
 use chio_core_types::crypto::Keypair;
+use p384::ecdsa::{SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
 
 const FIXTURES_DIR: &str = "fixtures/quotes/nitro";
 const KERNEL_SEED: [u8; 32] = [9u8; 32];
 const RECEIPT_ROOT: [u8; 32] = [8u8; 32];
 const PINNED_PCR0: [u8; 48] = [0x77u8; 48];
-const NITRO_LEAF_FIXTURE: &[u8] = b"aws-nitro-leaf-fixture";
+const NITRO_ATTESTATION_KEY_SEED: [u8; 48] = [0x42u8; 48];
 const NITRO_INTERMEDIATE_FIXTURE: &[u8] = b"aws-nitro-intermediate-fixture";
 
 fn fixtures_root() -> PathBuf {
@@ -48,6 +49,12 @@ fn aws_nitro_root_bytes() -> Vec<u8> {
     pem.to_vec()
 }
 
+fn nitro_attestation_public_key() -> Vec<u8> {
+    let signing_key = SigningKey::from_bytes((&NITRO_ATTESTATION_KEY_SEED).into()).unwrap();
+    let verifying_key = VerifyingKey::from(&signing_key);
+    verifying_key.to_encoded_point(false).as_bytes().to_vec()
+}
+
 /// A synthetic "rotated" root. Different bytes from the embedded
 /// real root, so the verifier rejects fixtures whose chain anchors
 /// at the original root.
@@ -59,7 +66,7 @@ fn collateral_at(now: SystemTime) -> NitroCollateral {
     NitroCollateral::new(
         aws_nitro_root_bytes(),
         vec![
-            NITRO_LEAF_FIXTURE.to_vec(),
+            nitro_attestation_public_key(),
             NITRO_INTERMEDIATE_FIXTURE.to_vec(),
             aws_nitro_root_bytes(),
         ],

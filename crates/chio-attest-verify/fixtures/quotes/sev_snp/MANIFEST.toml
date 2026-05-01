@@ -15,62 +15,62 @@ path = "positive/sev_snp_kernel_seed_09_root_08_vcek.bin"
 role = "positive"
 role_tag = "amd-sev-snp-bound-vcek"
 note = "Bound to KERNEL_SEED=[9;32], RECEIPT_ROOT=[8;32]; VCEK chain."
-size_bytes = 769
-sha256 = "da7dfe852775f6f3f0e9dacf36bd5280f52f16906482e96029acb136df70e8cf"
+size_bytes = 864
+sha256 = "af17e0635c244ade9930b87050d56bc756f3cd174f28b0678938e7febf0f81ae"
 
 [[fixture]]
 path = "positive/sev_snp_kernel_seed_09_root_08_vlek.bin"
 role = "positive"
 role_tag = "amd-sev-snp-bound-vlek"
 note = "Same binding as default positive; VLEK chain."
-size_bytes = 769
-sha256 = "94ed9b6314c9997ce4fb4703ba904b7b2c80002e3af2a1904a4534b892f69913"
+size_bytes = 864
+sha256 = "dc554ded778caee6e4c62c6913472a4201ae3ce9f05974f3856ea7f4b30efd3f"
 
 [[fixture]]
 path = "positive/sev_snp_kernel_seed_09_root_08_vmpl1.bin"
 role = "positive"
 role_tag = "amd-sev-snp-bound-vmpl1"
 note = "Bound; VMPL=1 to exercise the VMPL range guard."
-size_bytes = 769
-sha256 = "9b8a2c381e4854094b6333f3f0660a0ea90936a8506bcd4a0dcc4900cab0fa1e"
+size_bytes = 864
+sha256 = "96fbaf30ef09191cd4c3227e708143ab2574e97e31539f2e7dd0fd4d8fe828ec"
 
 [[fixture]]
 path = "positive/sev_snp_kernel_seed_09_root_08_alt_sig.bin"
 role = "positive"
 role_tag = "amd-sev-snp-bound-alt-sig-byte"
 note = "Bound; alternate signature trailing byte exercises envelope tail."
-size_bytes = 769
-sha256 = "e0a074bf25a11aa88600382756f42534bf6ab4d00e30ca391f9cb54449d8bb88"
+size_bytes = 864
+sha256 = "ae36538f818d7c8528712db5d0e05a31edf0a79e788b8d8d6bff09dcce3378e7"
 
 [[fixture]]
 path = "negative/sev_snp_report_data_unbound.bin"
 role = "negative"
 role_tag = "amd-sev-snp-report-data-mismatch"
 note = "report_data bound to a different kernel key plus receipt root."
-size_bytes = 769
-sha256 = "ffe110d7d66876183d83c3622cafe49047f2549254ae1254ef75c5fce3c83edd"
+size_bytes = 864
+sha256 = "9f3be33e65d2bd0fbdccb9fe79d205b8b9049944549e34ba8bca4a9bac565680"
 
 [[fixture]]
 path = "negative/sev_snp_mismatched_launch_digest.bin"
 role = "negative"
 role_tag = "amd-sev-snp-launch-digest-mismatch"
 note = "Bound report_data; envelope measurement is not the pinned launch digest."
-size_bytes = 769
-sha256 = "dd009da9feb8dce25206df4474395a517584e534561e335c4ddc899c40dc5cb5"
+size_bytes = 864
+sha256 = "400d069a488e314363c89d8793897800947c583e44569459f2a6bae3f84a72be"
 
 [[fixture]]
 path = "negative/sev_snp_stale_tcb_marker.bin"
 role = "negative"
 role_tag = "amd-sev-snp-stale-tcb-marker"
 note = "Bound; reported_tcb is the documented stale-marker (0)."
-size_bytes = 769
-sha256 = "f3323deb6f956d398bb891f7ad0355a05840b6b1ef8994852d7fa32b2159eac9"
+size_bytes = 864
+sha256 = "edd82b112ef330c3f77355a6d3fa235c685a6854fdfaab934be3c6f47802f8ee"
 
 [[fixture]]
 path = "negative/sev_snp_sig_algo_key_select_mismatch.bin"
 role = "negative"
 role_tag = "amd-sev-snp-sig-algo-key-select-mismatch"
 note = "Bound; sig_algo says VCEK but key_select says VLEK."
-size_bytes = 769
-sha256 = "b8a5c5bc6c5f75a021830c50332677b50d7a69c0bdcddc3f5cfc9b33281ccb87"
+size_bytes = 864
+sha256 = "3e8aacaf6a89f77aac14721aa2e3032365b3211266211ce09a0fb1e0f08cf630"
 

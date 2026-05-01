@@ -42,18 +42,36 @@ mod inner {
     use chio_core_types::crypto::Keypair;
     use coset::cbor::Value as CborValue;
     use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder};
+    use p384::ecdsa::{
+        signature::Signer as _, Signature as P384Signature, SigningKey, VerifyingKey,
+    };
     use sha2::{Digest, Sha256};
 
     pub(super) const KERNEL_SEED: [u8; 32] = [9u8; 32];
     pub(super) const RECEIPT_ROOT: [u8; 32] = [8u8; 32];
     pub(super) const PINNED_PCR0: [u8; 48] = [0x77u8; 48];
     pub(super) const TIMESTAMP_MS: u64 = 1_700_000_000_000;
-    pub(super) const NITRO_LEAF_FIXTURE: &[u8] = b"aws-nitro-leaf-fixture";
+    const NITRO_ATTESTATION_KEY_SEED: [u8; 48] = [0x42u8; 48];
     pub(super) const NITRO_INTERMEDIATE_FIXTURE: &[u8] = b"aws-nitro-intermediate-fixture";
 
     fn aws_nitro_root_bytes() -> Vec<u8> {
         let pem = include_bytes!("../fixtures/nitro/aws-nitro-root.pem");
         pem.to_vec()
+    }
+
+    fn nitro_attestation_signing_key() -> SigningKey {
+        SigningKey::from_bytes((&NITRO_ATTESTATION_KEY_SEED).into()).unwrap()
+    }
+
+    fn nitro_attestation_public_key() -> Vec<u8> {
+        let signing_key = nitro_attestation_signing_key();
+        let verifying_key = VerifyingKey::from(&signing_key);
+        verifying_key.to_encoded_point(false).as_bytes().to_vec()
+    }
+
+    fn sign_nitro_message(message: &[u8]) -> Vec<u8> {
+        let signature: P384Signature = nitro_attestation_signing_key().sign(message);
+        signature.to_vec()
     }
 
     #[derive(Debug, Clone)]
@@ -67,8 +85,6 @@ mod inner {
         pcr0: [u8; 48],
         certificate: Vec<u8>,
         user_data: [u8; 64],
-        signature_byte: u8,
-        signature_len: usize,
     }
 
     fn build_payload(spec: &FixtureSpec) -> Vec<u8> {
@@ -114,7 +130,6 @@ mod inner {
 
     fn build_envelope(spec: &FixtureSpec) -> Vec<u8> {
         let payload = build_payload(spec);
-        let signature = vec![spec.signature_byte; spec.signature_len];
         CoseSign1Builder::new()
             .protected(
                 HeaderBuilder::new()
@@ -122,7 +137,7 @@ mod inner {
                     .build(),
             )
             .payload(payload)
-            .signature(signature)
+            .create_signature(b"", sign_nitro_message)
             .build()
             .to_vec()
             .unwrap()
@@ -147,10 +162,8 @@ mod inner {
                 module_id: "i-0123456789abcdef0-enc01234567890abcd",
                 timestamp_ms: TIMESTAMP_MS,
                 pcr0: PINNED_PCR0,
-                certificate: NITRO_LEAF_FIXTURE.to_vec(),
+                certificate: nitro_attestation_public_key(),
                 user_data: bound,
-                signature_byte: 0xA1,
-                signature_len: 96,
             },
             FixtureSpec {
                 file_name: "positive/nitro_kernel_seed_09_root_08_alt_module.bin",
@@ -160,36 +173,30 @@ mod inner {
                 module_id: "i-fedcba9876543210f-encfedcba98765432",
                 timestamp_ms: TIMESTAMP_MS + 1,
                 pcr0: PINNED_PCR0,
-                certificate: NITRO_LEAF_FIXTURE.to_vec(),
+                certificate: nitro_attestation_public_key(),
                 user_data: bound,
-                signature_byte: 0xA2,
-                signature_len: 96,
             },
             FixtureSpec {
                 file_name: "positive/nitro_kernel_seed_09_root_08_long_sig.bin",
                 role: "positive",
                 role_tag: "aws-nitro-bound-long-sig",
-                note: "Bound; alternate signature length exercises envelope tail.",
+                note: "Bound; alternate timestamp changes the signed COSE payload.",
                 module_id: "i-0123456789abcdef0-enc01234567890abcd",
-                timestamp_ms: TIMESTAMP_MS,
+                timestamp_ms: TIMESTAMP_MS + 2,
                 pcr0: PINNED_PCR0,
-                certificate: NITRO_LEAF_FIXTURE.to_vec(),
+                certificate: nitro_attestation_public_key(),
                 user_data: bound,
-                signature_byte: 0xA3,
-                signature_len: 132,
             },
             FixtureSpec {
                 file_name: "positive/nitro_kernel_seed_09_root_08_alt_sig_byte.bin",
                 role: "positive",
                 role_tag: "aws-nitro-bound-alt-sig-byte",
-                note: "Bound; alternate signature byte exercises envelope tail.",
+                note: "Bound; alternate module id changes the signed COSE payload.",
                 module_id: "i-0123456789abcdef0-enc01234567890abcd",
-                timestamp_ms: TIMESTAMP_MS,
+                timestamp_ms: TIMESTAMP_MS + 3,
                 pcr0: PINNED_PCR0,
-                certificate: NITRO_LEAF_FIXTURE.to_vec(),
+                certificate: nitro_attestation_public_key(),
                 user_data: bound,
-                signature_byte: 0xB1,
-                signature_len: 96,
             },
         ];
 
@@ -202,10 +209,8 @@ mod inner {
                 module_id: "i-0123456789abcdef0-enc01234567890abcd",
                 timestamp_ms: TIMESTAMP_MS,
                 pcr0: PINNED_PCR0,
-                certificate: NITRO_LEAF_FIXTURE.to_vec(),
+                certificate: nitro_attestation_public_key(),
                 user_data: unrelated_pair,
-                signature_byte: 0xC1,
-                signature_len: 96,
             },
             FixtureSpec {
                 file_name: "negative/nitro_mismatched_pcr0.bin",
@@ -215,10 +220,8 @@ mod inner {
                 module_id: "i-0123456789abcdef0-enc01234567890abcd",
                 timestamp_ms: TIMESTAMP_MS,
                 pcr0: [0x11u8; 48],
-                certificate: NITRO_LEAF_FIXTURE.to_vec(),
+                certificate: nitro_attestation_public_key(),
                 user_data: bound,
-                signature_byte: 0xC2,
-                signature_len: 96,
             },
             FixtureSpec {
                 file_name: "negative/nitro_certificate_mismatch.bin",
@@ -230,8 +233,6 @@ mod inner {
                 pcr0: PINNED_PCR0,
                 certificate: b"adversary-leaf-fixture".to_vec(),
                 user_data: bound,
-                signature_byte: 0xC3,
-                signature_len: 96,
             },
             FixtureSpec {
                 file_name: "negative/nitro_root_rotation_signed_under_old_root.bin",
@@ -243,8 +244,6 @@ mod inner {
                 pcr0: PINNED_PCR0,
                 certificate: b"aws-nitro-leaf-under-old-root".to_vec(),
                 user_data: bound,
-                signature_byte: 0xC4,
-                signature_len: 96,
             },
         ];
 
