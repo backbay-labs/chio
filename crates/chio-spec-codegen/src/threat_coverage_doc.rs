@@ -47,11 +47,15 @@ pub enum CoverageState {
 }
 
 impl CoverageState {
-    fn parse(raw: Option<&str>) -> Self {
+    fn parse(raw: Option<&str>, source_path: &Path) -> Result<Self, CodegenError> {
         match raw.unwrap_or("covered") {
-            "partial" => Self::Partial,
-            "pending" => Self::Pending,
-            _ => Self::Covered,
+            "covered" => Ok(Self::Covered),
+            "partial" => Ok(Self::Partial),
+            "pending" => Ok(Self::Pending),
+            other => Err(CodegenError::Registry(
+                source_path.to_path_buf(),
+                format!("unknown coverage_state {other:?}"),
+            )),
         }
     }
 
@@ -135,7 +139,8 @@ pub fn render_threat_coverage_doc(
 
     let mut sections: BTreeMap<CoverageState, Vec<&ThreatRow>> = BTreeMap::new();
     for threat in &threat_doc.threats {
-        let state = CoverageState::parse(threat.coverage_state.as_deref());
+        let state =
+            CoverageState::parse(threat.coverage_state.as_deref(), inputs.threat_model_path)?;
         sections.entry(state).or_default().push(threat);
     }
 
@@ -276,22 +281,28 @@ mod tests {
     #[test]
     fn coverage_state_parses_known_values() {
         assert_eq!(
-            CoverageState::parse(Some("covered")),
+            CoverageState::parse(Some("covered"), Path::new("threat-model.json")).unwrap(),
             CoverageState::Covered
         );
         assert_eq!(
-            CoverageState::parse(Some("partial")),
+            CoverageState::parse(Some("partial"), Path::new("threat-model.json")).unwrap(),
             CoverageState::Partial
         );
         assert_eq!(
-            CoverageState::parse(Some("pending")),
+            CoverageState::parse(Some("pending"), Path::new("threat-model.json")).unwrap(),
             CoverageState::Pending
         );
-        assert_eq!(CoverageState::parse(None), CoverageState::Covered);
         assert_eq!(
-            CoverageState::parse(Some("nonsense")),
+            CoverageState::parse(None, Path::new("threat-model.json")).unwrap(),
             CoverageState::Covered
         );
+    }
+
+    #[test]
+    fn coverage_state_rejects_unknown_values() {
+        let err = CoverageState::parse(Some("nonsense"), Path::new("threat-model.json"))
+            .expect_err("unknown coverage_state must fail closed");
+        assert!(err.to_string().contains("unknown coverage_state"));
     }
 
     #[test]
