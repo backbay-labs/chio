@@ -158,6 +158,23 @@ name = "compliance_certificate_hybrid"
 path = "tests/compliance_certificate_hybrid.rs"
 required-features = ["pq"]
 
+# M03.P5.T1: kernel boot path gates the PQ signing key load on a verified
+# self-quote that binds expect_report_data(kernel_classical_pk,
+# receipt_root_genesis). Threat-model row pq_signature_downgrade is the
+# surface guarded here.
+[[test]]
+name = "pq_key_load_after_self_quote"
+path = "tests/pq_key_load_after_self_quote.rs"
+required-features = ["pq"]
+
+# M03.P5.T3: receipt-signing path consumes the M06 SharedCanonicalBytes
+# (Arc<CanonicalBytes>) newtype so the canonical JSON buffer is built once,
+# signed once, and shared by every downstream consumer.
+[[test]]
+name = "canonical_bytes_hybrid"
+path = "tests/canonical_bytes_hybrid.rs"
+required-features = ["pq"]
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"

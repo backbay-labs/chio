@@ -1,0 +1,83 @@
+# Threat-model coverage map.
+#
+# Source of truth: spec/security/chio-threat-model.v1.json.
+# File shape pinned by trajectory-2 M05 P5.T1 (chio-threat-model.schema.json
+# coverage_state enum = {covered, partial, pending}).
+#
+# CI gate: trajectory-2 M05 P5.T4 (scripts/check-threat-coverage.sh) treats
+# `covered` and `partial` as PASS; `pending` requires an explicit
+# `deferred_to` field, otherwise the gate fails closed. See trajectory-2
+# EXECUTION-BOARD.md section 9.
+#
+# Each entry records the threat ID, its coverage_state, the milestone
+# that handed it to coverage, and the in-tree backing tests / fixtures
+# the operator can grep to verify the claim.
+
+schema: chio.security.coverage/v1
+updated_at: "2026-04-30"
+
+threats:
+  # Trajectory-1 register (six initial IDs) is owned by M05 P5.T3 test
+  # bodies and is not surfaced here until the chio-conformance threat
+  # tests land. The gate evaluates any ID present in the threat-model
+  # JSON; missing entries surface as `pending` without `deferred_to`
+  # which fails the gate closed by design.
+
+  # M10 P2 closes passkey_credential_theft via:
+  #   - crates/chio-custody-hw/src/verifier.rs (PasskeyVerifier)
+  #   - crates/chio-custody-hw/src/nonce_store.rs (replay-resistant store)
+  #   - crates/chio-custody-hw/src/revocation.rs (M04 oracle cascade)
+  #   - crates/chio-custody-hw/tests/replay_resistance.rs
+  #   - crates/chio-custody-hw/tests/revocation_cascade.rs
+  #   - crates/chio-custody-hw/tests/end_to_end.rs (M10.P2.T6)
+  - id: passkey_credential_theft
+    coverage_state: covered
+    owned_by: M10
+    closed_by: M10.P2.T6
+    backing_evidence:
+      - crates/chio-custody-hw/src/verifier.rs
+      - crates/chio-custody-hw/src/nonce_store.rs
+      - crates/chio-custody-hw/src/revocation.rs
+      - crates/chio-custody-hw/tests/replay_resistance.rs
+      - crates/chio-custody-hw/tests/revocation_cascade.rs
+      - crates/chio-custody-hw/tests/end_to_end.rs
+
+  # M10 P2.T4 audience-confusion property test exercises bit-flips on
+  # the audience field of every minted PasskeyCapability and asserts
+  # cross-audience presentation rejects fail-closed.
+  - id: audience_confusion
+    coverage_state: covered
+    owned_by: M10
+    closed_by: M10.P2.T4
+    backing_evidence:
+      - crates/chio-custody-hw/src/capability.rs
+      - crates/chio-custody-hw/tests/audience_confusion.rs
+
+  # M10 P4.T5 closes the cosign-bundle half of weights_hash_spoof.
+  # The kernel binding refusal verifies (weights_hash, scope subset,
+  # banned-tools intersection) against a signed model card before
+  # provider bind succeeds. The residual gap is loaded-weight
+  # recomputation: until chio-providers exposes a recomputable
+  # loaded-weight digest, the provider-supplied hash is treated as
+  # attested-by-cosign-bundle. The gap is documented under
+  # docs/security/threat-coverage.md (Partial heading) and in the
+  # M10 audit doc.
+  - id: weights_hash_spoof
+    coverage_state: partial
+    owned_by: M10
+    closed_by: M10.P4.T5
+    partial_reason: |
+      The kernel binding refusal verifies the cosign-attested
+      weights_hash, allowed_capability_set, and banned_tools tuple,
+      but loaded-weight recomputation depends on chio-providers
+      exposing a recomputable digest. Until that lands, the
+      provider-supplied hash is the attested input. Flips to
+      `covered` once chio-providers hash-recompute lands.
+    backing_evidence:
+      - crates/chio-weights/src/card.rs
+      - crates/chio-weights/src/bundle.rs
+      - crates/chio-kernel/src/weights_binding.rs
+      - crates/chio-policy/src/weights.rs
+      - crates/chio-cli/src/commands/bind.rs
+      - crates/chio-weights/tests/lineage_anchor.rs
+      - crates/chio-weights/tests/equivalence.rs

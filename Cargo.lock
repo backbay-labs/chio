@@ -3855,12 +3855,15 @@ version = "0.1.0"
 dependencies = [
  "chio-attest-verify",
  "chio-core-types",
+ "chio-lineage",
+ "chio-provider-conformance",
  "chrono",
  "hex",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
+ "toml 0.8.23",
 ]
 
 [[package]]
