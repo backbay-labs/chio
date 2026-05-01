@@ -19,6 +19,7 @@
 //!   canonical-JSON encoding.
 //! - `bundle` -- cosign bundle helper that consumes
 //!   [`chio_attest_verify::SigstoreVerifier::verify_bundle`].
+//! - `lineage` -- lineage-anchor proof helpers for published model cards.
 //!
 //! The kernel binding refusal and `arc bind --card` CLI consume this
 //! surface from `chio-kernel` and `chio-cli` respectively.
@@ -37,7 +38,12 @@
 pub mod bundle;
 pub mod card;
 pub mod error;
+pub mod lineage;
 
 pub use bundle::{verify_model_card_bundle, VerifiedModelCard};
 pub use card::{weights_hash_of, ModelCard, StringSet, CARD_VERSION_V1};
 pub use error::WeightsError;
+pub use lineage::{
+    anchor_model_card, verify_model_card_anchor, ModelCardLineageAnchor,
+    MODEL_CARD_ANCHOR_SCHEMA,
+};

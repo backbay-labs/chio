@@ -29,7 +29,7 @@
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::error::WeightsError;
@@ -43,9 +43,33 @@ pub const CARD_VERSION_V1: &str = "1";
 /// Encoded as a JSON array in canonical (sorted) order. Set semantics are
 /// enforced at construction time so the canonical-JSON encoding is
 /// deterministic across implementations.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct StringSet(BTreeSet<String>);
+
+impl<'de> Deserialize<'de> for StringSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let items = Vec::<String>::deserialize(deserializer)?;
+        let mut set = BTreeSet::new();
+        for item in items {
+            if item.is_empty() {
+                return Err(de::Error::custom(
+                    "string set entries must be non-empty strings",
+                ));
+            }
+            if set.contains(&item) {
+                return Err(de::Error::custom(format!(
+                    "duplicate string set entry {item:?}"
+                )));
+            }
+            set.insert(item);
+        }
+        Ok(Self(set))
+    }
+}
 
 impl StringSet {
     /// Build a [`StringSet`] from any iterable. Duplicates are deduplicated;
@@ -98,6 +122,10 @@ impl StringSet {
     pub fn as_set(&self) -> &BTreeSet<String> {
         &self.0
     }
+
+    fn contains_empty(&self) -> bool {
+        self.0.iter().any(String::is_empty)
+    }
 }
 
 /// Signed declaration binding a model's loaded weights to a permitted
@@ -108,6 +136,7 @@ impl StringSet {
 /// signatures are taken over; the serde field declaration order is
 /// therefore irrelevant to the hashed bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelCard {
     /// Schema version. MUST be [`CARD_VERSION_V1`] for v1 cards; any other
     /// value rejects at validation.
@@ -177,6 +206,16 @@ impl ModelCard {
                 "weights_hash must be 64 lowercase hex chars, got {:?}",
                 self.weights_hash
             )));
+        }
+        if self.allowed_capability_set.contains_empty() {
+            return Err(WeightsError::SchemaRejected(
+                "allowed_capability_set entries must be non-empty strings".to_string(),
+            ));
+        }
+        if self.banned_tools.contains_empty() {
+            return Err(WeightsError::SchemaRejected(
+                "banned_tools entries must be non-empty strings".to_string(),
+            ));
         }
         if self.training_data_class.is_empty() {
             return Err(WeightsError::MissingField("training_data_class"));
@@ -265,6 +304,26 @@ mod tests {
         }
     }
 
+    fn good_card_value() -> serde_json::Value {
+        serde_json::json!({
+            "allowed_capability_set": ["tool:read", "tool:write"],
+            "banned_tools": ["tool:exec"],
+            "card_version": CARD_VERSION_V1,
+            "expires_at": "2026-05-30T12:00:00Z",
+            "issued_at": "2026-04-30T12:00:00Z",
+            "issuer": "https://example.com/issuer",
+            "training_data_class": "public-internet",
+            "weights_hash": "0000000000000000000000000000000000000000000000000000000000000001",
+        })
+    }
+
+    fn value_to_bytes(value: &serde_json::Value) -> Vec<u8> {
+        match serde_json::to_vec(value) {
+            Ok(bytes) => bytes,
+            Err(e) => panic!("serialize fixture value: {e}"),
+        }
+    }
+
     #[test]
     fn validate_rejects_uppercase_weights_hash() {
         let issued = fixed_issued_at();
@@ -321,6 +380,72 @@ mod tests {
             "https://example.com/issuer",
             issued,
             issued - chrono::Duration::seconds(1),
+        );
+        assert!(matches!(res, Err(WeightsError::SchemaRejected(_))));
+    }
+
+    #[test]
+    fn from_canonical_json_rejects_unknown_fields() {
+        let mut value = good_card_value();
+        match value {
+            serde_json::Value::Object(ref mut map) => {
+                map.insert(
+                    "unexpected".to_string(),
+                    serde_json::Value::String("field".to_string()),
+                );
+            }
+            _ => panic!("fixture must be a JSON object"),
+        }
+        let bytes = value_to_bytes(&value);
+        let res = ModelCard::from_canonical_json(&bytes);
+        assert!(matches!(res, Err(WeightsError::Encoding(_))));
+    }
+
+    #[test]
+    fn from_canonical_json_rejects_duplicate_set_entries() {
+        let mut value = good_card_value();
+        match value {
+            serde_json::Value::Object(ref mut map) => {
+                map.insert(
+                    "allowed_capability_set".to_string(),
+                    serde_json::json!(["tool:read", "tool:read"]),
+                );
+            }
+            _ => panic!("fixture must be a JSON object"),
+        }
+        let bytes = value_to_bytes(&value);
+        let res = ModelCard::from_canonical_json(&bytes);
+        assert!(matches!(res, Err(WeightsError::Encoding(_))));
+    }
+
+    #[test]
+    fn from_canonical_json_rejects_empty_set_entries() {
+        let mut value = good_card_value();
+        match value {
+            serde_json::Value::Object(ref mut map) => {
+                map.insert(
+                    "banned_tools".to_string(),
+                    serde_json::json!(["tool:exec", ""]),
+                );
+            }
+            _ => panic!("fixture must be a JSON object"),
+        }
+        let bytes = value_to_bytes(&value);
+        let res = ModelCard::from_canonical_json(&bytes);
+        assert!(matches!(res, Err(WeightsError::Encoding(_))));
+    }
+
+    #[test]
+    fn new_rejects_empty_set_entries() {
+        let issued = fixed_issued_at();
+        let res = ModelCard::new(
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            StringSet::new([""]),
+            StringSet::default(),
+            "public-internet",
+            "https://example.com/issuer",
+            issued,
+            issued + chrono::Duration::days(1),
         );
         assert!(matches!(res, Err(WeightsError::SchemaRejected(_))));
     }
