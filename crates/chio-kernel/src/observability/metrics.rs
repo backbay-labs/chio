@@ -100,8 +100,8 @@ pub const GUARD_METRIC_FAMILIES: &[GuardMetricFamily] = &[
     },
 ];
 
-const METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
-const METRIC_CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
+pub const METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
+pub const METRIC_CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
 
 const RUNTIME_METRIC_FAMILIES: &[GuardMetricFamily] = &[
     GuardMetricFamily {

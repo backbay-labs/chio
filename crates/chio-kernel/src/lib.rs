@@ -332,6 +332,7 @@ pub use memory_provenance::{
 pub use observability::metrics::{
     guard_metrics_endpoint, render_guard_metrics_prometheus, GuardMetricFamily,
     MetricsEndpointResponse, PrometheusMetricKind, GUARD_METRICS_PATH, GUARD_METRIC_FAMILIES,
+    METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
     PROMETHEUS_TEXT_CONTENT_TYPE,
 };
 pub use operator_report::{behavioral_anomaly_score, BehavioralAnomalyScore, EmaBaselineState};
