@@ -37,6 +37,7 @@
 
 use std::time::SystemTime;
 
+use chio_core_types::canonical_json_bytes;
 use serde::{Deserialize, Serialize};
 
 use crate::AttestError;
@@ -164,10 +165,9 @@ impl TenantPolicy {
 
     /// Canonical JSON serialisation used for signing and signature
     /// verification. The `signature` field is excluded from the canonical
-    /// form (signing a value over itself is undefined). Keys are sorted by
-    /// `serde_json`'s default `BTreeMap`-style ordering when fed through a
-    /// canonical encoder; we emit them in declaration order here, matching
-    /// the documented contract that downstream signers pin.
+    /// form (signing a value over itself is undefined). The returned bytes
+    /// are RFC 8785 canonical JSON, so object keys and scalar encodings are
+    /// byte-stable across signers.
     ///
     /// # Errors
     ///
@@ -191,7 +191,7 @@ impl TenantPolicy {
             signed_at: &self.signed_at,
             pq_identity_regexps: &self.pq_identity_regexps,
         };
-        serde_json::to_vec(&canonical)
+        canonical_json_bytes(&canonical)
             .map_err(|err| AttestError::Malformed(format!("policy canonical encode: {err}")))
     }
 
@@ -239,7 +239,8 @@ fn parse_rfc3339_utc(text: &str) -> Result<SystemTime, AttestError> {
     let hour = parse_u32(&bytes[11..13], text)? as u8;
     let minute = parse_u32(&bytes[14..16], text)? as u8;
     let second = parse_u32(&bytes[17..19], text)? as u8;
-    if month == 0 || month > 12 || day == 0 || day > 31 || hour > 23 || minute > 59 || second > 60 {
+    let max_day = days_in_month(year, month)?;
+    if day == 0 || day > max_day || hour > 23 || minute > 59 || second > 60 {
         return Err(AttestError::Malformed(format!(
             "signed_at {text:?} has out-of-range fields"
         )));
@@ -263,6 +264,25 @@ fn parse_u32(bytes: &[u8], whole: &str) -> Result<u32, AttestError> {
     s.parse::<u32>().map_err(|_| {
         AttestError::Malformed(format!("signed_at {whole:?} contains non-numeric digits"))
     })
+}
+
+fn days_in_month(year: u32, month: u8) -> Result<u8, AttestError> {
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        _ => {
+            return Err(AttestError::Malformed(format!(
+                "signed_at has out-of-range month {month}"
+            )));
+        }
+    };
+    Ok(days)
+}
+
+fn is_leap_year(year: u32) -> bool {
+    year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
 }
 
 /// Days from `1970-01-01` for the given proleptic Gregorian date. Adapted
