@@ -922,14 +922,20 @@ pub(super) fn pump_client_messages<R: BufRead>(
 
         match serde_json::from_str::<Value>(trimmed) {
             Ok(message) => {
-                if matches!(
+                let is_cancel_signal = matches!(
                     message.get("method").and_then(Value::as_str),
                     Some("notifications/cancelled" | "tasks/cancel")
-                ) {
-                    let _ = cancel_sender.send(message.clone());
-                }
-                if sender.send(ClientInbound::Message(message)).is_err() {
+                );
+                if sender
+                    .send(ClientInbound::Message(message.clone()))
+                    .is_err()
+                {
                     return;
+                }
+                // Queue the JSON-RPC request before the side-channel signal so a
+                // nested-flow cancellation can still defer and answer tasks/cancel.
+                if is_cancel_signal {
+                    let _ = cancel_sender.send(message);
                 }
             }
             Err(error) => {
@@ -950,14 +956,18 @@ pub(super) fn pump_channel_messages(
     cancel_sender: mpsc::Sender<Value>,
 ) {
     while let Ok(message) = receiver.recv() {
-        if matches!(
+        let is_cancel_signal = matches!(
             message.get("method").and_then(Value::as_str),
             Some("notifications/cancelled" | "tasks/cancel")
-        ) {
-            let _ = cancel_sender.send(message.clone());
-        }
-        if sender.send(ClientInbound::Message(message)).is_err() {
+        );
+        if sender
+            .send(ClientInbound::Message(message.clone()))
+            .is_err()
+        {
             return;
+        }
+        if is_cancel_signal {
+            let _ = cancel_sender.send(message);
         }
     }
 
