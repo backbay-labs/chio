@@ -1,11 +1,11 @@
-//! M09 P4.T1 marketplace manifest extension.
+//! Marketplace manifest extension.
 //!
 //! Adds optional `price: GuardPrice` and `reputation_floor: ReputationTier`
 //! fields parsed out of a guard manifest layer JSON document. The fields
 //! are additive: a manifest layer without a `marketplace` block parses
 //! cleanly with `price = GuardPrice::zero("USD")` and
-//! `reputation_floor = ReputationTier::Tier0`, preserving the trajectory-1
-//! M06 cosign-gated publish and pull semantics verbatim.
+//! `reputation_floor = ReputationTier::Tier0`, preserving the
+//! cosign-gated publish and pull semantics verbatim.
 //!
 //! This module is gated behind the `marketplace` cargo feature so the
 //! default `chio-guard-registry` build, including the `--no-default-features`

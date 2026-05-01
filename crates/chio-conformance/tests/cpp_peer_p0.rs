@@ -1,11 +1,10 @@
 // C++ peer P0 conformance gate.
 //
-// Wave 1 decision 5 locks the C++ peer P0 surface to `mcp_core` and `auth` only.
-// `chio-extensions`, `tasks`, `nested_callbacks`, and `notifications` are
-// explicitly deferred to a follow-on milestone and are NOT exercised here. If
-// you need to extend the C++ peer's coverage, file a follow-on ticket and add
-// a separate integration test rather than expanding this one (its purpose is
-// to be the immutable P0 gate).
+// The C++ peer P0 surface is locked to `mcp_core` and `auth` only.
+// `chio-extensions`, `tasks`, `nested_callbacks`, and `notifications`
+// are deferred and are NOT exercised here. If you need to extend the
+// C++ peer's coverage, add a separate integration test rather than
+// expanding this one (its purpose is to be the immutable P0 gate).
 //
 // The C++ peer is the conformance-peer binary built from
 // `packages/sdk/chio-cpp` via CMake; that binary links against
@@ -27,9 +26,9 @@ mod common;
 
 use chio_conformance::{run_conformance_harness, ConformanceAuthMode};
 
-// P0 scenarios for the C++ peer (Wave 1 decision 5). Keep these lists in
-// lockstep with `tests/conformance/scenarios/{mcp_core,auth}/` and the
-// per-area `mcp_core_cpp_live.rs` / `auth_cpp_live.rs` assertions.
+// P0 scenarios for the C++ peer. Keep these lists in lockstep with
+// `tests/conformance/scenarios/{mcp_core,auth}/` and the per-area
+// `mcp_core_cpp_live.rs` / `auth_cpp_live.rs` assertions.
 const MCP_CORE_P0_SCENARIOS: &[&str] = &[
     "initialize",
     "tools-list",
@@ -46,9 +45,9 @@ const AUTH_P0_SCENARIOS: &[&str] = &[
     "auth-token-exchange-initialize",
 ];
 
-// Areas explicitly deferred to a follow-on milestone (Wave 1 decision 5).
-// Listed here so a future reader can grep and confirm the deferral is still
-// the intent before expanding the gate.
+// Areas explicitly deferred from the P0 gate. Listed here so a future
+// reader can grep and confirm the deferral is still the intent before
+// expanding the gate.
 const DEFERRED_AREAS: &[&str] = &[
     "chio-extensions",
     "tasks",

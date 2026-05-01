@@ -1,4 +1,4 @@
-//! Phase 1.1 contract tests for `SqliteExecutionNonceStore`.
+//! Contract tests for `SqliteExecutionNonceStore`.
 //!
 //! Exercises the `ExecutionNonceStore` trait contract plus the durable
 //! replay-prevention guarantees specific to the SQLite backend:

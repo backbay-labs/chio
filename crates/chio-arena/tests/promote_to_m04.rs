@@ -1,5 +1,5 @@
-//! M08.P5.T1 - auto-promotion to trajectory-1 M04 fixtures via the existing
-//! CHIO_BLESS gate (BLESS_REASON=arena:<scenario-id>).
+//! Auto-promotion to M04 fixtures via the existing CHIO_BLESS gate
+//! (BLESS_REASON=arena:<scenario-id>).
 
 use std::collections::HashMap;
 

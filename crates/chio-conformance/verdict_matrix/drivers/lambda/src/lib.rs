@@ -1,22 +1,16 @@
-//! M07.P6.T3: Lambda deployment-shape verdict-matrix driver.
+//! Lambda deployment-shape verdict-matrix driver.
 //!
 //! The driver loads the canonical scenario corpus from
 //! `crates/chio-conformance/verdict_matrix/scenarios/` and emits a
 //! `(verdict, reason_code, scope_set)` tuple per scenario by invoking the
-//! trajectory-1 `sdks/lambda/chio-lambda-extension` runtime through a local
-//! invoke shim. The Lambda extension itself does not embed kernel
-//! evaluation; it forwards admission requests to a Chio sidecar. The
-//! deployment-shape driver therefore mirrors the trajectory-1 TypeScript
-//! node-http driver contract: an operator-supplied sidecar URL is read
-//! from `CHIO_VERDICT_MATRIX_SIDECAR_URL` (with `CHIO_SIDECAR_URL`
-//! fallback). Without that variable, every scenario is reported as
-//! `unsupported` with a diagnostic that names the missing variable.
-//!
-//! The local-invoke-shim wiring is operator-tactical and out of M07.P6.T3
-//! scope; the scaffold registers the driver shape so the M02 hash-pinned
-//! manifest can enumerate `lambda-deployment-shape` and the
-//! `verdict_matrix.deployment_shape_smoke` integration test can assert
-//! the registration.
+//! `sdks/lambda/chio-lambda-extension` runtime through a local invoke shim.
+//! The Lambda extension itself does not embed kernel evaluation; it forwards
+//! admission requests to a Chio sidecar. The deployment-shape driver mirrors
+//! the TypeScript node-http driver contract: an operator-supplied sidecar
+//! URL is read from `CHIO_VERDICT_MATRIX_SIDECAR_URL` (with
+//! `CHIO_SIDECAR_URL` fallback). Without that variable, every scenario is
+//! reported as `unsupported` with a diagnostic that names the missing
+//! variable.
 
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
@@ -149,7 +143,7 @@ pub fn run_driver(scenario_root: &Path, sidecar_url: Option<&str>) -> Result<Dri
     for scenario in scenarios {
         let diagnostic = if sidecar_present {
             "Lambda deployment-shape driver local-invoke shim is operator-tactical; \
-             the M07.P6.T3 scaffold registers the driver shape only"
+             the scaffold registers the driver shape only"
                 .to_string()
         } else {
             format!(

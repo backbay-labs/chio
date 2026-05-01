@@ -1,4 +1,4 @@
-//! M02.P5.T5: cross-language verdict-matrix diff oracle.
+//! Cross-language verdict-matrix diff oracle.
 //!
 //! Aggregates per-driver verdict reports across the five primary kernel
 //! surfaces (Rust kernel, Python SDK, TypeScript node-http SDK, WASM

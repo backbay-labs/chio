@@ -1,4 +1,4 @@
-//! Phase 18.2 contract tests for `SqliteMemoryProvenanceStore`.
+//! Contract tests for `SqliteMemoryProvenanceStore`.
 //!
 //! These tests exercise the trait contract (`append` is atomic and
 //! chain-linked, `verify_entry` detects tamper, `chain_digest` follows

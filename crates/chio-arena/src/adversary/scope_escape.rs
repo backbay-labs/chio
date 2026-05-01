@@ -1,10 +1,10 @@
-//! Scope-superset escape adversary class (P3.T5).
+//! Scope-superset escape adversary class.
 //!
 //! Delegates with a scope larger than the issuer's. The kernel's
-//! scope-monotone delegation rule (proven by the trajectory-1 M03
-//! capability algebra proptest plus Kani harness) requires every delegated
-//! scope to be a subset of the delegating capability's scope. This
-//! adversary triggers the property and asserts fail-closed.
+//! scope-monotone delegation rule (proven by the capability algebra
+//! proptest plus Kani harness) requires every delegated scope to be a
+//! subset of the delegating capability's scope. This adversary triggers
+//! the property and asserts fail-closed.
 //!
 //! Each adversary writes a canonical `delegated_scope` array into the
 //! mutated step's arguments. The toy guard evaluator denies the action

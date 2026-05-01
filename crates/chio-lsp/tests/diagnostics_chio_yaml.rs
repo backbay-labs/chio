@@ -1,4 +1,4 @@
-//! P4.T2 chio.yaml diagnostics integration test.
+//! chio.yaml diagnostics integration test.
 //!
 //! Drives the diagnostic provider directly so the test stays
 //! deterministic and stdio-free. The full publish pipeline is

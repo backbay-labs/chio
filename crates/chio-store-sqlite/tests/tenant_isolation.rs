@@ -1,4 +1,4 @@
-//! Phase 1.5 multi-tenant receipt isolation tests for
+//! Multi-tenant receipt isolation tests for
 //! `chio_store_sqlite::SqliteReceiptStore`.
 //!
 //! The scenario mirrors the roadmap acceptance criterion:

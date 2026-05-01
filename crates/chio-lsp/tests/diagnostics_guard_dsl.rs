@@ -1,4 +1,4 @@
-//! P4.T6 guard DSL diagnostics integration test.
+//! Guard DSL diagnostics integration test.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_lsp::diagnostics::guard_dsl::{validate, URN_GUARD_DENIED};

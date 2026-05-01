@@ -1,4 +1,4 @@
-//! Co-evolution driver (M08.P4.T5).
+//! Co-evolution driver.
 //!
 //! N-generation loop with elitism, fitness-proportional selection,
 //! mutation, two-parent crossover, and a seed-corpus injection hook. The

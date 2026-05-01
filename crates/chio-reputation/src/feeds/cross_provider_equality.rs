@@ -1,16 +1,16 @@
 //! Cross-provider equality feed.
 //!
-//! Consumes trajectory-1 M07 verdict-matrix outputs. Each observation
-//! reports per-case verdicts across providers and asks: did the providers
-//! agree? The delta is the rate of cases where every observed provider
-//! produced the same verdict.
+//! Consumes verdict-matrix outputs. Each observation reports per-case
+//! verdicts across providers and asks: did the providers agree? The
+//! delta is the rate of cases where every observed provider produced the
+//! same verdict.
 //!
-//! Per the M09 P2-P4 economics readiness research doc, the cross-provider
-//! equality input is a "comparability oracle, not a trust oracle by itself";
-//! a high delta from this feed only means the publisher's guard verdicts
-//! are reproducible across providers, not that the verdicts are correct.
-//! Combined with `ArenaSurvivalFeed` and the threshold table in `tier.rs`,
-//! reproducible-and-survival makes a publisher eligible for higher tiers.
+//! The cross-provider equality input is a comparability oracle, not a
+//! trust oracle by itself; a high delta from this feed only means the
+//! publisher's guard verdicts are reproducible across providers, not
+//! that the verdicts are correct. Combined with `ArenaSurvivalFeed` and
+//! the threshold table in `tier.rs`, reproducible-and-survival makes a
+//! publisher eligible for higher tiers.
 //!
 //! Determinism notes:
 //!

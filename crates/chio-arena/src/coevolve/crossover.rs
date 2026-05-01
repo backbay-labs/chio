@@ -1,4 +1,4 @@
-//! Two-parent crossover operator (M08.P4.T3).
+//! Two-parent crossover operator.
 //!
 //! Crossover splices two parent blueprints on agent-population boundaries:
 //! the operator picks a deterministic split index, takes the prefix of

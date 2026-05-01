@@ -1,4 +1,4 @@
-//! Capability-overrequest adversary class (P3.T3).
+//! Capability-overrequest adversary class.
 //!
 //! Asks for a (server, tool) pair outside the issued capability scope. The
 //! kernel's fail-closed contract is that any tool call whose target is not
@@ -6,10 +6,10 @@
 //! evaluator in `mod.rs` mirrors that decision tree without booting a
 //! kernel.
 //!
-//! Soft-dep: the trajectory-1 M03 capability algebra (scope monotonicity
-//! proven by proptest plus Kani) is the correctness backstop. The arena
-//! does not reprove the algebra here; it triggers the property and asserts
-//! the fail-closed verdict.
+//! The capability algebra (scope monotonicity proven by proptest plus
+//! Kani) is the correctness backstop. The arena does not reprove the
+//! algebra here; it triggers the property and asserts the fail-closed
+//! verdict.
 
 use rand::RngCore;
 use rand_chacha::ChaCha20Rng;

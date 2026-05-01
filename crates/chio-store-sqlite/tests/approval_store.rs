@@ -1,4 +1,4 @@
-//! Phase 3.5 integration tests for the SQLite HITL approval store.
+//! Integration tests for the SQLite HITL approval store.
 //!
 //! Exercises the store contract directly and simulates kernel restart
 //! by opening a second store handle against the same database file. The

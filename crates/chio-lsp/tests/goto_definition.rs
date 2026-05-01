@@ -1,4 +1,4 @@
-//! P4.T5 go-to-definition integration test.
+//! Go-to-definition integration test.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::io::Write;

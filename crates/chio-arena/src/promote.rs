@@ -21,7 +21,7 @@ const ARENA_BUNDLE_SCHEMA: &str = "chio.arena.bundle/v1";
 pub const ARENA_M04_FIXTURE_SCHEMA: &str = "chio.arena.m04-fixture/v1";
 /// Schema marker used by auto-promoted adversarial-suite cases.
 pub const ARENA_ADVERSARIAL_CASE_SCHEMA: &str = "chio.arena.adversarial-case/v1";
-/// Default per-run cap on auto-promoted M04 fixtures (matches trajectory-1 M04
+/// Default per-run cap on auto-promoted M04 fixtures (matches the M04
 /// CHIO_BLESS gate per-PR cap of 5).
 pub const ARENA_M04_PROMOTE_CAP_DEFAULT: usize = 5;
 
@@ -332,9 +332,9 @@ pub struct AdversarialSuiteSummary {
     pub root: PathBuf,
 }
 
-/// Soft-gate inputs for the auto-promotion path. The trajectory-1 M04
-/// CHIO_BLESS gate is reused unchanged; this checks the env vars locally so
-/// arena callers do not need to invoke the bless script.
+/// Soft-gate inputs for the auto-promotion path. The M04 CHIO_BLESS
+/// gate is reused unchanged; this checks the env vars locally so arena
+/// callers do not need to invoke the bless script.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct M04PromotionGate {
     /// Effective `CHIO_BLESS`.
@@ -399,13 +399,13 @@ fn adversarial_class_dirname(class: &str) -> String {
         .collect()
 }
 
-/// Auto-promote failing arena scenarios to the trajectory-1 M04 fixture corpus
-/// under `tests/replay/fixtures/arena/<class>/<hash>.json`.
+/// Auto-promote failing arena scenarios to the M04 fixture corpus under
+/// `tests/replay/fixtures/arena/<class>/<hash>.json`.
 ///
-/// This function honours the trajectory-1 M04 CHIO_BLESS gate clauses:
-/// `CHIO_BLESS` must be exactly `"1"`, `BLESS_REASON` must start with
-/// `arena:<scenario-id>`, and `CI` must be unset / falsy. The per-run cap
-/// (default 5, matching the trajectory-1 M04 per-PR cap) clamps how many
+/// This function honours the M04 CHIO_BLESS gate clauses: `CHIO_BLESS`
+/// must be exactly `"1"`, `BLESS_REASON` must start with
+/// `arena:<scenario-id>`, and `CI` must be unset / falsy. The per-run
+/// cap (default 5, matching the M04 per-PR cap) clamps how many
 /// fixtures land in one call.
 ///
 /// Only [`ScenarioVerdict::Deny`] receipts (the failures the arena is meant to
@@ -481,13 +481,13 @@ pub fn promote_to_m04_fixtures(
     })
 }
 
-/// Auto-promote failing scenarios to the trajectory-2 M05 chio-adversarial-suite
+/// Auto-promote failing scenarios to the chio-adversarial-suite
 /// per-class corpus.
 ///
-/// When the M05 suite scaffold has not landed yet (signalled by the absence of
-/// `crates/chio-adversarial-suite/cases/`), the writer falls back to
-/// `target/arena/promote-pending/` per the soft-dep clause on M08.P5.T2. The
-/// returned summary records which target was chosen.
+/// When the suite scaffold has not landed yet (signalled by the absence
+/// of `crates/chio-adversarial-suite/cases/`), the writer falls back to
+/// `target/arena/promote-pending/`. The returned summary records which
+/// target was chosen.
 pub fn promote_to_adversarial_suite(
     scenario: &Scenario,
     run: &ArenaRun,

@@ -92,11 +92,12 @@ impl AttestVerifier for DenyVerifier {
     }
 }
 
-fn expected_identity() -> ExpectedIdentity { // doc-hidden return type
-    // M05.P4.T3 migration: route through the doc-hidden inline constructor
-    // rather than a raw struct literal. Production callers use
-    // `TenantPolicyResolver::expected_for_tenant`; tests retain the inline
-    // form via the doc-hidden entry point listed in the M05 audit doc.
+fn expected_identity() -> ExpectedIdentity {
+    // doc-hidden return type
+    // Route through the doc-hidden inline constructor rather than a raw
+    // struct literal. Production callers use
+    // `TenantPolicyResolver::expected_for_tenant`; tests retain the
+    // inline form via the doc-hidden entry point.
     ExpectedIdentity::doc_hidden_inline(
         "https://github\\.com/backbay/chio/\\.github/workflows/iam\\.yml@refs/heads/main",
         "https://token.actions.githubusercontent.com",

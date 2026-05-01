@@ -1,9 +1,9 @@
 //! Multi-kernel multiplexer.
 //!
-//! The arena holds an `Arc<ChioKernel>` per agent and routes agent-to-agent
-//! tool calls through the in-process [`KernelLink`] transport.  The
-//! multiplexer never takes `&mut ChioKernel`; it only clones the `Arc` so the
-//! M05 async surface remains untouched.
+//! The arena holds an `Arc<ChioKernel>` per agent and routes
+//! agent-to-agent tool calls through the in-process [`KernelLink`]
+//! transport. The multiplexer never takes `&mut ChioKernel`; it only
+//! clones the `Arc` so the kernel async surface remains untouched.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

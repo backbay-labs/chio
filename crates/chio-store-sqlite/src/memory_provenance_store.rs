@@ -1,4 +1,4 @@
-//! Phase 18.2: SQLite-backed `MemoryProvenanceStore`.
+//! SQLite-backed `MemoryProvenanceStore`.
 //!
 //! Durable append-only hash-chain of memory-write provenance entries.
 //! Keeps the same contract as `InMemoryMemoryProvenanceStore` in

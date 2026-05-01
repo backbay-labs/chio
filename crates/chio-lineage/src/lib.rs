@@ -1,11 +1,9 @@
-//! Chio lineage and provenance DAG (M09).
+//! Chio lineage and provenance DAG.
 //!
-//! Indexes signed receipts, capability lineage, and signed receipt-lineage
-//! statements into a provenance DAG. Source feeds are the trajectory-1
-//! M10 OTEL receipt exporter NDJSON stream and the trajectory-1 M04
-//! deterministic replay corpus.
-//!
-//! Source of truth: `.planning/trajectory-2/09-economic-layer-and-lineage.md`.
+//! Indexes signed receipts, capability lineage, and signed
+//! receipt-lineage statements into a provenance DAG. Source feeds are
+//! the OTEL receipt exporter NDJSON stream and the deterministic replay
+//! corpus.
 
 #![forbid(unsafe_code)]
 

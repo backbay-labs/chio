@@ -1,4 +1,4 @@
-//! DSL-aware mutation operator (M08.P4.T2).
+//! DSL-aware mutation operator.
 //!
 //! Mutation is a deterministic, single-field perturbation applied to an
 //! adversary population blueprint. The operator never touches the

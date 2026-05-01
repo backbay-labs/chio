@@ -1,9 +1,9 @@
-//! Recursive-CTE lineage queries (M09 P5.T4).
+//! Recursive-CTE lineage queries.
 //!
-//! Provides forward and reverse recursive-CTE walks atop the trajectory-1
-//! receipt and capability lineage tables. Behind the `lineage` cargo
-//! feature so the trajectory-1 receipt store keeps byte-equivalent
-//! behaviour when the feature is off.
+//! Provides forward and reverse recursive-CTE walks atop the receipt
+//! and capability lineage tables. Behind the `lineage` cargo feature so
+//! the receipt store keeps byte-equivalent behaviour when the feature
+//! is off.
 //!
 //! Depth and row caps are enforced inside SQL with
 //! `WHERE depth < ?N` and an explicit `LIMIT`; on overflow the caller

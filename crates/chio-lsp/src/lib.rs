@@ -7,13 +7,12 @@
 //!
 //! Schema sources (loaded read-only):
 //!
-//! - trajectory-1 M01 wire schemas under `spec/schemas/chio-wire/v1/`
-//! - trajectory-1 M06 guard-bundle schema (consumed by the guard-DSL
-//!   diagnostics in P4.T6)
+//! - wire schemas under `spec/schemas/chio-wire/v1/`
+//! - guard-bundle schema (consumed by the guard-DSL diagnostics)
 //!
 //! Diagnostics carry `urn:chio:error:*` codes via the `code` field of
-//! `lsp_types::Diagnostic` so the editor extensions in P5 surface
-//! registry codes directly.
+//! `lsp_types::Diagnostic` so editor extensions surface registry codes
+//! directly.
 
 #![forbid(unsafe_code)]
 

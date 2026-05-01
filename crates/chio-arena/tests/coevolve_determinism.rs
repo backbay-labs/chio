@@ -1,4 +1,4 @@
-//! Co-evolution determinism test (M08.P4.T6).
+//! Co-evolution determinism test.
 //!
 //! Asserts that two co-evolution runs with identical inputs produce
 //! byte-identical generation traces. The test is a downstream backstop

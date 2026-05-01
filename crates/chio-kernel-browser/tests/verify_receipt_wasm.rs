@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! M08 Phase 1 wasm-bindgen tests for `verify_receipt`.
+//! Wasm-bindgen tests for `verify_receipt`.
 //!
-//! Driven by the M04 receipt-binding vector corpus
+//! Driven by the receipt-binding vector corpus
 //! (`tests/bindings/vectors/receipt/v1.json`). The corpus is embedded
 //! into the wasm artifact at compile time via `include_str!` because
 //! `wasm-bindgen-test` runs in browser / Node sandboxes with limited

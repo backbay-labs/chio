@@ -1,23 +1,22 @@
-//! Seed-corpus loader (M08.P4.T4).
+//! Seed-corpus loader.
 //!
-//! The co-evolution loop seeds its initial population from two trajectory
-//! sources:
+//! The co-evolution loop seeds its initial population from two sources:
 //!
-//!   1. trajectory-1 M02 fuzz crash artifacts under `fuzz/artifacts/`
-//!      (primary). The directory does not exist on every checkout (M02 only
-//!      writes there when libFuzzer surfaces a crash); the loader returns
-//!      an empty list when the directory is absent and records that fact in
+//!   1. Fuzz crash artifacts under `fuzz/artifacts/` (primary). The
+//!      directory does not exist on every checkout (libFuzzer only
+//!      writes there when it surfaces a crash); the loader returns an
+//!      empty list when the directory is absent and records that fact in
 //!      [`SeedCorpus::missing_sources`] rather than failing.
-//!   2. trajectory-1 M04 replay-attack and tampered-signature fixture
-//!      families under `tests/replay/fixtures/replay_attack/` and
-//!      `tests/replay/fixtures/tampered_signature/` (secondary). These are
-//!      always present on a clean checkout; missing files are reported the
-//!      same way as the primary source.
+//!   2. Replay-attack and tampered-signature fixture families under
+//!      `tests/replay/fixtures/replay_attack/` and
+//!      `tests/replay/fixtures/tampered_signature/` (secondary). These
+//!      are always present on a clean checkout; missing files are
+//!      reported the same way as the primary source.
 //!
 //! Each artifact is recorded as `(path, sha256)` so a rotated corpus
-//! surfaces as a manifest hash mismatch in the driver's run record rather
-//! than a silent no-op (per the M08 risk register entry "adversary classes
-//! drift from the trajectory-1 M02 fuzz seed corpus").
+//! surfaces as a manifest hash mismatch in the driver's run record
+//! rather than a silent no-op (guarding against adversary-class drift
+//! from the fuzz seed corpus).
 //!
 //! Determinism contract: artifacts are returned sorted lexicographically
 //! by path. The loader uses `std::fs::read_dir` and sorts the entries
@@ -34,13 +33,13 @@ use chio_core::crypto::sha256_hex;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Default relative paths for the trajectory-1 M02 fuzz artefact source
-/// and the M04 replay-attack and tampered-signature families. Callers can
-/// override either with [`SeedCorpusSources::with_fuzz_artifacts`] etc.
+/// Default relative paths for the fuzz artefact source and the
+/// replay-attack and tampered-signature families. Callers can override
+/// either with [`SeedCorpusSources::with_fuzz_artifacts`] etc.
 pub const DEFAULT_FUZZ_ARTIFACTS_DIR: &str = "fuzz/artifacts";
-/// Default M04 replay-attack family directory.
+/// Default replay-attack family directory.
 pub const DEFAULT_REPLAY_ATTACK_DIR: &str = "tests/replay/fixtures/replay_attack";
-/// Default M04 tampered-signature family directory.
+/// Default tampered-signature family directory.
 pub const DEFAULT_TAMPERED_SIGNATURE_DIR: &str = "tests/replay/fixtures/tampered_signature";
 
 /// Sources searched by the seed corpus loader. Callers (typically the
@@ -48,11 +47,11 @@ pub const DEFAULT_TAMPERED_SIGNATURE_DIR: &str = "tests/replay/fixtures/tampered
 /// pass them to [`load_seed_corpus`].
 #[derive(Debug, Clone)]
 pub struct SeedCorpusSources {
-    /// trajectory-1 M02 fuzz crash artifacts (primary source).
+    /// Fuzz crash artifacts (primary source).
     pub fuzz_artifacts: PathBuf,
-    /// trajectory-1 M04 replay-attack family.
+    /// Replay-attack family.
     pub replay_attack: PathBuf,
-    /// trajectory-1 M04 tampered-signature family.
+    /// Tampered-signature family.
     pub tampered_signature: PathBuf,
 }
 

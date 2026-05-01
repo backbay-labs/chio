@@ -1,11 +1,11 @@
 //! SQLite-backed persistence for IOU envelopes.
 //!
-//! M09 P1.T3 introduces an additive `iou_envelope` table on the
-//! existing `chio-store-sqlite` connection. The table is keyed by
-//! `receipt_id` so a finalized receipt maps to exactly one row.
-//! Re-processing the same finalized receipt is idempotent: a
-//! byte-identical envelope returns `Ok(false)`; a different
-//! envelope returns [`IouEnvelopeStoreError::Conflict`].
+//! Adds an additive `iou_envelope` table on the existing
+//! `chio-store-sqlite` connection. The table is keyed by `receipt_id`
+//! so a finalized receipt maps to exactly one row. Re-processing the
+//! same finalized receipt is idempotent: a byte-identical envelope
+//! returns `Ok(false)`; a different envelope returns
+//! [`IouEnvelopeStoreError::Conflict`].
 //!
 //! No existing schema columns are dropped or renamed. The migration
 //! is `CREATE TABLE IF NOT EXISTS` plus `CREATE INDEX IF NOT EXISTS`

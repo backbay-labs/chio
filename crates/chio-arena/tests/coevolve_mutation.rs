@@ -1,4 +1,4 @@
-//! DSL-aware mutation operator tests (M08.P4.T2).
+//! DSL-aware mutation operator tests.
 //!
 //! Asserts:
 //!

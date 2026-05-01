@@ -1,27 +1,25 @@
-//! Co-evolution surface for the Chio arena (M08.P4).
+//! Co-evolution surface for the Chio arena.
 //!
-//! The Phase 4 work lifts the Phase 3 fixed adversary populations into a
-//! genetic-algorithm-shaped loop. The submodules introduced over the phase
-//! are:
+//! The co-evolution loop lifts fixed adversary populations into a
+//! genetic-algorithm-shaped loop. The submodules are:
 //!
-//!   * [`mutation`] (P4.T2): DSL-aware single-field mutation operator.
-//!   * [`crossover`] (P4.T3): two-parent splice on agent-population
-//!     boundaries.
-//!   * [`seed_corpus`] (P4.T4): loader for `fuzz/artifacts/` plus the M04
+//!   * [`mutation`]: DSL-aware single-field mutation operator.
+//!   * [`crossover`]: two-parent splice on agent-population boundaries.
+//!   * [`seed_corpus`]: loader for `fuzz/artifacts/` plus the
 //!     `replay_attack` and `tampered_signature` fixture families.
-//!   * [`driver`] (P4.T5): N-generation loop with elitism, fitness-
-//!     proportional selection, and the bounded-budget gate.
+//!   * [`driver`]: N-generation loop with elitism, fitness-proportional
+//!     selection, and the bounded-budget gate.
 //!
-//! This file provides the fitness function the loop optimises (P4.T1).
-//! Survival rate is the share of an adversary's actions that the deployed
-//! guard pool fails to deny: an action that the guards correctly deny
-//! lowers fitness, an action that escapes (the guards return Allow when the
-//! adversary expected Deny) raises it. The fitness function consumes the
-//! verdict-matrix oracle shape from trajectory-2 M02.P4
-//! (`crates/chio-conformance/verdict_matrix/`); the matrix crate lives in
-//! its own workspace, so we mirror the `(Verdict, reason_code, scope_set)`
-//! tuple here and document the soft-coupling. The diff implementation is
-//! the trajectory-1 M07.P4.T6 cross-provider verdict equality oracle; the
+//! This file provides the fitness function the loop optimises. Survival
+//! rate is the share of an adversary's actions that the deployed guard
+//! pool fails to deny: an action that the guards correctly deny lowers
+//! fitness, an action that escapes (the guards return Allow when the
+//! adversary expected Deny) raises it. The fitness function consumes
+//! the verdict-matrix oracle shape from
+//! `crates/chio-conformance/verdict_matrix/`; the matrix crate lives in
+//! its own workspace, so we mirror the `(Verdict, reason_code,
+//! scope_set)` tuple here and document the soft-coupling. The diff
+//! implementation is the cross-provider verdict equality oracle; the
 //! arena calls it pairwise across the witness set, never invents a new
 //! comparator.
 //!
@@ -65,7 +63,7 @@ use crate::adversary::{
 };
 use crate::scenario::{ScenarioStep, ScenarioVerdict};
 
-/// Verdict tuple mirroring the trajectory-2 M02.P4 verdict-matrix oracle
+/// Verdict tuple mirroring the verdict-matrix oracle
 /// (`crates/chio-conformance/verdict_matrix/`). The matrix crate lives in
 /// its own Cargo workspace, so the arena re-declares the tuple shape and
 /// keeps the soft-coupling in commentary. The variants and reason-code

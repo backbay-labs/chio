@@ -1,21 +1,18 @@
 //! Arena-survival feed.
 //!
-//! Consumes trajectory-2 M08 arena round outputs. Each observation reports
-//! how many adversarial rounds a publisher's guard bundle entered and how
-//! many it survived. The delta is the survival rate clamped to
-//! `[0.0, MAX_FEED_DELTA]`. Empty observation vectors produce a zero delta
-//! (per ticket M09.P3.T2 the empty-input fallback exists for unit-test
-//! isolation only; under the Wave 3 -> Wave 4 sequencing in
-//! `EXECUTION-BOARD.md`, M08 always closes before M09 opens, so production
-//! runs always have non-empty inputs).
+//! Consumes arena round outputs. Each observation reports how many
+//! adversarial rounds a publisher's guard bundle entered and how many
+//! it survived. The delta is the survival rate clamped to
+//! `[0.0, MAX_FEED_DELTA]`. Empty observation vectors produce a zero
+//! delta; the empty-input fallback exists for unit-test isolation only.
 //!
 //! Determinism notes:
 //!
 //! - The feed reads no global state; the same `ArenaRoundsObservation`
 //!   produces the same `ScoreDelta` on every call.
 //! - The feed does not depend on `chio-arena` directly; callers (the
-//!   marketplace surface, the reputation CLI, audit tooling) project the
-//!   M08 leaderboard rows or per-round receipts into the
+//!   marketplace surface, the reputation CLI, audit tooling) project
+//!   leaderboard rows or per-round receipts into the
 //!   `ArenaRoundOutcome` shape.
 
 use serde::{Deserialize, Serialize};

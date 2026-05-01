@@ -1,15 +1,15 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-//! M07.P1.T5: cross-SDK verdict-matrix driver registration test for the
-//! TypeScript framework wrappers (`@chio/ai-sdk-middleware`, `@chio/next`).
+//! Cross-SDK verdict-matrix driver registration test for the TypeScript
+//! framework wrappers (`@chio/ai-sdk-middleware`, `@chio/next`).
 //!
 //! The wrappers do not embed kernel evaluation; they delegate to the
-//! `typescript-node-http` transport-client driver. This test validates the
-//! manifest registration shape: the main matrix manifest enumerates both
-//! framework drivers, the typescript subdir manifest enumerates them with
-//! the same ids, and the driver TypeScript files exist with the expected
-//! exports. Active execution is blocked on M02.P5.T2.
+//! `typescript-node-http` transport-client driver. This test validates
+//! the manifest registration shape: the main matrix manifest enumerates
+//! both framework drivers, the typescript subdir manifest enumerates
+//! them with the same ids, and the driver TypeScript files exist with
+//! the expected exports.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,8 +52,7 @@ fn main_manifest_registers_both_framework_drivers() {
         };
         assert_eq!(
             driver.status, "prepared",
-            "framework driver `{id}` must ship as `prepared` while \
-             M02.P5.T2 is in flight; got `{}`",
+            "framework driver `{id}` must ship as `prepared`; got `{}`",
             driver.status,
         );
         assert!(
@@ -137,7 +136,7 @@ fn run_scenarios_remains_the_underlying_transport_client() {
     let raw = match fs::read_to_string(&path) {
         Ok(raw) => raw,
         Err(error) => panic!(
-            "expected the M02.P5.T2 transport-client driver at {}: {error}",
+            "expected the transport-client driver at {}: {error}",
             path.display()
         ),
     };

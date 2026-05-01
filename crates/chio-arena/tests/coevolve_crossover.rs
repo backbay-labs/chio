@@ -1,4 +1,4 @@
-//! Two-parent crossover tests (M08.P4.T3).
+//! Two-parent crossover tests.
 //!
 //! Asserts:
 //!

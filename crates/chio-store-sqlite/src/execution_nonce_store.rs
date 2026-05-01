@@ -1,4 +1,4 @@
-//! Phase 1.1: SQLite-backed `ExecutionNonceStore`.
+//! SQLite-backed `ExecutionNonceStore`.
 //!
 //! Durable replay-prevention for execution nonces so a kernel that
 //! crashes and restarts cannot be tricked into accepting a nonce that was

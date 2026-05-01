@@ -1,11 +1,11 @@
-//! Replay-attempt adversary class tests (`M08.P3.T4`).
+//! Replay-attempt adversary class tests.
 //!
-//! Crosses into trajectory-1 M04's `replay_attack` fixture family. The
-//! arena adversary class consumes the same nonce-reuse pattern names the
-//! family encodes (`immediate-reuse`, `delayed-reuse`, `stale-nonce`,
-//! `concurrent-reuse`) and asserts fail-closed via the toy guard
-//! evaluator. The unit test does not reread the M04 JSON fixtures; the M04
-//! `chio replay` engine remains the source of truth for those bytes.
+//! Crosses into the `replay_attack` fixture family. The arena adversary
+//! class consumes the same nonce-reuse pattern names the family encodes
+//! (`immediate-reuse`, `delayed-reuse`, `stale-nonce`, `concurrent-reuse`)
+//! and asserts fail-closed via the toy guard evaluator. The unit test
+//! does not reread the JSON fixtures; the `chio replay` engine remains
+//! the source of truth for those bytes.
 
 use chio_arena::adversary::replay_attempt::{REASON, REPLAYED_NONCE_KEY, REPLAY_PATTERNS};
 use chio_arena::{

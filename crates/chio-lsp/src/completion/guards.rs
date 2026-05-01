@@ -1,8 +1,7 @@
 //! Guard identifier completions.
 //!
 //! The catalog covers the seed set of native, data, external, and
-//! WASM guards shipped in trajectory-1 M06. Downstream milestones add
-//! to it as new guards are registered.
+//! WASM guards. New entries are added as guards are registered.
 
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind,

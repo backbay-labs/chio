@@ -1,4 +1,4 @@
-//! Adversary reference scenarios integration test (`M08.P3.T6`).
+//! Adversary reference scenarios integration test.
 //!
 //! Loads each of the four reference scenarios under
 //! `arena/scenarios/adversary/`, instantiates the declared adversary
