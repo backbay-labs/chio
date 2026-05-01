@@ -114,7 +114,9 @@ test "$(find crates/chio-conformance/verdict_matrix/scenarios/replay_verdict -na
 test "$(find crates/chio-conformance/verdict_matrix/scenarios/redaction_determinism -name '*.json' | wc -l)" -ge 12
 cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet
 cargo test -p chio-conformance --test diff_oracle_self_test --quiet
+cargo test -p chio-conformance --test verdict_matrix_cross_language --quiet
 test -f .github/workflows/verdict-matrix.yml
 grep -q 'verdict_matrix' .github/workflows/verdict-matrix.yml
+grep -q 'verdict_matrix_cross_language' .github/workflows/verdict-matrix.yml
 test -f docs/conformance/verdict-matrix.md
 ```

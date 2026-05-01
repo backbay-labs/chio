@@ -79,11 +79,15 @@ jobs:
       - name: Run diff oracle self test
         run: cargo test -p chio-conformance --test diff_oracle_self_test --quiet
 
+      - name: Run cross-language verdict matrix
+        run: cargo test -p chio-conformance --test verdict_matrix_cross_language --quiet
+
       - name: Verify workflow and docs registration
         run: |
           set -euo pipefail
           test -f .github/workflows/verdict-matrix.yml
           grep -q 'verdict_matrix' .github/workflows/verdict-matrix.yml
+          grep -q 'verdict_matrix_cross_language' .github/workflows/verdict-matrix.yml
           test -f docs/conformance/verdict-matrix.md
 
   deployment-shape-smoke:
