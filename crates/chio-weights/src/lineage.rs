@@ -225,6 +225,57 @@ pub fn verify_model_card_anchor(
             anchor.card_canonical_sha256
         )));
     }
+    let expected_subject_sha = hex::encode(attestation.subject_digest_sha256);
+    if expected_subject_sha != anchor.attestation_subject_sha256 {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor attestation_subject_sha256 mismatch: expected {expected_subject_sha}, got {}",
+            anchor.attestation_subject_sha256
+        )));
+    }
+    if attestation.certificate_identity != anchor.certificate_identity {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor certificate_identity mismatch: expected {:?}, got {:?}",
+            attestation.certificate_identity, anchor.certificate_identity
+        )));
+    }
+    if attestation.certificate_oidc_issuer != anchor.certificate_oidc_issuer {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor certificate_oidc_issuer mismatch: expected {:?}, got {:?}",
+            attestation.certificate_oidc_issuer, anchor.certificate_oidc_issuer
+        )));
+    }
+    if attestation.rekor_log_index != anchor.rekor_log_index {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor rekor_log_index mismatch: expected {}, got {}",
+            attestation.rekor_log_index, anchor.rekor_log_index
+        )));
+    }
+    if attestation.rekor_inclusion_verified != anchor.rekor_inclusion_verified {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor rekor_inclusion_verified mismatch: expected {}, got {}",
+            attestation.rekor_inclusion_verified, anchor.rekor_inclusion_verified
+        )));
+    }
+
+    let card = crate::card::ModelCard::from_canonical_json(card_bytes)?;
+    if card.weights_hash != anchor.weights_hash {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor weights_hash mismatch: expected {:?}, got {:?}",
+            card.weights_hash, anchor.weights_hash
+        )));
+    }
+    if card.issuer != anchor.card_issuer {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor card_issuer mismatch: expected {:?}, got {:?}",
+            card.issuer, anchor.card_issuer
+        )));
+    }
+    if card.expires_at != anchor.card_expires_at {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor card_expires_at mismatch: expected {}, got {}",
+            card.expires_at, anchor.card_expires_at
+        )));
+    }
     Ok(())
 }
 
@@ -386,6 +437,52 @@ mod tests {
             Err(e) => panic!("anchor: {e}"),
         };
         anchor.digest.hex = "0".repeat(64);
+        let res = verify_model_card_anchor(&anchor, &bytes, &att);
+        assert!(matches!(res, Err(WeightsError::BundleRejected(_))));
+    }
+
+    #[test]
+    fn verify_rejects_tampered_attestation_metadata() {
+        let card = good_card();
+        let bytes = match card.to_canonical_json() {
+            Ok(b) => b,
+            Err(e) => panic!("encode: {e}"),
+        };
+        let mut digest = [0u8; 32];
+        digest.copy_from_slice(&Sha256::digest(&bytes));
+        let att = good_attestation(digest);
+        let verified = VerifiedModelCard {
+            card,
+            attestation: att.clone(),
+        };
+        let mut anchor = match anchor_model_card(&verified, &bytes, "chio.lineage.graph/v1", None) {
+            Ok(a) => a,
+            Err(e) => panic!("anchor: {e}"),
+        };
+        anchor.certificate_identity = "https://example.com/forged".to_string();
+        let res = verify_model_card_anchor(&anchor, &bytes, &att);
+        assert!(matches!(res, Err(WeightsError::BundleRejected(_))));
+    }
+
+    #[test]
+    fn verify_rejects_tampered_card_metadata() {
+        let card = good_card();
+        let bytes = match card.to_canonical_json() {
+            Ok(b) => b,
+            Err(e) => panic!("encode: {e}"),
+        };
+        let mut digest = [0u8; 32];
+        digest.copy_from_slice(&Sha256::digest(&bytes));
+        let att = good_attestation(digest);
+        let verified = VerifiedModelCard {
+            card,
+            attestation: att.clone(),
+        };
+        let mut anchor = match anchor_model_card(&verified, &bytes, "chio.lineage.graph/v1", None) {
+            Ok(a) => a,
+            Err(e) => panic!("anchor: {e}"),
+        };
+        anchor.card_issuer = "https://example.com/forged".to_string();
         let res = verify_model_card_anchor(&anchor, &bytes, &att);
         assert!(matches!(res, Err(WeightsError::BundleRejected(_))));
     }
