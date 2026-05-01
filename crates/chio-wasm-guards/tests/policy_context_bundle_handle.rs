@@ -45,7 +45,7 @@ mod host_resource_tests {
 
     use chio_wasm_guards::host::bindings::chio::guard::host::Host;
     use chio_wasm_guards::host::bindings::chio::guard::policy_context::HostBundleHandle;
-    use chio_wasm_guards::host::{BundleHandle, WasmHostState};
+    use chio_wasm_guards::host::{BundleHandle, WasmHostState, MAX_BUNDLE_READ_BYTES};
 
     use super::{digest, InMemoryBundleStore};
 
@@ -137,5 +137,57 @@ mod host_resource_tests {
             Err(err) => err,
         };
         assert!(err.contains("bundle blob not found"));
+    }
+
+    #[test]
+    fn policy_context_bundle_read_rejects_out_of_bounds_range() {
+        let blob = b"policy bundle bytes".to_vec();
+        let sha256 = digest(&blob);
+        let store = InMemoryBundleStore::new().with_blob(sha256, blob);
+        let mut state = WasmHostState::with_bundle_store(HashMap::new(), Arc::new(store));
+
+        let handle = block_on_ready(HostBundleHandle::new(&mut state, hex::encode(sha256)))
+            .expect("bundle handle should open");
+        let rep = handle.rep();
+
+        let read = block_on_ready(HostBundleHandle::read(
+            &mut state,
+            Resource::<BundleHandle>::new_borrow(rep),
+            7,
+            10_000,
+        ))
+        .expect("out-of-bounds read should not trap");
+
+        let err = match read {
+            Ok(bytes) => panic!("out-of-bounds read returned bytes: {bytes:?}"),
+            Err(err) => err,
+        };
+        assert!(err.contains("exceeds blob length"));
+    }
+
+    #[test]
+    fn policy_context_bundle_read_rejects_oversized_len() {
+        let blob = b"policy bundle bytes".to_vec();
+        let sha256 = digest(&blob);
+        let store = InMemoryBundleStore::new().with_blob(sha256, blob);
+        let mut state = WasmHostState::with_bundle_store(HashMap::new(), Arc::new(store));
+
+        let handle = block_on_ready(HostBundleHandle::new(&mut state, hex::encode(sha256)))
+            .expect("bundle handle should open");
+        let rep = handle.rep();
+
+        let read = block_on_ready(Host::fetch_blob(
+            &mut state,
+            rep,
+            0,
+            MAX_BUNDLE_READ_BYTES + 1,
+        ))
+        .expect("oversized read should not trap");
+
+        let err = match read {
+            Ok(bytes) => panic!("oversized read returned bytes: {bytes:?}"),
+            Err(err) => err,
+        };
+        assert!(err.contains("exceeds limit"));
     }
 }
