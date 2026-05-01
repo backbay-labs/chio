@@ -19,8 +19,8 @@
  *      verdict cell renders the cascade.
  *
  * The flow is the engineering counterpart to the kernel-side e2e in
- * crates/chio-custody-hw (M10.P2.T6); this page exists so reviewers can
- * see the contract end-to-end without standing up an issuer.
+ * crates/chio-custody-hw; this page exists so reviewers can see the
+ * contract end-to-end without standing up an issuer.
  *
  * Trust contract: the page never holds key material, never signs an
  * envelope, and never calls any cryptographic primitive other than
@@ -97,13 +97,13 @@ async function runFlow(): Promise<void> {
   }
 }
 
-// M10.P3.T4 cascade renderer.
+// Cascade renderer.
 //
 // When the operator presses the revoke button, the issuer test-double
-// pushes a revocation entry into the in-page M04 oracle (the
+// pushes a revocation entry into the in-page revocation oracle (the
 // RevocationState set). The same capability that previously rendered an
 // allow now renders a deny carrying urn:chio:error:custody:credential-revoked.
-// In the kernel-side e2e (M10.P2.T6) the cascade arrives within one M04
+// In the kernel-side e2e the cascade arrives within one revocation-oracle
 // epoch (one-second tick in test config); the demo runs synchronously
 // because the test-double consults the oracle on every call.
 async function revokeAndReplay(): Promise<void> {

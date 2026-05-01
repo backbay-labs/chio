@@ -1,14 +1,13 @@
 // Typed error codes for @chio/passkey.
 //
 // The codes mirror spec/errors/registry.yaml entries under the
-// urn:chio:error:custody namespace (M10.P1.T6). The TS surface is the
-// caller-facing branch alphabet; throwing a wider set silently strips the
-// caller's ability to handle revocations, replays, or expirations
-// distinctly. Keep this enum and the registry in lockstep; any new
-// custody-domain code added to the registry MUST land here in the same
-// commit.
+// urn:chio:error:custody namespace. The TS surface is the caller-facing
+// branch alphabet; throwing a wider set silently strips the caller's
+// ability to handle revocations, replays, or expirations distinctly.
+// Keep this enum and the registry in lockstep; any new custody-domain
+// code added to the registry MUST land here alongside it.
 //
-// Codegen contract (M01 LSP-driven typed-enum codegen):
+// Codegen contract (LSP-driven typed-enum codegen):
 //
 //   The CHIO_CUSTODY_ERROR_CODES constant below is the exhaustive list.
 //   `CustodyErrorCode` is its `keyof` derivative, so adding a member to
@@ -20,7 +19,7 @@
 /**
  * Exhaustive list of urn:chio:error:custody:* codes the @chio/passkey
  * SDK throws. Mirrors the rows in spec/errors/registry.yaml under the
- * custody domain (M10.P1.T6).
+ * custody domain.
  *
  * The list is `as const` so the inferred type is a literal-string union;
  * downstream consumers can switch over CustodyErrorCode and rely on TS

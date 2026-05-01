@@ -2,9 +2,9 @@
 //!
 //! Wraps [`chio_attest_verify::SigstoreVerifier::verify_bundle`] so that
 //! callers presenting a `(card_bytes, bundle_json)` pair can verify the
-//! bundle without reaching into `sigstore-rs` directly. M10 P4 does not
-//! introduce a new trust root or a new signature path; the cosign bundle
-//! verifier from M09 (and the trajectory-2 M03 PQ-hybrid surface) is
+//! bundle without reaching into `sigstore-rs` directly. The model-card
+//! binding does not introduce a new trust root or a new signature path;
+//! the existing cosign bundle verifier (and the PQ-hybrid surface) is
 //! consumed verbatim.
 //!
 //! # Trust contract
@@ -16,7 +16,7 @@
 //! - `expected` is an [`ExpectedIdentity`] supplied by the caller. The
 //!   helper does not synthesise a default identity; deployments that flip
 //!   `policy.weights_card_required = required_with_pin` provide the SAN
-//!   regex from the M07 provider matrix.
+//!   regex from the provider matrix.
 //! - `now` is the verifier-side current time used to enforce the card's
 //!   `expires_at`. The cosign verifier's certificate-window check is
 //!   independent of this and runs against the cert's `notBefore` /
@@ -55,7 +55,8 @@ pub struct VerifiedModelCard {
 }
 
 /// Verify a cosign-signed model card. Delegates the cryptographic verify
-/// path to [`AttestVerifier::verify_bundle`]; M10 P4 does not fork it.
+/// path to [`AttestVerifier::verify_bundle`]; this helper does not fork
+/// it.
 ///
 /// On success, returns the parsed [`ModelCard`] alongside the upstream
 /// [`VerifiedAttestation`]. Fail-closed: any failing precondition returns
@@ -126,7 +127,9 @@ mod tests {
             _certificate: &Path,
             _expected: &ExpectedIdentity,
         ) -> Result<VerifiedAttestation, AttestError> {
-            Err(AttestError::Malformed("verify_blob not used in tests".into()))
+            Err(AttestError::Malformed(
+                "verify_blob not used in tests".into(),
+            ))
         }
         fn verify_bytes(
             &self,
@@ -170,9 +173,7 @@ mod tests {
                     AttestError::Malformed(s) => AttestError::Malformed(s.clone()),
                     AttestError::ReportDataMismatch => AttestError::ReportDataMismatch,
                     AttestError::QuoteRejected(s) => AttestError::QuoteRejected(s.clone()),
-                    AttestError::Io(_) => {
-                        AttestError::Malformed("io error stand-in".into())
-                    }
+                    AttestError::Io(_) => AttestError::Malformed("io error stand-in".into()),
                     _ => AttestError::SignatureMismatch,
                 }),
             }
@@ -234,13 +235,8 @@ mod tests {
         let bundle = b"{\"fake-bundle\":true}";
         let expected = expected_identity();
 
-        let res = match verify_model_card_bundle(
-            &verifier,
-            &bytes,
-            bundle,
-            &expected,
-            fixed_now(),
-        ) {
+        let res = match verify_model_card_bundle(&verifier, &bytes, bundle, &expected, fixed_now())
+        {
             Ok(v) => v,
             Err(e) => panic!("ok outcome must verify: {e}"),
         };

@@ -1,7 +1,7 @@
 //! Per-credential nonce store for replay-attack resistance.
 //!
-//! M10.P2.T2 introduces [`PasskeyNonceStore`], the trust-boundary surface
-//! the issuer consults BEFORE minting a capability. Recording a fresh
+//! [`PasskeyNonceStore`] is the trust-boundary surface the issuer
+//! consults BEFORE minting a capability. Recording a fresh
 //! `(credential_id, challenge_nonce)` pair returns
 //! [`RecordOutcome::Fresh`]; a duplicate returns
 //! [`RecordOutcome::Replayed`] and the issuer fails the request closed
@@ -22,7 +22,7 @@
 //! - [`InMemoryPasskeyNonceStore`]: process-local `Mutex<HashMap<...>>`
 //!   used in tests and single-process deployments.
 //! - [`SqlitePasskeyNonceStore`] (gated behind `sqlite-store`): durable
-//!   backing store sharing the rusqlite version pinned by trajectory-1
+//!   backing store sharing the rusqlite version pinned by
 //!   chio-store-sqlite. The SQLite implementation owns its own
 //!   connection pool here so consumers do not have to take a build-time
 //!   dependency on the full chio-store-sqlite crate.
@@ -44,9 +44,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::CustodyError;
 
-/// Default clock-skew tolerance for the retention bound. Matches the
-/// rustdoc on `M10.P2.T2`: nonce store retains entries for
-/// `exp + clock_skew` seconds.
+/// Default clock-skew tolerance for the retention bound. The nonce store
+/// retains entries for `exp + clock_skew` seconds.
 pub const DEFAULT_CLOCK_SKEW_SECONDS: i64 = 30;
 
 /// Outcome of a [`PasskeyNonceStore::record_if_fresh`] call.
@@ -193,8 +192,8 @@ fn current_unix_seconds() -> Result<i64, CustodyError> {
 mod sqlite {
     //! SQLite-backed [`PasskeyNonceStore`].
     //!
-    //! Re-uses the same rusqlite version pinned by trajectory-1
-    //! chio-store-sqlite (workspace `rusqlite = "0.39"`). The
+    //! Re-uses the same rusqlite version pinned by chio-store-sqlite
+    //! (workspace `rusqlite = "0.39"`). The
     //! implementation owns its own connection so callers do not need
     //! to take a build-time dependency on the full chio-store-sqlite
     //! crate just to use the durable nonce store.

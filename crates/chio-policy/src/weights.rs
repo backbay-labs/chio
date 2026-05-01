@@ -1,14 +1,14 @@
 //! `policy.weights_card_required` enum for the Chio runtime.
 //!
 //! Declares whether the kernel enforces signed model-card binding at
-//! provider bind. The enum is loaded once at kernel start and consumed
-//! by the binding refusal path in `chio-kernel`.
+//! provider bind. The enum is loaded once at kernel start and consumed by
+//! the binding refusal path in `chio-kernel`.
 //!
 //! # Variants
 //!
 //! - [`WeightsCardRequired::Disabled`] -- default. No model-card check;
-//!   provider bind succeeds without a signed card. Legacy deployments
-//!   that have not yet adopted signed model cards sit on this default.
+//!   provider bind succeeds without a signed card. Deployments that have
+//!   not yet adopted model-card binding sit on this default.
 //! - [`WeightsCardRequired::Required`] -- provider bind MUST present a
 //!   signed model card whose `weights_hash` matches the loaded weights.
 //!   Any cosign bundle the configured `chio-attest-verify` trust root
@@ -49,8 +49,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WeightsCardRequired {
-    /// No model-card check. Default; preserves the legacy provider-bind
-    /// path for deployments that have not adopted signed model cards.
+    /// No model-card check. Default; preserves the legacy provider bind
+    /// path for deployments that have not adopted model-card binding.
     Disabled,
     /// Provider bind MUST present a signed model card whose `weights_hash`
     /// matches the loaded weights. Any cosign bundle the configured
@@ -62,8 +62,8 @@ pub enum WeightsCardRequired {
 }
 
 impl Default for WeightsCardRequired {
-    /// Default is [`WeightsCardRequired::Disabled`] so legacy deployments
-    /// that have not adopted signed model cards keep their existing
+    /// Default is [`WeightsCardRequired::Disabled`] so deployments that
+    /// have not adopted model-card binding keep their existing
     /// provider-bind behaviour.
     fn default() -> Self {
         Self::Disabled
@@ -74,8 +74,8 @@ impl Default for WeightsCardRequired {
 ///
 /// Holds the enum variant plus the optional issuer-pin regex consumed by
 /// the [`WeightsCardRequired::RequiredWithPin`] variant. The regex is
-/// validated at load time (fail-closed) and forwarded verbatim to
-/// `chio_attest_verify::ExpectedIdentity::certificate_identity_regexp`.
+/// validated at load time (fail-closed contract) and forwarded
+/// verbatim to `chio_attest_verify::ExpectedIdentity::certificate_identity_regexp`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct WeightsCardConfig {
     /// Enforcement variant.

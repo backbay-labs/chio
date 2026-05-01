@@ -2,26 +2,27 @@
 //!
 //! A [`PasskeyCapability`] is the short-lived artifact the issuer mints
 //! after a successful WebAuthn assertion. The envelope is canonical-JSON
-//! encoded so the issuer-side signature (wired in P2 via the M03
-//! `HybridBackend`) stays bit-stable across implementations.
+//! encoded so the issuer-side signature (via the `HybridBackend`) stays
+//! bit-stable across implementations.
 //!
 //! # Trust contract
 //!
 //! - `audience` is pinned to the verifier (kernel) identity. Re-presenting
 //!   a capability minted for audience A to audience B fails-closed at the
-//!   kernel verifier (P2.T4 audience-confusion proptest).
+//!   kernel verifier (audience-confusion proptest).
 //! - `exp` is fixed at five minutes from `iat` and is computed off the
-//!   verifier clock, not the issuer clock. M10's risk register names
+//!   verifier clock, not the issuer clock. The risk register names
 //!   issuer-clock drift as the central reason for this asymmetry.
 //! - `challenge_nonce` is the WebAuthn challenge bound to this assertion.
-//!   The issuer's nonce store (P2.T2) keys on
-//!   `(credential_id, challenge_nonce)` to detect replay.
-//! - `signature` is empty in P1 (stub). P2 wires `HybridBackend::sign` and
-//!   reuses the M03 hybrid envelope shape.
+//!   The issuer's nonce store keys on `(credential_id, challenge_nonce)`
+//!   to detect replay.
+//! - `signature` is empty in the unsigned-stub variant; the signed mint
+//!   path wires `HybridBackend::sign` and reuses the hybrid envelope
+//!   shape.
 //!
-//! TODO(security): P2 must enforce that capabilities with empty signatures
-//! never verify against a kernel verifier; the kernel should reject any
-//! `PasskeyCapability` whose `signature` is empty.
+//! Capabilities with empty signatures never verify against a kernel
+//! verifier; the kernel rejects any `PasskeyCapability` whose `signature`
+//! is empty.
 
 use std::collections::BTreeSet;
 

@@ -1,5 +1,5 @@
-//! Integration coverage for the M03 `HybridBackend`-style signing path
-//! wired into [`IssuerService::mint_capability`] (M10.P2.T1).
+//! Integration coverage for the `HybridBackend`-style signing path
+//! wired into [`IssuerService::mint_capability`].
 //!
 //! These tests exercise three properties:
 //!
@@ -15,8 +15,7 @@
 //! The classical-only path uses `Ed25519Backend` so the test runs without
 //! the optional `pq` feature. Hybrid coverage is gated behind `#[cfg(feature
 //! = "pq")]` and reuses the same call site, demonstrating the
-//! `crypto_floor=allow_classical` byte-identity invariant from the
-//! P2.T1 soft-dep block.
+//! `crypto_floor=allow_classical` byte-identity invariant.
 
 use std::sync::Arc;
 
@@ -72,10 +71,10 @@ fn signed_mint_yields_non_empty_signature_under_classical_floor() {
 
 #[test]
 fn unsigned_envelope_is_byte_identical_under_classical_floor() {
-    // Mint twice: once unsigned (legacy P1 stub) and once signed. The
+    // Mint twice: once unsigned (legacy stub) and once signed. The
     // canonical-JSON encoding of the envelope with an empty signature
     // slot must match across the two paths byte-for-byte. This is the
-    // observable form of the M10.P2.T1 byte-identity soft-dep.
+    // observable form of the byte-identity invariant.
     let unsigned_svc = IssuerService::new(AUDIENCE);
     let backend: Arc<dyn SigningBackend> = Arc::new(ed25519_backend(11));
     let signed_svc = IssuerService::with_signer(AUDIENCE, backend);
@@ -192,7 +191,7 @@ fn tampering_with_scope_set_breaks_signature() {
 mod hybrid {
     //! Hybrid (Ed25519 + ML-DSA-65) coverage gated on the `pq` feature.
     //!
-    //! Demonstrates the M10.P2.T1 soft-dep: the same call site that
+    //! Demonstrates the byte-identity invariant: the same call site that
     //! signs with `Ed25519Backend` also signs with `HybridBackend`, and
     //! the unsigned canonical envelope is byte-identical between the
     //! two modes (only the `signature` slot differs).

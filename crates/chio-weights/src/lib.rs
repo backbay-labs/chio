@@ -13,25 +13,22 @@
 //! typed error variants that carry stable `urn:chio:error:weights:*` codes
 //! from the M01 registry.
 //!
-//! # Crate surface (P4 layout)
+//! # Crate surface
 //!
 //! - `card` -- model card schema and the `ModelCard` type with RFC 8785
-//!   canonical-JSON encoding (P4.T2).
+//!   canonical-JSON encoding.
 //! - `bundle` -- cosign bundle helper that consumes
-//!   [`chio_attest_verify::SigstoreVerifier::verify_bundle`] (P4.T3).
-//! - `lineage` -- anchor proof surface for published model cards via the
-//!   trajectory-2 M09 `chio-lineage` anchor primitives (P5.T1).
+//!   [`chio_attest_verify::SigstoreVerifier::verify_bundle`].
 //!
-//! Subsequent tickets (kernel binding refusal, `arc bind --card` CLI)
-//! consume this surface from `chio-kernel` and `chio-cli` respectively.
+//! The kernel binding refusal and `arc bind --card` CLI consume this
+//! surface from `chio-kernel` and `chio-cli` respectively.
 //!
 //! # Forbidden constructs
 //!
-//! Per the workspace EXECUTION-BOARD policy "No verifier or trust-boundary
-//! stubs", this crate forbids `unsafe`, `unwrap`, and `expect` at the lint
-//! level. PRs touching this crate also require a
-//! `rg -n 'todo!\(|unimplemented!\(|panic!\('` sweep across `src/` and
-//! `tests/`.
+//! No verifier or trust-boundary stubs: this crate forbids `unsafe`,
+//! `unwrap`, and `expect` at the lint level. PRs touching this crate also
+//! require a `rg -n 'todo!\(|unimplemented!\(|panic!\('` sweep across
+//! `src/` and `tests/`.
 
 #![forbid(unsafe_code)]
 #![forbid(clippy::unwrap_used)]
@@ -40,12 +37,7 @@
 pub mod bundle;
 pub mod card;
 pub mod error;
-pub mod lineage;
 
 pub use bundle::{verify_model_card_bundle, VerifiedModelCard};
 pub use card::{weights_hash_of, ModelCard, StringSet, CARD_VERSION_V1};
 pub use error::WeightsError;
-pub use lineage::{
-    anchor_model_card, anchor_projection_bytes, verify_model_card_anchor, ModelCardLineageAnchor,
-    MODEL_CARD_ANCHOR_SCHEMA,
-};

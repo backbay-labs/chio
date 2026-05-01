@@ -10,9 +10,9 @@
 //!
 //! # Crypto floor
 //!
-//! Soft dep (M10.P2.T1): `crypto_floor=allow_classical` MUST preserve
-//! byte-identity with classical signatures. The mint path is generic over
-//! `SigningBackend`, so the same call site works with:
+//! `crypto_floor=allow_classical` MUST preserve byte-identity with
+//! classical signatures. The mint path is generic over `SigningBackend`,
+//! so the same call site works with:
 //!
 //! - [`chio_core_types::crypto::Ed25519Backend`] (default classical),
 //! - the FIPS-gated P-256 / P-384 backends, and
@@ -25,10 +25,10 @@
 //!
 //! - The signed capability MUST be produced from the canonical-JSON bytes of
 //!   the envelope WITH `signature = ""`. Verifiers reconstruct the message
-//!   the same way (P2.T5 kernel verifier).
+//!   the same way.
 //! - Empty signatures NEVER verify. The signing function refuses to return
-//!   `Ok(_)` with an empty signature; the kernel verifier (P2.T5) refuses
-//!   to accept any capability whose `signature` is empty.
+//!   `Ok(_)` with an empty signature; the kernel verifier refuses to accept
+//!   any capability whose `signature` is empty.
 
 use chio_core_types::crypto::SigningBackend;
 

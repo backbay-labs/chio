@@ -1,12 +1,11 @@
-//! Kernel-side model-card binding refusal (M10.P4.T5).
+//! Kernel-side model-card binding refusal.
 //!
 //! When `policy.weights_card_required` is `required` or
 //! `required_with_pin`, the kernel refuses to bind a provider unless a
 //! signed model card matches the loaded weights AND the requested
 //! capability set is admissible under the card. This module is the
 //! refusal-decision surface; the policy load path lives in `chio-policy`
-//! (P4.T4) and the cosign bundle verify path lives in `chio-weights`
-//! (P4.T3).
+//! and the cosign bundle verify path lives in `chio-weights`.
 //!
 //! # Refusal contract
 //!
@@ -27,10 +26,9 @@
 //!
 //! # Async discipline
 //!
-//! Per the M10.P4.T5 soft-dep, this module introduces NO `&mut self` on
-//! the verifier surface. [`evaluate_weights_binding`] is a free function
-//! over `&ModelCard` so it composes cleanly with the trajectory-1 M05
-//! async kernel without locking.
+//! This module introduces NO `&mut self` on the verifier surface.
+//! [`evaluate_weights_binding`] is a free function over `&ModelCard` so
+//! it composes cleanly with the async kernel without locking.
 
 use chio_weights::card::{ModelCard, StringSet};
 use chio_weights::error::WeightsError;
@@ -43,7 +41,7 @@ pub type WeightsBindingError = WeightsError;
 /// Inputs the kernel collects at provider bind. The provider supplies its
 /// loaded `weights_hash` and the operator supplies the requested
 /// capability set. Banned-tool intersection is computed against the same
-/// `requested_scopes` because the M07 provider matrix unifies tool
+/// `requested_scopes` because the provider matrix unifies tool
 /// identifiers into the scope namespace.
 #[derive(Debug, Clone)]
 pub struct WeightsBindingRequest<'a> {
@@ -143,8 +141,7 @@ mod tests {
         let scopes = StringSet::new(["tool:read"]);
         let tools = StringSet::new(["tool:read"]);
         let req = WeightsBindingRequest {
-            loaded_weights_hash:
-                "0000000000000000000000000000000000000000000000000000000000000001",
+            loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
             requested_scopes: &scopes,
             requested_tools: &tools,
         };
@@ -157,8 +154,7 @@ mod tests {
         let scopes = StringSet::new(["tool:read"]);
         let tools = StringSet::new(["tool:read"]);
         let req = WeightsBindingRequest {
-            loaded_weights_hash:
-                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            loaded_weights_hash: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             requested_scopes: &scopes,
             requested_tools: &tools,
         };
@@ -176,8 +172,7 @@ mod tests {
         let scopes = StringSet::new(["tool:read", "tool:admin"]);
         let tools = StringSet::default();
         let req = WeightsBindingRequest {
-            loaded_weights_hash:
-                "0000000000000000000000000000000000000000000000000000000000000001",
+            loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
             requested_scopes: &scopes,
             requested_tools: &tools,
         };
@@ -200,8 +195,7 @@ mod tests {
         let scopes = StringSet::new(["tool:read"]);
         let tools = StringSet::new(["tool:read", "tool:exec"]);
         let req = WeightsBindingRequest {
-            loaded_weights_hash:
-                "0000000000000000000000000000000000000000000000000000000000000001",
+            loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
             requested_scopes: &scopes,
             requested_tools: &tools,
         };
@@ -226,8 +220,7 @@ mod tests {
         let scopes = StringSet::new(["tool:admin"]);
         let tools = StringSet::new(["tool:exec"]);
         let req = WeightsBindingRequest {
-            loaded_weights_hash:
-                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            loaded_weights_hash: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             requested_scopes: &scopes,
             requested_tools: &tools,
         };
@@ -244,8 +237,7 @@ mod tests {
         let scopes = StringSet::default();
         let tools = StringSet::default();
         let req = WeightsBindingRequest {
-            loaded_weights_hash:
-                "0000000000000000000000000000000000000000000000000000000000000001",
+            loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
             requested_scopes: &scopes,
             requested_tools: &tools,
         };

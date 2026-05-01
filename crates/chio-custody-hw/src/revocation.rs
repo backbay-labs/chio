@@ -1,8 +1,8 @@
-//! Revocation cascade through the M04 sparse-Merkle oracle (M10.P2.T3).
+//! Revocation cascade through the sparse-Merkle revocation oracle.
 //!
 //! Revoking a WebAuthn credential at the issuer (e.g. operator pulls a
 //! stolen authenticator) MUST deny the next custody mint within the
-//! current M04 epoch. This module wires the
+//! current oracle epoch. This module wires the
 //! [`chio_revocation_oracle::RevocationOracle`] surface into the issuer
 //! mint path:
 //!
@@ -10,7 +10,7 @@
 //!    consulted before signing the capability.
 //! 2. Operator-side credential revocation calls
 //!    [`CredentialRevocationOracle::revoke_credential`], which inserts a
-//!    leaf keyed on the WebAuthn credential id into the M04 oracle.
+//!    leaf keyed on the WebAuthn credential id into the oracle.
 //! 3. The next mint observes the new epoch root, finds the credential
 //!    revoked, and fails-closed with
 //!    [`crate::CustodyError::CredentialRevoked`].
@@ -26,8 +26,8 @@
 //!   credential id (already base64url-no-pad) as the subject id and use a
 //!   fixed `EpochNonce(0)` so a single revocation per credential is
 //!   sufficient.
-//! - This module owns its own keying convention so the M04 oracle does
-//!   not need to know about WebAuthn semantics.
+//! - This module owns its own keying convention so the oracle does not
+//!   need to know about WebAuthn semantics.
 
 use std::sync::Mutex;
 

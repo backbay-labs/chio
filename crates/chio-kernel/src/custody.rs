@@ -1,11 +1,11 @@
-//! Kernel-side passkey-capability verification (M10.P2.T5).
+//! Kernel-side passkey-capability verification.
 //!
 //! The kernel sits behind the issuer surface ([`chio_custody_hw::IssuerService`]).
 //! When a caller presents a [`PasskeyCapability`] to the kernel, the kernel
 //! delegates to [`PasskeyCapabilityVerifier`] which:
 //!
-//! 1. Refuses any capability with an empty signature (P2 contract: empty
-//!    signatures NEVER verify).
+//! 1. Refuses any capability with an empty signature (custody contract:
+//!    empty signatures NEVER verify).
 //! 2. Checks the audience pin matches the kernel's configured identity.
 //! 3. Checks the capability is live (`now < exp`).
 //! 4. Reconstructs the signing message via
@@ -19,10 +19,9 @@
 //!
 //! # Async discipline
 //!
-//! Per the M10.P2.T5 soft-dep, this module introduces NO `&mut self` on
-//! the verifier surface. `PasskeyCapabilityVerifier::verify` takes
-//! `&self` so it can be shared behind an `Arc<>` and consumed
-//! concurrently from the trajectory-1 M05 async kernel.
+//! This module introduces NO `&mut self` on the verifier surface.
+//! `PasskeyCapabilityVerifier::verify` takes `&self` so it can be shared
+//! behind an `Arc<>` and consumed concurrently from the async kernel.
 
 use chio_core_types::crypto::{PublicKey, Signature};
 use chio_custody_hw::capability::PasskeyCapability;

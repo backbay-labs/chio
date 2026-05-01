@@ -1,5 +1,5 @@
-// M10.P3.T6: typed-enum surface tests for the urn:chio:error:custody:*
-// codes consumed by @chio/passkey.
+// Typed-enum surface tests for the urn:chio:error:custody:* codes
+// consumed by @chio/passkey.
 //
 // The constant CHIO_CUSTODY_ERROR_CODES is the exhaustive set. The tests
 // here pin the contract:
@@ -25,11 +25,11 @@ import {
 import { RequestCapabilityError } from '../src/index.js';
 
 describe('CHIO_CUSTODY_ERROR_CODES enum', () => {
-  test('contains every registry urn:chio:error:custody:* row M10.P1.T6 added', () => {
+  test('contains every registry urn:chio:error:custody:* row', () => {
     // Source-of-truth list from spec/errors/registry.yaml under the
-    // custody domain. If this set diverges from the registry, the M10
+    // custody domain. If this set diverges from the registry, the
     // typed-enum contract has drifted; one of these (registry / SDK) is
-    // wrong and the M01 codegen pass MUST regenerate.
+    // wrong and the codegen pass MUST regenerate.
     const expected = new Set([
       'urn:chio:error:custody:assertion-rejected',
       'urn:chio:error:custody:audience-mismatch',

@@ -1,24 +1,21 @@
-//! End-to-end issuer-to-kernel flow (M10.P2.T6).
+//! End-to-end issuer-to-kernel flow.
 //!
-//! Walks the entire P2 trust boundary in one fixture:
+//! Walks the entire custody trust boundary in one fixture:
 //!
 //! 1. Issuer is configured with a HybridBackend-style signer
-//!    (Ed25519 under the classical-floor soft-dep), an
+//!    (Ed25519 under the classical-floor configuration), an
 //!    InMemoryPasskeyNonceStore, and an
 //!    InMemoryCredentialRevocationOracle.
 //! 2. A verified WebAuthn assertion arrives; the issuer mints a signed,
 //!    audience-pinned capability.
 //! 3. The kernel-side verifier accepts the capability.
-//! 4. Operator revokes the WebAuthn credential at the M04 oracle.
+//! 4. Operator revokes the WebAuthn credential at the revocation oracle.
 //! 5. A subsequent mint attempt for the same credential is denied
-//!    fail-closed within the same M04 epoch, AND the kernel verifier
+//!    fail-closed within the same oracle epoch, AND the kernel verifier
 //!    keeps accepting the previously-minted (still-live) capability
-//!    because the M04 cascade is a custody-side gate, not a
-//!    kernel-side gate. The kernel-side cascade is exercised by an
-//!    explicit oracle consultation hook.
-//!
-//! The test depends on T2 (nonce store), T3 (revocation cascade), and
-//! T5 (kernel verifier).
+//!    because the cascade is a custody-side gate, not a kernel-side
+//!    gate. The kernel-side cascade is exercised by an explicit oracle
+//!    consultation hook.
 
 use std::sync::Arc;
 
@@ -58,7 +55,7 @@ fn request(nonce: &str) -> MintRequest {
 /// Standalone re-implementation of the kernel verifier so the e2e test
 /// can live in chio-custody-hw without taking a circular dep on
 /// chio-kernel. This mirrors the four-gate behaviour exercised by
-/// crates/chio-kernel/tests/passkey_capability_dispatch.rs (M10.P2.T5):
+/// crates/chio-kernel/tests/passkey_capability_dispatch.rs:
 ///
 /// - empty signatures NEVER verify,
 /// - audience must match,

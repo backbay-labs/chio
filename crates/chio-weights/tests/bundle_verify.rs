@@ -1,11 +1,11 @@
-//! Integration coverage for the cosign bundle helper (P4.T3).
+//! Integration coverage for the cosign bundle helper.
 //!
 //! These tests exercise [`chio_weights::bundle::verify_model_card_bundle`]
 //! against a hand-rolled `AttestVerifier` test double. The real
 //! `chio_attest_verify::SigstoreVerifier` requires the embedded TUF root
 //! and a network-equivalent fixture; that path is exercised by
-//! `chio-attest-verify`'s own integration suite, which M10 P4 consumes
-//! verbatim.
+//! `chio-attest-verify`'s own integration suite, which the model-card
+//! binding consumes verbatim.
 //!
 //! The contract these tests lock:
 //!
@@ -23,9 +23,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
-use chio_attest_verify::{
-    AttestError, AttestVerifier, ExpectedIdentity, VerifiedAttestation,
-};
+use chio_attest_verify::{AttestError, AttestVerifier, ExpectedIdentity, VerifiedAttestation};
 use chio_weights::bundle::verify_model_card_bundle;
 use chio_weights::card::{ModelCard, StringSet};
 use chio_weights::error::WeightsError;
@@ -133,8 +131,7 @@ fn verify_returns_attestation_alongside_card() {
     let bytes = card.to_canonical_json().unwrap();
     let verifier = FakeVerifier::ok();
 
-    let res =
-        verify_model_card_bundle(&verifier, &bytes, b"{}", &expected(), fixed_now()).unwrap();
+    let res = verify_model_card_bundle(&verifier, &bytes, b"{}", &expected(), fixed_now()).unwrap();
     assert_eq!(res.card.weights_hash, card.weights_hash);
     assert_eq!(res.attestation.rekor_log_index, 7);
     assert!(res.attestation.rekor_inclusion_verified);
@@ -171,8 +168,7 @@ fn verify_rejects_expired_card_after_bundle_verifies() {
 
     // now well past expires_at
     let later = fixed_now() + chrono::Duration::days(365);
-    let err =
-        verify_model_card_bundle(&verifier, &bytes, b"{}", &expected(), later).unwrap_err();
+    let err = verify_model_card_bundle(&verifier, &bytes, b"{}", &expected(), later).unwrap_err();
     assert_eq!(err.urn(), "urn:chio:error:weights:card-expired");
     assert!(matches!(err, WeightsError::Expired { .. }));
 }

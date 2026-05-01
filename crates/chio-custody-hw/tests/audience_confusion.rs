@@ -1,8 +1,8 @@
-//! Audience-confusion proptest (M10.P2.T4).
+//! Audience-confusion proptest.
 //!
 //! Soft contract: a [`PasskeyCapability`] is audience-pinned. Re-presenting
 //! a capability minted for audience A to audience B MUST fail-closed at
-//! the verifier surface AND, when the capability is signed (P2.T1), MUST
+//! the verifier surface AND, when the capability is signed, MUST
 //! invalidate the detached signature. The latter is the cryptographic
 //! check; the former is the application-level check via
 //! [`PasskeyCapability::require_audience`].

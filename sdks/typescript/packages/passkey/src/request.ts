@@ -17,7 +17,7 @@
 //     capability all throw with a stable urn:chio:error:custody:* code.
 //   * Audience is supplied by the caller and round-tripped through both
 //     the issuer challenge request and the issuer mint request. The
-//     issuer rejects audience confusion fail-closed (P2.T4 proptest).
+//     issuer rejects audience confusion fail-closed.
 
 import { parseCapabilityToken, type PasskeyCapabilityShape } from './parse.js';
 import { type CustodyErrorCode, isCustodyErrorCode } from './errors.js';
@@ -124,7 +124,7 @@ function joinUrl(base: string, path: string): string {
 // btoa / atob are part of the DOM / Web standards lib (and are also
 // present in Node >= 16). The package targets browsers; tests run in bun
 // which provides both. We avoid a node-types dependency to keep the SDK
-// surface tight (M10.P3.T5 30 KB ceiling).
+// surface tight (30 KB gzipped ceiling).
 declare const btoa: (s: string) => string;
 declare const atob: (s: string) => string;
 
@@ -353,16 +353,15 @@ async function postMint(
 }
 
 /**
- * Run the M10 hardware-custody browser flow:
+ * Run the hardware-custody browser flow:
  *
  *   1. POST `{rp_id, audience, scope_set}` to `${issuerUrl}/challenge`;
  *      receive a WebAuthn challenge bound to those parameters.
  *   2. Call `navigator.credentials.get` with the challenge so the platform
  *      authenticator (passkey) signs it under user verification.
  *   3. POST `{audience, scope_set, challenge_nonce, assertion}` to
- *      `${issuerUrl}/mint`; the issuer verifies the assertion (M10.P1.T2)
- *      and returns a signed PasskeyCapability minted via the M03
- *      HybridBackend.
+ *      `${issuerUrl}/mint`; the issuer verifies the assertion and returns
+ *      a signed PasskeyCapability minted via the HybridBackend.
  *   4. Structurally validate the returned capability and return it.
  *
  * The browser never holds key material. All signing is server-side.
