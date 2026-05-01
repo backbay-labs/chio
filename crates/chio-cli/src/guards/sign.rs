@@ -19,6 +19,7 @@ use chio_wasm_guards::manifest::{
     load_manifest, load_signature_sidecar, signed_module_message, verify_signed_module,
     write_signature_sidecar, SignedWasmModule,
 };
+use chio_wasm_guards::WasmGuardError;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
 
@@ -60,8 +61,8 @@ pub fn cmd_guard_sign(
     };
 
     let wasm_path_str = wasm_path_to_str(wasm_path)?;
-    let sidecar_path = write_signature_sidecar(wasm_path_str, &signed)
-        .map_err(|e| CliError::manifest_signature_error(format!("failed to write signature sidecar: {e}")))?;
+    let sidecar_path =
+        write_signature_sidecar(wasm_path_str, &signed).map_err(map_signature_sidecar_write_error)?;
 
     println!("signed {}", wasm_path.display());
     println!("  sidecar:   {}", sidecar_path.display());
@@ -90,7 +91,7 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
     let wasm_path_str = wasm_path_to_str(wasm_path)?;
 
     let signed = load_signature_sidecar(wasm_path_str)
-        .map_err(|e| CliError::manifest_signature_error(format!("failed to load signature sidecar: {e}")))?
+        .map_err(map_signature_sidecar_load_error)?
         .ok_or_else(|| {
             CliError::manifest_signature_error(format!(
                 "guard module {} is not signed (missing {}.sig sidecar)",
@@ -179,6 +180,28 @@ fn wasm_path_to_str(path: &Path) -> Result<&str, CliError> {
     })
 }
 
+fn map_signature_sidecar_write_error(error: WasmGuardError) -> CliError {
+    match error {
+        WasmGuardError::ManifestLoad { .. } => {
+            CliError::cli_io_error(format!("failed to write signature sidecar: {error}"))
+        }
+        other => {
+            CliError::manifest_signature_error(format!("failed to write signature sidecar: {other}"))
+        }
+    }
+}
+
+fn map_signature_sidecar_load_error(error: WasmGuardError) -> CliError {
+    match error {
+        WasmGuardError::ManifestLoad { .. } => {
+            CliError::cli_io_error(format!("failed to load signature sidecar: {error}"))
+        }
+        other => {
+            CliError::manifest_signature_error(format!("failed to load signature sidecar: {other}"))
+        }
+    }
+}
+
 /// Read a 32-byte Ed25519 seed from the given file.
 ///
 /// The file must contain hex-encoded bytes (with optional `0x` prefix and
@@ -194,13 +217,13 @@ fn load_signing_key(path: &Path) -> Result<SigningKey, CliError> {
     let trimmed = contents.trim();
     let hex_str = trimmed.strip_prefix("0x").unwrap_or(trimmed);
     let bytes = hex::decode(hex_str).map_err(|e| {
-        CliError::manifest_signature_error(format!(
+        CliError::cli_other_error(format!(
             "signing key file {} is not valid hex: {e}",
             path.display()
         ))
     })?;
     if bytes.len() != 32 {
-        return Err(CliError::manifest_signature_error(format!(
+        return Err(CliError::cli_other_error(format!(
             "signing key file {} must contain 32 bytes (got {})",
             path.display(),
             bytes.len()
@@ -239,6 +262,7 @@ mod tests {
 
     const MINIMAL_WASM: &[u8] = b"\x00asm\x01\x00\x00\x00";
     const CLI_IO_CODE: &str = "urn:chio:error:cli:io";
+    const CLI_OTHER_CODE: &str = "urn:chio:error:cli:other";
     const MANIFEST_SCHEMA_INVALID_CODE: &str = "urn:chio:error:manifest:schema-invalid";
     const MANIFEST_SIGNATURE_INVALID_CODE: &str = "urn:chio:error:manifest:signature-invalid";
 
@@ -293,6 +317,20 @@ mod tests {
             hex::encode(sk.verifying_key().to_bytes())
         );
         assert_eq!(signed.module_hash, hex::encode(Sha256::digest(MINIMAL_WASM)));
+    }
+
+    #[test]
+    fn sign_reports_sidecar_write_failures_as_cli_io() {
+        let dir = tempfile::tempdir().unwrap();
+        let wasm = write_minimal_wasm(dir.path(), "g.wasm");
+        let seed_path = dir.path().join("key.seed");
+        let _sk = write_random_seed(&seed_path).unwrap();
+        fs::create_dir(dir.path().join("g.wasm.sig")).unwrap();
+
+        let err = must_cli_err(cmd_guard_sign(&wasm, &seed_path, "g", "0.1.0"), "sign wasm");
+        assert_registry_error(&err, CLI_IO_CODE, "cli");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to write signature sidecar"), "{msg}");
     }
 
     #[test]
@@ -374,6 +412,18 @@ mod tests {
     }
 
     #[test]
+    fn verify_reports_sidecar_read_failures_as_cli_io() {
+        let dir = tempfile::tempdir().unwrap();
+        let wasm = write_minimal_wasm(dir.path(), "g.wasm");
+        fs::create_dir(dir.path().join("g.wasm.sig")).unwrap();
+
+        let err = must_cli_err(cmd_guard_verify(&wasm), "verify unreadable sidecar");
+        assert_registry_error(&err, CLI_IO_CODE, "cli");
+        let msg = err.to_string();
+        assert!(msg.contains("failed to load signature sidecar"), "{msg}");
+    }
+
+    #[test]
     fn verify_fails_with_cli_io_when_wasm_missing() {
         let dir = must(tempfile::tempdir(), "create tempdir");
         let wasm = dir.path().join("missing.wasm");
@@ -434,7 +484,7 @@ mod tests {
         let seed_path = dir.path().join("bad.seed");
         fs::write(&seed_path, "not-hex!!!").unwrap();
         let err = must_cli_err(load_signing_key(&seed_path), "load invalid hex seed");
-        assert_registry_error(&err, MANIFEST_SIGNATURE_INVALID_CODE, "manifest");
+        assert_registry_error(&err, CLI_OTHER_CODE, "cli");
         let msg = err.to_string();
         assert!(msg.contains("not valid hex"), "{msg}");
     }
@@ -445,7 +495,7 @@ mod tests {
         let seed_path = dir.path().join("short.seed");
         fs::write(&seed_path, "aabbccdd").unwrap();
         let err = must_cli_err(load_signing_key(&seed_path), "load short seed");
-        assert_registry_error(&err, MANIFEST_SIGNATURE_INVALID_CODE, "manifest");
+        assert_registry_error(&err, CLI_OTHER_CODE, "cli");
         let msg = err.to_string();
         assert!(msg.contains("must contain 32 bytes"), "{msg}");
     }

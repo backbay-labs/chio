@@ -65,7 +65,7 @@ impl McpPreset {
         let mut file = fs::File::create(&path)
             .map_err(|e| CliError::cli_io_error(format!("failed to materialize preset: {e}")))?;
         file.write_all(self.yaml().as_bytes())
-            .map_err(|e| CliError::cli_yaml_error(format!("failed to write preset yaml: {e}")))?;
+            .map_err(|e| CliError::cli_io_error(format!("failed to write preset yaml: {e}")))?;
         Ok(MaterializedPreset {
             path,
             _dir: dir,

@@ -9,10 +9,10 @@ milestone. This document records starting counts before registry work begins.
 
 | Surface | Baseline | Reproduce |
 | ------- | -------- | --------- |
-| Unstructured CLI errors | 976 `CliError::Other` occurrences across `crates/chio-cli/src/`, `crates/chio-control-plane/src/`, and `crates/chio-hosted-mcp/src/` | `grep -rE 'CliError::Other' crates/chio-cli/src/ crates/chio-control-plane/src/ crates/chio-hosted-mcp/src/ \| wc -l` |
-| Stable string-code mentions | 20 `"CHIO-` occurrences and 19 distinct `CHIO-*` values in `crates/chio-control-plane/src/lib.rs` | `grep -cE '"CHIO-' crates/chio-control-plane/src/lib.rs`; `rg -o '"CHIO-[^"]+' crates/chio-control-plane/src/lib.rs \| sort -u \| wc -l` |
-| Numeric wire registry | 11 entries in `spec/errors/chio-error-registry.v1.json` | `jq '.codes \| length' spec/errors/chio-error-registry.v1.json` |
-| Wire schemas | 9 schema directories under `spec/schemas/chio-wire/v1/` | `find spec/schemas/chio-wire/v1 -mindepth 1 -maxdepth 1 -type d \| wc -l` |
+| Unstructured CLI errors | 30 `CliError::Other(format!(...)` call sites across `crates/chio-cli/src/`, `crates/chio-control-plane/src/`, and `crates/chio-hosted-mcp/src/` | `python3 -c "from pathlib import Path; roots=[Path('crates/chio-cli/src'),Path('crates/chio-control-plane/src'),Path('crates/chio-hosted-mcp/src')]; print(sum(path.read_text(errors='ignore').count('CliError::Other(format!(') for root in roots for path in root.rglob('*.rs')))"` |
+| Stable string-code mentions | 20 `"CHIO-` occurrences and 19 distinct `CHIO-*` values in `crates/chio-control-plane/src/lib.rs` | `python3 -c "import re; text=open('crates/chio-control-plane/src/lib.rs').read(); vals=re.findall(r'\"CHIO-[^\"]+', text); print(len(vals), len(set(vals)))"` |
+| Numeric wire registry | 11 entries in `spec/errors/chio-error-registry.v1.json` | `python3 -c "import json; print(len(json.load(open('spec/errors/chio-error-registry.v1.json'))['codes']))"` |
+| Wire schemas | 35 schema files under `spec/schemas/chio-wire/v1/` | `python3 -c "from pathlib import Path; print(sum(1 for _ in Path('spec/schemas/chio-wire/v1').rglob('*.schema.json')))"` |
 
 ## Registry Direction
 
@@ -37,9 +37,9 @@ preflight failures.
 
 | Surface | P2 result | Reproduce |
 | ------- | --------- | --------- |
-| P2.T3 replay and conformance direct `CliError::Other` mentions | 0 | `grep -rcE 'CliError::Other' crates/chio-cli/src/cli/replay/ crates/chio-cli/src/cli/conformance.rs crates/chio-cli/src/cli/replay.rs \| awk -F: '{s+=$2} END {print s+0}'` |
-| P2.T4 attest and transport direct `CliError::Other` mentions | 0 | `grep -cE 'CliError::Other' crates/chio-cli/src/cli/runtime.rs crates/chio-cli/src/cli/session.rs crates/chio-cli/src/certify.rs crates/chio-cli/src/enterprise_federation.rs crates/chio-cli/src/federation_policy.rs \| awk -F: '{s+=$2} END {print s+0}'` |
-| P2.T5 workspace direct `CliError::Other(` call sites | 0 | `grep -rcE 'CliError::Other\\(' crates/chio-cli/src/ crates/chio-control-plane/src/ crates/chio-hosted-mcp/src/ \| awk -F: '{s+=$2} END {print s+0}'` |
+| P2.T3 replay and conformance direct `CliError::Other` mentions | 0 | `python3 -c "from pathlib import Path; roots=[Path('crates/chio-cli/src/cli/replay'),Path('crates/chio-cli/src/cli/conformance.rs'),Path('crates/chio-cli/src/cli/replay.rs')]; paths=[p for root in roots for p in ([root] if root.is_file() else root.rglob('*.rs'))]; print(sum(p.read_text(errors='ignore').count('CliError::Other') for p in paths))"` |
+| P2.T4 attest and transport direct `CliError::Other` mentions | 0 | `python3 -c "from pathlib import Path; paths=[Path(p) for p in ['crates/chio-cli/src/cli/runtime.rs','crates/chio-cli/src/cli/session.rs','crates/chio-cli/src/certify.rs','crates/chio-cli/src/enterprise_federation.rs','crates/chio-cli/src/federation_policy.rs']]; print(sum(p.read_text(errors='ignore').count('CliError::Other') for p in paths))"` |
+| P2.T5 workspace direct `CliError::Other(` call sites | 0 | `python3 -c "from pathlib import Path; roots=[Path('crates/chio-cli/src'),Path('crates/chio-control-plane/src'),Path('crates/chio-hosted-mcp/src')]; print(sum(path.read_text(errors='ignore').count('CliError::Other(') for root in roots for path in root.rglob('*.rs')))"` |
 | P2.T6 provider taxonomy drift | In sync | `cargo run -p xtask --quiet -- errors regen --check` |
 
 Additional local gates run for PR #342:
@@ -76,8 +76,8 @@ runtime metrics, and `chio.yaml` schema validity) plus seven new
 
 | Surface | P3 result | Reproduce |
 | ------- | --------- | --------- |
-| Doctor probes wired | 6 in canonical order (`toolchain`, `oci`, `cosign`, `otel`, `kernel_runtime`, `chio_yaml`) | `chio doctor --json --skip-network \| jq '.reports[].probe'` |
-| Doctor registry codes | 6 `urn:chio:error:cli:doctor-*` codes plus 1 aggregate | `rg -n 'urn:chio:error:cli:doctor-' spec/errors/registry.yaml \| wc -l` |
+| Doctor probes wired | 6 in canonical order (`toolchain`, `oci`, `cosign`, `otel`, `kernel_runtime`, `chio_yaml`) | `chio doctor --json --skip-network` |
+| Doctor registry codes | 6 `urn:chio:error:cli:doctor-*` codes plus 1 aggregate | `rg -n 'urn:chio:error:cli:doctor-' spec/errors/registry.yaml` |
 | Kernel inflight gauge name pinned | `chio_kernel_dispatch_inflight` literal present in source | `grep -q 'chio_kernel_dispatch_inflight' crates/chio-cli/src/doctor/kernel_runtime.rs` |
 
 ### `chio doctor --fix` repair allowlist
@@ -133,7 +133,7 @@ first-party packaging.
 | ------- | --------- | --------- |
 | VSCode extension | scaffolded at `editors/vscode-chio/`, vitest contract suite green | `cd editors/vscode-chio && npm install --silent && npm run compile && npm test -- --run` |
 | Zed extension | scaffolded at `editors/zed-chio/`, host-side integration suite green | `cargo build -p zed-chio --quiet && cargo test -p zed-chio --test integration` |
-| Snippet source files | 4 canonical YAML sources validated against `editors/snippets/snippet.schema.json` | `ls editors/snippets/*.snippet.yaml \| wc -l` |
+| Snippet source files | 4 canonical YAML sources validated against `editors/snippets/snippet.schema.json` | `python3 -c "from pathlib import Path; print(len(list(Path('editors/snippets').glob('*.snippet.yaml'))))"` |
 | Snippet regen pipeline | `cargo xtask snippets regen --check` green; CI fails on drift between YAML source and native outputs | `cargo run -p xtask --quiet -- snippets regen --check` |
 
 ## Milestone Closeout
@@ -168,7 +168,10 @@ Follow-on items (deferred to later milestones, none block M01 close):
   host and asserts diagnostics flow through unchanged) is gated on a
   CI host with VSCode preinstalled; the contract suite under vitest
   pins the wiring helpers in the meantime.
+  Tracking note: carried forward to `.planning/trajectory/sweep/M01-FOLLOWUPS.md`
+  because local and CI sweep hosts do not provide a VSCode extension host.
 - Wasm bundle for `zed-chio` is built by the user via `zed extension
   publish`; `cargo build -p zed-chio` only compiles the host-visible
   rlib because `zed_extension_api` requires the wasm32 target.
-
+  Tracking note: carried forward to `.planning/trajectory/sweep/M01-FOLLOWUPS.md`
+  because release-time Zed packaging owns the wasm32 artifact.

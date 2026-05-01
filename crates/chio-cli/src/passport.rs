@@ -60,7 +60,7 @@ fn ensure_parent_dir(path: &Path) -> Result<(), CliError> {
 
 fn require_verifier_policy_registry_path(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::policy_error(
+        CliError::cli_other_error(
             "verifier policy commands require --verifier-policies-file <path> when not using --control-url"
                 .to_string(),
         )
@@ -69,7 +69,7 @@ fn require_verifier_policy_registry_path(path: Option<&Path>) -> Result<&Path, C
 
 fn require_passport_status_registry_path(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::policy_error(
+        CliError::cli_other_error(
             "passport lifecycle commands require --passport-statuses-file <path> when not using --control-url"
                 .to_string(),
         )
@@ -78,7 +78,7 @@ fn require_passport_status_registry_path(path: Option<&Path>) -> Result<&Path, C
 
 fn require_passport_issuance_registry_path(path: Option<&Path>) -> Result<&Path, CliError> {
     path.ok_or_else(|| {
-        CliError::policy_error(
+        CliError::cli_other_error(
             "passport issuance commands require --passport-issuance-offers-file <path> when not using --control-url"
                 .to_string(),
         )
@@ -87,7 +87,7 @@ fn require_passport_issuance_registry_path(path: Option<&Path>) -> Result<&Path,
 
 fn require_credential_issuer_url(value: Option<&str>) -> Result<&str, CliError> {
     value.ok_or_else(|| {
-        CliError::policy_error(
+        CliError::cli_other_error(
             "passport issuance commands require --issuer-url <url> when not using --control-url"
                 .to_string(),
         )
@@ -1560,7 +1560,7 @@ pub(crate) fn cmd_passport_challenge_create(
     } = args;
     let now = unix_now();
     if policy_path.is_some() && policy_id.is_some() {
-        return Err(CliError::policy_error(
+        return Err(CliError::cli_other_error(
             "challenge creation accepts either --policy or --policy-id, not both".to_string(),
         ));
     }
@@ -2398,4 +2398,59 @@ fn resolve_challenge_policy_local(
         Some(document.body.policy.clone()),
         Some(format!("registry:{}", document.body.policy_id)),
     ))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod passport_error_classification_tests {
+    use super::*;
+
+    const CLI_OTHER_CODE: &str = "urn:chio:error:cli:other";
+
+    fn assert_cli_other(error: &CliError) {
+        match error {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), CLI_OTHER_CODE);
+                assert_eq!(chio.domain().as_str(), "cli");
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_passport_registry_prerequisites_are_cli_errors() {
+        let verifier = require_verifier_policy_registry_path(None).unwrap_err();
+        assert_cli_other(&verifier);
+
+        let statuses = require_passport_status_registry_path(None).unwrap_err();
+        assert_cli_other(&statuses);
+
+        let issuance = require_passport_issuance_registry_path(None).unwrap_err();
+        assert_cli_other(&issuance);
+
+        let issuer_url = require_credential_issuer_url(None).unwrap_err();
+        assert_cli_other(&issuer_url);
+    }
+
+    #[test]
+    fn challenge_policy_path_and_id_conflict_is_cli_error() {
+        let issuers: Vec<String> = Vec::new();
+        let err = cmd_passport_challenge_create(PassportChallengeCreateArgs {
+            output: Path::new("unused.challenge.json"),
+            verifier: "did:chio:verifier",
+            ttl_secs: 60,
+            issuers: &issuers,
+            max_credentials: None,
+            policy_path: Some(Path::new("policy.json")),
+            policy_id: Some("policy-1"),
+            verifier_policies_file: None,
+            verifier_challenge_db: None,
+            json_output: false,
+            control_url: None,
+            control_token: None,
+        })
+        .unwrap_err();
+
+        assert_cli_other(&err);
+    }
 }

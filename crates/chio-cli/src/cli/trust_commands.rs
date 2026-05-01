@@ -1700,7 +1700,25 @@ fn parse_underwriting_decision_outcome(
     value: &str,
 ) -> Result<chio_kernel::UnderwritingDecisionOutcome, CliError> {
     serde_json::from_str(&format!("\"{value}\""))
-        .map_err(|_| CliError::policy_constraint_error(format!("invalid underwriting outcome `{value}`")))
+        .map_err(|_| CliError::cli_other_error(format!("invalid underwriting outcome `{value}`")))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod trust_command_error_classification_tests {
+    use super::*;
+
+    #[test]
+    fn invalid_underwriting_outcome_literal_is_cli_error() {
+        let err = parse_underwriting_decision_outcome("not-a-valid-outcome").unwrap_err();
+        match err {
+            CliError::Chio(chio) => {
+                assert_eq!(chio.code().as_str(), "urn:chio:error:cli:other");
+                assert_eq!(chio.domain().as_str(), "cli");
+            }
+            other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
 }
 
 fn parse_credit_facility_disposition(

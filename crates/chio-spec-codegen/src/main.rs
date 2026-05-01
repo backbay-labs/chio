@@ -18,7 +18,7 @@
 //! Chio error registry output from the default registry path.
 //! `--threat-model` (M05.P5.T2) emits one stub Rust test per threat ID.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str = "usage: chio-spec-codegen <schemas-dir> <out-dir>\n\
@@ -38,8 +38,15 @@ fn main() -> ExitCode {
             eprintln!("error: unexpected extra argument");
             return ExitCode::FAILURE;
         }
-        let registry = PathBuf::from(chio_spec_codegen::ERROR_REGISTRY_INPUT);
-        let out = PathBuf::from(chio_spec_codegen::ERRORS_GENERATED_DIR);
+        let repo_root = match workspace_root() {
+            Ok(root) => root,
+            Err(err) => {
+                eprintln!("error: {err}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let registry = repo_root.join(chio_spec_codegen::ERROR_REGISTRY_INPUT);
+        let out = repo_root.join(chio_spec_codegen::ERRORS_GENERATED_DIR);
         return match chio_spec_codegen::codegen_error_codes(&registry, &out) {
             Ok(()) => {
                 println!(
@@ -182,4 +189,18 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn workspace_root() -> Result<PathBuf, String> {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            format!(
+                "cannot derive workspace root from CARGO_MANIFEST_DIR={}",
+                manifest_dir.display()
+            )
+        })
 }
