@@ -10,17 +10,20 @@
 //! ```text
 //! chio-spec-codegen <schemas-dir> <out-dir>
 //! chio-spec-codegen --errors-only
+//! chio-spec-codegen --threat-model <input.json> --out <stubs-dir>
 //! ```
 //!
 //! The schemas directory is walked recursively for `*.schema.json` files; the
 //! output directory is created if missing. `--errors-only` regenerates the
 //! Chio error registry output from the default registry path.
+//! `--threat-model` (M05.P5.T2) emits one stub Rust test per threat ID.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str =
-    "usage: chio-spec-codegen <schemas-dir> <out-dir>\n       chio-spec-codegen --errors-only";
+const USAGE: &str = "usage: chio-spec-codegen <schemas-dir> <out-dir>\n\
+                     \x20      chio-spec-codegen --errors-only\n\
+                     \x20      chio-spec-codegen --threat-model <input.json> --out <stubs-dir>";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -43,6 +46,70 @@ fn main() -> ExitCode {
                     out.join(chio_spec_codegen::ERROR_CODES_OUTPUT).display(),
                     out.join(chio_spec_codegen::MOD_FILE).display()
                 );
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("chio-spec-codegen: {err}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
+    if schemas_dir == "--threat-model" {
+        // chio-spec-codegen --threat-model <input.json> --out <stubs-dir>
+        let Some(input) = args.next() else {
+            eprintln!("error: --threat-model requires an input path");
+            eprintln!("{USAGE}");
+            return ExitCode::FAILURE;
+        };
+        let Some(out_flag) = args.next() else {
+            eprintln!("error: --threat-model requires --out <stubs-dir>");
+            eprintln!("{USAGE}");
+            return ExitCode::FAILURE;
+        };
+        if out_flag != "--out" {
+            eprintln!("error: expected --out, got {out_flag}");
+            return ExitCode::FAILURE;
+        }
+        let Some(out_dir) = args.next() else {
+            eprintln!("error: --out requires a directory argument");
+            return ExitCode::FAILURE;
+        };
+        if args.next().is_some() {
+            eprintln!("error: unexpected extra argument");
+            return ExitCode::FAILURE;
+        }
+
+        let input_path = PathBuf::from(&input);
+        let out_path = PathBuf::from(&out_dir);
+
+        // Best-effort: validate against the v1 schema if a sibling
+        // `chio-threat-model.schema.json` is present. Fail closed if
+        // the validator rejects.
+        let schema_path = input_path
+            .parent()
+            .map(|p| p.join("chio-threat-model.schema.json"))
+            .unwrap_or_else(|| PathBuf::from(chio_spec_codegen::THREAT_MODEL_SCHEMA));
+        if schema_path.exists() {
+            if let Err(err) = chio_spec_codegen::validate_threat_model_against_schema(
+                &schema_path,
+                &input_path,
+            ) {
+                eprintln!("chio-spec-codegen: {err}");
+                return ExitCode::FAILURE;
+            }
+        }
+
+        return match chio_spec_codegen::codegen_threat_model(&input_path, &out_path) {
+            Ok(written) => {
+                println!(
+                    "wrote {} threat-stub file(s) under {}",
+                    written.len(),
+                    out_path.display()
+                );
+                for (id, path) in written {
+                    println!("  {id} -> {}", path.display());
+                }
                 ExitCode::SUCCESS
             }
             Err(err) => {
