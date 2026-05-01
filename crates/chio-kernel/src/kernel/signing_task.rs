@@ -267,13 +267,20 @@ impl SigningTaskHandle {
             reply: reply_tx,
         };
 
-        if sender.capacity() == 0 {
-            record_signing_queue_block();
+        match sender.try_send(request) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(rejected)) => {
+                record_signing_queue_block();
+                sender.send(rejected).await.map_err(|_| {
+                    KernelError::Internal("receipt signing task is no longer running".to_string())
+                })?;
+            }
+            Err(mpsc::error::TrySendError::Closed(_rejected)) => {
+                return Err(KernelError::Internal(
+                    "receipt signing task is no longer running".to_string(),
+                ));
+            }
         }
-
-        sender.send(request).await.map_err(|_| {
-            KernelError::Internal("receipt signing task is no longer running".to_string())
-        })?;
 
         match reply_rx.await {
             Ok(result) => result,
