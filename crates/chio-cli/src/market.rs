@@ -122,6 +122,8 @@ pub enum MarketError {
     CatalogParse(String),
     #[error("install record write failed: {0}")]
     InstallIo(String),
+    #[error("install record parse failed: {0}")]
+    InstallRecordParse(String),
     #[error("install record serialize failed: {0}")]
     InstallSerialize(String),
     #[error("guard reference not present in catalog: {0}")]
@@ -319,7 +321,6 @@ pub fn market_install(
 
     fs::create_dir_all(bundle_dir).map_err(|err| MarketError::InstallIo(err.to_string()))?;
     let install_path = install_record_path(bundle_dir, &tenant.tenant_id, reference);
-    let idempotent_replay = install_path.exists();
 
     let record = MarketInstallRecord {
         schema: MARKET_INSTALL_REPORT_SCHEMA.to_owned(),
@@ -330,7 +331,7 @@ pub fn market_install(
         applied_tier: tenant.tier,
         credit_limit_units: limit.limit_units,
         credit_limit_currency: limit.currency,
-        idempotent_replay,
+        idempotent_replay: false,
     };
 
     let bytes = serde_json::to_vec_pretty(&record)
@@ -339,10 +340,21 @@ pub fn market_install(
         tempfile_in(bundle_dir).map_err(|err| MarketError::InstallIo(err.to_string()))?;
     tmp.write_all(&bytes)
         .map_err(|err| MarketError::InstallIo(err.to_string()))?;
-    tmp.persist(&install_path)
-        .map_err(|err| MarketError::InstallIo(err.to_string()))?;
+    if !tmp
+        .persist_new(&install_path)
+        .map_err(|err| MarketError::InstallIo(err.to_string()))?
+    {
+        let mut existing = read_install_record(&install_path)?;
+        existing.idempotent_replay = true;
+        return Ok(existing);
+    }
 
     Ok(record)
+}
+
+fn read_install_record(path: &Path) -> Result<MarketInstallRecord, MarketError> {
+    let bytes = fs::read(path).map_err(|err| MarketError::InstallIo(err.to_string()))?;
+    serde_json::from_slice(&bytes).map_err(|err| MarketError::InstallRecordParse(err.to_string()))
 }
 
 /// Build a non-lossy, traversal-safe filename for an install record.
@@ -432,10 +444,22 @@ impl TempPersist {
         Ok(())
     }
 
-    fn persist(self, dest: &Path) -> std::io::Result<()> {
+    fn persist_new(self, dest: &Path) -> std::io::Result<bool> {
         drop(self.file);
-        fs::rename(&self.path, dest)?;
-        Ok(())
+        match fs::hard_link(&self.path, dest) {
+            Ok(()) => {
+                fs::remove_file(&self.path)?;
+                Ok(true)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let _ = fs::remove_file(&self.path);
+                Ok(false)
+            }
+            Err(error) => {
+                let _ = fs::remove_file(&self.path);
+                Err(error)
+            }
+        }
     }
 }
 
@@ -610,6 +634,31 @@ mod tests {
             .expect("re-install runs");
         assert!(second.idempotent_replay);
         assert_eq!(second.registered_price_units, first.registered_price_units);
+    }
+
+    #[test]
+    fn install_replay_does_not_rewrite_existing_record() {
+        let dir = tempdir().expect("tmpdir");
+        let catalog = write_catalog(dir.path(), &fixture_entries());
+        let bundle = dir.path().join("bundle");
+        let tenant = tenant_ctx(ReputationTier::Tier1);
+        let reference =
+            "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+        let first = market_install(&catalog, &bundle, &tenant, reference, false)
+            .expect("install runs");
+        assert!(!first.idempotent_replay);
+        let path = install_record_path(&bundle, &tenant.tenant_id, reference);
+        let original_bytes = fs::read(&path).expect("read install record");
+
+        let second = market_install(&catalog, &bundle, &tenant, reference, false)
+            .expect("re-install runs");
+        assert!(second.idempotent_replay);
+        let replay_bytes = fs::read(&path).expect("read replayed install record");
+        assert_eq!(
+            original_bytes, replay_bytes,
+            "idempotent replay must not rewrite the existing install record"
+        );
     }
 
     #[test]

@@ -100,35 +100,13 @@ impl IouEnvelopeStore for SqliteIouEnvelopeStore {
             |err: std::num::TryFromIntError| IouEnvelopeStoreError::Backend(err.to_string()),
         )?;
 
-        let mut connection = self
+        let connection = self
             .pool
             .get()
             .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
-        let tx = connection
-            .transaction()
-            .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
-
-        // Idempotency check: if a row already exists, compare canonical bytes.
-        let existing = tx
-            .query_row(
-                "SELECT canonical_json FROM iou_envelope WHERE receipt_id = ?1",
-                params![envelope.body.receipt_id.as_str()],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
-        if let Some(existing_canonical) = existing {
-            if existing_canonical == canonical_str {
-                return Ok(false);
-            }
-            return Err(IouEnvelopeStoreError::Conflict(format!(
-                "iou_envelope row for receipt_id={} already exists with different bytes",
-                envelope.body.receipt_id
-            )));
-        }
-
-        tx.execute(
-            r#"
+        let inserted = connection
+            .execute(
+                r#"
             INSERT INTO iou_envelope (
                 receipt_id,
                 iou_id,
@@ -139,22 +117,43 @@ impl IouEnvelopeStore for SqliteIouEnvelopeStore {
                 issuer_key,
                 canonical_json
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(receipt_id) DO NOTHING
             "#,
-            params![
-                envelope.body.receipt_id.as_str(),
-                envelope.body.iou_id.as_str(),
-                receipt_ts,
-                envelope.body.tenant_id.as_deref(),
-                amount,
-                envelope.body.currency.as_str(),
-                issuer_key_str.as_str(),
-                canonical_str,
-            ],
-        )
-        .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
-        tx.commit()
+                params![
+                    envelope.body.receipt_id.as_str(),
+                    envelope.body.iou_id.as_str(),
+                    receipt_ts,
+                    envelope.body.tenant_id.as_deref(),
+                    amount,
+                    envelope.body.currency.as_str(),
+                    issuer_key_str.as_str(),
+                    canonical_str,
+                ],
+            )
             .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
-        Ok(true)
+        if inserted == 1 {
+            return Ok(true);
+        }
+
+        let existing = connection
+            .query_row(
+                "SELECT canonical_json FROM iou_envelope WHERE receipt_id = ?1",
+                params![envelope.body.receipt_id.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|err| IouEnvelopeStoreError::Backend(err.to_string()))?;
+        match existing {
+            Some(existing_canonical) if existing_canonical == canonical_str => Ok(false),
+            Some(_) => Err(IouEnvelopeStoreError::Conflict(format!(
+                "iou_envelope row for receipt_id={} already exists with different bytes",
+                envelope.body.receipt_id
+            ))),
+            None => Err(IouEnvelopeStoreError::Backend(format!(
+                "iou_envelope conflict for receipt_id={} but no row was readable",
+                envelope.body.receipt_id
+            ))),
+        }
     }
 
     fn get_by_receipt_id(
