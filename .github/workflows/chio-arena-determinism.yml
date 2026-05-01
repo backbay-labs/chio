@@ -11,8 +11,7 @@
 # bytes the gate compares.
 #
 # Linux-only: macOS smoke runs are read-only and live in chio-replay-gate.
-# This mirrors the trajectory-1 M04 platform pinning rule and the M08 P2
-# narrative requirement that the determinism gate be Linux-only.
+# The determinism gate is pinned to Linux to keep bytes comparable.
 
 name: chio-arena-determinism
 

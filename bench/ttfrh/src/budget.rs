@@ -2,8 +2,7 @@
 //!
 //! The gate fails when any template's measured p99 exceeds the
 //! configured budget plus a fixed buffer. The default budget is
-//! 60 000 ms (the M07 P5 success criterion); the default buffer is
-//! 10 % per the trajectory plan.
+//! 60 000 ms; the default buffer is 10 %.
 
 #![forbid(unsafe_code)]
 

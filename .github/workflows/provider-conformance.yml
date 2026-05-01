@@ -69,11 +69,9 @@ jobs:
 
   cross-provider-equality:
     name: Cross-provider verdict equality (8 providers, required-CI)
-    # required: true
-    # M07 P4.T5 matrix flip: this job is required-CI on changes to any
-    # provider adapter or fixture corpus. The 8-provider cardinality
-    # extends trajectory-1 M07.P4.T6 (3 providers) without changing the
-    # oracle surface.
+    # required: true: this job is required-CI on changes to any provider
+    # adapter or fixture corpus. Eight providers share a single oracle
+    # surface (no per-provider divergence allowed).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
