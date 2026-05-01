@@ -938,7 +938,10 @@ impl PassportVerifierChallengeStore {
                 "UPDATE passport_verifier_challenges
                  SET status = ?2
                  WHERE challenge_id = ?1",
-                params![AsRef::<str>::as_ref(&challenge_id), CHALLENGE_STATUS_EXPIRED],
+                params![
+                    AsRef::<str>::as_ref(&challenge_id),
+                    CHALLENGE_STATUS_EXPIRED
+                ],
             )?;
             transaction.commit()?;
             return Err(CliError::cli_other_error(format!(
