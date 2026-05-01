@@ -14,7 +14,7 @@
   milestone: M10
   phase: 5
   title: Lineage anchoring of model cards via trajectory-2 M09 chio-lineage anchor proof surface
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-weights/src/lineage.rs
@@ -31,7 +31,7 @@
   agent_role: lineage-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 15d154f6c9b0319ae998ab7c874637e220122e32
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -40,7 +40,7 @@
   milestone: M10
   phase: 5
   title: Cross-provider equivalence test asserting two cards produce verdict-equivalent outputs on canonical scenario corpus
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-weights/tests/equivalence.rs
@@ -53,7 +53,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: e5e9729354b0342bfb695a48b64b90c9b224d681
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -62,7 +62,7 @@
   milestone: M10
   phase: 5
   title: Threat-model coverage gate marking passkey_credential_theft, audience_confusion, weights_hash_spoof covered
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - spec/security/coverage.yaml
@@ -83,7 +83,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 1954a9332729f2bddb4d8e8e07ce2ab6b6296c1f
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -92,7 +92,7 @@
   milestone: M10
   phase: 5
   title: Audit doc final pass with closing counts (custody-hw lines, weights lines, fixture corpus, coverage status)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M10-hardware-custody-and-model-cards.md
@@ -107,7 +107,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 46730e2463c09697e808fddee54b6e3c8f4d1bc2
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -116,7 +116,7 @@
   milestone: M10
   phase: 5
   title: Documentation pass at docs/custody/passkey-issuer.md and docs/weights/model-cards.md
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - docs/custody/passkey-issuer.md
@@ -134,7 +134,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 3ef3cfacae99a5d76910015b7b9884d86c59aa27
   merged_sha: null
   opened_ts: null
   merged_ts: null

@@ -244,25 +244,18 @@ fn smoke_subset_card_a_and_card_b_agree_on_canonical_verdicts() {
         // assert here is the verdict-only projection (without card_id)
         // is byte-identical, which is the operational-equivalence
         // claim the M07 oracle codifies.
-        let verdict_a =
-            match canonical_json_bytes_for("card-a verdict only", &entry.verdict) {
-                Ok(b) => b,
-                Err(e) => panic!("canonicalize card-a verdict: {e}"),
-            };
-        let verdict_b =
-            match canonical_json_bytes_for("card-b verdict only", &entry.verdict) {
-                Ok(b) => b,
-                Err(e) => panic!("canonicalize card-b verdict: {e}"),
-            };
-        if let Err(e) = assert_canonical_bytes_eq(
-            "card-pair operational verdict",
-            &verdict_a,
-            &verdict_b,
-        ) {
-            panic!(
-                "card pair verdict mismatch on {}: {e}",
-                entry.fixture_id
-            );
+        let verdict_a = match canonical_json_bytes_for("card-a verdict only", &entry.verdict) {
+            Ok(b) => b,
+            Err(e) => panic!("canonicalize card-a verdict: {e}"),
+        };
+        let verdict_b = match canonical_json_bytes_for("card-b verdict only", &entry.verdict) {
+            Ok(b) => b,
+            Err(e) => panic!("canonicalize card-b verdict: {e}"),
+        };
+        if let Err(e) =
+            assert_canonical_bytes_eq("card-pair operational verdict", &verdict_a, &verdict_b)
+        {
+            panic!("card pair verdict mismatch on {}: {e}", entry.fixture_id);
         }
         // The receipt bodies differ only in card_id; assert the full
         // body shapes agree everywhere except card_id by stripping the
@@ -378,8 +371,7 @@ fn assert_byte_equal_normalized_receipts(
         ) {
             panic!("{} card-bound receipt mismatch: {e}", entry.fixture_id);
         }
-        let verdict_bytes = match canonical_json_bytes_for("card-bound verdict", &entry.verdict)
-        {
+        let verdict_bytes = match canonical_json_bytes_for("card-bound verdict", &entry.verdict) {
             Ok(b) => b,
             Err(e) => panic!("canonicalize {} verdict: {e}", entry.fixture_id),
         };
@@ -425,10 +417,7 @@ fn strip_card_id(bytes: &[u8]) -> Vec<u8> {
         Value::Object(m) => m,
         other => panic!("strip_card_id expected object, got {other:?}"),
     };
-    let sorted: BTreeMap<String, Value> = map
-        .into_iter()
-        .filter(|(k, _)| k != "card_id")
-        .collect();
+    let sorted: BTreeMap<String, Value> = map.into_iter().filter(|(k, _)| k != "card_id").collect();
     match serde_json::to_vec(&sorted) {
         Ok(b) => b,
         Err(e) => panic!("strip_card_id reserialize: {e}"),

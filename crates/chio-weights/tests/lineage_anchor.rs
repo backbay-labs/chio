@@ -72,11 +72,17 @@ fn published_card_anchor_verifies_round_trip() {
 
     assert_eq!(anchor.schema_version, MODEL_CARD_ANCHOR_SCHEMA);
     assert_eq!(anchor.graph_schema, "chio.lineage.graph/v1");
-    assert!(matches!(anchor.canonical_source, CanonicalSource::EquivalenceShim));
+    assert!(matches!(
+        anchor.canonical_source,
+        CanonicalSource::EquivalenceShim
+    ));
     assert_eq!(anchor.weights_hash, card.weights_hash);
     assert_eq!(anchor.card_issuer, card.issuer);
     assert_eq!(anchor.card_expires_at, card.expires_at);
-    assert!(matches!(anchor.signing, SigningState::UnsignedSoftDepAbsent));
+    assert!(matches!(
+        anchor.signing,
+        SigningState::UnsignedSoftDepAbsent
+    ));
 
     match verify_model_card_anchor(&anchor, &bytes, &attestation) {
         Ok(()) => {}
@@ -92,10 +98,7 @@ fn anchor_carries_signed_state_when_signer_present() {
         Err(e) => panic!("encode: {e}"),
     };
     let attestation = attestation_for(&bytes);
-    let verified = VerifiedModelCard {
-        card,
-        attestation,
-    };
+    let verified = VerifiedModelCard { card, attestation };
     let anchor = match anchor_model_card(
         &verified,
         &bytes,

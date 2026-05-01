@@ -291,7 +291,10 @@ mod tests {
             Err(e) => panic!("anchor: {e}"),
         };
         assert_eq!(anchor.schema_version, MODEL_CARD_ANCHOR_SCHEMA);
-        assert!(matches!(anchor.signing, SigningState::UnsignedSoftDepAbsent));
+        assert!(matches!(
+            anchor.signing,
+            SigningState::UnsignedSoftDepAbsent
+        ));
         match verify_model_card_anchor(&anchor, &bytes, &att) {
             Ok(()) => {}
             Err(e) => panic!("verify: {e}"),
