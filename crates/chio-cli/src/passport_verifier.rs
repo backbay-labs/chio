@@ -888,7 +888,7 @@ impl PassportVerifierChallengeStore {
                 "SELECT challenge_hash, status, expires_at
                  FROM passport_verifier_challenges
                  WHERE challenge_id = ?1",
-                [challenge_id.as_ref()],
+                [AsRef::<str>::as_ref(&challenge_id)],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -938,7 +938,7 @@ impl PassportVerifierChallengeStore {
                 "UPDATE passport_verifier_challenges
                  SET status = ?2
                  WHERE challenge_id = ?1",
-                params![challenge_id.as_ref(), CHALLENGE_STATUS_EXPIRED],
+                params![AsRef::<str>::as_ref(&challenge_id), CHALLENGE_STATUS_EXPIRED],
             )?;
             transaction.commit()?;
             return Err(CliError::cli_other_error(format!(
@@ -951,7 +951,7 @@ impl PassportVerifierChallengeStore {
              SET status = ?2, consumed_at = ?3
              WHERE challenge_id = ?1 AND status = ?4",
             params![
-                challenge_id.as_ref(),
+                AsRef::<str>::as_ref(&challenge_id),
                 CHALLENGE_STATUS_CONSUMED,
                 sqlite_i64(now, "passport verifier challenge consumed_at")?,
                 CHALLENGE_STATUS_ISSUED,

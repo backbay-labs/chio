@@ -290,6 +290,45 @@ enum Commands {
         #[command(subcommand)]
         command: ArenaCommands,
     },
+
+    /// Bind a provider under a signed model card (M10 P4).
+    ///
+    /// `arc bind <provider> --card <path>` loads the model card from
+    /// `<path>` (canonical-JSON encoded per spec/schemas/model-card.v1.json),
+    /// validates its structural shape, and prints the resolved
+    /// `weights_hash` and `allowed_capability_set` so an operator can sanity
+    /// check before promoting to production policy. The cosign bundle
+    /// verify path consumes `chio-attest-verify` when `--bundle` is
+    /// supplied; otherwise the helper prints the card fields without
+    /// attesting authenticity.
+    Bind {
+        /// Provider identifier to bind under the card. Free-form string
+        /// surfaced in the resolved-binding summary; not interpreted by
+        /// the helper.
+        provider: String,
+
+        /// Path to the canonical-JSON encoded model card.
+        #[arg(long, value_name = "PATH")]
+        card: PathBuf,
+
+        /// Optional path to the cosign bundle for the card. When supplied,
+        /// the helper verifies the bundle through
+        /// `chio_attest_verify::SigstoreVerifier::verify_bundle` (M09)
+        /// and refuses to print the binding summary on failure.
+        #[arg(long, value_name = "PATH")]
+        bundle: Option<PathBuf>,
+
+        /// Cosign certificate identity SAN regex required when `--bundle`
+        /// is supplied. Forwarded verbatim to
+        /// `chio_attest_verify::ExpectedIdentity::certificate_identity_regexp`.
+        #[arg(long, value_name = "REGEX")]
+        issuer_san_regex: Option<String>,
+
+        /// OIDC issuer expected on the cosign certificate. Required with
+        /// `--bundle`.
+        #[arg(long, value_name = "URL")]
+        issuer_oidc: Option<String>,
+    },
 }
 
 /// Sub-subcommands for `arc arena`.

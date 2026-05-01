@@ -16,6 +16,7 @@
 mod admin;
 mod cert;
 mod commands {
+    pub mod bind;
     pub mod guard_blocklist;
 }
 mod did;
