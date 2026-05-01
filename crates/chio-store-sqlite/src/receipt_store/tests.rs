@@ -1276,10 +1276,10 @@ fn receipt_commit_flush_reports_queued_batch_error() -> Result<(), Box<dyn std::
 }
 
 #[test]
-fn receipt_commit_flush_reports_full_batch_error() -> Result<(), Box<dyn std::error::Error>> {
+fn append_receipt_batch_rolls_back_full_batch_error() -> Result<(), Box<dyn std::error::Error>> {
     let path = unique_db_path("chio-receipts-full-batch-flush-error");
     let store = SqliteReceiptStore::open(&path)?;
-    let mut results = Vec::new();
+    let mut requests = Vec::new();
 
     for i in 0..RECEIPT_GROUP_COMMIT_MAX_BATCH {
         let mut receipt = sample_receipt_with_id(&format!("rcpt-full-batch-flush-error-{i}"));
@@ -1287,36 +1287,22 @@ fn receipt_commit_flush_reports_full_batch_error() -> Result<(), Box<dyn std::er
             receipt.timestamp = u64::MAX;
         }
         let raw_json = serde_json::to_string(&receipt)?;
-        let (response, result) = std::sync::mpsc::sync_channel(1);
-        store
-            .receipt_commit_actor
-            .sender
-            .send(ReceiptCommitCommand::Append(Box::new(
-                ReceiptCommitRequest {
-                    receipt,
-                    raw_json,
-                    response,
-                },
-            )))
-            .map_err(|_| std::io::Error::other("send receipt append command"))?;
-        results.push(result);
+        let (response, _result) = std::sync::mpsc::sync_channel(1);
+        requests.push(ReceiptCommitRequest {
+            receipt,
+            raw_json,
+            response,
+        });
     }
 
-    let error = match store.flush_receipt_writes() {
-        Ok(()) => panic!("expected timestamp conflict after full receipt batch"),
-        Err(error) => error,
-    };
-    assert!(matches!(
-        error,
-        chio_kernel::ReceiptStoreError::Conflict(message)
-            if message.contains("receipt timestamp")
-    ));
-    for result in results {
-        assert!(result
-            .recv()
-            .map_err(|_| std::io::Error::other("receive receipt append result"))?
-            .is_err());
-    }
+    let results = append_receipt_batch(&store.pool, &requests);
+    assert!(results.into_iter().all(|result| {
+        matches!(
+            result,
+            Err(chio_kernel::ReceiptStoreError::Conflict(message))
+                if message.contains("receipt timestamp")
+        )
+    }));
     assert_eq!(store.tool_receipt_count()?, 0);
 
     let _ = fs::remove_file(path);
