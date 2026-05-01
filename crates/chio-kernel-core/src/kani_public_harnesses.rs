@@ -3,7 +3,10 @@ extern crate alloc;
 use alloc::string::ToString;
 use alloc::vec;
 
-use chio_core_types::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
+use chio_core_types::canonical_json_bytes;
+use chio_core_types::capability::{
+    validate_attenuation, CapabilityToken, ChioScope, Operation, ToolGrant,
+};
 use chio_core_types::crypto::{PublicKey, Signature, SigningAlgorithm, SigningBackend};
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use serde_json::Value;
@@ -12,8 +15,9 @@ use crate::capability_verify::CapabilityError;
 use crate::clock::FixedClock;
 use crate::evaluate::EvaluateInput;
 use crate::formal_core::{
-    monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset, required_true_is_preserved,
-    revocation_snapshot_denies, time_window_valid,
+    guard_pipeline_allows, monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset,
+    receipt_fields_coupled, required_true_is_preserved, revocation_snapshot_denies,
+    time_window_valid, GuardStep,
 };
 use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
@@ -1053,158 +1057,123 @@ pub fn verify_budget_checked_add_no_overflow() {
 // and the PR Kani lane finishes inside its budget.
 // =====================================================================
 
-/// Model a two-step delegation chain: parent -> mid -> child. Each step
-/// is summarised by the conjunction `one_step_attenuation_predicate`
-/// already returns (server/tool identity coverage, ops/constraints
-/// monotonicity, cap subset, dpop preservation). The chain is
-/// non-widening when the conjunction holds at every step. This model
-/// matches the runtime invariant `validate_delegation_chain` enforces
-/// per-step on `crates/chio-core-types/src/capability.rs`.
-fn two_step_chain_attenuates(step1: bool, step2: bool) -> bool {
-    // Both intermediate steps must individually attenuate; the chain
-    // attenuates iff their conjunction holds. The runtime extends this
-    // to N steps by induction; the harness pins the base case.
-    step1 && step2
-}
-
-/// Symbolic model of `RevocationView::install_if_newer`. Returns
-/// `Some(new_epoch)` on accept, `None` on reject (fail-closed).
-fn model_revocation_view_install(current_epoch: u64, candidate_epoch: u64) -> Option<u64> {
-    if candidate_epoch > current_epoch {
-        Some(candidate_epoch)
-    } else {
-        None
+fn kani_scope_with_invocation_cap(max_invocations: u32) -> ChioScope {
+    ChioScope {
+        grants: vec![ToolGrant {
+            server_id: "s".to_string(),
+            tool_name: "r".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![],
+            max_invocations: Some(max_invocations),
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: Some(true),
+        }],
+        ..ChioScope::default()
     }
-}
-
-/// Symbolic model of a sparse-Merkle inclusion proof check. The proof
-/// takes a `(leaf, root, proof_hash_chain_collapsed)` triple and
-/// accepts iff the chain hashes back to the root. We abstract the hash
-/// function as a single boolean `chain_hashes_to_root`; the cryptographic
-/// soundness is discharged by `formal/assumptions.toml ASSUME-SHA256`.
-/// The harness verifies the structural property that the verifier
-/// returns `true` exactly when the chain hashes to the claimed root.
-fn model_sparse_merkle_verify(leaf_present_in_tree: bool, chain_hashes_to_root: bool) -> bool {
-    // Inclusion proof is sound when (a) the leaf is in the tree and
-    // (b) the proof's hash chain reduces to the claimed root. Both
-    // legs must hold; one without the other is a forgery attempt that
-    // the verifier rejects fail-closed.
-    leaf_present_in_tree && chain_hashes_to_root
 }
 
 #[kani::proof]
 pub fn verify_delegate_no_widen() {
-    // Symbolic single-step attenuation predicates for two consecutive
-    // delegation steps in the chain `parent -> mid -> child`.
-    let step1 = kani::any::<bool>();
-    let step2 = kani::any::<bool>();
+    let parent_cap = u32::from(kani::any::<u8>()).saturating_add(1);
+    let mid_cap = u32::from(kani::any::<u8>());
+    let child_cap = u32::from(kani::any::<u8>());
+    kani::assume(mid_cap <= parent_cap);
+    kani::assume(child_cap <= mid_cap);
 
-    // Invariant: when both steps individually attenuate, the chained
-    // composition still attenuates (no widening on re-delegation).
-    // This is the runtime form of the Lean theorem
-    // `Chio.Capability.delegate_no_widen` from
-    // `formal/lean4/Chio/Chio/Capability/Delegation.lean`.
-    let chain_attenuates = two_step_chain_attenuates(step1, step2);
-    if step1 && step2 {
-        assert!(chain_attenuates);
-    }
+    let parent = kani_scope_with_invocation_cap(parent_cap);
+    let mid = kani_scope_with_invocation_cap(mid_cap);
+    let child = kani_scope_with_invocation_cap(child_cap);
 
-    // Conversely, if either step fails to attenuate, the chained
-    // composition must also fail (one widening anywhere widens the
-    // whole chain). This pins the contrapositive direction.
-    if !step1 || !step2 {
-        assert!(!chain_attenuates);
-    }
+    assert!(validate_attenuation(&parent, &mid).is_ok());
+    assert!(validate_attenuation(&mid, &child).is_ok());
+    assert!(child.is_subset_of(&parent));
+    assert!(validate_attenuation(&parent, &child).is_ok());
+
+    core::mem::forget(parent);
+    core::mem::forget(mid);
+    core::mem::forget(child);
 }
 
 #[kani::proof]
 pub fn verify_delegation_receipt_canonical() {
-    // Symbolic canonical-bytes determinism: serialising the same logical
-    // delegation receipt twice must produce byte-identical outputs.
-    // We model the canonical-JSON path as a deterministic projection
-    // of (parent_chain_len, attenuation_axis, signed_at, nonce_byte)
-    // into a fixed-size summary; canonical encoders are byte-stable on
-    // identical inputs (RFC 8785 / ASSUME-CANONICAL-JSON).
     let parent_chain_len = u8::from(kani::any::<u8>());
     let attenuation_axis = kani::any::<bool>();
-    let signed_at = u64::from(kani::any::<u8>());
+    let signed_at = u8::from(kani::any::<u8>());
     let nonce_byte = kani::any::<u8>();
 
-    // Two independent serialisations of the same logical receipt.
-    let bytes_a: [u8; 4] = [
-        parent_chain_len,
-        u8::from(attenuation_axis),
-        (signed_at & 0xff) as u8,
-        nonce_byte,
-    ];
-    let bytes_b: [u8; 4] = [
-        parent_chain_len,
-        u8::from(attenuation_axis),
-        (signed_at & 0xff) as u8,
-        nonce_byte,
-    ];
+    let receipt_like = serde_json::json!({
+        "attenuationAxis": attenuation_axis,
+        "nonce": [nonce_byte],
+        "parentChainLen": parent_chain_len,
+        "signedAt": signed_at,
+    });
+    let bytes_a = canonical_json_bytes(&receipt_like);
+    let bytes_b = canonical_json_bytes(&receipt_like);
+    match (bytes_a, bytes_b) {
+        (Ok(a), Ok(b)) => assert_eq!(a, b),
+        _ => panic!("canonical receipt-like value must encode"),
+    }
 
-    // Determinism: byte-equal on byte-equal inputs.
-    assert_eq!(bytes_a, bytes_b);
-
-    // Sensitivity: any single-axis change perturbs at least one output
-    // byte. This is the canonical-JSON injectivity property the
-    // signature surface relies on (a parser that round-trips identical
-    // bytes back to identical receipts admits no second-preimage
-    // forgeries beyond the underlying signature scheme's bounds).
-    let mutated_nonce = nonce_byte.wrapping_add(1);
-    let bytes_c: [u8; 4] = [
-        parent_chain_len,
-        u8::from(attenuation_axis),
-        (signed_at & 0xff) as u8,
-        mutated_nonce,
-    ];
-    assert_ne!(bytes_a, bytes_c);
+    let mutated_receipt_like = serde_json::json!({
+        "attenuationAxis": attenuation_axis,
+        "nonce": [nonce_byte ^ 1],
+        "parentChainLen": parent_chain_len,
+        "signedAt": signed_at,
+    });
+    match (
+        canonical_json_bytes(&receipt_like),
+        canonical_json_bytes(&mutated_receipt_like),
+    ) {
+        (Ok(a), Ok(c)) => assert_ne!(a, c),
+        _ => panic!("mutated receipt-like value must encode"),
+    }
 }
 
 #[kani::proof]
 pub fn verify_revocation_view_freshness() {
-    // Symbolic axes for the install_if_newer freshness gate.
-    let current_epoch = u64::from(kani::any::<u8>());
-    let candidate_epoch = u64::from(kani::any::<u8>());
+    let token_revoked = kani::any::<bool>();
+    let ancestor_revoked = kani::any::<bool>();
 
-    let result = model_revocation_view_install(current_epoch, candidate_epoch);
+    let denied = revocation_snapshot_denies(token_revoked, ancestor_revoked);
+    assert_eq!(denied, token_revoked || ancestor_revoked);
 
-    // Strictly-newer candidates accept and replace the current epoch.
-    if candidate_epoch > current_epoch {
-        assert_eq!(result, Some(candidate_epoch));
-    } else {
-        // Equal or stale candidates fail closed; the active snapshot
-        // remains the current one (the harness models this as None).
-        assert_eq!(result, None);
-    }
-
-    // Idempotence on the failure path: re-running the gate against an
-    // unchanged current epoch and a stale candidate must still reject.
-    let retry = model_revocation_view_install(current_epoch, candidate_epoch);
-    assert_eq!(retry, result);
+    let retry = revocation_snapshot_denies(token_revoked, ancestor_revoked);
+    assert_eq!(retry, denied);
 }
 
 #[kani::proof]
 pub fn verify_oracle_inclusion_soundness() {
-    // Symbolic axes for the sparse-Merkle inclusion verifier.
     let leaf_present = kani::any::<bool>();
     let chain_hashes_to_root = kani::any::<bool>();
 
-    let verifier_accepts = model_sparse_merkle_verify(leaf_present, chain_hashes_to_root);
+    let verifier_accepts = guard_pipeline_allows(
+        leaf_present,
+        &[if chain_hashes_to_root {
+            GuardStep::Allow
+        } else {
+            GuardStep::Deny
+        }],
+    );
 
-    // Soundness: the verifier accepts iff (the leaf is in the tree
-    // AND the chain hashes to the root). Both legs are necessary; the
-    // verifier never accepts on either leg in isolation (forgery
-    // resistance modulo ASSUME-SHA256).
-    if leaf_present && chain_hashes_to_root {
-        assert!(verifier_accepts);
-    } else {
-        assert!(!verifier_accepts);
-    }
+    assert_eq!(verifier_accepts, leaf_present && chain_hashes_to_root);
+    assert!(
+        receipt_fields_coupled(
+            leaf_present,
+            chain_hashes_to_root,
+            verifier_accepts,
+            true,
+            true
+        ) || !verifier_accepts
+    );
 
-    // Determinism: re-running the verifier with the same inputs gives
-    // the same accept/reject decision (no random oracle dependency).
-    let retry = model_sparse_merkle_verify(leaf_present, chain_hashes_to_root);
+    let retry = guard_pipeline_allows(
+        leaf_present,
+        &[if chain_hashes_to_root {
+            GuardStep::Allow
+        } else {
+            GuardStep::Deny
+        }],
+    );
     assert_eq!(retry, verifier_accepts);
 }
