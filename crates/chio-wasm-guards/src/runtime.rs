@@ -644,7 +644,7 @@ pub mod wasmtime_backend {
     use crate::host::MAX_MEMORY_BYTES;
 
     /// Default maximum module size in bytes (10 MiB).
-    const DEFAULT_MAX_MODULE_SIZE: usize = 10 * 1024 * 1024;
+    pub const DEFAULT_MAX_MODULE_SIZE: usize = 10 * 1024 * 1024;
     const DEFAULT_TENANT_WARM_INSTANCE_CAPACITY: usize = 4;
     const DEFAULT_TENANT_WARM_RING_LIMIT: usize = MAX_GUARD_METRIC_CARDINALITY;
 

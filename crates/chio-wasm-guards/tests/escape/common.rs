@@ -50,6 +50,13 @@ pub fn load_frozen_config() -> FrozenConfig {
         "max_memory_bytes drifted from chio_wasm_guards::host::MAX_MEMORY_BYTES; \
          update tests/escape/config.frozen.toml under CODEOWNERS review"
     );
+    assert_eq!(
+        cfg.max_module_size,
+        chio_wasm_guards::runtime::wasmtime_backend::DEFAULT_MAX_MODULE_SIZE,
+        "max_module_size drifted from \
+         chio_wasm_guards::runtime::wasmtime_backend::DEFAULT_MAX_MODULE_SIZE; \
+         update tests/escape/config.frozen.toml under CODEOWNERS review"
+    );
 
     cfg
 }
