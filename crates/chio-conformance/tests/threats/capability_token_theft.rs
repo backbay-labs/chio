@@ -1,7 +1,7 @@
 // M05.P5.T3 test body for threat ID `capability_token_theft`.
 //
 // The codegen pass (M05.P5.T2) will refuse to overwrite this file
-// because the body no longer contains `unimplemented!()`; re-running
+// because the body has been populated; re-running
 // `chio-spec-codegen --threat-model` is safe.
 //
 // Threat: capability_token_theft (Capability token theft).

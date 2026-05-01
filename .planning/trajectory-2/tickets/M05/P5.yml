@@ -64,7 +64,7 @@
   milestone: M05
   phase: 5
   title: Implement test bodies for the six initial threat IDs citing M05 corpus and escape classes
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-conformance/tests/threats/capability_token_theft.rs
@@ -89,7 +89,7 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 4b3d3cd79bbd4d0d517e53748ef4ac5ca72ab758
   merged_sha: null
   opened_ts: null
   merged_ts: null
