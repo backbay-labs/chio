@@ -167,6 +167,7 @@ fn receipt_commit_actor_loop(
     pool: Pool<SqliteConnectionManager>,
     receiver: mpsc::Receiver<ReceiptCommitCommand>,
 ) {
+    let mut pending_flush_error: Option<ReceiptStoreError> = None;
     while let Ok(command) = receiver.recv() {
         match command {
             ReceiptCommitCommand::Append(request) => {
@@ -183,10 +184,14 @@ fn receipt_commit_actor_loop(
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     }
                 }
-                commit_receipt_batch(&pool, requests, flushes);
+                pending_flush_error = commit_receipt_batch(&pool, requests, flushes);
             }
             ReceiptCommitCommand::Flush(response) => {
-                let _ = response.send(Ok(()));
+                let result = match &pending_flush_error {
+                    Some(error) => Err(receipt_store_error_snapshot(error)),
+                    None => Ok(()),
+                };
+                let _ = response.send(result);
             }
         }
     }
@@ -196,7 +201,7 @@ fn commit_receipt_batch(
     pool: &Pool<SqliteConnectionManager>,
     requests: Vec<ReceiptCommitRequest>,
     flushes: Vec<mpsc::SyncSender<Result<(), ReceiptStoreError>>>,
-) {
+) -> Option<ReceiptStoreError> {
     let results = append_receipt_batch(pool, &requests);
     let flush_error = results
         .iter()
@@ -211,6 +216,7 @@ fn commit_receipt_batch(
         };
         let _ = response.send(result);
     }
+    flush_error
 }
 
 fn append_receipt_batch(
