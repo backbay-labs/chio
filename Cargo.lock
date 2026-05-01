@@ -3189,6 +3189,7 @@ dependencies = [
  "chio-store-sqlite",
  "chio-tool-call-fabric",
  "chio-underwriting",
+ "chio-weights",
  "chrono",
  "criterion",
  "dashmap 6.1.0",
