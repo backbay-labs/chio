@@ -32,5 +32,6 @@ pub use ingress::{
 #[cfg(not(loom))]
 pub use sink::{
     CanonicalChioReceipt, CanonicalReceiptSink, OTelReceiptExportError, ReceiptStoreSink,
-    ReceiptStoreSinkConfig, ReceiptStoreSinkSummary,
+    ReceiptStoreSinkConfig, ReceiptStoreSinkSummary, RECEIPT_EXPORT_MAX_ESTIMATED_BYTES,
+    RECEIPT_EXPORT_MAX_RESOURCE_SPANS, RECEIPT_EXPORT_MAX_SPANS,
 };

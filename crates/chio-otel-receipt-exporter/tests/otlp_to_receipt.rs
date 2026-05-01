@@ -9,7 +9,8 @@ use chio_kernel::otel::{
 };
 use chio_kernel::receipt_store::{ReceiptStore, ReceiptStoreError};
 use chio_otel_receipt_exporter::{
-    OtlpGrpcIngress, OtlpGrpcTraceExport, OtlpSpan, ReceiptStoreSink, ReceiptStoreSinkConfig,
+    OTelReceiptExportError, OtlpGrpcIngress, OtlpGrpcTraceExport, OtlpSpan, ReceiptStoreSink,
+    ReceiptStoreSinkConfig, RECEIPT_EXPORT_MAX_SPANS,
 };
 
 #[derive(Default)]
@@ -169,6 +170,35 @@ fn invalid_span_prevents_partial_batch_append() -> Result<(), Box<dyn Error>> {
 
     assert!(
         error.to_string().contains("trace_id"),
+        "unexpected error: {error}"
+    );
+    assert!(store.receipts()?.is_empty());
+
+    Ok(())
+}
+
+#[test]
+fn export_traces_rejects_span_count_over_cap_before_processing() -> Result<(), Box<dyn Error>> {
+    let store = Arc::new(MemoryReceiptStore::default());
+    let sink = ReceiptStoreSink::new(
+        store.clone(),
+        ReceiptStoreSinkConfig::new(Keypair::generate()),
+    );
+    let invalid = OtlpSpan::new("not-a-trace-id", "0123456789abcdef", "gen_ai.tool.call")
+        .with_attribute("chio.verdict", serde_json::json!("allow"));
+    let over_cap_span_count = RECEIPT_EXPORT_MAX_SPANS + 1;
+
+    let error = match sink.export_traces(&OtlpGrpcTraceExport::from_spans(vec![
+        invalid;
+        over_cap_span_count
+    ])) {
+        Ok(_) => return Err(std::io::Error::other("oversized batch was accepted").into()),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, OTelReceiptExportError::Queue(_)));
+    assert!(
+        error.to_string().contains("span count"),
         "unexpected error: {error}"
     );
     assert!(store.receipts()?.is_empty());
