@@ -80,6 +80,12 @@ pub fn verify_model_card_bundle<V: AttestVerifier + ?Sized>(
         .map_err(|err| WeightsError::BundleRejected(format!("{err}")))?;
 
     let card = ModelCard::from_canonical_json(card_bytes)?;
+    if card.issuer != attestation.certificate_identity {
+        return Err(WeightsError::BundleRejected(format!(
+            "model card issuer {:?} does not match verified certificate identity {:?}",
+            card.issuer, attestation.certificate_identity
+        )));
+    }
     card.require_live(now)?;
 
     Ok(VerifiedModelCard { card, attestation })
@@ -187,14 +193,14 @@ mod tests {
         }
     }
 
-    fn good_card_bytes() -> Vec<u8> {
+    fn card_bytes_with_issuer(issuer: &str) -> Vec<u8> {
         let now = fixed_now();
         let card = match ModelCard::new(
             "0000000000000000000000000000000000000000000000000000000000000001",
             StringSet::new(["tool:read"]),
             StringSet::default(),
             "public-internet",
-            "https://example.com/issuer",
+            issuer,
             now,
             now + chrono::Duration::days(30),
         ) {
@@ -205,6 +211,10 @@ mod tests {
             Ok(b) => b,
             Err(e) => panic!("canonical-json encode must succeed: {e}"),
         }
+    }
+
+    fn good_card_bytes() -> Vec<u8> {
+        card_bytes_with_issuer("https://example.com/issuer")
     }
 
     fn ok_outcome() -> Outcome {
@@ -294,6 +304,20 @@ mod tests {
         let later = fixed_now() + chrono::Duration::days(365);
         let res = verify_model_card_bundle(&verifier, &bytes, bundle, &expected, later);
         assert!(matches!(res, Err(WeightsError::Expired { .. })));
+    }
+
+    #[test]
+    fn verify_rejects_card_issuer_mismatch() {
+        let verifier = FakeVerifier::default();
+        if let Ok(mut slot) = verifier.outcome.lock() {
+            *slot = ok_outcome();
+        }
+        let bytes = card_bytes_with_issuer("https://example.com/other-issuer");
+        let bundle = b"{\"fake-bundle\":true}";
+        let expected = expected_identity();
+
+        let res = verify_model_card_bundle(&verifier, &bytes, bundle, &expected, fixed_now());
+        assert!(matches!(res, Err(WeightsError::BundleRejected(_))));
     }
 
     #[test]
