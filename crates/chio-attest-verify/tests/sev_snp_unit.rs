@@ -97,8 +97,25 @@ fn sign_report(key_select: u8, message: &[u8]) -> Vec<u8> {
     signature.to_vec()
 }
 
+fn sign_report_amd_wire(key_select: u8, message: &[u8]) -> Vec<u8> {
+    let raw = sign_report(key_select, message);
+    let mut signature = vec![0u8; 512];
+    for index in 0..48 {
+        signature[index] = raw[47 - index];
+        signature[72 + index] = raw[95 - index];
+    }
+    signature
+}
+
 fn build_envelope(opts: EnvelopeOpts) -> Vec<u8> {
-    let signature_len = 96usize;
+    build_envelope_with_signature(opts, 96, sign_report)
+}
+
+fn build_envelope_with_signature(
+    opts: EnvelopeOpts,
+    signature_len: usize,
+    sign: impl FnOnce(u8, &[u8]) -> Vec<u8>,
+) -> Vec<u8> {
     let mut quote = vec![0u8; SEV_SNP_SIGNATURE_BYTES_OFFSET + signature_len];
     quote[SEV_SNP_VERSION_OFFSET..SEV_SNP_VERSION_OFFSET + 4]
         .copy_from_slice(&opts.version.to_le_bytes());
@@ -114,7 +131,8 @@ fn build_envelope(opts: EnvelopeOpts) -> Vec<u8> {
         .copy_from_slice(&opts.report_data);
     quote[SEV_SNP_SIGNATURE_LEN_OFFSET..SEV_SNP_SIGNATURE_LEN_OFFSET + 4]
         .copy_from_slice(&(signature_len as u32).to_le_bytes());
-    let signature = sign_report(opts.key_select, &quote[..SEV_SNP_HEADER_AND_BODY_LEN]);
+    let signature = sign(opts.key_select, &quote[..SEV_SNP_HEADER_AND_BODY_LEN]);
+    assert_eq!(signature.len(), signature_len);
     quote[SEV_SNP_SIGNATURE_BYTES_OFFSET..SEV_SNP_SIGNATURE_BYTES_OFFSET + signature_len]
         .copy_from_slice(&signature);
     quote
@@ -174,6 +192,29 @@ fn sev_snp_verifier_accepts_bound_vlek_quote() -> Result<(), String> {
     let (kernel, receipt_root) = kernel_and_root();
     let bound = expect_report_data(&kernel, &receipt_root);
     let envelope = build_envelope(EnvelopeOpts::vlek_bound(bound, PINNED_LAUNCH_DIGEST));
+    let v = verifier(now());
+
+    let verified = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .map_err(|error| format!("{error}"))?;
+
+    assert_eq!(verified.tee_kind, TeeKind::AmdSevSnp);
+    assert_eq!(verified.report_data, bound);
+    Ok(())
+}
+
+#[test]
+fn sev_snp_verifier_accepts_amd_wire_encoded_signature() -> Result<(), String> {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let envelope = build_envelope_with_signature(
+        EnvelopeOpts::vcek_bound(bound, PINNED_LAUNCH_DIGEST),
+        512,
+        sign_report_amd_wire,
+    );
     let v = verifier(now());
 
     let verified = v
@@ -452,6 +493,31 @@ fn sev_snp_verifier_rejects_signature_mismatch() {
 }
 
 #[test]
+fn sev_snp_verifier_rejects_nonzero_amd_wire_signature_reserved_bytes() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let bound = expect_report_data(&kernel, &receipt_root);
+    let mut envelope = build_envelope_with_signature(
+        EnvelopeOpts::vcek_bound(bound, PINNED_LAUNCH_DIGEST),
+        512,
+        sign_report_amd_wire,
+    );
+    match envelope.last_mut() {
+        Some(last) => *last = 0x01,
+        None => panic!("fixture envelope must carry reserved signature bytes"),
+    }
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::SignatureMismatch)));
+}
+
+#[test]
 fn sev_snp_verifier_rejects_signature_length_mismatch() {
     let (kernel, receipt_root) = kernel_and_root();
     let bound = expect_report_data(&kernel, &receipt_root);
@@ -459,6 +525,36 @@ fn sev_snp_verifier_rejects_signature_length_mismatch() {
     // Declare a longer signature than is actually present in the buffer.
     envelope[SEV_SNP_SIGNATURE_LEN_OFFSET..SEV_SNP_SIGNATURE_LEN_OFFSET + 4]
         .copy_from_slice(&64u32.to_le_bytes());
+    let v = verifier(now());
+
+    let error = v
+        .verify_quote(
+            &envelope,
+            &QuoteVerificationContext::new(&kernel, &receipt_root),
+        )
+        .err();
+
+    assert!(matches!(error, Some(AttestError::Malformed(_))));
+}
+
+#[test]
+fn sev_snp_verifier_rejects_oversized_signature_blob() {
+    let (kernel, receipt_root) = kernel_and_root();
+    let oversized_len = 4096 + 1;
+    let mut envelope = vec![0u8; SEV_SNP_SIGNATURE_BYTES_OFFSET + oversized_len];
+    envelope[SEV_SNP_VERSION_OFFSET..SEV_SNP_VERSION_OFFSET + 4]
+        .copy_from_slice(&SEV_SNP_REPORT_VERSION.to_le_bytes());
+    envelope[SEV_SNP_SIG_ALGO_OFFSET..SEV_SNP_SIG_ALGO_OFFSET + 4]
+        .copy_from_slice(&SIG_ALGO_ECDSA_P384_VCEK.to_le_bytes());
+    envelope[SEV_SNP_KEY_SELECT_OFFSET] = KEY_SELECT_VCEK;
+    envelope[SEV_SNP_REPORTED_TCB_OFFSET..SEV_SNP_REPORTED_TCB_OFFSET + 4]
+        .copy_from_slice(&0x1234_5678u32.to_le_bytes());
+    envelope[SEV_SNP_MEASUREMENT_OFFSET..SEV_SNP_MEASUREMENT_OFFSET + 48]
+        .copy_from_slice(&PINNED_LAUNCH_DIGEST);
+    envelope[SEV_SNP_REPORT_DATA_OFFSET..SEV_SNP_REPORT_DATA_OFFSET + 64]
+        .copy_from_slice(&expect_report_data(&kernel, &receipt_root));
+    envelope[SEV_SNP_SIGNATURE_LEN_OFFSET..SEV_SNP_SIGNATURE_LEN_OFFSET + 4]
+        .copy_from_slice(&(oversized_len as u32).to_le_bytes());
     let v = verifier(now());
 
     let error = v

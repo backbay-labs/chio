@@ -24,9 +24,13 @@ inductive Decision where
   | deny (reason : String)
   deriving Repr, BEq
 
-/-- Axiomatized signature verification.
-    In practice, this calls ed25519_verify. -/
-axiom verifyCapabilitySignature : CapabilityToken → List PublicKeyHex → Bool
+/-- Abstract signature verification model.
+    The Rust implementation verifies the capability signature bytes before
+    treating the issuer as authenticated; the Lean model has no signature
+    field, so trusted issuer membership is the concrete, total predicate
+    exposed to the proofs. -/
+def verifyCapabilitySignature (cap : CapabilityToken) (trustedKeys : List PublicKeyHex) : Bool :=
+  trustedKeys.any (fun key => key == cap.issuer)
 
 /-- Check time bounds: issued_at <= now < expires_at. -/
 def checkTimeBounds (cap : CapabilityToken) (now : Timestamp) : Except String Unit :=

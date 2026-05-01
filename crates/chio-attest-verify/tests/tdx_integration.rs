@@ -35,11 +35,15 @@ use chio_attest_verify::{
     TeeKind,
 };
 use chio_core_types::crypto::Keypair;
+use p256::ecdsa::{SigningKey as P256SigningKey, VerifyingKey as P256VerifyingKey};
+use p384::ecdsa::{SigningKey as P384SigningKey, VerifyingKey as P384VerifyingKey};
 use sha2::{Digest, Sha256};
 
 const FIXTURES_DIR: &str = "fixtures/quotes/tdx";
 const KERNEL_SEED: [u8; 32] = [9u8; 32];
 const RECEIPT_ROOT: [u8; 32] = [8u8; 32];
+const P256_ATTESTATION_KEY_SEED: [u8; 32] = [0x25; 32];
+const P384_ATTESTATION_KEY_SEED: [u8; 48] = [0x38; 48];
 
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(FIXTURES_DIR)
@@ -50,17 +54,34 @@ fn manifest_text() -> String {
         .expect("MANIFEST.toml must exist; run the generate_tdx_fixtures example to regenerate")
 }
 
-fn collateral_at(now: SystemTime) -> TdxCollateral {
+fn collateral_at(now: SystemTime, role_tag: &str) -> TdxCollateral {
     let root = b"intel-root-ca-fixture".to_vec();
+    let leaf = if role_tag.contains("p384") {
+        p384_attestation_public_key()
+    } else {
+        p256_attestation_public_key()
+    };
     TdxCollateral::new(
         root.clone(),
-        vec![b"pck-leaf-fixture".to_vec(), root.clone()],
+        vec![leaf, root.clone()],
         vec![b"tcb-info-signing-fixture".to_vec(), root],
         7,
         QuoteTcbStatus::UpToDate,
         now - Duration::from_secs(60),
         now + Duration::from_secs(60),
     )
+}
+
+fn p256_attestation_public_key() -> Vec<u8> {
+    let signing_key = P256SigningKey::from_bytes((&P256_ATTESTATION_KEY_SEED).into()).unwrap();
+    let verifying_key = P256VerifyingKey::from(&signing_key);
+    verifying_key.to_encoded_point(false).as_bytes().to_vec()
+}
+
+fn p384_attestation_public_key() -> Vec<u8> {
+    let signing_key = P384SigningKey::from_bytes((&P384_ATTESTATION_KEY_SEED).into()).unwrap();
+    let verifying_key = P384VerifyingKey::from(&signing_key);
+    verifying_key.to_encoded_point(false).as_bytes().to_vec()
 }
 
 fn parse_fixture_entries(manifest: &str) -> Vec<ManifestEntry> {
@@ -140,13 +161,14 @@ fn positive_fixtures_verify_with_kernel_pk_and_receipt_root() {
     let kernel = Keypair::from_seed(&KERNEL_SEED).public_key();
     let receipt_root = RECEIPT_ROOT;
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-    let verifier = TdxDcapVerifier::with_verification_time(collateral_at(now), 7, now);
     let expected = expect_report_data(&kernel, &receipt_root);
 
     let positives: Vec<&ManifestEntry> = entries.iter().filter(|e| e.role == "positive").collect();
     assert!(positives.len() >= 4, "need >=4 positive fixtures");
 
     for entry in positives {
+        let verifier =
+            TdxDcapVerifier::with_verification_time(collateral_at(now, &entry.role_tag), 7, now);
         let bytes = fs::read(fixtures_root().join(&entry.path)).unwrap();
         let verified = verifier
             .verify_quote(
@@ -176,12 +198,13 @@ fn negative_fixtures_reject_with_expected_reason() {
     let kernel = Keypair::from_seed(&KERNEL_SEED).public_key();
     let receipt_root = RECEIPT_ROOT;
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-    let verifier = TdxDcapVerifier::with_verification_time(collateral_at(now), 7, now);
 
     let negatives: Vec<&ManifestEntry> = entries.iter().filter(|e| e.role == "negative").collect();
-    assert!(negatives.len() >= 4, "need >=4 negative fixtures");
+    assert!(negatives.len() >= 5, "need >=5 negative fixtures");
 
     for entry in negatives {
+        let verifier =
+            TdxDcapVerifier::with_verification_time(collateral_at(now, &entry.role_tag), 7, now);
         let bytes = fs::read(fixtures_root().join(&entry.path)).unwrap();
         let result = verifier.verify_quote(
             &bytes,
@@ -199,6 +222,7 @@ fn negative_fixtures_reject_with_expected_reason() {
             ("intel-tdx-upper-half-tamper", AttestError::ReportDataMismatch) => {}
             ("intel-tdx-non-intel-vendor", AttestError::Malformed(_)) => {}
             ("intel-tdx-att-key-type-epid", AttestError::Malformed(_)) => {}
+            ("intel-tdx-signature-mismatch", AttestError::SignatureMismatch) => {}
             (tag, err) => {
                 panic!("negative fixture tag {tag} rejected with unexpected error {err:?}")
             }
@@ -215,7 +239,7 @@ fn integration_binds_kernel_pk_and_receipt_root_into_report_data() {
     let kernel = Keypair::from_seed(&KERNEL_SEED).public_key();
     let receipt_root = RECEIPT_ROOT;
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-    let verifier = TdxDcapVerifier::with_verification_time(collateral_at(now), 7, now);
+    let verifier = TdxDcapVerifier::with_verification_time(collateral_at(now, "p256"), 7, now);
     let bytes = fs::read(fixtures_root().join("positive/kernel_seed_09_root_08.bin")).unwrap();
 
     let verified = verifier
@@ -238,7 +262,7 @@ fn integration_rejects_when_kernel_pk_does_not_match_fixture_binding() {
     let wrong_kernel = Keypair::from_seed(&[0xFE; 32]).public_key();
     let receipt_root = RECEIPT_ROOT;
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-    let verifier = TdxDcapVerifier::with_verification_time(collateral_at(now), 7, now);
+    let verifier = TdxDcapVerifier::with_verification_time(collateral_at(now, "p256"), 7, now);
     let bytes = fs::read(fixtures_root().join("positive/kernel_seed_09_root_08.bin")).unwrap();
 
     let error = verifier
@@ -256,7 +280,7 @@ fn integration_rejects_when_receipt_root_does_not_match_fixture_binding() {
     let kernel = Keypair::from_seed(&KERNEL_SEED).public_key();
     let wrong_root = [0xFE; 32];
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-    let verifier = TdxDcapVerifier::with_verification_time(collateral_at(now), 7, now);
+    let verifier = TdxDcapVerifier::with_verification_time(collateral_at(now, "p256"), 7, now);
     let bytes = fs::read(fixtures_root().join("positive/kernel_seed_09_root_08.bin")).unwrap();
 
     let error = verifier

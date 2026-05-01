@@ -71,6 +71,7 @@ pub const SEV_SNP_MEASUREMENT_OFFSET: usize = 0x90;
 pub const SEV_SNP_REPORT_DATA_OFFSET: usize = 0xC0;
 const SEV_SNP_SIGNATURE_LEN_OFFSET: usize = SEV_SNP_HEADER_AND_BODY_LEN - 4;
 const SEV_SNP_SIGNATURE_BYTES_OFFSET: usize = SEV_SNP_HEADER_AND_BODY_LEN;
+const SEV_SNP_SIGNATURE_MAX_LEN: usize = 4096;
 
 /// AMD-documented sig_algo values for SEV-SNP attestation reports.
 /// 0x01 (ECDSA-P384-SHA384 with VCEK) and 0x02 (ECDSA-P384-SHA384
@@ -365,6 +366,11 @@ impl ParsedSevSnpQuote {
         if signature_len == 0 {
             return Err(AttestError::Malformed(
                 "sev-snp signature blob is empty".to_string(),
+            ));
+        }
+        if signature_len > SEV_SNP_SIGNATURE_MAX_LEN {
+            return Err(AttestError::Malformed(
+                "sev-snp signature blob exceeds maximum length".to_string(),
             ));
         }
         let expected_len = SEV_SNP_SIGNATURE_BYTES_OFFSET

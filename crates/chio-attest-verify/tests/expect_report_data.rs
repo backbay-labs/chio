@@ -109,6 +109,9 @@ fn tdx_verifier_rejects_when_only_upper_half_of_report_data_is_tampered() -> Res
     use chio_attest_verify::{
         AttestError, QuoteTcbStatus, QuoteVerificationContext, QuoteVerifier,
     };
+    use p256::ecdsa::{
+        signature::Signer as _, Signature as P256Signature, SigningKey, VerifyingKey,
+    };
     use std::time::{Duration, SystemTime};
 
     const QUOTE_HEADER_LEN: usize = 48;
@@ -121,6 +124,7 @@ fn tdx_verifier_rejects_when_only_upper_half_of_report_data_is_tampered() -> Res
         0x93, 0x9a, 0x72, 0x33, 0xf7, 0x9c, 0x4c, 0xa9, 0x94, 0x0a, 0x0d, 0xb3, 0x95, 0x7f, 0x06,
         0x07,
     ];
+    const P256_ATTESTATION_KEY_SEED: [u8; 32] = [0x25; 32];
 
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
     let kernel = Keypair::from_seed(&[0x42; 32]).public_key();
@@ -132,7 +136,7 @@ fn tdx_verifier_rejects_when_only_upper_half_of_report_data_is_tampered() -> Res
     report_data[40] = 0x01;
 
     // Build a minimal TDX v4 quote that embeds the tampered report_data.
-    let signature_len = 1usize;
+    let signature_len = 64usize;
     let mut quote = vec![0u8; SIGNATURE_BYTES_OFFSET + signature_len];
     quote[0..2].copy_from_slice(&4u16.to_le_bytes());
     quote[2..4].copy_from_slice(&2u16.to_le_bytes());
@@ -141,12 +145,20 @@ fn tdx_verifier_rejects_when_only_upper_half_of_report_data_is_tampered() -> Res
     quote[TD10_REPORT_DATA_OFFSET..TD10_REPORT_DATA_OFFSET + 64].copy_from_slice(&report_data);
     quote[SIGNATURE_LEN_OFFSET..SIGNATURE_LEN_OFFSET + 4]
         .copy_from_slice(&(signature_len as u32).to_le_bytes());
-    quote[SIGNATURE_BYTES_OFFSET] = 0xA5;
+    let signing_key = SigningKey::from_bytes((&P256_ATTESTATION_KEY_SEED).into())
+        .map_err(|_| "fixture P-256 signing key seed is invalid")?;
+    let signature: P256Signature = signing_key.sign(&quote[..SIGNATURE_LEN_OFFSET]);
+    quote[SIGNATURE_BYTES_OFFSET..SIGNATURE_BYTES_OFFSET + signature_len]
+        .copy_from_slice(&signature.to_vec());
 
     let root = b"intel-root-ca-fixture".to_vec();
+    let verifying_key = VerifyingKey::from(&signing_key);
     let collateral = TdxCollateral::new(
         root.clone(),
-        vec![b"pck-leaf-fixture".to_vec(), root.clone()],
+        vec![
+            verifying_key.to_encoded_point(false).as_bytes().to_vec(),
+            root.clone(),
+        ],
         vec![b"tcb-info-signing-fixture".to_vec(), root],
         7,
         QuoteTcbStatus::UpToDate,

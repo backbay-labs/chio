@@ -37,6 +37,10 @@ mod inner {
 
     use chio_attest_verify::expect_report_data;
     use chio_core_types::crypto::Keypair;
+    use p256::ecdsa::{
+        signature::Signer as _, Signature as P256Signature, SigningKey as P256SigningKey,
+    };
+    use p384::ecdsa::{Signature as P384Signature, SigningKey as P384SigningKey};
     use sha2::{Digest, Sha256};
 
     const QUOTE_HEADER_LEN: usize = 48;
@@ -56,6 +60,8 @@ mod inner {
     /// Receipt root used by every positive fixture. Mirrors the
     /// integration test constant.
     pub(super) const RECEIPT_ROOT: [u8; 32] = [8u8; 32];
+    const P256_ATTESTATION_KEY_SEED: [u8; 32] = [0x25; 32];
+    const P384_ATTESTATION_KEY_SEED: [u8; 48] = [0x38; 48];
 
     #[derive(Debug, Clone, Copy)]
     enum AttKeyType {
@@ -83,11 +89,14 @@ mod inner {
         vendor_id: VendorId,
         report_data: [u8; 64],
         body: &'static [u8],
-        sig_byte: u8,
+        tamper_signature: bool,
     }
 
     fn write_quote(spec: &FixtureSpec) -> Vec<u8> {
-        let signature_len = 1usize;
+        let signature_len = match spec.att_key_type {
+            AttKeyType::EcdsaP384 => 96usize,
+            AttKeyType::EcdsaP256 | AttKeyType::Epid => 64usize,
+        };
         let mut quote = vec![0u8; SIGNATURE_BYTES_OFFSET + signature_len];
         quote[0..2].copy_from_slice(&4u16.to_le_bytes());
         let att = match spec.att_key_type {
@@ -108,8 +117,36 @@ mod inner {
             .copy_from_slice(&spec.report_data);
         quote[SIGNATURE_LEN_OFFSET..SIGNATURE_LEN_OFFSET + 4]
             .copy_from_slice(&(signature_len as u32).to_le_bytes());
-        quote[SIGNATURE_BYTES_OFFSET] = spec.sig_byte;
+        let mut signature = sign_quote(spec.att_key_type, &quote[..SIGNATURE_LEN_OFFSET]);
+        if spec.tamper_signature {
+            if let Some(last) = signature.last_mut() {
+                *last ^= 0x01;
+            }
+        }
+        quote[SIGNATURE_BYTES_OFFSET..SIGNATURE_BYTES_OFFSET + signature_len]
+            .copy_from_slice(&signature);
         quote
+    }
+
+    fn p256_signing_key() -> P256SigningKey {
+        P256SigningKey::from_bytes((&P256_ATTESTATION_KEY_SEED).into()).unwrap()
+    }
+
+    fn p384_signing_key() -> P384SigningKey {
+        P384SigningKey::from_bytes((&P384_ATTESTATION_KEY_SEED).into()).unwrap()
+    }
+
+    fn sign_quote(att_key_type: AttKeyType, message: &[u8]) -> Vec<u8> {
+        match att_key_type {
+            AttKeyType::EcdsaP384 => {
+                let signature: P384Signature = p384_signing_key().sign(message);
+                signature.to_vec()
+            }
+            AttKeyType::EcdsaP256 | AttKeyType::Epid => {
+                let signature: P256Signature = p256_signing_key().sign(message);
+                signature.to_vec()
+            }
+        }
     }
 
     fn root_path() -> PathBuf {
@@ -136,7 +173,7 @@ mod inner {
                 vendor_id: VendorId(INTEL_SGX_QE_VENDOR_ID),
                 report_data: bound,
                 body: b"chio-tdx-positive-bound-default",
-                sig_byte: 0xA5,
+                tamper_signature: false,
             },
             FixtureSpec {
                 file_name: "positive/kernel_seed_09_root_08_p384.bin",
@@ -148,7 +185,7 @@ mod inner {
                 vendor_id: VendorId(INTEL_SGX_QE_VENDOR_ID),
                 report_data: bound,
                 body: b"chio-tdx-positive-bound-p384",
-                sig_byte: 0xA6,
+                tamper_signature: false,
             },
             FixtureSpec {
                 file_name: "positive/kernel_seed_09_root_08_alt_body.bin",
@@ -160,19 +197,19 @@ mod inner {
                 vendor_id: VendorId(INTEL_SGX_QE_VENDOR_ID),
                 report_data: bound,
                 body: b"chio-tdx-positive-bound-alt-body-marker",
-                sig_byte: 0xA7,
+                tamper_signature: false,
             },
             FixtureSpec {
                 file_name: "positive/kernel_seed_09_root_08_alt_sig.bin",
                 role: "positive",
                 role_tag: "intel-tdx-bound-alt-sig-byte",
-                note: "Bound; alternate signature trailing byte exercises envelope tail.",
+                note: "Bound; alternate body marker changes the signed bytes and signature.",
                 att_key_type: AttKeyType::EcdsaP256,
                 tee_type: TeeType::IntelTdx,
                 vendor_id: VendorId(INTEL_SGX_QE_VENDOR_ID),
                 report_data: bound,
                 body: b"chio-tdx-positive-bound-alt-sig",
-                sig_byte: 0xB1,
+                tamper_signature: false,
             },
         ];
 
@@ -187,7 +224,7 @@ mod inner {
                 vendor_id: VendorId(INTEL_SGX_QE_VENDOR_ID),
                 report_data: unrelated_pair,
                 body: b"chio-tdx-negative-unbound-pair",
-                sig_byte: 0xC1,
+                tamper_signature: false,
             },
             FixtureSpec {
                 file_name: "negative/report_data_upper_half_tamper.bin",
@@ -199,7 +236,7 @@ mod inner {
                 vendor_id: VendorId(INTEL_SGX_QE_VENDOR_ID),
                 report_data: tampered_upper_half,
                 body: b"chio-tdx-negative-upper-tamper",
-                sig_byte: 0xC2,
+                tamper_signature: false,
             },
             FixtureSpec {
                 file_name: "negative/wrong_qe_vendor_id.bin",
@@ -211,7 +248,7 @@ mod inner {
                 vendor_id: VendorId([0xDE; 16]),
                 report_data: bound,
                 body: b"chio-tdx-negative-wrong-vendor",
-                sig_byte: 0xC3,
+                tamper_signature: false,
             },
             FixtureSpec {
                 file_name: "negative/unsupported_att_key_type.bin",
@@ -223,7 +260,19 @@ mod inner {
                 vendor_id: VendorId(INTEL_SGX_QE_VENDOR_ID),
                 report_data: bound,
                 body: b"chio-tdx-negative-epid-key-type",
-                sig_byte: 0xC4,
+                tamper_signature: false,
+            },
+            FixtureSpec {
+                file_name: "negative/signature_mismatch.bin",
+                role: "negative",
+                role_tag: "intel-tdx-signature-mismatch",
+                note: "Bound report_data; quote signature is tampered after signing.",
+                att_key_type: AttKeyType::EcdsaP256,
+                tee_type: TeeType::IntelTdx,
+                vendor_id: VendorId(INTEL_SGX_QE_VENDOR_ID),
+                report_data: bound,
+                body: b"chio-tdx-negative-signature-mismatch",
+                tamper_signature: true,
             },
         ];
 
