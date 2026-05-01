@@ -32,9 +32,13 @@
 use std::path::Path;
 use std::time::SystemTime;
 
+#[cfg(feature = "tee-quotes")]
+pub mod nitro;
 pub mod policy;
 pub mod policy_loader;
 mod quote;
+#[cfg(feature = "tee-quotes")]
+pub mod sev_snp;
 mod sigstore;
 #[cfg(feature = "tee-quotes")]
 pub mod tdx;

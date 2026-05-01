@@ -1,0 +1,29 @@
+[package]
+name = "chio-weights"
+description = "Chio model-card surface (M10 P4 signed weights cards, cosign bundle helper, kernel binding refusal, arc bind --card)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_weights"
+
+[dependencies]
+chio-core-types = { path = "../chio-core-types" }
+chio-attest-verify = { path = "../chio-attest-verify" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

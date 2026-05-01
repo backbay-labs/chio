@@ -489,7 +489,12 @@ fn redact_columns(row: &mut Value, denied: &[String], marker: &str) {
         let lower = key.to_ascii_lowercase();
 
         // Bare-name or "*.column" denial.
-        let match_bare = bare.iter().any(|b| b.as_ref() == lower);
+        // Disambiguate `Cow::as_ref` to the `&str` impl explicitly: the
+        // 2024 edition surfaces multiple `PartialEq<String>` impls
+        // through `Cow`'s `Deref`, leaving the comparison ambiguous.
+        let match_bare = bare
+            .iter()
+            .any(|b| AsRef::<str>::as_ref(b) == lower.as_str());
         if match_bare {
             if let Some(v) = map.get_mut(key) {
                 *v = Value::String(marker.to_string());

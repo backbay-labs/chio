@@ -15,7 +15,7 @@
   milestone: M03
   phase: 4
   title: Implement SEV-SNP backend with VLEK and VCEK chain validation against AMD KDS root
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-attest-verify/src/sev_snp.rs
@@ -31,7 +31,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: bbd31f1e48d3efbe7b5ac8751506e838fd0c895b
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -40,7 +40,7 @@
   milestone: M03
   phase: 4
   title: Pin SEV-SNP positive and negative fixture corpus including stale TCB and mismatched launch digest
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/fixtures/quotes/sev_snp/positive/
@@ -57,7 +57,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 7de032d17426ac17b469620726f229e90de427aa
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -66,7 +66,7 @@
   milestone: M03
   phase: 4
   title: Implement Nitro NSM backend parsing COSE_Sign1 against embedded AWS Nitro root certificate
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-attest-verify/src/nitro.rs
@@ -84,7 +84,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: c4fdf373d76bccf9d2936afa2a8d0bddbf031409
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -93,7 +93,7 @@
   milestone: M03
   phase: 4
   title: Pin Nitro fixture corpus with positive negative and root-rotation regression cases
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/fixtures/quotes/nitro/positive/
@@ -111,7 +111,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: f05517fb98bb7a6eb04f87f358e942bd12bd8f15
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -120,7 +120,7 @@
   milestone: M03
   phase: 4
   title: Cross-backend conformance test rejects mislabelled quotes across TDX SEV-SNP and Nitro
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/tests/cross_backend_conformance.rs
@@ -138,7 +138,7 @@
   agent_role: tee-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: b69076706cdfacde0c56451698d9b9597554a96c
   merged_sha: null
   opened_ts: null
   merged_ts: null

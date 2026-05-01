@@ -52,6 +52,7 @@ pub mod revocation_store;
 pub mod runtime;
 pub mod session;
 pub mod transport;
+pub mod weights_binding;
 
 pub(crate) use std::collections::HashMap;
 pub(crate) use std::future::Future;
@@ -304,6 +305,9 @@ pub use cost_attribution::{
     MAX_COST_ATTRIBUTION_LIMIT,
 };
 pub use custody::PasskeyCapabilityVerifier;
+pub use weights_binding::{
+    evaluate_weights_binding, WeightsBindingError, WeightsBindingRequest,
+};
 pub use dpop::{
     is_supported_dpop_schema, verify_dpop_proof, DpopConfig, DpopNonceStore, DpopProof,
     DpopProofBody, DPOP_SCHEMA,

@@ -2393,6 +2393,20 @@ fn main() {
                 json || json_output,
             ),
         },
+        Commands::Bind {
+            provider,
+            card,
+            bundle,
+            issuer_san_regex,
+            issuer_oidc,
+        } => commands::bind::cmd_bind(
+            &provider,
+            &card,
+            bundle.as_deref(),
+            issuer_san_regex.as_deref(),
+            issuer_oidc.as_deref(),
+            json_output,
+        ),
     };
 
     if let Err(e) = result {
