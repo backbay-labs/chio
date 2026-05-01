@@ -22,6 +22,44 @@ pub mod pyth;
 #[cfg_attr(not(feature = "web3"), path = "sequencer_disabled.rs")]
 pub mod sequencer;
 
+#[cfg(test)]
+pub(crate) mod test_support {
+    pub(crate) trait TestUnwrap<T> {
+        fn test_unwrap(self, context: &str) -> T;
+    }
+
+    impl<T, E> TestUnwrap<T> for Result<T, E>
+    where
+        E: std::fmt::Display,
+    {
+        fn test_unwrap(self, context: &str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error}"))
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self, context: &str) -> T {
+            self.unwrap_or_else(|| panic!("{context}"))
+        }
+    }
+
+    pub(crate) trait TestUnwrapErr<E> {
+        fn test_unwrap_err(self, context: &str) -> E;
+    }
+
+    impl<T, E> TestUnwrapErr<E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_unwrap_err(self, context: &str) -> E {
+            match self {
+                Ok(value) => panic!("{context}: unexpected Ok({value:?})"),
+                Err(error) => error,
+            }
+        }
+    }
+}
+
 use cache::PriceCache;
 #[cfg(feature = "web3")]
 use chainlink::ChainlinkFeedReader;
@@ -966,6 +1004,41 @@ mod tests {
     use super::*;
     use crate::config::{DegradedModePolicy, PriceOracleConfig, BASE_MAINNET_CHAIN_ID};
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self, context: &str) -> T;
+    }
+
+    impl<T, E> TestUnwrap<T> for Result<T, E>
+    where
+        E: std::fmt::Display,
+    {
+        fn test_unwrap(self, context: &str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error}"))
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self, context: &str) -> T {
+            self.unwrap_or_else(|| panic!("{context}"))
+        }
+    }
+
+    trait TestUnwrapErr<E> {
+        fn test_unwrap_err(self, context: &str) -> E;
+    }
+
+    impl<T, E> TestUnwrapErr<E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_unwrap_err(self, context: &str) -> E {
+            match self {
+                Ok(value) => panic!("{context}: unexpected Ok({value:?})"),
+                Err(error) => error,
+            }
+        }
+    }
+
     struct StaticBackend {
         kind: OracleBackendKind,
         responses: BTreeMap<String, Result<ExchangeRate, PriceOracleError>>,
@@ -1004,7 +1077,7 @@ mod tests {
     }
 
     fn sample_rate(source: &str, feed_reference: &str, numerator: u128) -> ExchangeRate {
-        let fetched_at = now_unix().expect("now");
+        let fetched_at = now_unix().test_unwrap("now");
         ExchangeRate {
             base: "ETH".to_string(),
             quote: "USD".to_string(),
@@ -1051,9 +1124,12 @@ mod tests {
             )],
         ));
         let oracle = ChioLinkOracle::new_with_backends(config, primary, Some(fallback))
-            .expect("oracle config");
+            .test_unwrap("oracle config");
 
-        let rate = oracle.get_rate("ETH", "USD").await.expect("fallback rate");
+        let rate = oracle
+            .get_rate("ETH", "USD")
+            .await
+            .test_unwrap("fallback rate");
         assert_eq!(rate.source, "pyth");
     }
 
@@ -1083,12 +1159,12 @@ mod tests {
             )],
         ));
         let oracle = ChioLinkOracle::new_with_backends(config, primary, Some(fallback))
-            .expect("oracle config");
+            .test_unwrap("oracle config");
 
         let error = oracle
             .refresh_pair("ETH", "USD")
             .await
-            .expect_err("should fail closed");
+            .test_unwrap_err("should fail closed");
         assert!(matches!(
             error,
             PriceOracleError::CircuitBreakerTripped { .. }
@@ -1109,12 +1185,15 @@ mod tests {
                 )),
             )],
         ));
-        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).expect("oracle");
+        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).test_unwrap("oracle");
         oracle
             .set_global_pause(true, Some("manual operator stop".to_string()))
             .await
-            .expect("pause");
-        let error = oracle.get_rate("ETH", "USD").await.expect_err("paused");
+            .test_unwrap("pause");
+        let error = oracle
+            .get_rate("ETH", "USD")
+            .await
+            .test_unwrap_err("paused");
         assert!(matches!(error, PriceOracleError::OperatorPaused { .. }));
     }
 
@@ -1132,15 +1211,15 @@ mod tests {
                 )),
             )],
         ));
-        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).expect("oracle");
+        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).test_unwrap("oracle");
         oracle
             .set_chain_enabled(BASE_MAINNET_CHAIN_ID, false)
             .await
-            .expect("disable chain");
+            .test_unwrap("disable chain");
         let error = oracle
             .get_rate("ETH", "USD")
             .await
-            .expect_err("disabled chain should fail");
+            .test_unwrap_err("disabled chain should fail");
         assert!(matches!(error, PriceOracleError::ChainDisabled { .. }));
     }
 
@@ -1170,7 +1249,7 @@ mod tests {
             )],
         ));
         let oracle = ChioLinkOracle::new_with_backends(config, primary, Some(fallback))
-            .expect("oracle config");
+            .test_unwrap("oracle config");
         oracle
             .set_pair_override(PairRuntimeOverride {
                 base: "ETH".to_string(),
@@ -1182,9 +1261,12 @@ mod tests {
                 degraded_mode: None,
             })
             .await
-            .expect("override");
+            .test_unwrap("override");
 
-        let rate = oracle.get_rate("ETH", "USD").await.expect("forced backend");
+        let rate = oracle
+            .get_rate("ETH", "USD")
+            .await
+            .test_unwrap("forced backend");
         assert_eq!(rate.source, "pyth");
     }
 
@@ -1192,17 +1274,17 @@ mod tests {
     async fn unsupported_pair_fails_closed() {
         let config = test_config();
         let primary = Arc::new(StaticBackend::new(OracleBackendKind::Chainlink, []));
-        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).expect("oracle");
+        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).test_unwrap("oracle");
         let error = oracle
             .get_rate("EUR", "USD")
             .await
-            .expect_err("unsupported pair");
+            .test_unwrap_err("unsupported pair");
         assert!(matches!(error, PriceOracleError::NoPairAvailable { .. }));
     }
 
     #[test]
     fn degraded_mode_reuses_stale_cached_rate_with_extra_margin() {
-        let mut pair = test_config().pair("ETH", "USD").expect("pair").clone();
+        let mut pair = test_config().pair("ETH", "USD").test_unwrap("pair").clone();
         pair.policy.degraded_mode = DegradedModePolicy::conservative_default();
         let stale_rate = ExchangeRate {
             updated_at: 100,
@@ -1217,7 +1299,7 @@ mod tests {
         };
         let override_config = PairRuntimeOverride::from_pair(&pair);
         let degraded = degraded_rate_if_allowed(&pair, &override_config, stale_rate, 850)
-            .expect("degraded rate");
+            .test_unwrap("degraded rate");
         assert_eq!(degraded.max_age_seconds, 900);
         assert_eq!(degraded.conversion_margin_bps, 1_000);
         assert!(degraded.source.ends_with(":degraded"));
@@ -1227,12 +1309,12 @@ mod tests {
     async fn runtime_report_surfaces_pause_alert() {
         let config = test_config();
         let primary = Arc::new(StaticBackend::new(OracleBackendKind::Chainlink, []));
-        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).expect("oracle");
+        let oracle = ChioLinkOracle::new_with_backends(config, primary, None).test_unwrap("oracle");
         oracle
             .set_global_pause(true, Some("manual operator stop".to_string()))
             .await
-            .expect("pause");
-        let report = oracle.runtime_report().await.expect("report");
+            .test_unwrap("pause");
+        let report = oracle.runtime_report().await.test_unwrap("report");
         assert!(report.global_pause);
         assert!(report
             .alerts
@@ -1250,7 +1332,7 @@ mod tests {
         let now = rate.fetched_at + 35;
         let evidence = rate
             .to_conversion_evidence(100_000_000_000_000, "ETH", "USD", 300, now)
-            .expect("evidence");
+            .test_unwrap("evidence");
         assert_eq!(evidence.schema, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA);
         assert_eq!(evidence.authority, CHIO_LINK_ORACLE_AUTHORITY);
         assert_eq!(

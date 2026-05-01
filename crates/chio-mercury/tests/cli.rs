@@ -1,7 +1,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -61,7 +61,7 @@ fn mercury_receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> Chi
     .expect("sign mercury receipt")
 }
 
-fn write_mercury_bundle_manifest(path: &PathBuf) {
+fn write_mercury_bundle_manifest(path: &Path) {
     fs::write(
         path,
         serde_json::to_vec_pretty(&sample_mercury_bundle_manifest()).expect("bundle manifest"),
@@ -69,7 +69,7 @@ fn write_mercury_bundle_manifest(path: &PathBuf) {
     .expect("write bundle manifest");
 }
 
-fn write_supervised_live_capture(path: &PathBuf, mode: MercurySupervisedLiveMode) {
+fn write_supervised_live_capture(path: &Path, mode: MercurySupervisedLiveMode) {
     let capture = MercurySupervisedLiveCapture::sample(mode);
     fs::write(
         path,
@@ -78,7 +78,7 @@ fn write_supervised_live_capture(path: &PathBuf, mode: MercurySupervisedLiveMode
     .expect("write supervised live capture");
 }
 
-fn write_degraded_supervised_live_capture(path: &PathBuf) {
+fn write_degraded_supervised_live_capture(path: &Path) {
     let mut capture = MercurySupervisedLiveCapture::sample(MercurySupervisedLiveMode::Live);
     capture.control_state.coverage_state = MercurySupervisedLiveCoverageState::Degraded;
     capture.control_state.evidence_health.monitoring = MercurySupervisedLiveHealthStatus::Degraded;
@@ -97,7 +97,7 @@ fn write_degraded_supervised_live_capture(path: &PathBuf) {
     .expect("write degraded supervised live capture");
 }
 
-fn export_fixture_package(receipt_db_path: &PathBuf, output_dir: &PathBuf) {
+fn export_fixture_package(receipt_db_path: &Path, output_dir: &Path) {
     evidence_export::cmd_evidence_export(
         output_dir,
         None,

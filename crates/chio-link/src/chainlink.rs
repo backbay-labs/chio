@@ -172,6 +172,7 @@ mod tests {
         ChainlinkFeedConfig, ChainlinkNetworkConfig, PairConfig, PairPolicy, BASE_MAINNET_CAIP2,
         BASE_MAINNET_CHAIN_ID,
     };
+    use crate::test_support::{TestUnwrap, TestUnwrapErr};
     use crate::OracleBackend;
 
     use super::{read_chainlink_rate, ChainlinkFeedReader};
@@ -209,11 +210,11 @@ mod tests {
         let error = read_chainlink_rate(
             "not a url",
             &pair,
-            pair.chainlink.as_ref().expect("feed"),
+            pair.chainlink.as_ref().test_unwrap("feed"),
             1_743_292_780,
         )
         .await
-        .expect_err("invalid endpoint");
+        .test_unwrap_err("invalid endpoint");
         assert!(matches!(
             error,
             crate::PriceOracleError::InvalidConfiguration(_)
@@ -226,7 +227,9 @@ mod tests {
         let mut pair = pair_with_chainlink("0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70");
         pair.chain_id = 1;
 
-        let error = reader.network_for_pair(&pair).expect_err("missing network");
+        let error = reader
+            .network_for_pair(&pair)
+            .test_unwrap_err("missing network");
 
         assert!(matches!(
             error,
@@ -241,11 +244,11 @@ mod tests {
         let error = read_chainlink_rate(
             "https://rpc.example",
             &pair,
-            pair.chainlink.as_ref().expect("feed"),
+            pair.chainlink.as_ref().test_unwrap("feed"),
             1_743_292_780,
         )
         .await
-        .expect_err("invalid feed address");
+        .test_unwrap_err("invalid feed address");
 
         assert!(matches!(
             error,
@@ -268,7 +271,7 @@ mod tests {
         let error = reader
             .read_rate(&pair, 1_743_292_780)
             .await
-            .expect_err("missing feed");
+            .test_unwrap_err("missing feed");
 
         assert!(matches!(
             error,

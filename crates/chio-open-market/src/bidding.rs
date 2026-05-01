@@ -410,6 +410,45 @@ mod tests {
         GENERIC_LISTING_ARTIFACT_SCHEMA, LISTING_PRICING_HINT_SCHEMA,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
+    trait TestOptionExt<T> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T> TestOptionExt<T> for Option<T> {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|| panic!("{context}"))
+        }
+    }
+
     fn namespace(keypair: &Keypair) -> GenericNamespaceOwnership {
         GenericNamespaceOwnership {
             namespace: "https://registry.chio.example".to_string(),
@@ -450,7 +489,7 @@ mod tests {
             },
             boundary: GenericListingBoundary::default(),
         };
-        SignedGenericListing::sign(body, keypair).expect("sign listing")
+        SignedGenericListing::sign(body, keypair).test_expect("sign listing")
     }
 
     fn publisher() -> GenericRegistryPublisher {
@@ -503,7 +542,7 @@ mod tests {
             },
             signer,
         )
-        .expect("sign hint")
+        .test_expect("sign hint")
     }
 
     fn listing_entry(
@@ -557,11 +596,11 @@ mod tests {
         now: u64,
     ) -> SignedBidRequest {
         SignedBidRequest::sign(bid_request(agent_id, max_units, window, now), agent_keypair)
-            .expect("sign bid")
+            .test_expect("sign bid")
     }
 
     fn resign_bid_request(agent_keypair: &Keypair, request: &BidRequest) -> SignedBidRequest {
-        SignedBidRequest::sign(request.clone(), agent_keypair).expect("re-sign bid")
+        SignedBidRequest::sign(request.clone(), agent_keypair).test_expect("re-sign bid")
     }
 
     #[test]
@@ -590,7 +629,7 @@ mod tests {
                 now: 120,
             },
         )
-        .expect("bid succeeds");
+        .test_expect("bid succeeds");
 
         assert_eq!(ask.body.listing_id, "listing-1");
         assert_eq!(ask.body.agent_id, "agent-alpha");
@@ -605,7 +644,7 @@ mod tests {
             ask.body.token_offer.scope.grants[0]
                 .max_cost_per_invocation
                 .as_ref()
-                .expect("max cost")
+                .test_expect("max cost")
                 .units,
             100
         );
@@ -614,16 +653,16 @@ mod tests {
             ask.body.token_offer.scope.grants[0]
                 .max_total_cost
                 .as_ref()
-                .expect("max total")
+                .test_expect("max total")
                 .units,
             1_000
         );
-        assert!(ask.verify_signature().expect("verify ask"));
+        assert!(ask.verify_signature().test_expect("verify ask"));
         assert!(ask
             .body
             .token_offer
             .verify_signature()
-            .expect("verify token"));
+            .test_expect("verify token"));
     }
 
     #[test]
@@ -654,7 +693,7 @@ mod tests {
                 now: 120,
             },
         )
-        .expect_err("scope widening rejected");
+        .test_expect_err("scope widening rejected");
         assert_eq!(error, BiddingError::ScopeOutsideListing);
     }
 
@@ -684,7 +723,7 @@ mod tests {
                 now: 120,
             },
         )
-        .expect_err("revoked listing rejected");
+        .test_expect_err("revoked listing rejected");
         assert_eq!(error, BiddingError::ListingNotActive);
     }
 
@@ -715,7 +754,7 @@ mod tests {
                 now: 250,
             },
         )
-        .expect_err("stale pricing rejected");
+        .test_expect_err("stale pricing rejected");
         assert_eq!(error, BiddingError::PricingExpired);
     }
 
@@ -747,7 +786,7 @@ mod tests {
                 now: 120,
             },
         )
-        .expect_err("tampered listing rejected");
+        .test_expect_err("tampered listing rejected");
         assert_eq!(error, BiddingError::ListingSignatureInvalid);
     }
 
@@ -778,7 +817,7 @@ mod tests {
                 now: 120,
             },
         )
-        .expect_err("under-priced bid rejected");
+        .test_expect_err("under-priced bid rejected");
         assert_eq!(error, BiddingError::BidCeilingTooLow);
     }
 
@@ -807,9 +846,9 @@ mod tests {
                 now: 120,
             },
         )
-        .expect("bid succeeds");
+        .test_expect("bid succeeds");
 
-        let accepted = accept(&ask, "receipt-42", 130).expect("accept succeeds");
+        let accepted = accept(&ask, "receipt-42", 130).test_expect("accept succeeds");
         assert_eq!(accepted.listing_id, "listing-1");
         assert_eq!(accepted.bid_receipt_id, "receipt-42");
         assert_eq!(accepted.agent_id, "agent-alpha");
@@ -843,10 +882,10 @@ mod tests {
                 now: 120,
             },
         )
-        .expect("bid succeeds");
+        .test_expect("bid succeeds");
         ask.body.agent_id = "agent-evil".to_string();
 
-        let error = accept(&ask, "receipt-42", 130).expect_err("tampered ask rejected");
+        let error = accept(&ask, "receipt-42", 130).test_expect_err("tampered ask rejected");
         assert_eq!(error, BiddingError::PricingSignatureInvalid);
     }
 
@@ -875,9 +914,9 @@ mod tests {
                 now: 120,
             },
         )
-        .expect("bid succeeds");
+        .test_expect("bid succeeds");
         // window_seconds = 50; ask expires at 170.
-        let error = accept(&ask, "receipt-42", 200).expect_err("expired ask rejected");
+        let error = accept(&ask, "receipt-42", 200).test_expect_err("expired ask rejected");
         assert_eq!(error, BiddingError::PricingExpired);
     }
 
@@ -908,7 +947,7 @@ mod tests {
                 now: 120,
             },
         )
-        .expect_err("tampered bid rejected");
+        .test_expect_err("tampered bid rejected");
         assert_eq!(error, BiddingError::BidSignatureInvalid);
     }
 }

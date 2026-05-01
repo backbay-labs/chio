@@ -79,6 +79,19 @@ mod tests {
     use super::*;
     use crate::identity::CallerIdentity;
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
     #[test]
     fn new_session_defaults() {
         let session = SessionContext::new("sess-001".to_string(), CallerIdentity::anonymous());
@@ -105,8 +118,8 @@ mod tests {
     #[test]
     fn serde_roundtrip() {
         let session = SessionContext::new("sess-004".to_string(), CallerIdentity::anonymous());
-        let json = serde_json::to_string(&session).unwrap();
-        let back: SessionContext = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&session).test_unwrap();
+        let back: SessionContext = serde_json::from_str(&json).test_unwrap();
         assert_eq!(back.session_id, "sess-004");
     }
 }

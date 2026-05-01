@@ -65,6 +65,7 @@ pub fn ensure_within_threshold(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::{TestUnwrap, TestUnwrapErr};
     use crate::ExchangeRate;
 
     use super::{divergence_bps, ensure_within_threshold};
@@ -90,14 +91,14 @@ mod tests {
     fn divergence_computes_basis_points() {
         let left = sample_rate("chainlink", 300_000);
         let right = sample_rate("pyth", 306_000);
-        assert_eq!(divergence_bps(&left, &right).expect("divergence"), 200);
+        assert_eq!(divergence_bps(&left, &right).test_unwrap("divergence"), 200);
     }
 
     #[test]
     fn threshold_trips_on_large_gap() {
         let left = sample_rate("chainlink", 300_000);
         let right = sample_rate("pyth", 330_000);
-        let error = ensure_within_threshold(&left, &right, 500).expect_err("should trip");
+        let error = ensure_within_threshold(&left, &right, 500).test_unwrap_err("should trip");
         assert!(error.to_string().contains("diverge"));
     }
 }

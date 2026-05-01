@@ -13,6 +13,17 @@ use chio_listing::{
     LISTING_PRICING_HINT_SCHEMA, LISTING_SEARCH_SCHEMA,
 };
 
+fn require_ok<T, E>(result: Result<T, E>, context: &'static str) -> T
+where
+    E: std::fmt::Debug,
+{
+    result.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+}
+
+fn require_some<T>(value: Option<T>, context: &'static str) -> T {
+    value.unwrap_or_else(|| panic!("{context}"))
+}
+
 fn namespace(keypair: &Keypair) -> GenericNamespaceOwnership {
     GenericNamespaceOwnership {
         namespace: "https://registry.chio.example".to_string(),
@@ -53,7 +64,7 @@ fn listing(
         },
         boundary: GenericListingBoundary::default(),
     };
-    SignedGenericListing::sign(body, keypair).expect("sign listing")
+    require_ok(SignedGenericListing::sign(body, keypair), "sign listing")
 }
 
 fn publisher(operator_id: &str) -> GenericRegistryPublisher {
@@ -125,7 +136,10 @@ fn pricing_hint(
         issued_at,
         expires_at,
     };
-    SignedListingPricingHint::sign(body, operator_keypair).expect("sign hint")
+    require_ok(
+        SignedListingPricingHint::sign(body, operator_keypair),
+        "sign hint",
+    )
 }
 
 #[test]
@@ -247,7 +261,12 @@ fn search_filters_by_provider_operator_id_and_require_fresh() {
         ..ListingQuery::default()
     };
 
-    let response_matching = search(&[rep.clone()], &[hint.clone()], &matching, 120);
+    let response_matching = search(
+        std::slice::from_ref(&rep),
+        std::slice::from_ref(&hint),
+        &matching,
+        120,
+    );
     let response_missing = search(&[rep], &[hint], &missing, 120);
     assert_eq!(response_matching.result_count, 1);
     assert_eq!(response_missing.result_count, 0);
@@ -290,20 +309,24 @@ fn compare_ranks_cheapest_at_10000_bps() {
     let comparison = compare(&response.results);
     assert_eq!(comparison.schema, LISTING_COMPARISON_SCHEMA);
     assert_eq!(comparison.entry_count, 2);
-    let row_a = comparison
-        .rows
-        .iter()
-        .find(|row| row.listing_id == "listing-a")
-        .expect("row a");
-    let row_b = comparison
-        .rows
-        .iter()
-        .find(|row| row.listing_id == "listing-b")
-        .expect("row b");
+    let row_a = require_some(
+        comparison
+            .rows
+            .iter()
+            .find(|row| row.listing_id == "listing-a"),
+        "row a",
+    );
+    let row_b = require_some(
+        comparison
+            .rows
+            .iter()
+            .find(|row| row.listing_id == "listing-b"),
+        "row b",
+    );
     assert_eq!(row_a.price_index_bps, 10_000);
     assert_eq!(row_b.price_index_bps, 25_000);
     // Canonical JSON of the comparison is stable and signable.
-    let bytes = canonical_json_bytes(&comparison).expect("canonical compare bytes");
+    let bytes = require_ok(canonical_json_bytes(&comparison), "canonical compare bytes");
     assert!(!bytes.is_empty());
 }
 

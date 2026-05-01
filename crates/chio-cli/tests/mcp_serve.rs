@@ -1674,13 +1674,10 @@ fn read_response_with_explicit_task_cancellation(
             assert_eq!(message["id"], expected_id);
         }
 
-        if task_result.is_some() && cancel_response.is_some() {
-            return (
-                task_result.expect("task result"),
-                cancel_response.expect("cancel response"),
-                notifications,
-                nested_requests,
-            );
+        if let (Some(task_result), Some(cancel_response)) =
+            (task_result.take(), cancel_response.take())
+        {
+            return (task_result, cancel_response, notifications, nested_requests);
         }
     }
 }

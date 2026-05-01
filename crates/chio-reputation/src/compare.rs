@@ -384,8 +384,10 @@ mod imported_trust_tests {
 
     #[test]
     fn imported_signal_rejects_disallowed_signer_identity() {
-        let mut policy = ImportedTrustPolicy::default();
-        policy.allowed_signer_public_keys = vec!["ed25519:other-signer".to_string()];
+        let policy = ImportedTrustPolicy {
+            allowed_signer_public_keys: vec!["ed25519:other-signer".to_string()],
+            ..ImportedTrustPolicy::default()
+        };
 
         let signal = build_imported_reputation_signal(
             "subject-1",
@@ -405,8 +407,10 @@ mod imported_trust_tests {
 
     #[test]
     fn imported_signal_rejects_network_cleared_requirement_for_bilateral_share() {
-        let mut policy = ImportedTrustPolicy::default();
-        policy.required_trust_mode = ImportedTrustMode::NetworkCleared;
+        let policy = ImportedTrustPolicy {
+            required_trust_mode: ImportedTrustMode::NetworkCleared,
+            ..ImportedTrustPolicy::default()
+        };
 
         let signal = build_imported_reputation_signal(
             "subject-1",

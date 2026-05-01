@@ -399,7 +399,7 @@ fn enumerate_manifests(root: &Path) -> Result<Vec<PathBuf>, String> {
 
     let mut out = Vec::new();
     walk_json_files(root, &mut out)?;
-    out.sort_by(|left, right| path_bytes(root, left).cmp(&path_bytes(root, right)));
+    out.sort_by_key(|path| path_bytes(root, path));
     Ok(out)
 }
 
@@ -413,7 +413,7 @@ fn walk_json_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
                 dir.display()
             )
         })?;
-    entries.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
+    entries.sort_by_key(|entry| entry.file_name());
 
     for entry in entries {
         let path = entry.path();

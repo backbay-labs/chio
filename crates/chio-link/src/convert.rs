@@ -88,6 +88,7 @@ pub fn convert_units(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::TestUnwrap;
     use crate::ExchangeRate;
 
     use super::{convert_supported_units, convert_units, minor_units_for_currency};
@@ -118,7 +119,7 @@ mod tests {
             &sample_rate(),
             0,
         )
-        .expect("converted");
+        .test_unwrap("converted");
         assert_eq!(converted, 300);
     }
 
@@ -131,23 +132,23 @@ mod tests {
             &sample_rate(),
             200,
         )
-        .expect("converted");
+        .test_unwrap("converted");
         assert_eq!(converted, 306);
     }
 
     #[test]
     fn resolves_supported_currency_scales() {
-        assert_eq!(minor_units_for_currency("USD").expect("usd"), 100);
+        assert_eq!(minor_units_for_currency("USD").test_unwrap("usd"), 100);
         assert_eq!(
-            minor_units_for_currency("ETH").expect("eth"),
+            minor_units_for_currency("ETH").test_unwrap("eth"),
             10_u64.pow(18)
         );
     }
 
     #[test]
     fn converts_with_default_supported_scales() {
-        let converted =
-            convert_supported_units(1_000_000_000_000_000, &sample_rate(), 0).expect("converted");
+        let converted = convert_supported_units(1_000_000_000_000_000, &sample_rate(), 0)
+            .test_unwrap("converted");
         assert_eq!(converted, 300);
     }
 }

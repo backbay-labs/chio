@@ -5,7 +5,7 @@ fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
-        .expect("repo root should resolve")
+        .unwrap_or_else(|error| panic!("repo root should resolve: {error}"))
 }
 
 fn read_repo_file(relative: &str) -> String {

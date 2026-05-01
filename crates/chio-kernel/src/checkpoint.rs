@@ -1304,12 +1304,9 @@ mod tests {
         let batch = make_receipt_bytes(100);
         let tree = MerkleTree::from_leaves(&batch).expect("tree build failed");
         let root = tree.root();
-        for i in 0..100 {
+        for (i, leaf) in batch.iter().enumerate().take(100) {
             let proof = build_inclusion_proof(&tree, i, 1, i as u64 + 1).expect("proof failed");
-            assert!(
-                proof.verify(&batch[i], &root),
-                "leaf {i} inclusion proof failed"
-            );
+            assert!(proof.verify(leaf, &root), "leaf {i} inclusion proof failed");
         }
     }
 

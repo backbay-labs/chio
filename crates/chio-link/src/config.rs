@@ -522,6 +522,8 @@ pub fn pair_key(base: &str, quote: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::TestUnwrap;
+
     use super::{
         pair_key, PriceOracleConfig, ARBITRUM_ONE_CAIP2, ARBITRUM_ONE_CHAIN_ID, BASE_MAINNET_CAIP2,
         BASE_MAINNET_CHAIN_ID,
@@ -553,7 +555,7 @@ mod tests {
             config
                 .operator
                 .pair_override("ETH", "USD")
-                .expect("override")
+                .test_unwrap("override")
                 .allow_fallback
         );
     }

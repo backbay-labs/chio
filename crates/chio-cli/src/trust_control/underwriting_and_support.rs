@@ -2064,10 +2064,36 @@ mod underwriting_and_support_tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    trait TestUnwrapErr<E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T: std::fmt::Debug, E> TestUnwrapErr<E> for Result<T, E> {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err(..), got Ok({value:?})"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn unique_temp_path(prefix: &str, extension: &str) -> std::path::PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
+            .test_unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{nonce}.{extension}"))
     }
@@ -2076,20 +2102,20 @@ mod underwriting_and_support_tests {
     fn behavioral_feed_signer_uses_local_db_seed_after_replica_snapshot() {
         let source_path = unique_temp_path("chio-behavioral-feed-source", "sqlite");
         let follower_path = unique_temp_path("chio-behavioral-feed-follower", "sqlite");
-        let source = SqliteCapabilityAuthority::open(&source_path).expect("open source authority");
+        let source = SqliteCapabilityAuthority::open(&source_path).test_unwrap();
         let follower =
-            SqliteCapabilityAuthority::open(&follower_path).expect("open follower authority");
-        let follower_local_key = follower.local_keypair().expect("read follower seed");
+            SqliteCapabilityAuthority::open(&follower_path).test_unwrap();
+        let follower_local_key = follower.local_keypair().test_unwrap();
 
-        source.rotate().expect("rotate source authority");
-        let snapshot = source.snapshot().expect("snapshot source authority");
+        source.rotate().test_unwrap();
+        let snapshot = source.snapshot().test_unwrap();
         assert!(follower
             .apply_snapshot(&snapshot)
-            .expect("apply source snapshot"));
+            .test_unwrap());
         assert!(follower.current_keypair().is_err());
 
         let signing_key = load_behavioral_feed_signing_keypair(None, Some(&follower_path))
-            .expect("resolve behavioral feed signer");
+            .test_unwrap();
         assert_eq!(signing_key.public_key(), follower_local_key.public_key());
 
         let _ = fs::remove_file(source_path);
@@ -2135,7 +2161,7 @@ mod underwriting_and_support_tests {
             &report,
             &selection,
         )
-        .expect_err("mismatched report scope should fail closed");
+        .test_unwrap_err();
         assert!(error.contains("compliance report subject mismatch"));
     }
 }

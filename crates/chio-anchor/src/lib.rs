@@ -300,11 +300,60 @@ mod tests {
         SolanaMemoAnchorRecord, CHIO_ANCHOR_RUNTIME_REPORT_SCHEMA,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+        }
+
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err result, got Ok: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
+    trait TestOptionExt<T> {
+        fn test_expect(self, context: &'static str) -> T;
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T> TestOptionExt<T> for Option<T> {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|| panic!("{context}"))
+        }
+
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|| panic!("expected Some value"))
+        }
+    }
+
     fn sample_primary_proof() -> AnchorInclusionProof {
         serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
         ))
-        .unwrap()
+        .test_unwrap()
     }
 
     fn synthetic_ots_proof(start_digest: &[u8; 32], bitcoin_height: u64) -> String {
@@ -322,7 +371,7 @@ mod tests {
             },
         };
         let mut bytes = Vec::new();
-        ots.to_writer(&mut bytes).unwrap();
+        ots.to_writer(&mut bytes).test_unwrap();
         BASE64_STANDARD.encode(bytes)
     }
 
@@ -333,7 +382,7 @@ mod tests {
             checkpoint_seq: proof.receipt_inclusion.checkpoint_seq,
             receipt_seq: proof.checkpoint_statement.batch_start_seq,
             leaf_index: proof.receipt_inclusion.proof.leaf_index,
-            merkle_root: proof.receipt_inclusion.merkle_root.clone(),
+            merkle_root: proof.receipt_inclusion.merkle_root,
             proof: proof.receipt_inclusion.proof.clone(),
         };
 
@@ -365,7 +414,7 @@ mod tests {
                 "https://alice.btc.calendar.opentimestamps.org",
             )],
         )
-        .unwrap();
+        .test_unwrap();
         let ots_proof = synthetic_ots_proof(submission.document_digest.as_bytes(), 900_000);
         let upgraded = attach_bitcoin_anchor(
             &proof,
@@ -374,7 +423,7 @@ mod tests {
             "0000000000000000000abc".to_string(),
             ots_proof,
         )
-        .unwrap();
+        .test_unwrap();
 
         AnchorProofBundle {
             schema: super::CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA.to_string(),
@@ -457,7 +506,7 @@ mod tests {
             &checkpoint,
             &proof.key_binding_certificate,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(
             request.checkpoint_seq,
@@ -477,7 +526,7 @@ mod tests {
                 "https://alice.btc.calendar.opentimestamps.org",
             )],
         )
-        .unwrap();
+        .test_unwrap();
         let ots_proof = synthetic_ots_proof(submission.document_digest.as_bytes(), 900_000);
 
         let upgraded = attach_bitcoin_anchor(
@@ -487,7 +536,7 @@ mod tests {
             "0000000000000000000abc".to_string(),
             ots_proof,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert!(upgraded.bitcoin_anchor.is_some());
         assert!(upgraded.super_root_inclusion.is_some());
@@ -503,10 +552,10 @@ mod tests {
                 "https://alice.btc.calendar.opentimestamps.org",
             )],
         )
-        .unwrap();
+        .test_unwrap();
         let ots_proof = synthetic_ots_proof(submission.document_digest.as_bytes(), 900_000);
 
-        let inspection = inspect_ots_proof(&ots_proof).unwrap();
+        let inspection = inspect_ots_proof(&ots_proof).test_unwrap();
         assert_eq!(inspection.digest_algorithm, "sha256");
         assert_eq!(
             inspection.start_digest,
@@ -515,7 +564,7 @@ mod tests {
         assert_eq!(inspection.bitcoin_attestation_heights, vec![900_000]);
 
         let verified =
-            verify_ots_proof_for_submission(&submission, &ots_proof, Some(900_000)).unwrap();
+            verify_ots_proof_for_submission(&submission, &ots_proof, Some(900_000)).test_unwrap();
         assert_eq!(verified.bitcoin_attestation_heights, vec![900_000]);
     }
 
@@ -529,7 +578,7 @@ mod tests {
                 "https://alice.btc.calendar.opentimestamps.org",
             )],
         )
-        .unwrap();
+        .test_unwrap();
         let ots_proof = synthetic_ots_proof(submission.document_digest.as_bytes(), 900_000);
         let upgraded = attach_bitcoin_anchor(
             &proof,
@@ -538,9 +587,9 @@ mod tests {
             "0000000000000000000abc".to_string(),
             ots_proof,
         )
-        .unwrap();
+        .test_unwrap();
 
-        let inspection = verify_bitcoin_anchor_for_proof(&upgraded).unwrap();
+        let inspection = verify_bitcoin_anchor_for_proof(&upgraded).test_unwrap();
         assert_eq!(
             inspection.start_digest,
             submission.document_digest.to_hex_prefixed()
@@ -554,7 +603,7 @@ mod tests {
             note: None,
         };
 
-        let report = verify_proof_bundle(&bundle).unwrap();
+        let report = verify_proof_bundle(&bundle).test_unwrap();
         assert!(report.verified);
         assert!(report
             .lanes
@@ -572,7 +621,7 @@ mod tests {
                 "https://alice.btc.calendar.opentimestamps.org",
             )],
         )
-        .unwrap();
+        .test_unwrap();
         let ots_proof = synthetic_ots_proof(submission.document_digest.as_bytes(), 900_000);
         let mut upgraded = attach_bitcoin_anchor(
             &proof,
@@ -581,11 +630,14 @@ mod tests {
             "0000000000000000000abc".to_string(),
             ots_proof,
         )
-        .unwrap();
-        upgraded.super_root_inclusion.as_mut().unwrap().super_root =
-            chio_core::hashing::sha256(b"wrong-super-root");
+        .test_unwrap();
+        upgraded
+            .super_root_inclusion
+            .as_mut()
+            .test_unwrap()
+            .super_root = chio_core::hashing::sha256(b"wrong-super-root");
 
-        let error = verify_bitcoin_anchor_for_proof(&upgraded).unwrap_err();
+        let error = verify_bitcoin_anchor_for_proof(&upgraded).test_unwrap_err();
         assert!(error
             .to_string()
             .contains("does not commit to the expected Chio super-root digest"));
@@ -600,7 +652,7 @@ mod tests {
             "solana:mainnet-beta",
             "7xKXtg2CW9Q4hN7kD6A6tVWyQGm9Xxq6u9rY2T6yQkZp",
         )
-        .unwrap();
+        .test_unwrap();
 
         let bundle = AnchorProofBundle {
             schema: super::CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA.to_string(),
@@ -615,7 +667,7 @@ mod tests {
             note: None,
         };
 
-        let report = verify_proof_bundle(&bundle).unwrap();
+        let report = verify_proof_bundle(&bundle).test_unwrap();
         assert!(report.verified);
         assert!(report
             .lanes
@@ -632,7 +684,7 @@ mod tests {
             "solana:mainnet-beta",
             "7xKXtg2CW9Q4hN7kD6A6tVWyQGm9Xxq6u9rY2T6yQkZp",
         )
-        .unwrap();
+        .test_unwrap();
         let mut solana = SolanaMemoAnchorRecord::from_prepared(
             &prepared,
             "5W8D7gF9w3mP2nL6e1c4k7T9y2V6a1b3s5d7f9g2h4j6k8m1n3p5q7r9t1u3v5w7".to_string(),
@@ -649,7 +701,7 @@ mod tests {
             note: None,
         };
 
-        let error = verify_proof_bundle(&bundle).unwrap_err();
+        let error = verify_proof_bundle(&bundle).test_unwrap_err();
         assert!(error.to_string().contains("Solana anchor"));
     }
 
@@ -671,7 +723,7 @@ mod tests {
             proof.chain_anchor.clone(),
             proof.key_binding_certificate.clone(),
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(projected.checkpoint_statement.checkpoint_seq, 1_042);
     }
 
@@ -697,9 +749,9 @@ mod tests {
             ),
             120,
         )
-        .unwrap();
+        .test_unwrap();
 
-        let error = verify_proof_bundle_with_discovery(&bundle, &discovery).unwrap_err();
+        let error = verify_proof_bundle_with_discovery(&bundle, &discovery).test_unwrap_err();
 
         assert!(error.to_string().contains("freshness state paused"));
     }
@@ -726,9 +778,9 @@ mod tests {
             ),
             120,
         )
-        .unwrap();
+        .test_unwrap();
 
-        let error = verify_proof_bundle_with_discovery(&bundle, &discovery).unwrap_err();
+        let error = verify_proof_bundle_with_discovery(&bundle, &discovery).test_unwrap_err();
 
         assert!(error.to_string().contains("secondary lanes"));
         assert!(error.to_string().contains("solana_memo"));
@@ -745,7 +797,7 @@ mod tests {
             proof.chain_anchor.clone(),
             proof.key_binding_certificate.clone(),
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(projected.receipt.id, proof.receipt.id);
         assert_eq!(projected.checkpoint_statement.checkpoint_seq, 1_042);
@@ -768,7 +820,7 @@ mod tests {
             proof.chain_anchor.clone(),
             proof.key_binding_certificate.clone(),
         )
-        .unwrap_err();
+        .test_unwrap_err();
 
         assert!(error.to_string().contains("not checkpointed"));
     }
@@ -785,7 +837,7 @@ mod tests {
             proof.chain_anchor.clone(),
             proof.key_binding_certificate.clone(),
         )
-        .unwrap_err();
+        .test_unwrap_err();
 
         assert!(error.to_string().contains("missing checkpoint"));
     }
@@ -818,7 +870,7 @@ mod tests {
             },
             &proof.key_binding_certificate,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(
             discovery.chio_identity,
@@ -841,11 +893,11 @@ mod tests {
     fn publication_record_requires_witness_or_immutable_anchor_reference() {
         let keypair = Keypair::generate();
         let checkpoint = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &keypair)
-            .expect("checkpoint");
+            .test_expect("checkpoint");
         let transparency =
-            build_checkpoint_transparency(&[checkpoint]).expect("transparency summary");
+            build_checkpoint_transparency(&[checkpoint]).test_expect("transparency summary");
 
-        let error = verify_checkpoint_publication_records(&transparency).unwrap_err();
+        let error = verify_checkpoint_publication_records(&transparency).test_unwrap_err();
 
         assert!(error
             .to_string()
@@ -856,7 +908,7 @@ mod tests {
     fn checkpoint_verifier_requires_trust_anchor_and_signer_chain() {
         let keypair = Keypair::generate();
         let checkpoint = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &keypair)
-            .expect("checkpoint");
+            .test_expect("checkpoint");
         let mut publication = build_trust_anchored_checkpoint_publication(
             &checkpoint,
             CheckpointPublicationTrustAnchorBinding {
@@ -873,11 +925,11 @@ mod tests {
                 publication_profile_version: "phase4-preview.v1".to_string(),
             },
         )
-        .expect("trust-anchored publication");
+        .test_expect("trust-anchored publication");
         publication
             .trust_anchor_binding
             .as_mut()
-            .expect("binding")
+            .test_expect("binding")
             .signer_cert_ref
             .clear();
         let transparency = CheckpointTransparencySummary {
@@ -887,7 +939,7 @@ mod tests {
             equivocations: Vec::new(),
         };
 
-        let error = verify_checkpoint_publication_records(&transparency).unwrap_err();
+        let error = verify_checkpoint_publication_records(&transparency).test_unwrap_err();
 
         assert!(error.to_string().contains("signer_cert_ref"));
     }
@@ -896,14 +948,14 @@ mod tests {
     fn witness_rejects_conflicting_checkpoint_same_log_and_tree_size() {
         let keypair = Keypair::generate();
         let first = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &keypair)
-            .expect("first checkpoint");
+            .test_expect("first checkpoint");
         let conflicting =
             build_checkpoint(2, 1, 2, &[b"one".to_vec(), b"changed".to_vec()], &keypair)
-                .expect("conflicting checkpoint");
-        let transparency =
-            build_checkpoint_transparency(&[first, conflicting]).expect("transparency summary");
+                .test_expect("conflicting checkpoint");
+        let transparency = build_checkpoint_transparency(&[first, conflicting])
+            .test_expect("transparency summary");
 
-        let error = verify_checkpoint_publication_records(&transparency).unwrap_err();
+        let error = verify_checkpoint_publication_records(&transparency).test_unwrap_err();
 
         assert!(error
             .to_string()

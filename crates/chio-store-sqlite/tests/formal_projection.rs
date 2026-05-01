@@ -8,10 +8,33 @@ use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction,
 use chio_kernel::{BudgetStore, ReceiptStore, RevocationStore};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteReceiptStore, SqliteRevocationStore};
 
+trait TestResultOk<T, E> {
+    fn test_unwrap(self) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E> {
+    fn test_unwrap(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("expected Ok result"),
+        }
+    }
+}
+
+trait TestOptionExt<T> {
+    fn test_unwrap(self) -> T;
+}
+
+impl<T> TestOptionExt<T> for Option<T> {
+    fn test_unwrap(self) -> T {
+        self.unwrap_or_else(|| panic!("expected Some value"))
+    }
+}
+
 fn temp_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .test_unwrap()
         .as_nanos();
     std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
 }
@@ -39,7 +62,7 @@ fn capability(id: &str, subject: &Keypair) -> CapabilityToken {
         expires_at: 100,
         delegation_chain: vec![],
     };
-    CapabilityToken::sign(body, &issuer).unwrap()
+    CapabilityToken::sign(body, &issuer).test_unwrap()
 }
 
 fn receipt(id: &str, capability_id: &str) -> ChioReceipt {
@@ -51,7 +74,8 @@ fn receipt(id: &str, capability_id: &str) -> ChioReceipt {
             capability_id: capability_id.to_string(),
             tool_server: "srv".to_string(),
             tool_name: "read".to_string(),
-            action: ToolCallAction::from_parameters(serde_json::json!({"path": "/app/a"})).unwrap(),
+            action: ToolCallAction::from_parameters(serde_json::json!({"path": "/app/a"}))
+                .test_unwrap(),
             decision: Decision::Allow,
             content_hash: "0".repeat(64),
             policy_hash: "policy".to_string(),
@@ -63,37 +87,37 @@ fn receipt(id: &str, capability_id: &str) -> ChioReceipt {
         },
         &keypair,
     )
-    .unwrap()
+    .test_unwrap()
 }
 
 #[test]
 fn sqlite_revocation_projection_preserves_token_and_ancestor_membership() {
     let path = temp_path("formal-revocation-projection");
     {
-        let store = SqliteRevocationStore::open(&path).unwrap();
-        assert!(store.revoke("cap-token").unwrap());
-        assert!(store.revoke("cap-ancestor").unwrap());
+        let store = SqliteRevocationStore::open(&path).test_unwrap();
+        assert!(store.revoke("cap-token").test_unwrap());
+        assert!(store.revoke("cap-ancestor").test_unwrap());
     }
 
-    let reopened = SqliteRevocationStore::open(&path).unwrap();
-    assert!(reopened.is_revoked("cap-token").unwrap());
-    assert!(reopened.is_revoked("cap-ancestor").unwrap());
-    assert!(!reopened.is_revoked("cap-other").unwrap());
+    let reopened = SqliteRevocationStore::open(&path).test_unwrap();
+    assert!(reopened.is_revoked("cap-token").test_unwrap());
+    assert!(reopened.is_revoked("cap-ancestor").test_unwrap());
+    assert!(!reopened.is_revoked("cap-other").test_unwrap());
 }
 
 #[test]
 fn sqlite_budget_projection_atomic_commits_do_not_overspend() {
     let path = temp_path("formal-budget-projection");
-    let store = SqliteBudgetStore::open(&path).unwrap();
+    let store = SqliteBudgetStore::open(&path).test_unwrap();
 
     assert!(store
         .try_charge_cost("cap-budget", 0, None, 70, Some(100), Some(100))
-        .unwrap());
+        .test_unwrap());
     assert!(!store
         .try_charge_cost("cap-budget", 0, None, 40, Some(100), Some(100))
-        .unwrap());
+        .test_unwrap());
 
-    let usage = store.get_usage("cap-budget", 0).unwrap().unwrap();
+    let usage = store.get_usage("cap-budget", 0).test_unwrap().test_unwrap();
     assert_eq!(usage.invocation_count, 1);
     assert_eq!(usage.total_cost_exposed, 70);
 }
@@ -101,7 +125,7 @@ fn sqlite_budget_projection_atomic_commits_do_not_overspend() {
 #[test]
 fn sqlite_budget_projection_idempotent_retry_does_not_double_charge() {
     let path = temp_path("formal-budget-idempotent");
-    let store = SqliteBudgetStore::open(&path).unwrap();
+    let store = SqliteBudgetStore::open(&path).test_unwrap();
 
     assert!(store
         .try_charge_cost_with_ids(
@@ -114,7 +138,7 @@ fn sqlite_budget_projection_idempotent_retry_does_not_double_charge() {
             Some("hold-1"),
             Some("event-1"),
         )
-        .unwrap());
+        .test_unwrap());
     assert!(store
         .try_charge_cost_with_ids(
             "cap-budget",
@@ -126,9 +150,9 @@ fn sqlite_budget_projection_idempotent_retry_does_not_double_charge() {
             Some("hold-1"),
             Some("event-1"),
         )
-        .unwrap());
+        .test_unwrap());
 
-    let usage = store.get_usage("cap-budget", 0).unwrap().unwrap();
+    let usage = store.get_usage("cap-budget", 0).test_unwrap().test_unwrap();
     assert_eq!(usage.invocation_count, 1);
     assert_eq!(usage.total_cost_exposed, 25);
 }
@@ -136,29 +160,29 @@ fn sqlite_budget_projection_idempotent_retry_does_not_double_charge() {
 #[test]
 fn sqlite_receipt_projection_persists_signed_receipts() {
     let path = temp_path("formal-receipt-projection");
-    let store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
     let receipt = receipt("rcpt-projection", "cap-projection");
 
-    store.append_chio_receipt(&receipt).unwrap();
+    store.append_chio_receipt(&receipt).test_unwrap();
 
-    let reopened = SqliteReceiptStore::open(&path).unwrap();
-    assert_eq!(reopened.tool_receipt_count().unwrap(), 1);
+    let reopened = SqliteReceiptStore::open(&path).test_unwrap();
+    assert_eq!(reopened.tool_receipt_count().test_unwrap(), 1);
 }
 
 #[test]
 fn sqlite_lineage_projection_preserves_root_first_chain() {
     let path = temp_path("formal-lineage-projection");
-    let store = SqliteReceiptStore::open(&path).unwrap();
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
     let subject = Keypair::generate();
     let root = capability("cap-root", &subject);
     let child = capability("cap-child", &subject);
 
-    store.record_capability_snapshot(&root, None).unwrap();
+    store.record_capability_snapshot(&root, None).test_unwrap();
     store
         .record_capability_snapshot(&child, Some("cap-root"))
-        .unwrap();
+        .test_unwrap();
 
-    let chain = store.get_delegation_chain("cap-child").unwrap();
+    let chain = store.get_delegation_chain("cap-child").test_unwrap();
     assert_eq!(chain.len(), 2);
     assert_eq!(chain[0].capability_id, "cap-root");
     assert_eq!(chain[1].capability_id, "cap-child");

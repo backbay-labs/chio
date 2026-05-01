@@ -102,6 +102,7 @@ pub async fn read_sequencer_status(
 mod tests {
     use super::*;
     use crate::config::{ChainlinkNetworkConfig, BASE_MAINNET_CAIP2, BASE_MAINNET_CHAIN_ID};
+    use crate::test_support::{TestUnwrap, TestUnwrapErr};
 
     fn base_chain(rpc_endpoint: &str, feed: Option<&str>) -> ChainlinkNetworkConfig {
         ChainlinkNetworkConfig {
@@ -119,7 +120,7 @@ mod tests {
     async fn returns_none_when_no_sequencer_feed_is_configured() {
         let result = read_sequencer_status(&base_chain("https://rpc.example", None), 1_743_292_780)
             .await
-            .expect("no feed configured");
+            .test_unwrap("no feed configured");
 
         assert_eq!(result, None);
     }
@@ -134,7 +135,7 @@ mod tests {
             1_743_292_780,
         )
         .await
-        .expect_err("invalid rpc endpoint");
+        .test_unwrap_err("invalid rpc endpoint");
 
         assert!(matches!(error, PriceOracleError::InvalidConfiguration(_)));
     }
@@ -146,7 +147,7 @@ mod tests {
             1_743_292_780,
         )
         .await
-        .expect_err("invalid sequencer feed");
+        .test_unwrap_err("invalid sequencer feed");
 
         assert!(matches!(error, PriceOracleError::InvalidConfiguration(_)));
     }

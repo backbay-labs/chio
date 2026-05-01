@@ -138,6 +138,19 @@ mod tests {
     use super::*;
     use crate::identity::CallerIdentity;
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
     #[test]
     fn new_request_defaults() {
         let req = ChioHttpRequest::new(
@@ -162,8 +175,8 @@ mod tests {
             "/pets".to_string(),
             CallerIdentity::anonymous(),
         );
-        let h1 = req.content_hash().unwrap();
-        let h2 = req.content_hash().unwrap();
+        let h1 = req.content_hash().test_unwrap();
+        let h2 = req.content_hash().test_unwrap();
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64);
     }
@@ -180,8 +193,8 @@ mod tests {
         req.query.insert("verbose".to_string(), "true".to_string());
         req.body_hash = Some("abc123".to_string());
 
-        let json = serde_json::to_string(&req).unwrap();
-        let back: ChioHttpRequest = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&req).test_unwrap();
+        let back: ChioHttpRequest = serde_json::from_str(&json).test_unwrap();
         assert_eq!(back.method, HttpMethod::Put);
         assert_eq!(back.query.get("verbose").map(|s| s.as_str()), Some("true"));
         assert_eq!(back.body_hash.as_deref(), Some("abc123"));
@@ -201,8 +214,8 @@ mod tests {
         req1.query.insert("q".to_string(), "cats".to_string());
         req2.query.insert("q".to_string(), "dogs".to_string());
 
-        let h1 = req1.content_hash().unwrap();
-        let h2 = req2.content_hash().unwrap();
+        let h1 = req1.content_hash().test_unwrap();
+        let h2 = req2.content_hash().test_unwrap();
         assert_ne!(
             h1, h2,
             "different query params should produce different hashes"
@@ -223,8 +236,8 @@ mod tests {
         req1.body_hash = Some("bodyhash1".to_string());
         req2.body_hash = Some("bodyhash2".to_string());
 
-        let h1 = req1.content_hash().unwrap();
-        let h2 = req2.content_hash().unwrap();
+        let h1 = req1.content_hash().test_unwrap();
+        let h2 = req2.content_hash().test_unwrap();
         assert_ne!(
             h1, h2,
             "different body hashes should produce different content hashes"
@@ -248,8 +261,8 @@ mod tests {
             CallerIdentity::anonymous(),
         );
 
-        let h1 = req_get.content_hash().unwrap();
-        let h2 = req_post.content_hash().unwrap();
+        let h1 = req_get.content_hash().test_unwrap();
+        let h2 = req_post.content_hash().test_unwrap();
         assert_ne!(
             h1, h2,
             "different methods should produce different content hashes"

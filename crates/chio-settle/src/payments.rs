@@ -334,11 +334,34 @@ mod tests {
     };
     use chio_core::web3::Web3SettlementDispatchArtifact;
 
+    trait TestResultOk<T, E> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
+        }
+    }
+
+    trait TestOptionExt<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T> TestOptionExt<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|| panic!("expected Some value"))
+        }
+    }
+
     fn sample_dispatch() -> Web3SettlementDispatchArtifact {
         serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_WEB3_SETTLEMENT_DISPATCH_EXAMPLE.json"
         ))
-        .unwrap()
+        .test_unwrap()
     }
 
     #[test]
@@ -351,7 +374,7 @@ mod tests {
             vec!["USDC".to_string(), "EURC".to_string()],
             X402SettlementMode::PrepaidAuthorization,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert!(requirements.governed_authorization_required);
         assert_eq!(requirements.dispatch_id, dispatch.dispatch_id);
@@ -376,7 +399,7 @@ mod tests {
                     .to_string(),
             },
         )
-        .unwrap();
+        .test_unwrap();
 
         assert!(prepared.authorization_digest.starts_with("0x"));
         assert_eq!(prepared.authorization_digest.len(), 66);
@@ -396,8 +419,8 @@ mod tests {
                 operator_managed_custody_explicit: true,
             },
         )
-        .unwrap()
-        .unwrap();
+        .test_unwrap()
+        .test_unwrap();
 
         assert_eq!(prepared.dispatch_id, dispatch.dispatch_id);
     }
@@ -419,7 +442,7 @@ mod tests {
             250_000,
             5,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert!(prepared.allowed);
         assert!(prepared.rejection_reason.is_none());

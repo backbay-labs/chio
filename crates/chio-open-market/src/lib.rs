@@ -1098,6 +1098,45 @@ mod tests {
         GENERIC_NAMESPACE_ARTIFACT_SCHEMA,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
+    trait TestOptionExt<T> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T> TestOptionExt<T> for Option<T> {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|| panic!("{context}"))
+        }
+    }
+
     fn sample_listing(owner_id: &str, signing_keypair: &Keypair) -> SignedGenericListing {
         let namespace = GenericNamespaceArtifact {
             schema: GENERIC_NAMESPACE_ARTIFACT_SCHEMA.to_string(),
@@ -1137,7 +1176,7 @@ mod tests {
             },
             boundary: GenericListingBoundary::default(),
         };
-        SignedGenericListing::sign(listing, signing_keypair).expect("sign listing")
+        SignedGenericListing::sign(listing, signing_keypair).test_expect("sign listing")
     }
 
     fn sample_publisher(owner_id: &str) -> GenericRegistryPublisher {
@@ -1190,8 +1229,8 @@ mod tests {
             },
             200,
         )
-        .expect("build activation");
-        SignedGenericTrustActivation::sign(artifact, signing_keypair).expect("sign activation")
+        .test_expect("build activation");
+        SignedGenericTrustActivation::sign(artifact, signing_keypair).test_expect("sign activation")
     }
 
     fn sample_charter(owner_id: &str, signing_keypair: &Keypair) -> SignedGenericGovernanceCharter {
@@ -1217,8 +1256,8 @@ mod tests {
             },
             202,
         )
-        .expect("build charter");
-        SignedGenericGovernanceCharter::sign(artifact, signing_keypair).expect("sign charter")
+        .test_expect("build charter");
+        SignedGenericGovernanceCharter::sign(artifact, signing_keypair).test_expect("sign charter")
     }
 
     fn sample_sanction_case(
@@ -1254,8 +1293,8 @@ mod tests {
             },
             203,
         )
-        .expect("build case");
-        SignedGenericGovernanceCase::sign(artifact, signing_keypair).expect("sign case")
+        .test_expect("build case");
+        SignedGenericGovernanceCase::sign(artifact, signing_keypair).test_expect("sign case")
     }
 
     fn sample_fee_schedule(
@@ -1301,8 +1340,9 @@ mod tests {
             },
             202,
         )
-        .expect("build fee schedule");
-        SignedOpenMarketFeeSchedule::sign(artifact, signing_keypair).expect("sign fee schedule")
+        .test_expect("build fee schedule");
+        SignedOpenMarketFeeSchedule::sign(artifact, signing_keypair)
+            .test_expect("sign fee schedule")
     }
 
     fn sample_penalty_issue_request(
@@ -1385,9 +1425,9 @@ mod tests {
             },
             204,
         )
-        .expect("build penalty");
+        .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
-            .expect("sign penalty");
+            .test_expect("sign penalty");
 
         let evaluation = evaluate_open_market_penalty(
             &OpenMarketPenaltyEvaluationRequest {
@@ -1403,7 +1443,7 @@ mod tests {
             },
             205,
         )
-        .expect("evaluate open market");
+        .test_expect("evaluate open market");
 
         assert_eq!(
             evaluation.effective_state,
@@ -1415,7 +1455,7 @@ mod tests {
             evaluation
                 .publication_fee
                 .as_ref()
-                .expect("publication fee")
+                .test_expect("publication fee")
                 .units,
             100
         );
@@ -1423,7 +1463,7 @@ mod tests {
             evaluation
                 .bond_requirement
                 .as_ref()
-                .expect("bond requirement")
+                .test_expect("bond requirement")
                 .bond_class,
             OpenMarketBondClass::Listing
         );
@@ -1440,8 +1480,8 @@ mod tests {
             sample_sanction_case(owner_id, &signing_keypair, &listing, &activation, &charter);
         let mut fee_schedule = sample_fee_schedule(owner_id, &signing_keypair);
         fee_schedule.body.expires_at = Some(204);
-        let fee_schedule =
-            SignedOpenMarketFeeSchedule::sign(fee_schedule.body, &signing_keypair).expect("resign");
+        let fee_schedule = SignedOpenMarketFeeSchedule::sign(fee_schedule.body, &signing_keypair)
+            .test_expect("resign");
         let penalty_artifact = build_open_market_penalty_artifact(
             owner_id,
             &OpenMarketPenaltyIssueRequest {
@@ -1474,9 +1514,9 @@ mod tests {
             },
             204,
         )
-        .expect("build penalty");
+        .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
-            .expect("sign penalty");
+            .test_expect("sign penalty");
 
         let evaluation = evaluate_open_market_penalty(
             &OpenMarketPenaltyEvaluationRequest {
@@ -1492,7 +1532,7 @@ mod tests {
             },
             205,
         )
-        .expect("evaluate open market");
+        .test_expect("evaluate open market");
 
         assert_eq!(evaluation.findings.len(), 1);
         assert_eq!(
@@ -1549,9 +1589,9 @@ mod tests {
             },
             202,
         )
-        .expect("build fee schedule");
+        .test_expect("build fee schedule");
         let fee_schedule = SignedOpenMarketFeeSchedule::sign(artifact, &signing_keypair)
-            .expect("sign fee schedule");
+            .test_expect("sign fee schedule");
         let penalty_artifact = build_open_market_penalty_artifact(
             owner_id,
             &OpenMarketPenaltyIssueRequest {
@@ -1584,9 +1624,9 @@ mod tests {
             },
             204,
         )
-        .expect("build penalty");
+        .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
-            .expect("sign penalty");
+            .test_expect("sign penalty");
 
         let evaluation = evaluate_open_market_penalty(
             &OpenMarketPenaltyEvaluationRequest {
@@ -1602,7 +1642,7 @@ mod tests {
             },
             205,
         )
-        .expect("evaluate open market");
+        .test_expect("evaluate open market");
 
         assert_eq!(evaluation.findings.len(), 1);
         assert_eq!(
@@ -1622,7 +1662,7 @@ mod tests {
         forged_activation_body.local_operator_name = Some("Remote Operator".to_string());
         let forged_activation =
             SignedGenericTrustActivation::sign(forged_activation_body, &Keypair::generate())
-                .expect("sign forged activation");
+                .test_expect("sign forged activation");
         let charter = sample_charter(owner_id, &signing_keypair);
         let governance_case =
             sample_sanction_case(owner_id, &signing_keypair, &listing, &activation, &charter);
@@ -1660,7 +1700,7 @@ mod tests {
             },
             204,
         )
-        .expect_err("non-local activation authority rejected");
+        .test_expect_err("non-local activation authority rejected");
         assert!(error.contains("issued by the governing operator"));
     }
 
@@ -1706,15 +1746,15 @@ mod tests {
             },
             204,
         )
-        .expect("build penalty");
+        .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
-            .expect("sign penalty");
+            .test_expect("sign penalty");
         let mut forged_activation_body = activation.body.clone();
         forged_activation_body.local_operator_id = "https://remote.chio.example".to_string();
         forged_activation_body.local_operator_name = Some("Remote Operator".to_string());
         let forged_activation =
             SignedGenericTrustActivation::sign(forged_activation_body, &Keypair::generate())
-                .expect("sign forged activation");
+                .test_expect("sign forged activation");
 
         let evaluation = evaluate_open_market_penalty(
             &OpenMarketPenaltyEvaluationRequest {
@@ -1730,7 +1770,7 @@ mod tests {
             },
             205,
         )
-        .expect("evaluate open market");
+        .test_expect("evaluate open market");
 
         assert_eq!(evaluation.findings.len(), 1);
         assert_eq!(
@@ -1749,7 +1789,7 @@ mod tests {
             policy_reference: None,
         }
         .validate()
-        .expect_err("blank operator ids rejected");
+        .test_expect_err("blank operator ids rejected");
 
         assert!(error.contains("scope.allowed_listing_operator_ids[0]"));
     }
@@ -1796,7 +1836,7 @@ mod tests {
             note: None,
         }
         .validate()
-        .expect_err("namespace mismatch rejected");
+        .test_expect_err("namespace mismatch rejected");
 
         assert!(error.contains("namespace must match scope namespace"));
     }
@@ -1830,7 +1870,7 @@ mod tests {
             note: None,
         }
         .validate()
-        .expect_err("bond requirements required");
+        .test_expect_err("bond requirements required");
 
         assert!(error.contains("bond_requirements must not be empty"));
     }
@@ -1870,7 +1910,7 @@ mod tests {
             note: None,
         }
         .validate()
-        .expect_err("reverse slash metadata required");
+        .test_expect_err("reverse slash metadata required");
 
         assert!(error.contains("requires supersedes_penalty_id"));
     }
@@ -1897,7 +1937,7 @@ mod tests {
             Some(activation),
         )
         .validate()
-        .expect_err("tampered fee schedule rejected");
+        .test_expect_err("tampered fee schedule rejected");
 
         assert!(error.contains("fee schedule signature is invalid"));
     }
@@ -1945,7 +1985,7 @@ mod tests {
             &request,
             202,
         )
-        .expect("build fee schedule");
+        .test_expect("build fee schedule");
 
         assert_eq!(artifact.issued_at, 777);
         assert_eq!(artifact.governing_operator_id, owner_id);
@@ -1957,7 +1997,7 @@ mod tests {
             &request,
             202,
         )
-        .expect("build changed fee schedule");
+        .test_expect("build changed fee schedule");
         assert_ne!(artifact.fee_schedule_id, changed.fee_schedule_id);
     }
 
@@ -1983,9 +2023,9 @@ mod tests {
             ),
             204,
         )
-        .expect("build penalty");
+        .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
-            .expect("sign penalty");
+            .test_expect("sign penalty");
         let mut tampered_penalty = penalty.clone();
         tampered_penalty.body.note = Some("tampered".to_string());
 
@@ -2003,7 +2043,7 @@ mod tests {
             },
             205,
         )
-        .expect("evaluate open market");
+        .test_expect("evaluate open market");
 
         assert_eq!(
             evaluation.findings[0].code,

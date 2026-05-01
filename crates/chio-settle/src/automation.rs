@@ -185,17 +185,30 @@ mod tests {
         SettlementAutomationExecution, SettlementAutomationOutcome,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
+        }
+    }
+
     fn sample_dispatch() -> Web3SettlementDispatchArtifact {
         serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_WEB3_SETTLEMENT_DISPATCH_EXAMPLE.json"
         ))
-        .unwrap()
+        .test_unwrap()
     }
 
     #[test]
     fn builds_settlement_watchdog_job() {
         let dispatch = sample_dispatch();
-        let job = build_settlement_watchdog_job(&dispatch, "*/5 * * * *", 600).unwrap();
+        let job = build_settlement_watchdog_job(&dispatch, "*/5 * * * *", 600).test_unwrap();
 
         assert_eq!(job.reference_id, dispatch.dispatch_id);
         assert!(job.operator_override_required);
@@ -210,7 +223,7 @@ mod tests {
             "*/10 * * * *",
             900,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(job.reference_id, "vault-001");
     }
@@ -218,7 +231,7 @@ mod tests {
     #[test]
     fn validates_watchdog_execution() {
         let dispatch = sample_dispatch();
-        let job = build_settlement_watchdog_job(&dispatch, "*/5 * * * *", 600).unwrap();
+        let job = build_settlement_watchdog_job(&dispatch, "*/5 * * * *", 600).test_unwrap();
         let execution = SettlementAutomationExecution {
             job_id: job.job_id.clone(),
             fired_at: 1_744_000_000,
@@ -229,6 +242,6 @@ mod tests {
             outcome: SettlementAutomationOutcome::Executed,
         };
 
-        assess_watchdog_execution(&job, &execution).unwrap();
+        assess_watchdog_execution(&job, &execution).test_unwrap();
     }
 }

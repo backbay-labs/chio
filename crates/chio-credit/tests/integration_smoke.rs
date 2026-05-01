@@ -2,9 +2,10 @@ use chio_credit::ExposureLedgerQuery;
 
 #[test]
 fn exposure_ledger_query_requires_an_anchor() {
-    let error = ExposureLedgerQuery::default()
-        .validate()
-        .expect_err("query without anchors must fail");
+    let error = match ExposureLedgerQuery::default().validate() {
+        Ok(()) => panic!("query without anchors must fail"),
+        Err(error) => error,
+    };
 
     assert!(error.contains("require at least one anchor"));
 }

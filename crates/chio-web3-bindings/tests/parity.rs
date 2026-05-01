@@ -47,7 +47,8 @@ fn canonical_param_type(param: &Value) -> String {
 }
 
 fn signature_set(artifact: &str, kind: &str) -> BTreeSet<String> {
-    let parsed: Value = serde_json::from_str(artifact).unwrap();
+    let parsed: Value = serde_json::from_str(artifact)
+        .unwrap_or_else(|error| panic!("parse ABI artifact: {error}"));
     abi_items(&parsed)
         .iter()
         .filter(|item| item["type"].as_str() == Some(kind))
@@ -176,20 +177,23 @@ fn standards_and_runtime_constants_remain_in_sync() {
     let contract_package: Web3ContractPackage = serde_json::from_str(include_str!(
         "../../../docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json"
     ))
-    .unwrap();
-    validate_web3_contract_package(&contract_package).unwrap();
+    .unwrap_or_else(|error| panic!("parse web3 contract package standard: {error}"));
+    validate_web3_contract_package(&contract_package)
+        .unwrap_or_else(|error| panic!("validate web3 contract package standard: {error:?}"));
 
     let chain_configuration: Web3ChainConfiguration = serde_json::from_str(include_str!(
         "../../../docs/standards/CHIO_WEB3_CHAIN_CONFIGURATION.json"
     ))
-    .unwrap();
-    validate_web3_chain_configuration(&chain_configuration).unwrap();
+    .unwrap_or_else(|error| panic!("parse web3 chain configuration standard: {error}"));
+    validate_web3_chain_configuration(&chain_configuration)
+        .unwrap_or_else(|error| panic!("validate web3 chain configuration standard: {error:?}"));
 
     let settlement_receipt: Web3SettlementExecutionReceiptArtifact = serde_json::from_str(
         include_str!("../../../docs/standards/CHIO_WEB3_SETTLEMENT_RECEIPT_EXAMPLE.json"),
     )
-    .unwrap();
-    validate_web3_settlement_execution_receipt(&settlement_receipt).unwrap();
+    .unwrap_or_else(|error| panic!("parse web3 settlement receipt standard: {error}"));
+    validate_web3_settlement_execution_receipt(&settlement_receipt)
+        .unwrap_or_else(|error| panic!("validate web3 settlement receipt standard: {error:?}"));
 
     assert_eq!(contract_package.package_id, chain_configuration.package_id);
     assert_eq!(

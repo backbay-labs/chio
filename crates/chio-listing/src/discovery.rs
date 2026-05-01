@@ -593,6 +593,17 @@ mod tests {
         GENERIC_LISTING_ARTIFACT_SCHEMA, GENERIC_LISTING_REPORT_SCHEMA,
     };
 
+    fn require_ok<T, E>(result: Result<T, E>, context: &'static str) -> T
+    where
+        E: std::fmt::Debug,
+    {
+        result.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+    }
+
+    fn require_some<T>(value: Option<T>, context: &'static str) -> T {
+        value.unwrap_or_else(|| panic!("{context}"))
+    }
+
     fn sample_namespace(keypair: &Keypair) -> GenericNamespaceOwnership {
         GenericNamespaceOwnership {
             namespace: "https://registry.chio.example".to_string(),
@@ -633,7 +644,7 @@ mod tests {
             },
             boundary: GenericListingBoundary::default(),
         };
-        SignedGenericListing::sign(body, keypair).expect("sign listing")
+        require_ok(SignedGenericListing::sign(body, keypair), "sign listing")
     }
 
     fn sample_publisher(operator_id: &str) -> GenericRegistryPublisher {
@@ -704,7 +715,10 @@ mod tests {
             issued_at,
             expires_at: issued_at + 600,
         };
-        SignedListingPricingHint::sign(body, operator_keypair).expect("sign hint")
+        require_ok(
+            SignedListingPricingHint::sign(body, operator_keypair),
+            "sign hint",
+        )
     }
 
     #[test]
@@ -887,16 +901,20 @@ mod tests {
         assert_eq!(comparison.entry_count, 2);
         assert!(comparison.currency_consistent);
         // listing-a is cheapest; its price_index should be 10_000 (1.0x).
-        let row_a = comparison
-            .rows
-            .iter()
-            .find(|row| row.listing_id == "listing-a")
-            .expect("row a present");
-        let row_b = comparison
-            .rows
-            .iter()
-            .find(|row| row.listing_id == "listing-b")
-            .expect("row b present");
+        let row_a = require_some(
+            comparison
+                .rows
+                .iter()
+                .find(|row| row.listing_id == "listing-a"),
+            "row a present",
+        );
+        let row_b = require_some(
+            comparison
+                .rows
+                .iter()
+                .find(|row| row.listing_id == "listing-b"),
+            "row b present",
+        );
         assert_eq!(row_a.price_index_bps, 10_000);
         assert_eq!(row_b.price_index_bps, 20_000);
     }
@@ -907,54 +925,58 @@ mod tests {
         let listing = sample_listing(&registry_keypair, "listing-a", GenericListingStatus::Active);
         let operator_keypair = Keypair::generate();
 
-        let hint_usd = SignedListingPricingHint::sign(
-            ListingPricingHint {
-                schema: LISTING_PRICING_HINT_SCHEMA.to_string(),
-                listing_id: "listing-a".to_string(),
-                namespace: "https://registry.chio.example".to_string(),
-                provider_operator_id: "operator-a".to_string(),
-                capability_scope: "tools:search".to_string(),
-                price_per_call: MonetaryAmount {
-                    units: 100,
-                    currency: "USD".to_string(),
+        let hint_usd = require_ok(
+            SignedListingPricingHint::sign(
+                ListingPricingHint {
+                    schema: LISTING_PRICING_HINT_SCHEMA.to_string(),
+                    listing_id: "listing-a".to_string(),
+                    namespace: "https://registry.chio.example".to_string(),
+                    provider_operator_id: "operator-a".to_string(),
+                    capability_scope: "tools:search".to_string(),
+                    price_per_call: MonetaryAmount {
+                        units: 100,
+                        currency: "USD".to_string(),
+                    },
+                    sla: ListingSla {
+                        max_latency_ms: 500,
+                        availability_bps: 9_990,
+                        throughput_rps: 10,
+                    },
+                    revocation_rate_bps: 0,
+                    recent_receipts_volume: 10,
+                    issued_at: 100,
+                    expires_at: 500,
                 },
-                sla: ListingSla {
-                    max_latency_ms: 500,
-                    availability_bps: 9_990,
-                    throughput_rps: 10,
+                &operator_keypair,
+            ),
+            "sign usd",
+        );
+        let hint_eur = require_ok(
+            SignedListingPricingHint::sign(
+                ListingPricingHint {
+                    schema: LISTING_PRICING_HINT_SCHEMA.to_string(),
+                    listing_id: "listing-b".to_string(),
+                    namespace: "https://registry.chio.example".to_string(),
+                    provider_operator_id: "operator-a".to_string(),
+                    capability_scope: "tools:search".to_string(),
+                    price_per_call: MonetaryAmount {
+                        units: 80,
+                        currency: "EUR".to_string(),
+                    },
+                    sla: ListingSla {
+                        max_latency_ms: 500,
+                        availability_bps: 9_990,
+                        throughput_rps: 10,
+                    },
+                    revocation_rate_bps: 0,
+                    recent_receipts_volume: 10,
+                    issued_at: 100,
+                    expires_at: 500,
                 },
-                revocation_rate_bps: 0,
-                recent_receipts_volume: 10,
-                issued_at: 100,
-                expires_at: 500,
-            },
-            &operator_keypair,
-        )
-        .expect("sign usd");
-        let hint_eur = SignedListingPricingHint::sign(
-            ListingPricingHint {
-                schema: LISTING_PRICING_HINT_SCHEMA.to_string(),
-                listing_id: "listing-b".to_string(),
-                namespace: "https://registry.chio.example".to_string(),
-                provider_operator_id: "operator-a".to_string(),
-                capability_scope: "tools:search".to_string(),
-                price_per_call: MonetaryAmount {
-                    units: 80,
-                    currency: "EUR".to_string(),
-                },
-                sla: ListingSla {
-                    max_latency_ms: 500,
-                    availability_bps: 9_990,
-                    throughput_rps: 10,
-                },
-                revocation_rate_bps: 0,
-                recent_receipts_volume: 10,
-                issued_at: 100,
-                expires_at: 500,
-            },
-            &operator_keypair,
-        )
-        .expect("sign eur");
+                &operator_keypair,
+            ),
+            "sign eur",
+        );
 
         let listings = vec![
             Listing {

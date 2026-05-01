@@ -259,6 +259,41 @@ mod tests {
     use super::*;
     use crate::verdict::Verdict;
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Some(value) => value,
+                None => panic!("expected Some(..), got None"),
+            }
+        }
+    }
+
+    trait TestUnwrapErr<E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T: std::fmt::Debug, E> TestUnwrapErr<E> for Result<T, E> {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err(..), got Ok({value:?})"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn test_keypair() -> Keypair {
         Keypair::generate()
     }
@@ -287,8 +322,8 @@ mod tests {
     fn sign_and_verify() {
         let kp = test_keypair();
         let body = sample_body(&kp);
-        let receipt = HttpReceipt::sign(body, &kp).unwrap();
-        assert!(receipt.verify_signature().unwrap());
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
+        assert!(receipt.verify_signature().test_unwrap());
         assert!(receipt.is_allowed());
         assert!(!receipt.is_denied());
     }
@@ -299,16 +334,16 @@ mod tests {
         let mut body = sample_body(&kp);
         body.verdict = Verdict::deny("no capability", "CapabilityGuard");
         body.response_status = 403;
-        let receipt = HttpReceipt::sign(body, &kp).unwrap();
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
         assert!(receipt.is_denied());
-        assert!(receipt.verify_signature().unwrap());
+        assert!(receipt.verify_signature().test_unwrap());
     }
 
     #[test]
     fn body_roundtrip() {
         let kp = test_keypair();
         let body = sample_body(&kp);
-        let receipt = HttpReceipt::sign(body.clone(), &kp).unwrap();
+        let receipt = HttpReceipt::sign(body.clone(), &kp).test_unwrap();
         let extracted = receipt.body();
         assert_eq!(extracted.id, body.id);
         assert_eq!(extracted.route_pattern, body.route_pattern);
@@ -318,18 +353,18 @@ mod tests {
     fn serde_roundtrip() {
         let kp = test_keypair();
         let body = sample_body(&kp);
-        let receipt = HttpReceipt::sign(body, &kp).unwrap();
-        let json = serde_json::to_string(&receipt).unwrap();
-        let back: HttpReceipt = serde_json::from_str(&json).unwrap();
-        assert!(back.verify_signature().unwrap());
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
+        let json = serde_json::to_string(&receipt).test_unwrap();
+        let back: HttpReceipt = serde_json::from_str(&json).test_unwrap();
+        assert!(back.verify_signature().test_unwrap());
     }
 
     #[test]
     fn to_chio_receipt_conversion() {
         let kp = test_keypair();
         let body = sample_body(&kp);
-        let receipt = HttpReceipt::sign(body, &kp).unwrap();
-        let error = receipt.to_chio_receipt().unwrap_err();
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
+        let error = receipt.to_chio_receipt().test_unwrap_err();
         assert!(error
             .to_string()
             .contains("cannot convert HttpReceipt into signed ChioReceipt"));
@@ -351,8 +386,8 @@ mod tests {
                 details: None,
             },
         ];
-        let receipt = HttpReceipt::sign(body, &kp).unwrap();
-        assert!(receipt.verify_signature().unwrap());
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
+        assert!(receipt.verify_signature().test_unwrap());
         assert_eq!(receipt.evidence.len(), 2);
         assert_eq!(receipt.evidence[0].guard_name, "PolicyGuard");
         assert!(receipt.evidence[0].verdict);
@@ -366,9 +401,9 @@ mod tests {
             "trace_id": "abc123",
             "tags": ["production", "v2"]
         }));
-        let receipt = HttpReceipt::sign(body, &kp).unwrap();
-        assert!(receipt.verify_signature().unwrap());
-        let meta = receipt.metadata.as_ref().unwrap();
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
+        assert!(receipt.verify_signature().test_unwrap());
+        let meta = receipt.metadata.as_ref().test_unwrap();
         assert_eq!(meta["trace_id"], "abc123");
     }
 
@@ -377,22 +412,22 @@ mod tests {
         let kp = test_keypair();
         let mut body = sample_body(&kp);
         body.capability_id = Some("cap-xyz-789".to_string());
-        let receipt = HttpReceipt::sign(body, &kp).unwrap();
-        assert!(receipt.verify_signature().unwrap());
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
+        assert!(receipt.verify_signature().test_unwrap());
         assert_eq!(receipt.capability_id.as_deref(), Some("cap-xyz-789"));
-        let chio_receipt = receipt.to_chio_receipt_with_keypair(&kp).unwrap();
+        let chio_receipt = receipt.to_chio_receipt_with_keypair(&kp).test_unwrap();
         assert_eq!(chio_receipt.capability_id, "cap-xyz-789");
-        assert!(chio_receipt.verify_signature().unwrap());
+        assert!(chio_receipt.verify_signature().test_unwrap());
     }
 
     #[test]
     fn tampered_receipt_fails_verification() {
         let kp = test_keypair();
         let body = sample_body(&kp);
-        let mut receipt = HttpReceipt::sign(body, &kp).unwrap();
+        let mut receipt = HttpReceipt::sign(body, &kp).test_unwrap();
         // Tamper with the response status
         receipt.response_status = 500;
-        assert!(!receipt.verify_signature().unwrap());
+        assert!(!receipt.verify_signature().test_unwrap());
     }
 
     #[test]
@@ -401,12 +436,12 @@ mod tests {
         let mut body = sample_body(&kp);
         body.metadata = Some(http_status_metadata_final(Some("decision-001")));
 
-        let receipt = HttpReceipt::sign(body, &kp).unwrap();
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
         assert_eq!(
             http_status_scope(receipt.metadata.as_ref()),
             Some(CHIO_HTTP_STATUS_SCOPE_FINAL)
         );
-        assert!(receipt.verify_signature().unwrap());
+        assert!(receipt.verify_signature().test_unwrap());
     }
 
     #[test]
@@ -415,9 +450,9 @@ mod tests {
         let mut body = sample_body(&kp);
         body.metadata = Some(http_status_metadata_decision());
 
-        let mut receipt = HttpReceipt::sign(body, &kp).unwrap();
+        let mut receipt = HttpReceipt::sign(body, &kp).test_unwrap();
         receipt.metadata = Some(http_status_metadata_final(Some("decision-001")));
 
-        assert!(!receipt.verify_signature().unwrap());
+        assert!(!receipt.verify_signature().test_unwrap());
     }
 }

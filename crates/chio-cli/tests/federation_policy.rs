@@ -1,8 +1,8 @@
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::too_many_arguments, clippy::unwrap_used)]
 
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -79,12 +79,12 @@ fn read_child_stderr(child: &mut Child) -> String {
 fn spawn_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
-    policy_path: &PathBuf,
-    federation_policies_file: &PathBuf,
-    receipt_db_path: &PathBuf,
-    revocation_db_path: &PathBuf,
-    authority_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    policy_path: &Path,
+    federation_policies_file: &Path,
+    receipt_db_path: &Path,
+    revocation_db_path: &Path,
+    authority_db_path: &Path,
+    budget_db_path: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -243,8 +243,8 @@ fn make_receipt(
 }
 
 fn seed_subject_history(
-    receipt_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    budget_db_path: &Path,
     subject_kp: &Keypair,
 ) -> String {
     let authority = LocalCapabilityAuthority::new(Keypair::generate());

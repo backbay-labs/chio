@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::too_many_arguments, clippy::unwrap_used)]
 
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
@@ -2446,14 +2446,11 @@ fn mcp_serve_http_idle_expiry_reaps_sessions_and_blocks_reuse() {
         expired["lifecycle"]["reconnect"]["resumable"].as_bool(),
         Some(false)
     );
-    assert_eq!(
-        expired["lifecycle"]["reconnect"]["terminalStates"]
-            .as_array()
-            .expect("terminal states")
-            .iter()
-            .any(|value| value.as_str() == Some("expired")),
-        true
-    );
+    assert!(expired["lifecycle"]["reconnect"]["terminalStates"]
+        .as_array()
+        .expect("terminal states")
+        .iter()
+        .any(|value| value.as_str() == Some("expired")));
 
     let resumed_post = post_json(
         &client,
@@ -4938,13 +4935,10 @@ fn mcp_serve_http_shared_owner_jwt_sessions_keep_weak_compatibility_continuity()
     assert_eq!(tools_list.status(), reqwest::StatusCode::OK);
     let (tools_list, notifications) = read_sse_until_response(tools_list, json!(2), |_| {});
     assert!(notifications.is_empty());
-    assert!(
-        tools_list["result"]["tools"]
-            .as_array()
-            .expect("tools array")
-            .len()
-            >= 1
-    );
+    assert!(!tools_list["result"]["tools"]
+        .as_array()
+        .expect("tools array")
+        .is_empty());
 }
 
 #[test]

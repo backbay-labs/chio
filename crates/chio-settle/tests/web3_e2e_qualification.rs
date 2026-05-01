@@ -55,22 +55,63 @@ const OPERATOR_PRIVATE_KEY: &str =
 const PARTNER_QUALIFICATION_SCHEMA: &str = "chio.web3-e2e-qualification.v1";
 const PARTNER_SCENARIO_SCHEMA: &str = "chio.web3-e2e-scenario.v1";
 
+trait TestResultOk<T, E> {
+    fn test_expect(self, context: &'static str) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E> {
+    fn test_expect(self, context: &'static str) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("{context}"),
+        }
+    }
+}
+
+trait TestOptionExt<T> {
+    fn test_expect(self, context: &'static str) -> T;
+}
+
+impl<T> TestOptionExt<T> for Option<T> {
+    fn test_expect(self, context: &'static str) -> T {
+        self.unwrap_or_else(|| panic!("{context}"))
+    }
+}
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
-        .expect("repo root")
+        .test_expect("repo root")
 }
 
 struct DevnetGuard {
     child: Child,
+    deployment_path: PathBuf,
 }
 
 impl Drop for DevnetGuard {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        let _ = fs::remove_file(&self.deployment_path);
+        if let Some(parent) = self.deployment_path.parent() {
+            let _ = fs::remove_dir(parent);
+        }
     }
+}
+
+fn unique_runtime_devnet_deployment_path(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir()
+        .join(format!(
+            "chio-runtime-devnet-{}-{nanos}",
+            std::process::id()
+        ))
+        .join(name)
 }
 
 struct StaticBackend {
@@ -142,10 +183,10 @@ fn runtime_devnet_prereqs_available() -> bool {
 
 fn write_json(path: &Path, value: &impl Serialize) {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("create output directory");
+        fs::create_dir_all(parent).test_expect("create output directory");
     }
-    let payload = serde_json::to_vec_pretty(value).expect("serialize json output");
-    fs::write(path, payload).expect("write json output");
+    let payload = serde_json::to_vec_pretty(value).test_expect("serialize json output");
+    fs::write(path, payload).test_expect("write json output");
 }
 
 async fn spawn_runtime_devnet(
@@ -157,6 +198,10 @@ async fn spawn_runtime_devnet(
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or("runtime devnet deployment filename missing")?;
+    let deployment_dir = deployment_path
+        .parent()
+        .ok_or("runtime devnet deployment parent directory missing")?;
+    fs::create_dir_all(deployment_dir)?;
     if deployment_path.exists() {
         fs::remove_file(deployment_path)?;
     }
@@ -165,6 +210,7 @@ async fn spawn_runtime_devnet(
         .current_dir(repo_root())
         .env("CHIO_DEVNET_PORT", port.to_string())
         .env("CHIO_RUNTIME_DEPLOYMENT_NAME", deployment_name)
+        .env("CHIO_RUNTIME_DEPLOYMENT_DIR", deployment_dir)
         .env("CHIO_OPERATOR_ED_KEY_HASH", operator_ed_key_hash)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -198,7 +244,10 @@ async fn spawn_runtime_devnet(
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    Ok(DevnetGuard { child })
+    Ok(DevnetGuard {
+        child,
+        deployment_path: deployment_path.to_path_buf(),
+    })
 }
 
 async fn rpc_call(
@@ -292,7 +341,7 @@ fn operator_binding(
     SignedWeb3IdentityBinding {
         signature: keypair
             .sign_canonical(&certificate)
-            .expect("binding signature")
+            .test_expect("binding signature")
             .0,
         certificate,
     }
@@ -371,7 +420,7 @@ fn sample_capital_instruction(
         },
         keypair,
     )
-    .expect("capital instruction")
+    .test_expect("capital instruction")
 }
 
 fn sample_receipt(
@@ -393,7 +442,7 @@ fn sample_receipt(
                 "currency": "USD",
                 "to": beneficiary_address,
             }))
-            .expect("receipt params"),
+            .test_expect("receipt params"),
             decision: Decision::Allow,
             content_hash: sha256_hex(format!("settlement:{receipt_id}").as_bytes()),
             policy_hash: sha256_hex(b"policy:web3"),
@@ -405,7 +454,7 @@ fn sample_receipt(
         },
         keypair,
     )
-    .expect("receipt")
+    .test_expect("receipt")
 }
 
 fn sample_credit_bond(
@@ -502,7 +551,7 @@ fn sample_credit_bond(
         },
         keypair,
     )
-    .expect("credit bond")
+    .test_expect("credit bond")
 }
 
 fn sample_rate(pair: &PairConfig, source: &str, numerator: u128, updated_at: u64) -> ExchangeRate {
@@ -575,7 +624,8 @@ async fn publish_anchor_proof(
         beneficiary_address,
     );
     let receipt_bytes = canonical_json_bytes(&receipt.body())?;
-    let tree = MerkleTree::from_leaves(&[receipt_bytes.clone()])?;
+    let receipt_leaf = receipt_bytes.clone();
+    let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_leaf))?;
     let checkpoint = build_checkpoint(21, 21, 21, &[receipt_bytes], operator_keypair)?;
     let inclusion = build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 21)?;
     let anchor_target = EvmAnchorTarget {
@@ -631,8 +681,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     }
     fs::create_dir_all(root.join("scenarios"))?;
 
-    let repo_root = repo_root();
-    let deployment_path = repo_root.join("contracts/deployments/runtime-devnet-e2e.json");
+    let deployment_path = unique_runtime_devnet_deployment_path("runtime-devnet-e2e.json");
     let operator_keypair = Keypair::from_seed_hex(
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     )?;
@@ -765,7 +814,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             .receipt
             .oracle_evidence
             .as_ref()
-            .expect("oracle evidence")
+            .test_expect("oracle evidence")
             .authority,
         CHIO_LINK_ORACLE_AUTHORITY
     );
@@ -974,7 +1023,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             units: 250,
             currency: "USD".to_string(),
         },
-        &[accounts.beneficiary.clone()],
+        std::slice::from_ref(&accounts.beneficiary),
         &[MonetaryAmount {
             units: 250,
             currency: "USD".to_string(),

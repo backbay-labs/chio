@@ -8,6 +8,28 @@ use chio_kernel::dpop::DpopNonceStore;
 use chio_kernel::{BudgetStore, InMemoryBudgetStore, InMemoryRevocationStore, RevocationStore};
 use serde_json::json;
 
+trait TestUnwrap<T> {
+    fn test_unwrap(self) -> T;
+}
+
+impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+    fn test_unwrap(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+        }
+    }
+}
+
+impl<T> TestUnwrap<T> for Option<T> {
+    fn test_unwrap(self) -> T {
+        match self {
+            Some(value) => value,
+            None => panic!("expected Some(..), got None"),
+        }
+    }
+}
+
 struct RevocationProjection {
     token_revoked: bool,
     ancestor_revoked: bool,
@@ -77,25 +99,25 @@ impl ReceiptProjection {
 fn dpop_nonce_projection_rejects_replay() {
     let store = DpopNonceStore::new(8, Duration::from_secs(60));
 
-    assert!(store.check_and_insert("nonce-1", "cap-1").unwrap());
-    assert!(!store.check_and_insert("nonce-1", "cap-1").unwrap());
+    assert!(store.check_and_insert("nonce-1", "cap-1").test_unwrap());
+    assert!(!store.check_and_insert("nonce-1", "cap-1").test_unwrap());
 }
 
 #[test]
 fn revocation_snapshot_projection_denies_token_and_ancestor() {
     let store = InMemoryRevocationStore::new();
-    store.revoke("cap-child").unwrap();
-    store.revoke("cap-parent").unwrap();
+    store.revoke("cap-child").test_unwrap();
+    store.revoke("cap-parent").test_unwrap();
 
     let child_projection = RevocationProjection {
-        token_revoked: store.is_revoked("cap-child").unwrap(),
+        token_revoked: store.is_revoked("cap-child").test_unwrap(),
         ancestor_revoked: false,
     };
     assert!(child_projection.denies());
 
     let ancestor_projection = RevocationProjection {
         token_revoked: false,
-        ancestor_revoked: store.is_revoked("cap-parent").unwrap(),
+        ancestor_revoked: store.is_revoked("cap-parent").test_unwrap(),
     };
     assert!(ancestor_projection.denies());
 }
@@ -106,18 +128,18 @@ fn budget_snapshot_projection_preserves_single_node_bounds() {
 
     assert!(store
         .try_charge_cost("cap-budget", 0, Some(2), 40, Some(50), Some(100))
-        .unwrap());
+        .test_unwrap());
     assert!(store
         .try_charge_cost("cap-budget", 0, Some(2), 50, Some(50), Some(100))
-        .unwrap());
+        .test_unwrap());
     assert!(!store
         .try_charge_cost("cap-budget", 0, Some(2), 1, Some(50), Some(100))
-        .unwrap());
+        .test_unwrap());
 
-    let usage = store.get_usage("cap-budget", 0).unwrap().unwrap();
+    let usage = store.get_usage("cap-budget", 0).test_unwrap().test_unwrap();
     let projection = BudgetProjection {
         invocation_count: usage.invocation_count,
-        committed_cost_units: usage.committed_cost_units().unwrap(),
+        committed_cost_units: usage.committed_cost_units().test_unwrap(),
     };
 
     assert!(projection.within(2, 100));
@@ -126,7 +148,8 @@ fn budget_snapshot_projection_preserves_single_node_bounds() {
 #[test]
 fn receipt_projection_couples_decision_to_evidence_body() {
     let keypair = Keypair::from_seed(&[42; 32]);
-    let action = ToolCallAction::from_parameters(json!({"path": "/workspace/safe.txt"})).unwrap();
+    let action =
+        ToolCallAction::from_parameters(json!({"path": "/workspace/safe.txt"})).test_unwrap();
     let parameter_hash = action.parameter_hash.clone();
     let decision = Decision::Deny {
         reason: "blocked by path guard".to_string(),
@@ -154,8 +177,8 @@ fn receipt_projection_couples_decision_to_evidence_body() {
         kernel_key: keypair.public_key(),
     };
 
-    let receipt = ChioReceipt::sign(body, &keypair).unwrap();
-    assert!(receipt.verify_signature().unwrap());
+    let receipt = ChioReceipt::sign(body, &keypair).test_unwrap();
+    assert!(receipt.verify_signature().test_unwrap());
 
     let projection = ReceiptProjection::from_receipt(&receipt);
     assert!(projection.couples(

@@ -326,6 +326,35 @@ mod tests {
         FunctionsVerificationPurpose, FunctionsVerificationResponse,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err result, got Ok: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn sample_receipt(id: &str, timestamp: u64) -> ChioReceipt {
         let keypair = Keypair::generate();
         let body = ChioReceiptBody {
@@ -338,7 +367,7 @@ mod tests {
                 "chain_id": "eip155:8453",
                 "method": "release"
             }))
-            .unwrap(),
+            .test_unwrap(),
             decision: Decision::Allow,
             content_hash: chio_core::crypto::sha256_hex(br#"{"released":true}"#),
             policy_hash: "abc123".to_string(),
@@ -354,7 +383,7 @@ mod tests {
             tenant_id: None,
             kernel_key: keypair.public_key(),
         };
-        ChioReceipt::sign(body, &keypair).unwrap()
+        ChioReceipt::sign(body, &keypair).test_unwrap()
     }
 
     fn sample_target() -> ChainlinkFunctionsTarget {
@@ -382,7 +411,7 @@ mod tests {
             FunctionsVerificationPolicy::default(),
             Some("batch anchor audit".to_string()),
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(request.receipt_count, 2);
         assert!(!request.policy.allow_direct_fund_release);
@@ -403,7 +432,7 @@ mod tests {
             FunctionsVerificationPolicy::default(),
             None,
         )
-        .unwrap_err();
+        .test_unwrap_err();
 
         assert!(error.to_string().contains("exceeds bounded maximum"));
     }
@@ -419,7 +448,7 @@ mod tests {
             FunctionsVerificationPolicy::default(),
             None,
         )
-        .unwrap();
+        .test_unwrap();
 
         let response = FunctionsVerificationResponse {
             request_id: request.request_id.clone(),
@@ -432,7 +461,7 @@ mod tests {
             executed_at: 1_744_000_120,
             note: Some("OCR consensus: verified".to_string()),
         };
-        let assessment = assess_functions_verification(&request, &response).unwrap();
+        let assessment = assess_functions_verification(&request, &response).test_unwrap();
 
         assert!(assessment.accepted);
         assert_eq!(assessment.status, FunctionsFallbackStatus::Verified);
@@ -451,7 +480,7 @@ mod tests {
             FunctionsVerificationPolicy::default(),
             None,
         )
-        .unwrap();
+        .test_unwrap();
 
         let response = FunctionsVerificationResponse {
             request_id: request.request_id.clone(),
@@ -465,7 +494,7 @@ mod tests {
             note: None,
         };
 
-        let error = assess_functions_verification(&request, &response).unwrap_err();
+        let error = assess_functions_verification(&request, &response).test_unwrap_err();
         assert!(error.to_string().contains("batch root does not match"));
     }
 }

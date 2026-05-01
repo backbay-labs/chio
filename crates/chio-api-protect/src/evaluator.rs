@@ -329,6 +329,28 @@ mod tests {
         CHIO_HTTP_STATUS_SCOPE_FINAL,
     };
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Some(value) => value,
+                None => panic!("expected Some(..), got None"),
+            }
+        }
+    }
+
     fn signed_capability_token_json(issuer: &Keypair, id: &str) -> String {
         signed_capability_token_json_with_scope(issuer, id, ChioScope::default())
     }
@@ -349,10 +371,10 @@ mod tests {
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
             },
-            &issuer,
+            issuer,
         )
-        .expect("token should sign");
-        serde_json::to_string(&token).expect("token should serialize")
+        .test_unwrap();
+        serde_json::to_string(&token).test_unwrap()
     }
 
     #[test]
@@ -399,9 +421,9 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap();
+            .test_unwrap();
         assert!(result.verdict.is_allowed());
-        assert!(result.receipt.verify_signature().unwrap());
+        assert!(result.receipt.verify_signature().test_unwrap());
         assert_eq!(
             http_status_scope(result.receipt.metadata.as_ref()),
             Some(CHIO_HTTP_STATUS_SCOPE_DECISION)
@@ -445,7 +467,7 @@ mod tests {
 
         let result = evaluator
             .evaluate_chio_request(request, Some(&capability))
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_denied());
         assert_eq!(
@@ -500,7 +522,7 @@ mod tests {
 
         let result = evaluator
             .evaluate_chio_request(request, Some(&capability))
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_allowed());
         assert_eq!(
@@ -533,7 +555,7 @@ mod tests {
 
         let result = evaluator
             .evaluate_chio_request(request, Some(&capability))
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_allowed());
         assert_eq!(
@@ -562,10 +584,10 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap();
+            .test_unwrap();
         assert!(result.verdict.is_denied());
         assert_eq!(result.receipt.response_status, 403);
-        assert!(result.receipt.verify_signature().unwrap());
+        assert!(result.receipt.verify_signature().test_unwrap());
         assert_eq!(
             http_status_scope(result.receipt.metadata.as_ref()),
             Some(CHIO_HTTP_STATUS_SCOPE_DECISION)
@@ -598,7 +620,7 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap();
+            .test_unwrap();
         assert!(result.verdict.is_allowed());
         assert_eq!(result.receipt.capability_id.as_deref(), Some("cap-123"));
         assert_eq!(
@@ -627,9 +649,9 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap()
+            .test_unwrap()
             .receipt;
-        let final_receipt = evaluator.finalize_receipt(&decision, 204).unwrap();
+        let final_receipt = evaluator.finalize_receipt(&decision, 204).test_unwrap();
 
         assert_ne!(final_receipt.id, decision.id);
         assert_eq!(final_receipt.response_status, 204);
@@ -645,7 +667,7 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some(decision.id.as_str())
         );
-        assert!(final_receipt.verify_signature().unwrap());
+        assert!(final_receipt.verify_signature().test_unwrap());
     }
 
     #[test]
@@ -715,9 +737,9 @@ mod tests {
                 Some("bodyhash123".to_string()),
                 1024,
             )
-            .unwrap();
+            .test_unwrap();
         assert!(result.verdict.is_allowed());
-        assert!(result.receipt.verify_signature().unwrap());
+        assert!(result.receipt.verify_signature().test_unwrap());
     }
 
     #[test]
@@ -735,7 +757,7 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap();
+            .test_unwrap();
         assert!(result.verdict.is_allowed());
 
         // DELETE to unknown route should be denied (side-effect method)
@@ -748,7 +770,7 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap();
+            .test_unwrap();
         assert!(result.verdict.is_denied());
     }
 
@@ -774,7 +796,7 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_denied());
         assert!(result.receipt.capability_id.as_deref().is_none());
@@ -804,7 +826,7 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap();
+            .test_unwrap();
         let result_b = evaluator
             .evaluate(
                 HttpMethod::Get,
@@ -814,7 +836,7 @@ mod tests {
                 None,
                 0,
             )
-            .unwrap();
+            .test_unwrap();
 
         assert_ne!(result_a.receipt.content_hash, result_b.receipt.content_hash);
     }

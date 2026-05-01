@@ -6,6 +6,19 @@ use chio_core::{
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
 
+trait BenchUnwrap<T> {
+    fn bench_unwrap(self, context: &str) -> T;
+}
+
+impl<T, E> BenchUnwrap<T> for Result<T, E>
+where
+    E: std::fmt::Display,
+{
+    fn bench_unwrap(self, context: &str) -> T {
+        self.unwrap_or_else(|error| panic!("{context}: {error}"))
+    }
+}
+
 fn make_payload() -> serde_json::Value {
     json!({
         "requestId": "req-bench-001",
@@ -107,7 +120,7 @@ fn build_validation_fixture() -> (
         },
         &root,
     )
-    .unwrap();
+    .bench_unwrap("sign first delegation link");
     let link_two = DelegationLink::sign(
         DelegationLinkBody {
             capability_id: "cap-child".to_string(),
@@ -118,7 +131,7 @@ fn build_validation_fixture() -> (
         },
         &delegate_one,
     )
-    .unwrap();
+    .bench_unwrap("sign second delegation link");
 
     let now = 1_710_000_120;
     let token = CapabilityToken::sign(
@@ -133,7 +146,7 @@ fn build_validation_fixture() -> (
         },
         &delegate_two,
     )
-    .unwrap();
+    .bench_unwrap("sign capability token");
 
     (
         token,
@@ -151,7 +164,9 @@ fn capability_validation_pass(
     delegation_chain: &[DelegationLink],
     now: u64,
 ) -> bool {
-    token.verify_signature().unwrap()
+    token
+        .verify_signature()
+        .bench_unwrap("verify capability signature")
         && token.validate_time(now).is_ok()
         && validate_delegation_chain(delegation_chain, Some(8)).is_ok()
         && validate_attenuation(parent_scope, child_scope).is_ok()
@@ -160,7 +175,7 @@ fn capability_validation_pass(
 fn bench_signature_verification(c: &mut Criterion) {
     let keypair = Keypair::from_seed(&[0x44; 32]);
     let payload = make_payload();
-    let canonical = canonical_json_bytes(&payload).unwrap();
+    let canonical = canonical_json_bytes(&payload).bench_unwrap("canonicalize signature payload");
     let signature = keypair.sign(&canonical);
     let public_key = keypair.public_key();
 
@@ -175,7 +190,11 @@ fn bench_canonical_json(c: &mut Criterion) {
     let payload = make_payload();
 
     c.bench_function("chio_core/canonical_json_bytes", |b| {
-        b.iter(|| black_box(canonical_json_bytes(black_box(&payload)).unwrap()))
+        b.iter(|| {
+            black_box(
+                canonical_json_bytes(black_box(&payload)).bench_unwrap("canonicalize payload"),
+            )
+        })
     });
 }
 
@@ -188,20 +207,29 @@ fn bench_merkle_paths(c: &mut Criterion) {
                 "contentHash": format!("hash-{index:04}"),
                 "decision": if index % 2 == 0 { "allow" } else { "deny" },
             }))
-            .unwrap()
+            .bench_unwrap("canonicalize merkle leaf")
         })
         .collect::<Vec<_>>();
-    let tree = MerkleTree::from_leaves(&leaves).unwrap();
+    let tree = MerkleTree::from_leaves(&leaves).bench_unwrap("build merkle tree");
     let proof_index = 511usize;
-    let proof = tree.inclusion_proof(proof_index).unwrap();
+    let proof = tree
+        .inclusion_proof(proof_index)
+        .bench_unwrap("generate merkle proof");
     let root = tree.root();
 
     let mut group = c.benchmark_group("chio_core/merkle");
     group.bench_function("build_tree_1024_leaves", |b| {
-        b.iter(|| black_box(MerkleTree::from_leaves(black_box(&leaves)).unwrap()))
+        b.iter(|| {
+            black_box(MerkleTree::from_leaves(black_box(&leaves)).bench_unwrap("build merkle tree"))
+        })
     });
     group.bench_function("generate_proof_1024_leaves", |b| {
-        b.iter(|| black_box(tree.inclusion_proof(black_box(proof_index)).unwrap()))
+        b.iter(|| {
+            black_box(
+                tree.inclusion_proof(black_box(proof_index))
+                    .bench_unwrap("generate merkle proof"),
+            )
+        })
     });
     group.bench_function("verify_proof_1024_leaves", |b| {
         b.iter(|| {

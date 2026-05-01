@@ -258,6 +258,13 @@ pub trait SettlementHook: Send + Sync {
 mod tests {
     use super::*;
 
+    fn require_ok<T, E>(result: Result<T, E>, context: &'static str) -> T
+    where
+        E: std::fmt::Debug,
+    {
+        result.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+    }
+
     fn sample_amount() -> MonetaryAmount {
         MonetaryAmount {
             currency: "USD".to_string(),
@@ -307,7 +314,7 @@ mod tests {
             "ch",
             "ph",
         );
-        let mut frames = vec![a.clone(), b.clone(), c.clone()];
+        let mut frames = [a.clone(), b.clone(), c.clone()];
         frames.sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
         assert_eq!(frames[0].receipt_id, "rcpt-c");
         assert_eq!(frames[1].receipt_id, "rcpt-a");
@@ -363,9 +370,7 @@ mod tests {
             "ch",
             "ph",
         );
-        let outcome = hook
-            .observe(&observation)
-            .expect("hook returns observed outcome");
+        let outcome = require_ok(hook.observe(&observation), "hook returns observed outcome");
         assert!(matches!(outcome, SettlementOutcome::Accepted { .. }));
     }
 }

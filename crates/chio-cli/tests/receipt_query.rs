@@ -3,7 +3,7 @@
 //! Tests verify filtering, cursor pagination, total_count, and auth enforcement.
 //! Also covers lineage endpoints (GET /v1/lineage/:id, /chain) and agent filter.
 
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::too_many_arguments, clippy::unwrap_used)]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -281,10 +281,10 @@ extensions:
 fn spawn_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
-    receipt_db_path: &PathBuf,
-    revocation_db_path: &PathBuf,
-    authority_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    revocation_db_path: &Path,
+    authority_db_path: &Path,
+    budget_db_path: &Path,
 ) -> ServerGuard {
     let service_lock = trust_service_test_lock();
     let policy_path = write_test_reputation_policy(receipt_db_path);
@@ -322,9 +322,9 @@ fn spawn_trust_service(
 fn spawn_trust_service_without_receipt_db(
     listen: std::net::SocketAddr,
     service_token: &str,
-    revocation_db_path: &PathBuf,
-    authority_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    revocation_db_path: &Path,
+    authority_db_path: &Path,
+    budget_db_path: &Path,
 ) -> ServerGuard {
     let service_lock = trust_service_test_lock();
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
@@ -447,7 +447,7 @@ fn assert_trust_service_get_error(
 }
 
 fn record_test_credit_loss_event(
-    receipt_db_path: &PathBuf,
+    receipt_db_path: &Path,
     bond: &SignedCreditBond,
     event_id: &str,
     amount_units: u64,
@@ -465,7 +465,7 @@ fn record_test_credit_loss_event(
 }
 
 fn record_test_credit_loss_event_with_kind(
-    receipt_db_path: &PathBuf,
+    receipt_db_path: &Path,
     bond: &SignedCreditBond,
     event_id: &str,
     event_kind: CreditLossLifecycleEventKind,
@@ -2404,7 +2404,7 @@ fn make_capability_token(
 }
 
 /// Pre-populate the capability_lineage table before the service starts.
-fn prepopulate_lineage(db_path: &PathBuf, entries: &[(&CapabilityToken, Option<&str>)]) {
+fn prepopulate_lineage(db_path: &Path, entries: &[(&CapabilityToken, Option<&str>)]) {
     let store = SqliteReceiptStore::open(db_path).expect("open receipt store for lineage");
     for (token, parent_id) in entries {
         store
@@ -3001,7 +3001,7 @@ fn test_cost_attribution_report_endpoint() {
         .all(|row| row["lineageComplete"].as_bool() == Some(true)));
     assert!(receipts.iter().all(|row| row["chain"]
         .as_array()
-        .map_or(false, |chain| chain.len() == 2)));
+        .is_some_and(|chain| chain.len() == 2)));
 
     let _ = std::fs::remove_dir_all(&dir);
 }

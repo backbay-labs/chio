@@ -5204,28 +5204,30 @@ fn make_governed_intent(
     }
 }
 
-fn make_governed_acp_intent(
-    id: &str,
-    server: &str,
-    tool: &str,
-    purpose: &str,
-    seller: &str,
-    shared_payment_token_id: &str,
+struct GovernedAcpIntentFixture<'a> {
+    id: &'a str,
+    server: &'a str,
+    tool: &'a str,
+    purpose: &'a str,
+    seller: &'a str,
+    shared_payment_token_id: &'a str,
     units: u64,
-    currency: &str,
-) -> GovernedTransactionIntent {
+    currency: &'a str,
+}
+
+fn make_governed_acp_intent(fixture: GovernedAcpIntentFixture<'_>) -> GovernedTransactionIntent {
     GovernedTransactionIntent {
-        id: id.to_string(),
-        server_id: server.to_string(),
-        tool_name: tool.to_string(),
-        purpose: purpose.to_string(),
+        id: fixture.id.to_string(),
+        server_id: fixture.server.to_string(),
+        tool_name: fixture.tool.to_string(),
+        purpose: fixture.purpose.to_string(),
         max_amount: Some(MonetaryAmount {
-            units,
-            currency: currency.to_string(),
+            units: fixture.units,
+            currency: fixture.currency.to_string(),
         }),
         commerce: Some(chio_core::capability::GovernedCommerceContext {
-            seller: seller.to_string(),
-            shared_payment_token_id: shared_payment_token_id.to_string(),
+            seller: fixture.seller.to_string(),
+            shared_payment_token_id: fixture.shared_payment_token_id.to_string(),
         }),
         metered_billing: None,
         runtime_attestation: None,
@@ -5464,43 +5466,47 @@ fn attach_governed_upstream_call_chain_proof(
     intent.context = Some(serde_json::Value::Object(context));
 }
 
-fn make_governed_call_chain_continuation_token(
-    signer: &Keypair,
-    subject: &PublicKey,
-    call_chain: &GovernedCallChainContext,
+struct GovernedCallChainContinuationTokenFixture<'a> {
+    signer: &'a Keypair,
+    subject: &'a PublicKey,
+    call_chain: &'a GovernedCallChainContext,
     parent_session_anchor: SessionAnchorReference,
-    parent_receipt_hash: &str,
-    server_id: &str,
-    tool_name: &str,
-    governed_intent_hash: Option<&str>,
+    parent_receipt_hash: &'a str,
+    server_id: &'a str,
+    tool_name: &'a str,
+    governed_intent_hash: Option<&'a str>,
+}
+
+fn make_governed_call_chain_continuation_token(
+    fixture: GovernedCallChainContinuationTokenFixture<'_>,
 ) -> CallChainContinuationToken {
     let now = current_unix_timestamp();
     CallChainContinuationToken::sign(
         CallChainContinuationTokenBody {
             schema: chio_core::capability::CHIO_CALL_CHAIN_CONTINUATION_SCHEMA.to_string(),
             token_id: "continuation-token-1".to_string(),
-            signer: signer.public_key(),
-            subject: subject.clone(),
-            chain_id: call_chain.chain_id.clone(),
-            parent_request_id: call_chain.parent_request_id.clone(),
-            parent_receipt_id: call_chain.parent_receipt_id.clone(),
-            parent_receipt_hash: Some(parent_receipt_hash.to_string()),
-            parent_session_anchor: Some(parent_session_anchor),
-            current_subject: subject.to_hex(),
-            delegator_subject: call_chain.delegator_subject.clone(),
-            origin_subject: call_chain.origin_subject.clone(),
+            signer: fixture.signer.public_key(),
+            subject: fixture.subject.clone(),
+            chain_id: fixture.call_chain.chain_id.clone(),
+            parent_request_id: fixture.call_chain.parent_request_id.clone(),
+            parent_receipt_id: fixture.call_chain.parent_receipt_id.clone(),
+            parent_receipt_hash: Some(fixture.parent_receipt_hash.to_string()),
+            parent_session_anchor: Some(fixture.parent_session_anchor),
+            current_subject: fixture.subject.to_hex(),
+            delegator_subject: fixture.call_chain.delegator_subject.clone(),
+            origin_subject: fixture.call_chain.origin_subject.clone(),
             parent_capability_id: None,
             delegation_link_hash: None,
-            governed_intent_hash: governed_intent_hash.map(str::to_string),
+            governed_intent_hash: fixture.governed_intent_hash.map(str::to_string),
             audience: Some(CallChainContinuationAudience {
-                server_id: server_id.to_string(),
-                tool_name: tool_name.to_string(),
+                server_id: fixture.server_id.to_string(),
+                tool_name: fixture.tool_name.to_string(),
             }),
             nonce: Some("nonce-continuation-1".to_string()),
             issued_at: now.saturating_sub(5),
             expires_at: now + 300,
         },
-        signer,
+        fixture.signer,
     )
     .unwrap()
 }
@@ -5530,25 +5536,27 @@ fn make_governed_autonomy_context(
     }
 }
 
-fn make_credit_bond(
-    signer: &Keypair,
-    cap: &CapabilityToken,
-    server: &str,
-    tool: &str,
+struct CreditBondFixture<'a> {
+    signer: &'a Keypair,
+    cap: &'a CapabilityToken,
+    server: &'a str,
+    tool: &'a str,
     disposition: CreditBondDisposition,
     lifecycle_state: CreditBondLifecycleState,
     expires_at: u64,
     runtime_assurance_met: bool,
-) -> SignedCreditBond {
+}
+
+fn make_credit_bond(fixture: CreditBondFixture<'_>) -> SignedCreditBond {
     let now = current_unix_timestamp();
     let report = CreditBondReport {
         schema: CREDIT_BOND_REPORT_SCHEMA.to_string(),
         generated_at: now.saturating_sub(1),
         filters: ExposureLedgerQuery {
-            capability_id: Some(cap.id.clone()),
-            agent_subject: Some(cap.subject.to_hex()),
-            tool_server: Some(server.to_string()),
-            tool_name: Some(tool.to_string()),
+            capability_id: Some(fixture.cap.id.clone()),
+            agent_subject: Some(fixture.cap.subject.to_hex()),
+            tool_server: Some(fixture.server.to_string()),
+            tool_name: Some(fixture.tool.to_string()),
             since: None,
             until: None,
             receipt_limit: Some(10),
@@ -5582,11 +5590,11 @@ fn make_credit_bond(
             anomaly_count: 0,
             probationary: false,
         },
-        disposition,
+        disposition: fixture.disposition,
         prerequisites: CreditBondPrerequisites {
             active_facility_required: true,
             active_facility_met: true,
-            runtime_assurance_met,
+            runtime_assurance_met: fixture.runtime_assurance_met,
             certification_required: false,
             certification_met: true,
             currency_coherent: true,
@@ -5602,14 +5610,14 @@ fn make_credit_bond(
     SignedCreditBond::sign(
         CreditBondArtifact {
             schema: CREDIT_BOND_ARTIFACT_SCHEMA.to_string(),
-            bond_id: format!("bond-{server}-{tool}-{}", now),
+            bond_id: format!("bond-{}-{}-{}", fixture.server, fixture.tool, now),
             issued_at: now.saturating_sub(5),
-            expires_at,
-            lifecycle_state,
+            expires_at: fixture.expires_at,
+            lifecycle_state: fixture.lifecycle_state,
             supersedes_bond_id: None,
             report,
         },
-        signer,
+        fixture.signer,
     )
     .unwrap()
 }
@@ -7167,16 +7175,17 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
         autonomy: None,
         context: None,
     };
-    let continuation_token = make_governed_call_chain_continuation_token(
-        &parent_kernel.config.keypair,
-        &child_kp.public_key(),
-        &call_chain,
-        parent_anchor.clone(),
-        &parent_receipt_hash,
-        "srv-echo",
-        "delegate",
-        None,
-    );
+    let continuation_token =
+        make_governed_call_chain_continuation_token(GovernedCallChainContinuationTokenFixture {
+            signer: &parent_kernel.config.keypair,
+            subject: &child_kp.public_key(),
+            call_chain: &call_chain,
+            parent_session_anchor: parent_anchor.clone(),
+            parent_receipt_hash: &parent_receipt_hash,
+            server_id: "srv-echo",
+            tool_name: "delegate",
+            governed_intent_hash: None,
+        });
     attach_governed_call_chain_continuation_token(&mut intent, &continuation_token);
 
     let response = child_kernel
@@ -7982,16 +7991,16 @@ fn governed_request_denies_delegated_autonomy_with_expired_bond() {
     let cap = kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
-    let bond = make_credit_bond(
-        &kernel.config.keypair,
-        &cap,
-        "cost-srv",
-        "compute",
-        CreditBondDisposition::Hold,
-        CreditBondLifecycleState::Active,
-        current_unix_timestamp().saturating_sub(1),
-        true,
-    );
+    let bond = make_credit_bond(CreditBondFixture {
+        signer: &kernel.config.keypair,
+        cap: &cap,
+        server: "cost-srv",
+        tool: "compute",
+        disposition: CreditBondDisposition::Hold,
+        lifecycle_state: CreditBondLifecycleState::Active,
+        expires_at: current_unix_timestamp().saturating_sub(1),
+        runtime_assurance_met: true,
+    });
     let bond_id = bond.body.bond_id.clone();
     store
         .record_credit_bond(&bond, CreditBondLifecycleState::Active)
@@ -8062,16 +8071,16 @@ fn governed_request_allows_delegated_autonomy_with_active_bond_and_receipt_metad
     let cap = kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
-    let bond = make_credit_bond(
-        &kernel.config.keypair,
-        &cap,
-        "cost-srv",
-        "compute",
-        CreditBondDisposition::Hold,
-        CreditBondLifecycleState::Active,
-        current_unix_timestamp() + 300,
-        true,
-    );
+    let bond = make_credit_bond(CreditBondFixture {
+        signer: &kernel.config.keypair,
+        cap: &cap,
+        server: "cost-srv",
+        tool: "compute",
+        disposition: CreditBondDisposition::Hold,
+        lifecycle_state: CreditBondLifecycleState::Active,
+        expires_at: current_unix_timestamp() + 300,
+        runtime_assurance_met: true,
+    });
     let bond_id = bond.body.bond_id.clone();
     store
         .record_credit_bond(&bond, CreditBondLifecycleState::Active)
@@ -8550,16 +8559,16 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
         .unwrap();
 
     let request_id = "req-governed-acp";
-    let intent = make_governed_acp_intent(
-        "intent-governed-acp",
-        "commerce-srv",
-        "compute",
-        "purchase seller-bound result",
-        "merchant.example",
-        "spt_live_governed",
-        100,
-        "USD",
-    );
+    let intent = make_governed_acp_intent(GovernedAcpIntentFixture {
+        id: "intent-governed-acp",
+        server: "commerce-srv",
+        tool: "compute",
+        purpose: "purchase seller-bound result",
+        seller: "merchant.example",
+        shared_payment_token_id: "spt_live_governed",
+        units: 100,
+        currency: "USD",
+    });
     let approval_token = make_governed_approval_token(
         &kernel.config.keypair,
         &agent_kp.public_key(),
@@ -8661,16 +8670,16 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
         .unwrap();
 
     let request_id = "req-governed-acp-seller-mismatch";
-    let intent = make_governed_acp_intent(
-        "intent-governed-acp-seller-mismatch",
-        "commerce-srv",
-        "compute",
-        "attempt purchase for wrong seller",
-        "wrong-merchant.example",
-        "spt_live_wrong",
-        100,
-        "USD",
-    );
+    let intent = make_governed_acp_intent(GovernedAcpIntentFixture {
+        id: "intent-governed-acp-seller-mismatch",
+        server: "commerce-srv",
+        tool: "compute",
+        purpose: "attempt purchase for wrong seller",
+        seller: "wrong-merchant.example",
+        shared_payment_token_id: "spt_live_wrong",
+        units: 100,
+        currency: "USD",
+    });
     let approval_token = make_governed_approval_token(
         &kernel.config.keypair,
         &agent_kp.public_key(),

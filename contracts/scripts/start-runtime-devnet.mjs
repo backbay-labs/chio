@@ -8,7 +8,9 @@ import ganache from "ganache";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const artifactsDir = path.join(rootDir, "artifacts");
-const deploymentsDir = path.join(rootDir, "deployments");
+const deploymentsDir = process.env.CHIO_RUNTIME_DEPLOYMENT_DIR
+  ? path.resolve(process.env.CHIO_RUNTIME_DEPLOYMENT_DIR)
+  : path.join(rootDir, "deployments");
 
 const PORT = Number(process.env.CHIO_DEVNET_PORT ?? "8547");
 const RPC_URL = `http://127.0.0.1:${PORT}`;

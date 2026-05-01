@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_anchor::{
     build_anchor_inclusion_proof_from_evidence_bundle, build_chain_anchor_record,
@@ -42,11 +42,37 @@ use serde_json::{json, Value};
 const OPERATOR_PRIVATE_KEY: &str =
     "0x1000000000000000000000000000000000000000000000000000000000000002";
 
+trait TestResultOk<T, E> {
+    fn test_expect(self, context: &'static str) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E> {
+    fn test_expect(self, context: &'static str) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("{context}"),
+        }
+    }
+}
+
+trait TestResultErr<T, E> {
+    fn test_expect_err(self, context: &'static str) -> E;
+}
+
+impl<T, E> TestResultErr<T, E> for Result<T, E> {
+    fn test_expect_err(self, context: &'static str) -> E {
+        match self {
+            Ok(_) => panic!("{context} unexpectedly succeeded"),
+            Err(error) => error,
+        }
+    }
+}
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
-        .expect("repo root")
+        .test_expect("repo root")
 }
 
 fn runtime_devnet_prereqs_available() -> bool {
@@ -73,13 +99,31 @@ fn runtime_devnet_prereqs_available() -> bool {
 
 struct DevnetGuard {
     child: Child,
+    deployment_path: PathBuf,
 }
 
 impl Drop for DevnetGuard {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        let _ = std::fs::remove_file(&self.deployment_path);
+        if let Some(parent) = self.deployment_path.parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
     }
+}
+
+fn unique_runtime_devnet_deployment_path(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir()
+        .join(format!(
+            "chio-runtime-devnet-{}-{nanos}",
+            std::process::id()
+        ))
+        .join(name)
 }
 
 async fn spawn_runtime_devnet(
@@ -91,6 +135,10 @@ async fn spawn_runtime_devnet(
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or("runtime devnet deployment filename missing")?;
+    let deployment_dir = deployment_path
+        .parent()
+        .ok_or("runtime devnet deployment parent directory missing")?;
+    std::fs::create_dir_all(deployment_dir)?;
     if deployment_path.exists() {
         std::fs::remove_file(deployment_path)?;
     }
@@ -99,6 +147,7 @@ async fn spawn_runtime_devnet(
         .current_dir(repo_root())
         .env("CHIO_DEVNET_PORT", port.to_string())
         .env("CHIO_RUNTIME_DEPLOYMENT_NAME", deployment_name)
+        .env("CHIO_RUNTIME_DEPLOYMENT_DIR", deployment_dir)
         .env("CHIO_OPERATOR_ED_KEY_HASH", operator_ed_key_hash)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -132,7 +181,10 @@ async fn spawn_runtime_devnet(
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    Ok(DevnetGuard { child })
+    Ok(DevnetGuard {
+        child,
+        deployment_path: deployment_path.to_path_buf(),
+    })
 }
 
 async fn rpc_call(
@@ -193,7 +245,7 @@ fn operator_binding(
     SignedWeb3IdentityBinding {
         signature: keypair
             .sign_canonical(&certificate)
-            .expect("binding signature")
+            .test_expect("binding signature")
             .0,
         certificate,
     }
@@ -272,7 +324,7 @@ fn sample_capital_instruction(
         },
         keypair,
     )
-    .expect("capital instruction")
+    .test_expect("capital instruction")
 }
 
 fn sample_receipt(
@@ -294,7 +346,7 @@ fn sample_receipt(
                 "currency": "USD",
                 "to": beneficiary_address,
             }))
-            .expect("receipt params"),
+            .test_expect("receipt params"),
             decision: Decision::Allow,
             content_hash: sha256_hex(format!("settlement:{receipt_id}").as_bytes()),
             policy_hash: sha256_hex(b"policy:web3"),
@@ -306,7 +358,7 @@ fn sample_receipt(
         },
         keypair,
     )
-    .expect("receipt")
+    .test_expect("receipt")
 }
 
 #[tokio::test]
@@ -319,8 +371,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
         return Ok(());
     }
 
-    let repo_root = repo_root();
-    let deployment_path = repo_root.join("contracts/deployments/runtime-devnet-drift.json");
+    let deployment_path = unique_runtime_devnet_deployment_path("runtime-devnet-drift.json");
     let operator_keypair = Keypair::from_seed_hex(
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     )?;
@@ -434,7 +485,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
 
     let replay_error = submit_call(&config, &dispatch_a.call)
         .await
-        .expect_err("duplicate create must fail closed");
+        .test_expect_err("duplicate create must fail closed");
     assert!(
         replay_error.to_string().contains("already exists")
             || replay_error.to_string().contains("code"),
@@ -454,8 +505,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         return Ok(());
     }
 
-    let repo_root = repo_root();
-    let deployment_path = repo_root.join("contracts/deployments/runtime-devnet-main.json");
+    let deployment_path = unique_runtime_devnet_deployment_path("runtime-devnet-main.json");
     let operator_keypair = Keypair::from_seed_hex(
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     )?;
@@ -536,7 +586,8 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &accounts.beneficiary,
     );
     let receipt_bytes = canonical_json_bytes(&receipt.body())?;
-    let tree = MerkleTree::from_leaves(&[receipt_bytes.clone()])?;
+    let receipt_leaf = receipt_bytes.clone();
+    let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_leaf))?;
     let checkpoint = build_checkpoint(11, 11, 11, &[receipt_bytes], &operator_keypair)?;
     let inclusion = build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 11)?;
     let anchor_target = EvmAnchorTarget {

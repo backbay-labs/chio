@@ -2403,6 +2403,27 @@ fn validate_positive_money(amount: &MonetaryAmount, field_name: &str) -> Result<
 mod tests {
     use super::*;
 
+    fn require_ok<T, E>(result: Result<T, E>, context: &'static str) -> T
+    where
+        E: std::fmt::Debug,
+    {
+        result.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+    }
+
+    fn require_err<T, E>(result: Result<T, E>, context: &'static str) -> E
+    where
+        T: std::fmt::Debug,
+    {
+        match result {
+            Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+            Err(error) => error,
+        }
+    }
+
+    fn require_some<T>(value: Option<T>, context: &'static str) -> T {
+        value.unwrap_or_else(|| panic!("{context}"))
+    }
+
     fn sample_report() -> LiabilityProviderReport {
         LiabilityProviderReport {
             schema: LIABILITY_PROVIDER_ARTIFACT_SCHEMA.to_string(),
@@ -2436,114 +2457,61 @@ mod tests {
 
     fn sample_risk_package() -> SignedCreditProviderRiskPackage {
         let keypair = crate::crypto::Keypair::generate();
-        let exposure = crate::credit::SignedExposureLedgerReport::sign(
-            crate::credit::ExposureLedgerReport {
-                schema: crate::credit::EXPOSURE_LEDGER_SCHEMA.to_string(),
-                generated_at: 1,
-                filters: crate::credit::ExposureLedgerQuery {
-                    agent_subject: Some("subject-1".to_string()),
-                    ..crate::credit::ExposureLedgerQuery::default()
-                },
-                support_boundary: crate::credit::ExposureLedgerSupportBoundary::default(),
-                summary: crate::credit::ExposureLedgerSummary {
-                    matching_receipts: 1,
-                    returned_receipts: 1,
-                    matching_decisions: 0,
-                    returned_decisions: 0,
-                    active_decisions: 0,
-                    superseded_decisions: 0,
-                    actionable_receipts: 0,
-                    pending_settlement_receipts: 0,
-                    failed_settlement_receipts: 0,
-                    currencies: vec!["USD".to_string()],
-                    mixed_currency_book: false,
-                    truncated_receipts: false,
-                    truncated_decisions: false,
-                },
-                positions: vec![crate::credit::ExposureLedgerCurrencyPosition {
-                    currency: "USD".to_string(),
-                    governed_max_exposure_units: 4_000,
-                    reserved_units: 0,
-                    settled_units: 4_000,
-                    pending_units: 0,
-                    failed_units: 0,
-                    provisional_loss_units: 0,
-                    recovered_units: 0,
-                    quoted_premium_units: 0,
-                    active_quoted_premium_units: 0,
-                }],
-                receipts: Vec::new(),
-                decisions: Vec::new(),
-            },
-            &keypair,
-        )
-        .expect("sign exposure");
-        let scorecard = crate::credit::SignedCreditScorecardReport::sign(
-            crate::credit::CreditScorecardReport {
-                schema: crate::credit::CREDIT_SCORECARD_SCHEMA.to_string(),
-                generated_at: 2,
-                filters: crate::credit::ExposureLedgerQuery {
-                    agent_subject: Some("subject-1".to_string()),
-                    ..crate::credit::ExposureLedgerQuery::default()
-                },
-                support_boundary: crate::credit::CreditScorecardSupportBoundary::default(),
-                summary: crate::credit::CreditScorecardSummary {
-                    matching_receipts: 1,
-                    returned_receipts: 1,
-                    matching_decisions: 0,
-                    returned_decisions: 0,
-                    currencies: vec!["USD".to_string()],
-                    mixed_currency_book: false,
-                    confidence: crate::credit::CreditScorecardConfidence::High,
-                    band: crate::credit::CreditScorecardBand::Prime,
-                    overall_score: 0.95,
-                    anomaly_count: 0,
-                    probationary: false,
-                },
-                reputation: crate::credit::CreditScorecardReputationContext {
-                    effective_score: 0.95,
-                    probationary: false,
-                    resolved_tier: None,
-                    imported_signal_count: 0,
-                    accepted_imported_signal_count: 0,
-                },
-                positions: exposure.body.positions.clone(),
-                probation: crate::credit::CreditScorecardProbationStatus {
-                    probationary: false,
-                    reasons: Vec::new(),
-                    receipt_count: 1,
-                    span_days: 1,
-                    target_receipt_count: 1,
-                    target_span_days: 1,
-                },
-                dimensions: Vec::new(),
-                anomalies: Vec::new(),
-            },
-            &keypair,
-        )
-        .expect("sign scorecard");
-
-        SignedCreditProviderRiskPackage::sign(
-            crate::credit::CreditProviderRiskPackage {
-                schema: crate::credit::CREDIT_PROVIDER_RISK_PACKAGE_SCHEMA.to_string(),
-                generated_at: 3,
-                subject_key: "subject-1".to_string(),
-                filters: crate::credit::CreditProviderRiskPackageQuery {
-                    agent_subject: Some("subject-1".to_string()),
-                    ..crate::credit::CreditProviderRiskPackageQuery::default()
-                },
-                support_boundary: crate::credit::CreditProviderRiskPackageSupportBoundary::default(
-                ),
-                exposure,
-                scorecard,
-                facility_report: crate::credit::CreditFacilityReport {
-                    schema: crate::credit::CREDIT_FACILITY_REPORT_SCHEMA.to_string(),
-                    generated_at: 3,
+        let exposure = require_ok(
+            crate::credit::SignedExposureLedgerReport::sign(
+                crate::credit::ExposureLedgerReport {
+                    schema: crate::credit::EXPOSURE_LEDGER_SCHEMA.to_string(),
+                    generated_at: 1,
                     filters: crate::credit::ExposureLedgerQuery {
                         agent_subject: Some("subject-1".to_string()),
                         ..crate::credit::ExposureLedgerQuery::default()
                     },
-                    scorecard: crate::credit::CreditScorecardSummary {
+                    support_boundary: crate::credit::ExposureLedgerSupportBoundary::default(),
+                    summary: crate::credit::ExposureLedgerSummary {
+                        matching_receipts: 1,
+                        returned_receipts: 1,
+                        matching_decisions: 0,
+                        returned_decisions: 0,
+                        active_decisions: 0,
+                        superseded_decisions: 0,
+                        actionable_receipts: 0,
+                        pending_settlement_receipts: 0,
+                        failed_settlement_receipts: 0,
+                        currencies: vec!["USD".to_string()],
+                        mixed_currency_book: false,
+                        truncated_receipts: false,
+                        truncated_decisions: false,
+                    },
+                    positions: vec![crate::credit::ExposureLedgerCurrencyPosition {
+                        currency: "USD".to_string(),
+                        governed_max_exposure_units: 4_000,
+                        reserved_units: 0,
+                        settled_units: 4_000,
+                        pending_units: 0,
+                        failed_units: 0,
+                        provisional_loss_units: 0,
+                        recovered_units: 0,
+                        quoted_premium_units: 0,
+                        active_quoted_premium_units: 0,
+                    }],
+                    receipts: Vec::new(),
+                    decisions: Vec::new(),
+                },
+                &keypair,
+            ),
+            "sign exposure",
+        );
+        let scorecard = require_ok(
+            crate::credit::SignedCreditScorecardReport::sign(
+                crate::credit::CreditScorecardReport {
+                    schema: crate::credit::CREDIT_SCORECARD_SCHEMA.to_string(),
+                    generated_at: 2,
+                    filters: crate::credit::ExposureLedgerQuery {
+                        agent_subject: Some("subject-1".to_string()),
+                        ..crate::credit::ExposureLedgerQuery::default()
+                    },
+                    support_boundary: crate::credit::CreditScorecardSupportBoundary::default(),
+                    summary: crate::credit::CreditScorecardSummary {
                         matching_receipts: 1,
                         returned_receipts: 1,
                         matching_decisions: 0,
@@ -2556,81 +2524,142 @@ mod tests {
                         anomaly_count: 0,
                         probationary: false,
                     },
-                    disposition: crate::credit::CreditFacilityDisposition::Grant,
-                    prerequisites: crate::credit::CreditFacilityPrerequisites {
-                        minimum_runtime_assurance_tier:
-                            crate::capability::RuntimeAssuranceTier::Verified,
-                        runtime_assurance_met: true,
-                        certification_required: false,
-                        certification_met: true,
-                        manual_review_required: false,
+                    reputation: crate::credit::CreditScorecardReputationContext {
+                        effective_score: 0.95,
+                        probationary: false,
+                        resolved_tier: None,
+                        imported_signal_count: 0,
+                        accepted_imported_signal_count: 0,
                     },
-                    support_boundary: crate::credit::CreditFacilitySupportBoundary::default(),
-                    terms: Some(crate::credit::CreditFacilityTerms {
-                        credit_limit: MonetaryAmount {
+                    positions: exposure.body.positions.clone(),
+                    probation: crate::credit::CreditScorecardProbationStatus {
+                        probationary: false,
+                        reasons: Vec::new(),
+                        receipt_count: 1,
+                        span_days: 1,
+                        target_receipt_count: 1,
+                        target_span_days: 1,
+                    },
+                    dimensions: Vec::new(),
+                    anomalies: Vec::new(),
+                },
+                &keypair,
+            ),
+            "sign scorecard",
+        );
+
+        require_ok(
+            SignedCreditProviderRiskPackage::sign(
+                crate::credit::CreditProviderRiskPackage {
+                    schema: crate::credit::CREDIT_PROVIDER_RISK_PACKAGE_SCHEMA.to_string(),
+                    generated_at: 3,
+                    subject_key: "subject-1".to_string(),
+                    filters: crate::credit::CreditProviderRiskPackageQuery {
+                        agent_subject: Some("subject-1".to_string()),
+                        ..crate::credit::CreditProviderRiskPackageQuery::default()
+                    },
+                    support_boundary:
+                        crate::credit::CreditProviderRiskPackageSupportBoundary::default(),
+                    exposure,
+                    scorecard,
+                    facility_report: crate::credit::CreditFacilityReport {
+                        schema: crate::credit::CREDIT_FACILITY_REPORT_SCHEMA.to_string(),
+                        generated_at: 3,
+                        filters: crate::credit::ExposureLedgerQuery {
+                            agent_subject: Some("subject-1".to_string()),
+                            ..crate::credit::ExposureLedgerQuery::default()
+                        },
+                        scorecard: crate::credit::CreditScorecardSummary {
+                            matching_receipts: 1,
+                            returned_receipts: 1,
+                            matching_decisions: 0,
+                            returned_decisions: 0,
+                            currencies: vec!["USD".to_string()],
+                            mixed_currency_book: false,
+                            confidence: crate::credit::CreditScorecardConfidence::High,
+                            band: crate::credit::CreditScorecardBand::Prime,
+                            overall_score: 0.95,
+                            anomaly_count: 0,
+                            probationary: false,
+                        },
+                        disposition: crate::credit::CreditFacilityDisposition::Grant,
+                        prerequisites: crate::credit::CreditFacilityPrerequisites {
+                            minimum_runtime_assurance_tier:
+                                crate::capability::RuntimeAssuranceTier::Verified,
+                            runtime_assurance_met: true,
+                            certification_required: false,
+                            certification_met: true,
+                            manual_review_required: false,
+                        },
+                        support_boundary: crate::credit::CreditFacilitySupportBoundary::default(),
+                        terms: Some(crate::credit::CreditFacilityTerms {
+                            credit_limit: MonetaryAmount {
+                                units: 4_000,
+                                currency: "USD".to_string(),
+                            },
+                            utilization_ceiling_bps: 8_000,
+                            reserve_ratio_bps: 1_500,
+                            concentration_cap_bps: 3_000,
+                            ttl_seconds: 86_400,
+                            capital_source:
+                                crate::credit::CreditFacilityCapitalSource::OperatorInternal,
+                        }),
+                        findings: Vec::new(),
+                    },
+                    compliance_score: None,
+                    latest_facility: Some(crate::credit::CreditProviderFacilitySnapshot {
+                        facility_id: "cfd-1".to_string(),
+                        issued_at: 3,
+                        expires_at: 4,
+                        disposition: crate::credit::CreditFacilityDisposition::Grant,
+                        lifecycle_state: crate::credit::CreditFacilityLifecycleState::Active,
+                        credit_limit: Some(MonetaryAmount {
                             units: 4_000,
                             currency: "USD".to_string(),
-                        },
-                        utilization_ceiling_bps: 8_000,
-                        reserve_ratio_bps: 1_500,
-                        concentration_cap_bps: 3_000,
-                        ttl_seconds: 86_400,
-                        capital_source:
-                            crate::credit::CreditFacilityCapitalSource::OperatorInternal,
+                        }),
+                        supersedes_facility_id: None,
+                        signer_key: keypair.public_key().to_hex(),
                     }),
-                    findings: Vec::new(),
-                },
-                compliance_score: None,
-                latest_facility: Some(crate::credit::CreditProviderFacilitySnapshot {
-                    facility_id: "cfd-1".to_string(),
-                    issued_at: 3,
-                    expires_at: 4,
-                    disposition: crate::credit::CreditFacilityDisposition::Grant,
-                    lifecycle_state: crate::credit::CreditFacilityLifecycleState::Active,
-                    credit_limit: Some(MonetaryAmount {
-                        units: 4_000,
-                        currency: "USD".to_string(),
+                    runtime_assurance: Some(crate::credit::CreditRuntimeAssuranceState {
+                        governed_receipts: 1,
+                        runtime_assurance_receipts: 1,
+                        highest_tier: Some(crate::capability::RuntimeAssuranceTier::Verified),
+                        latest_schema: Some(
+                            "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
+                        ),
+                        latest_verifier_family: Some(
+                            crate::appraisal::AttestationVerifierFamily::AzureMaa,
+                        ),
+                        latest_verifier: Some("verifier.chio".to_string()),
+                        latest_evidence_sha256: Some("sha256-runtime".to_string()),
+                        observed_verifier_families: vec![
+                            crate::appraisal::AttestationVerifierFamily::AzureMaa,
+                        ],
+                        stale: false,
                     }),
-                    supersedes_facility_id: None,
-                    signer_key: keypair.public_key().to_hex(),
-                }),
-                runtime_assurance: Some(crate::credit::CreditRuntimeAssuranceState {
-                    governed_receipts: 1,
-                    runtime_assurance_receipts: 1,
-                    highest_tier: Some(crate::capability::RuntimeAssuranceTier::Verified),
-                    latest_schema: Some("chio.runtime-attestation.azure-maa.jwt.v1".to_string()),
-                    latest_verifier_family: Some(
-                        crate::appraisal::AttestationVerifierFamily::AzureMaa,
-                    ),
-                    latest_verifier: Some("verifier.chio".to_string()),
-                    latest_evidence_sha256: Some("sha256-runtime".to_string()),
-                    observed_verifier_families: vec![
-                        crate::appraisal::AttestationVerifierFamily::AzureMaa,
-                    ],
-                    stale: false,
-                }),
-                certification: crate::credit::CreditCertificationState {
-                    required: false,
-                    state: None,
-                    artifact_id: None,
-                    checked_at: None,
-                    published_at: None,
-                },
-                recent_loss_history: crate::credit::CreditRecentLossHistory {
-                    summary: crate::credit::CreditRecentLossSummary {
-                        matching_loss_events: 0,
-                        returned_loss_events: 0,
-                        failed_settlement_events: 0,
-                        provisional_loss_events: 0,
-                        recovered_events: 0,
+                    certification: crate::credit::CreditCertificationState {
+                        required: false,
+                        state: None,
+                        artifact_id: None,
+                        checked_at: None,
+                        published_at: None,
                     },
-                    entries: Vec::new(),
+                    recent_loss_history: crate::credit::CreditRecentLossHistory {
+                        summary: crate::credit::CreditRecentLossSummary {
+                            matching_loss_events: 0,
+                            returned_loss_events: 0,
+                            failed_settlement_events: 0,
+                            provisional_loss_events: 0,
+                            recovered_events: 0,
+                        },
+                        entries: Vec::new(),
+                    },
+                    evidence_refs: Vec::new(),
                 },
-                evidence_refs: Vec::new(),
-            },
-            &keypair,
+                &keypair,
+            ),
+            "sign risk package",
         )
-        .expect("sign risk package")
     }
 
     fn sign_export<T>(body: T) -> SignedExportEnvelope<T>
@@ -2638,7 +2667,7 @@ mod tests {
         T: serde::Serialize + Clone,
     {
         let keypair = crate::crypto::Keypair::generate();
-        SignedExportEnvelope::sign(body, &keypair).expect("sign export")
+        require_ok(SignedExportEnvelope::sign(body, &keypair), "sign export")
     }
 
     fn usd(units: u64) -> MonetaryAmount {
@@ -3319,9 +3348,7 @@ mod tests {
     fn liability_provider_report_rejects_duplicate_jurisdictions() {
         let mut report = sample_report();
         report.policies.push(report.policies[0].clone());
-        let error = report
-            .validate()
-            .expect_err("duplicate jurisdiction rejected");
+        let error = require_err(report.validate(), "duplicate jurisdiction rejected");
         assert!(error.contains("duplicate jurisdiction policy"));
     }
 
@@ -3329,7 +3356,7 @@ mod tests {
     fn liability_provider_report_rejects_invalid_currency() {
         let mut report = sample_report();
         report.policies[0].supported_currencies = vec!["usdollars".to_string()];
-        let error = report.validate().expect_err("invalid currency rejected");
+        let error = require_err(report.validate(), "invalid currency rejected");
         assert!(error.contains("invalid currency"));
     }
 
@@ -3381,7 +3408,7 @@ mod tests {
             notes: None,
         };
 
-        let error = request.validate().expect_err("currency mismatch rejected");
+        let error = require_err(request.validate(), "currency mismatch rejected");
         assert!(error.contains("currency must match provider policy currency"));
     }
 
@@ -3425,28 +3452,32 @@ mod tests {
 
     #[test]
     fn liability_provider_resolution_query_rejects_invalid_currency() {
-        let error = LiabilityProviderResolutionQuery {
-            provider_id: "carrier-alpha".to_string(),
-            jurisdiction: "us-ny".to_string(),
-            coverage_class: LiabilityCoverageClass::ToolExecution,
-            currency: "usdollars".to_string(),
-        }
-        .validate()
-        .expect_err("invalid currency rejected");
+        let error = require_err(
+            LiabilityProviderResolutionQuery {
+                provider_id: "carrier-alpha".to_string(),
+                jurisdiction: "us-ny".to_string(),
+                coverage_class: LiabilityCoverageClass::ToolExecution,
+                currency: "usdollars".to_string(),
+            }
+            .validate(),
+            "invalid currency rejected",
+        );
 
         assert!(error.contains("three-letter uppercase"));
     }
 
     #[test]
     fn liability_pricing_authority_envelope_requires_regulated_role() {
-        let error = LiabilityPricingAuthorityEnvelope {
-            kind: LiabilityPricingAuthorityEnvelopeKind::RegulatedRole,
-            delegate_id: "delegate-1".to_string(),
-            regulated_role: None,
-            authority_chain_ref: None,
-        }
-        .validate()
-        .expect_err("regulated role required");
+        let error = require_err(
+            LiabilityPricingAuthorityEnvelope {
+                kind: LiabilityPricingAuthorityEnvelopeKind::RegulatedRole,
+                delegate_id: "delegate-1".to_string(),
+                regulated_role: None,
+                authority_chain_ref: None,
+            }
+            .validate(),
+            "regulated role required",
+        );
 
         assert!(error.contains("regulated_role"));
     }
@@ -3465,9 +3496,7 @@ mod tests {
         response.quoted_terms = None;
         response.decline_reason = Some("   ".to_string());
 
-        let error = response
-            .validate()
-            .expect_err("declined response requires reason");
+        let error = require_err(response.validate(), "declined response requires reason");
         assert!(error.contains("declined quote responses require decline_reason"));
     }
 
@@ -3486,9 +3515,7 @@ mod tests {
         authority.quote_request = sign_export(quote_request);
         authority.provider_policy = authority.quote_request.body.provider_policy.clone();
 
-        let error = authority
-            .validate()
-            .expect_err("auto-bind requires claim support");
+        let error = require_err(authority.validate(), "auto-bind requires claim support");
         assert!(error.contains("cannot enable auto_bind"));
     }
 
@@ -3496,16 +3523,14 @@ mod tests {
     fn liability_placement_rejects_expired_quote() {
         let fixtures = sample_market_fixtures();
         let mut placement = fixtures.placement.body.clone();
-        placement.issued_at = placement
-            .quote_response
-            .body
-            .quoted_terms
-            .as_ref()
-            .expect("quoted terms")
-            .expires_at
-            + 1;
+        let expires_at = require_some(
+            placement.quote_response.body.quoted_terms.as_ref(),
+            "quoted terms",
+        )
+        .expires_at;
+        placement.issued_at = expires_at + 1;
 
-        let error = placement.validate().expect_err("expired quote rejected");
+        let error = require_err(placement.validate(), "expired quote rejected");
         assert!(error.contains("cannot be issued after the quote expires"));
     }
 
@@ -3521,9 +3546,7 @@ mod tests {
         placement.quote_response = sign_export(quote_response);
         coverage.placement = sign_export(placement);
 
-        let error = coverage
-            .validate()
-            .expect_err("provider must support bound coverage");
+        let error = require_err(coverage.validate(), "provider must support bound coverage");
         assert!(error.contains("does not support bound coverage"));
     }
 
@@ -3560,9 +3583,10 @@ mod tests {
             bound_coverage: Some(fixtures.bound_coverage),
         };
 
-        let error = decision
-            .validate()
-            .expect_err("manual review cannot embed issued artifacts");
+        let error = require_err(
+            decision.validate(),
+            "manual review cannot embed issued artifacts",
+        );
         assert!(error.contains("cannot embed issued placement or bound coverage"));
     }
 
@@ -3572,9 +3596,7 @@ mod tests {
         let mut claim = fixtures.claim_package.body.clone();
         claim.receipt_ids = vec!["rcpt-1".to_string(), "rcpt-1".to_string()];
 
-        let error = claim
-            .validate()
-            .expect_err("duplicate receipt ids rejected");
+        let error = require_err(claim.validate(), "duplicate receipt ids rejected");
         assert!(error.contains("receipt references must be unique"));
     }
 
@@ -3586,9 +3608,7 @@ mod tests {
         response.covered_amount = None;
         response.denial_reason = None;
 
-        let error = response
-            .validate()
-            .expect_err("denied responses require reason");
+        let error = require_err(response.validate(), "denied responses require reason");
         assert!(error.contains("denied claim responses require denial_reason"));
     }
 
@@ -3606,9 +3626,10 @@ mod tests {
                 .clone(),
         );
 
-        let error = dispute
-            .validate()
-            .expect_err("fully accepted response cannot be disputed");
+        let error = require_err(
+            dispute.validate(),
+            "fully accepted response cannot be disputed",
+        );
         assert!(error.contains("denied or partially accepted"));
     }
 
@@ -3628,9 +3649,10 @@ mod tests {
                 .clone(),
         );
 
-        let error = adjudication
-            .validate()
-            .expect_err("partial settlement must be less than full claim");
+        let error = require_err(
+            adjudication.validate(),
+            "partial settlement must be less than full claim",
+        );
         assert!(error.contains("must be less than claim_amount"));
     }
 
@@ -3674,9 +3696,10 @@ mod tests {
             crate::credit::CapitalExecutionReconciledState::Matched;
         payout.capital_instruction = sign_export(capital_instruction);
 
-        let error = payout
-            .validate()
-            .expect_err("observed capital instruction should be rejected");
+        let error = require_err(
+            payout.validate(),
+            "observed capital instruction should be rejected",
+        );
         assert!(error.contains("require an unreconciled capital_instruction"));
     }
 
@@ -3686,9 +3709,10 @@ mod tests {
         let mut receipt = fixtures.payout_receipt.body.clone();
         receipt.observed_execution.amount = usd(5_500);
 
-        let error = receipt
-            .validate()
-            .expect_err("matched payouts require identical amount");
+        let error = require_err(
+            receipt.validate(),
+            "matched payouts require identical amount",
+        );
         assert!(error.contains("observed_execution amount to match payout_amount"));
     }
 
@@ -3706,9 +3730,7 @@ mod tests {
             .authority_chain
             .retain(|step| step.role != crate::credit::CapitalExecutionRole::Custodian);
 
-        let error = instruction
-            .validate()
-            .expect_err("custodian approval required");
+        let error = require_err(instruction.validate(), "custodian approval required");
         assert!(error.contains("missing the custody-provider execution step"));
     }
 
@@ -3719,9 +3741,10 @@ mod tests {
         receipt.reconciliation_state =
             LiabilityClaimSettlementReconciliationState::CounterpartyMismatch;
 
-        let error = receipt
-            .validate()
-            .expect_err("counterparty mismatch requires differing counterparties");
+        let error = require_err(
+            receipt.validate(),
+            "counterparty mismatch requires differing counterparties",
+        );
         assert!(error.contains("require at least one observed counterparty to differ"));
     }
 }

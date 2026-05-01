@@ -321,29 +321,6 @@ mod underwriting_credit;
 use support::*;
 pub(crate) use support::{decode_verified_child_receipt, decode_verified_chio_receipt};
 
-#[cfg(test)]
-mod receipt_commit_actor_tests {
-    use super::*;
-
-    #[test]
-    fn receipt_commit_actor_channel_has_fixed_capacity() -> Result<(), Box<dyn std::error::Error>> {
-        let (sender, _receiver) = receipt_commit_channel();
-        for _ in 0..RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY {
-            let (response, _result) = mpsc::sync_channel(1);
-            sender.try_send(ReceiptCommitCommand::Flush(response))?;
-        }
-
-        let (response, _result) = mpsc::sync_channel(1);
-        match sender.try_send(ReceiptCommitCommand::Flush(response)) {
-            Err(mpsc::TrySendError::Full(_)) => Ok(()),
-            Err(mpsc::TrySendError::Disconnected(_)) => {
-                Err("commit actor channel disconnected unexpectedly".into())
-            }
-            Ok(()) => Err("commit actor channel accepted beyond fixed capacity".into()),
-        }
-    }
-}
-
 impl SqliteReceiptStore {
     pub(crate) fn connection(&self) -> Result<SqliteStoreConnection, ReceiptStoreError> {
         self.pool
@@ -512,4 +489,27 @@ fn canonical_receipt_json(canonical: &CanonicalBytes) -> Result<&str, ReceiptSto
     std::str::from_utf8(canonical.as_bytes()).map_err(|error| {
         ReceiptStoreError::Canonical(format!("canonical receipt bytes are not UTF-8: {error}"))
     })
+}
+
+#[cfg(test)]
+mod receipt_commit_actor_tests {
+    use super::*;
+
+    #[test]
+    fn receipt_commit_actor_channel_has_fixed_capacity() -> Result<(), Box<dyn std::error::Error>> {
+        let (sender, _receiver) = receipt_commit_channel();
+        for _ in 0..RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY {
+            let (response, _result) = mpsc::sync_channel(1);
+            sender.try_send(ReceiptCommitCommand::Flush(response))?;
+        }
+
+        let (response, _result) = mpsc::sync_channel(1);
+        match sender.try_send(ReceiptCommitCommand::Flush(response)) {
+            Err(mpsc::TrySendError::Full(_)) => Ok(()),
+            Err(mpsc::TrySendError::Disconnected(_)) => {
+                Err("commit actor channel disconnected unexpectedly".into())
+            }
+            Ok(()) => Err("commit actor channel accepted beyond fixed capacity".into()),
+        }
+    }
 }

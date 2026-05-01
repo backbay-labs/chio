@@ -464,6 +464,28 @@ mod tests {
     use chio_core::{PromptArgument, PromptMessage};
     use chio_kernel::ToolServerEvent;
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Some(value) => value,
+                None => panic!("expected Some(..), got None"),
+            }
+        }
+    }
+
     #[test]
     fn native_service_builder_registers_tools_resources_and_prompts() {
         let service = NativeChioServiceBuilder::new(
@@ -530,7 +552,7 @@ mod tests {
             },
         )
         .build()
-        .expect("build native service");
+        .test_unwrap();
 
         assert_eq!(service.server_id(), "srv-native");
         assert_eq!(service.tool_names(), vec!["greet".to_string()]);
@@ -549,7 +571,7 @@ mod tests {
 
         let result = service
             .invoke("greet", serde_json::json!({ "name": "Ada" }), None)
-            .expect("invoke greet");
+            .test_unwrap();
         assert_eq!(result["greeting"], "Hello, Ada!");
 
         let resources = service.list_resources();
@@ -558,8 +580,8 @@ mod tests {
 
         let resource = service
             .read_resource("memory://docs/greeting")
-            .expect("read resource")
-            .expect("resource content");
+            .test_unwrap()
+            .test_unwrap();
         assert_eq!(resource.len(), 1);
         assert_eq!(
             resource[0].text.as_deref(),
@@ -572,13 +594,13 @@ mod tests {
 
         let prompt = service
             .get_prompt("greet_prompt", serde_json::json!({ "name": "Ada" }))
-            .expect("get prompt")
-            .expect("prompt result");
+            .test_unwrap()
+            .test_unwrap();
         assert_eq!(prompt.messages.len(), 1);
 
         service.emit_event(ToolServerEvent::ResourcesListChanged);
         service.emit_event(ToolServerEvent::PromptsListChanged);
-        let events = service.drain_events().expect("drain events");
+        let events = service.drain_events().test_unwrap();
         assert_eq!(
             events,
             vec![
