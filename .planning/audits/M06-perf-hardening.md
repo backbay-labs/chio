@@ -203,6 +203,11 @@ rg -n "channel|mpsc|unbounded|Sender::send|send\\(" crates/chio-otel-receipt-exp
   dispatch/canonicalization path and report allocation-count reduction
   attributable to reduced reserialization.
 
+Sweep tracking note: carried forward to
+`.planning/trajectory/sweep/M06-FOLLOWUPS.md` because replacing the placeholder
+probe with the real dispatch/canonicalization path is new perf-evidence work,
+not a P0/P1/P2 correctness fix in this sweep.
+
 ## Final after-counts
 
 after-counts snapshot date: 2026-04-30.
