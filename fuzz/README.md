@@ -37,7 +37,7 @@ Run locally:
 cargo +nightly fuzz run attest_verify
 ```
 
-Build only (the M09.P3.T5 gate):
+Build only (the CI build gate):
 
 ```bash
 cargo +nightly fuzz build attest_verify

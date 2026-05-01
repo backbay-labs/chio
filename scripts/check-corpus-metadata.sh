@@ -2,8 +2,6 @@
 # scripts/check-corpus-metadata.sh - assert that fuzz/corpus_metadata.toml
 # indexes every seed under fuzz/corpus/.
 #
-# Owner: M05.P2.T2.
-#
 # Schema (TOML) consumed by this script:
 #
 #   schema_version = 1
@@ -22,14 +20,14 @@
 #   adversarial_curated        hand-written adversarial vector
 #   adversarial_promoted       crash promoted via promote_fuzz_seed.sh --mode adversarial
 #   m03_counterexample         minimised counterexample from chio-policy proptests
-#   m02_verdict_divergence     promoted from trajectory-2 M02 cross-SDK divergence
+#   m02_verdict_divergence     promoted from cross-SDK verdict divergence
 #
 # The script enforces, fail-closed:
 #   1. Every file under fuzz/corpus/ has exactly one [[seed]] entry.
 #   2. Every [[seed]] entry's path resolves to an existing file.
 #   3. Every [[seed]] entry has a recognised source.
 #   4. Every [[seed]] entry tagged with a class names one of the eight
-#      M05 adversarial classes; class without threat_id is rejected and
+#      adversarial classes; class without threat_id is rejected and
 #      threat_id without class is rejected.
 #
 # House rules: no em dashes, fail-closed, conventional output.

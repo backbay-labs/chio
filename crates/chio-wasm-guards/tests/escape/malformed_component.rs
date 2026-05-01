@@ -13,8 +13,6 @@
 //!
 //! Fixtures live at `tests/escape/fixtures/`; see that directory's
 //! README for the byte-by-byte breakdown.
-//!
-//! Owner: M05.P3.T4.
 
 use std::path::PathBuf;
 use std::sync::Arc;

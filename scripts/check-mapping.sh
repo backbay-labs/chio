@@ -70,10 +70,10 @@ done
 #
 # The parser tolerates blank lines, comments (`//`, `/* */`), and stacked
 # attributes (e.g. `#[kani::unwind(N)]`) between the `#[kani::proof]`
-# attribute and the `fn` declaration. The previous version unconditionally
-# consumed the very next line and reset `want = 0`, which silently dropped
-# harnesses whose declaration was preceded by such intervening lines and
-# fail-opened the gate (PR #61, comment r3142992290).
+# attribute and the `fn` declaration. A previous version unconditionally
+# consumed the very next line and reset `want = 0`, which silently
+# dropped harnesses whose declaration was preceded by such intervening
+# lines and fail-opened the gate.
 #
 # Portability: this script targets bash 3.2 (default macOS) and BSD awk.
 # That rules out `mapfile` and the gawk-only 3-arg `match()`. We use a
@@ -94,8 +94,8 @@ kani_harness_list="$(
       if (line ~ /^#\[/) { next }
       # We expect `fn <ident>(...)` or `pub fn <ident>(...)`. Anything
       # else means the attribute was not followed by a function
-      # definition; reset and continue scanning. M04.P4.T5 marks every
-      # harness `pub fn`; the parser tolerates either visibility.
+      # definition; reset and continue scanning. Harnesses are usually
+      # `pub fn`; the parser tolerates either visibility.
       if (line ~ /^pub[[:space:]]+/) { sub(/^pub[[:space:]]+/, "", line) }
       if (line !~ /^fn[[:space:]]+/) { want = 0; next }
       sub(/^fn[[:space:]]+/, "", line)

@@ -165,7 +165,7 @@ triggers = [
     "spec/schemas/wasm-guard/**",
 ]
 seeds    = "fuzz/corpus/wasm_guard_escape"
-notes    = "Runtime-execution surface (M05.P3); 8 escape classes via evaluate."
+notes    = "Runtime-execution surface; 8 escape classes via evaluate."
 
 [targets.chio_yaml_parse]
 crate    = "chio-config"

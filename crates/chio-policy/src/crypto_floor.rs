@@ -57,8 +57,8 @@ impl Default for CryptoFloor {
     /// Default crypto floor is [`CryptoFloor::AllowClassical`].
     ///
     /// The default preserves the legacy classical-only signing path so
-    /// trajectory-1 deployments that have not provisioned a PQ key continue
-    /// to operate without an explicit policy update.
+    /// deployments that have not provisioned a PQ key continue to operate
+    /// without an explicit policy update.
     fn default() -> Self {
         Self::AllowClassical
     }

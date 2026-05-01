@@ -1,7 +1,8 @@
 //! Integration test for the cross-SDK verdict-matrix manifest producer.
 //!
-//! Owner: M05.P2.T4. Trajectory-2 M02 consumes the on-disk manifest at
-//! `crates/chio-adversarial-suite/manifest.json`; this test asserts that:
+//! The on-disk manifest at `crates/chio-adversarial-suite/manifest.json`
+//! is consumed by cross-language verdict differential drivers. This test
+//! asserts that:
 //!
 //! 1. `Manifest::from_bundled()` succeeds against the shipped cases.
 //! 2. The on-disk manifest at `manifest.json` is byte-for-byte equal
@@ -10,8 +11,8 @@
 //!    fail the build with a clear hint.
 //! 3. Every manifest entry references a real bundled case and pins its
 //!    sha256 against the embedded contents.
-//! 4. Every M05 attack class shows up at least once so a future case
-//!    drop cannot silently shrink cross-SDK coverage.
+//! 4. Every attack class shows up at least once so a future case drop
+//!    cannot silently shrink cross-SDK coverage.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -66,7 +67,7 @@ fn manifest_covers_every_attack_class() {
     let expected: BTreeSet<AttackClass> = ATTACK_CLASSES.iter().copied().collect();
     assert_eq!(
         observed, expected,
-        "manifest must reference every M05 attack class"
+        "manifest must reference every attack class"
     );
 }
 

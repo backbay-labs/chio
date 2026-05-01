@@ -9,8 +9,6 @@
 //!     of more pages than the host's 16 MiB cap. Defense: per-Store
 //!     `StoreLimits` with `trap_on_grow_failure(true)` traps at
 //!     instantiate; the host wraps this as `WasmGuardError::Trap`.
-//!
-//! Owner: M05.P3.T2.
 
 use chio_wasm_guards::abi::WasmGuardAbi;
 use chio_wasm_guards::error::WasmGuardError;

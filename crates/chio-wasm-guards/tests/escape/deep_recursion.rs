@@ -9,8 +9,6 @@
 //! The host wraps it as `WasmGuardError::Trap`. Fuel metering is the
 //! second layer: even unbounded recursion costs fuel per call, so
 //! fuel-exhaustion may fire first.
-//!
-//! Owner: M05.P3.T3.
 
 use chio_wasm_guards::abi::WasmGuardAbi;
 use chio_wasm_guards::error::WasmGuardError;
