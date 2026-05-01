@@ -37,8 +37,34 @@ signature = "BBBB"
     )
 }
 
+fn multi_regex_policy() -> TenantPolicy {
+    parse(
+        r#"
+tenant_id = "multi-regex"
+version = 1
+identity_regexps = ["https://github\\.com/acme/.*", "https://gitlab\\.com/acme/.*"]
+oidc_issuers = ["https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "CCCC"
+"#,
+    )
+}
+
+fn multi_issuer_policy() -> TenantPolicy {
+    parse(
+        r#"
+tenant_id = "multi-issuer"
+version = 1
+identity_regexps = ["https://github\\.com/acme/.*"]
+oidc_issuers = ["https://token.actions.githubusercontent.com", "https://gitlab.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "DDDD"
+"#,
+    )
+}
+
 #[test]
-fn resolves_known_tenant_to_first_regex_and_issuer() {
+fn resolves_known_tenant_to_regex_and_issuer() {
     let map = StaticTenantPolicyMap::from_verified(vec![acme_policy(), beta_policy()]).unwrap();
     let acme = map.expected_for_tenant("acme").unwrap();
     assert_eq!(
@@ -55,6 +81,29 @@ fn resolves_known_tenant_to_first_regex_and_issuer() {
         r"https://gitlab\.com/beta/.*"
     );
     assert_eq!(beta.certificate_oidc_issuer, "https://gitlab.com");
+}
+
+#[test]
+fn composes_multiple_identity_regexps() {
+    let map = StaticTenantPolicyMap::from_verified(vec![multi_regex_policy()]).unwrap();
+    let expected = map.expected_for_tenant("multi-regex").unwrap();
+    assert_eq!(
+        expected.certificate_identity_regexp,
+        r"(?:https://github\.com/acme/.*)|(?:https://gitlab\.com/acme/.*)"
+    );
+    assert_eq!(
+        expected.certificate_oidc_issuer,
+        "https://token.actions.githubusercontent.com"
+    );
+}
+
+#[test]
+fn rejects_multiple_oidc_issuers_in_static_map() {
+    let err = StaticTenantPolicyMap::from_verified(vec![multi_issuer_policy()]).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("exactly one"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
 }
 
 #[test]

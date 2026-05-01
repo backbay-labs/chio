@@ -106,6 +106,10 @@ fn canonical_bytes_excludes_signature() {
         "canonical form must omit signature: {s}"
     );
     assert!(s.contains("tenant_id"));
+    assert_eq!(
+        s,
+        r#"{"identity_regexps":["https://github\\.com/acme/.*"],"oidc_issuers":["https://token.actions.githubusercontent.com"],"pq_identity_regexps":[],"signed_at":"2026-04-01T00:00:00Z","tenant_id":"acme","version":1}"#
+    );
 }
 
 #[test]
@@ -145,6 +149,50 @@ signature = "AAAA"
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000_000);
     let err = policy.signed_at_system_time(now).unwrap_err();
     assert!(matches!(err, AttestError::Malformed(_)));
+}
+
+#[test]
+fn signed_at_rejects_impossible_calendar_dates() {
+    for signed_at in [
+        "2026-02-29T00:00:00Z",
+        "2026-04-31T00:00:00Z",
+        "2026-00-01T00:00:00Z",
+    ] {
+        let toml = format!(
+            r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["x"]
+oidc_issuers = ["y"]
+signed_at = "{signed_at}"
+signature = "AAAA"
+"#
+        );
+        let policy = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap();
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000_000);
+        let err = policy.signed_at_system_time(now).unwrap_err();
+        assert!(
+            matches!(err, AttestError::Malformed(_)),
+            "{signed_at} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn signed_at_accepts_leap_day_in_leap_year() {
+    let toml = r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["x"]
+oidc_issuers = ["y"]
+signed_at = "2024-02-29T00:00:00Z"
+signature = "AAAA"
+"#;
+    let policy = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap();
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000_000);
+    policy
+        .signed_at_system_time(now)
+        .expect("leap day in a leap year must parse");
 }
 
 #[test]

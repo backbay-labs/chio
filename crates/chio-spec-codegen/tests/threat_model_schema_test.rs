@@ -6,7 +6,8 @@
 //! The schema asserts the four top-level keys (`schema`, `updatedAt`,
 //! `boundary`, `threats`), the `boundary.surfaces` and `boundary.assets`
 //! enums, and the per-threat object shape (`id`, `name`, `surfaces`,
-//! `mitigations`, `residualRisk`, optional `coveredBy` and
+//! `mitigations`, `residualRisk`, optional `coveredBy`,
+//! `covered_by_tests`, and
 //! `coverage_state`). The optional `coverage_state` field carries the
 //! enum `{covered, partial, pending}`. `partial` is reserved for IDs
 //! whose backing test exists but whose attack surface is only partially
@@ -128,6 +129,43 @@ fn schema_rejects_invalid_coverage_state() {
     assert!(
         !validator.is_valid(&bad),
         "schema must reject coverage_state values outside {{covered, partial, pending}}"
+    );
+}
+
+#[test]
+fn schema_accepts_covered_by_tests_alias() {
+    let root = repo_root();
+    let schema_path = root.join("spec/security/chio-threat-model.schema.json");
+    let schema_value = load_json(&schema_path);
+    let validator =
+        jsonschema::validator_for(&schema_value).expect("compile chio-threat-model.schema.json");
+
+    let valid = serde_json::json!({
+        "schema": "chio.threat-model.v1",
+        "updatedAt": "2026-04-30",
+        "boundary": {
+            "focus": "x",
+            "surfaces": ["native_chio"],
+            "assets": ["capability_tokens"]
+        },
+        "threats": [
+            {
+                "id": "legacy_covered_by_tests",
+                "name": "Legacy covered by tests",
+                "surfaces": ["native_chio"],
+                "mitigations": [
+                    {"status": "existing", "control": "x"}
+                ],
+                "residualRisk": "x",
+                "covered_by_tests": ["crates/example/tests/threat.rs"],
+                "coverage_state": "covered"
+            }
+        ]
+    });
+
+    assert!(
+        validator.is_valid(&valid),
+        "schema must accept the legacy covered_by_tests cross-link"
     );
 }
 

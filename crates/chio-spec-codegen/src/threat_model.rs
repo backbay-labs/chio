@@ -190,10 +190,10 @@ pub fn codegen_threat_model(
         let body = render_threat_stub(entry);
 
         // If the file already exists and has been hand-edited (i.e. no
-        // longer contains `unimplemented!`), DO NOT clobber the test
+        // longer contains a live `unimplemented!` call), DO NOT clobber the test
         // body. Codegen is intentionally one-shot in that direction.
         if let Ok(existing) = fs::read_to_string(&file_path) {
-            let has_stub_marker = existing.contains("unimplemented!");
+            let has_stub_marker = contains_live_unimplemented_marker(&existing);
             if !has_stub_marker {
                 written.push((entry.id.clone(), file_path));
                 continue;
@@ -209,6 +209,13 @@ pub fn codegen_threat_model(
     write_if_changed(&mod_path, render_threats_mod(&doc.threats).as_bytes())?;
 
     Ok(written)
+}
+
+fn contains_live_unimplemented_marker(source: &str) -> bool {
+    source
+        .lines()
+        .map(str::trim_start)
+        .any(|line| !line.starts_with("//") && line.contains("unimplemented!("))
 }
 
 fn is_valid_id(id: &str) -> bool {
@@ -251,5 +258,26 @@ mod tests {
         assert!(!is_valid_id("CapabilityTokenTheft"));
         assert!(!is_valid_id("9starts_with_digit"));
         assert!(!is_valid_id("dashes-not-allowed"));
+    }
+
+    #[test]
+    fn live_unimplemented_marker_ignores_comments() {
+        let filled = r#"
+//! Replace the `unimplemented!()` call when editing.
+
+#[test]
+fn covered() {
+    assert!(true);
+}
+"#;
+        assert!(!contains_live_unimplemented_marker(filled));
+
+        let stub = r#"
+#[test]
+fn pending() {
+    unimplemented!("fill me");
+}
+"#;
+        assert!(contains_live_unimplemented_marker(stub));
     }
 }

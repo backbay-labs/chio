@@ -116,11 +116,11 @@ impl ExpectedIdentity {
 /// tenants. Callers that receive this MUST deny the request rather than
 /// fall back to an inline regex.
 pub trait TenantPolicyResolver: Send + Sync {
-    /// Resolve `tenant_id` to its pinned [`ExpectedIdentity`]. The first
-    /// regex listed in the policy's `identity_regexps` and the first
-    /// issuer listed in `oidc_issuers` are used. Multi-regex / multi-issuer
-    /// fan-out is performed by composing the [`ExpectedIdentity`] regex
-    /// with `(?:a|b|c)`; see the migration audit doc.
+    /// Resolve `tenant_id` to its pinned [`ExpectedIdentity`]. Multi-regex
+    /// fan-out is performed by composing the [`ExpectedIdentity`] regex with
+    /// `(?:a)|(?:b)|(?:c)`. Because [`ExpectedIdentity`] carries one OIDC
+    /// issuer, static maps reject policies with more than one issuer rather
+    /// than silently ignoring the extras.
     fn expected_for_tenant(&self, tenant_id: &str) -> Result<ExpectedIdentity, AttestError>;
 }
 
@@ -146,6 +146,12 @@ impl StaticTenantPolicyMap {
     /// configuration error, not a precedence rule).
     pub fn from_verified(policies: Vec<TenantPolicy>) -> Result<Self, AttestError> {
         for (i, a) in policies.iter().enumerate() {
+            if a.oidc_issuers.len() != 1 {
+                return Err(AttestError::Malformed(format!(
+                    "tenant_id {:?} must declare exactly one oidc_issuer for StaticTenantPolicyMap",
+                    a.tenant_id
+                )));
+            }
             for b in &policies[i + 1..] {
                 if a.tenant_id == b.tenant_id {
                     return Err(AttestError::Malformed(format!(
@@ -178,18 +184,26 @@ impl TenantPolicyResolver for StaticTenantPolicyMap {
             .iter()
             .find(|p| p.tenant_id == tenant_id)
             .ok_or_else(|| AttestError::Malformed(format!("unknown tenant_id {tenant_id:?}")))?;
-        let regex = policy
-            .identity_regexps
-            .first()
-            .ok_or_else(|| AttestError::Malformed("policy has no identity_regexps".to_owned()))?;
+        if policy.identity_regexps.is_empty() {
+            return Err(AttestError::Malformed(
+                "policy has no identity_regexps".to_owned(),
+            ));
+        }
+        let regex = if policy.identity_regexps.len() == 1 {
+            policy.identity_regexps[0].clone()
+        } else {
+            policy
+                .identity_regexps
+                .iter()
+                .map(|pattern| format!("(?:{pattern})"))
+                .collect::<Vec<_>>()
+                .join("|")
+        };
         let issuer = policy
             .oidc_issuers
             .first()
             .ok_or_else(|| AttestError::Malformed("policy has no oidc_issuers".to_owned()))?;
-        Ok(ExpectedIdentity::doc_hidden_inline(
-            regex.clone(),
-            issuer.clone(),
-        ))
+        Ok(ExpectedIdentity::doc_hidden_inline(regex, issuer.clone()))
     }
 }
 
