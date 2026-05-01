@@ -17,6 +17,10 @@ harness_groups = [
   "verify single-step delegation attenuation",
   "verify receipt sign/verify roundtrip algebra",
   "verify budget checked-add no partial commit on overflow",
+  "verify recursive delegation no widening (M04.P4.T5)",
+  "verify delegation receipt canonical-bytes determinism (M04.P4.T5)",
+  "verify revocation view freshness fail-closed gate (M04.P4.T5)",
+  "verify oracle inclusion proof soundness (M04.P4.T5)",
 ]
 
 # Public Rust symbols witnessed by the harnesses above.
@@ -31,6 +35,10 @@ covered_symbols = [
   "chio_kernel_core::formal_core::monetary_cap_is_subset_by_parts",
   "chio_kernel_core::formal_core::budget_commit",
   "chio_core_types::crypto::PublicKey::verify_canonical",
+  "chio_core_types::capability::delegate",
+  "chio_core_types::delegation_receipt::DelegationReceipt::canonical_bytes",
+  "chio_kernel_core::revocation_view::RevocationView::install_if_newer",
+  "chio_revocation_oracle::api::InclusionProof::verify",
 ]
 
 # Lane assignment.
@@ -85,6 +93,10 @@ harnesses = [
   "verify_delegation_chain_step",
   "verify_receipt_roundtrip",
   "verify_budget_checked_add_no_overflow",
+  "verify_delegate_no_widen",
+  "verify_delegation_receipt_canonical",
+  "verify_revocation_view_freshness",
+  "verify_oracle_inclusion_soundness",
 ]
 
 [lanes.nightly_only]

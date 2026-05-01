@@ -25,6 +25,7 @@ root_modules = [
   "formal/lean4/Chio/Chio/Proofs/Protocol.lean",
   "formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean",
   "formal/lean4/Chio/Chio/Proofs/FormalClosure.lean",
+  "formal/lean4/Chio/Chio/Capability/Delegation.lean",
 ]
 
 gate_commands = [
@@ -67,6 +68,12 @@ covered_rust_symbols = [
   "chio_kernel_core::formal_core::dpop_admits",
   "chio_kernel_core::formal_core::guard_pipeline_allows",
   "chio_kernel_core::formal_core::receipt_fields_coupled",
+  # M04.P4.T6: surfaces witnessed by the new Kani harnesses and Lean
+  # delegation theorems.
+  "chio_core_types::capability::delegate",
+  "chio_core_types::delegation_receipt::DelegationReceipt::canonical_bytes",
+  "chio_kernel_core::revocation_view::RevocationView::install_if_newer",
+  "chio_revocation_oracle::api::InclusionProof::verify",
 ]
 
 shell_entrypoints = [

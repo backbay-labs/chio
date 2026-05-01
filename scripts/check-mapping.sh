@@ -50,6 +50,7 @@ named_tla_invariants=(
   "MonotoneLog"
   "AttenuationPreserving"
   "RevocationEventuallySeen"
+  "RevocationFreshness"
 )
 
 defined_tla_invariants=()
@@ -91,8 +92,11 @@ kani_harness_list="$(
       if (line ~ /^\/\*/) { next }
       if (line ~ /^\*/) { next }
       if (line ~ /^#\[/) { next }
-      # We expect `fn <ident>(...)`. Anything else means the attribute was
-      # not followed by a function definition; reset and continue scanning.
+      # We expect `fn <ident>(...)` or `pub fn <ident>(...)`. Anything
+      # else means the attribute was not followed by a function
+      # definition; reset and continue scanning. M04.P4.T5 marks every
+      # harness `pub fn`; the parser tolerates either visibility.
+      if (line ~ /^pub[[:space:]]+/) { sub(/^pub[[:space:]]+/, "", line) }
       if (line !~ /^fn[[:space:]]+/) { want = 0; next }
       sub(/^fn[[:space:]]+/, "", line)
       # Strip everything from the first `(` or `<` onward (generic params).
@@ -134,15 +138,20 @@ for name in "${defined_tla_invariants[@]}"; do
 done
 
 unmapped_kani=()
-for name in "${kani_harnesses[@]}"; do
-  # Skip empty entries that can arise if the file has no harnesses.
-  if [[ -z "${name}" ]]; then
-    continue
-  fi
-  if ! printf '%s\n' "${table_rows}" | grep -qF "\`${name}\`"; then
-    unmapped_kani+=("${name}")
-  fi
-done
+# bash 3.2 / `set -u` rejects expansion of empty arrays via `${arr[@]}`.
+# Guard the loop so an empty harness list does not crash the script
+# (which previously surfaced as "unbound variable: kani_harnesses[@]").
+if [[ "${#kani_harnesses[@]}" -gt 0 ]]; then
+  for name in "${kani_harnesses[@]}"; do
+    # Skip empty entries that can arise if the file has no harnesses.
+    if [[ -z "${name}" ]]; then
+      continue
+    fi
+    if ! printf '%s\n' "${table_rows}" | grep -qF "\`${name}\`"; then
+      unmapped_kani+=("${name}")
+    fi
+  done
+fi
 
 # --- Reporting ---------------------------------------------------------------
 echo "check-mapping: scanning ${mapping}"

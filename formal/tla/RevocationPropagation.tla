@@ -305,16 +305,36 @@ AttenuationPreserving ==
         /\ (state[a][c] = "attenuated" => depth[a][c] > 0)
 
 (***************************************************************************)
+(* RevocationFreshness (added at M04.P4.T6): every recorded local         *)
+(* revocation epoch fits in the past relative to the global clock.        *)
+(* Concretely, for every authority a and capability c, if a's local       *)
+(* rev_epoch[a][c] is non-zero (a has revoked c locally or absorbed a    *)
+(* propagation), then that epoch value is strictly smaller than the      *)
+(* global clock. Combined with MonotoneLog this discharges the           *)
+(* trajectory-2 M04 oracle freshness gate: an observed revocation epoch  *)
+(* never exceeds any clock value the model's actions could have produced.*)
+(*                                                                          *)
+(* The invariant is additive: it does not rename or weaken any of the    *)
+(* three M03 names above and does not alter Spec or Init. Apalache       *)
+(* checks it in the same `--inv=` set as the existing safety invariants. *)
+(***************************************************************************)
+RevocationFreshness ==
+    \A a \in ProcSet, c \in CapSet :
+        rev_epoch[a][c] # 0 => rev_epoch[a][c] < clock
+
+(***************************************************************************)
 (* SafetyInv: aggregate invariant referenced by                            *)
 (* MCRevocationPropagation.cfg's INVARIANT line. Conjunction of the three *)
-(* named invariants plus DomainsOK. Defined here so the existing T1-landed *)
-(* cfg loads against this module without modification.                    *)
+(* M03-named invariants plus the M04.P4.T6 RevocationFreshness invariant *)
+(* and DomainsOK. Defined here so the existing T1-landed cfg loads        *)
+(* against this module without modification.                              *)
 (***************************************************************************)
 SafetyInv ==
     /\ DomainsOK
     /\ NoAllowAfterRevoke
     /\ MonotoneLog
     /\ AttenuationPreserving
+    /\ RevocationFreshness
 
 (***************************************************************************)
 (*                          Liveness property                              *)
