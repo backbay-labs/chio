@@ -2,7 +2,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-pub use chio_kernel::{METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL};
+pub use chio_kernel::{
+    METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
+    METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+};
 
 use crate::observability::{
     HOST_FETCH_BLOB, HOST_GET_CONFIG, HOST_GET_TIME_UNIX_SECS, HOST_LOG, RELOAD_APPLIED,
@@ -21,8 +24,6 @@ pub const METRIC_CHIO_GUARD_MODULE_BYTES: &str = "chio_guard_module_bytes";
 pub const METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL: &str = "chio_guard_pool_checkout_total";
 pub const METRIC_CHIO_GUARD_POOL_WARM_SIZE: &str = "chio_guard_pool_warm_size";
 pub const METRIC_CHIO_GUARD_POOL_EVICT_TOTAL: &str = "chio_guard_pool_evict_total";
-pub const METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL: &str = "chio_signing_queue_block_total";
-
 pub const MAX_GUARD_METRIC_CARDINALITY: usize = 1024;
 pub const E_GUARD_METRIC_CARDINALITY_EXCEEDED: &str = "E_GUARD_METRIC_CARDINALITY_EXCEEDED";
 pub const OVERFLOW_TENANT_ID: &str = "__overflow__";
