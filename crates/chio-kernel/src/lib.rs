@@ -85,8 +85,8 @@ pub(crate) use chio_link::{PriceOracle, PriceOracleError};
 pub(crate) use tracing::{debug, info, warn};
 
 pub(crate) use receipt_support::*;
-// M03.P2.T2: hybrid receipt signing path. The kernel boot wiring constructs
-// a `Box<dyn SigningBackend>` from `KernelCryptoFloor` plus an optional
+// Hybrid receipt signing path. The kernel boot wiring constructs a
+// `Box<dyn SigningBackend>` from `KernelCryptoFloor` plus an optional
 // ML-DSA-65 seed; consumers (kernel boot, integration tests, custody
 // envelope issuance) sign through the resulting backend so the receipt body
 // remains byte-identical across classical and hybrid paths under
@@ -305,9 +305,6 @@ pub use cost_attribution::{
     MAX_COST_ATTRIBUTION_LIMIT,
 };
 pub use custody::PasskeyCapabilityVerifier;
-pub use weights_binding::{
-    evaluate_weights_binding, WeightsBindingError, WeightsBindingRequest,
-};
 pub use dpop::{
     is_supported_dpop_schema, verify_dpop_proof, DpopConfig, DpopNonceStore, DpopProof,
     DpopProofBody, DPOP_SCHEMA,
@@ -409,6 +406,7 @@ pub use session::{
     SessionOperationResponse, SessionPersistError, SessionState, SubscriptionRegistry,
     TerminalRegistry,
 };
+pub use weights_binding::{evaluate_weights_binding, WeightsBindingError, WeightsBindingRequest};
 
 /// A string-typed agent identifier.
 #[path = "kernel/mod.rs"]
@@ -425,9 +423,9 @@ pub use kernel::{
 
 pub use kernel::evaluator::ToolEvaluator;
 
-/// M09 P2.T2 settlement observer surface. Re-exported so integration
-/// tests and embedders can drive a SettlementHook against finalized
-/// receipts without reaching into crate-private module paths.
+/// Settlement observer surface. Re-exported so integration tests and
+/// embedders can drive a SettlementHook against finalized receipts
+/// without reaching into crate-private module paths.
 pub mod settlement_observer {
     pub use crate::kernel::settlement_observer::{
         build_observation, run_observer, SettlementObserverStatus,

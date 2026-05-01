@@ -129,8 +129,8 @@ fn bind_emits_json_when_format_json_supplied() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let v: serde_json::Value =
-        serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("must emit JSON: {e}; got: {stdout}"));
+    let v: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("must emit JSON: {e}; got: {stdout}"));
     assert_eq!(v["provider"].as_str(), Some("demo-provider"));
     assert_eq!(v["card_version"].as_str(), Some("1"));
     assert_eq!(

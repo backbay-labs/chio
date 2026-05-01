@@ -1,5 +1,4 @@
-// Trajectory-2 M07 P2.T4 -- IDE config generators for Cursor / Claude
-// Desktop / Continue / Zed.
+// IDE config generators for Cursor / Claude Desktop / Continue / Zed.
 //
 // For each target we run `chio mcp wrap --emit-config <ide> -- ...`
 // against a fixed display name and wrapped command, parse the rendered
@@ -7,8 +6,7 @@
 // the pinned `tests/fixtures/ide/<target>.expected.json` corpus.
 //
 // Each fixture pins a specific IDE schema version (see
-// `cli/mcp/ide.rs`). Schema bumps update both the fixture and the audit
-// doc in lock-step.
+// `cli/mcp/ide.rs`).
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::process::Command;

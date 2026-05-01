@@ -1,7 +1,7 @@
 //! Signed receipt envelope for the recursive `delegate` mint helper.
 //!
-//! `DelegationReceipt` is the M04 Phase 3 envelope: every successful
-//! `delegate(parent, attenuation, ...)` call emits one of these alongside
+//! `DelegationReceipt` is the recursive-delegation envelope: every
+//! successful `delegate(parent, attenuation, ...)` call emits one alongside
 //! the freshly-signed `DelegationLink`. The receipt records the parent
 //! chain that was attenuated, the attenuation that was applied, the time
 //! the receipt was minted, and a 16-byte nonce so identical attenuations
@@ -15,7 +15,7 @@
 //!
 //! Receipts are signed-into-existence by [`crate::capability::delegate`].
 //! Their canonical-JSON encoding is the byte-stable representation that
-//! downstream verifiers (and trajectory-2 M06 lineage indexers) hash.
+//! downstream verifiers (and lineage indexers) hash.
 //! Use [`DelegationReceipt::canonical_bytes`] to obtain a
 //! [`CanonicalBytes`] wrapper backed by the RFC 8785 serializer.
 //!
@@ -52,13 +52,13 @@ use crate::error::Result;
 ///
 /// All fields are optional; an empty `ScopeAttenuation` is a valid no-op
 /// attenuation that copies the parent capability shape verbatim. This is
-/// the case the M04 doc calls out as "scope subset trivially holds".
+/// the case the spec calls out as "scope subset trivially holds".
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScopeAttenuation {
     /// Per-link attenuation vector recorded on the signed delegation link.
     /// Each entry maps onto the existing [`Attenuation`] enum, which is
-    /// the trajectory-1 M03 audit-evidence surface.
+    /// the audit-evidence surface.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<Attenuation>,
     /// Optional shortened expiry for the delegated capability. When
@@ -152,7 +152,7 @@ impl DelegationReceipt {
     #[must_use]
     pub fn child_depth(&self) -> u32 {
         // `+1` cannot overflow `u32` in any practical chain (depth bound
-        // is < 256 by trajectory-1 M03 assumption); saturating keeps the
+        // is < 256 by chain-depth assumption); saturating keeps the
         // helper total without panicking.
         let parent_len = u32::try_from(self.parent_chain.len()).unwrap_or(u32::MAX);
         parent_len.saturating_add(1)
@@ -272,7 +272,10 @@ mod tests {
         let bytes = serde_json::to_vec(&value).unwrap();
         let parsed: core::result::Result<DelegationReceipt, serde_json::Error> =
             serde_json::from_slice(&bytes);
-        assert!(parsed.is_err(), "unknown fields must reject (deny_unknown_fields)");
+        assert!(
+            parsed.is_err(),
+            "unknown fields must reject (deny_unknown_fields)"
+        );
     }
 
     #[test]
@@ -289,10 +292,10 @@ mod tests {
         let receipt = mint([0xCD_u8; 16]);
         let mut value: serde_json::Value =
             serde_json::from_slice(receipt.canonical_bytes().unwrap().as_bytes()).unwrap();
-        value
-            .as_object_mut()
-            .unwrap()
-            .insert("nonce".to_string(), serde_json::Value::String("dead".to_string()));
+        value.as_object_mut().unwrap().insert(
+            "nonce".to_string(),
+            serde_json::Value::String("dead".to_string()),
+        );
         let bytes = serde_json::to_vec(&value).unwrap();
         let parsed: core::result::Result<DelegationReceipt, serde_json::Error> =
             serde_json::from_slice(&bytes);
@@ -304,7 +307,10 @@ mod tests {
         let receipt = mint([4_u8; 16]);
         let chain = receipt.complete_chain();
         assert_eq!(chain.len(), receipt.parent_chain.len() + 1);
-        assert_eq!(chain.last().unwrap().signature.to_hex(), receipt.link.signature.to_hex());
+        assert_eq!(
+            chain.last().unwrap().signature.to_hex(),
+            receipt.link.signature.to_hex()
+        );
         assert_eq!(receipt.child_depth(), 1);
     }
 
@@ -314,9 +320,10 @@ mod tests {
         assert!(empty.steps.is_empty());
         assert!(empty.child_expires_at.is_none());
 
-        let from_steps = ScopeAttenuation::from_steps(vec![
-            crate::capability::Attenuation::ShortenExpiry { new_expires_at: 1900 },
-        ]);
+        let from_steps =
+            ScopeAttenuation::from_steps(vec![crate::capability::Attenuation::ShortenExpiry {
+                new_expires_at: 1900,
+            }]);
         assert_eq!(from_steps.steps.len(), 1);
         assert!(from_steps.child_expires_at.is_none());
     }

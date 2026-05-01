@@ -1,12 +1,7 @@
 //! Kernel async runtime probe.
 //!
-//! Reads the kernel `/metrics` endpoint exposed by `chio-tower`
-//! (trajectory-1 M05) and asserts the
-//! `chio_kernel_dispatch_inflight` gauge is reachable.
-//!
-//! Per ticket M01.P3.T5 this probe references the trajectory-1 M05.P3.T2
-//! gauge name (`chio_kernel_dispatch_inflight`) and deliberately does NOT
-//! assert on the M06.P2 drop-counter names which may not have merged yet.
+//! Reads the kernel `/metrics` endpoint exposed by `chio-tower` and
+//! asserts the `chio_kernel_dispatch_inflight` gauge is reachable.
 //!
 //! When `CHIO_DOCTOR_SKIP_NETWORK=1` is set or no metrics URL is
 //! configured the probe returns an info-level report.

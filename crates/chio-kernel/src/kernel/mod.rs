@@ -862,7 +862,7 @@ pub struct KernelConfig {
 }
 
 // ---------------------------------------------------------------------------
-// M03.P2.T2: hybrid signing helper attached to the kernel
+// Hybrid signing helper attached to the kernel
 // ---------------------------------------------------------------------------
 
 /// Boot-time configuration for the kernel-side hybrid signing path.
@@ -875,9 +875,7 @@ pub struct KernelConfig {
 /// SigningBackend>` for hybrid receipt signing.
 ///
 /// Kept as a separate input rather than folded into [`KernelConfig`] so the
-/// trajectory-1 struct literal stays byte-identical for legacy callers
-/// (workspace-wide migration is owned by M03.P5.T3 once the
-/// `CanonicalBytes` newtype lands).
+/// existing struct literal stays byte-identical for legacy callers.
 #[derive(Debug, Clone, Default)]
 pub struct HybridSigningConfig {
     /// Minimum cryptographic posture enforced on receipts, capability
@@ -907,7 +905,6 @@ impl ChioKernel {
     /// inline path (`build_and_sign_receipt`); callers that opt in to
     /// hybrid signing pass the returned backend through
     /// [`crate::sign_receipt_body_with_backend`] before persistence.
-    /// M03.P5.T3 finalizes the wiring once `CanonicalBytes` lands.
     ///
     /// # Errors
     ///
@@ -1035,13 +1032,13 @@ pub struct ChioKernel {
     /// handles can pass the signing handle to in-flight evaluators without
     /// cloning the whole kernel.
     signing_task: std::sync::Arc<signing_task::SigningTaskHandle>,
-    /// M09 P2.T2 settlement observer slot. When `Some`, the kernel
-    /// invokes the hook against every finalized receipt that carries a
-    /// non-zero manifest price. Settlement runs strictly post-signing
-    /// and never blocks dispatch; failures are surfaced through the
-    /// retry/dead-letter machinery in P2.T3, not through this option.
+    /// Settlement observer slot. When `Some`, the kernel invokes the
+    /// hook against every finalized receipt that carries a non-zero
+    /// manifest price. Settlement runs strictly post-signing and never
+    /// blocks dispatch; failures are surfaced through the retry/dead-
+    /// letter machinery, not through this option.
     settlement_observer: Option<std::sync::Arc<dyn chio_settle::SettlementHook>>,
-    /// M04 P3.T4 recursive-delegation oracle handle. When `Some` and the
+    /// Recursive-delegation oracle handle. When `Some` and the
     /// `delegation_v2` cargo feature is on, the verifier consults this
     /// arc-swap-backed snapshot on every delegated dispatch and denies
     /// the capability if any link in the chain (or the leaf) is in the
@@ -1049,8 +1046,7 @@ pub struct ChioKernel {
     /// `RevocationStore` lookup. Field always present so the struct
     /// shape is feature-flag agnostic; consultation is gated by
     /// `cfg(feature = "delegation_v2")` on the read path.
-    revocation_view:
-        Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
+    revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
 }
 
 #[derive(Clone, Copy)]
@@ -1433,28 +1429,22 @@ impl ChioKernel {
         }
     }
 
-    /// Install (or replace) the M04 P3.T4 recursive-delegation oracle
-    /// handle. Default deployments leave this `None` and rely on the
-    /// legacy per-row `RevocationStore` lookup. With the `delegation_v2`
+    /// Install (or replace) the recursive-delegation oracle handle.
+    /// Default deployments leave this `None` and rely on the legacy
+    /// per-row `RevocationStore` lookup. With the `delegation_v2`
     /// feature on, installing a [`chio_kernel_core::RevocationView`]
     /// here causes the verifier to consult it on every delegated
     /// dispatch.
     ///
-    /// The handle is `Arc`-shared so federation gossip (M04 P2.T6) can
-    /// install monotone snapshot updates without holding a kernel
-    /// mutex.
-    pub fn set_revocation_view(
-        &mut self,
-        view: std::sync::Arc<chio_kernel_core::RevocationView>,
-    ) {
+    /// The handle is `Arc`-shared so federation gossip can install
+    /// monotone snapshot updates without holding a kernel mutex.
+    pub fn set_revocation_view(&mut self, view: std::sync::Arc<chio_kernel_core::RevocationView>) {
         self.revocation_view = Some(view);
     }
 
     /// Borrow the currently-installed revocation view, if any.
     #[must_use]
-    pub fn revocation_view(
-        &self,
-    ) -> Option<&std::sync::Arc<chio_kernel_core::RevocationView>> {
+    pub fn revocation_view(&self) -> Option<&std::sync::Arc<chio_kernel_core::RevocationView>> {
         self.revocation_view.as_ref()
     }
 
@@ -1598,13 +1588,13 @@ impl ChioKernel {
         self.post_invocation_pipeline.add(hook);
     }
 
-    /// M09 P2.T2: install a settlement hook that runs after each
-    /// receipt is signed and persisted. Settlement is strictly an
-    /// observer relative to receipt bytes; the hook MUST NOT mutate
-    /// the receipt store and MUST NOT block the dispatch path on its
-    /// own latency. Hook failures are surfaced through
+    /// Install a settlement hook that runs after each receipt is signed
+    /// and persisted. Settlement is strictly an observer relative to
+    /// receipt bytes; the hook MUST NOT mutate the receipt store and
+    /// MUST NOT block the dispatch path on its own latency. Hook
+    /// failures are surfaced through
     /// [`Self::run_settlement_observer`]'s return value and are routed
-    /// through the retry/dead-letter machinery introduced by P2.T3.
+    /// through the retry/dead-letter machinery.
     pub fn set_settlement_observer(
         &mut self,
         hook: std::sync::Arc<dyn chio_settle::SettlementHook>,
@@ -1620,7 +1610,7 @@ impl ChioKernel {
         self.settlement_observer.clone()
     }
 
-    /// M09 P2.T2: invoke the registered settlement hook against a
+    /// Invoke the registered settlement hook against a
     /// freshly signed receipt. The receipt is observer-only relative
     /// to this call: callers MUST pass a receipt that has already been
     /// signed and stored, and the returned status NEVER feeds back
@@ -3627,11 +3617,11 @@ impl ChioKernel {
     }
 
     fn validate_delegation_admission(&self, cap: &CapabilityToken) -> Result<(), KernelError> {
-        // M04 P3.T4: when the `delegation_v2` feature is on, consult the
-        // installed `RevocationView` snapshot before re-running the
-        // legacy chain validation. Fail-closed: a revoked ancestor or
-        // leaf denies dispatch even if the chain is otherwise valid.
-        // This is a no-op (`Ok(())`) when no view is installed.
+        // When the `delegation_v2` feature is on, consult the installed
+        // `RevocationView` snapshot before re-running the legacy chain
+        // validation. Fail-closed: a revoked ancestor or leaf denies
+        // dispatch even if the chain is otherwise valid. This is a
+        // no-op (`Ok(())`) when no view is installed.
         #[cfg(feature = "delegation_v2")]
         delegation::consult_revocation_view(cap, self.revocation_view.as_ref())?;
 
@@ -6139,10 +6129,10 @@ pub mod evaluator;
 mod responses;
 #[path = "session_ops.rs"]
 mod session_ops;
-// M09 P2.T2 settlement observer slot. Wires `chio-settle::SettlementHook`
-// into the post-dispatch surface so finalized receipts can be routed
-// through the existing `chio-settle/ops.rs` pipeline. The observer is
-// strictly post-signing: hook failures never block the dispatch path.
+// Settlement observer slot. Wires `chio-settle::SettlementHook` into
+// the post-dispatch surface so finalized receipts can be routed through
+// the existing `chio-settle/ops.rs` pipeline. The observer is strictly
+// post-signing: hook failures never block the dispatch path.
 #[path = "settlement_observer.rs"]
 pub mod settlement_observer;
 // Mpsc-backed signing task. Owns a clone of the kernel signing keypair and

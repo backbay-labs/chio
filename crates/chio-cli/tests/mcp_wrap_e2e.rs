@@ -1,11 +1,10 @@
-// Trajectory-2 M07 P2.T6 -- end-to-end test wrapping a real MCP fixture
-// server, asserting the verdict gate and the attestation header
-// round-trip.
+// End-to-end test wrapping a real MCP fixture server, asserting the
+// verdict gate and the attestation header round-trip.
 //
 // This test exercises the full `arc mcp wrap` stdio orchestration loop
 // without a real wrapped child by feeding the binary the
 // `echo_server_fixture.json` corpus through `--e2e-fixture`. The
-// fixture mirrors the trajectory-1 mcp-adapter test fixture surface:
+// fixture mirrors the mcp-adapter test fixture surface:
 //
 // - A `tools/list` array carrying four tools (echo, read_file,
 //   delete_record, fetch_url) with annotation-driven scope hints.

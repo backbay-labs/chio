@@ -1,19 +1,15 @@
-//! Hybrid `SessionComplianceCertificate` issuance and verification (M03.P2.T4).
+//! Hybrid `SessionComplianceCertificate` issuance and verification.
 //!
 //! Pins the kernel-side compliance certificate envelope under all three
 //! `crypto_floor` settings: classical-only (byte-identity baseline),
 //! hybrid (allow_hybrid + pq_required), and the cross-floor downgrade
 //! rejection that closes threat model row `pq_signature_downgrade`.
-//!
-//! Trust-boundary milestone: M03 P2.T4.
 
 #![cfg(feature = "pq")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chio_core::canonical::canonical_json_bytes;
-use chio_core::crypto::{
-    Ed25519Backend, HybridBackend, Keypair, MlDsa65Backend, SigningAlgorithm,
-};
+use chio_core::crypto::{Ed25519Backend, HybridBackend, Keypair, MlDsa65Backend, SigningAlgorithm};
 use chio_kernel::compliance_certificate::{
     issue_session_compliance_certificate, verify_session_compliance_certificate,
     ComplianceCertificateError, SessionComplianceCertificateBody,
@@ -64,9 +60,8 @@ fn classical_certificate_round_trip_under_allow_classical() {
 fn hybrid_certificate_round_trip_under_allow_hybrid() {
     let backend = hybrid_backend();
     let body = body_with_floor(KernelCryptoFloor::AllowHybrid);
-    let cert =
-        issue_session_compliance_certificate(body, KernelCryptoFloor::AllowHybrid, &backend)
-            .unwrap();
+    let cert = issue_session_compliance_certificate(body, KernelCryptoFloor::AllowHybrid, &backend)
+        .unwrap();
     assert_eq!(cert.algorithm, SigningAlgorithm::Hybrid);
     assert_eq!(cert.signature.algorithm(), SigningAlgorithm::Hybrid);
     verify_session_compliance_certificate(&cert, KernelCryptoFloor::AllowHybrid).unwrap();
@@ -76,9 +71,8 @@ fn hybrid_certificate_round_trip_under_allow_hybrid() {
 fn hybrid_certificate_round_trip_under_pq_required() {
     let backend = hybrid_backend();
     let body = body_with_floor(KernelCryptoFloor::PqRequired);
-    let cert =
-        issue_session_compliance_certificate(body, KernelCryptoFloor::PqRequired, &backend)
-            .unwrap();
+    let cert = issue_session_compliance_certificate(body, KernelCryptoFloor::PqRequired, &backend)
+        .unwrap();
     verify_session_compliance_certificate(&cert, KernelCryptoFloor::PqRequired).unwrap();
 }
 
@@ -123,9 +117,8 @@ fn classical_certificate_under_pq_required_rejects_at_verification() {
 fn hybrid_certificate_under_allow_classical_rejects_at_verification() {
     let backend = hybrid_backend();
     let body = body_with_floor(KernelCryptoFloor::AllowHybrid);
-    let cert =
-        issue_session_compliance_certificate(body, KernelCryptoFloor::AllowHybrid, &backend)
-            .unwrap();
+    let cert = issue_session_compliance_certificate(body, KernelCryptoFloor::AllowHybrid, &backend)
+        .unwrap();
     let err = verify_session_compliance_certificate(&cert, KernelCryptoFloor::AllowClassical)
         .expect_err("hybrid cert under allow_classical must reject");
     assert!(matches!(
@@ -156,8 +149,7 @@ fn tampered_body_rejects_signature_verification() {
 #[test]
 fn canonical_body_bytes_byte_identical_under_allow_classical() {
     // Byte-identity contract: the canonical JSON of a compliance body
-    // produced under `allow_classical` is byte-stable. M03.P2.T5 escalates
-    // this contract to v3.18 receipt fixtures.
+    // produced under `allow_classical` is byte-stable.
     let backend = classical_backend();
     let body = body_with_floor(KernelCryptoFloor::AllowClassical);
     let pre = canonical_json_bytes(&body).unwrap();

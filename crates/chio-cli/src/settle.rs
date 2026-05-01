@@ -1,15 +1,14 @@
 //! `arc settle status` CLI surface.
 //!
-//! M09 P2.T5 surfaces the local settlement lifecycle for operator
-//! review. The command opens an existing chio-store-sqlite database
-//! read-only and reports:
+//! Surfaces the local settlement lifecycle for operator review. The
+//! command opens an existing chio-store-sqlite database read-only and
+//! reports:
 //!
-//! - `pending`: IOU envelopes minted by P1 that have no
-//!   `settlement_reconciliations` row yet.
+//! - `pending`: IOU envelopes that have no `settlement_reconciliations`
+//!   row yet.
 //! - `settled`: rows in `settlement_reconciliations` whose
 //!   `reconciliation_state` is `settled`.
-//! - `dead_lettered`: rows in `settle_dead_letters` introduced by
-//!   P2.T3.
+//! - `dead_lettered`: rows in `settle_dead_letters`.
 //!
 //! The status report is deterministic: lists are sorted by
 //! `(finalized_at, receipt_id)` to match the settlement-ordering

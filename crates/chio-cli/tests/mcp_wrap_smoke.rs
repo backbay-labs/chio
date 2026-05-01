@@ -1,4 +1,4 @@
-// Trajectory-2 M07 P2.T2 smoke test for `arc mcp wrap`.
+// Smoke test for `arc mcp wrap`.
 //
 // We avoid spawning a real MCP child here so the smoke test remains
 // hermetic on shared CI runners. Instead, we exercise the CLI surface:
@@ -10,8 +10,7 @@
 //   wiring is confirmed end-to-end.
 //
 // This test is intentionally lightweight; the actual stdio orchestration
-// is covered by `mcp_wrap_e2e.rs` against the trajectory-1 mcp-adapter
-// fixture corpus.
+// is covered by `mcp_wrap_e2e.rs` against the mcp-adapter fixture corpus.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::process::Command;

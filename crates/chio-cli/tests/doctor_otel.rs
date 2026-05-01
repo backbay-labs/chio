@@ -1,5 +1,4 @@
-//! Integration tests for the OTEL endpoint + kernel runtime probes
-//! (M01.P3.T5).
+//! Integration tests for the OTEL endpoint + kernel runtime probes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

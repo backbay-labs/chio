@@ -178,7 +178,7 @@ fn governed_transaction_diagnostics(
 }
 
 // ---------------------------------------------------------------------------
-// M03.P2.T2: hybrid receipt signing path
+// Hybrid receipt signing path
 // ---------------------------------------------------------------------------
 //
 // Mirrors `chio_policy::CryptoFloor` so the kernel boot path can branch on

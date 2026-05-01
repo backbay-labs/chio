@@ -37,6 +37,8 @@ pub mod session;
 pub use canonical::{
     canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
 };
+#[cfg(feature = "delegation_v2")]
+pub use capability::delegate;
 pub use capability::{
     canonicalize_attestation_verifier, validate_attenuation, validate_delegation_chain,
     Attenuation, AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule,
@@ -52,14 +54,12 @@ pub use capability::{
 pub use crypto::{
     sha256_hex, Ed25519Backend, Keypair, PublicKey, Signature, SigningAlgorithm, SigningBackend,
 };
-#[cfg(feature = "delegation_v2")]
-pub use capability::delegate;
-#[cfg(feature = "delegation_v2")]
-pub use delegation_receipt::{DelegationReceipt, ScopeAttenuation};
 #[cfg(feature = "pq")]
 pub use crypto::{HybridBackend, MlDsa65Backend};
 #[cfg(feature = "fips")]
 pub use crypto::{P256Backend, P384Backend};
+#[cfg(feature = "delegation_v2")]
+pub use delegation_receipt::{DelegationReceipt, ScopeAttenuation};
 pub use error::{Error, Result};
 pub use hashing::{sha256, Hash};
 pub use manifest::{

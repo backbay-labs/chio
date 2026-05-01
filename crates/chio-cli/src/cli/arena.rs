@@ -1,8 +1,8 @@
-// chio-arena CLI subcommands (M08.P5.T4 / T5 / T6).
+// chio-arena CLI subcommands.
 //
 // `arc arena run`: load a scenario file, drive the runtime, write a bundle.
 // `arc arena replay`: resolve scenario id under target/arena/<id>/ and
-// delegate to the trajectory-1 M04 `chio replay` engine.
+// delegate to the `chio replay` engine.
 // `arc arena evolve`: run the co-evolution driver under the bounded-budget
 // gate and render a leaderboard.
 
@@ -88,8 +88,8 @@ fn cmd_arena_replay(
         )));
     }
     // Per spec, this subcommand is a thin wrapper that delegates to the
-    // trajectory-1 M04 `chio replay` engine. We surface the resolved
-    // bundle path; integration tests assert this contract.
+    // `chio replay` engine. We surface the resolved bundle path;
+    // integration tests assert this contract.
     let summary = serde_json::json!({
         "schema_version": "chio.arena.replay/v1",
         "scenario_id": scenario_id,

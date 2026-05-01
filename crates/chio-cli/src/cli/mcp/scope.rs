@@ -1,9 +1,9 @@
 // Per-tool capability scope inference for `arc mcp wrap`.
 //
-// Trajectory-2 M07 P2.T3. The MCP `tools/list` response carries a free-
-// form JSON Schema and (optionally) a set of annotations such as
-// `readOnlyHint` and `destructiveHint`. We turn each tool entry into a
-// best-effort capability shape that the user reviews before promoting:
+// The MCP `tools/list` response carries a free-form JSON Schema and
+// (optionally) a set of annotations such as `readOnlyHint` and
+// `destructiveHint`. We turn each tool entry into a best-effort
+// capability shape that the user reviews before promoting:
 //
 // - Read-only tools (`readOnlyHint == true`) classify as `Read`.
 // - Tools whose annotations claim `destructiveHint == true` classify as

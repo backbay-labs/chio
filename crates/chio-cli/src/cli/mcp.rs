@@ -1,5 +1,4 @@
-// Top-level glue for the `arc mcp wrap` subcommand introduced by
-// trajectory-2 M07 P2.
+// Top-level glue for the `arc mcp wrap` subcommand.
 //
 // Per the workspace `include!()` pattern (mirrors `cli/replay.rs` +
 // `cli/replay/*.rs`), this file is `include!`-d from `src/main.rs` and in
@@ -21,8 +20,7 @@ include!("mcp/emit_config.rs");
 
 /// Dispatch entry-point for `arc mcp wrap`.
 ///
-/// Trajectory-2 M07 P2.T1 introduces this entry-point as the wrapper-side
-/// of the trajectory-1 native MCP adapter surface (`chio-mcp-adapter` and
+/// Wrapper-side of the native MCP adapter surface (`chio-mcp-adapter` and
 /// `chio-hosted-mcp`). It runs the verdict gate over `tools/call`,
 /// renders an inferred capability-scope manifest scaffold, and (when
 /// `--emit-config` is supplied) emits a paste-ready IDE configuration blob

@@ -1,4 +1,4 @@
-//! Integration tests for the `chio doctor` skeleton (M01.P3.T1).
+//! Integration tests for the `chio doctor` skeleton.
 //!
 //! Exercises the clap surface, the JSON envelope, and the severity-driven
 //! exit code via `assert_cmd`.

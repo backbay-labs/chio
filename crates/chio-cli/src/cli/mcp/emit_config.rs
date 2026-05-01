@@ -1,8 +1,8 @@
 // IDE config blob renderer for `arc mcp wrap --emit-config <target>`.
 //
-// Trajectory-2 M07 P2.T4. Each IDE has its own schema; the rendered
-// JSON is canonical (sorted keys via `serde_json::to_string_pretty`)
-// and the schema version is pinned in [`IdeTarget::schema_version`].
+// Each IDE has its own schema; the rendered JSON is canonical (sorted
+// keys via `serde_json::to_string_pretty`) and the schema version is
+// pinned in [`IdeTarget::schema_version`].
 
 /// Render the paste-ready IDE config blob for the supplied target.
 /// Pure function so the test corpus can compare bytes against the

@@ -1,4 +1,4 @@
-//! M09 P2.T4 integration test.
+//! Settlement observer byte-identity integration test.
 //!
 //! Drives ten finalized receipts through the kernel settlement observer
 //! slot and asserts:
@@ -14,8 +14,8 @@
 //!    keys match the kernel's input order, demonstrating the
 //!    deterministic ordering documented on the trait.
 //!
-//! Anchors: trajectory-1 M04 deterministic-replay byte-identity
-//! goldens are the receipt-byte oracle; this test reuses the same
+//! The deterministic-replay byte-identity goldens are the receipt-byte
+//! oracle; this test reuses the same
 //! `chio_core::canonical::canonical_json_bytes` encoding the goldens
 //! were minted under, so the assertion lives on the same byte oracle.
 

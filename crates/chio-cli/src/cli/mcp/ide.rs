@@ -1,12 +1,10 @@
 // IDE config emit targets for `arc mcp wrap`.
 //
-// Trajectory-2 M07 P2.T4. The four supported IDEs each have their own
-// configuration shape; we model the target as a `clap::ValueEnum` so the
-// CLI surface is `--emit-config <target>` and the audit doc can pin
-// the schema version per target.
+// The four supported IDEs each have their own configuration shape; we
+// model the target as a `clap::ValueEnum` so the CLI surface is
+// `--emit-config <target>` and each target pins a schema version.
 //
-// Pinned schema versions (matches the audit-doc snapshot in
-// `.planning/audits/M07-adoption-beachhead.md`, M07.P2.T4 row):
+// Pinned schema versions:
 //
 // - Cursor `~/.cursor/mcp.json`           schema: cursor.mcp/2024-12
 // - Claude Desktop `claude_desktop_config.json` schema: anthropic.mcp/2024-12

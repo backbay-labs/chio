@@ -1,15 +1,15 @@
 //! Settlement observer slot wired into the kernel evaluator.
 //!
-//! M09 P2.T2 plugs `chio-settle::SettlementHook` into the kernel's
-//! post-dispatch observer surface (trajectory-1 M05 async kernel). The
-//! observer is consulted only after a receipt has been fully signed and
-//! durably stored: settlement is observer-only relative to the receipt
-//! bytes, and a hook failure NEVER blocks the dispatch path.
+//! Plugs `chio-settle::SettlementHook` into the kernel's post-dispatch
+//! observer surface. The observer is consulted only after a receipt has
+//! been fully signed and durably stored: settlement is observer-only
+//! relative to the receipt bytes, and a hook failure NEVER blocks the
+//! dispatch path.
 //!
 //! The kernel field [`ChioKernel::settlement_observer`] holds an
 //! optional handle; deployments that do not wire a settlement runtime
-//! see the same byte-identical receipts they did before M09 P2 (the
-//! integration test in P2.T4 enforces this invariant explicitly).
+//! see byte-identical receipts (an integration test enforces this
+//! invariant explicitly).
 
 use std::sync::Arc;
 
@@ -18,7 +18,7 @@ use chio_settle::{SettlementHook, SettlementHookError, SettlementObservation, Se
 
 /// Schema string emitted on the wire for settlement-observer status frames.
 /// Public so external observers can pin against the same identifier the
-/// kernel records; consumed by P2.T3 retry classification and P2.T5 CLI.
+/// kernel records.
 #[allow(dead_code)]
 pub const SETTLEMENT_OBSERVER_STATUS_SCHEMA: &str = "chio.settle.observer-status.v1";
 
@@ -39,11 +39,11 @@ pub enum SettlementObserverStatus {
     Skipped { reason: String },
     /// The hook accepted the observation and returned an outcome
     /// classification. The downstream lifecycle is then driven by the
-    /// retry policy and dead-letter machinery introduced in P2.T3.
+    /// retry policy and dead-letter machinery.
     Observed { outcome: SettlementOutcome },
     /// The hook surfaced an error. Settlement runs on the post-dispatch
     /// task, so this is recorded but never propagated back to the
-    /// dispatch path. P2.T3 routes the error through retry/dead-letter
+    /// dispatch path. The error is routed through retry/dead-letter
     /// classification.
     HookFailed { error: String },
 }

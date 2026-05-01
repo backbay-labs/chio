@@ -1,4 +1,4 @@
-//! Integration tests for the cosign freshness probe (M01.P3.T4).
+//! Integration tests for the cosign freshness probe.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

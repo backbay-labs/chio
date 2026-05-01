@@ -1,5 +1,5 @@
-//! M05 baseline bench: receipt_append.
-//! Body fills in M05 P1 / P2 once the async-kernel pivot lands.
+//! Baseline bench: receipt_append.
+//! Body fills in once the async-kernel pivot lands.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 

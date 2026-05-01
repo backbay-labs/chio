@@ -1,4 +1,4 @@
-//! M08.P5.T6 - integration coverage for `arc arena evolve`.
+//! Integration coverage for `arc arena evolve`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

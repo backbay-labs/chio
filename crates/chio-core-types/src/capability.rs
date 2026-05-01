@@ -32,9 +32,7 @@ use crate::session::SessionAnchorReference;
 /// configured floor without taking a dependency on `chio-policy` or
 /// `chio-kernel`. Operators that load a HushSpec policy translate the
 /// parsed floor into this enum at the kernel boundary.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityCryptoFloor {
     /// Accept classical-only Ed25519/P-256/P-384 envelopes. Default.
@@ -133,7 +131,10 @@ pub enum CapabilityFloorVerifyError {
 
     /// Forwarded from the underlying canonical-JSON or signature
     /// verification path.
-    #[cfg_attr(feature = "std", error("capability cryptographic verification failed: {0}"))]
+    #[cfg_attr(
+        feature = "std",
+        error("capability cryptographic verification failed: {0}")
+    )]
     Crypto(#[cfg_attr(feature = "std", source)] Error),
 }
 
@@ -4039,10 +4040,8 @@ mod tests {
             "tool-x",
             vec![Operation::Invoke, Operation::Delegate],
         )]);
-        let parent =
-            delegate_parent_token(&issuer, &subject, parent_scope.clone(), 1000, 2000);
-        let child_scope =
-            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let parent = delegate_parent_token(&issuer, &subject, parent_scope.clone(), 1000, 2000);
+        let child_scope = make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
 
         let receipt = delegate(
             &parent,
@@ -4070,10 +4069,8 @@ mod tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let delegatee = Keypair::generate();
-        let parent_scope =
-            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
-        let parent =
-            delegate_parent_token(&issuer, &subject, parent_scope, 1000, 2000);
+        let parent_scope = make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let parent = delegate_parent_token(&issuer, &subject, parent_scope, 1000, 2000);
         // Child tries to add `Operation::Delegate`, widening the parent.
         let widened = make_scope(vec![make_grant(
             "srv-a",
@@ -4102,10 +4099,8 @@ mod tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let delegatee = Keypair::generate();
-        let scope =
-            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
-        let parent =
-            delegate_parent_token(&issuer, &subject, scope.clone(), 1000, 2000);
+        let scope = make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let parent = delegate_parent_token(&issuer, &subject, scope.clone(), 1000, 2000);
 
         let attenuation = crate::delegation_receipt::ScopeAttenuation {
             steps: vec![],
@@ -4148,8 +4143,7 @@ mod tests {
         let subject = Keypair::generate();
         let imposter = Keypair::generate();
         let delegatee = Keypair::generate();
-        let scope =
-            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let scope = make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
         let parent = delegate_parent_token(&issuer, &subject, scope.clone(), 1000, 2000);
 
         let err = delegate(
@@ -4173,8 +4167,7 @@ mod tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let delegatee = Keypair::generate();
-        let scope =
-            make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let scope = make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
         let parent = delegate_parent_token(&issuer, &subject, scope.clone(), 1000, 2000);
 
         let err = delegate(

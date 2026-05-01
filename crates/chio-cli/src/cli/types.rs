@@ -239,10 +239,10 @@ enum Commands {
 
     /// Inspect local settlement lifecycle records.
     ///
-    /// Lists pending IOU envelopes (minted by P1 but not yet settled),
+    /// Lists pending IOU envelopes (minted but not yet settled),
     /// settled receipts (rows in `settlement_reconciliations` whose
     /// state is `settled`), and dead-lettered settlements (rows in
-    /// `settle_dead_letters` introduced by M09 P2.T3).
+    /// `settle_dead_letters`).
     Settle {
         #[command(subcommand)]
         command: SettleCommands,
@@ -250,7 +250,7 @@ enum Commands {
 
     /// Query, diff, or list anchored roots in the lineage DAG.
     ///
-    /// Surfaces the M09 P5 lineage graph (`chio-lineage`):
+    /// Surfaces the lineage graph (`chio-lineage`):
     /// - `query` walks forward or reverse from a seed node id over a
     ///   lineage JSON dump.
     /// - `diff` computes the symmetric edge diff between two dumps.
@@ -280,8 +280,8 @@ enum Commands {
     /// chio-arena coliseum: run scenarios, replay bundles, evolve adversaries.
     ///
     /// `arc arena run scenarios/<name>.toml` loads a scenario, drives the
-    /// kernel via the trajectory-1 M05 async surface, and writes a receipt
-    /// bundle byte-compatible with the trajectory-1 M04 replay corpus under
+    /// kernel via the async surface, and writes a receipt bundle
+    /// byte-compatible with the replay corpus under
     /// `target/arena/<scenario-id>/`. `arc arena replay <scenario-id>`
     /// resolves the bundle directory and delegates to `chio replay`.
     /// `arc arena evolve scenarios/<seed>.toml --generations N` runs the
@@ -291,7 +291,7 @@ enum Commands {
         command: ArenaCommands,
     },
 
-    /// Bind a provider under a signed model card (M10 P4).
+    /// Bind a provider under a signed model card.
     ///
     /// `arc bind <provider> --card <path>` loads the model card from
     /// `<path>` (canonical-JSON encoded per spec/schemas/model-card.v1.json),
@@ -313,7 +313,7 @@ enum Commands {
 
         /// Optional path to the cosign bundle for the card. When supplied,
         /// the helper verifies the bundle through
-        /// `chio_attest_verify::SigstoreVerifier::verify_bundle` (M09)
+        /// `chio_attest_verify::SigstoreVerifier::verify_bundle`
         /// and refuses to print the binding summary on failure.
         #[arg(long, value_name = "PATH")]
         bundle: Option<PathBuf>,
@@ -348,8 +348,8 @@ enum ArenaCommands {
     /// Replay a previously emitted arena bundle by scenario id.
     ///
     /// Resolves `target/arena/<scenario-id>/` and delegates to the
-    /// trajectory-1 M04 `chio replay` engine. Use `--bundle-dir` to point
-    /// at a non-default bundle location.
+    /// `chio replay` engine. Use `--bundle-dir` to point at a non-default
+    /// bundle location.
     Replay {
         /// Scenario id to replay.
         scenario_id: String,
@@ -490,9 +490,9 @@ pub struct TrafficArgs {
     pub run_id: Option<String>,
 }
 
-/// Settle subcommands. M09 P2.T5 currently exposes a single `status`
-/// surface; further verbs (e.g. `clear`, `replay`) can attach here in
-/// later milestones without breaking the `arc settle status` contract.
+/// Settle subcommands. Currently exposes a single `status` surface;
+/// further verbs (e.g. `clear`, `replay`) can attach here without
+/// breaking the `arc settle status` contract.
 #[derive(Subcommand)]
 enum SettleCommands {
     /// Show pending IOU envelopes, settled receipts, and dead-lettered
@@ -511,8 +511,8 @@ enum SettleCommands {
     },
 }
 
-/// `arc lineage` subcommands. M09 P5.T7 surfaces three verbs that the
-/// underlying library and tests share.
+/// `arc lineage` subcommands. Surfaces three verbs that the underlying
+/// library and tests share.
 #[derive(Subcommand)]
 enum LineageCommands {
     /// Walk forward or reverse from a seed node id over a lineage JSON dump.
@@ -743,7 +743,7 @@ enum GuardCommands {
         wasm: PathBuf,
     },
 
-    /// M09 P4 marketplace surface: list, info, install priced guards.
+    /// Marketplace surface: list, info, install priced guards.
     Market {
         #[command(subcommand)]
         command: GuardMarketCommands,
@@ -754,7 +754,7 @@ enum GuardCommands {
 #[derive(Subcommand)]
 enum GuardMarketCommands {
     /// List guards visible to the tenant under the tenant's reputation
-    /// tier (M09 P4.T4).
+    /// tier.
     List {
         /// Path to the marketplace catalog JSON file.
         #[arg(long, value_name = "PATH")]
@@ -772,8 +772,7 @@ enum GuardMarketCommands {
         #[arg(long)]
         json: bool,
     },
-    /// Show price, reputation floor, cosign status, recent settlements
-    /// (M09 P4.T5).
+    /// Show price, reputation floor, cosign status, recent settlements.
     Info {
         /// Path to the marketplace catalog JSON file.
         #[arg(long, value_name = "PATH")]
@@ -790,15 +789,15 @@ enum GuardMarketCommands {
         /// Tenant currency.
         #[arg(long, value_name = "CCY", default_value = "USD")]
         currency: String,
-        /// Treat the publisher as revoked by the M04 oracle.
+        /// Treat the publisher as revoked by the revocation oracle.
         #[arg(long)]
         publisher_revoked: bool,
         /// Emit a stable JSON report on stdout instead of plain text.
         #[arg(long)]
         json: bool,
     },
-    /// Bind a pulled guard to the tenant bundle and registered price
-    /// (M09 P4.T6). Idempotent on replay.
+    /// Bind a pulled guard to the tenant bundle and registered price.
+    /// Idempotent on replay.
     Install {
         /// Path to the marketplace catalog JSON file.
         #[arg(long, value_name = "PATH")]
@@ -818,7 +817,7 @@ enum GuardMarketCommands {
         /// Tenant currency.
         #[arg(long, value_name = "CCY", default_value = "USD")]
         currency: String,
-        /// Treat the publisher as revoked by the M04 oracle.
+        /// Treat the publisher as revoked by the revocation oracle.
         #[arg(long)]
         publisher_revoked: bool,
         /// Emit a stable JSON record on stdout.
@@ -840,7 +839,7 @@ enum GuardBlocklistCommands {
 enum McpCommands {
     /// Wrap a stdio MCP server with verdict gating and emit IDE configs.
     ///
-    /// Trajectory-2 M07 P2 surface. Spawns the wrapped server, gates each
+    /// Spawns the wrapped server, gates each
     /// `tools/call` through the manifest scaffold, and (when
     /// `--emit-config` is set) prints a paste-ready blob for Cursor /
     /// Claude Desktop / Continue / Zed.

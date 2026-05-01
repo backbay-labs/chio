@@ -1,4 +1,4 @@
-//! Integration tests for the toolchain probe (M01.P3.T2).
+//! Integration tests for the toolchain probe.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
