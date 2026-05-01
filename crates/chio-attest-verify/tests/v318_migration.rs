@@ -82,6 +82,34 @@ fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(FIXTURE_PATH)
 }
 
+/// Local copy of the crypto-floor dispatch table. This test crate does
+/// not depend on `chio-kernel`, but it still needs to assert the same
+/// floor boundary that the kernel enforces before cryptographic checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CryptoFloor {
+    AllowClassical,
+    PqRequired,
+}
+
+impl CryptoFloor {
+    fn allows(self, algorithm: SigningAlgorithm) -> bool {
+        matches!(
+            (self, algorithm),
+            (
+                CryptoFloor::AllowClassical,
+                SigningAlgorithm::Ed25519 | SigningAlgorithm::P256 | SigningAlgorithm::P384,
+            ) | (CryptoFloor::PqRequired, SigningAlgorithm::Hybrid)
+        )
+    }
+}
+
+fn verify_under_floor(receipt: &ChioReceipt, floor: CryptoFloor) -> bool {
+    if !floor.allows(receipt.signature.algorithm()) {
+        return false;
+    }
+    receipt.verify_signature().unwrap_or(false)
+}
+
 /// Reads the checked-in v3.18 fixture, materializing it as a `ChioReceipt`.
 fn load_v318_fixture() -> ChioReceipt {
     let raw = std::fs::read(fixture_path()).unwrap_or_else(|err| {
@@ -222,10 +250,8 @@ fn v318_fixture_rejected_under_pq_required() {
     let fixture = load_v318_fixture();
     assert_eq!(fixture.signature.algorithm(), SigningAlgorithm::Ed25519);
 
-    let allowed_under_pq_required =
-        matches!(fixture.signature.algorithm(), SigningAlgorithm::Hybrid);
     assert!(
-        !allowed_under_pq_required,
+        !verify_under_floor(&fixture, CryptoFloor::PqRequired),
         "v3.18 classical bundle MUST reject under pq_required (threat row \
          pq_signature_downgrade)"
     );
@@ -243,14 +269,10 @@ fn rolled_hybrid_bundle_rejected_under_allow_classical() {
     let body = classical_body(hybrid.public_key());
     let rolled = ChioReceipt::sign_with_backend(body, &hybrid).unwrap();
 
-    let allowed_under_allow_classical =
-        matches!(rolled.signature.algorithm(), SigningAlgorithm::Hybrid);
     // allow_classical permits ONLY classical envelopes; hybrid is
     // explicitly out.
-    assert!(allowed_under_allow_classical);
-    let permitted_by_floor = false;
     assert!(
-        !permitted_by_floor,
+        !verify_under_floor(&rolled, CryptoFloor::AllowClassical),
         "hybrid bundle under allow_classical MUST reject"
     );
 }
