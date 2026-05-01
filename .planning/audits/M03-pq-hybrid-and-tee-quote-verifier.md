@@ -135,3 +135,66 @@ backends, kernel policy rollout, or production TEE admission.
 | TEE quote scaffold build | PASS | `cargo build -p chio-attest-verify --features tee-quotes --quiet` |
 | report_data binding tests | PASS | `cargo test -p chio-attest-verify --features tee-quotes --test expect_report_data` |
 | TDX unit scaffold tests | PASS | `cargo test -p chio-attest-verify --features tee-quotes --test tdx_unit` |
+
+## P5 Threat-Model Coverage Handshake (M03.P5.T4)
+
+P5.T4 marks the two M03 threat-register rows covered by tests so the M05
+threat-model-as-code CI gate can consume the coverage entries. The
+covered-by-tests assignment is recorded in
+`spec/security/chio-threat-model.v1.json` under each threat's
+`covered_by_tests` array; the rows below summarize the handshake.
+
+### Threat: `pq_signature_downgrade`
+
+Crypto-floor enforcement and the kernel boot path together close the
+post-quantum signature downgrade surface. Coverage tests:
+
+- `crates/chio-attest-verify/tests/migration.rs` -- end-to-end
+  migration walk through `allow_classical -> allow_hybrid ->
+  pq_required` with PQ key roll between stages 2 and 3, asserting the
+  v3.18 classical bundle is rejected once `pq_required` is in force.
+- `crates/chio-attest-verify/tests/v318_migration.rs` -- byte-equivalence
+  baseline plus the `pq_required` rejection of the v3.18 bundle.
+- `crates/chio-kernel/tests/pq_key_load_after_self_quote.rs` -- the
+  M03.P5.T1 boot gate refusing to materialize the PQ signing key under
+  a non-classical floor unless the self-quote binds.
+- `crates/chio-kernel/tests/hybrid_receipt_sign.rs` -- the
+  `KernelCryptoFloor` dispatch and the hybrid receipt round trip.
+
+### Threat: `tee_quote_forgery`
+
+Three platform quote backends (Intel TDX, AMD SEV-SNP, AWS Nitro NSM)
+plus the report-data binding helper close the TEE quote forgery and
+quote misbinding surface. Coverage tests:
+
+- `crates/chio-attest-verify/tests/cross_backend_conformance.rs` --
+  type-confusion: each backend rejects fixtures meant for the other
+  two backends.
+- `crates/chio-attest-verify/tests/expect_report_data.rs` --
+  `expect_report_data(kernel_pk, receipt_root)` byte-binding shape.
+- `crates/chio-attest-verify/tests/tdx_integration.rs` and
+  `crates/chio-attest-verify/tests/tdx_unit.rs` -- TDX collateral
+  walk and stale-TCB rejection.
+- `crates/chio-attest-verify/tests/sev_snp_integration.rs` and
+  `crates/chio-attest-verify/tests/sev_snp_unit.rs` -- SEV-SNP VLEK
+  and VCEK chains plus mismatched-launch-digest rejection.
+- `crates/chio-attest-verify/tests/nitro_unit.rs` and
+  `crates/chio-attest-verify/tests/nitro_root_rotation.rs` -- Nitro
+  COSE_Sign1 verification and the embedded-root rotation regression.
+- `crates/chio-kernel/tests/pq_key_load_after_self_quote.rs::allow_hybrid_loads_pq_only_after_verified_self_quote`
+  -- the kernel-side handshake that ties a verified self-quote to the
+  PQ key load.
+
+### Handshake Gate
+
+Gate command (also pinned in `tickets/M03/P5.yml#M03.P5.T4`):
+
+```
+grep -q '"covered_by_tests"' spec/security/chio-threat-model.v1.json \
+  && grep -q 'pq_signature_downgrade' .planning/audits/M03-pq-hybrid-and-tee-quote-verifier.md \
+  && grep -q 'tee_quote_forgery' .planning/audits/M03-pq-hybrid-and-tee-quote-verifier.md
+```
+
+The M05 threat-model-as-code consumer picks up the
+`covered_by_tests` arrays at CI time; this audit doc is the human-
+readable companion that lists the test paths inline.
