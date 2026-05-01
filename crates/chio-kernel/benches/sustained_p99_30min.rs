@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_TEST_SECONDS: u64 = 1;
 const NIGHTLY_SECONDS: u64 = 30 * 60;
-const MAX_LATENCY_SAMPLES: usize = 200_000;
 const QUEUE_CAPACITY: usize = 256;
 const DROP_BURST: usize = QUEUE_CAPACITY + 32;
 const P99_WARN_MICROS: u128 = 50_000;
@@ -105,14 +104,8 @@ fn probe_kernel_store_exporter_stack(
     std::hint::black_box(exported);
 }
 
-fn push_latency_sample(samples: &mut Vec<u128>, elapsed_micros: u128, iteration: u64) {
-    if samples.len() < MAX_LATENCY_SAMPLES {
-        samples.push(elapsed_micros);
-        return;
-    }
-
-    let index = (iteration as usize) % MAX_LATENCY_SAMPLES;
-    samples[index] = elapsed_micros;
+fn push_latency_sample(samples: &mut Vec<u128>, elapsed_micros: u128, _iteration: u64) {
+    samples.push(elapsed_micros);
 }
 
 fn p99(samples: &[u128]) -> u128 {
@@ -137,4 +130,10 @@ fn sustained_duration_defaults_to_ticket_gate_duration() {
         Duration::from_secs(DEFAULT_TEST_SECONDS)
     );
     assert_eq!(Duration::from_secs(NIGHTLY_SECONDS).as_secs(), 1800);
+}
+
+#[test]
+fn sustained_probe_keeps_full_duration_latency_samples() {
+    let stats = run_sustained_probe(Duration::from_millis(5));
+    assert_eq!(stats.latencies.len() as u64, stats.iterations);
 }
