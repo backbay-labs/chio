@@ -1,0 +1,31 @@
+{
+  "_comment": "M03.P5.T2 deterministic key-roll state pinning the three crypto-floor migration stages. Fixed seeds give reproducible CI-stable bytes; never used in production.",
+  "schema_version": 1,
+  "stages": [
+    {
+      "stage": 1,
+      "crypto_floor": "allow_classical",
+      "classical_seed_ascii": "chio-v318-fixture-seed-receipt-v",
+      "pq_seed_ascii": null,
+      "kernel_key_alg": "Ed25519",
+      "notes": "v3.18 bundle accepted byte-identically; PQ key not provisioned."
+    },
+    {
+      "stage": 2,
+      "crypto_floor": "allow_hybrid",
+      "classical_seed_ascii": "chio-v318-fixture-seed-receipt-v",
+      "pq_seed_ascii": "chio-m03-p5-t2-stage2-pq-seed!aa",
+      "kernel_key_alg": "Hybrid",
+      "notes": "Hybrid key composed from same Ed25519 + initial ML-DSA-65; classical bundles still accepted (allows_classical_only=true)."
+    },
+    {
+      "stage": 3,
+      "crypto_floor": "pq_required",
+      "classical_seed_ascii": "chio-v318-fixture-seed-receipt-v",
+      "pq_seed_ascii": "chio-m03-p5-t2-stage3-rotpq-seed",
+      "kernel_key_alg": "Hybrid",
+      "key_roll_between": [2, 3],
+      "notes": "PQ key rolled to a fresh ML-DSA-65 seed before stage 3; classical bundles rejected (threat_id=pq_signature_downgrade)."
+    }
+  ]
+}

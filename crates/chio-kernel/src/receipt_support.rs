@@ -263,6 +263,144 @@ pub fn sign_receipt_body_with_backend(
     })
 }
 
+// ---------------------------------------------------------------------------
+// M03.P5.T3: CanonicalBytes consumer wiring for the hybrid signing path
+// ---------------------------------------------------------------------------
+//
+// Per D16, the M06 `Arc<CanonicalBytes>` newtype lives at
+// `chio_core_types::crypto::SharedCanonicalBytes` (already exported from
+// `chio-core-types/src/canonical.rs`). The receipt-signing path under the
+// hybrid backend consumes that newtype directly so the canonical JSON byte
+// buffer is built once, hashed once for the classical half, and signed once
+// for the ML-DSA-65 half. No byte-equivalence shim is required because M06
+// shipped the newtype before M03.P1 opened.
+//
+// The helper below returns the signed `ChioReceipt` paired with the
+// `SharedCanonicalBytes` it signed, so downstream consumers (receipt store,
+// federation cosign, lineage anchor) can persist or retransmit the EXACT
+// bytes the signature was computed over without reserializing the body.
+
+/// Receipt produced by the hybrid signing path together with the canonical
+/// byte buffer that was signed.
+///
+/// Returned by [`sign_receipt_body_hybrid_canonical`] so callers can persist
+/// or retransmit the exact bytes the signature was computed over without
+/// reserializing the body. The buffer is wrapped in
+/// [`SharedCanonicalBytes`] (which is `Arc<CanonicalBytes>`) so multiple
+/// consumers downstream can share a single allocation.
+#[derive(Clone, Debug)]
+pub struct SignedHybridReceipt {
+    /// The signed receipt envelope.
+    pub receipt: ChioReceipt,
+    /// The canonical JSON byte buffer that was signed. Wrapped in
+    /// [`chio_core::crypto::SharedCanonicalBytes`] so multiple downstream
+    /// consumers can share the allocation without copying or
+    /// reserializing.
+    pub canonical: chio_core::crypto::SharedCanonicalBytes,
+}
+
+/// Sign a [`ChioReceiptBody`] through a hybrid signing backend and return
+/// both the signed [`ChioReceipt`] and the [`SharedCanonicalBytes`] that
+/// were signed.
+///
+/// This is the M03.P5.T3 entrypoint: the hybrid backend (classical Ed25519
+/// plus ML-DSA-65) is fed the M06 `CanonicalBytes` newtype directly so the
+/// canonical JSON byte buffer is built once, signed once, and shared by
+/// every downstream consumer (storage, lineage anchor, federation cosign).
+///
+/// # Trust-boundary discipline
+///
+/// - Fail-closed: if `body.kernel_key` does not match `backend.public_key()`
+///   the helper returns [`KernelError::ReceiptSigningFailed`] without
+///   touching the canonical buffer or producing a signature.
+/// - Byte-identity: the `canonical` field of the returned
+///   [`SignedHybridReceipt`] is the exact buffer the backend signed. A
+///   downstream verifier MUST consume the same buffer via
+///   [`chio_core::crypto::PublicKey::verify`] to keep the byte chain intact.
+/// - Algorithm agnostic at the trait boundary: the helper accepts any
+///   [`SigningBackend`] (Ed25519, P-256, P-384, or hybrid). When the
+///   backend is the classical-only `Ed25519Backend` the canonical buffer
+///   is still the exact bytes the legacy `sign_with_backend` path signs,
+///   so callers may treat this entrypoint as the canonical-bytes-aware
+///   superset of the legacy path.
+///
+/// # Errors
+///
+/// Returns [`KernelError::ReceiptSigningFailed`] when:
+/// - `body.kernel_key` does not match the backend's public key, OR
+/// - canonical JSON encoding of the body fails, OR
+/// - the signing backend itself rejects the message (for example, FIPS
+///   ECDSA backends that fail to acquire OS randomness).
+pub fn sign_receipt_body_hybrid_canonical(
+    body: ChioReceiptBody,
+    backend: &dyn chio_core::crypto::SigningBackend,
+) -> Result<SignedHybridReceipt, KernelError> {
+    use chio_core::crypto::{
+        canonical_json_shared_bytes, sign_shared_canonical_with_backend, PublicKey,
+    };
+
+    // Fail-closed kernel-key match BEFORE any cryptographic work. Mirrors
+    // `chio_kernel_core::sign_receipt` so the byte-identity contract holds
+    // when callers route through either entrypoint.
+    let backend_pk: PublicKey = backend.public_key();
+    if body.kernel_key.algorithm() != backend_pk.algorithm() || body.kernel_key != backend_pk {
+        return Err(KernelError::ReceiptSigningFailed(
+            "kernel signing key does not match receipt body kernel_key".to_string(),
+        ));
+    }
+
+    // Build the M06 SharedCanonicalBytes once. This is the byte buffer the
+    // classical half hashes and the ML-DSA-65 half signs.
+    let canonical = canonical_json_shared_bytes(&body).map_err(|error| {
+        KernelError::ReceiptSigningFailed(format!(
+            "canonical JSON encoding of receipt body failed: {error}"
+        ))
+    })?;
+
+    // Sign through the shared-bytes path so the backend is fed the EXACT
+    // buffer downstream consumers will consume. `Arc::clone` keeps the
+    // allocation; no second canonicalization happens.
+    let signed =
+        sign_shared_canonical_with_backend(backend, canonical.clone()).map_err(|error| {
+            KernelError::ReceiptSigningFailed(format!("hybrid signing failed: {error}"))
+        })?;
+    let (signature, signed_canonical) = signed.into_parts();
+
+    // Defence-in-depth: the buffer the backend signed MUST be the same
+    // allocation we built above. `sign_shared_canonical_with_backend`
+    // does not reserialize, but assert byte-equality so a future change
+    // that reserializes silently fails this contract first.
+    debug_assert_eq!(
+        canonical.as_bytes(),
+        signed_canonical.as_bytes(),
+        "M03.P5.T3 byte-identity drift: shared canonical bytes were re-encoded"
+    );
+
+    let receipt = ChioReceipt {
+        id: body.id,
+        timestamp: body.timestamp,
+        capability_id: body.capability_id,
+        tool_server: body.tool_server,
+        tool_name: body.tool_name,
+        action: body.action,
+        decision: body.decision,
+        content_hash: body.content_hash,
+        policy_hash: body.policy_hash,
+        evidence: body.evidence,
+        metadata: body.metadata,
+        trust_level: body.trust_level,
+        tenant_id: body.tenant_id,
+        kernel_key: body.kernel_key,
+        algorithm: Some(backend.algorithm()),
+        signature,
+    };
+
+    Ok(SignedHybridReceipt {
+        receipt,
+        canonical: signed_canonical,
+    })
+}
+
 /// Errors raised when the kernel boot path constructs a receipt-signing
 /// backend from a configured `crypto_floor` and provisioned key material.
 ///
