@@ -1,27 +1,43 @@
-//! Ollama localhost deterministic-replay gate.
+//! Ollama localhost replay gate.
 //!
-//! This is intentionally a deterministic offline replay, not a live HTTP
-//! integration test. It runs the captured `ollama_localhost_replay` NDJSON
-//! fixture through the adapter's `lift_batch` path so the lane stays
-//! reproducible on hermetic CI runners and developer machines without a
-//! local daemon.
+//! This gate exercises the configured `OLLAMA_HOST` with a lightweight
+//! `/api/chat` probe, then runs the captured `ollama_localhost_replay` NDJSON
+//! fixture through the adapter's `lift_batch` path so tool-call assertions stay
+//! deterministic.
 //!
 //! `OLLAMA_HOST` is treated purely as an opt-in switch: when unset the
-//! lane is skipped so PR jobs do not require a model on every machine, and
-//! when set the captured fixture bytes are still replayed through the
-//! `MockTransport` to keep the gate offline-deterministic. Live wire-level
-//! validation of `/api/chat` is the responsibility of the M07 P4 nightly
-//! lane and the broader provider-conformance harness, not this test.
+//! lane is skipped so PR jobs do not require a model on every machine. When
+//! set, the test first validates that the local daemon accepts `/api/chat`
+//! traffic before replaying captured fixture bytes through the adapter.
 
 use std::env;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
-use chio_ollama_tools_adapter::transport::MockTransport;
+use chio_ollama_tools_adapter::transport::Transport;
 use chio_ollama_tools_adapter::{OllamaAdapter, OllamaAdapterConfig};
 use chio_tool_call_fabric::{ProviderId, ProviderRequest};
 use serde_json::Value;
+
+struct HostTransport {
+    endpoint: String,
+}
+
+impl HostTransport {
+    fn new(endpoint: String) -> Self {
+        Self { endpoint }
+    }
+}
+
+impl Transport for HostTransport {
+    fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+}
 
 fn fixture_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -46,12 +62,168 @@ fn read_response_payload(path: &Path) -> Result<Value, String> {
     Err(format!("no upstream_response in {path:?}"))
 }
 
+fn parse_http_host(host: &str) -> Result<(String, String), String> {
+    let trimmed = host.trim();
+    if trimmed.is_empty() {
+        return Err("OLLAMA_HOST was empty".to_string());
+    }
+    if trimmed.starts_with("https://") {
+        return Err("OLLAMA_HOST must use http:// for this localhost replay".to_string());
+    }
+
+    let without_scheme = match trimmed.strip_prefix("http://") {
+        Some(value) => value,
+        None => trimmed,
+    };
+    let (authority, path) = match without_scheme.split_once('/') {
+        Some((authority, path)) => (authority, format!("/{path}")),
+        None => (without_scheme, String::new()),
+    };
+    if authority.trim().is_empty() {
+        return Err(format!("OLLAMA_HOST `{host}` did not include a host"));
+    }
+    let address = if authority.contains(':') {
+        authority.to_string()
+    } else {
+        format!("{authority}:11434")
+    };
+    Ok((address, path))
+}
+
+fn join_chat_path(base_path: &str) -> String {
+    let base = base_path.trim_end_matches('/');
+    if base.is_empty() {
+        "/api/chat".to_string()
+    } else {
+        format!("{base}/api/chat")
+    }
+}
+
+fn decode_body(headers: &str, body: &str) -> Result<String, String> {
+    if !headers
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
+        return Ok(body.to_string());
+    }
+
+    let mut rest = body;
+    let mut decoded = String::new();
+    loop {
+        let Some((len_line, after_len)) = rest.split_once("\r\n") else {
+            return Err("chunked response ended before a chunk length".to_string());
+        };
+        let len_hex = match len_line.split_once(';') {
+            Some((len_hex, _extensions)) => len_hex.trim(),
+            None => len_line.trim(),
+        };
+        let len = usize::from_str_radix(len_hex, 16)
+            .map_err(|error| format!("parse chunk length `{len_hex}`: {error}"))?;
+        if len == 0 {
+            return Ok(decoded);
+        }
+        if after_len.len() < len + 2 {
+            return Err("chunked response ended before chunk payload".to_string());
+        }
+        decoded.push_str(&after_len[..len]);
+        let suffix = &after_len[len..];
+        let Some(next) = suffix.strip_prefix("\r\n") else {
+            return Err("chunked response payload missing CRLF terminator".to_string());
+        };
+        rest = next;
+    }
+}
+
+fn post_ollama_chat(host: &str, model: &str) -> Result<String, String> {
+    let (address, base_path) = parse_http_host(host)?;
+    let path = join_chat_path(&base_path);
+    let payload = serde_json::json!({
+        "model": model,
+        "stream": false,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Return exactly OK."
+            }
+        ]
+    })
+    .to_string();
+
+    let mut stream = TcpStream::connect(&address)
+        .map_err(|error| format!("connect to OLLAMA_HOST `{host}` at {address}: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .map_err(|error| format!("set read timeout for OLLAMA_HOST `{host}`: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .map_err(|error| format!("set write timeout for OLLAMA_HOST `{host}`: {error}"))?;
+
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nAccept: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{payload}",
+        payload.len()
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("write /api/chat request to OLLAMA_HOST `{host}`: {error}"))?;
+
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .map_err(|error| format!("read /api/chat response from OLLAMA_HOST `{host}`: {error}"))?;
+    let Some((headers, raw_body)) = response.split_once("\r\n\r\n") else {
+        return Err("Ollama /api/chat response did not include headers and body".to_string());
+    };
+    let status_line = headers
+        .lines()
+        .next()
+        .ok_or_else(|| "Ollama /api/chat response did not include a status line".to_string())?;
+    let code = status_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| format!("Ollama /api/chat status line was malformed: {status_line}"))?;
+    let code: u16 = code
+        .parse()
+        .map_err(|error| format!("parse Ollama /api/chat status `{code}`: {error}"))?;
+    let body = decode_body(headers, raw_body)?;
+    if !(200..300).contains(&code) {
+        let preview: String = body.chars().take(200).collect();
+        return Err(format!(
+            "Ollama /api/chat returned HTTP {code}; body preview: {preview}"
+        ));
+    }
+    if body.trim().is_empty() {
+        return Err("Ollama /api/chat returned an empty response body".to_string());
+    }
+    Ok(body)
+}
+
+fn response_has_chat_shape(body: &str) -> bool {
+    match serde_json::from_str::<Value>(body) {
+        Ok(value) => {
+            value.get("message").is_some()
+                || value.get("done").is_some()
+                || value.is_object()
+                || value.is_array()
+        }
+        Err(_) => false,
+    }
+}
+
 #[test]
-fn deterministic_localhost_fixture_replays_through_mock_transport() {
+fn localhost_probe_then_deterministic_fixture_replay() {
     let Some(host) = env::var("OLLAMA_HOST").ok() else {
         eprintln!("OLLAMA_HOST not set; skipping localhost integration replay");
         return;
     };
+    let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama3.2:1b".to_string());
+    let live_body = match post_ollama_chat(&host, &model) {
+        Ok(body) => body,
+        Err(error) => panic!("{error}"),
+    };
+    assert!(
+        response_has_chat_shape(&live_body),
+        "Ollama /api/chat returned a non-JSON or non-chat response: {live_body}"
+    );
 
     let path = fixture_path();
     let payload = match read_response_payload(&path) {
@@ -64,9 +236,6 @@ fn deterministic_localhost_fixture_replays_through_mock_transport() {
         Err(error) => panic!("encode replay payload: {error}"),
     };
 
-    // Even with a real daemon configured we replay the deterministic
-    // fixture through the adapter so the lane stays offline-deterministic.
-    // The OLLAMA_HOST variable only gates execution, not the bytes.
     let adapter = OllamaAdapter::new(
         OllamaAdapterConfig::new(
             "ollama-1",
@@ -75,12 +244,12 @@ fn deterministic_localhost_fixture_replays_through_mock_transport() {
             "deadbeef",
             "local_chio_demo",
         ),
-        Arc::new(MockTransport::new()),
+        Arc::new(HostTransport::new(host.clone())),
     );
     assert_eq!(
         adapter.transport().endpoint(),
-        "mock://ollama",
-        "localhost replay must drive the mock transport, not {host}",
+        host,
+        "localhost replay must drive the configured OLLAMA_HOST",
     );
 
     let invocations = match adapter.lift_batch(ProviderRequest(bytes)) {

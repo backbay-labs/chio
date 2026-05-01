@@ -19,6 +19,8 @@
 // stabilizes for the stdio wrap path. The trait surface is identical
 // either way.
 
+const MCP_WRAP_PROTOCOL_VERSION: &str = "2025-11-25";
+
 /// Decision returned by a [`VerdictGate`] for a single `tools/call`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WrapVerdict {
@@ -309,7 +311,7 @@ where
                     "jsonrpc": "2.0",
                     "id": id,
                     "result": {
-                        "protocolVersion": "2024-11-05",
+                        "protocolVersion": MCP_WRAP_PROTOCOL_VERSION,
                         "serverInfo": {
                             "name": "chio-mcp-wrap",
                             "version": env!("CARGO_PKG_VERSION"),

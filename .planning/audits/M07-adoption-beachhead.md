@@ -81,6 +81,11 @@ providers in P4. The cross-provider oracle uses the NDJSON capture path
 (`load_single_verdict`) instead, so the matrix cardinality flip stays
 boundary-respecting and does not depend on a P3 cleanup.
 
+Sweep tracking note (M07): closed by `91129dd8e` and verified in the
+current sweep; Groq and Mistral now parse OpenAI-compatible
+`choices[].message.tool_calls[]`, so no provider wire-shape residual
+remains for P0/P1/P2.
+
 The Ollama and Cohere adapters added in P4 parse their respective wire
 shapes correctly: Ollama lifts `tool_calls` from the assistant `message`
 on `/api/chat` (OpenAI-style with arguments as a JSON object); Cohere
