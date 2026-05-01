@@ -205,18 +205,27 @@ async function getAssertion(
   challenge: ChallengeResponse,
   credentials: CredentialsContainer,
 ): Promise<PublicKeyCredential> {
-  const allowCredentials: PublicKeyCredentialDescriptor[] | undefined =
-    challenge.allowCredentials?.map((entry) => ({
+  let allowCredentials: PublicKeyCredentialDescriptor[] | undefined;
+  let publicKey: PublicKeyCredentialRequestOptions;
+  try {
+    allowCredentials = challenge.allowCredentials?.map((entry) => ({
       id: base64UrlToBytes(entry.id),
       type: 'public-key',
     }));
-  const publicKey: PublicKeyCredentialRequestOptions = {
-    challenge: base64UrlToBytes(challenge.challenge),
-    rpId: opts.rpId,
-    userVerification:
-      opts.userVerification ?? challenge.userVerification ?? 'required',
-    timeout: 60_000,
-  };
+    publicKey = {
+      challenge: base64UrlToBytes(challenge.challenge),
+      rpId: opts.rpId,
+      userVerification:
+        opts.userVerification ?? challenge.userVerification ?? 'required',
+      timeout: 60_000,
+    };
+  } catch (cause) {
+    throw new RequestCapabilityError(
+      'urn:chio:error:custody:internal-encoding',
+      'issuer challenge response contained malformed base64url bytes',
+      cause,
+    );
+  }
   if (allowCredentials && allowCredentials.length > 0) {
     publicKey.allowCredentials = allowCredentials;
   }
