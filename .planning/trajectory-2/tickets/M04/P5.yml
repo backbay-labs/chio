@@ -8,7 +8,7 @@
   milestone: M04
   phase: 5
   title: 3-tier swarm acceptance test (planner -> coder -> tester) - revoking planner kills both children mid-call within 500ms median across 100 trials
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
@@ -24,7 +24,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "2e28145b1"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -33,7 +33,7 @@
   milestone: M04
   phase: 5
   title: Receipt-chain proof - assert no allow receipt has seen_epoch >= revoke_epoch after the swarm test
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-revocation-oracle/tests/receipt_chain_proof.rs
@@ -49,7 +49,7 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "3d6382825"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -58,7 +58,7 @@
   milestone: M04
   phase: 5
   title: Flip delegation_v2 to default ON in chio-kernel Cargo.toml and land migration note
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-kernel/Cargo.toml
@@ -77,7 +77,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "cb8afe1fe"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -86,7 +86,7 @@
   milestone: M04
   phase: 5
   title: Final audit-doc pass - record final counts (14 Kani, 2 TLA modules, 4 Lean theorems with theorem-vs-axiom status per theorem, oracle LoC, revoke-to-deny median)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M04-delegation-revocation.md
@@ -101,7 +101,7 @@
   agent_role: delegate-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "0fc654b26"
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -110,7 +110,7 @@
   milestone: M04
   phase: 5
   title: Update formal/assumptions.toml - narrow ASSUME-NETWORK-TRANSPORT iff RevocationFreshness invariant discharges cross-peer ordering, otherwise leave untouched
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - formal/assumptions.toml
@@ -128,7 +128,7 @@
   agent_role: formal-lean
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: "f8b47df3a"
   merged_sha: null
   opened_ts: null
   merged_ts: null
