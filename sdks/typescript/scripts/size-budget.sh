@@ -14,7 +14,7 @@
 #   size-budget.sh                       # gate every runtime in the JSON
 #   size-budget.sh <runtime>             # gate a single runtime
 #   size-budget.sh <runtime> <kb_cap>    # override ceiling for one runtime
-#                                        # (advisory; intended for ticket
+#                                        # (advisory; intended for ad-hoc
 #                                        #  gate-checks, not for relaxing
 #                                        #  the source-of-truth budget)
 #

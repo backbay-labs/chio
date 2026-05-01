@@ -1033,25 +1033,24 @@ pub fn verify_budget_checked_add_no_overflow() {
 }
 
 // =====================================================================
-// M04.P4.T5: four new public harnesses for recursive delegation, the
-// signed delegation receipt, the revocation-view freshness gate, and
-// sparse-Merkle inclusion soundness. Brings the public PR-lane Kani
-// harness count to 14 (cap fixed by the trajectory-2 milestone).
+// Public harnesses for recursive delegation, the signed delegation
+// receipt, the revocation-view freshness gate, and sparse-Merkle
+// inclusion soundness.
 //
 // Each harness mirrors a property already proved (or pending proof) on
 // the Lean and TLA+ sides:
 //
 //   * verify_delegate_no_widen           - Lean theorem 1.
 //   * verify_delegation_receipt_canonical - DelegationReceipt round-trip
-//     determinism on canonical bytes (M04.P3.T2 schema).
+//     determinism on canonical bytes.
 //   * verify_revocation_view_freshness   - RevocationView::install_if_newer
 //     monotone-epoch fail-closed gate (revocation_view.rs).
 //   * verify_oracle_inclusion_soundness  - sparse-Merkle inclusion proof
 //     soundness modulo a symbolic hash function (chio-revocation-oracle).
 //
-// We model each property at the algebraic level the way the existing
-// formal_core::* harnesses do, so the symbolic search space stays
-// bounded and the PR Kani lane finishes inside its budget.
+// Each property is modelled at the algebraic level the way the existing
+// formal_core::* harnesses do, so the symbolic search space stays bounded
+// and the PR Kani lane finishes inside its budget.
 // =====================================================================
 
 /// Model a two-step delegation chain: parent -> mid -> child. Each step
@@ -1070,10 +1069,7 @@ fn two_step_chain_attenuates(step1: bool, step2: bool) -> bool {
 
 /// Symbolic model of `RevocationView::install_if_newer`. Returns
 /// `Some(new_epoch)` on accept, `None` on reject (fail-closed).
-fn model_revocation_view_install(
-    current_epoch: u64,
-    candidate_epoch: u64,
-) -> Option<u64> {
+fn model_revocation_view_install(current_epoch: u64, candidate_epoch: u64) -> Option<u64> {
     if candidate_epoch > current_epoch {
         Some(candidate_epoch)
     } else {
@@ -1088,10 +1084,7 @@ fn model_revocation_view_install(
 /// soundness is discharged by `formal/assumptions.toml ASSUME-SHA256`.
 /// The harness verifies the structural property that the verifier
 /// returns `true` exactly when the chain hashes to the claimed root.
-fn model_sparse_merkle_verify(
-    leaf_present_in_tree: bool,
-    chain_hashes_to_root: bool,
-) -> bool {
+fn model_sparse_merkle_verify(leaf_present_in_tree: bool, chain_hashes_to_root: bool) -> bool {
     // Inclusion proof is sound when (a) the leaf is in the tree and
     // (b) the proof's hash chain reduces to the claimed root. Both
     // legs must hold; one without the other is a forgery attempt that

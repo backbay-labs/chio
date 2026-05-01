@@ -1,11 +1,9 @@
 /-
-  Recursive delegation theorems (M04 Phase 4).
+  Recursive delegation theorems.
 
   This module extends the single-step capability monotonicity results in
-  `Chio.Proofs.Monotonicity` to the recursive case introduced by
-  trajectory-2 milestone 04.  It defines the four named delegation
-  theorems that the milestone freeze (`m04-delegation-pivot`) commits
-  to:
+  `Chio.Proofs.Monotonicity` to the recursive case.  It defines four
+  named delegation theorems:
 
     1. `delegate_no_widen`        - re-delegating an already-delegated
                                     capability cannot widen its scope.
@@ -15,15 +13,9 @@
                                     delegation chain forces every
                                     descendant to deny.
     4. `compose_preserves_algebra`- composing two attenuated chains
-                                    preserves the trajectory-1 M03
-                                    capability-algebra invariants
-                                    (subset-of transitivity over
-                                    `ChioScope`).
-
-  T1 (the present file) ships these theorems as STATEMENTS ONLY, behind
-  `sorry`.  T2 closes proofs 1 and 2; T3 closes proofs 3 and 4 (theorem 3
-  may ship as `axiom` if the auxiliary graph theory blows past budget,
-  per the milestone risk note).
+                                    preserves the capability-algebra
+                                    invariants (subset-of transitivity
+                                    over `ChioScope`).
 
   Mirrors: `crates/chio-core-types/src/capability.rs`
            (`Capability::delegate`, `validate_delegation_chain`),
@@ -202,7 +194,7 @@ private theorem ChioScope.isSubsetOf_trans
     Re-delegating an already-attenuated capability cannot widen the
     scope: if `child` is a subset of `mid` and `mid` is a subset of
     `parent`, then `child` is a subset of `parent`.  This is the
-    recursive case of trajectory-1 M03's
+    recursive case of the
     `validate_attenuation_monotonic_under_chain_extension` proptest
     invariant. -/
 theorem delegate_no_widen (parent mid child : ChioScope)
@@ -258,12 +250,12 @@ theorem revocation_is_cut
 /-! ## Theorem 4: `compose_preserves_algebra`
 
     Composing two attenuated delegation chains preserves the capability
-    algebra invariants from trajectory-1 M03.  Concretely: if `path1`
-    ends at scope `s_mid` and `path2` begins at scope `s_mid`, then the
-    concatenated path's final scope is a subset of the initial scope.
+    algebra invariants.  Concretely: if `path1` ends at scope `s_mid`
+    and `path2` begins at scope `s_mid`, then the concatenated path's
+    final scope is a subset of the initial scope.
 
-    The statement reduces to repeated application of theorem 1; theorem
-    4 packages the invariant for the audit-doc cross-reference. -/
+    The statement reduces to repeated application of theorem 1;
+    `compose_preserves_algebra` packages the invariant explicitly. -/
 theorem compose_preserves_algebra
     (s_initial s_mid s_final : ChioScope)
     (h_mid_in_initial : s_mid.isSubsetOf s_initial = true)

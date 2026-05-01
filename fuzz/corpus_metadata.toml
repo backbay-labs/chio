@@ -1,5 +1,5 @@
 # fuzz/corpus_metadata.toml - source-of-truth index for every seed
-# under fuzz/corpus/. Owner: M05.P2.T2.
+# under fuzz/corpus/.
 #
 # Validated by scripts/check-corpus-metadata.sh. The schema is:
 #
@@ -19,11 +19,9 @@
 #   adversarial_curated        hand-written adversarial vector
 #   adversarial_promoted       promoted via promote_fuzz_seed.sh --mode adversarial
 #   m03_counterexample         minimised counterexample from chio-policy proptests
-#   m02_verdict_divergence     promoted from trajectory-2 M02 cross-SDK divergence
+#   m02_verdict_divergence     promoted from cross-SDK verdict divergence
 #
-# All entries currently classify as hand_curated_coverage (see M05
-# trajectory-2 lens: M02 owns mutation, M05 owns curation). When
-# scripts/promote_fuzz_seed.sh --mode adversarial promotes a fresh
+# When scripts/promote_fuzz_seed.sh --mode adversarial promotes a fresh
 # seed it must append a new [[seed]] block here with the appropriate
 # source and (class, threat_id) tags so the gate stays green.
 
@@ -845,18 +843,16 @@ path      = "fuzz/corpus/wit_host_call_boundary/truncated.bin"
 sha256    = "8967a50275d5f34d0fc28579599e9301d045874556f3631d64a1678186d3da81"
 source    = "hand_curated_coverage"
 
-# wasm_guard_escape seeds (M05.P3.T1). Eight hand-curated seeds, one per
-# WASM-guard escape class catalogued at
-# .planning/trajectory-2/05-adversarial-escape-threat-model.md (P3). These
-# classes (undeclared_imports, oversize_memory, fuel_exhaustion,
-# table_grow_abuse, deep_recursion, host_reentry, malformed_component,
-# signed_but_malicious) are M05-internal labels; the M05.P1 adversarial
-# `class` taxonomy under VALID_CLASSES in scripts/check-corpus-metadata.sh
-# is a separate axis that applies to clock-rewound / future-dated style
-# vectors only. Escape seeds therefore stay tagged as
-# `hand_curated_coverage` with no `class`/`threat_id` field; the
-# threat-model coverage report (M05.P5.T6) ties them to threat IDs via
-# the M05 audit doc rather than this index.
+# wasm_guard_escape seeds. Eight hand-curated seeds, one per WASM-guard
+# escape class. The class names (undeclared_imports, oversize_memory,
+# fuel_exhaustion, table_grow_abuse, deep_recursion, host_reentry,
+# malformed_component, signed_but_malicious) are escape-harness labels;
+# the adversarial `class` taxonomy under VALID_CLASSES in
+# scripts/check-corpus-metadata.sh is a separate axis that applies to
+# clock-rewound / future-dated style vectors only. Escape seeds
+# therefore stay tagged as `hand_curated_coverage` with no
+# `class`/`threat_id` field; the threat-model coverage report ties them
+# to threat IDs via the audit doc rather than this index.
 
 [[seed]]
 target    = "wasm_guard_escape"

@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Phase 20.1 portable passport verification integration tests.
+//! Portable passport verification integration tests.
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::crypto::{Keypair, PublicKey, Signature};

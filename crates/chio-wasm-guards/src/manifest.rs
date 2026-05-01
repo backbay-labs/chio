@@ -69,7 +69,7 @@ pub struct GuardManifest {
     /// WIT world the guard component was compiled against.
     ///
     /// Loading enforces [`REQUIRED_WIT_WORLD`] fail-closed so 0.1.x components
-    /// cannot be admitted silently after the M06 WIT bump.
+    /// cannot be admitted silently after the WIT bump.
     #[serde(default)]
     pub wit_world: Option<String>,
     /// Relative or absolute path to the `.wasm` binary.

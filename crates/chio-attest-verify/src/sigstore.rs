@@ -212,8 +212,7 @@ impl AttestVerifier for SigstoreVerifier {
         //    different `Runtime` instance. Since this crate sits on a
         //    trust boundary and explicitly forbids verification-path
         //    panics via `#![forbid]` lints, we route around the panic
-        //    with a runtime-detection helper (cleanup-c11d; PR #56
-        //    thread r3142974715 - High Severity).
+        //    with a runtime-detection helper.
         let mut hasher = Sha256::new();
         hasher.update(artifact);
         let bundle_clone = bundle.clone();
@@ -452,7 +451,7 @@ fn read_oidc_issuer_extension(cert: &Certificate) -> Result<String, AttestError>
 /// valid ASCII byte (form feed), so a naive `str::from_utf8` +
 /// `is_ascii()` filter would return the bytes including the tag/length
 /// prefix and produce a malformed issuer that fails string equality
-/// downstream (cleanup-c11d; PR #56 review thread r3142968181 - P1).
+/// downstream.
 fn decode_oidc_issuer_value(bytes: &[u8]) -> Result<String, AttestError> {
     // 1) DER UTF8String first.
     if let Ok(parsed) = x509_cert::der::asn1::Utf8StringRef::from_der(bytes) {
@@ -596,10 +595,9 @@ impl VerificationPolicy for IssuerOnlyPolicy {
                 // Use the same DER-first decoder as
                 // `read_oidc_issuer_extension`: trying raw UTF-8 first
                 // silently mis-reads DER UTF8String wrappers because
-                // the tag byte (0x0C) is ASCII (cleanup-c11d; PR #56
-                // thread r3142968181). Decoder failure surfaces as
-                // ExtensionNotFound to match the upstream policy
-                // contract.
+                // the tag byte (0x0C) is ASCII. Decoder failure
+                // surfaces as ExtensionNotFound to match the upstream
+                // policy contract.
                 let actual = match decode_oidc_issuer_value(bytes) {
                     Ok(s) => s,
                     Err(_) => return Err(PolicyError::ExtensionNotFound),

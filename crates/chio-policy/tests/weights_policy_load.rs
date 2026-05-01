@@ -70,7 +70,10 @@ mode: required_with_pin
 issuer_san_regex: ''
 "#;
     let cfg: WeightsCardConfig = serde_yml::from_str(yaml).unwrap();
-    assert_eq!(cfg.validate(), Err(WeightsCardLoadError::EmptyIssuerSanRegex));
+    assert_eq!(
+        cfg.validate(),
+        Err(WeightsCardLoadError::EmptyIssuerSanRegex)
+    );
 }
 
 #[test]

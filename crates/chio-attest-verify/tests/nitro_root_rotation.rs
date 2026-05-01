@@ -4,17 +4,17 @@
 //! Nitro root-rotation regression and corpus integration coverage.
 //!
 //! AWS rotates the Nitro root rarely but it has happened. This file
-//! pins the M03 mitigation: when the embedded root flips, fixtures
+//! pins the rotation mitigation: when the embedded root flips, fixtures
 //! signed under the previous root are rejected. The cabundle leaf
 //! presented in those fixtures is a fixture-only marker that
 //! deliberately differs from the leaf the new chain vouches for, so
 //! the verifier rejects with [`AttestError::TrustRoot`] before any
 //! cryptographic work runs.
 //!
-//! The same file also asserts the corpus contract pinned by M03.P4.T4:
-//! every fixture under `fixtures/quotes/nitro/` re-hashes to its
-//! manifest entry, every positive fixture verifies, and every
-//! negative fixture rejects with the expected fail-closed reason.
+//! The same file also asserts the corpus contract: every fixture under
+//! `fixtures/quotes/nitro/` re-hashes to its manifest entry, every
+//! positive fixture verifies, and every negative fixture rejects with
+//! the expected fail-closed reason.
 
 use std::fs;
 use std::path::PathBuf;

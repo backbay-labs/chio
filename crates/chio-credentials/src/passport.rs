@@ -183,8 +183,8 @@ impl PassportLifecycleRecord {
     /// surface the bridge's structural validation through
     /// `Err(PassportRevocationBridgeError)` so callers stay fail-closed.
     ///
-    /// This method does NOT modify the record: trajectory-1 M03 named
-    /// invariants `property_passport::*` remain green because the
+    /// This method does NOT modify the record: the named
+    /// `property_passport::*` invariants remain green because the
     /// projection is read-only on the credentials side.
     pub fn to_revocation_event(
         &self,

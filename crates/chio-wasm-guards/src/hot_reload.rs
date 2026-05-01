@@ -281,7 +281,7 @@ pub struct WatchdogConfig {
 }
 
 impl WatchdogConfig {
-    /// Create a watchdog config. M06 defaults use 5 errors in 60 seconds.
+    /// Create a watchdog config. Defaults to 5 errors in 60 seconds.
     #[must_use]
     pub fn new(incident_writer: IncidentWriter) -> Self {
         Self {

@@ -14,7 +14,7 @@
   milestone: M03
   phase: 5
   title: Kernel boot loads PQ signing key only after self-quote binds expect_report_data classical_pk and receipt_root_genesis
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel/src/boot.rs
@@ -33,7 +33,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: b4cd1276fbadeb84936c25994205440e9af04827
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -42,7 +42,7 @@
   milestone: M03
   phase: 5
   title: End-to-end migration test drives v3.18 bundle through allow_classical to allow_hybrid to pq_required with key roll
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-attest-verify/tests/migration.rs
@@ -59,7 +59,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 6fb9e4a50a5fd256e1803e7b06729e3a57edba34
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -68,7 +68,7 @@
   milestone: M03
   phase: 5
   title: Receipt path consumes CanonicalBytes for hybrid signing
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-kernel/src/receipt_support.rs
@@ -86,7 +86,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 1afb0e5db4d2cfa990a779766b4db0dc8346263b
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -95,7 +95,7 @@
   milestone: M03
   phase: 5
   title: Threat-model coverage handshake marks pq_signature_downgrade and tee_quote_forgery covered by M03 tests
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - spec/security/chio-threat-model.v1.json
@@ -113,7 +113,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 32e591ce23529f4b2cf0b79024be9bd7eb580469
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -122,7 +122,7 @@
   milestone: M03
   phase: 5
   title: Audit-doc final pass with closing counts Hybrid variant present KAT vectors present three quote backends green
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/audits/M03-pq-hybrid-and-tee-quote-verifier.md
@@ -137,7 +137,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: c4a4f7557e18979424f28904a8347d0f41dc047c
   merged_sha: null
   opened_ts: null
   merged_ts: null

@@ -1,13 +1,11 @@
 //! Shared helpers for the WASM guard escape harness.
 //!
-//! Owner: M05.P3 (T2 first authored, T5 aggregate gate hooks in).
-//!
 //! Every escape companion fixture loads the frozen runtime-limit
 //! snapshot via [`load_frozen_config`] and asserts the live
 //! `chio-wasm-guards` constants still match. If they drift, the
 //! fixture fails fast and a CODEOWNERS-gated update to
-//! `tests/escape/config.frozen.toml` is required (per the M05
-//! threat-model risk register).
+//! `tests/escape/config.frozen.toml` is required (matches the
+//! threat-model risk-register entry on runtime config drift).
 
 use std::path::PathBuf;
 use std::sync::Arc;

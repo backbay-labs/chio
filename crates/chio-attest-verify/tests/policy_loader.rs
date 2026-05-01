@@ -1,12 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Integration coverage for [`TenantPolicyLoader`] (M05.P4.T2).
+//! Integration coverage for [`TenantPolicyLoader`].
 //!
-//! Source-of-truth design: `.planning/trajectory-2/05-adversarial-escape-threat-model.md`
-//! (Phase 4). The loader is verified against the same `AttestVerifier`
-//! trait every other attestation flows through, so these tests substitute
-//! a mock implementation that records the bytes it received. Real
-//! Sigstore signing is exercised by `tests/integration.rs` against the
-//! embedded TUF root and is not duplicated here.
+//! The loader is verified against the same `AttestVerifier` trait every
+//! other attestation flows through, so these tests substitute a mock
+//! implementation that records the bytes it received. Real Sigstore
+//! signing is exercised by `tests/integration.rs` against the embedded
+//! TUF root and is not duplicated here.
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -15,14 +14,12 @@ use std::time::{Duration, SystemTime};
 
 use chio_attest_verify::policy::TenantPolicy;
 use chio_attest_verify::policy_loader::{TenantPolicyLoader, DEFAULT_STALENESS_HORIZON};
-use chio_attest_verify::{
-    AttestError, AttestVerifier, ExpectedIdentity, VerifiedAttestation,
-};
+use chio_attest_verify::{AttestError, AttestVerifier, ExpectedIdentity, VerifiedAttestation};
 
-const BOOTSTRAP_FIXTURE: &str =
-    include_str!("fixtures/policies/bootstrap.toml");
+const BOOTSTRAP_FIXTURE: &str = include_str!("fixtures/policies/bootstrap.toml");
 const PLACEHOLDER_SIGNATURE: &[u8] = b"PLACEHOLDER-SIGNATURE-OVERRIDE-IN-PRODUCTION";
-const STUB_CERTIFICATE_PEM: &[u8] = b"-----BEGIN CERTIFICATE-----\nstub-pem\n-----END CERTIFICATE-----\n";
+const STUB_CERTIFICATE_PEM: &[u8] =
+    b"-----BEGIN CERTIFICATE-----\nstub-pem\n-----END CERTIFICATE-----\n";
 
 /// Test verifier that succeeds iff the artifact bytes are exactly the
 /// canonical signing bytes of the policy file we intend to load and the
@@ -126,8 +123,7 @@ fn fresh_now() -> SystemTime {
 }
 
 fn canonical_bytes_for(toml_text: &str) -> Vec<u8> {
-    let policy = TenantPolicy::from_toml_slice(toml_text.as_bytes())
-        .expect("fixture must parse");
+    let policy = TenantPolicy::from_toml_slice(toml_text.as_bytes()).expect("fixture must parse");
     policy.canonical_signing_bytes().expect("canonical encode")
 }
 
@@ -206,8 +202,14 @@ fn stale_policy_rejected_at_default_horizon() {
 
     match result {
         Err(AttestError::Malformed(msg)) => {
-            assert!(msg.contains("signed_at"), "expected staleness msg, got: {msg}");
-            assert!(msg.contains("horizon"), "expected staleness msg, got: {msg}");
+            assert!(
+                msg.contains("signed_at"),
+                "expected staleness msg, got: {msg}"
+            );
+            assert!(
+                msg.contains("horizon"),
+                "expected staleness msg, got: {msg}"
+            );
         }
         other => panic!("expected Malformed staleness error, got {other:?}"),
     }
@@ -220,8 +222,7 @@ fn fresh_policy_at_horizon_boundary_accepted() {
     let loader = TenantPolicyLoader::with_default_horizon();
 
     // signed_at + exactly 90 days. Boundary case: must be accepted.
-    let boundary_now =
-        SystemTime::UNIX_EPOCH + Duration::from_secs(1_775_001_600 + 90 * 86_400);
+    let boundary_now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_775_001_600 + 90 * 86_400);
     loader
         .load_signed(
             &verifier,

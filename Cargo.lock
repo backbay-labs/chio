@@ -2696,6 +2696,7 @@ dependencies = [
 name = "chio-conformance"
 version = "0.1.0"
 dependencies = [
+ "chio-adversarial-suite",
  "chio-core-types",
  "chio-kernel",
  "chio-kernel-browser",
@@ -3637,8 +3638,10 @@ dependencies = [
 name = "chio-spec-codegen"
 version = "0.1.0"
 dependencies = [
+ "jsonschema",
  "prettyplease",
  "schemars 0.8.22",
+ "serde",
  "serde_json",
  "syn 2.0.117",
  "typify",
@@ -3852,12 +3855,15 @@ version = "0.1.0"
 dependencies = [
  "chio-attest-verify",
  "chio-core-types",
+ "chio-lineage",
+ "chio-provider-conformance",
  "chrono",
  "hex",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
+ "toml 0.8.23",
 ]
 
 [[package]]

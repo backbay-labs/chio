@@ -65,10 +65,22 @@ use std::path::{Path, PathBuf};
 use typify::{TypeSpace, TypeSpaceSettings};
 
 mod errors_pass;
+pub mod threat_coverage_doc;
+pub mod threat_model;
 
 pub use errors_pass::{
     codegen_error_codes, render_error_codes, ERRORS_GENERATED_DIR, ERROR_CODES_OUTPUT,
     ERROR_REGISTRY_INPUT,
+};
+pub use threat_coverage_doc::{
+    codegen_threat_coverage_doc, codegen_threat_coverage_doc_default, render_threat_coverage_doc,
+    ThreatCoverageInputs, ADVERSARIAL_MANIFEST, ESCAPE_HARNESS_DIR, THREAT_COVERAGE_DOC,
+    THREAT_STUBS_DIR,
+};
+pub use threat_model::{
+    codegen_threat_model, load_threat_model, render_threat_stub, render_threats_mod,
+    validate_threat_model_against_schema, ThreatEntry, ThreatModelDoc, THREAT_MODEL_INPUT,
+    THREAT_MODEL_SCHEMA, THREAT_STUBS_OUTPUT,
 };
 
 /// Canonical header stamped onto every regenerated Rust source file.

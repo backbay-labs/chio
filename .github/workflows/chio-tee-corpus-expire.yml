@@ -1,14 +1,13 @@
 # chio-tee-corpus-expire.yml - Weekly expiry for unreviewed tee captures.
 #
-# Source-doc anchor: .planning/trajectory/10-tee-replay-harness.md
-# Phase 2.5 "Bless graduation runbook" requires Tuesday 14:00 UTC review
-# and 30-day expiry for unreviewed `chio-tee-corpus` releases.
+# The bless graduation runbook requires Tuesday 14:00 UTC review and
+# 30-day expiry for unreviewed `chio-tee-corpus` releases.
 
 name: chio-tee-corpus-expire
 
 on:
   schedule:
-    # Tuesdays at 14:00 UTC, aligned with the M10 review SLA.
+    # Tuesdays at 14:00 UTC, aligned with the bless review SLA.
     - cron: "0 14 * * 2"
   workflow_dispatch:
     inputs:

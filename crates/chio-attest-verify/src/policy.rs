@@ -1,9 +1,8 @@
-//! Per-tenant `ExpectedIdentity` policy schema (M05.P4.T1).
+//! Per-tenant `ExpectedIdentity` policy schema.
 //!
-//! Source-of-truth design: `.planning/trajectory-2/05-adversarial-escape-threat-model.md`
-//! (Phase 4). This module defines the on-disk shape of a per-tenant signed
-//! policy file that replaces inline `ExpectedIdentity` construction at every
-//! workspace call site. The companion loader is `policy_loader.rs` (M05.P4.T2).
+//! This module defines the on-disk shape of a per-tenant signed policy file
+//! that replaces inline `ExpectedIdentity` construction at every workspace
+//! call site. The companion loader is `policy_loader.rs`.
 //!
 //! # Schema
 //!
@@ -25,9 +24,9 @@
 //!   serialisation of every other field. Verified through the same
 //!   `SigstoreVerifier` surface every other attestation flows through; no
 //!   new sigstore-rs imports are introduced outside this crate.
-//! - `pq_identity_regexps`: reserved field for trajectory-2 M03 ML-DSA cert
-//!   identities. Empty until M03 lands. Present today so that adding an
-//!   ML-DSA-aware cert family in M03 does not require a schema bump.
+//! - `pq_identity_regexps`: reserved field for ML-DSA cert identities. Empty
+//!   today; present so that adding an ML-DSA-aware cert family in the future
+//!   does not require a schema bump.
 //!
 //! # Fail-closed contract
 //!
@@ -50,7 +49,7 @@ pub const TENANT_POLICY_SCHEMA_VERSION: u32 = 1;
 /// Canonical bootstrap tenant identifier shipped under
 /// `crates/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`. The
 /// bootstrap policy is signed by the workspace release identity (the same
-/// identity M06 uses for binary releases) and is the chicken-and-egg seed
+/// identity used for signed binary releases) and is the chicken-and-egg seed
 /// every operator inherits before authoring a tenant-specific override.
 pub const BOOTSTRAP_TENANT_ID: &str = "bootstrap";
 
@@ -86,9 +85,9 @@ pub struct TenantPolicy {
     /// serialisation of every other field. Verified through the same
     /// `SigstoreVerifier` surface every other attestation flows through.
     pub signature: String,
-    /// Reserved for trajectory-2 M03 ML-DSA cert identities. Empty until
-    /// M03 lands. Defaulted to an empty vec so existing TOML files that
-    /// pre-date the field still parse without modification.
+    /// Reserved for ML-DSA cert identities. Defaulted to an empty vec so
+    /// existing TOML files that pre-date the field still parse without
+    /// modification.
     #[serde(default)]
     pub pq_identity_regexps: Vec<String>,
 }
@@ -141,7 +140,9 @@ impl TenantPolicy {
         }
         for pattern in &self.identity_regexps {
             regex::Regex::new(pattern).map_err(|err| {
-                AttestError::Malformed(format!("identity_regexp {pattern:?} does not compile: {err}"))
+                AttestError::Malformed(format!(
+                    "identity_regexp {pattern:?} does not compile: {err}"
+                ))
             })?;
         }
         for issuer in &self.oidc_issuers {
@@ -220,8 +221,13 @@ impl TenantPolicy {
 /// to parse a single timestamp field.
 fn parse_rfc3339_utc(text: &str) -> Result<SystemTime, AttestError> {
     let bytes = text.as_bytes();
-    if bytes.len() != 20 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T'
-        || bytes[13] != b':' || bytes[16] != b':' || bytes[19] != b'Z'
+    if bytes.len() != 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || bytes[19] != b'Z'
     {
         return Err(AttestError::Malformed(format!(
             "signed_at {text:?} is not RFC3339 UTC of the form YYYY-MM-DDTHH:MM:SSZ"
@@ -233,8 +239,7 @@ fn parse_rfc3339_utc(text: &str) -> Result<SystemTime, AttestError> {
     let hour = parse_u32(&bytes[11..13], text)? as u8;
     let minute = parse_u32(&bytes[14..16], text)? as u8;
     let second = parse_u32(&bytes[17..19], text)? as u8;
-    if month == 0 || month > 12 || day == 0 || day > 31 || hour > 23 || minute > 59 || second > 60
-    {
+    if month == 0 || month > 12 || day == 0 || day > 31 || hour > 23 || minute > 59 || second > 60 {
         return Err(AttestError::Malformed(format!(
             "signed_at {text:?} has out-of-range fields"
         )));
@@ -255,8 +260,9 @@ fn parse_u32(bytes: &[u8], whole: &str) -> Result<u32, AttestError> {
     let s = std::str::from_utf8(bytes).map_err(|_| {
         AttestError::Malformed(format!("signed_at {whole:?} contains non-utf8 digits"))
     })?;
-    s.parse::<u32>()
-        .map_err(|_| AttestError::Malformed(format!("signed_at {whole:?} contains non-numeric digits")))
+    s.parse::<u32>().map_err(|_| {
+        AttestError::Malformed(format!("signed_at {whole:?} contains non-numeric digits"))
+    })
 }
 
 /// Days from `1970-01-01` for the given proleptic Gregorian date. Adapted
@@ -271,4 +277,3 @@ fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146_097 + doe as i64 - 719_468
 }
-

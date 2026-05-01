@@ -5,8 +5,6 @@
 //! (`allow_hybrid` or `pq_required` with no PQ key provisioned) MUST reject
 //! at load time, before the kernel accepts traffic. This file pins that
 //! contract.
-//!
-//! Trust-boundary milestone: M03 P2.T1.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -15,7 +13,7 @@ use chio_policy::{CryptoFloor, CryptoFloorLoadError};
 #[test]
 fn allow_classical_loads_without_pq_key() {
     // Default deployments (no PQ key provisioned) MUST keep working under
-    // `allow_classical`. This is the trajectory-1 backwards compatibility
+    // `allow_classical`. This is the legacy backwards-compatibility
     // contract.
     assert!(CryptoFloor::AllowClassical
         .validate_with_pq_key(false)

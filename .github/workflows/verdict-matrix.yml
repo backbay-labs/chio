@@ -1,11 +1,7 @@
 name: verdict-matrix
-# M02.P5.T5 metadata: required-on-divergence remains pending until the
-# cross-language oracle and all non-Rust verdict drivers are active.
-# M07.P6.T5 metadata: deployment-shape SDK drivers (JVM, dotnet, Lambda,
-# k8s) close the M02 D07 deferral. The deployment-shape smoke job below
-# is flipped to required: true so the cross-language verdict-tuple
-# equality claim covers all nine drivers (Rust, Python, TS node-http,
-# WASM browser, Go, JVM, dotnet, Lambda, k8s).
+# Cross-language verdict-tuple equality across nine drivers: Rust kernel,
+# Python, TS node-http, WASM browser, Go, JVM, dotnet, Lambda, k8s. The
+# deployment-shape smoke job is required so any divergence fails the PR.
 
 on:
   pull_request:
@@ -87,19 +83,17 @@ jobs:
           test -f docs/conformance/verdict-matrix.md
 
   deployment-shape-smoke:
-    # M07.P6.T5 + M07.P6.T6: deployment-shape SDK drivers (JVM, dotnet,
-    # Lambda, k8s) close the M02 D07 deferral. This job runs the cross-
-    # deployment integration smoke test that asserts identical (verdict,
-    # reason_code, scope_set) tuples across all four drivers vs the Rust
+    # Runs the cross-deployment integration smoke test that asserts
+    # identical (verdict, reason_code, scope_set) tuples across the four
+    # deployment-shape SDK drivers (JVM, dotnet, Lambda, k8s) vs the Rust
     # kernel reference, plus the manifest-registration shape gate. The
-    # job is flagged required: true so the matrix gate fails the PR on
-    # any divergence in the deployment-shape registration or smoke test.
+    # job is required so the matrix gate fails the PR on any divergence
+    # in the deployment-shape registration or smoke test.
     name: verdict_matrix deployment-shape (required)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: rust-kernel
-    # required: true (M07.P6.T5 flip; closes the D07 deferral by gating
-    # the four deployment-shape SDK drivers in required CI)
+    # required: true gates the four deployment-shape SDK drivers in CI.
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 

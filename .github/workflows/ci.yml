@@ -394,14 +394,12 @@ jobs:
             --config=formal/tla/MCRevocationPropagation.cfg \
             formal/tla/RevocationPropagation.tla
 
-      # M04.P4.T4: model-check the recursive-delegation depth-bound module.
-      # Mirrors the trajectory-2 M04 phase doc invariants
-      # (DepthBoundedByRoot, AttenuatedAtEachStep,
-      # RevokedSubtreeNotObservable). DEPTH_MAX = 4 and PEERS = 3 in the
+      # Model-check the recursive-delegation depth-bound module against
+      # invariants DepthBoundedByRoot, AttenuatedAtEachStep,
+      # RevokedSubtreeNotObservable. DEPTH_MAX = 4 and PEERS = 3 in the
       # PR config so the symbolic model finishes inside the PR budget.
-      # length=6 keeps wall-time bounded on ubuntu-latest; the milestone
-      # gate-check runs length=10 locally on developer machines and the
-      # nightly liveness lane (separate workflow) sweeps deeper.
+      # length=6 keeps wall-time bounded on ubuntu-latest; deeper sweeps
+      # run locally and on the nightly liveness lane (separate workflow).
       - name: Apalache safety check DelegationDepthBound (DEPTH_MAX=4 PEERS=3 length=6)
         shell: bash
         run: |

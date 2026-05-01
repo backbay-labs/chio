@@ -31,11 +31,11 @@ serde_json = { version = "1", default-features = false, features = ["alloc"] }
 # `fuzz/fuzz_targets/receipt_log_replay.rs` via
 # `chio-kernel-core = { features = ["fuzz"] }`.
 arbitrary = { version = "1", features = ["derive"], optional = true }
-# `arc-swap` powers the `RevocationView` read-only cache (M04.P2.T4):
-# the gossip task swaps a fresh snapshot in atomically while dispatch
-# readers hold a no-lock reference. Requires `std` at link time so it is
-# only pulled in via the `revocation-view` feature, which itself implies
-# `std`. The portable `no_std + alloc` proof never observes this surface.
+# `arc-swap` powers the `RevocationView` read-only cache: the gossip
+# task swaps a fresh snapshot in atomically while dispatch readers hold
+# a no-lock reference. Requires `std` at link time so it is only pulled
+# in via the `revocation-view` feature, which itself implies `std`. The
+# portable `no_std + alloc` proof never observes this surface.
 arc-swap = { workspace = true, optional = true }
 # `dudect-bencher` is gated behind the `dudect` feature so default builds
 # never pull it in. Used by the timing-leak harnesses at

@@ -1,12 +1,10 @@
-//! Tenant policy loader (M05.P4.T2).
+//! Tenant policy loader.
 //!
-//! Source-of-truth design: `.planning/trajectory-2/05-adversarial-escape-threat-model.md`
-//! (Phase 4, mitigation row "Per-tenant policy file drift"). The loader
-//! consumes a [`TenantPolicy`] together with the certificate that signed it
-//! and verifies the policy through the same [`crate::AttestVerifier`]
-//! surface every other attestation flows through. No new sigstore-rs
-//! imports are introduced; the loader is a pure consumer of
-//! [`crate::SigstoreVerifier`].
+//! The loader consumes a [`TenantPolicy`] together with the certificate that
+//! signed it and verifies the policy through the same [`crate::AttestVerifier`]
+//! surface every other attestation flows through. No new sigstore-rs imports
+//! are introduced; the loader is a pure consumer of [`crate::SigstoreVerifier`].
+//! Mitigation focus: per-tenant policy file drift.
 //!
 //! # Fail-closed contract
 //!
@@ -27,13 +25,13 @@
 //!
 //! The first per-tenant policy is itself a chicken-and-egg problem: the
 //! signing identity expected by [`TenantPolicyLoader::load_signed`] for the
-//! first ever load is the workspace release identity (the same identity
-//! M06 uses for binary releases). Operators inherit the
-//! [`crate::BOOTSTRAP_TENANT_ID`] policy and override per tenant from
-//! there. The bootstrap policy file ships at
+//! first ever load is the workspace release identity (the same identity used
+//! for signed binary releases). Operators inherit the
+//! [`crate::BOOTSTRAP_TENANT_ID`] policy and override per tenant from there.
+//! The bootstrap policy file ships at
 //! `crates/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`; its
-//! signing identity is documented in the M05 audit doc at
-//! `docs/security/expected-identity-migration.md` (M05.P4.T4).
+//! signing identity is documented at
+//! `docs/security/expected-identity-migration.md`.
 
 use std::time::{Duration, SystemTime};
 
@@ -66,8 +64,7 @@ impl TenantPolicyLoader {
 
     /// Construct a loader with a non-default horizon. Operators that rotate
     /// more aggressively can shorten this; lengthening it past 90 days
-    /// requires an explicit operator decision recorded in the M05 audit
-    /// doc.
+    /// requires an explicit operator decision recorded in the audit doc.
     #[must_use]
     pub const fn with_horizon(horizon: Duration) -> Self {
         Self { horizon }

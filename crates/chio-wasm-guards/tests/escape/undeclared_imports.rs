@@ -7,8 +7,6 @@
 //! Defense: WGSEC-02 import-namespace check inside
 //! `WasmtimeBackend::load_module` rejects any import whose module name
 //! is not exactly `"chio"`. The check is fail-closed.
-//!
-//! Owner: M05.P3.T2.
 
 use chio_wasm_guards::abi::WasmGuardAbi;
 use chio_wasm_guards::error::WasmGuardError;

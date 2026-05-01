@@ -19,11 +19,11 @@
 //!
 //! # Forbidden constructs
 //!
-//! Per the workspace EXECUTION-BOARD policy "No verifier or trust-boundary
-//! stubs", this crate forbids `unwrap`, `expect`, and unsafe blocks at the
-//! lint level. The reviewer checklist for any PR touching this crate also
-//! requires a `rg -n 'todo!\(|unimplemented!\(|panic!\('` sweep across
-//! `src/` and `tests/`.
+//! This crate sits on a trust boundary: it forbids `unwrap`, `expect`, and
+//! unsafe blocks at the lint level. The reviewer checklist for any PR
+//! touching this crate also requires a
+//! `rg -n 'todo!\(|unimplemented!\(|panic!\('` sweep across `src/` and
+//! `tests/`.
 
 #![forbid(unsafe_code)]
 #![forbid(clippy::unwrap_used)]
@@ -70,7 +70,7 @@ pub struct ExpectedIdentity {
 
 impl ExpectedIdentity {
     /// Doc-hidden constructor retained for tests and legacy operator
-    /// configuration (M05.P4.T3).
+    /// configuration.
     ///
     /// Production call sites MUST construct identities through
     /// [`TenantPolicyResolver::expected_for_tenant`] so that every accepted
@@ -175,9 +175,7 @@ impl TenantPolicyResolver for StaticTenantPolicyMap {
             .entries
             .iter()
             .find(|p| p.tenant_id == tenant_id)
-            .ok_or_else(|| {
-                AttestError::Malformed(format!("unknown tenant_id {tenant_id:?}"))
-            })?;
+            .ok_or_else(|| AttestError::Malformed(format!("unknown tenant_id {tenant_id:?}")))?;
         let regex = policy
             .identity_regexps
             .first()
@@ -297,10 +295,10 @@ pub trait AttestVerifier: Send + Sync {
 ///
 /// # Downstream consumers
 ///
-/// - M04 revocation oracle roots bind a revocation root to the kernel
-///   that signed it through [`VerifiedQuote::report_data`].
-/// - M10 hardware custody envelopes attest that the kernel taking
-///   custody runs inside a known-good TEE.
+/// - The revocation oracle binds a revocation root to the kernel that
+///   signed it through [`VerifiedQuote::report_data`].
+/// - Hardware custody envelopes attest that the kernel taking custody
+///   runs inside a known-good TEE.
 pub trait QuoteVerifier: Send + Sync {
     /// Verify a raw TEE quote and bind it to the kernel key plus
     /// receipt root. The `quote` byte slice is the on-the-wire envelope

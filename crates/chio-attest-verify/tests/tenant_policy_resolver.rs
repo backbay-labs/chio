@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Coverage for [`TenantPolicyResolver`] and [`StaticTenantPolicyMap`]
-//! (M05.P4.T3). Demonstrates the production migration: callers resolve a
-//! tenant identifier into an `ExpectedIdentity` rather than constructing
-//! one inline.
+//! Coverage for [`TenantPolicyResolver`] and [`StaticTenantPolicyMap`].
+//! Demonstrates the production migration: callers resolve a tenant
+//! identifier into an `ExpectedIdentity` rather than constructing one
+//! inline.
 
 use chio_attest_verify::policy::TenantPolicy;
 use chio_attest_verify::{AttestError, StaticTenantPolicyMap, TenantPolicyResolver};
@@ -41,13 +41,19 @@ signature = "BBBB"
 fn resolves_known_tenant_to_first_regex_and_issuer() {
     let map = StaticTenantPolicyMap::from_verified(vec![acme_policy(), beta_policy()]).unwrap();
     let acme = map.expected_for_tenant("acme").unwrap();
-    assert_eq!(acme.certificate_identity_regexp, r"https://github\.com/acme/.*");
+    assert_eq!(
+        acme.certificate_identity_regexp,
+        r"https://github\.com/acme/.*"
+    );
     assert_eq!(
         acme.certificate_oidc_issuer,
         "https://token.actions.githubusercontent.com"
     );
     let beta = map.expected_for_tenant("beta").unwrap();
-    assert_eq!(beta.certificate_identity_regexp, r"https://gitlab\.com/beta/.*");
+    assert_eq!(
+        beta.certificate_identity_regexp,
+        r"https://gitlab\.com/beta/.*"
+    );
     assert_eq!(beta.certificate_oidc_issuer, "https://gitlab.com");
 }
 

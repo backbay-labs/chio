@@ -13,8 +13,6 @@
 //! The `chio.log` payload-pointer interpretation is bounds-checked at
 //! the host side; out-of-bounds pointers are silently dropped (level
 //! out of range causes the log call to return without recording).
-//!
-//! Owner: M05.P3.T3.
 
 use chio_wasm_guards::abi::WasmGuardAbi;
 use chio_wasm_guards::error::WasmGuardError;
