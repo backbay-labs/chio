@@ -394,7 +394,7 @@
         }
       ],
       "residualRisk": "Until hybrid signature verification and cryptographic-floor enforcement ship, operators must treat post-quantum protection as planned rather than available.",
-      "coverage_state": "covered",
+      "coverage_state": "pending",
       "covered_by_tests": [
         "crates/chio-attest-verify/tests/migration.rs::end_to_end_migration_walks_three_stages",
         "crates/chio-attest-verify/tests/migration.rs::stage3_pq_required_accepts_rolled_hybrid_and_rejects_v318_bundle",
@@ -425,7 +425,7 @@
         }
       ],
       "residualRisk": "Until platform quote verification lands, TEE deployment claims depend on external operator evidence and are not independently verified by Chio.",
-      "coverage_state": "covered",
+      "coverage_state": "pending",
       "covered_by_tests": [
         "crates/chio-attest-verify/tests/cross_backend_conformance.rs",
         "crates/chio-attest-verify/tests/expect_report_data.rs",
