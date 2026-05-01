@@ -418,6 +418,7 @@ fn is_valid_threat_id(threat_id: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -654,6 +655,48 @@ mod tests {
                 .as_object()
                 .is_some_and(|object| !object.is_empty()));
             case.into_coverage_case()?;
+        }
+        Ok(())
+    }
+
+    /// M05.P5.T6: every non-pending bundled case must cite a
+    /// `threat_id` that exists in
+    /// `spec/security/chio-threat-model.v1.json`. Vectors with
+    /// `pending: true` are auto-promoted from libFuzzer crashes
+    /// (D14) and are excepted from the citation gate until a human
+    /// triages them and strips the flag.
+    #[test]
+    fn every_non_pending_case_cites_a_known_threat_id() -> Result<(), CaseError> {
+        const THREAT_MODEL_JSON: &str =
+            include_str!("../../../spec/security/chio-threat-model.v1.json");
+        let doc: serde_json::Value =
+            serde_json::from_str(THREAT_MODEL_JSON).expect("threat-model JSON parses");
+        let known: std::collections::BTreeSet<String> = doc
+            .get("threats")
+            .and_then(serde_json::Value::as_array)
+            .map(|threats| {
+                threats
+                    .iter()
+                    .filter_map(|t| t.get("id").and_then(serde_json::Value::as_str))
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert!(
+            !known.is_empty(),
+            "threat-model JSON must enumerate at least one threat ID"
+        );
+
+        for case in bundled_cases()? {
+            if case.pending {
+                continue;
+            }
+            assert!(
+                known.contains(&case.threat_id),
+                "case {:?} cites threat_id {:?} which is not in chio-threat-model.v1.json",
+                case.id,
+                case.threat_id
+            );
         }
         Ok(())
     }
