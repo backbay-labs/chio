@@ -64,6 +64,29 @@ fn arena_replay_refuses_missing_bundle() {
 }
 
 #[test]
+fn arena_replay_rejects_path_traversal_scenario_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let escaped = tmp.path().join("escaped");
+    std::fs::create_dir_all(&escaped).unwrap();
+    let out = Command::new(cargo_bin())
+        .args([
+            "arena",
+            "replay",
+            "../escaped",
+            "--output-root",
+            tmp.path().to_str().unwrap(),
+        ])
+        .output()
+        .expect("arena replay traversal");
+    assert!(!out.status.success(), "traversal id should fail closed");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains("scenario id") || stderr.contains("ASCII"),
+        "expected invalid scenario id error, got {stderr}"
+    );
+}
+
+#[test]
 fn arena_replay_accepts_explicit_bundle_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let custom_dir = tmp.path().join("custom-bundle");

@@ -6,6 +6,9 @@
 // `arc arena evolve`: run the co-evolution driver under the bounded-budget
 // gate and render a leaderboard.
 
+const MAX_ARENA_EVOLVE_GENERATIONS: u32 = 200;
+const MAX_ARENA_EVOLVE_WALL_SECONDS: u64 = 30 * 60;
+
 #[allow(dead_code)]
 fn arena_default_output_root() -> std::path::PathBuf {
     std::path::PathBuf::from("target").join("arena")
@@ -77,6 +80,7 @@ fn cmd_arena_replay(
     bundle_dir: Option<&std::path::Path>,
     json_output: bool,
 ) -> Result<(), CliError> {
+    arena_validate_scenario_id(scenario_id)?;
     let resolved = match bundle_dir {
         Some(dir) => dir.to_path_buf(),
         None => arena_resolve_output_root(output_root).join(scenario_id),
@@ -129,6 +133,21 @@ fn cmd_arena_evolve(
             "arena evolve: --generations must be at least 1".to_string(),
         ));
     }
+    if generations > MAX_ARENA_EVOLVE_GENERATIONS {
+        return Err(CliError::cli_other_error(format!(
+            "arena evolve: --generations must be <= {MAX_ARENA_EVOLVE_GENERATIONS}"
+        )));
+    }
+    if wall_seconds == 0 {
+        return Err(CliError::cli_other_error(
+            "arena evolve: --wall-seconds must be at least 1".to_string(),
+        ));
+    }
+    if wall_seconds > MAX_ARENA_EVOLVE_WALL_SECONDS {
+        return Err(CliError::cli_other_error(format!(
+            "arena evolve: --wall-seconds must be <= {MAX_ARENA_EVOLVE_WALL_SECONDS}"
+        )));
+    }
     let scenario =
         chio_arena::load_scenario(seed_path).map_err(|err| arena_cli_error("load", err))?;
     let root = arena_resolve_output_root(output_root);
@@ -168,4 +187,18 @@ fn cmd_arena_evolve(
 #[allow(dead_code)]
 fn arena_cli_error<E: std::fmt::Display>(stage: &str, err: E) -> CliError {
     CliError::cli_other_error(format!("arena {stage}: {err}"))
+}
+
+#[allow(dead_code)]
+fn arena_validate_scenario_id(value: &str) -> Result<(), CliError> {
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
+    {
+        return Ok(());
+    }
+    Err(CliError::cli_other_error(format!(
+        "arena scenario id `{value}` must contain only ASCII letters, digits, '.', '_' or '-'"
+    )))
 }
