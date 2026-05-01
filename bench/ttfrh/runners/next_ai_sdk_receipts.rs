@@ -1,5 +1,4 @@
-// Top-level runner index file referenced by the M07 P5 ticket
-// owner_glob. The executable runner lives in
+// Top-level runner index file. The executable runner lives in
 // `src/runners/next_ai_sdk_receipts.rs`; this file documents the
 // container-lane invocation for `.github/workflows/ttfrh.yml`.
 //

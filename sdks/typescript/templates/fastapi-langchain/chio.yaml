@@ -5,8 +5,8 @@
 template: fastapi-langchain
 runtime: python
 description: |
-  FastAPI app wrapping a LangChain agent through the trajectory-1 Python
-  SDK. Receipts are surfaced via a static viewer mounted at `/static`.
+  FastAPI app wrapping a LangChain agent through the Chio Python SDK.
+  Receipts are surfaced via a static viewer mounted at `/static`.
 
 telemetry_free: true
 allowed_hosts: []

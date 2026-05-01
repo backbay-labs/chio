@@ -9,9 +9,9 @@ dependencies = [
     "fastapi>=0.110,<1",
     "uvicorn>=0.27,<1",
     "pydantic>=2.6,<3",
-    # The trajectory-1 Python SDK is consumed via path during local
-    # development; create-chio-app rewrites this to the published
-    # release line at scaffold time.
+    # The Chio Python SDK is consumed via path during local development;
+    # create-chio-app rewrites this to the published release line at
+    # scaffold time.
 ]
 
 [project.optional-dependencies]
