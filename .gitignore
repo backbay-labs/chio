@@ -107,3 +107,6 @@ sdks/typescript/packages/browser/dist/
 *.pyo
 *.pyd
 .codex_agent_runs/
+
+# Apalache local model-check output (regenerated on each `apalache-mc check`)
+_apalache-out/
