@@ -15,7 +15,7 @@
   milestone: M10
   phase: 4
   title: Create chio-weights crate skeleton with workspace registration and forbid-unsafe lints
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-weights/Cargo.toml
@@ -34,7 +34,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 42693c627e00ece32df6d8b884b85cb41e7a25dc
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -43,7 +43,7 @@
   milestone: M10
   phase: 4
   title: Model card schema (model-card.v1.json) and ModelCard type with canonical-JSON golden vectors
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - spec/schemas/model-card.v1.json
@@ -62,7 +62,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: dd9a90bdf767de0656fafe1b862c1e8e8d8a90a7
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -71,7 +71,7 @@
   milestone: M10
   phase: 4
   title: Cosign bundle helper consuming SigstoreVerifier::verify_bundle from chio-attest-verify
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-weights/src/bundle.rs
@@ -88,7 +88,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 1e938353c83c7c404956fec6cf2fd45b9f52b485
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -97,7 +97,7 @@
   milestone: M10
   phase: 4
   title: policy.weights_card_required enum (disabled, required, required_with_pin) in chio-policy with fail-closed load
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-policy/src/weights.rs
@@ -115,7 +115,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 6039d1284b282cdb4e271b8168d0326586a3e0a9
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -124,7 +124,7 @@
   milestone: M10
   phase: 4
   title: Kernel binding refusal when weights_hash, allowed_capability_set, or banned_tools fail card check
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel/src/weights_binding.rs
@@ -143,7 +143,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: cd3d64465f80a582a673acb322a423a158332e81
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -152,7 +152,7 @@
   milestone: M10
   phase: 4
   title: arc bind <provider> --card <path> CLI subcommand printing resolved weights_hash and capability set
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-cli/src/commands/bind.rs
@@ -169,7 +169,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: f7cd882fff3ba0d3b9305561f0fd95f6f0bd9667
   merged_sha: null
   opened_ts: null
   merged_ts: null
