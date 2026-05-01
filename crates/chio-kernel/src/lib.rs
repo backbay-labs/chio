@@ -24,6 +24,7 @@
 pub mod approval;
 pub mod approval_channels;
 pub mod authority;
+pub mod boot;
 pub mod budget_store;
 pub mod capability_lineage;
 pub mod checkpoint;
