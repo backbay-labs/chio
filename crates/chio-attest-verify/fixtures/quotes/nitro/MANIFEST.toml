@@ -1,0 +1,76 @@
+# Pinned AWS Nitro NSM fixture corpus.
+# Regenerate with: cargo run -p chio-attest-verify \
+#   --example generate_nitro_fixtures --features tee-quotes
+# Each entry pins file path, role, role tag, note, and sha256 digest.
+# Reviewers verify a fixture matches its manifest digest by re-running
+# the generator and diffing the working tree against HEAD.
+
+[corpus]
+kernel_seed_hex = "0909090909090909090909090909090909090909090909090909090909090909"
+receipt_root_hex = "0808080808080808080808080808080808080808080808080808080808080808"
+pcr0_hex = "777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
+
+[[fixture]]
+path = "positive/nitro_kernel_seed_09_root_08.bin"
+role = "positive"
+role_tag = "aws-nitro-bound-default"
+note = "Bound to KERNEL_SEED=[9;32], RECEIPT_ROOT=[8;32]; default cabundle."
+size_bytes = 1220
+sha256 = "37554054ed94289532d2e76829b608f301f9f006700bbc03538f01289cd67568"
+
+[[fixture]]
+path = "positive/nitro_kernel_seed_09_root_08_alt_module.bin"
+role = "positive"
+role_tag = "aws-nitro-bound-alt-module-id"
+note = "Same binding; alternate module_id exercises text field path."
+size_bytes = 1219
+sha256 = "6851467442335131847c16e3e46bb3cd69272a70188fc4f3e5b0e0437a129e34"
+
+[[fixture]]
+path = "positive/nitro_kernel_seed_09_root_08_long_sig.bin"
+role = "positive"
+role_tag = "aws-nitro-bound-long-sig"
+note = "Bound; alternate signature length exercises envelope tail."
+size_bytes = 1256
+sha256 = "ef0c300febd9a78ab16ecbbe9a0b90c9799655d233094ac04b9260722b93aa6c"
+
+[[fixture]]
+path = "positive/nitro_kernel_seed_09_root_08_alt_sig_byte.bin"
+role = "positive"
+role_tag = "aws-nitro-bound-alt-sig-byte"
+note = "Bound; alternate signature byte exercises envelope tail."
+size_bytes = 1220
+sha256 = "e37b3c5daa2f5eee064b70be4835560f3e073f159d8f439cdb5439c69cc833b8"
+
+[[fixture]]
+path = "negative/nitro_user_data_unbound.bin"
+role = "negative"
+role_tag = "aws-nitro-user-data-mismatch"
+note = "user_data bound to a different kernel key plus receipt root."
+size_bytes = 1220
+sha256 = "a0cb026084f108b2067e4acf0223b4436c88c0038a7bf5426e83c9588842167e"
+
+[[fixture]]
+path = "negative/nitro_mismatched_pcr0.bin"
+role = "negative"
+role_tag = "aws-nitro-pcr0-mismatch"
+note = "Bound user_data; PCR0 is not the pinned launch image."
+size_bytes = 1220
+sha256 = "0a8ae750681e8b8f1ba180d59c557e0c23d18247f4cc2124dfb0de9b95487e2b"
+
+[[fixture]]
+path = "negative/nitro_certificate_mismatch.bin"
+role = "negative"
+role_tag = "aws-nitro-document-leaf-mismatch"
+note = "Bound; document certificate field is not the trusted chain leaf."
+size_bytes = 1220
+sha256 = "ba6c53eac9e161a3297a10147bedd371d0e54f9c2b5c34896da5e2e8ef9a53f8"
+
+[[fixture]]
+path = "negative/nitro_root_rotation_signed_under_old_root.bin"
+role = "negative"
+role_tag = "aws-nitro-root-rotation-old-leaf"
+note = "Document presents a leaf that the new (rotated) chain does not vouch for."
+size_bytes = 1228
+sha256 = "132d1394c1635ca596620df1fd6ae9900a8bc662ced6aed2b3609ded86af3387"
+
