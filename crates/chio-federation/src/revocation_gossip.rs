@@ -149,6 +149,9 @@ pub enum RevocationGossipError {
     #[error("peer {0} is not subscribed to revocation-root gossip")]
     UnknownPeer(String),
 
+    #[error("invalid revocation gossip configuration: {0}")]
+    InvalidConfiguration(String),
+
     #[error("revocation gossip push queue is poisoned and cannot service requests")]
     QueuePoisoned,
 
@@ -247,7 +250,7 @@ impl RevocationGossipPushQueue {
     /// cannot silently drop every root.
     pub fn new(capacity_per_peer: usize) -> Result<Self, RevocationGossipError> {
         if capacity_per_peer == 0 {
-            return Err(RevocationGossipError::UnknownPeer(
+            return Err(RevocationGossipError::InvalidConfiguration(
                 "capacity_per_peer must be > 0".to_string(),
             ));
         }
@@ -660,7 +663,9 @@ mod tests {
         let err = RevocationGossipPushQueue::new(0)
             .expect_err("zero capacity must fail closed at construction");
         match err {
-            RevocationGossipError::UnknownPeer(msg) => assert!(msg.contains("capacity_per_peer")),
+            RevocationGossipError::InvalidConfiguration(msg) => {
+                assert!(msg.contains("capacity_per_peer"));
+            }
             other => panic!("unexpected variant: {other:?}"),
         }
     }
