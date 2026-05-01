@@ -27,9 +27,11 @@
 use std::sync::Arc;
 
 use chio_core_types::CapabilityToken;
-use chio_kernel_core::{RevocationView, RevocationViewSubject};
+use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
 
-use crate::kernel::KernelError;
+use crate::kernel::{current_unix_timestamp, KernelError};
+
+const DEFAULT_REVOCATION_VIEW_MAX_STALENESS_MS: u64 = 500;
 
 /// Consult the installed [`RevocationView`] for every link in the
 /// capability's delegation chain plus the leaf id itself. Returns
@@ -45,11 +47,27 @@ pub(crate) fn consult_revocation_view(
     cap: &CapabilityToken,
     view: Option<&Arc<RevocationView>>,
 ) -> Result<(), KernelError> {
+    let now_unix_ms = current_unix_timestamp().saturating_mul(1000);
+    consult_revocation_view_at(
+        cap,
+        view,
+        now_unix_ms,
+        DEFAULT_REVOCATION_VIEW_MAX_STALENESS_MS,
+    )
+}
+
+fn consult_revocation_view_at(
+    cap: &CapabilityToken,
+    view: Option<&Arc<RevocationView>>,
+    now_unix_ms: u64,
+    max_staleness_ms: u64,
+) -> Result<(), KernelError> {
     let Some(view) = view else {
         return Ok(());
     };
 
     let snapshot = view.load();
+    verify_snapshot_freshness(&snapshot, now_unix_ms, max_staleness_ms)?;
 
     for link in &cap.delegation_chain {
         let subject = RevocationViewSubject::new(link.capability_id.clone());
@@ -65,6 +83,27 @@ pub(crate) fn consult_revocation_view(
         return Err(KernelError::CapabilityRevoked(cap.id.clone()));
     }
 
+    Ok(())
+}
+
+fn verify_snapshot_freshness(
+    snapshot: &RevocationSnapshot,
+    now_unix_ms: u64,
+    max_staleness_ms: u64,
+) -> Result<(), KernelError> {
+    if now_unix_ms < snapshot.issued_at_unix_ms {
+        return Err(KernelError::DelegationInvalid(format!(
+            "revocation view snapshot epoch {} is issued in the future",
+            snapshot.epoch
+        )));
+    }
+    let age_ms = now_unix_ms.saturating_sub(snapshot.issued_at_unix_ms);
+    if age_ms > max_staleness_ms {
+        return Err(KernelError::DelegationInvalid(format!(
+            "revocation view snapshot epoch {} is stale: age {} ms exceeds {} ms",
+            snapshot.epoch, age_ms, max_staleness_ms
+        )));
+    }
     Ok(())
 }
 
@@ -126,7 +165,18 @@ mod tests {
         CapabilityToken::sign(body, &kp).unwrap()
     }
 
+    const NOW_MS: u64 = 1_700_000_000_000;
+    const MAX_STALENESS_MS: u64 = 500;
+
     fn install_view(epoch: u64, revoked: &[&str]) -> Arc<RevocationView> {
+        install_view_at(epoch, revoked, NOW_MS)
+    }
+
+    fn install_view_at(
+        epoch: u64,
+        revoked: &[&str],
+        issued_at_unix_ms: u64,
+    ) -> Arc<RevocationView> {
         let view = Arc::new(RevocationView::new());
         let revoked_set: BTreeSet<RevocationViewSubject> = revoked
             .iter()
@@ -136,7 +186,7 @@ mod tests {
         let snapshot = RevocationSnapshot {
             epoch,
             root_hash: [0_u8; 32],
-            issued_at_unix_ms: 1_700_000_000_000,
+            issued_at_unix_ms,
             revoked: revoked_set,
         };
         view.install_if_newer(snapshot).unwrap();
@@ -150,17 +200,20 @@ mod tests {
     }
 
     #[test]
-    fn empty_view_returns_ok() {
+    fn empty_view_denies_as_stale() {
         let token = build_token("cap-leaf", &["cap-root"]);
         let view = Arc::new(RevocationView::new());
-        assert!(consult_revocation_view(&token, Some(&view)).is_ok());
+        let err =
+            consult_revocation_view_at(&token, Some(&view), NOW_MS, MAX_STALENESS_MS).unwrap_err();
+        assert!(matches!(err, KernelError::DelegationInvalid(_)));
     }
 
     #[test]
     fn revoked_ancestor_denies() {
         let token = build_token("cap-leaf", &["cap-root", "cap-mid"]);
         let view = install_view(1, &["cap-root"]);
-        let err = consult_revocation_view(&token, Some(&view)).unwrap_err();
+        let err =
+            consult_revocation_view_at(&token, Some(&view), NOW_MS, MAX_STALENESS_MS).unwrap_err();
         assert!(
             matches!(err, KernelError::DelegationChainRevoked(ref id) if id == "cap-root"),
             "expected DelegationChainRevoked(cap-root), got {err:?}"
@@ -171,7 +224,8 @@ mod tests {
     fn revoked_leaf_denies() {
         let token = build_token("cap-leaf", &["cap-root"]);
         let view = install_view(1, &["cap-leaf"]);
-        let err = consult_revocation_view(&token, Some(&view)).unwrap_err();
+        let err =
+            consult_revocation_view_at(&token, Some(&view), NOW_MS, MAX_STALENESS_MS).unwrap_err();
         assert!(
             matches!(err, KernelError::CapabilityRevoked(ref id) if id == "cap-leaf"),
             "expected CapabilityRevoked(cap-leaf), got {err:?}"
@@ -182,6 +236,28 @@ mod tests {
     fn unrevoked_chain_returns_ok() {
         let token = build_token("cap-leaf", &["cap-root", "cap-mid"]);
         let view = install_view(1, &["cap-stranger"]);
-        assert!(consult_revocation_view(&token, Some(&view)).is_ok());
+        assert!(consult_revocation_view_at(&token, Some(&view), NOW_MS, MAX_STALENESS_MS).is_ok());
+    }
+
+    #[test]
+    fn stale_snapshot_denies_even_without_revoked_subjects() {
+        let token = build_token("cap-leaf", &["cap-root"]);
+        let view = install_view_at(1, &[], NOW_MS - MAX_STALENESS_MS - 1);
+
+        let err =
+            consult_revocation_view_at(&token, Some(&view), NOW_MS, MAX_STALENESS_MS).unwrap_err();
+
+        assert!(matches!(err, KernelError::DelegationInvalid(_)));
+    }
+
+    #[test]
+    fn future_snapshot_denies_even_without_revoked_subjects() {
+        let token = build_token("cap-leaf", &["cap-root"]);
+        let view = install_view_at(1, &[], NOW_MS + 1);
+
+        let err =
+            consult_revocation_view_at(&token, Some(&view), NOW_MS, MAX_STALENESS_MS).unwrap_err();
+
+        assert!(matches!(err, KernelError::DelegationInvalid(_)));
     }
 }
