@@ -284,10 +284,11 @@ impl RevocationGossipPushQueue {
     ///
     /// Coalescing rule: within each peer's queue, any pending entry with an
     /// epoch strictly lower than the new root's epoch is discarded, and any
-    /// pending entry with the same epoch is replaced. The queue is also
-    /// bounded: once `capacity_per_peer` is reached, the oldest entry is
-    /// evicted to make room (the catch-up path covers any peer that fell
-    /// behind).
+    /// pending entry with the same epoch is replaced. A root older than a
+    /// peer's newest pending epoch is dropped instead of being enqueued. The
+    /// queue is also bounded: once `capacity_per_peer` is reached, the oldest
+    /// entry is evicted to make room (the catch-up path covers any peer that
+    /// fell behind).
     pub fn enqueue_signed_root(
         &self,
         signed: SignedEpochRoot,
@@ -296,6 +297,9 @@ impl RevocationGossipPushQueue {
         let mut delivered = 0_usize;
         for queue in guard.values_mut() {
             let new_epoch = signed.root.epoch;
+            if queue.iter().any(|existing| existing.root.epoch > new_epoch) {
+                continue;
+            }
             queue.retain(|existing| existing.root.epoch > new_epoch);
             if queue.len() == self.capacity_per_peer {
                 queue.pop_front();
@@ -538,7 +542,7 @@ pub fn respond_to_catchup<H: RevocationCatchupHistory>(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use chio_revocation_oracle::{DigestRootSigner, EpochRoot, RootSignature, SignedEpochRoot};
+    use chio_revocation_oracle::{DigestRootSigner, EpochRoot, SignedEpochRoot};
 
     fn signed_root(signer_id: &str, epoch: u64) -> SignedEpochRoot {
         let signer = DigestRootSigner::new(signer_id, b"unit-test-secret".to_vec());
@@ -760,6 +764,29 @@ mod tests {
         assert_eq!(queue.pending_for("peer-b").unwrap(), Some(1));
         let batches = queue.flush_batches_at(0).unwrap();
         assert_eq!(batches[0].frames[0].epoch, 5);
+    }
+
+    #[test]
+    fn push_queue_drops_stale_epochs_per_peer() {
+        let queue = RevocationGossipPushQueue::new(8).unwrap();
+        queue.subscribe("peer-b").unwrap();
+        assert_eq!(
+            queue
+                .enqueue_signed_root(signed_root("oracle-a", 8))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            queue
+                .enqueue_signed_root(signed_root("oracle-a", 7))
+                .unwrap(),
+            0
+        );
+        assert_eq!(queue.pending_for("peer-b").unwrap(), Some(1));
+        let batches = queue.flush_batches_at(0).unwrap();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].frames.len(), 1);
+        assert_eq!(batches[0].frames[0].epoch, 8);
     }
 
     #[test]
