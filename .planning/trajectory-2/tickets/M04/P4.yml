@@ -98,7 +98,7 @@
   soft_deps:
     - "trajectory-1 M03 Apalache 0.50.x pin in tools/install-apalache.sh applies; do not bump"
   gate_check:
-    cmd: test -f formal/tla/DelegationDepthBound.tla && test -f formal/tla/MCDelegationDepthBound.cfg && grep -q 'DelegationDepthBound' .github/workflows/ci.yml && apalache-mc check --inv=DepthBoundedByRoot --inv=AttenuatedAtEachStep --inv=RevokedSubtreeNotObservable --length=10 formal/tla/DelegationDepthBound.tla
+    cmd: test -f formal/tla/DelegationDepthBound.tla && test -f formal/tla/MCDelegationDepthBound.cfg && grep -q 'DelegationDepthBound' .github/workflows/ci.yml && apalache-mc check --config=formal/tla/MCDelegationDepthBound.cfg --inv=DepthBoundedByRoot --inv=AttenuatedAtEachStep --inv=RevokedSubtreeNotObservable --length=10 formal/tla/DelegationDepthBound.tla
     timeout_seconds: 1800
   worktree_branch: wave/W2/m04/p4.t4-tla-delegation-depth-bound
   agent_role: formal-tla

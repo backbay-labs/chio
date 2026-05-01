@@ -1323,6 +1323,20 @@ where
 mod tests {
     use super::*;
 
+    fn must<T, E: core::fmt::Debug>(result: std::result::Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("{context}: {err:?}"),
+        }
+    }
+
+    fn must_some<T>(option: Option<T>, context: &str) -> T {
+        match option {
+            Some(value) => value,
+            None => panic!("{context}"),
+        }
+    }
+
     fn hex(seed: char) -> String {
         std::iter::repeat_n(seed, 64).collect()
     }
@@ -1774,32 +1788,57 @@ mod tests {
 
     #[test]
     fn reference_artifacts_parse_and_validate() {
-        let exchange: FederationActivationExchangeArtifact = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_FEDERATION_ACTIVATION_EXCHANGE_EXAMPLE.json"
-        ))
-        .unwrap();
-        let quorum: FederationQuorumReport = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_FEDERATION_QUORUM_REPORT_EXAMPLE.json"
-        ))
-        .unwrap();
-        let admission: FederatedOpenAdmissionPolicyArtifact = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_FEDERATION_OPEN_ADMISSION_POLICY_EXAMPLE.json"
-        ))
-        .unwrap();
-        let clearing: FederatedReputationClearingArtifact = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_FEDERATION_REPUTATION_CLEARING_EXAMPLE.json"
-        ))
-        .unwrap();
-        let matrix: FederationQualificationMatrix = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_FEDERATION_QUALIFICATION_MATRIX.json"
-        ))
-        .unwrap();
+        let exchange: FederationActivationExchangeArtifact = must(
+            serde_json::from_str(include_str!(
+                "../../../docs/standards/CHIO_FEDERATION_ACTIVATION_EXCHANGE_EXAMPLE.json"
+            )),
+            "parse activation exchange reference",
+        );
+        let quorum: FederationQuorumReport = must(
+            serde_json::from_str(include_str!(
+                "../../../docs/standards/CHIO_FEDERATION_QUORUM_REPORT_EXAMPLE.json"
+            )),
+            "parse quorum report reference",
+        );
+        let admission: FederatedOpenAdmissionPolicyArtifact = must(
+            serde_json::from_str(include_str!(
+                "../../../docs/standards/CHIO_FEDERATION_OPEN_ADMISSION_POLICY_EXAMPLE.json"
+            )),
+            "parse admission policy reference",
+        );
+        let clearing: FederatedReputationClearingArtifact = must(
+            serde_json::from_str(include_str!(
+                "../../../docs/standards/CHIO_FEDERATION_REPUTATION_CLEARING_EXAMPLE.json"
+            )),
+            "parse reputation clearing reference",
+        );
+        let matrix: FederationQualificationMatrix = must(
+            serde_json::from_str(include_str!(
+                "../../../docs/standards/CHIO_FEDERATION_QUALIFICATION_MATRIX.json"
+            )),
+            "parse qualification matrix reference",
+        );
 
-        validate_federation_activation_exchange(&exchange).unwrap();
-        validate_federation_quorum_report(&quorum).unwrap();
-        validate_federated_open_admission_policy(&admission).unwrap();
-        validate_federated_reputation_clearing(&clearing).unwrap();
-        validate_federation_qualification_matrix(&matrix).unwrap();
+        must(
+            validate_federation_activation_exchange(&exchange),
+            "validate activation exchange reference",
+        );
+        must(
+            validate_federation_quorum_report(&quorum),
+            "validate quorum report reference",
+        );
+        must(
+            validate_federated_open_admission_policy(&admission),
+            "validate admission policy reference",
+        );
+        must(
+            validate_federated_reputation_clearing(&clearing),
+            "validate reputation clearing reference",
+        );
+        must(
+            validate_federation_qualification_matrix(&matrix),
+            "validate qualification matrix reference",
+        );
     }
 
     #[test]
@@ -1850,11 +1889,11 @@ mod tests {
         ));
 
         let mut exchange = sample_activation_exchange();
-        exchange
-            .governing_charter_ref
-            .as_mut()
-            .expect("charter")
-            .kind = FederationArtifactKind::Listing;
+        must_some(
+            exchange.governing_charter_ref.as_mut(),
+            "activation exchange should include governing charter",
+        )
+        .kind = FederationArtifactKind::Listing;
         assert!(matches!(
             validate_federation_activation_exchange(&exchange),
             Err(FederationContractError::InvalidExchange(_))
@@ -1939,36 +1978,46 @@ mod tests {
             Err(FederationContractError::InvalidExchange(_))
         ));
 
-        let mut import = FederationImportControl::default();
-        import.manual_review_required = false;
+        let import = FederationImportControl {
+            manual_review_required: false,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_import_control(&import),
             Err(FederationContractError::InvalidExchange(_))
         ));
 
-        let mut import = FederationImportControl::default();
-        import.reject_stale_inputs = false;
+        let import = FederationImportControl {
+            reject_stale_inputs: false,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_import_control(&import),
             Err(FederationContractError::InvalidExchange(_))
         ));
 
-        let mut import = FederationImportControl::default();
-        import.allow_visibility_without_runtime_trust = false;
+        let import = FederationImportControl {
+            allow_visibility_without_runtime_trust: false,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_import_control(&import),
             Err(FederationContractError::InvalidExchange(_))
         ));
 
-        let mut import = FederationImportControl::default();
-        import.prohibit_ambient_runtime_admission = false;
+        let import = FederationImportControl {
+            prohibit_ambient_runtime_admission: false,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_import_control(&import),
             Err(FederationContractError::InvalidExchange(_))
         ));
 
-        let mut anti_eclipse = FederationAntiEclipsePolicy::default();
-        anti_eclipse.minimum_distinct_operators = 0;
+        let anti_eclipse = FederationAntiEclipsePolicy {
+            minimum_distinct_operators: 0,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_anti_eclipse_policy(&anti_eclipse),
             Err(FederationContractError::InvalidQuorum(_))
@@ -2396,29 +2445,37 @@ mod tests {
             Err(FederationContractError::InvalidClearing(_))
         ));
 
-        let mut sybil = FederatedSybilControl::default();
-        sybil.minimum_independent_issuers = 0;
+        let sybil = FederatedSybilControl {
+            minimum_independent_issuers: 0,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_sybil_control(&sybil),
             Err(FederationContractError::InvalidClearing(_))
         ));
 
-        let mut sybil = FederatedSybilControl::default();
-        sybil.maximum_inputs_per_issuer = 0;
+        let sybil = FederatedSybilControl {
+            maximum_inputs_per_issuer: 0,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_sybil_control(&sybil),
             Err(FederationContractError::InvalidClearing(_))
         ));
 
-        let mut sybil = FederatedSybilControl::default();
-        sybil.oracle_cap_bps = 10_001;
+        let sybil = FederatedSybilControl {
+            oracle_cap_bps: 10_001,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_sybil_control(&sybil),
             Err(FederationContractError::InvalidClearing(_))
         ));
 
-        let mut sybil = FederatedSybilControl::default();
-        sybil.local_weighting_required = false;
+        let sybil = FederatedSybilControl {
+            local_weighting_required: false,
+            ..Default::default()
+        };
         assert!(matches!(
             validate_sybil_control(&sybil),
             Err(FederationContractError::InvalidClearing(_))
@@ -2571,8 +2628,12 @@ mod tests {
         ));
 
         let mut clearing = sample_reputation_clearing();
-        clearing.continuity.as_mut().unwrap().previous_clearing_id =
-            Some(clearing.clearing_id.clone());
+        let clearing_id = clearing.clearing_id.clone();
+        must_some(
+            clearing.continuity.as_mut(),
+            "reputation clearing should include continuity",
+        )
+        .previous_clearing_id = Some(clearing_id);
         assert!(matches!(
             validate_federated_reputation_clearing(&clearing),
             Err(FederationContractError::InvalidClearing(_))

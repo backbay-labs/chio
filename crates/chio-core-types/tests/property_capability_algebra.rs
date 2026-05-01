@@ -35,6 +35,7 @@ use chio_core_types::capability::{
 use chio_core_types::crypto::Keypair;
 use proptest::collection::vec as prop_vec;
 use proptest::prelude::*;
+use std::collections::BTreeSet;
 
 /// Build a `ProptestConfig` whose case count honours the `PROPTEST_CASES`
 /// environment variable used by the CI lanes (`256` for PR, `4096` for
@@ -371,32 +372,29 @@ proptest! {
 fn delegation_hop_chain_strategy(max_hops: usize) -> BoxedStrategy<Vec<(ChioScope, ChioScope)>> {
     scope_strategy()
         .prop_flat_map(move |root| {
-            let init: BoxedStrategy<Vec<(ChioScope, ChioScope)>> = Just(Vec::new()).boxed();
-            (1usize..=max_hops.max(1)).prop_flat_map(move |n_hops| {
-                let mut acc: BoxedStrategy<Vec<(ChioScope, ChioScope)>> = init.clone();
-                let root = root.clone();
-                let mut current = root.clone();
-                for _ in 0..n_hops {
-                    let parent = current.clone();
-                    let parent_for_strategy = parent.clone();
-                    let next_strategy = attenuated_scope_strategy(parent.clone());
-                    acc = (acc, next_strategy)
-                        .prop_map(move |(mut hops, child)| {
-                            hops.push((parent_for_strategy.clone(), child.clone()));
-                            hops
-                        })
-                        .boxed();
-                    // Use the parent as the next iteration's parent shape; the
-                    // chain's actual child for the next hop will be drawn
-                    // fresh from `attenuated_scope_strategy(parent)` rather
-                    // than from `child` because `child` is not statically
-                    // known here. This still produces a valid chain because
-                    // `attenuated_scope_strategy(parent)` always yields a
-                    // subset of `parent`, so the per-hop subset relation
-                    // stays sound (we re-check it inside each invariant).
-                    current = parent;
-                }
-                acc
+            (1usize..=max_hops.max(1))
+                .prop_flat_map(move |n_hops| delegation_hop_chain_from_parent(root.clone(), n_hops))
+        })
+        .boxed()
+}
+
+fn delegation_hop_chain_from_parent(
+    parent: ChioScope,
+    remaining_hops: usize,
+) -> BoxedStrategy<Vec<(ChioScope, ChioScope)>> {
+    if remaining_hops == 0 {
+        return Just(Vec::new()).boxed();
+    }
+
+    attenuated_scope_strategy(parent.clone())
+        .prop_flat_map(move |child| {
+            let hop_parent = parent.clone();
+            let hop_child = child.clone();
+            delegation_hop_chain_from_parent(child, remaining_hops - 1).prop_map(move |tail| {
+                let mut hops = Vec::with_capacity(tail.len() + 1);
+                hops.push((hop_parent.clone(), hop_child.clone()));
+                hops.extend(tail);
+                hops
             })
         })
         .boxed()
@@ -460,8 +458,8 @@ proptest! {
     /// when it walks `complete_chain()`.
     #[test]
     fn delegate_revoked_parent_revokes_children(
-        chain_len in 1u32..=4u32,
-        revoke_index in 0usize..=4usize,
+        chain_len in 2u32..=4u32,
+        revoke_index in 0usize..=3usize,
     ) {
         let mut keypairs: Vec<Keypair> = Vec::with_capacity((chain_len + 1) as usize);
         for _ in 0..=chain_len {
@@ -488,28 +486,51 @@ proptest! {
         }
 
         let chain_len_usize = chain.len();
-        let target = revoke_index.min(chain_len_usize.saturating_sub(1));
+        let target = revoke_index.min(chain_len_usize.saturating_sub(2));
         let revoked_id = chain[target].capability_id.clone();
+        let revoked: BTreeSet<String> = [revoked_id.clone()].into_iter().collect();
 
-        // The revocation closure mirrors what the kernel-side oracle
-        // applies on dispatch: any link whose capability_id is in the
-        // revoked set forces a deny verdict for the descendant.
-        let chain_is_revoked = |chain: &[DelegationLink], revoked: &str| -> bool {
-            chain.iter().any(|link| link.capability_id == revoked)
-        };
+        // The revocation closure mirrors the receipt-side chain walk: any
+        // ancestor link whose capability_id is in the revoked set forces a
+        // deny verdict for the deepest descendant.
+        let descendant_is_revoked =
+            |chain: &[DelegationLink], revoked_set: &BTreeSet<String>| -> bool {
+                chain
+                    .iter()
+                    .any(|link| revoked_set.contains(&link.capability_id))
+            };
 
         prop_assert!(
-            chain_is_revoked(&chain, &revoked_id),
+            descendant_is_revoked(&chain, &revoked),
             "ancestor revocation must propagate to the deepest descendant"
         );
 
-        // Also: a revocation that names a capability NOT in the chain
-        // must not erroneously revoke the descendant (fail-closed in
-        // both directions: revoke iff in chain).
-        let stranger = format!("cap-stranger-{chain_len_usize}");
+        let empty_revocations = BTreeSet::new();
         prop_assert!(
-            !chain_is_revoked(&chain, &stranger),
+            !descendant_is_revoked(&chain, &empty_revocations),
+            "empty revocation set must not revoke the chain"
+        );
+
+        let mut unrelated_only = BTreeSet::new();
+        unrelated_only.insert(format!("cap-stranger-{chain_len_usize}"));
+        prop_assert!(
+            !descendant_is_revoked(&chain, &unrelated_only),
             "revocation of an unrelated capability must not revoke the chain"
         );
+
+        for (idx, link) in chain.iter().enumerate() {
+            let expected = idx == target;
+            prop_assert_eq!(
+                revoked.contains(&link.capability_id),
+                expected,
+                "only selected ancestor should be in the revocation set"
+            );
+            if idx > target {
+                prop_assert!(
+                    !revoked.contains(&link.capability_id),
+                    "descendant links are denied through the ancestor, not direct revocation"
+                );
+            }
+        }
     }
 }
