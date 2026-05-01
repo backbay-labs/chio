@@ -167,6 +167,14 @@ name = "pq_key_load_after_self_quote"
 path = "tests/pq_key_load_after_self_quote.rs"
 required-features = ["pq"]
 
+# M03.P5.T3: receipt-signing path consumes the M06 SharedCanonicalBytes
+# (Arc<CanonicalBytes>) newtype so the canonical JSON buffer is built once,
+# signed once, and shared by every downstream consumer.
+[[test]]
+name = "canonical_bytes_hybrid"
+path = "tests/canonical_bytes_hybrid.rs"
+required-features = ["pq"]
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
