@@ -209,15 +209,41 @@ default-OFF (kernel pulls it transitively).
 
 ### `formal/assumptions.toml` ledger
 
-P5.T5 is the next ticket and decides whether to narrow
-`ASSUME-NETWORK-TRANSPORT` based on whether the
-`RevocationFreshness` invariant in
-`formal/tla/RevocationPropagation.tla` discharges the cross-peer
-ordering claim. This audit row records the open status; the T5
-update ledgers either an explicit `narrow` (with a
-`retired_assumption` row) or "left untouched" (with the rationale
-captured in `formal/proof-manifest.toml` under the M04 retirement
-section).
+P5.T5 decision: `ASSUME-NETWORK-TRANSPORT` is left UNCHANGED in
+`formal/assumptions.toml` `required_assumption_ids`.
+
+Rationale: the M04.P4.T6 `RevocationFreshness` invariant in
+`formal/tla/RevocationPropagation.tla` (~L321) constrains every
+recorded local revocation epoch to be strictly less than the global
+clock value. The predicate is
+
+```tla
+\A a \in ProcSet, c \in CapSet :
+    rev_epoch[a][c] # 0 => rev_epoch[a][c] < clock
+```
+
+`clock` is a single shared variable rather than a per-peer logical
+timestamp, so the invariant discharges only the local freshness gate
+(single-authority observed-epoch monotonicity). It does NOT model
+multiple gossip peers, vector-clock-ordered delivery, or any other
+cross-peer ordering primitive. The cross-peer ordering claim covered
+by `ASSUME-NETWORK-TRANSPORT` ("authenticated messages received by
+Chio are not silently rewritten below TLS or signature checks")
+therefore remains audited rather than discharged. The operational
+mitigation is the wire-level signature pinning in
+`crates/chio-federation/src/revocation_gossip.rs` (signer_id pin,
+signature verification before
+`RevocationView::install_if_newer`); the formal discharge is left
+for a future milestone that ships a distributed-time TLA model.
+
+The decision row is mirrored in `formal/proof-manifest.toml` under
+the `# M04 P5.T5 assumptions-toml ledger row` block so the
+milestone-success criterion ("the `assumptions.toml` ledger updated
+(or explicitly documented as unchanged)") is traceable from both
+the audit doc and the proof manifest. Sign-off requires the
+`formal-verification` owner per trajectory-1 M03's discipline; this
+ticket records that the decision is "leave untouched" rather than
+"narrow", consistent with the soft-dep rationale on M04.P5.T5.
 
 ### Reproduction commands
 
