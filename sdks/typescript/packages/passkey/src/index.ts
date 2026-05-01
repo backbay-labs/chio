@@ -24,7 +24,7 @@
 
 export type { RequestCapabilityOptions, PasskeyCapability } from './request.js';
 export { requestCapability, RequestCapabilityError } from './request.js';
-export { parseCapabilityToken } from './parse.js';
+export { CapabilityParseError, parseCapabilityToken } from './parse.js';
 export {
   CHIO_CUSTODY_ERROR_CODES,
   ChioCustodyError,
