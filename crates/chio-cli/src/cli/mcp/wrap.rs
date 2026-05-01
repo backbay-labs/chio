@@ -20,6 +20,7 @@
 // either way.
 
 const MCP_WRAP_PROTOCOL_VERSION: &str = "2025-11-25";
+const MAX_MCP_WRAP_FRAME_BYTES: usize = 1024 * 1024;
 
 /// Decision returned by a [`VerdictGate`] for a single `tools/call`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,8 +194,8 @@ where
     G: VerdictGate + ?Sized,
 {
     let mut summary = WrapLoopSummary::default();
-    for line in reader.lines() {
-        let line = line?;
+    let mut reader = reader;
+    while let Some(line) = read_bounded_line(&mut reader, MAX_MCP_WRAP_FRAME_BYTES)? {
         if line.trim().is_empty() {
             continue;
         }
@@ -348,6 +349,54 @@ where
     Ok(summary)
 }
 
+fn read_bounded_line<R: std::io::BufRead>(
+    reader: &mut R,
+    max_bytes: usize,
+) -> Result<Option<String>, std::io::Error> {
+    let mut bytes = Vec::new();
+    loop {
+        let (take, has_newline, exceeds_limit) = {
+            let available = reader.fill_buf()?;
+            if available.is_empty() {
+                if bytes.is_empty() {
+                    return Ok(None);
+                }
+                break;
+            }
+
+            let take = match available.iter().position(|byte| *byte == b'\n') {
+                Some(index) => index + 1,
+                None => available.len(),
+            };
+            let has_newline = available.get(take.saturating_sub(1)) == Some(&b'\n');
+            let exceeds_limit = bytes.len().saturating_add(take) > max_bytes;
+            if !exceeds_limit {
+                bytes.extend_from_slice(&available[..take]);
+            }
+            (take, has_newline, exceeds_limit)
+        };
+
+        reader.consume(take);
+        if exceeds_limit {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("MCP JSON-RPC frame exceeded {max_bytes} bytes"),
+            ));
+        }
+
+        if has_newline {
+            break;
+        }
+    }
+
+    String::from_utf8(bytes).map(Some).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("MCP JSON-RPC frame was not UTF-8: {error}"),
+        )
+    })
+}
+
 /// In-memory MCP transport backed by a JSON fixture. Used by the M07
 /// P2.T6 e2e test to exercise the full stdio orchestration loop without
 /// spawning a real MCP child.
@@ -452,4 +501,29 @@ fn json_rpc_error(
             "data": { "chio_code": chio_code },
         }
     })
+}
+
+#[cfg(test)]
+mod wrap_tests {
+    use super::*;
+
+    #[test]
+    fn wrap_loop_rejects_oversized_json_rpc_frame() {
+        let input = format!("{}\n", "x".repeat(MAX_MCP_WRAP_FRAME_BYTES + 1));
+        let transport = FixtureMcpTransport {
+            tools: Vec::new(),
+            responses: std::collections::BTreeMap::new(),
+        };
+        let gate = ManifestVerdictGate {
+            allowed: std::collections::BTreeSet::new(),
+        };
+        let mut output = Vec::new();
+
+        let error = match run_wrap_with_gate(&transport, &gate, input.as_bytes(), &mut output) {
+            Ok(_) => panic!("oversized frame must fail closed"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
 }
