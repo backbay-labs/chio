@@ -1,4 +1,4 @@
-//! Phase 20.3 -- kernel trust establishment / mTLS handshake tests.
+//! Kernel trust establishment / mTLS handshake tests.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

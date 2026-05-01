@@ -7,8 +7,8 @@
 //! [`PassportLifecycleState::Revoked`], dispatch verifiers must observe
 //! the revocation through the same oracle surface that revokes raw
 //! credentials, so the trust-boundary surface stays single-sourced and
-//! the federation gossip path (M04 P2 push + pull) carries passport
-//! revocation events alongside everything else.
+//! the federation gossip path carries passport revocation events
+//! alongside everything else.
 //!
 //! ## Surface
 //!
@@ -29,14 +29,14 @@
 //!
 //! ## Invariant note
 //!
-//! `chio-credentials::property_passport::*` named invariants in
-//! trajectory-1 M03 stay green: this bridge does not modify any passport
-//! lifecycle field, only reads `passport_id`, `subject`, `revoked_at`,
-//! and `revoked_reason` from a record that the credentials side already
-//! validated. The bridge is read-only from the credentials surface's
-//! perspective.
+//! The bridge is read-only from the credentials surface's perspective:
+//! it does not modify any passport lifecycle field, it only reads
+//! `passport_id`, `subject`, `revoked_at`, and `revoked_reason` from a
+//! record that the credentials side already validated. The
+//! `chio-credentials::property_passport::*` named invariants therefore
+//! continue to hold.
 
-use crate::api::{EpochRoot, EpochNonce, RevocationKey, RevocationOracle, SubjectId};
+use crate::api::{EpochNonce, EpochRoot, RevocationKey, RevocationOracle, SubjectId};
 
 /// Schema-derived nonce salt for passport-revocation events. Combined
 /// with the passport's `revoked_at` (which the credentials side validates
@@ -173,7 +173,9 @@ pub fn apply_passport_revocation<O: RevocationOracle>(
         Err(crate::RevocationOracleError::AlreadyRevoked) => {
             Err(PassportRevocationBridgeError::AlreadyApplied)
         }
-        Err(other) => Err(PassportRevocationBridgeError::OracleRejected(other.to_string())),
+        Err(other) => Err(PassportRevocationBridgeError::OracleRejected(
+            other.to_string(),
+        )),
     }
 }
 
@@ -197,7 +199,9 @@ mod tests {
     fn new_rejects_empty_passport_id() {
         let err = PassportRevocationEvent::new("", "s", 1, None).expect_err("empty passport-id");
         match err {
-            PassportRevocationBridgeError::MalformedEvent(msg) => assert!(msg.contains("passport_id")),
+            PassportRevocationBridgeError::MalformedEvent(msg) => {
+                assert!(msg.contains("passport_id"))
+            }
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -215,7 +219,9 @@ mod tests {
     fn new_rejects_zero_revoked_at() {
         let err = PassportRevocationEvent::new("p", "s", 0, None).expect_err("zero ts");
         match err {
-            PassportRevocationBridgeError::MalformedEvent(msg) => assert!(msg.contains("revoked_at")),
+            PassportRevocationBridgeError::MalformedEvent(msg) => {
+                assert!(msg.contains("revoked_at"))
+            }
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -225,7 +231,9 @@ mod tests {
         let err = PassportRevocationEvent::new("p", "s", 1, Some("   ".to_string()))
             .expect_err("blank reason");
         match err {
-            PassportRevocationBridgeError::MalformedEvent(msg) => assert!(msg.contains("revoked_reason")),
+            PassportRevocationBridgeError::MalformedEvent(msg) => {
+                assert!(msg.contains("revoked_reason"))
+            }
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -271,8 +279,7 @@ mod tests {
         let mut oracle = InMemoryRevocationOracle::new();
         let event = make_event();
         apply_passport_revocation(&mut oracle, &event).expect("first apply");
-        let err =
-            apply_passport_revocation(&mut oracle, &event).expect_err("re-apply must error");
+        let err = apply_passport_revocation(&mut oracle, &event).expect_err("re-apply must error");
         assert_eq!(err, PassportRevocationBridgeError::AlreadyApplied);
         // Epoch did NOT advance a second time: federation push will not
         // re-broadcast a stale duplicate.
@@ -283,20 +290,12 @@ mod tests {
     #[test]
     fn apply_two_distinct_passports_advances_epoch_twice() {
         let mut oracle = InMemoryRevocationOracle::new();
-        let event_a = PassportRevocationEvent::new(
-            "passport-a",
-            "did:chio:a",
-            1_700_000_001_000,
-            None,
-        )
-        .unwrap();
-        let event_b = PassportRevocationEvent::new(
-            "passport-b",
-            "did:chio:b",
-            1_700_000_001_500,
-            None,
-        )
-        .unwrap();
+        let event_a =
+            PassportRevocationEvent::new("passport-a", "did:chio:a", 1_700_000_001_000, None)
+                .unwrap();
+        let event_b =
+            PassportRevocationEvent::new("passport-b", "did:chio:b", 1_700_000_001_500, None)
+                .unwrap();
         let root_a = apply_passport_revocation(&mut oracle, &event_a).unwrap();
         let root_b = apply_passport_revocation(&mut oracle, &event_b).unwrap();
         assert_eq!(root_a.epoch, 1);

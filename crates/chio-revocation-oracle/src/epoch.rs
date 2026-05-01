@@ -22,10 +22,9 @@ impl SignedEpochRoot {
     }
 }
 
-/// Default oracle epoch tick used by the bilateral push path. Two hundred and
-/// fifty milliseconds is the trajectory-2 trade-off between gossip storm
-/// avoidance under high revoke rates and the 500ms median end-to-end latency
-/// budget in M04.P2.T5.
+/// Default oracle epoch tick used by the bilateral push path. Two hundred
+/// and fifty milliseconds is the trade-off between gossip storm avoidance
+/// under high revoke rates and the 500ms median end-to-end latency budget.
 pub const DEFAULT_EPOCH_TICK_MS: u64 = 250;
 
 /// Sink for signed epoch roots produced by an oracle on every epoch tick.
@@ -41,8 +40,8 @@ pub trait EpochBroadcaster {
 /// Bounded in-memory broadcaster used by the oracle's default tick driver
 /// when no real transport is plugged in. The queue is FIFO and drops the
 /// oldest entry when full, which matches the bilateral push contract: the
-/// gossip layer is best-effort and the catch-up path (M04.P2.T3) covers any
-/// peer that fell behind.
+/// gossip layer is best-effort and the catch-up path covers any peer that
+/// fell behind.
 #[derive(Debug)]
 pub struct InMemoryEpochBroadcaster {
     capacity: usize,
@@ -177,12 +176,8 @@ mod tests {
         let broadcaster_a = InMemoryEpochBroadcaster::new(8).unwrap();
         let broadcaster_b = InMemoryEpochBroadcaster::new(8).unwrap();
         let signer = DigestRootSigner::new("oracle-a", b"secret".to_vec());
-        let signed = tick_and_broadcast(
-            epoch_root(7),
-            &signer,
-            &[&broadcaster_a, &broadcaster_b],
-        )
-        .unwrap();
+        let signed =
+            tick_and_broadcast(epoch_root(7), &signer, &[&broadcaster_a, &broadcaster_b]).unwrap();
         assert_eq!(signed.root.epoch, 7);
         assert_eq!(broadcaster_a.pending().unwrap(), 1);
         assert_eq!(broadcaster_b.pending().unwrap(), 1);

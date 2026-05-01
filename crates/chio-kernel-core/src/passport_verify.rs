@@ -1,11 +1,10 @@
-//! Portable passport verification (Phase 20.1).
+//! Portable passport verification.
 //!
 //! This module is the "the WASM-compiled kernel verifies the passport"
-//! half of the Phase 20.1 acceptance. It is pure compute over a minimal
-//! portable passport envelope: given bytes on the wire, a trusted
-//! authority key set, and a clock, it answers "is this envelope signed
-//! by a trusted authority, well-formed, and currently inside its
-//! validity window?".
+//! surface. It is pure compute over a minimal portable passport
+//! envelope: given bytes on the wire, a trusted authority key set, and a
+//! clock, it answers "is this envelope signed by a trusted authority,
+//! well-formed, and currently inside its validity window?".
 //!
 //! # Scope (what this module does NOT do)
 //!
