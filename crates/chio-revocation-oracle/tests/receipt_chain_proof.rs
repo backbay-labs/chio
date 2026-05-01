@@ -18,7 +18,6 @@
 #[path = "common/mod.rs"]
 mod common;
 
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -52,9 +51,12 @@ impl ChildKernel {
         }
     }
 
-    fn planner_revoked(&self) -> bool {
+    fn planner_snapshot(&self) -> (u64, bool) {
         let snapshot = self.view.load();
-        snapshot.is_revoked(&RevocationViewSubject::new(PLANNER_CAP_ID))
+        (
+            snapshot.epoch,
+            snapshot.is_revoked(&RevocationViewSubject::new(PLANNER_CAP_ID)),
+        )
     }
 
     fn current_epoch(&self) -> u64 {
@@ -215,8 +217,7 @@ fn spawn_consult_loop(
             return;
         }
         let ts_us = elapsed_us(trial_started);
-        let snapshot_epoch = child.current_epoch();
-        let revoked = child.planner_revoked();
+        let (snapshot_epoch, revoked) = child.planner_snapshot();
         let record = ReceiptRecord {
             kernel_id: kernel_name.to_string(),
             cap_id: cap_id.to_string(),
@@ -246,11 +247,9 @@ fn no_allow_receipt_after_revoke_epoch() {
     let log = ReceiptLog::create(&log_path).expect("open receipt log");
     log.write_header(TRIALS, 500);
 
-    let mut revoke_epochs: BTreeMap<u64, u64> = BTreeMap::new();
     for idx in 0..TRIALS {
         match run_trial(idx as u64, &log) {
             Ok(revoke_epoch) => {
-                revoke_epochs.insert(idx as u64, revoke_epoch);
                 log.write_trial_summary(idx as u64, revoke_epoch, 0);
             }
             Err(msg) => panic!("{msg}"),
