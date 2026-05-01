@@ -220,7 +220,7 @@ impl RustKernelDriver {
         if let Some(unsupported) = scenario
             .requires
             .iter()
-            .find(|requirement| requirement.as_str() != RUST_KERNEL_DRIVER)
+            .find(|requirement| !rust_kernel_supports_requirement(requirement))
         {
             return DriverOutcome {
                 scenario_id: scenario.id.clone(),
@@ -264,6 +264,20 @@ impl RustKernelDriver {
             .map(|scenario| self.run(scenario))
             .collect()
     }
+}
+
+fn rust_kernel_supports_requirement(requirement: &str) -> bool {
+    matches!(
+        requirement,
+        RUST_KERNEL_DRIVER
+            | "kernel-semantics"
+            | "capability-authority"
+            | "revocation-store"
+            | "replay-nonce"
+            | "execution-nonce-store"
+            | "guard-pipeline"
+            | "receipt-log"
+    )
 }
 
 pub fn load_scenario_file(path: &Path) -> Result<VerdictScenario, DriverError> {

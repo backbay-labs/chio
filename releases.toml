@@ -60,7 +60,7 @@ initial_merge_tag = ""
 target_catch_ratio_percent = 80
 required_consecutive_nightly_successes = 2
 observed_consecutive_nightly_successes = 0
-activation_evidence = ""
+activation_evidence = "pending: carried forward to .planning/trajectory/sweep/M02-FOLLOWUPS.md; blocker: no two consecutive mutants-nightly full sweeps at >=80 percent across all six crates"
 cycle_end_tag = ""
 pr_survivor_issue_budget = 5
 nightly_wall_budget_hours_per_crate = 4

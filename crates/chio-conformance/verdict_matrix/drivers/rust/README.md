@@ -15,9 +15,11 @@ on the parent `chio-conformance` package so CI can run the same local gate:
 cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet
 ```
 
-Unsupported scenarios must report `unsupported`. The active corpus requires
-only `rust-kernel`, so any unsupported scenario in this driver is a test
-failure.
+Unsupported scenarios must report `unsupported`. The Rust driver supports
+`rust-kernel`, `kernel-semantics`, and kernel feature requirements such as
+`capability-authority`, `revocation-store`, `replay-nonce`,
+`execution-nonce-store`, `guard-pipeline`, and `receipt-log`. A requirement
+for a different SDK or sidecar-only driver remains unsupported.
 
 ## Kernel Boundary
 

@@ -852,6 +852,13 @@ Source: `.github/workflows/mutants.yml`,
 
 ### Outstanding Follow-Ups
 
+M02 sweep tracking note: the P1 mutation activation residual is carried
+forward to `.planning/trajectory/sweep/M02-FOLLOWUPS.md`
+and mirrored in `releases.toml: activation_evidence`. The blocker is unchanged:
+the repo does not have two consecutive `mutants-nightly` full sweeps at >= 80%
+across all six trust-boundary crates. Items 2 through 5 below are also tracked
+in the same follow-up doc with their current owning surfaces.
+
 1. The mutation-lane required-gate flip
    (advisory -> blocking) is gated on two consecutive `mutants-nightly`
    sweeps reporting >= 80% caught ratio across all six trust-boundary

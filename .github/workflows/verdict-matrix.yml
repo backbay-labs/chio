@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - "crates/chio-conformance/verdict_matrix/**"
+      - "crates/chio-core/**"
+      - "crates/chio-core-types/**"
       - "crates/chio-kernel*/**"
       - "sdks/python/chio-sdk-python/**"
       - "sdks/typescript/packages/**"
@@ -23,6 +25,8 @@ on:
       - main
     paths:
       - "crates/chio-conformance/verdict_matrix/**"
+      - "crates/chio-core/**"
+      - "crates/chio-core-types/**"
       - "crates/chio-kernel*/**"
       - "sdks/python/chio-sdk-python/**"
       - "sdks/typescript/packages/**"
