@@ -1,9 +1,9 @@
-//! M04 deterministic-corpus ingest (M09 P5.T3).
+//! Deterministic replay-corpus ingest.
 //!
 //! Reads replay corpus fixtures and reconstructs the same DAG shape as
 //! the OTEL ingest path so that an offline ground truth is available to
 //! the recursive-CTE query layer and the differential mode. Receipts
-//! read from the corpus carry `Observed` evidence class because the M04
+//! read from the corpus carry `Observed` evidence class because the
 //! corpus is the canonical kernel-emitted ground truth; signed receipt-
 //! lineage statements observed in the corpus upgrade to `Verified`.
 //!

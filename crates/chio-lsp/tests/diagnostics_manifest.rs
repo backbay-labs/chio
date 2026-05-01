@@ -1,4 +1,4 @@
-//! P4.T6 manifest diagnostics integration test.
+//! Manifest diagnostics integration test.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_lsp::diagnostics::manifest::{validate, URN_MANIFEST_SCHEMA_INVALID};

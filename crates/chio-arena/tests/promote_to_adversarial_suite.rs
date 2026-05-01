@@ -1,5 +1,5 @@
-//! M08.P5.T2 - auto-promotion to the trajectory-2 M05 chio-adversarial-suite
-//! per-class JSON files. Until M05.P0 lands, the writer falls back to a
+//! Auto-promotion to the chio-adversarial-suite per-class JSON files.
+//! Until the suite lands, the writer falls back to a
 //! `target/arena/promote-pending/` holding directory.
 
 use chio_arena::{
@@ -108,7 +108,7 @@ fn writes_to_live_suite_when_present() -> Result<(), Box<dyn std::error::Error>>
         receipts: vec![arena_receipt()?],
     };
     let tmp = tempfile::tempdir()?;
-    // Pre-create the suite scaffold to simulate M05.P0 landing.
+    // Pre-create the suite scaffold.
     let suite_root = tmp
         .path()
         .join("crates")

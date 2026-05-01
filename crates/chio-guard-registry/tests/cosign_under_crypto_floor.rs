@@ -1,15 +1,13 @@
-//! Cosign-bundle gating regression under all `crypto_floor` settings (M03.P2.T6).
+//! Cosign-bundle gating regression under all `crypto_floor` settings.
 //!
-//! M03 introduced hybrid signing on receipts, capability tokens, and the
-//! session compliance certificate. The cosign bundle path through
-//! `chio-guard-registry` MUST NOT change: cosign payload bytes are not
-//! signed hybrid; the registry verifies them via the existing
-//! `SigstoreVerifier::verify_bundle`. This test pins that contract by
-//! exercising `GuardSigstoreVerifier::verify_bundle` with a mock
-//! `AttestVerifier` across the three crypto_floor states an operator
-//! might configure.
-//!
-//! Trust-boundary milestone: M03 P2.T6.
+//! Hybrid signing on receipts, capability tokens, and the session
+//! compliance certificate must not affect this path. The cosign bundle
+//! path through `chio-guard-registry` MUST NOT change: cosign payload
+//! bytes are not signed hybrid; the registry verifies them via the
+//! existing `SigstoreVerifier::verify_bundle`. This test pins that
+//! contract by exercising `GuardSigstoreVerifier::verify_bundle` with a
+//! mock `AttestVerifier` across the three crypto_floor states an
+//! operator might configure.
 
 #![cfg(feature = "pq")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -96,7 +94,8 @@ impl AttestVerifier for AlwaysOkBundleVerifier {
     }
 }
 
-fn make_expected() -> ExpectedIdentity { // doc-hidden return type
+fn make_expected() -> ExpectedIdentity {
+    // doc-hidden return type
     expected_identity_from_config(
         "https://github.com/test/repo/.github/workflows/.*",
         "https://token.actions.githubusercontent.com",
@@ -132,7 +131,7 @@ fn cosign_bundle_passes_under_allow_hybrid() {
 #[test]
 fn cosign_bundle_passes_under_pq_required() {
     // The crucial cell: pq_required does NOT degrade the cosign path.
-    // M06 P2's verifier surface stays green even under the strictest
+    // The verifier surface stays green even under the strictest
     // kernel-side floor because cosign payload bytes are not hybrid-signed.
     let result = run_cosign_bundle_verify(CryptoFloorScenario::PqRequired);
     assert!(result.rekor_inclusion_verified);
@@ -145,8 +144,8 @@ fn cosign_bundle_outcome_byte_identical_across_floors() {
     // observe (the SAN, the OIDC issuer, the inclusion proof bit) is
     // byte-identical across all three floors. A future change that makes
     // the cosign path observe `crypto_floor` MUST flag here first so the
-    // M06 P2 verifier surface contract is renegotiated explicitly rather
-    // than silently drifting.
+    // verifier surface contract is renegotiated explicitly rather than
+    // silently drifting.
     let mut renderings = Vec::new();
     for floor in ALL_FLOORS {
         let attestation = run_cosign_bundle_verify(floor);

@@ -1,8 +1,8 @@
-//! Scope-superset escape adversary class tests (`M08.P3.T5`).
+//! Scope-superset escape adversary class tests.
 //!
-//! Triggers the trajectory-1 M03 capability algebra scope-monotonicity
-//! property: a delegated scope must be a subset of the delegating
-//! capability's scope. The toy guard evaluator denies any action whose
+//! Triggers the capability algebra scope-monotonicity property: a
+//! delegated scope must be a subset of the delegating capability's
+//! scope. The toy guard evaluator denies any action whose
 //! `delegated_scope` array references a (server, tool) pair outside the
 //! issued scope, mirroring the kernel's authority surface.
 

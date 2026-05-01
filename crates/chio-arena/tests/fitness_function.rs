@@ -1,10 +1,10 @@
-//! Fitness-function tests (M08.P4.T1).
+//! Fitness-function tests.
 //!
 //! Asserts the per-adversary survival-rate computation, the verdict-tuple
-//! shape borrowed from the trajectory-2 M02.P4 verdict-matrix oracle, and
-//! the fitness aggregation across multiple populations. Determinism is
-//! covered separately by `coevolve_determinism.rs` (M08.P4.T6); these
-//! tests only assert the static contract of the fitness surface.
+//! shape borrowed from the verdict-matrix oracle, and the fitness
+//! aggregation across multiple populations. Determinism is covered
+//! separately by `coevolve_determinism.rs`; these tests only assert the
+//! static contract of the fitness surface.
 
 use chio_arena::adversary::capability_overrequest::OverrequestVariant;
 use chio_arena::adversary::scope_escape::ScopeEscalation;

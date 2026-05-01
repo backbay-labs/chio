@@ -1,11 +1,11 @@
-//! Lineage DAG schema (M09 P5.T1).
+//! Lineage DAG schema.
 //!
-//! Defines the node and edge types projected from the trajectory-1 receipt
-//! store, capability lineage, and signed receipt-lineage statements. The
-//! schema is the source of truth for the JSON artifact at
+//! Defines the node and edge types projected from the receipt store,
+//! capability lineage, and signed receipt-lineage statements. The schema
+//! is the source of truth for the JSON artifact at
 //! `crates/chio-lineage/schemas/lineage-graph.v1.json`.
 //!
-//! Evidence-class preservation rules (per the P5 readiness research doc):
+//! Evidence-class preservation rules:
 //!
 //! - `Asserted`: caller-supplied call-chain attributes, OTEL ingest fields
 //!   that are not signed independently.

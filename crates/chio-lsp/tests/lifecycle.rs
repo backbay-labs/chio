@@ -1,4 +1,4 @@
-//! P4.T1 lifecycle tests.
+//! Lifecycle tests.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 //!

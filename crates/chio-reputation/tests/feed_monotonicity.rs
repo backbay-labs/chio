@@ -1,16 +1,13 @@
 //! Monotonicity property test for the bundled `ReputationFeed`
 //! implementations.
 //!
-//! M09.P3.T5 ticket statement:
+//! Asserts feed composition is monotonic in observed signal: more arena
+//! survival never decreases score; more equality never decreases score.
 //!
-//! > Property test asserting feed composition is monotonic in observed
-//! > signal: more arena survival never decreases score; more equality
-//! > never decreases score.
-//!
-//! These tests assert the strict invariant for each shipped feed and the
-//! aggregated invariant on `tier_from_deltas`. The proptest cases are
-//! deterministic (`ProptestConfig::with_cases`) so the audit doc records
-//! a stable count.
+//! These tests assert the strict invariant for each shipped feed and
+//! the aggregated invariant on `tier_from_deltas`. The proptest cases
+//! are deterministic (`ProptestConfig::with_cases`) so the audit doc
+//! records a stable count.
 
 use chio_reputation::feeds::arena_survival::{
     ArenaRoundOutcome, ArenaRoundsObservation, ArenaSurvivalFeed,
@@ -230,10 +227,9 @@ proptest! {
     }
 }
 
-/// Targeted regression: the empty-input fallback (per ticket M09.P3.T2)
-/// always lands at tier_0, never higher. This protects against a future
-/// refactor that swaps the zero-delta fallback for a default-positive
-/// value.
+/// Targeted regression: the empty-input fallback always lands at
+/// tier_0, never higher. This protects against a future refactor that
+/// swaps the zero-delta fallback for a default-positive value.
 #[test]
 fn empty_inputs_always_tier_0() {
     let arena_feed = ArenaSurvivalFeed::new();

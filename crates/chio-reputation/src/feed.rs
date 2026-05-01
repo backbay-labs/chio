@@ -63,9 +63,8 @@ impl ScoreDelta {
     }
 
     /// Construct a zero delta. Used by feeds that received an empty
-    /// observation set (per ticket M09.P3.T2 the empty fallback is for unit-
-    /// test isolation only; production runs always have non-empty inputs
-    /// under the Wave 3 -> Wave 4 sequencing).
+    /// observation set; the empty fallback is for unit-test isolation
+    /// only, production runs always have non-empty inputs.
     #[must_use]
     pub fn zero(feed_id: &'static str) -> Self {
         Self {

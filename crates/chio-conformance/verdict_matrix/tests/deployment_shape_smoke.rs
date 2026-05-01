@@ -1,8 +1,8 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-//! M07.P6.T6: cross-deployment integration smoke gate for the four
-//! deployment-shape SDK drivers (JVM, dotnet, Lambda, k8s).
+//! Cross-deployment integration smoke gate for the four deployment-shape
+//! SDK drivers (JVM, dotnet, Lambda, k8s).
 //!
 //! The deployment shapes re-host one of the primary kernels (Rust,
 //! Python, TS node-http, WASM browser, Go) but expose distinct wire
@@ -22,8 +22,6 @@
 //!    deployment-shape registration shape and the verdict-tuple equality
 //!    contract that the four drivers will inherit from the Rust kernel
 //!    reference once the wiring lands.
-//!
-//! The test is the M07.P6.T6 closure marker for the M02 D07 deferral.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -174,7 +172,7 @@ fn audit_doc_records_d07_closure_marker() {
     };
     assert!(
         raw.contains("D07 deferral closed"),
-        "audit doc {} must record the M07.P6 D07 deferral closure marker",
+        "audit doc {} must record the D07 deferral closure marker",
         audit_path.display()
     );
 }

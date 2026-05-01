@@ -1,4 +1,4 @@
-//! P4.T3 completion provider integration test.
+//! Completion provider integration test.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_lsp::completion::complete;

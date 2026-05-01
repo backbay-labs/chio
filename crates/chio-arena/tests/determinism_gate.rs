@@ -1,4 +1,4 @@
-//! Determinism gate (P2.T6).
+//! Determinism gate.
 //!
 //! Runs the three reference scenarios (`walking_skeleton`,
 //! `two_agent_tool_exchange`, `three_agent_triangular_delegation`) twice and
@@ -12,8 +12,8 @@
 //!     (everything except the wall-clock-derived `receipt_id` field on each
 //!     step entry; the kernel's signed receipts hold a `Uuid::now_v7()`-keyed
 //!     id whose byte pattern is intentionally non-replayable here, and is
-//!     covered separately by trajectory-1 M04's replay-gate against the M04
-//!     fixture sub-shape).
+//!     covered separately by the replay-gate against the M04 fixture
+//!     sub-shape).
 //!
 //! The Linux-only CI workflow `chio-arena-determinism.yml` runs this test
 //! under `LC_ALL=C` and `CARGO_INCREMENTAL=0` to harden against locale and

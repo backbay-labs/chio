@@ -1,10 +1,11 @@
-//! Replay-attempt adversary class (P3.T4).
+//! Replay-attempt adversary class.
 //!
 //! Reuses a captured capability or nonce after expiry / revocation.
-//! Intersects the trajectory-1 M04 `replay_attack` fixture family
+//! Intersects the `replay_attack` fixture family
 //! (`tests/replay/fixtures/replay_attack/`); the arena consumes the same
-//! nonce-reuse patterns the M04 family encodes (immediate reuse, delayed
-//! reuse, stale nonce, concurrent reuse) without duplicating the fixtures.
+//! nonce-reuse patterns the family encodes (immediate reuse, delayed
+//! reuse, stale nonce, concurrent reuse) without duplicating the
+//! fixtures.
 //!
 //! Each adversary writes a stable replayed nonce string into the mutated
 //! step's arguments under [`REPLAYED_NONCE_KEY`]. The toy guard evaluator

@@ -1,4 +1,4 @@
-//! Phase 3.5 SQLite-backed `BatchApprovalStore`.
+//! SQLite-backed `BatchApprovalStore`.
 //!
 //! Mirrors the single-request approval store: a WAL-journaled SQLite
 //! database with idempotent migrations. Batch records carry their own

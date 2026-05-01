@@ -1,4 +1,4 @@
-//! Scaffolding tests for the P3 adversary surface (`M08.P3.T1`).
+//! Scaffolding tests for the adversary surface.
 //!
 //! These tests focus on the trait and population machinery rather than
 //! per-class behaviour: they exercise the [`AdversaryClass`] round-trip,

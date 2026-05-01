@@ -1,4 +1,4 @@
-//! P4.T4 hover provider integration test.
+//! Hover provider integration test.
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_lsp::hover::hover;

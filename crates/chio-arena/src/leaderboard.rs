@@ -2,13 +2,13 @@
 //!
 //! Consumes a [`FitnessReport`] (the output of the co-evolution driver) and
 //! renders both a Markdown table and a stable-schema JSON document. The JSON
-//! schema is pinned at `chio.arena.leaderboard/v1` and is the contract M09
-//! reputation reads against.
+//! schema is pinned at `chio.arena.leaderboard/v1` and is the contract the
+//! reputation layer reads against.
 //!
 //! The verdict oracle that decides who survives an action is upstream of this
 //! module: see [`crate::coevolve::evaluate_population`], which composes the
-//! trajectory-1 M07.P4.T6 cross-provider verdict equality oracle with the toy
-//! guard pool. This renderer only ranks the result.
+//! cross-provider verdict equality oracle with the toy guard pool. This
+//! renderer only ranks the result.
 
 use std::cmp::Ordering;
 use std::fs;

@@ -3,13 +3,13 @@
 //! `ReputationTier` is the discrete output the marketplace consumes. The
 //! threshold table in this module maps composed feed deltas to one of four
 //! tiers (`tier_0` through `tier_3`). Tiers gate marketplace discovery
-//! visibility; cosign verify (trajectory-1 M06) gates publication. A
-//! publisher whose tier is below a guard's `reputation_floor` does not see
-//! the guard in `arc guard market list` outputs but is not blocked from
-//! installing a guard whose floor is `tier_0` (the default for manifests
-//! without an explicit floor).
+//! visibility; cosign verify gates publication. A publisher whose tier is
+//! below a guard's `reputation_floor` does not see the guard in
+//! `arc guard market list` outputs but is not blocked from installing a
+//! guard whose floor is `tier_0` (the default for manifests without an
+//! explicit floor).
 //!
-//! Threshold table (per ticket M09.P3.T4):
+//! Threshold table:
 //!
 //! - `tier_0`: any composed score (the default tier; no positive evidence
 //!   required).
@@ -18,14 +18,13 @@
 //! - `tier_3`: composed score >= `TIER_3_THRESHOLD` (0.90) AND every
 //!   shipped feed independently clears `TIER_3_PER_FEED_THRESHOLD`
 //!   (0.80). The per-feed floor is the AND-companion to the composed
-//!   score: a publisher whose only signal is one feed (per the M09
-//!   narrative's Sybil mitigation in "Risks and mitigations") cannot
-//!   reach `tier_3` without independent evidence from the other feed.
+//!   score: a publisher whose only signal is one feed cannot reach
+//!   `tier_3` without independent evidence from the other feed (Sybil
+//!   resistance).
 //!
 //! Thresholds are policy-loaded only by way of the `ReputationConfig`
-//! values in `model.rs`. For now the constants are hard-coded so the
-//! audit doc can record a stable tier distribution on the M04 corpus
-//! (M09.P3.T6).
+//! values in `model.rs`. The constants are hard-coded so the audit doc
+//! can record a stable tier distribution.
 
 use serde::{Deserialize, Serialize};
 
@@ -42,9 +41,8 @@ pub const TIER_3_THRESHOLD: f64 = 0.90;
 
 /// Per-feed minimum delta required for `tier_3`. Every shipped feed
 /// MUST clear this value independently for the publisher to reach the
-/// highest tier; this is the M09 narrative's Sybil-resistance
-/// mitigation: a flood of arena rounds alone cannot promote a
-/// publisher past `tier_2`.
+/// highest tier; this is the Sybil-resistance mitigation: a flood of
+/// arena rounds alone cannot promote a publisher past `tier_2`.
 pub const TIER_3_PER_FEED_THRESHOLD: f64 = 0.80;
 
 /// Discrete reputation tier surfaced to the marketplace.
@@ -72,9 +70,8 @@ pub enum ReputationTier {
 }
 
 impl ReputationTier {
-    /// Stable string identifier matching the serde rename. The grep
-    /// gate on M09.P3.T4 looks for `tier_3` in this module's source;
-    /// keep these strings byte-stable.
+    /// Stable string identifier matching the serde rename. Keep these
+    /// strings byte-stable.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

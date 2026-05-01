@@ -1,11 +1,11 @@
 //! SQLite-backed persistence for [`DeadLetterRecord`] rows.
 //!
-//! M09 P2.T3 introduces an additive `settle_dead_letters` table on
-//! the existing `chio-store-sqlite` connection. The table is keyed
-//! by `receipt_id` so a finalized receipt can have at most one
-//! dead-letter row at any time. Re-inserting the same record is
-//! idempotent: a byte-identical row returns `Ok(false)`; a different
-//! row returns [`DeadLetterStoreError::Conflict`].
+//! Adds an additive `settle_dead_letters` table on the existing
+//! `chio-store-sqlite` connection. The table is keyed by `receipt_id`
+//! so a finalized receipt can have at most one dead-letter row at any
+//! time. Re-inserting the same record is idempotent: a byte-identical
+//! row returns `Ok(false)`; a different row returns
+//! [`DeadLetterStoreError::Conflict`].
 //!
 //! Fail-closed: once a row is persisted the kernel observer slot
 //! MUST NOT replay the failed settlement until an operator clears

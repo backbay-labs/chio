@@ -1,18 +1,19 @@
-//! Prompt-injection adversary class (P3.T2).
+//! Prompt-injection adversary class.
 //!
 //! Mutates the seed prompt referenced by the base scenario step using
-//! injection patterns drawn from the trajectory-1 M02 fuzz seed corpus
-//! (see `fuzz/artifacts/`). The arena does NOT vendor the corpus into the
+//! injection patterns drawn from the fuzz seed corpus (see
+//! `fuzz/artifacts/`). The arena does NOT vendor the corpus into the
 //! crate; the soft-dep is captured by storing the canonical injection
-//! pattern names as constants here, and the runtime feeds the corpus bytes
-//! through the same code path when wired in P4.
+//! pattern names as constants here, and the runtime feeds the corpus
+//! bytes through the same code path when wired up.
 //!
-//! For P3 the adversary writes a stable injection marker (`INJECTION_MARKER`)
-//! plus the chosen pattern name into the mutated step's arguments under the
-//! `prompt_injection` key. The toy guard evaluator in `mod.rs` denies any
-//! action whose arguments contain the marker, which mirrors the kernel's
-//! prompt-shield decision tree (the real shield is a downstream concern;
-//! the unit test only asserts fail-closed by construction).
+//! The adversary writes a stable injection marker (`INJECTION_MARKER`)
+//! plus the chosen pattern name into the mutated step's arguments under
+//! the `prompt_injection` key. The toy guard evaluator in `mod.rs`
+//! denies any action whose arguments contain the marker, which mirrors
+//! the kernel's prompt-shield decision tree (the real shield is a
+//! downstream concern; the unit test only asserts fail-closed by
+//! construction).
 
 use rand::RngCore;
 use rand_chacha::ChaCha20Rng;

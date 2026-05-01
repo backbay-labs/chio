@@ -1,4 +1,4 @@
-//! Seed-corpus loader tests (M08.P4.T4).
+//! Seed-corpus loader tests.
 //!
 //! Asserts:
 //!

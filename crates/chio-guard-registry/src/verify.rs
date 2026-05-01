@@ -192,7 +192,7 @@ impl GuardVerificationReport {
 /// then reuse it for every verification call. The returned type is the
 /// `chio-attest-verify` source-of-truth type, not a guard-registry shadow.
 ///
-/// # M05.P4.T3 migration
+/// # Migration note
 ///
 /// Production callers SHOULD prefer
 /// [`chio_attest_verify::TenantPolicyResolver::expected_for_tenant`] so
@@ -210,7 +210,7 @@ pub fn expected_identity_from_config(
 where
     ExpectedIdentity: Sized,
 {
-    // Routes through the doc-hidden constructor (M05.P4.T3).
+    // Routes through the doc-hidden constructor.
     chio_attest_verify::ExpectedIdentity::doc_hidden_inline(
         fulcio_subject_regex,
         fulcio_oidc_issuer,

@@ -1,7 +1,7 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-//! M02.P5.T5: cross-language verdict-matrix activation gate.
+//! Cross-language verdict-matrix activation gate.
 //!
 //! This integration test runs the cross-language diff oracle on the
 //! drivers we have available natively (the in-process Rust kernel and

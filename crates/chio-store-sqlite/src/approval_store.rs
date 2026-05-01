@@ -1,4 +1,4 @@
-//! Phase 3.5 SQLite-backed HITL approval store.
+//! SQLite-backed HITL approval store.
 //!
 //! Pending requests survive kernel restart because every `store_pending`
 //! call persists into a WAL-journaled SQLite database. Duplicate ids are

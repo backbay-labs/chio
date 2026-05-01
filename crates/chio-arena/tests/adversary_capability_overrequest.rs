@@ -1,4 +1,4 @@
-//! Capability-overrequest adversary class tests (`M08.P3.T3`).
+//! Capability-overrequest adversary class tests.
 
 use chio_arena::adversary::capability_overrequest::{default_variants, REASON};
 use chio_arena::{

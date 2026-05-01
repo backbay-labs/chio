@@ -1,8 +1,8 @@
-//! M08.P5.T3 - leaderboard renderer (Markdown + stable-schema JSON) using the
-//! verdict_matrix oracle. This test exercises the `Leaderboard` constructor on
-//! a synthetic `FitnessReport` (we avoid the heavier multi-agent scaffolding
-//! to keep the gate fast) and asserts the schema marker, sort order, and
-//! rendered artifacts.
+//! Leaderboard renderer (Markdown + stable-schema JSON) using the
+//! verdict_matrix oracle. This test exercises the `Leaderboard`
+//! constructor on a synthetic `FitnessReport` (we avoid the heavier
+//! multi-agent scaffolding to keep the gate fast) and asserts the schema
+//! marker, sort order, and rendered artifacts.
 
 use std::collections::BTreeMap;
 

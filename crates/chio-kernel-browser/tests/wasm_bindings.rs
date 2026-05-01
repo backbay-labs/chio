@@ -1,20 +1,20 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Phase 14.2 wasm-bindgen integration tests.
+//! Wasm-bindgen integration tests.
 //!
 //! These tests exercise the three `#[wasm_bindgen]` entry points
 //! (`evaluate`, `sign_receipt`, `verify_capability`) end-to-end with
 //! fixture JSON payloads that are constructed inside the test itself.
 //!
 //! The tests are gated behind `cfg(target_arch = "wasm32")` so native
-//! `cargo test -p chio-kernel-browser` skips them gracefully; the native
-//! smoke tests in `src/lib.rs` cover the pure-logic path on the host.
+//! `cargo test -p chio-kernel-browser` skips them gracefully; the
+//! native smoke tests in `src/lib.rs` cover the pure-logic path on the
+//! host.
 //!
 //! Run under `wasm-bindgen-test-runner` when a headless browser is
 //! installed (Chrome and Firefox both work with `wasm-bindgen-cli`):
 //!
 //! ```bash
-//! CARGO_TARGET_DIR=target/wave3k-browser \
-//!   wasm-pack test --headless --chrome crates/chio-kernel-browser
+//! wasm-pack test --headless --chrome crates/chio-kernel-browser
 //! ```
 
 #![cfg(target_arch = "wasm32")]

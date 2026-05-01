@@ -1,7 +1,7 @@
-//! M08.P5.T7 - end-to-end smoke test composing the Phase 5 building blocks:
-//! a failing arena scenario auto-promotes to both corpora, the receipt bundle
-//! is replayable bit-exact via the M04 layout, and the leaderboard is rendered
-//! with the stable schema.
+//! End-to-end smoke test composing the auto-promotion building blocks:
+//! a failing arena scenario auto-promotes to both corpora, the receipt
+//! bundle is replayable bit-exact via the M04 layout, and the
+//! leaderboard is rendered with the stable schema.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -120,7 +120,7 @@ fn end_to_end_smoke() -> Result<(), Box<dyn std::error::Error>> {
     assert!(bundle_dir.join("arena.json").is_file());
     assert_eq!(bundle.scenario_id, "smoke_e2e");
 
-    // Step 2: auto-promote to the trajectory-1 M04 fixture corpus.
+    // Step 2: auto-promote to the M04 fixture corpus.
     let fixtures_root = workspace
         .path()
         .join("tests")

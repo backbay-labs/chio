@@ -1,10 +1,9 @@
-//! OTEL receipt-stream ingest (M09 P5.T2).
+//! OTEL receipt-stream ingest.
 //!
-//! Folds NDJSON frames produced by the trajectory-1 M10 OTEL receipt
-//! exporter (`crates/chio-otel-receipt-exporter/src/sink.rs`) into the
-//! lineage DAG. Idempotent on re-ingest: edges and nodes carry stable
-//! natural keys derived from the source receipt id and OTEL trace/span
-//! ids.
+//! Folds NDJSON frames produced by the OTEL receipt exporter
+//! (`crates/chio-otel-receipt-exporter/src/sink.rs`) into the lineage
+//! DAG. Idempotent on re-ingest: edges and nodes carry stable natural
+//! keys derived from the source receipt id and OTEL trace/span ids.
 //!
 //! Schema-version gate: frames declare `otel.schema = otlp.grpc.trace.v1`;
 //! unknown versions reject fail-closed via [`OtelIngestError::SchemaMismatch`].

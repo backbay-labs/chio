@@ -1,20 +1,20 @@
 //! Adversary populations for the Chio arena.
 //!
-//! Phase 3 (M08.P3) adds adversarial scenario fragments to the arena. An
-//! [`Adversary`] is a deterministic transformation: given a base
-//! [`ScenarioStep`] (the candidate "honest" step to attack) and a per-agent
-//! RNG sub-stream, the adversary emits an [`AdversaryAction`] describing the
-//! mutated request and the verdict the kernel-and-guard pool is expected to
-//! return.
+//! An [`Adversary`] is a deterministic transformation: given a base
+//! [`ScenarioStep`] (the candidate "honest" step to attack) and a
+//! per-agent RNG sub-stream, the adversary emits an [`AdversaryAction`]
+//! describing the mutated request and the verdict the kernel-and-guard
+//! pool is expected to return.
 //!
-//! Each adversary class is fail-closed by construction: the toy guard set
-//! used in unit tests is the local helper [`evaluate_against_guards`], which
-//! mirrors the kernel's policy-shape decision tree (capability-scope check,
-//! nonce-replay check, scope-monotone delegation check). The arena does not
-//! invent a new verdict comparator; the M07.P4.T6 cross-provider verdict
-//! oracle remains the production referee. The toy evaluator exists strictly
-//! so phase-3 unit tests can prove every class triggers fail-closed without
-//! reaching into a real kernel build.
+//! Each adversary class is fail-closed by construction: the toy guard
+//! set used in unit tests is the local helper
+//! [`evaluate_against_guards`], which mirrors the kernel's policy-shape
+//! decision tree (capability-scope check, nonce-replay check,
+//! scope-monotone delegation check). The arena does not invent a new
+//! verdict comparator; the cross-provider verdict oracle remains the
+//! production referee. The toy evaluator exists strictly so unit tests
+//! can prove every class triggers fail-closed without reaching into a
+//! real kernel build.
 //!
 //! ## Determinism contract
 //!

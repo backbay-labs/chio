@@ -24,7 +24,7 @@ pub struct AgentKernelBinding {
     /// Agent id (matches `Scenario::agents[*].id`).
     pub agent_id: String,
     /// Shared kernel handle. Holding `Arc<ChioKernel>` (rather than `&mut`)
-    /// preserves the soft-coupling contract with trajectory-1 M05.
+    /// preserves the soft-coupling contract with the kernel host.
     pub kernel: Arc<ChioKernel>,
 }
 

@@ -1,10 +1,9 @@
-//! M07.P6.T3: Lambda deployment-shape verdict-matrix driver entry point.
+//! Lambda deployment-shape verdict-matrix driver entry point.
 //!
 //! Emits a JSON report on stdout per the verdict-matrix driver contract.
 //! When neither `CHIO_VERDICT_MATRIX_SIDECAR_URL` nor `CHIO_SIDECAR_URL`
 //! is set, every scenario is reported as `unsupported`; the local-invoke
-//! shim against `sdks/lambda/chio-lambda-extension` is operator-tactical
-//! and out of M07.P6.T3 scope.
+//! shim against `sdks/lambda/chio-lambda-extension` is operator-tactical.
 
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]

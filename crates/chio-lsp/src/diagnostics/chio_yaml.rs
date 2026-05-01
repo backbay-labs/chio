@@ -1,15 +1,9 @@
 //! `chio.yaml` diagnostics.
 //!
-//! Mirrors the `chio doctor` chio.yaml probe (M01.P3.T6) so the
-//! editor surface and the doctor surface agree on what counts as a
-//! valid `chio.yaml`. Errors carry `urn:chio:error:cli:doctor-chio-yaml-invalid`
-//! with a line/column anchor derived from the parser location.
-//!
-//! P4.T6 will extend this provider with deeper schema validation
-//! against the wire-types under `spec/schemas/chio-wire/v1/` once the
-//! manifest / guard-DSL providers ship; the chio.yaml top-level shape
-//! is intentionally narrow (required keys, scalar shape) and stays
-//! here.
+//! Mirrors the `chio doctor` chio.yaml probe so the editor surface and
+//! the doctor surface agree on what counts as a valid `chio.yaml`.
+//! Errors carry `urn:chio:error:cli:doctor-chio-yaml-invalid` with a
+//! line/column anchor derived from the parser location.
 
 use serde_yml::Value;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};

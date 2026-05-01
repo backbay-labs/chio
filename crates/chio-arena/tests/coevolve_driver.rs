@@ -1,4 +1,4 @@
-//! Co-evolution driver tests (M08.P4.T5).
+//! Co-evolution driver tests.
 //!
 //! Asserts:
 //!

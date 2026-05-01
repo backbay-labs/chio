@@ -1,4 +1,4 @@
-//! Prompt-injection adversary class tests (`M08.P3.T2`).
+//! Prompt-injection adversary class tests.
 
 use chio_arena::adversary::prompt_injection::{INJECTION_MARKER, INJECTION_PATTERNS, REASON};
 use chio_arena::{
