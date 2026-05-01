@@ -60,9 +60,8 @@ domains:
     class: core
     description: "Hardware custody, WebAuthn assertion, and audience-pinned capability envelope failures."
   - id: weights
-    class: reserved
-    reserved_for: "Model-card and weight custody workflows."
-    description: "Model-card, weight hash, and artifact integrity failures."
+    class: core
+    description: "Model-card, weight hash, capability scope binding, and artifact integrity failures (M10 P4)."
 codes:
   - urn: "urn:chio:error:capability:scope-exceeded"
     domain: capability
@@ -796,3 +795,82 @@ codes:
     consumed_by:
       - chio-tee-frame
       - chio-attest-verify
+  - urn: "urn:chio:error:weights:card-mismatch"
+    domain: weights
+    severity: error
+    summary: "Provider's loaded weights_hash does not match the signed model card."
+    help: "Re-sign a card whose weights_hash matches the loaded weights blob, or rebind the provider with the correct weights."
+    legacy_string_code: "CHIO-WEIGHTS-CARD-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-weights
+      - chio-kernel
+      - chio-cli
+  - urn: "urn:chio:error:weights:scope-not-subset"
+    domain: weights
+    severity: error
+    summary: "Requested capability scope set is not a subset of the model card's allowed_capability_set."
+    help: "Bind under a card whose allowed_capability_set covers the requested scope, or narrow the request."
+    legacy_string_code: "CHIO-WEIGHTS-SCOPE-NOT-SUBSET"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-weights
+      - chio-kernel
+      - chio-cli
+  - urn: "urn:chio:error:weights:tool-banned"
+    domain: weights
+    severity: error
+    summary: "Requested tool intersects the model card's banned_tools."
+    help: "The card explicitly forbids the requested tool. Bind under a card that does not list the tool as banned, or remove the tool from the request."
+    legacy_string_code: "CHIO-WEIGHTS-TOOL-BANNED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-weights
+      - chio-kernel
+      - chio-cli
+  - urn: "urn:chio:error:weights:card-expired"
+    domain: weights
+    severity: error
+    summary: "Model card expired before the verifier evaluated it."
+    help: "Mint a fresh card; cards bind to issued_at / expires_at and the kernel rejects past expiry."
+    legacy_string_code: "CHIO-WEIGHTS-CARD-EXPIRED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-weights
+      - chio-kernel
+  - urn: "urn:chio:error:weights:bundle-rejected"
+    domain: weights
+    severity: error
+    summary: "Cosign bundle for the model card failed cryptographic verification."
+    help: "Treat the card as untrusted; do not rebind without a fresh, correctly-signed cosign bundle."
+    legacy_string_code: "CHIO-WEIGHTS-BUNDLE-REJECTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-weights
+      - chio-kernel
+      - chio-cli
+  - urn: "urn:chio:error:weights:schema-rejected"
+    domain: weights
+    severity: error
+    summary: "Model card structural validation failed (bad weights_hash, missing required field, or invalid issued_at / expires_at window)."
+    help: "Re-mint the card with a valid v1 schema; check weights_hash is 64 lowercase hex chars and expires_at >= issued_at."
+    legacy_string_code: "CHIO-WEIGHTS-SCHEMA-REJECTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-weights
+  - urn: "urn:chio:error:weights:internal-encoding"
+    domain: weights
+    severity: fatal
+    summary: "Model card surface failed to canonicalize, encode, or decode an envelope."
+    help: "Treat as an internal error; do not retry until the encoding bug is resolved. No fresh challenge will help."
+    legacy_string_code: "CHIO-WEIGHTS-INTERNAL-ENCODING"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-weights

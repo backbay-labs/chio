@@ -2605,6 +2605,7 @@ dependencies = [
  "chio-api-protect",
  "chio-appraisal",
  "chio-arena",
+ "chio-attest-verify",
  "chio-conformance",
  "chio-control-plane",
  "chio-core",
@@ -2633,6 +2634,7 @@ dependencies = [
  "chio-tool-call-fabric",
  "chio-underwriting",
  "chio-wasm-guards",
+ "chio-weights",
  "chrono",
  "clap 4.6.0",
  "ed25519-dalek",
@@ -3189,6 +3191,7 @@ dependencies = [
  "chio-store-sqlite",
  "chio-tool-call-fabric",
  "chio-underwriting",
+ "chio-weights",
  "chrono",
  "criterion",
  "dashmap 6.1.0",
@@ -3841,6 +3844,20 @@ dependencies = [
  "chio-link",
  "chio-web3",
  "serde_json",
+]
+
+[[package]]
+name = "chio-weights"
+version = "0.1.0"
+dependencies = [
+ "chio-attest-verify",
+ "chio-core-types",
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

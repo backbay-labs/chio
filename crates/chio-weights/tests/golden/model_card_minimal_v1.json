@@ -1,0 +1,1 @@
+{"allowed_capability_set":["tool:read","tool:write"],"banned_tools":["tool:exec"],"card_version":"1","expires_at":"2026-05-30T12:00:00Z","issued_at":"2026-04-30T12:00:00Z","issuer":"https://example.com/issuer","training_data_class":"public-internet","weights_hash":"0000000000000000000000000000000000000000000000000000000000000001"}
