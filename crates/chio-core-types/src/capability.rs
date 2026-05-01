@@ -2507,6 +2507,14 @@ pub fn delegate(
     signed_at: u64,
     nonce: [u8; 16],
 ) -> Result<crate::delegation_receipt::DelegationReceipt> {
+    if !parent.verify_signature()? {
+        return Err(Error::SignatureVerificationFailed);
+    }
+    if signed_at < parent.issued_at {
+        return Err(Error::CapabilityNotYetValid {
+            not_before: parent.issued_at,
+        });
+    }
     if delegator_keypair.public_key() != parent.subject {
         return Err(Error::AttenuationViolation {
             reason: alloc::format!(
@@ -4219,6 +4227,70 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, Error::AttenuationViolation { .. }));
+    }
+
+    #[cfg(feature = "delegation_v2")]
+    #[test]
+    fn delegate_rejects_tampered_parent_signature() {
+        use crate::delegation_receipt::ScopeAttenuation;
+
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let parent_scope = make_scope(vec![make_grant(
+            "srv-a",
+            "tool-x",
+            vec![Operation::Invoke, Operation::Delegate],
+        )]);
+        let scope = make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let mut parent = delegate_parent_token(&issuer, &subject, parent_scope, 1000, 2000);
+        parent.id = "cap-parent-tampered".to_string();
+
+        let err = delegate(
+            &parent,
+            &scope,
+            &subject,
+            &delegatee.public_key(),
+            ScopeAttenuation::empty(),
+            1500,
+            [0_u8; 16],
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, Error::SignatureVerificationFailed));
+    }
+
+    #[cfg(feature = "delegation_v2")]
+    #[test]
+    fn delegate_rejects_parent_before_issued_at() {
+        use crate::delegation_receipt::ScopeAttenuation;
+
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let delegatee = Keypair::generate();
+        let parent_scope = make_scope(vec![make_grant(
+            "srv-a",
+            "tool-x",
+            vec![Operation::Invoke, Operation::Delegate],
+        )]);
+        let scope = make_scope(vec![make_grant("srv-a", "tool-x", vec![Operation::Invoke])]);
+        let parent = delegate_parent_token(&issuer, &subject, parent_scope, 1000, 2000);
+
+        let err = delegate(
+            &parent,
+            &scope,
+            &subject,
+            &delegatee.public_key(),
+            ScopeAttenuation::empty(),
+            999,
+            [0_u8; 16],
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            Error::CapabilityNotYetValid { not_before: 1000 }
+        ));
     }
 
     #[cfg(feature = "delegation_v2")]
