@@ -14,12 +14,13 @@ use chio_credentials::{
     present_agent_passport, respond_to_oid4vp_request, respond_to_passport_presentation_challenge,
     verify_agent_passport, verify_passport_presentation_response_with_policy,
     verify_signed_oid4vp_request_object_with_any_key, verify_signed_passport_verifier_policy,
-    AgentPassport, AttestationWindow, ChioCredentialEvidence, EnterpriseIdentityProvenance,
-    Oid4vciCredentialOffer, Oid4vciCredentialRequest, Oid4vciTokenRequest, Oid4vciTokenResponse,
-    Oid4vpPresentationVerification, Oid4vpRequestObject, Oid4vpVerifierMetadata,
-    PassportLifecycleResolution, PassportLifecycleState, PassportPresentationChallenge,
-    PassportPresentationOptions, PassportPresentationResponse, PassportStatusDistribution,
-    PassportVerifierPolicy, PassportVerifierPolicyReference, PortableJwkSet,
+    AgentPassport, AttestationWindow, ChioCredentialEvidence, CredentialError,
+    EnterpriseIdentityProvenance, Oid4vciCredentialOffer, Oid4vciCredentialRequest,
+    Oid4vciTokenRequest, Oid4vciTokenResponse, Oid4vpPresentationVerification,
+    Oid4vpRequestObject, Oid4vpVerifierMetadata, PassportLifecycleResolution,
+    PassportLifecycleState, PassportPresentationChallenge, PassportPresentationOptions,
+    PassportPresentationResponse, PassportStatusDistribution, PassportVerifierPolicy,
+    PassportVerifierPolicyReference, PortableJwkSet,
     SignedPassportVerifierPolicy, OID4VP_VERIFIER_METADATA_PATH,
 };
 use chio_credentials::{synthesize_trust_tier, TrustTier};
@@ -815,8 +816,7 @@ pub(crate) fn cmd_passport_create(
         now,
         now + validity_seconds(validity_days),
     )?;
-    let subject_did = DidChio::from_public_key(subject_public_key)
-        .map_err(|error| CliError::policy_error(error.to_string()))?;
+    let subject_did = DidChio::from_public_key(subject_public_key).map_err(CredentialError::Did)?;
     let passport = build_agent_passport(&subject_did.to_string(), vec![credential])?;
     let (enterprise_provenance_count, enterprise_provider_ids) =
         summarize_enterprise_provenance(&passport.enterprise_identity_provenance);
@@ -1293,10 +1293,7 @@ pub(crate) fn cmd_passport_issuance_credential_redeem(
         ensure_parent_dir(output)?;
         fs::write(
             output,
-            response
-                .credential
-                .write_output_bytes()
-                .map_err(|error| CliError::policy_error(error.to_string()))?,
+            response.credential.write_output_bytes()?,
         )?;
     }
 
@@ -2405,7 +2402,12 @@ fn resolve_challenge_policy_local(
 mod passport_error_classification_tests {
     use super::*;
 
+    const CLI_CREDENTIAL_CODE: &str = "CHIO-CLI-CREDENTIAL";
     const CLI_OTHER_CODE: &str = "urn:chio:error:cli:other";
+
+    fn assert_credential(error: &CliError) {
+        assert_eq!(error.report().code, CLI_CREDENTIAL_CODE);
+    }
 
     fn assert_cli_other(error: &CliError) {
         match error {
@@ -2415,6 +2417,16 @@ mod passport_error_classification_tests {
             }
             other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn credential_and_did_errors_keep_credential_domain() {
+        let credential: CliError =
+            CredentialError::InvalidOid4vciCredentialResponse("bad credential".to_string()).into();
+        assert_credential(&credential);
+
+        let did: CliError = CredentialError::Did(chio_did::DidError::InvalidPrefix).into();
+        assert_credential(&did);
     }
 
     #[test]

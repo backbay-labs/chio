@@ -12,7 +12,8 @@
 //! wire-type validation to the LSP, which loads the JSON schemas as a
 //! unit.
 
-use std::path::PathBuf;
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
 
 use serde_yml::Value;
 
@@ -22,6 +23,7 @@ use super::probe::{Probe, ProbeConfig, ProbeReport, ProbeSeverity};
 /// the probe to fail with a `urn:chio:error:cli:doctor-chio-yaml-invalid`
 /// report.
 pub const REQUIRED_KEYS: &[&str] = &["version", "policy"];
+const CHIO_YAML_SCAFFOLD: &str = "version: 1\npolicy: ./policy.yaml\n";
 
 #[derive(Debug, Default, Clone)]
 pub struct ChioYamlProbe {
@@ -54,22 +56,25 @@ impl Probe for ChioYamlProbe {
 
     fn run(&self, config: &ProbeConfig) -> ProbeReport {
         let path = self.resolve_path(config);
-        if !path.exists() {
-            return ProbeReport {
-                probe: self.name(),
-                severity: ProbeSeverity::Info,
-                code: "urn:chio:error:cli:other",
-                message: format!("No chio.yaml found at {}.", path.display()),
-                help: Some(
-                    "Run `chio init` to scaffold a chio.yaml or create one by hand.".to_string(),
-                ),
-                context: Vec::new(),
-                repaired: false,
-            };
-        }
-
         let body = match std::fs::read_to_string(&path) {
             Ok(b) => b,
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                if config.fix_enabled {
+                    return self.scaffold_missing(&path);
+                }
+                return ProbeReport {
+                    probe: self.name(),
+                    severity: ProbeSeverity::Info,
+                    code: "urn:chio:error:cli:other",
+                    message: format!("No chio.yaml found at {}.", path.display()),
+                    help: Some(
+                        "Run `chio doctor --fix` to scaffold a minimal chio.yaml, or create one by hand."
+                            .to_string(),
+                    ),
+                    context: Vec::new(),
+                    repaired: false,
+                };
+            }
             Err(err) => {
                 return ProbeReport::fail(
                     self.name(),
@@ -80,7 +85,62 @@ impl Probe for ChioYamlProbe {
             }
         };
 
-        let doc: Value = match serde_yml::from_str(&body) {
+        self.validate_body(&path, &body)
+    }
+}
+
+impl ChioYamlProbe {
+    fn scaffold_missing(&self, path: &Path) -> ProbeReport {
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+        {
+            Ok(file) => file,
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                return match std::fs::read_to_string(path) {
+                    Ok(body) => self.validate_body(path, &body),
+                    Err(read_err) => ProbeReport::fail(
+                        self.name(),
+                        ProbeSeverity::Error,
+                        "urn:chio:error:cli:doctor-chio-yaml-invalid",
+                        format!("Could not read {} after it appeared: {read_err}", path.display()),
+                    ),
+                };
+            }
+            Err(err) => {
+                return ProbeReport::fail(
+                    self.name(),
+                    ProbeSeverity::Error,
+                    "urn:chio:error:cli:doctor-probe-failed",
+                    format!("Could not create {}: {err}", path.display()),
+                )
+                .with_context("path", path.display().to_string());
+            }
+        };
+
+        if let Err(err) = file.write_all(CHIO_YAML_SCAFFOLD.as_bytes()) {
+            return ProbeReport::fail(
+                self.name(),
+                ProbeSeverity::Error,
+                "urn:chio:error:cli:doctor-probe-failed",
+                format!("Could not write {}: {err}", path.display()),
+            )
+            .with_context("path", path.display().to_string());
+        }
+
+        ProbeReport::ok(
+            self.name(),
+            format!("Created minimal chio.yaml at {}.", path.display()),
+        )
+        .with_context("path", path.display().to_string())
+        .with_context("created", "true")
+        .with_help("Review the scaffolded policy path before running production workloads.")
+        .mark_repaired()
+    }
+
+    fn validate_body(&self, path: &Path, body: &str) -> ProbeReport {
+        let doc: Value = match serde_yml::from_str(body) {
             Ok(v) => v,
             Err(err) => {
                 let (line, column) = err
