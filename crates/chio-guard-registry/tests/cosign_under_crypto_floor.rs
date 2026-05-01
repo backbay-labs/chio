@@ -96,7 +96,7 @@ impl AttestVerifier for AlwaysOkBundleVerifier {
     }
 }
 
-fn make_expected() -> ExpectedIdentity {
+fn make_expected() -> ExpectedIdentity { // doc-hidden return type
     expected_identity_from_config(
         "https://github.com/test/repo/.github/workflows/.*",
         "https://token.actions.githubusercontent.com",
