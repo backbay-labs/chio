@@ -23,6 +23,12 @@ expected = [
     "public_evaluate_rejects_untrusted_issuer_before_dispatch",
     "public_sign_receipt_rejects_kernel_key_mismatch_before_signing",
     "public_sign_receipt_accepts_matching_kernel_key",
+    # M04.P4.T5: four recursive-delegation, receipt, revocation-view,
+    # and oracle-inclusion harnesses bring the public-core sweep to 13.
+    "verify_delegate_no_widen",
+    "verify_delegation_receipt_canonical",
+    "verify_revocation_view_freshness",
+    "verify_oracle_inclusion_soundness",
 ]
 missing = [name for name in expected if f"fn {name}" not in text]
 if missing:
@@ -39,6 +45,10 @@ PUBLIC_HARNESSES=(
   public_evaluate_rejects_untrusted_issuer_before_dispatch
   public_sign_receipt_rejects_kernel_key_mismatch_before_signing
   public_sign_receipt_accepts_matching_kernel_key
+  verify_delegate_no_widen
+  verify_delegation_receipt_canonical
+  verify_revocation_view_freshness
+  verify_oracle_inclusion_soundness
 )
 
 for harness in "${PUBLIC_HARNESSES[@]}"; do
