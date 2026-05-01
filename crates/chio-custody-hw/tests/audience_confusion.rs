@@ -130,7 +130,7 @@ proptest! {
     /// in the worst case where every bit of the audience is flipped or
     /// only one bit is flipped.
     #[test]
-    fn audience_bit_flip_arbitrary_index_breaks_sig(byte_index in 0usize..AUDIENCE.len(), bit in 0u8..7) {
+    fn audience_bit_flip_arbitrary_index_breaks_sig(byte_index in 0usize..AUDIENCE.len(), bit in 0u8..8) {
         let (cap, public) = mint_signed(AUDIENCE);
         let mut bytes = cap.audience.clone().into_bytes();
         bytes[byte_index] ^= 1u8 << bit;
