@@ -73,9 +73,9 @@ pub use errors_pass::{
     ERROR_REGISTRY_INPUT,
 };
 pub use threat_coverage_doc::{
-    codegen_threat_coverage_doc, codegen_threat_coverage_doc_default,
-    render_threat_coverage_doc, ThreatCoverageInputs, ADVERSARIAL_MANIFEST,
-    ESCAPE_HARNESS_DIR, THREAT_COVERAGE_DOC, THREAT_STUBS_DIR,
+    codegen_threat_coverage_doc, codegen_threat_coverage_doc_default, render_threat_coverage_doc,
+    ThreatCoverageInputs, ADVERSARIAL_MANIFEST, ESCAPE_HARNESS_DIR, THREAT_COVERAGE_DOC,
+    THREAT_STUBS_DIR,
 };
 pub use threat_model::{
     codegen_threat_model, load_threat_model, render_threat_stub, render_threats_mod,

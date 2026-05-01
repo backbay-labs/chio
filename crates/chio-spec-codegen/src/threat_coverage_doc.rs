@@ -107,9 +107,8 @@ pub struct ThreatCoverageInputs<'a> {
 pub fn render_threat_coverage_doc(
     inputs: &ThreatCoverageInputs<'_>,
 ) -> Result<String, CodegenError> {
-    let threat_raw = fs::read_to_string(inputs.threat_model_path).map_err(|err| {
-        CodegenError::Io(inputs.threat_model_path.to_path_buf(), err)
-    })?;
+    let threat_raw = fs::read_to_string(inputs.threat_model_path)
+        .map_err(|err| CodegenError::Io(inputs.threat_model_path.to_path_buf(), err))?;
     let threat_doc: ThreatModelDoc = serde_json::from_str(&threat_raw)
         .map_err(|err| CodegenError::Json(inputs.threat_model_path.to_path_buf(), err))?;
 
@@ -175,7 +174,10 @@ pub fn render_threat_coverage_doc(
                 &mut body,
                 threat,
                 state,
-                by_threat.get(&threat.id).map(|v| v.as_slice()).unwrap_or(&[]),
+                by_threat
+                    .get(&threat.id)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]),
                 inputs.stubs_dir,
                 inputs.escape_dir,
             );
@@ -196,10 +198,7 @@ fn render_threat_section(
     out.push_str(&format!("## Threat: {}\n\n", threat.id));
     out.push_str(&format!("- **Name:** {}\n", threat.name));
     out.push_str(&format!("- **State:** {}\n", state.heading()));
-    out.push_str(&format!(
-        "- **Surfaces:** {}\n",
-        threat.surfaces.join(", ")
-    ));
+    out.push_str(&format!("- **Surfaces:** {}\n", threat.surfaces.join(", ")));
 
     let stub_path = stubs_dir.join(format!("{}.rs", threat.id));
     if stub_path.exists() {
@@ -217,9 +216,7 @@ fn render_threat_section(
         "resource_exhaustion_dos" | "tool_server_escape" | "wasm_guard_resource_exhaustion"
     ) && escape_dir.exists()
     {
-        out.push_str(
-            "- **Escape harness:** `crates/chio-wasm-guards/tests/escape/`\n",
-        );
+        out.push_str("- **Escape harness:** `crates/chio-wasm-guards/tests/escape/`\n");
     }
 
     if cases.is_empty() {
@@ -244,8 +241,7 @@ pub fn codegen_threat_coverage_doc(
 ) -> Result<String, CodegenError> {
     let body = render_threat_coverage_doc(inputs)?;
     if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| CodegenError::Io(parent.to_path_buf(), err))?;
+        fs::create_dir_all(parent).map_err(|err| CodegenError::Io(parent.to_path_buf(), err))?;
     }
     write_if_changed(out_path, body.as_bytes())?;
     Ok(body)
@@ -253,9 +249,7 @@ pub fn codegen_threat_coverage_doc(
 
 /// Convenience wrapper that pulls every input from its canonical
 /// repository-relative path. Used by the CLI and tests.
-pub fn codegen_threat_coverage_doc_default(
-    repo_root: &Path,
-) -> Result<PathBuf, CodegenError> {
+pub fn codegen_threat_coverage_doc_default(repo_root: &Path) -> Result<PathBuf, CodegenError> {
     let inputs = ThreatCoverageInputs {
         threat_model_path: &repo_root.join(crate::THREAT_MODEL_INPUT),
         manifest_path: &repo_root.join(ADVERSARIAL_MANIFEST),
@@ -281,11 +275,23 @@ mod tests {
 
     #[test]
     fn coverage_state_parses_known_values() {
-        assert_eq!(CoverageState::parse(Some("covered")), CoverageState::Covered);
-        assert_eq!(CoverageState::parse(Some("partial")), CoverageState::Partial);
-        assert_eq!(CoverageState::parse(Some("pending")), CoverageState::Pending);
+        assert_eq!(
+            CoverageState::parse(Some("covered")),
+            CoverageState::Covered
+        );
+        assert_eq!(
+            CoverageState::parse(Some("partial")),
+            CoverageState::Partial
+        );
+        assert_eq!(
+            CoverageState::parse(Some("pending")),
+            CoverageState::Pending
+        );
         assert_eq!(CoverageState::parse(None), CoverageState::Covered);
-        assert_eq!(CoverageState::parse(Some("nonsense")), CoverageState::Covered);
+        assert_eq!(
+            CoverageState::parse(Some("nonsense")),
+            CoverageState::Covered
+        );
     }
 
     #[test]

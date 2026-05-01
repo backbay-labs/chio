@@ -23,9 +23,8 @@ use chio_adversarial_suite::{bundled_cases, AdversarialCase, ExpectedVerdict};
 /// An empty result is an authoring error: every threat ID exercised
 /// by these tests must already have at least one corpus case.
 pub fn corpus_cases_for(threat_id: &str) -> Vec<AdversarialCase> {
-    let all = bundled_cases().unwrap_or_else(|err| {
-        panic!("chio-adversarial-suite bundled_cases load failed: {err}")
-    });
+    let all = bundled_cases()
+        .unwrap_or_else(|err| panic!("chio-adversarial-suite bundled_cases load failed: {err}"));
     let mut hits: Vec<AdversarialCase> = all
         .into_iter()
         .filter(|case| {

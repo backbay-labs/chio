@@ -28,8 +28,8 @@ fn repo_root() -> PathBuf {
 }
 
 fn load_json(path: &PathBuf) -> serde_json::Value {
-    let raw = fs::read_to_string(path)
-        .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+    let raw =
+        fs::read_to_string(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
     serde_json::from_str(&raw)
         .unwrap_or_else(|err| panic!("parse {} as JSON: {err}", path.display()))
 }
@@ -43,8 +43,8 @@ fn schema_validates_threat_model_v1() {
     let schema_value = load_json(&schema_path);
     let instance_value = load_json(&instance_path);
 
-    let validator = jsonschema::validator_for(&schema_value)
-        .expect("compile chio-threat-model.schema.json");
+    let validator =
+        jsonschema::validator_for(&schema_value).expect("compile chio-threat-model.schema.json");
 
     let errors: Vec<String> = validator
         .iter_errors(&instance_value)
@@ -66,8 +66,8 @@ fn schema_rejects_threat_missing_required_field() {
     let root = repo_root();
     let schema_path = root.join("spec/security/chio-threat-model.schema.json");
     let schema_value = load_json(&schema_path);
-    let validator = jsonschema::validator_for(&schema_value)
-        .expect("compile chio-threat-model.schema.json");
+    let validator =
+        jsonschema::validator_for(&schema_value).expect("compile chio-threat-model.schema.json");
 
     let bad = serde_json::json!({
         "schema": "chio.threat-model.v1",
@@ -100,8 +100,8 @@ fn schema_rejects_invalid_coverage_state() {
     let root = repo_root();
     let schema_path = root.join("spec/security/chio-threat-model.schema.json");
     let schema_value = load_json(&schema_path);
-    let validator = jsonschema::validator_for(&schema_value)
-        .expect("compile chio-threat-model.schema.json");
+    let validator =
+        jsonschema::validator_for(&schema_value).expect("compile chio-threat-model.schema.json");
 
     let bad = serde_json::json!({
         "schema": "chio.threat-model.v1",
@@ -136,8 +136,8 @@ fn schema_rejects_invalid_boundary_surface() {
     let root = repo_root();
     let schema_path = root.join("spec/security/chio-threat-model.schema.json");
     let schema_value = load_json(&schema_path);
-    let validator = jsonschema::validator_for(&schema_value)
-        .expect("compile chio-threat-model.schema.json");
+    let validator =
+        jsonschema::validator_for(&schema_value).expect("compile chio-threat-model.schema.json");
 
     let bad = serde_json::json!({
         "schema": "chio.threat-model.v1",

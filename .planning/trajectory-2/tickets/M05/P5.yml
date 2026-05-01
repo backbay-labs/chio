@@ -166,7 +166,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: cb06efd9d59e913141fe97da718bda2945e47cd6
   merged_sha: null
   opened_ts: null
   merged_ts: null

@@ -667,11 +667,10 @@ mod tests {
     /// triages them and strips the flag.
     #[test]
     fn every_non_pending_case_cites_a_known_threat_id() -> Result<(), CaseError> {
-        const THREAT_MODEL_JSON: &str = include_str!(
-            "../../../spec/security/chio-threat-model.v1.json"
-        );
-        let doc: serde_json::Value = serde_json::from_str(THREAT_MODEL_JSON)
-            .expect("threat-model JSON parses");
+        const THREAT_MODEL_JSON: &str =
+            include_str!("../../../spec/security/chio-threat-model.v1.json");
+        let doc: serde_json::Value =
+            serde_json::from_str(THREAT_MODEL_JSON).expect("threat-model JSON parses");
         let known: std::collections::BTreeSet<String> = doc
             .get("threats")
             .and_then(serde_json::Value::as_array)

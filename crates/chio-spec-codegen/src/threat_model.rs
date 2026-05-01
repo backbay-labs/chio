@@ -72,9 +72,8 @@ pub fn validate_threat_model_against_schema(
     let instance_value: serde_json::Value = serde_json::from_str(&instance_raw)
         .map_err(|err| CodegenError::Json(instance_path.to_path_buf(), err))?;
 
-    let validator = jsonschema::validator_for(&schema_value).map_err(|err| {
-        CodegenError::Registry(schema_path.to_path_buf(), err.to_string())
-    })?;
+    let validator = jsonschema::validator_for(&schema_value)
+        .map_err(|err| CodegenError::Registry(schema_path.to_path_buf(), err.to_string()))?;
 
     let errors: Vec<String> = validator
         .iter_errors(&instance_value)
@@ -95,10 +94,9 @@ pub fn validate_threat_model_against_schema(
 
 /// Parse the threat-model JSON document at `path`.
 pub fn load_threat_model(path: &Path) -> Result<ThreatModelDoc, CodegenError> {
-    let raw =
-        fs::read_to_string(path).map_err(|err| CodegenError::Io(path.to_path_buf(), err))?;
-    let doc: ThreatModelDoc = serde_json::from_str(&raw)
-        .map_err(|err| CodegenError::Json(path.to_path_buf(), err))?;
+    let raw = fs::read_to_string(path).map_err(|err| CodegenError::Io(path.to_path_buf(), err))?;
+    let doc: ThreatModelDoc =
+        serde_json::from_str(&raw).map_err(|err| CodegenError::Json(path.to_path_buf(), err))?;
     if doc.schema != "chio.threat-model.v1" {
         return Err(CodegenError::Registry(
             path.to_path_buf(),
@@ -151,15 +149,9 @@ pub fn render_threats_mod(entries: &[ThreatEntry]) -> String {
     body.push_str(GENERATED_HEADER);
     body.push('\n');
     body.push_str("//! Aggregator for the threat-model codegen stubs.\n");
-    body.push_str(
-        "//!\n//! Owner: M05.P5.T2. The chio-conformance test crate does NOT\n",
-    );
-    body.push_str(
-        "//! pull this module into its `lib.rs`; each per-threat `.rs` file\n",
-    );
-    body.push_str(
-        "//! under this directory is its own integration test. The module\n",
-    );
+    body.push_str("//!\n//! Owner: M05.P5.T2. The chio-conformance test crate does NOT\n");
+    body.push_str("//! pull this module into its `lib.rs`; each per-threat `.rs` file\n");
+    body.push_str("//! under this directory is its own integration test. The module\n");
     body.push_str("//! aggregator is emitted for documentation purposes only.\n\n");
     for entry in entries {
         body.push_str(&format!("// covers: {}\n", entry.id));
@@ -183,8 +175,7 @@ pub fn codegen_threat_model(
 ) -> Result<Vec<(String, PathBuf)>, CodegenError> {
     let doc = load_threat_model(threat_model_path)?;
 
-    fs::create_dir_all(out_dir)
-        .map_err(|err| CodegenError::Io(out_dir.to_path_buf(), err))?;
+    fs::create_dir_all(out_dir).map_err(|err| CodegenError::Io(out_dir.to_path_buf(), err))?;
 
     let mut written: Vec<(String, PathBuf)> = Vec::with_capacity(doc.threats.len());
 

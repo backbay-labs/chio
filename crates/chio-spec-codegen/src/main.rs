@@ -130,10 +130,9 @@ fn main() -> ExitCode {
             .map(|p| p.join("chio-threat-model.schema.json"))
             .unwrap_or_else(|| PathBuf::from(chio_spec_codegen::THREAT_MODEL_SCHEMA));
         if schema_path.exists() {
-            if let Err(err) = chio_spec_codegen::validate_threat_model_against_schema(
-                &schema_path,
-                &input_path,
-            ) {
+            if let Err(err) =
+                chio_spec_codegen::validate_threat_model_against_schema(&schema_path, &input_path)
+            {
                 eprintln!("chio-spec-codegen: {err}");
                 return ExitCode::FAILURE;
             }
