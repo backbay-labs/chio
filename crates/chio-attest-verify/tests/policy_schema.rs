@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Structural-validation coverage for the per-tenant policy schema
-//! (M05.P4.T1). Tests live outside `src/` because the crate root forbids
-//! `unwrap_used` and `expect_used` at the lint level.
+//! Structural-validation coverage for the per-tenant policy schema. Tests
+//! live outside `src/` because the crate root forbids `unwrap_used` and
+//! `expect_used` at the lint level.
 
 use std::time::{Duration, SystemTime};
 
@@ -21,8 +21,8 @@ signature = "AAAA"
 
 #[test]
 fn parses_minimal_policy() {
-    let policy = TenantPolicy::from_toml_slice(sample_toml().as_bytes())
-        .expect("sample policy must parse");
+    let policy =
+        TenantPolicy::from_toml_slice(sample_toml().as_bytes()).expect("sample policy must parse");
     assert_eq!(policy.tenant_id, "acme");
     assert_eq!(policy.version, TENANT_POLICY_SCHEMA_VERSION);
     assert!(policy.pq_identity_regexps.is_empty());

@@ -38,9 +38,8 @@ fn verify_bundle_rejects_malformed_json() {
         }
         // Test-only panic: surfaces a test failure with diagnostic
         // context. The trust-boundary `panic!()` ban applies under
-        // `src/` only (per EXECUTION-BOARD "No verifier or trust-boundary
-        // stubs"); this file lives under `tests/` and is compiled solely
-        // by `cargo test`.
+        // `src/` only; this file lives under `tests/` and is compiled
+        // solely by `cargo test`.
         other => panic!("expected Malformed bundle error, got {other:?}"),
     }
 }

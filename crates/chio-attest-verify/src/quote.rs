@@ -3,10 +3,10 @@
 //! This module defines the trait surface every TEE quote backend ships
 //! against. It is the single import point for downstream consumers:
 //!
-//! - M04 revocation oracle roots (`crates/chio-revocation/`) consume
+//! - The revocation oracle (`crates/chio-revocation/`) consumes
 //!   [`VerifiedQuote`] when a revocation root is signed by a kernel that
 //!   ran inside an attested TEE.
-//! - M10 hardware custody envelopes (`crates/chio-tee/`) consume
+//! - Hardware custody envelopes (`crates/chio-tee/`) consume
 //!   [`expect_report_data`] before declaring a custody handoff valid.
 //!
 //! All shapes here are intentionally minimal: a TEE family discriminator,
@@ -34,10 +34,10 @@ pub enum TeeKind {
     /// collateral. Backend module: `tdx`.
     IntelTdx,
     /// AMD SEV-SNP attestation verified against the AMD KDS root via
-    /// VLEK or VCEK. Backend module lands in M03 P4.
+    /// VLEK or VCEK. Backend module: `sev_snp`.
     AmdSevSnp,
     /// AWS Nitro NSM attestation document verified against the embedded
-    /// AWS Nitro root certificate. Backend module lands in M03 P4.
+    /// AWS Nitro root certificate. Backend module: `nitro`.
     AwsNitro,
 }
 
@@ -157,9 +157,8 @@ impl VerifiedQuote {
 ///
 /// `kernel_signing_pk_canonical_bytes` is the algorithm-prefixed hex
 /// rendering of the kernel public key (`Ed25519` bare hex, `p256:<hex>`,
-/// `p384:<hex>`, `hybrid:<...>`). That encoding is the canonical-JSON
-/// form already locked by trajectory-1 M01 and trajectory-2 M03 P1, so
-/// the binding is byte-stable across the wire.
+/// `p384:<hex>`, `hybrid:<...>`). That encoding is the canonical-JSON form
+/// locked by the wire spec, so the binding is byte-stable across the wire.
 #[must_use]
 pub fn expect_report_data(kernel_pk: &PublicKey, receipt_root: &[u8; 32]) -> [u8; 64] {
     let mut hasher = Sha256::new();

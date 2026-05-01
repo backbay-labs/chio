@@ -2,10 +2,9 @@
 //!
 //! Consumes the pinned fixture corpus written by the
 //! `generate_tdx_fixtures` example. Each fixture envelope mirrors the
-//! shape produced by the trajectory-1 M10 chio-tee container: a TDX v4
-//! quote header, TD10 report body, and signature blob trailer. The
-//! container is unchanged by M03; this test exercises the new
-//! consumer-side verifier.
+//! shape produced by the chio-tee container: a TDX v4 quote header,
+//! TD10 report body, and signature blob trailer. This test exercises
+//! the consumer-side verifier.
 //!
 //! Positive coverage: every fixture under `fixtures/quotes/tdx/positive/`
 //! verifies under the kernel signing key and receipt root pair the
@@ -210,9 +209,9 @@ fn negative_fixtures_reject_with_expected_reason() {
 #[test]
 fn integration_binds_kernel_pk_and_receipt_root_into_report_data() {
     // The headline integration assertion. Mirrors the trust-boundary
-    // contract in M03.P3.T3: a positive fixture's verified report_data
-    // MUST equal SHA256(kernel_pk_canonical_bytes || receipt_root)
-    // padded with 32 zero bytes. Anything else is a regression.
+    // contract: a positive fixture's verified report_data MUST equal
+    // SHA256(kernel_pk_canonical_bytes || receipt_root) padded with 32
+    // zero bytes. Anything else is a regression.
     let kernel = Keypair::from_seed(&KERNEL_SEED).public_key();
     let receipt_root = RECEIPT_ROOT;
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
