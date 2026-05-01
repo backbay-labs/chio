@@ -51,6 +51,12 @@ fn e2e_wrap_round_trip_attestation_and_verdict_gate() {
         let frames = [
             serde_json::json!({
                 "jsonrpc": "2.0",
+                "id": 0,
+                "method": "initialize",
+                "params": {}
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
                 "id": 1,
                 "method": "tools/list",
                 "params": {}
@@ -88,12 +94,22 @@ fn e2e_wrap_round_trip_attestation_and_verdict_gate() {
         .collect();
     assert_eq!(
         frames.len(),
-        3,
-        "expected 3 framed responses, got {frames:?}"
+        4,
+        "expected 4 framed responses, got {frames:?}"
+    );
+
+    // Frame 0: initialize uses the current MCP protocol version.
+    let initialize_response = &frames[0];
+    assert_eq!(initialize_response.get("id"), Some(&serde_json::json!(0)));
+    assert_eq!(
+        initialize_response
+            .pointer("/result/protocolVersion")
+            .and_then(serde_json::Value::as_str),
+        Some("2025-11-25")
     );
 
     // Frame 1: tools/list passes through and carries every fixture tool.
-    let list_response = &frames[0];
+    let list_response = &frames[1];
     assert_eq!(list_response.get("id"), Some(&serde_json::json!(1)));
     let tools = list_response
         .pointer("/result/tools")
@@ -102,7 +118,7 @@ fn e2e_wrap_round_trip_attestation_and_verdict_gate() {
     assert_eq!(tools.len(), 4, "expected 4 tools in list response");
 
     // Frame 2: allowed call -- result carries the attestation header.
-    let allowed = &frames[1];
+    let allowed = &frames[2];
     assert_eq!(allowed.get("id"), Some(&serde_json::json!(2)));
     let header = allowed
         .pointer("/result/_meta/chio_verified")
@@ -118,7 +134,7 @@ fn e2e_wrap_round_trip_attestation_and_verdict_gate() {
     assert_eq!(header.get("tool").and_then(|v| v.as_str()), Some("echo"));
 
     // Frame 3: denied call -- error envelope carries the chio reason code.
-    let denied = &frames[2];
+    let denied = &frames[3];
     assert_eq!(denied.get("id"), Some(&serde_json::json!(3)));
     let chio_code = denied
         .pointer("/error/data/chio_code")
