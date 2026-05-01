@@ -878,6 +878,97 @@ pub const WEIGHTS_MODEL_CARD_MISSING: ErrorCodeSpec = ErrorCodeSpec {
     consumed_by: &["chio-tee-frame", "chio-attest-verify"],
 };
 
+pub const WEIGHTS_CARD_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:weights:card-mismatch",
+    domain: Domain::Weights,
+    severity: Severity::Error,
+    summary: "Provider's loaded weights_hash does not match the signed model card.",
+    help: "Re-sign a card whose weights_hash matches the loaded weights blob, or rebind the provider with the correct weights.",
+    legacy_string_code: "CHIO-WEIGHTS-CARD-MISMATCH",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-weights", "chio-kernel", "chio-cli"],
+};
+
+pub const WEIGHTS_SCOPE_NOT_SUBSET: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:weights:scope-not-subset",
+    domain: Domain::Weights,
+    severity: Severity::Error,
+    summary: "Requested capability scope set is not a subset of the model card's allowed_capability_set.",
+    help: "Bind under a card whose allowed_capability_set covers the requested scope, or narrow the request.",
+    legacy_string_code: "CHIO-WEIGHTS-SCOPE-NOT-SUBSET",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-weights", "chio-kernel", "chio-cli"],
+};
+
+pub const WEIGHTS_TOOL_BANNED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:weights:tool-banned",
+    domain: Domain::Weights,
+    severity: Severity::Error,
+    summary: "Requested tool intersects the model card's banned_tools.",
+    help: "The card explicitly forbids the requested tool. Bind under a card that does not list the tool as banned, or remove the tool from the request.",
+    legacy_string_code: "CHIO-WEIGHTS-TOOL-BANNED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-weights", "chio-kernel", "chio-cli"],
+};
+
+pub const WEIGHTS_CARD_EXPIRED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:weights:card-expired",
+    domain: Domain::Weights,
+    severity: Severity::Error,
+    summary: "Model card expired before the verifier evaluated it.",
+    help: "Mint a fresh card; cards bind to issued_at / expires_at and the kernel rejects past expiry.",
+    legacy_string_code: "CHIO-WEIGHTS-CARD-EXPIRED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-weights", "chio-kernel"],
+};
+
+pub const WEIGHTS_BUNDLE_REJECTED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:weights:bundle-rejected",
+    domain: Domain::Weights,
+    severity: Severity::Error,
+    summary: "Cosign bundle for the model card failed cryptographic verification.",
+    help: "Treat the card as untrusted; do not rebind without a fresh, correctly-signed cosign bundle.",
+    legacy_string_code: "CHIO-WEIGHTS-BUNDLE-REJECTED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-weights", "chio-kernel", "chio-cli"],
+};
+
+pub const WEIGHTS_SCHEMA_REJECTED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:weights:schema-rejected",
+    domain: Domain::Weights,
+    severity: Severity::Error,
+    summary: "Model card structural validation failed (bad weights_hash, missing required field, or invalid issued_at / expires_at window).",
+    help: "Re-mint the card with a valid v1 schema; check weights_hash is 64 lowercase hex chars and expires_at >= issued_at.",
+    legacy_string_code: "CHIO-WEIGHTS-SCHEMA-REJECTED",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-weights"],
+};
+
+pub const WEIGHTS_INTERNAL_ENCODING: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:weights:internal-encoding",
+    domain: Domain::Weights,
+    severity: Severity::Fatal,
+    summary: "Model card surface failed to canonicalize, encode, or decode an envelope.",
+    help: "Treat as an internal error; do not retry until the encoding bug is resolved. No fresh challenge will help.",
+    legacy_string_code: "CHIO-WEIGHTS-INTERNAL-ENCODING",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-weights"],
+};
+
 pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     CAPABILITY_SCOPE_EXCEEDED,
     CAPABILITY_EXPIRED,
@@ -944,6 +1035,13 @@ pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     CUSTODY_USER_VERIFICATION_REQUIRED,
     CUSTODY_INTERNAL_ENCODING,
     WEIGHTS_MODEL_CARD_MISSING,
+    WEIGHTS_CARD_MISMATCH,
+    WEIGHTS_SCOPE_NOT_SUBSET,
+    WEIGHTS_TOOL_BANNED,
+    WEIGHTS_CARD_EXPIRED,
+    WEIGHTS_BUNDLE_REJECTED,
+    WEIGHTS_SCHEMA_REJECTED,
+    WEIGHTS_INTERNAL_ENCODING,
 ];
 
 #[must_use]
