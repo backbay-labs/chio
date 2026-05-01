@@ -9,7 +9,7 @@
   milestone: M04
   phase: 4
   title: Land formal/lean4/Chio/Chio/Capability/Delegation.lean skeleton with four theorem statements (no proofs yet) and wire into lakefile
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - formal/lean4/Chio/Chio/Capability/Delegation.lean
@@ -27,16 +27,16 @@
   agent_role: formal-lean
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 8f2ea60d4
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-05-01T01:00:14Z
   merged_ts: null
 
 - id: M04.P4.T2
   milestone: M04
   phase: 4
   title: Prove Lean theorems 1 and 2 (delegate_no_widen, attenuation_monotone) extending Monotonicity.lean
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - formal/lean4/Chio/Chio/Capability/Delegation.lean
@@ -51,16 +51,16 @@
   agent_role: formal-lean
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: bc1c32812
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-05-01T01:00:14Z
   merged_ts: null
 
 - id: M04.P4.T3
   milestone: M04
   phase: 4
   title: Prove Lean theorems 3 and 4 (revocation_is_cut, compose_preserves_algebra) - theorem 3 may ship as axiom with assumptions.toml entry if graph theory exceeds budget
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - formal/lean4/Chio/Chio/Capability/Delegation.lean
@@ -77,16 +77,16 @@
   agent_role: formal-lean
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 5f10ff28c
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-05-01T01:00:14Z
   merged_ts: null
 
 - id: M04.P4.T4
   milestone: M04
   phase: 4
   title: Land formal/tla/DelegationDepthBound.tla and MCDelegationDepthBound.cfg with three safety invariants and wire into formal-tla CI job
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - formal/tla/DelegationDepthBound.tla
@@ -104,16 +104,16 @@
   agent_role: formal-tla
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 32444a94d
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-05-01T01:00:14Z
   merged_ts: null
 
 - id: M04.P4.T5
   milestone: M04
   phase: 4
   title: Add four Kani harnesses (verify_delegate_no_widen, verify_delegation_receipt_canonical, verify_revocation_view_freshness, verify_oracle_inclusion_soundness) - cap at 14 covered_symbols
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel-core/src/kani_public_harnesses.rs
@@ -130,16 +130,16 @@
   agent_role: formal-kani
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: a59c51ab7
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-05-01T01:00:14Z
   merged_ts: null
 
 - id: M04.P4.T6
   milestone: M04
   phase: 4
   title: Add RevocationFreshness invariant to existing RevocationPropagation.tla (additive only) and update formal/MAPPING.md plus proof-manifest.toml
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - formal/tla/RevocationPropagation.tla
@@ -157,7 +157,7 @@
   agent_role: formal-tla
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 9aaa85b3d
   merged_sha: null
-  opened_ts: null
+  opened_ts: 2026-05-01T01:00:14Z
   merged_ts: null
