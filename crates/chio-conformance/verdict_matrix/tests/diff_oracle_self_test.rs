@@ -18,20 +18,31 @@ use verdict_matrix::{Verdict, VerdictTuple};
 
 fn repo_root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let Some(crates_dir) = manifest_dir.parent() else {
-        panic!(
-            "CARGO_MANIFEST_DIR has no parent: {}",
-            manifest_dir.display()
-        );
-    };
-    let Some(root) = crates_dir.parent() else {
-        panic!("crates dir has no parent: {}", crates_dir.display());
-    };
-    root.to_path_buf()
+    let mut candidate: Option<&Path> = Some(manifest_dir);
+    while let Some(dir) = candidate {
+        if dir
+            .join("spec")
+            .join("errors")
+            .join("registry.yaml")
+            .is_file()
+        {
+            return dir.to_path_buf();
+        }
+        candidate = dir.parent();
+    }
+    panic!(
+        "failed to find repo root from CARGO_MANIFEST_DIR {}",
+        manifest_dir.display()
+    );
 }
 
 fn verdict_matrix_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("verdict_matrix")
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if manifest_dir.join(verdict_matrix::MANIFEST_PATH).is_file() {
+        manifest_dir.to_path_buf()
+    } else {
+        manifest_dir.join("verdict_matrix")
+    }
 }
 
 fn load_corpus() -> Vec<verdict_matrix::driver::VerdictScenario> {

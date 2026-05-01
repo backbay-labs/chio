@@ -21,7 +21,12 @@ mod verdict_matrix;
 use verdict_matrix::diff_oracle::load_manifest;
 
 fn verdict_matrix_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("verdict_matrix")
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if manifest_dir.join(verdict_matrix::MANIFEST_PATH).is_file() {
+        manifest_dir.to_path_buf()
+    } else {
+        manifest_dir.join("verdict_matrix")
+    }
 }
 
 fn typescript_driver_dir() -> PathBuf {
