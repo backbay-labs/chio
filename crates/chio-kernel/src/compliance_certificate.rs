@@ -103,6 +103,18 @@ pub enum ComplianceCertificateError {
     #[error("compliance certificate signature verification failed")]
     SignatureVerificationFailed,
 
+    /// The declared algorithm field was tampered or drifted from the
+    /// self-describing signature envelope.
+    #[error(
+        "compliance certificate algorithm field {declared} disagrees with signature algorithm {actual}"
+    )]
+    AlgorithmMismatch {
+        /// The informational algorithm field carried by the envelope.
+        declared: &'static str,
+        /// The algorithm parsed from the signature material.
+        actual: &'static str,
+    },
+
     /// The certificate's signature algorithm violates the configured
     /// `crypto_floor`. Threat model row `pq_signature_downgrade`.
     #[error(
@@ -179,6 +191,12 @@ pub fn verify_session_compliance_certificate(
     // Step 1: floor enforcement. Reject any algorithm the floor does not
     // permit BEFORE running the cryptographic check.
     let signature_algorithm = cert.signature.algorithm();
+    if cert.algorithm != signature_algorithm {
+        return Err(ComplianceCertificateError::AlgorithmMismatch {
+            declared: signing_algorithm_label(cert.algorithm),
+            actual: signing_algorithm_label(signature_algorithm),
+        });
+    }
     let is_hybrid = matches!(signature_algorithm, SigningAlgorithm::Hybrid);
     let allowed = if is_hybrid {
         floor.allows_hybrid()
