@@ -1,30 +1,41 @@
-// DO NOT EDIT - regenerate via 'make regen-rust' or 'cargo xtask codegen rust'.
+// M05.P5.T3 test body for threat ID `native_channel_replay`.
 //
-// Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Tool:   typify =0.4.3 (see xtask/codegen-tools.lock.toml)
-// Crate:  chio-spec-codegen
+// Threat: native_channel_replay (Replay attacks on the native channel).
+// Surfaces: native_chio.
 //
-// Manual edits will be overwritten by the next regeneration; the
-// `_generated_check` integration test enforces this header on every file
-// under `crates/chio-core-types/src/_generated/`.
+// Coverage strategy: the M05.P1 corpus carries replayed-nonce,
+// clock-rewound, future-dated, and anchor-grafted cases that all
+// cite this threat ID. The first three exercise pure replay
+// scenarios on the native framed lane (resubmitting a sender-proof
+// nonce, presenting a credential whose iat / nbf is in the past or
+// future relative to the verifier's clock); anchor-grafted cases
+// exercise the receipt-side replay vector (lifting a checkpoint
+// signature from one trace and grafting it onto a forged trace).
+// All deny-assert at chio-kernel-core and chio-attest-verify; this
+// test asserts the corpus side of the contract.
 
-//! Stub test for threat ID `native_channel_replay` (Replay attacks on the native channel).
-//!
-//! Surfaces: native_chio.
-//!
-//! Owner: M05.P5.T2 (codegen) and M05.P5.T3 (test bodies for the
-//! six initial threat IDs). Until M05.P5.T3 lands a real test body
-//! the stub fails closed via `unimplemented!()` so the
-//! threat-model-coverage CI gate (M05.P5.T4) flags this threat ID
-//! as not-yet-covered.
-//!
-//! When you fill in the body, replace the `unimplemented!()` call
-//! with assertions that the relevant adversarial vector or escape
-//! class denies in the expected way and cite the threat ID in the
-//! comment header above the assertion.
+use super::common::{assert_threat_covered_by_corpus, corpus_cases_for};
 
 #[test]
 fn threat_native_channel_replay_is_covered() {
-// covers: native_channel_replay
-unimplemented!("M05.P5.T3 must populate the test body for threat \"native_channel_replay\"");
+    // covers: native_channel_replay
+    assert_threat_covered_by_corpus("native_channel_replay");
+}
+
+#[test]
+fn threat_native_channel_replay_has_multiple_classes() {
+    // covers: native_channel_replay
+    //
+    // Replay on the native channel is intentionally backed by more
+    // than one attack class so a single class regression does not
+    // strip threat coverage entirely. Assert at least two distinct
+    // classes are present.
+    let cases = corpus_cases_for("native_channel_replay");
+    let classes: std::collections::BTreeSet<_> =
+        cases.iter().map(|c| format!("{:?}", c.class)).collect();
+    assert!(
+        classes.len() >= 2,
+        "native_channel_replay must be backed by at least two attack classes; got {:?}",
+        classes
+    );
 }

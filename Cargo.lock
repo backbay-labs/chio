@@ -2696,6 +2696,7 @@ dependencies = [
 name = "chio-conformance"
 version = "0.1.0"
 dependencies = [
+ "chio-adversarial-suite",
  "chio-core-types",
  "chio-kernel",
  "chio-kernel-browser",

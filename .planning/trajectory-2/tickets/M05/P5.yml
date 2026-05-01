@@ -10,7 +10,7 @@
   milestone: M05
   phase: 5
   title: Author chio-threat-model.schema.json with coverage_state enum (covered, partial, pending) validating the v1 threat-model JSON
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - spec/security/chio-threat-model.schema.json
@@ -28,7 +28,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 6ddb52cf044257ae134c23cd046d2440ee6c5596
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -37,7 +37,7 @@
   milestone: M05
   phase: 5
   title: Extend chio-spec-codegen with --threat-model flag emitting one stub test per threat ID
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-spec-codegen/src/lib.rs
@@ -55,7 +55,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 1a141edbecd319b4a1239d56ea766944e918fe7f
   merged_sha: null
   opened_ts: null
   merged_ts: null
