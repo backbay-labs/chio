@@ -563,6 +563,19 @@ mod tests {
     use chio_kernel::KernelError;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    trait TestUnwrapErr<E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T: std::fmt::Debug, E> TestUnwrapErr<E> for Result<T, E> {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err(..), got Ok({value:?})"),
+                Err(error) => error,
+            }
+        }
+    }
+
     #[derive(Clone)]
     enum MockCallBehavior {
         Success(McpToolResult),
@@ -869,7 +882,7 @@ mod tests {
         let transport =
             MockTransport::simple(vec![], MockCallBehavior::Success(success_result("ok")));
         let adapter = McpAdapter::new(default_config(), Box::new(transport));
-        let err = adapter.generate_manifest().unwrap_err();
+        let err = adapter.generate_manifest().test_unwrap_err();
         assert!(matches!(err, AdapterError::ManifestError(_)));
     }
 
@@ -1005,7 +1018,7 @@ mod tests {
             MockCallBehavior::ConnectionFailed("pipe broken".to_string()),
         );
         let adapter = McpAdapter::new(default_config(), Box::new(transport));
-        let err = adapter.invoke("t", serde_json::json!({})).unwrap_err();
+        let err = adapter.invoke("t", serde_json::json!({})).test_unwrap_err();
         assert!(matches!(err, AdapterError::ConnectionFailed(_)));
     }
 
@@ -1019,7 +1032,7 @@ mod tests {
             },
         );
         let adapter = McpAdapter::new(default_config(), Box::new(transport));
-        let err = adapter.invoke("t", serde_json::json!({})).unwrap_err();
+        let err = adapter.invoke("t", serde_json::json!({})).test_unwrap_err();
         match err {
             AdapterError::McpError { code, message, .. } => {
                 assert_eq!(code, -32601);
@@ -1123,7 +1136,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("adapted server: {e}"));
         let error = adapted
             .invoke("authorize", serde_json::json!({}), None)
-            .expect_err("invoke should surface URL-required error");
+            .test_unwrap_err();
 
         match error {
             KernelError::UrlElicitationsRequired {
@@ -1590,7 +1603,7 @@ mod tests {
             },
         );
         let adapter = McpAdapter::new(default_config(), Box::new(transport));
-        let err = adapter.invoke("t", serde_json::json!({})).unwrap_err();
+        let err = adapter.invoke("t", serde_json::json!({})).test_unwrap_err();
         let display = format!("{err}");
         assert!(
             display.contains("-32600"),
@@ -1615,7 +1628,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("{e}"));
         let err = adapted
             .invoke("t", serde_json::json!({}), None)
-            .unwrap_err();
+            .test_unwrap_err();
         assert!(matches!(err, KernelError::ToolServerError(_)));
     }
 
@@ -1629,7 +1642,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("{e}"));
         let err = adapted
             .invoke("t", serde_json::json!({}), None)
-            .unwrap_err();
+            .test_unwrap_err();
         assert!(matches!(err, KernelError::RequestIncomplete(_)));
     }
 

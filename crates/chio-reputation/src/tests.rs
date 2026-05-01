@@ -15,7 +15,7 @@ mod tests {
             delegation_depth: 0,
             parent_capability_id: None,
         })
-        .unwrap();
+        .unwrap_or_else(|error| panic!("parse capability lineage scope json: {error}"));
 
         assert_eq!(record.scope.grants.len(), 1);
         assert_eq!(record.scope.grants[0].tool_name, "read");

@@ -5,8 +5,6 @@
 //! pending row, consumed-token registry, and resolved record must all
 //! survive the restart.
 
-#![allow(clippy::expect_used, clippy::unwrap_used)]
-
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
@@ -19,10 +17,46 @@ use chio_kernel::{
 };
 use chio_store_sqlite::SqliteApprovalStore;
 
+trait TestResultOk<T, E> {
+    fn test_unwrap(self) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E> {
+    fn test_unwrap(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("expected Ok result"),
+        }
+    }
+}
+
+trait TestResultErr<T, E> {
+    fn test_unwrap_err(self) -> E;
+}
+
+impl<T, E> TestResultErr<T, E> for Result<T, E> {
+    fn test_unwrap_err(self) -> E {
+        match self {
+            Ok(_) => panic!("expected Err result"),
+            Err(error) => error,
+        }
+    }
+}
+
+trait TestOptionExt<T> {
+    fn test_unwrap(self) -> T;
+}
+
+impl<T> TestOptionExt<T> for Option<T> {
+    fn test_unwrap(self) -> T {
+        self.unwrap_or_else(|| panic!("expected Some value"))
+    }
+}
+
 fn unique_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .test_unwrap()
         .as_nanos();
     std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
 }
@@ -67,39 +101,39 @@ fn sign_token(
         expires_at: 3600,
         decision,
     };
-    GovernedApprovalToken::sign(body, approver).unwrap()
+    GovernedApprovalToken::sign(body, approver).test_unwrap()
 }
 
 #[test]
 fn store_and_retrieve_round_trip() {
     let path = unique_path("chio-hitl-roundtrip");
-    let store = SqliteApprovalStore::open(&path).unwrap();
+    let store = SqliteApprovalStore::open(&path).test_unwrap();
     let r = sample_request("a-1", "h-1");
-    store.store_pending(&r).unwrap();
-    let fetched = store.get_pending("a-1").unwrap().unwrap();
+    store.store_pending(&r).test_unwrap();
+    let fetched = store.get_pending("a-1").test_unwrap().test_unwrap();
     assert_eq!(fetched.approval_id, "a-1");
-    let all = store.list_pending(&ApprovalFilter::default()).unwrap();
+    let all = store.list_pending(&ApprovalFilter::default()).test_unwrap();
     assert_eq!(all.len(), 1);
     let _ = std::fs::remove_file(&path);
 }
 
 #[test]
 fn filter_list_by_subject_and_server() {
-    let store = SqliteApprovalStore::open_in_memory().unwrap();
+    let store = SqliteApprovalStore::open_in_memory().test_unwrap();
     let mut r1 = sample_request("a-1", "h-1");
     r1.subject_id = "alice".into();
     let mut r2 = sample_request("a-2", "h-2");
     r2.subject_id = "bob".into();
     r2.tool_server = "payment".into();
-    store.store_pending(&r1).unwrap();
-    store.store_pending(&r2).unwrap();
+    store.store_pending(&r1).test_unwrap();
+    store.store_pending(&r2).test_unwrap();
 
     let alice = store
         .list_pending(&ApprovalFilter {
             subject_id: Some("alice".into()),
             ..Default::default()
         })
-        .unwrap();
+        .test_unwrap();
     assert_eq!(alice.len(), 1);
     assert_eq!(alice[0].approval_id, "a-1");
 
@@ -108,20 +142,20 @@ fn filter_list_by_subject_and_server() {
             tool_server: Some("payment".into()),
             ..Default::default()
         })
-        .unwrap();
+        .test_unwrap();
     assert_eq!(payment.len(), 1);
     assert_eq!(payment[0].approval_id, "a-2");
 }
 
 #[test]
 fn resolve_marks_approved_and_records_consumption() {
-    let store = SqliteApprovalStore::open_in_memory().unwrap();
+    let store = SqliteApprovalStore::open_in_memory().test_unwrap();
     let approver = Keypair::generate();
     let subject = Keypair::generate();
     let mut r = sample_request("a-1", "h-1");
     r.subject_public_key = Some(subject.public_key());
     r.trusted_approvers = vec![approver.public_key()];
-    store.store_pending(&r).unwrap();
+    store.store_pending(&r).test_unwrap();
 
     let token = sign_token(
         &approver,
@@ -139,25 +173,27 @@ fn resolve_marks_approved_and_records_consumption() {
         received_at: 1000,
     };
 
-    store.resolve("a-1", &decision).unwrap();
-    assert!(store.get_pending("a-1").unwrap().is_none());
-    assert!(store.get_resolution("a-1").unwrap().is_some());
-    assert!(store.is_consumed(&token.id, "h-1").unwrap());
+    store.resolve("a-1", &decision).test_unwrap();
+    assert!(store.get_pending("a-1").test_unwrap().is_none());
+    assert!(store.get_resolution("a-1").test_unwrap().is_some());
+    assert!(store.is_consumed(&token.id, "h-1").test_unwrap());
     assert_eq!(
-        store.count_approved("agent-test", "policy-test").unwrap(),
+        store
+            .count_approved("agent-test", "policy-test")
+            .test_unwrap(),
         1
     );
 }
 
 #[test]
 fn resolve_rejects_replay() {
-    let store = SqliteApprovalStore::open_in_memory().unwrap();
+    let store = SqliteApprovalStore::open_in_memory().test_unwrap();
     let approver = Keypair::generate();
     let subject = Keypair::generate();
     let mut r = sample_request("a-1", "h-1");
     r.subject_public_key = Some(subject.public_key());
     r.trusted_approvers = vec![approver.public_key()];
-    store.store_pending(&r).unwrap();
+    store.store_pending(&r).test_unwrap();
 
     let token = sign_token(
         &approver,
@@ -174,12 +210,12 @@ fn resolve_rejects_replay() {
         token,
         received_at: 1000,
     };
-    store.resolve("a-1", &decision).unwrap();
+    store.resolve("a-1", &decision).test_unwrap();
 
     // Re-insert the pending row and attempt to resolve again with the
     // same token. Must return a replay error.
-    store.store_pending(&r).unwrap();
-    let err = store.resolve("a-1", &decision).unwrap_err();
+    store.store_pending(&r).test_unwrap();
+    let err = store.resolve("a-1", &decision).test_unwrap_err();
     match err {
         ApprovalStoreError::Replay(_) => {}
         other => panic!("expected Replay, got {other:?}"),
@@ -194,16 +230,18 @@ fn persistence_survives_restart() {
 
     // First "kernel" writes a pending approval.
     {
-        let store = SqliteApprovalStore::open(&path).unwrap();
+        let store = SqliteApprovalStore::open(&path).test_unwrap();
         let mut r = sample_request("ap-restart", "h-restart");
         r.subject_public_key = Some(subject.public_key());
         r.trusted_approvers = vec![approver.public_key()];
-        store.store_pending(&r).unwrap();
+        store.store_pending(&r).test_unwrap();
     }
 
     // Second "kernel" opens at the same path (simulating a restart).
-    let store2 = SqliteApprovalStore::open(&path).unwrap();
-    let pending = store2.list_pending(&ApprovalFilter::default()).unwrap();
+    let store2 = SqliteApprovalStore::open(&path).test_unwrap();
+    let pending = store2
+        .list_pending(&ApprovalFilter::default())
+        .test_unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].approval_id, "ap-restart");
 
@@ -224,11 +262,11 @@ fn persistence_survives_restart() {
         token,
         received_at: 1000,
     };
-    let outcome = resume_with_decision(&store2, &decision, 1000).unwrap();
+    let outcome = resume_with_decision(&store2, &decision, 1000).test_unwrap();
     assert_eq!(outcome, ApprovalOutcome::Approved);
     assert!(store2
         .list_pending(&ApprovalFilter::default())
-        .unwrap()
+        .test_unwrap()
         .is_empty());
 
     let _ = std::fs::remove_file(&path);
@@ -236,19 +274,21 @@ fn persistence_survives_restart() {
 
 #[test]
 fn record_consumed_is_idempotent_on_first_write_only() {
-    let store = SqliteApprovalStore::open_in_memory().unwrap();
-    store.record_consumed("tok-A", "hash-A", 1).unwrap();
-    let err = store.record_consumed("tok-A", "hash-A", 2).unwrap_err();
+    let store = SqliteApprovalStore::open_in_memory().test_unwrap();
+    store.record_consumed("tok-A", "hash-A", 1).test_unwrap();
+    let err = store
+        .record_consumed("tok-A", "hash-A", 2)
+        .test_unwrap_err();
     match err {
         ApprovalStoreError::Replay(_) => {}
         other => panic!("expected Replay on second call, got {other:?}"),
     }
-    assert!(store.is_consumed("tok-A", "hash-A").unwrap());
+    assert!(store.is_consumed("tok-A", "hash-A").test_unwrap());
 }
 
 #[test]
 fn count_approved_ignores_denied_rows() {
-    let store = SqliteApprovalStore::open_in_memory().unwrap();
+    let store = SqliteApprovalStore::open_in_memory().test_unwrap();
     let approver = Keypair::generate();
     let subject = Keypair::generate();
 
@@ -257,7 +297,7 @@ fn count_approved_ignores_denied_rows() {
     r_a.policy_id = "policy-x".into();
     r_a.subject_public_key = Some(subject.public_key());
     r_a.trusted_approvers = vec![approver.public_key()];
-    store.store_pending(&r_a).unwrap();
+    store.store_pending(&r_a).test_unwrap();
     let tok_a = sign_token(
         &approver,
         &subject,
@@ -277,14 +317,14 @@ fn count_approved_ignores_denied_rows() {
                 received_at: 10,
             },
         )
-        .unwrap();
+        .test_unwrap();
 
     let mut r_b = sample_request("r-b", "h-b");
     r_b.subject_id = "agent-x".into();
     r_b.policy_id = "policy-x".into();
     r_b.subject_public_key = Some(subject.public_key());
     r_b.trusted_approvers = vec![approver.public_key()];
-    store.store_pending(&r_b).unwrap();
+    store.store_pending(&r_b).test_unwrap();
     let tok_b = sign_token(
         &approver,
         &subject,
@@ -304,7 +344,7 @@ fn count_approved_ignores_denied_rows() {
                 received_at: 11,
             },
         )
-        .unwrap();
+        .test_unwrap();
 
-    assert_eq!(store.count_approved("agent-x", "policy-x").unwrap(), 1);
+    assert_eq!(store.count_approved("agent-x", "policy-x").test_unwrap(), 1);
 }

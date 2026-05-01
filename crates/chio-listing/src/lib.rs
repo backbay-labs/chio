@@ -1419,6 +1419,23 @@ mod tests {
     use super::*;
     use crate::crypto::Keypair;
 
+    fn require_ok<T, E>(result: Result<T, E>, context: &'static str) -> T
+    where
+        E: std::fmt::Debug,
+    {
+        result.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+    }
+
+    fn require_err<T, E>(result: Result<T, E>, context: &'static str) -> E
+    where
+        T: std::fmt::Debug,
+    {
+        match result {
+            Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+            Err(error) => error,
+        }
+    }
+
     fn sample_namespace(owner_id: &str, keypair: &Keypair) -> GenericNamespaceOwnership {
         GenericNamespaceOwnership {
             namespace: "https://registry.chio.example".to_string(),
@@ -1471,11 +1488,13 @@ mod tests {
         artifact_id: &str,
         source_sha256: &str,
     ) -> SignedGenericListing {
-        SignedGenericListing::sign(
-            sample_listing(owner_id, signing_keypair, artifact_id, source_sha256),
-            signing_keypair,
+        require_ok(
+            SignedGenericListing::sign(
+                sample_listing(owner_id, signing_keypair, artifact_id, source_sha256),
+                signing_keypair,
+            ),
+            "sign sample listing",
         )
-        .expect("sign sample listing")
     }
 
     fn sample_publisher(
@@ -1600,14 +1619,19 @@ mod tests {
         disposition: GenericTrustActivationDisposition,
     ) -> SignedGenericTrustActivation {
         let authority_keypair = Keypair::generate();
-        let artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(listing, admission_class, disposition),
-            130,
+        let artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(listing, admission_class, disposition),
+                130,
+            ),
+            "build activation artifact",
+        );
+        require_ok(
+            SignedGenericTrustActivation::sign(artifact, &authority_keypair),
+            "sign activation",
         )
-        .expect("build activation artifact");
-        SignedGenericTrustActivation::sign(artifact, &authority_keypair).expect("sign activation")
     }
 
     fn evaluation_request(
@@ -1640,10 +1664,10 @@ mod tests {
             explicit_trust_activation_required: true,
             automatic_trust_admission: true,
         };
-        assert!(boundary
-            .validate()
-            .expect_err("automatic trust admission rejected")
-            .contains("must not auto-admit trust"));
+        assert!(
+            require_err(boundary.validate(), "automatic trust admission rejected")
+                .contains("must not auto-admit trust")
+        );
     }
 
     #[test]
@@ -1653,10 +1677,11 @@ mod tests {
             explicit_trust_activation_required: false,
             automatic_trust_admission: false,
         };
-        assert!(boundary
-            .validate()
-            .expect_err("missing explicit trust activation gate rejected")
-            .contains("must require explicit trust activation"));
+        assert!(require_err(
+            boundary.validate(),
+            "missing explicit trust activation gate rejected",
+        )
+        .contains("must require explicit trust activation"));
     }
 
     #[test]
@@ -1670,10 +1695,10 @@ mod tests {
             boundary: GenericListingBoundary::default(),
         };
 
-        assert!(artifact
-            .validate()
-            .expect_err("wrong namespace schema rejected")
-            .contains("unsupported generic namespace schema"));
+        assert!(
+            require_err(artifact.validate(), "wrong namespace schema rejected")
+                .contains("unsupported generic namespace schema")
+        );
     }
 
     #[test]
@@ -1681,10 +1706,10 @@ mod tests {
         let keypair = Keypair::generate();
         let mut listing = sample_listing("operator-a", &keypair, "artifact-1", "deadbeef");
         listing.namespace = "https://other.chio.example".to_string();
-        assert!(listing
-            .validate()
-            .expect_err("namespace mismatch rejected")
-            .contains("does not match namespace ownership"));
+        assert!(
+            require_err(listing.validate(), "namespace mismatch rejected")
+                .contains("does not match namespace ownership")
+        );
     }
 
     #[test]
@@ -1693,10 +1718,10 @@ mod tests {
         let mut listing = sample_listing("operator-a", &keypair, "artifact-1", "deadbeef");
         listing.expires_at = Some(listing.published_at);
 
-        assert!(listing
-            .validate()
-            .expect_err("non-increasing expiry rejected")
-            .contains("expiry must be greater"));
+        assert!(
+            require_err(listing.validate(), "non-increasing expiry rejected")
+                .contains("expiry must be greater")
+        );
     }
 
     #[test]
@@ -1720,20 +1745,24 @@ mod tests {
 
     #[test]
     fn generic_listing_freshness_window_rejects_invalid_bounds_and_assesses_stale() {
-        assert!(GenericListingFreshnessWindow {
-            max_age_secs: 0,
-            valid_until: 200,
-        }
-        .validate(100)
-        .expect_err("zero max age rejected")
+        assert!(require_err(
+            GenericListingFreshnessWindow {
+                max_age_secs: 0,
+                valid_until: 200,
+            }
+            .validate(100),
+            "zero max age rejected",
+        )
         .contains("greater than zero"));
 
-        assert!(GenericListingFreshnessWindow {
-            max_age_secs: 30,
-            valid_until: 100,
-        }
-        .validate(100)
-        .expect_err("non-increasing valid_until rejected")
+        assert!(require_err(
+            GenericListingFreshnessWindow {
+                max_age_secs: 30,
+                valid_until: 100,
+            }
+            .validate(100),
+            "non-increasing valid_until rejected",
+        )
         .contains("greater than generated_at"));
 
         let freshness = GenericListingFreshnessWindow {
@@ -1747,26 +1776,33 @@ mod tests {
 
     #[test]
     fn generic_listing_search_policy_rejects_non_reproducible_modes() {
-        let mut policy = GenericListingSearchPolicy::default();
-        policy.reproducible_ordering = false;
-        assert!(policy
-            .validate()
-            .expect_err("non-reproducible policy rejected")
-            .contains("must remain reproducible"));
+        let policy = GenericListingSearchPolicy {
+            reproducible_ordering: false,
+            ..GenericListingSearchPolicy::default()
+        };
+        assert!(
+            require_err(policy.validate(), "non-reproducible policy rejected")
+                .contains("must remain reproducible")
+        );
 
-        let mut policy = GenericListingSearchPolicy::default();
-        policy.visibility_only = false;
-        assert!(policy
-            .validate()
-            .expect_err("non-visibility-only policy rejected")
-            .contains("must remain visibility-only"));
+        let policy = GenericListingSearchPolicy {
+            visibility_only: false,
+            ..GenericListingSearchPolicy::default()
+        };
+        assert!(
+            require_err(policy.validate(), "non-visibility-only policy rejected")
+                .contains("must remain visibility-only")
+        );
 
-        let mut policy = GenericListingSearchPolicy::default();
-        policy.explicit_trust_activation_required = false;
-        assert!(policy
-            .validate()
-            .expect_err("missing explicit trust activation rejected")
-            .contains("must require explicit trust activation"));
+        let policy = GenericListingSearchPolicy {
+            explicit_trust_activation_required: false,
+            ..GenericListingSearchPolicy::default()
+        };
+        assert!(require_err(
+            policy.validate(),
+            "missing explicit trust activation rejected",
+        )
+        .contains("must require explicit trust activation"));
     }
 
     #[test]
@@ -1778,60 +1814,66 @@ mod tests {
             valid_until: 100,
             generated_at: 100,
         };
-        assert!(freshness
-            .validate()
-            .expect_err("invalid freshness rejected")
-            .contains("greater than zero"));
+        assert!(
+            require_err(freshness.validate(), "invalid freshness rejected")
+                .contains("greater than zero")
+        );
     }
 
     #[test]
     fn generic_trust_activation_eligibility_rejects_invalid_role_and_bond_rules() {
-        assert!(GenericTrustActivationEligibility {
-            required_listing_operator_ids: vec![],
-            ..GenericTrustActivationEligibility {
-                allowed_actor_kinds: vec![],
-                allowed_publisher_roles: vec![],
-                allowed_statuses: vec![],
-                require_fresh_listing: true,
-                require_bond_backing: false,
+        assert!(require_err(
+            GenericTrustActivationEligibility {
                 required_listing_operator_ids: vec![],
-                policy_reference: None,
+                ..GenericTrustActivationEligibility {
+                    allowed_actor_kinds: vec![],
+                    allowed_publisher_roles: vec![],
+                    allowed_statuses: vec![],
+                    require_fresh_listing: true,
+                    require_bond_backing: false,
+                    required_listing_operator_ids: vec![],
+                    policy_reference: None,
+                }
             }
-        }
-        .validate(GenericTrustAdmissionClass::RoleGated)
-        .expect_err("role-gated operators required")
+            .validate(GenericTrustAdmissionClass::RoleGated),
+            "role-gated operators required",
+        )
         .contains("requires required_listing_operator_ids"));
 
-        assert!(GenericTrustActivationEligibility {
-            require_bond_backing: false,
-            ..GenericTrustActivationEligibility {
-                allowed_actor_kinds: vec![],
-                allowed_publisher_roles: vec![],
-                allowed_statuses: vec![],
-                require_fresh_listing: true,
+        assert!(require_err(
+            GenericTrustActivationEligibility {
                 require_bond_backing: false,
-                required_listing_operator_ids: vec![],
-                policy_reference: None,
+                ..GenericTrustActivationEligibility {
+                    allowed_actor_kinds: vec![],
+                    allowed_publisher_roles: vec![],
+                    allowed_statuses: vec![],
+                    require_fresh_listing: true,
+                    require_bond_backing: false,
+                    required_listing_operator_ids: vec![],
+                    policy_reference: None,
+                }
             }
-        }
-        .validate(GenericTrustAdmissionClass::BondBacked)
-        .expect_err("bond-backed admission must require bonds")
+            .validate(GenericTrustAdmissionClass::BondBacked),
+            "bond-backed admission must require bonds",
+        )
         .contains("must require bond backing"));
 
-        assert!(GenericTrustActivationEligibility {
-            require_bond_backing: true,
-            ..GenericTrustActivationEligibility {
-                allowed_actor_kinds: vec![],
-                allowed_publisher_roles: vec![],
-                allowed_statuses: vec![],
-                require_fresh_listing: true,
+        assert!(require_err(
+            GenericTrustActivationEligibility {
                 require_bond_backing: true,
-                required_listing_operator_ids: vec![],
-                policy_reference: None,
+                ..GenericTrustActivationEligibility {
+                    allowed_actor_kinds: vec![],
+                    allowed_publisher_roles: vec![],
+                    allowed_statuses: vec![],
+                    require_fresh_listing: true,
+                    require_bond_backing: true,
+                    required_listing_operator_ids: vec![],
+                    policy_reference: None,
+                }
             }
-        }
-        .validate(GenericTrustAdmissionClass::Reviewable)
-        .expect_err("non-bond admission cannot require bonds")
+            .validate(GenericTrustAdmissionClass::Reviewable),
+            "non-bond admission cannot require bonds",
+        )
         .contains("only valid for bond_backed"));
     }
 
@@ -1844,75 +1886,85 @@ mod tests {
             "artifact-1",
             "deadbeef",
         );
-        let mut artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
+        let mut artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
             ),
-            130,
-        )
-        .expect("build activation");
+            "build activation",
+        );
         artifact.reviewed_at = Some(100);
-        assert!(artifact
-            .validate()
-            .expect_err("reviewed_at before requested_at rejected")
-            .contains("reviewed_at must be greater"));
-
-        let mut artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
-            ),
-            130,
+        assert!(require_err(
+            artifact.validate(),
+            "reviewed_at before requested_at rejected",
         )
-        .expect("build activation");
+        .contains("reviewed_at must be greater"));
+
+        let mut artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
+            ),
+            "build activation",
+        );
         artifact.expires_at = Some(120);
-        assert!(artifact
-            .validate()
-            .expect_err("expiry before requested_at rejected")
-            .contains("expires_at must be greater"));
+        assert!(
+            require_err(artifact.validate(), "expiry before requested_at rejected")
+                .contains("expires_at must be greater")
+        );
 
-        let mut artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
+        let mut artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
             ),
-            130,
-        )
-        .expect("build activation");
+            "build activation",
+        );
         artifact.disposition = GenericTrustActivationDisposition::PendingReview;
         artifact.reviewed_by = Some("reviewer@chio.example".to_string());
         artifact.reviewed_at = Some(130);
-        assert!(artifact
-            .validate()
-            .expect_err("pending review cannot carry review completion")
-            .contains("must not carry review completion fields"));
-
-        let mut artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing,
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
-            ),
-            130,
+        assert!(require_err(
+            artifact.validate(),
+            "pending review cannot carry review completion",
         )
-        .expect("build activation");
+        .contains("must not carry review completion fields"));
+
+        let mut artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing,
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
+            ),
+            "build activation",
+        );
         artifact.reviewed_by = None;
-        assert!(artifact
-            .validate()
-            .expect_err("approved activation requires reviewer")
-            .contains("requires reviewed_at and reviewed_by"));
+        assert!(
+            require_err(artifact.validate(), "approved activation requires reviewer",)
+                .contains("requires reviewed_at and reviewed_by")
+        );
     }
 
     #[test]
@@ -1931,10 +1983,11 @@ mod tests {
         );
         request.review_context.freshness.state = GenericListingFreshnessState::Stale;
 
-        assert!(request
-            .validate()
-            .expect_err("approved activation requires fresh context")
-            .contains("requires fresh listing review context"));
+        assert!(require_err(
+            request.validate(),
+            "approved activation requires fresh context",
+        )
+        .contains("requires fresh listing review context"));
     }
 
     #[test]
@@ -1952,13 +2005,15 @@ mod tests {
             GenericTrustActivationDisposition::Approved,
         );
         request.reviewed_at = None;
-        let artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &request,
-            130,
-        )
-        .expect("build activation");
+        let artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &request,
+                130,
+            ),
+            "build activation",
+        );
 
         assert_eq!(artifact.reviewed_at, Some(130));
     }
@@ -1969,11 +2024,11 @@ mod tests {
         let keypair_b = Keypair::generate();
         let listing_a = sample_listing("operator-a", &keypair_a, "artifact-1", "deadbeef");
         let listing_b = sample_listing("operator-b", &keypair_b, "artifact-1", "deadbeef");
-        assert!(
-            ensure_generic_listing_namespace_consistency([&listing_a, &listing_b])
-                .expect_err("conflicting namespace ownership rejected")
-                .contains("conflicting ownership")
-        );
+        assert!(require_err(
+            ensure_generic_listing_namespace_consistency([&listing_a, &listing_b]),
+            "conflicting namespace ownership rejected",
+        )
+        .contains("conflicting ownership"));
     }
 
     #[test]
@@ -2131,26 +2186,28 @@ mod tests {
             "artifact-1",
             "deadbeef",
         );
-        let report = evaluate_generic_trust_activation(
-            &GenericTrustActivationEvaluationRequest {
-                listing,
-                current_publisher: sample_publisher(
-                    GenericRegistryPublisherRole::Origin,
-                    "origin-a",
-                ),
-                current_freshness: GenericListingReplicaFreshness {
-                    state: GenericListingFreshnessState::Fresh,
-                    age_secs: 5,
-                    max_age_secs: 300,
-                    valid_until: 400,
-                    generated_at: 100,
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &GenericTrustActivationEvaluationRequest {
+                    listing,
+                    current_publisher: sample_publisher(
+                        GenericRegistryPublisherRole::Origin,
+                        "origin-a",
+                    ),
+                    current_freshness: GenericListingReplicaFreshness {
+                        state: GenericListingFreshnessState::Fresh,
+                        age_secs: 5,
+                        max_age_secs: 300,
+                        valid_until: 400,
+                        generated_at: 100,
+                    },
+                    activation: None,
+                    evaluated_at: Some(150),
                 },
-                activation: None,
-                evaluated_at: Some(150),
-            },
-            150,
-        )
-        .expect("evaluate missing activation");
+                150,
+            ),
+            "evaluate missing activation",
+        );
         assert!(!report.admitted);
         assert_eq!(report.findings.len(), 1);
         assert_eq!(
@@ -2174,38 +2231,42 @@ mod tests {
             GenericTrustAdmissionClass::Reviewable,
             GenericTrustActivationDisposition::Approved,
         );
-        let activation = SignedGenericTrustActivation::sign(
+        let activation_artifact = require_ok(
             build_generic_trust_activation_artifact(
                 "https://operator.chio.example",
                 Some("Chio Operator".to_string()),
                 &issue_request,
                 130,
-            )
-            .expect("build activation artifact"),
-            &authority_keypair,
-        )
-        .expect("sign activation");
+            ),
+            "build activation artifact",
+        );
+        let activation = require_ok(
+            SignedGenericTrustActivation::sign(activation_artifact, &authority_keypair),
+            "sign activation",
+        );
 
-        let report = evaluate_generic_trust_activation(
-            &GenericTrustActivationEvaluationRequest {
-                listing,
-                current_publisher: sample_publisher(
-                    GenericRegistryPublisherRole::Origin,
-                    "origin-a",
-                ),
-                current_freshness: GenericListingReplicaFreshness {
-                    state: GenericListingFreshnessState::Fresh,
-                    age_secs: 5,
-                    max_age_secs: 300,
-                    valid_until: 400,
-                    generated_at: 100,
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &GenericTrustActivationEvaluationRequest {
+                    listing,
+                    current_publisher: sample_publisher(
+                        GenericRegistryPublisherRole::Origin,
+                        "origin-a",
+                    ),
+                    current_freshness: GenericListingReplicaFreshness {
+                        state: GenericListingFreshnessState::Fresh,
+                        age_secs: 5,
+                        max_age_secs: 300,
+                        valid_until: 400,
+                        generated_at: 100,
+                    },
+                    activation: Some(activation),
+                    evaluated_at: Some(150),
                 },
-                activation: Some(activation),
-                evaluated_at: Some(150),
-            },
-            150,
-        )
-        .expect("evaluate activation");
+                150,
+            ),
+            "evaluate activation",
+        );
         assert!(report.admitted);
         assert!(report.findings.is_empty());
         assert_eq!(
@@ -2229,38 +2290,42 @@ mod tests {
             GenericTrustAdmissionClass::Reviewable,
             GenericTrustActivationDisposition::Approved,
         );
-        let activation = SignedGenericTrustActivation::sign(
+        let activation_artifact = require_ok(
             build_generic_trust_activation_artifact(
                 "https://operator.chio.example",
                 Some("Chio Operator".to_string()),
                 &issue_request,
                 130,
-            )
-            .expect("build activation artifact"),
-            &authority_keypair,
-        )
-        .expect("sign activation");
+            ),
+            "build activation artifact",
+        );
+        let activation = require_ok(
+            SignedGenericTrustActivation::sign(activation_artifact, &authority_keypair),
+            "sign activation",
+        );
 
-        let report = evaluate_generic_trust_activation(
-            &GenericTrustActivationEvaluationRequest {
-                listing,
-                current_publisher: sample_publisher(
-                    GenericRegistryPublisherRole::Origin,
-                    "origin-a",
-                ),
-                current_freshness: GenericListingReplicaFreshness {
-                    state: GenericListingFreshnessState::Stale,
-                    age_secs: 500,
-                    max_age_secs: 300,
-                    valid_until: 400,
-                    generated_at: 100,
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &GenericTrustActivationEvaluationRequest {
+                    listing,
+                    current_publisher: sample_publisher(
+                        GenericRegistryPublisherRole::Origin,
+                        "origin-a",
+                    ),
+                    current_freshness: GenericListingReplicaFreshness {
+                        state: GenericListingFreshnessState::Stale,
+                        age_secs: 500,
+                        max_age_secs: 300,
+                        valid_until: 400,
+                        generated_at: 100,
+                    },
+                    activation: Some(activation),
+                    evaluated_at: Some(700),
                 },
-                activation: Some(activation),
-                evaluated_at: Some(700),
-            },
-            700,
-        )
-        .expect("evaluate stale listing");
+                700,
+            ),
+            "evaluate stale listing",
+        );
         assert!(!report.admitted);
         assert_eq!(
             report.findings[0].code,
@@ -2283,38 +2348,42 @@ mod tests {
             GenericTrustAdmissionClass::PublicUntrusted,
             GenericTrustActivationDisposition::Approved,
         );
-        let activation = SignedGenericTrustActivation::sign(
+        let activation_artifact = require_ok(
             build_generic_trust_activation_artifact(
                 "https://operator.chio.example",
                 Some("Chio Operator".to_string()),
                 &issue_request,
                 130,
-            )
-            .expect("build activation artifact"),
-            &authority_keypair,
-        )
-        .expect("sign activation");
+            ),
+            "build activation artifact",
+        );
+        let activation = require_ok(
+            SignedGenericTrustActivation::sign(activation_artifact, &authority_keypair),
+            "sign activation",
+        );
 
-        let report = evaluate_generic_trust_activation(
-            &GenericTrustActivationEvaluationRequest {
-                listing,
-                current_publisher: sample_publisher(
-                    GenericRegistryPublisherRole::Origin,
-                    "origin-a",
-                ),
-                current_freshness: GenericListingReplicaFreshness {
-                    state: GenericListingFreshnessState::Fresh,
-                    age_secs: 5,
-                    max_age_secs: 300,
-                    valid_until: 400,
-                    generated_at: 100,
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &GenericTrustActivationEvaluationRequest {
+                    listing,
+                    current_publisher: sample_publisher(
+                        GenericRegistryPublisherRole::Origin,
+                        "origin-a",
+                    ),
+                    current_freshness: GenericListingReplicaFreshness {
+                        state: GenericListingFreshnessState::Fresh,
+                        age_secs: 5,
+                        max_age_secs: 300,
+                        valid_until: 400,
+                        generated_at: 100,
+                    },
+                    activation: Some(activation),
+                    evaluated_at: Some(150),
                 },
-                activation: Some(activation),
-                evaluated_at: Some(150),
-            },
-            150,
-        )
-        .expect("evaluate public_untrusted");
+                150,
+            ),
+            "evaluate public_untrusted",
+        );
         assert!(!report.admitted);
         assert_eq!(
             report.findings[0].code,
@@ -2333,18 +2402,20 @@ mod tests {
         );
         listing.body.status = GenericListingStatus::Revoked;
 
-        let report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing,
-                None,
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing,
+                    None,
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate invalid listing signature");
+            "evaluate invalid listing signature",
+        );
 
         assert_eq!(
             report.findings[0].code,
@@ -2368,18 +2439,20 @@ mod tests {
         );
         activation.body.local_operator_id = "https://tampered.chio.example".to_string();
 
-        let report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing,
-                Some(activation),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing,
+                    Some(activation),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate invalid activation signature");
+            "evaluate invalid activation signature",
+        );
 
         assert_eq!(
             report.findings[0].code,
@@ -2397,33 +2470,39 @@ mod tests {
             "artifact-1",
             "deadbeef",
         );
-        let mut artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
+        let mut artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
             ),
-            130,
-        )
-        .expect("build activation");
+            "build activation",
+        );
         artifact.reviewed_by = None;
-        let activation = SignedGenericTrustActivation::sign(artifact, &authority_keypair)
-            .expect("sign activation");
+        let activation = require_ok(
+            SignedGenericTrustActivation::sign(artifact, &authority_keypair),
+            "sign activation",
+        );
 
-        let report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing,
-                Some(activation),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing,
+                    Some(activation),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate invalid activation body");
+            "evaluate invalid activation body",
+        );
 
         assert_eq!(
             report.findings[0].code,
@@ -2441,33 +2520,39 @@ mod tests {
             "artifact-1",
             "deadbeef",
         );
-        let mut artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
+        let mut artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
             ),
-            130,
-        )
-        .expect("build activation");
+            "build activation",
+        );
         artifact.listing_sha256 = "different".to_string();
-        let activation = SignedGenericTrustActivation::sign(artifact, &authority_keypair)
-            .expect("sign activation");
+        let activation = require_ok(
+            SignedGenericTrustActivation::sign(artifact, &authority_keypair),
+            "sign activation",
+        );
 
-        let report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing,
-                Some(activation),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing,
+                    Some(activation),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate mismatched activation");
+            "evaluate mismatched activation",
+        );
 
         assert_eq!(
             report.findings[0].code,
@@ -2490,18 +2575,20 @@ mod tests {
             GenericTrustActivationDisposition::Approved,
         );
 
-        let report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing,
-                Some(activation),
-                GenericListingFreshnessState::Divergent,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing,
+                    Some(activation),
+                    GenericListingFreshnessState::Divergent,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate divergent listing");
+            "evaluate divergent listing",
+        );
 
         assert_eq!(
             report.findings[0].code,
@@ -2520,32 +2607,38 @@ mod tests {
             "deadbeef",
         );
 
-        let mut expired_artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
+        let mut expired_artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
             ),
-            130,
-        )
-        .expect("build activation");
+            "build activation",
+        );
         expired_artifact.expires_at = Some(140);
-        let expired = SignedGenericTrustActivation::sign(expired_artifact, &authority_keypair)
-            .expect("sign expired activation");
-        let expired_report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing.clone(),
-                Some(expired),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let expired = require_ok(
+            SignedGenericTrustActivation::sign(expired_artifact, &authority_keypair),
+            "sign expired activation",
+        );
+        let expired_report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing.clone(),
+                    Some(expired),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate expired activation");
+            "evaluate expired activation",
+        );
         assert_eq!(
             expired_report.findings[0].code,
             GenericTrustActivationFindingCode::ActivationExpired
@@ -2556,18 +2649,20 @@ mod tests {
             GenericTrustAdmissionClass::Reviewable,
             GenericTrustActivationDisposition::PendingReview,
         );
-        let pending_report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing.clone(),
-                Some(pending),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let pending_report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing.clone(),
+                    Some(pending),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate pending activation");
+            "evaluate pending activation",
+        );
         assert_eq!(
             pending_report.findings[0].code,
             GenericTrustActivationFindingCode::ActivationPendingReview
@@ -2578,23 +2673,25 @@ mod tests {
             GenericTrustAdmissionClass::Reviewable,
             GenericTrustActivationDisposition::Denied,
         );
-        let denied_report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                signed_sample_listing(
-                    "https://registry.chio.example",
-                    &signing_keypair,
-                    "artifact-1",
-                    "deadbeef",
+        let denied_report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    signed_sample_listing(
+                        "https://registry.chio.example",
+                        &signing_keypair,
+                        "artifact-1",
+                        "deadbeef",
+                    ),
+                    Some(denied),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
                 ),
-                Some(denied),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
                 150,
             ),
-            150,
-        )
-        .expect("evaluate denied activation");
+            "evaluate denied activation",
+        );
         assert_eq!(
             denied_report.findings[0].code,
             GenericTrustActivationFindingCode::ActivationDenied
@@ -2612,134 +2709,153 @@ mod tests {
             "deadbeef",
         );
 
-        let mut actor_artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
+        let mut actor_artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
             ),
-            130,
-        )
-        .expect("build activation");
+            "build activation",
+        );
         actor_artifact.eligibility.allowed_actor_kinds =
             vec![GenericListingActorKind::CredentialIssuer];
-        let actor_activation =
-            SignedGenericTrustActivation::sign(actor_artifact, &authority_keypair)
-                .expect("sign actor-limited activation");
-        let actor_report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing.clone(),
-                Some(actor_activation),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let actor_activation = require_ok(
+            SignedGenericTrustActivation::sign(actor_artifact, &authority_keypair),
+            "sign actor-limited activation",
+        );
+        let actor_report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing.clone(),
+                    Some(actor_activation),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate actor ineligible");
+            "evaluate actor ineligible",
+        );
         assert_eq!(
             actor_report.findings[0].code,
             GenericTrustActivationFindingCode::ActorKindIneligible
         );
 
-        let mut publisher_artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
+        let mut publisher_artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
             ),
-            130,
-        )
-        .expect("build activation");
+            "build activation",
+        );
         publisher_artifact.eligibility.allowed_publisher_roles =
             vec![GenericRegistryPublisherRole::Mirror];
-        let publisher_activation =
-            SignedGenericTrustActivation::sign(publisher_artifact, &authority_keypair)
-                .expect("sign publisher-limited activation");
-        let publisher_report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing.clone(),
-                Some(publisher_activation),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let publisher_activation = require_ok(
+            SignedGenericTrustActivation::sign(publisher_artifact, &authority_keypair),
+            "sign publisher-limited activation",
+        );
+        let publisher_report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing.clone(),
+                    Some(publisher_activation),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate publisher ineligible");
+            "evaluate publisher ineligible",
+        );
         assert_eq!(
             publisher_report.findings[0].code,
             GenericTrustActivationFindingCode::PublisherRoleIneligible
         );
 
-        let status_listing = SignedGenericListing::sign(
-            GenericListingArtifact {
-                status: GenericListingStatus::Suspended,
-                ..sample_listing(
-                    "https://registry.chio.example",
-                    &signing_keypair,
-                    "artifact-1",
-                    "deadbeef",
-                )
-            },
-            &signing_keypair,
-        )
-        .expect("sign suspended listing");
+        let status_listing = require_ok(
+            SignedGenericListing::sign(
+                GenericListingArtifact {
+                    status: GenericListingStatus::Suspended,
+                    ..sample_listing(
+                        "https://registry.chio.example",
+                        &signing_keypair,
+                        "artifact-1",
+                        "deadbeef",
+                    )
+                },
+                &signing_keypair,
+            ),
+            "sign suspended listing",
+        );
         let status_activation = signed_activation(
             status_listing.clone(),
             GenericTrustAdmissionClass::Reviewable,
             GenericTrustActivationDisposition::Approved,
         );
-        let status_report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                status_listing,
-                Some(status_activation),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let status_report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    status_listing,
+                    Some(status_activation),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate status ineligible");
+            "evaluate status ineligible",
+        );
         assert_eq!(
             status_report.findings[0].code,
             GenericTrustActivationFindingCode::ListingStatusIneligible
         );
 
-        let mut operator_artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &issue_request_for(
-                listing.clone(),
-                GenericTrustAdmissionClass::Reviewable,
-                GenericTrustActivationDisposition::Approved,
+        let mut operator_artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &issue_request_for(
+                    listing.clone(),
+                    GenericTrustAdmissionClass::Reviewable,
+                    GenericTrustActivationDisposition::Approved,
+                ),
+                130,
             ),
-            130,
-        )
-        .expect("build activation");
+            "build activation",
+        );
         operator_artifact.eligibility.required_listing_operator_ids = vec!["mirror-a".to_string()];
-        let operator_activation =
-            SignedGenericTrustActivation::sign(operator_artifact, &authority_keypair)
-                .expect("sign operator-limited activation");
-        let operator_report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing,
-                Some(operator_activation),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let operator_activation = require_ok(
+            SignedGenericTrustActivation::sign(operator_artifact, &authority_keypair),
+            "sign operator-limited activation",
+        );
+        let operator_report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing,
+                    Some(operator_activation),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate operator ineligible");
+            "evaluate operator ineligible",
+        );
         assert_eq!(
             operator_report.findings[0].code,
             GenericTrustActivationFindingCode::ListingOperatorIneligible
@@ -2762,28 +2878,34 @@ mod tests {
             GenericTrustActivationDisposition::Approved,
         );
         request.eligibility.require_bond_backing = true;
-        let artifact = build_generic_trust_activation_artifact(
-            "https://operator.chio.example",
-            Some("Chio Operator".to_string()),
-            &request,
-            130,
-        )
-        .expect("build activation");
-        let activation = SignedGenericTrustActivation::sign(artifact, &authority_keypair)
-            .expect("sign activation");
+        let artifact = require_ok(
+            build_generic_trust_activation_artifact(
+                "https://operator.chio.example",
+                Some("Chio Operator".to_string()),
+                &request,
+                130,
+            ),
+            "build activation",
+        );
+        let activation = require_ok(
+            SignedGenericTrustActivation::sign(artifact, &authority_keypair),
+            "sign activation",
+        );
 
-        let report = evaluate_generic_trust_activation(
-            &evaluation_request(
-                listing,
-                Some(activation),
-                GenericListingFreshnessState::Fresh,
-                GenericRegistryPublisherRole::Origin,
-                "origin-a",
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing,
+                    Some(activation),
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
                 150,
             ),
-            150,
-        )
-        .expect("evaluate bond-backed activation");
+            "evaluate bond-backed activation",
+        );
 
         assert_eq!(
             report.findings[0].code,

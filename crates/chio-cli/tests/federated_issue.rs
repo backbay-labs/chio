@@ -1,7 +1,7 @@
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::too_many_arguments, clippy::unwrap_used)]
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -57,11 +57,11 @@ fn spawn_trust_service(
     listen: std::net::SocketAddr,
     advertise_url: &str,
     service_token: &str,
-    receipt_db_path: &PathBuf,
-    revocation_db_path: &PathBuf,
-    authority_seed_path: &PathBuf,
-    budget_db_path: &PathBuf,
-    enterprise_providers_file: Option<&PathBuf>,
+    receipt_db_path: &Path,
+    revocation_db_path: &Path,
+    authority_seed_path: &Path,
+    budget_db_path: &Path,
+    enterprise_providers_file: Option<&Path>,
 ) -> ServerGuard {
     spawn_trust_service_with_verifier(
         listen,
@@ -82,14 +82,14 @@ fn spawn_trust_service_with_verifier(
     listen: std::net::SocketAddr,
     advertise_url: &str,
     service_token: &str,
-    receipt_db_path: &PathBuf,
-    revocation_db_path: &PathBuf,
-    authority_seed_path: &PathBuf,
-    budget_db_path: &PathBuf,
-    enterprise_providers_file: Option<&PathBuf>,
-    scim_lifecycle_file: Option<&PathBuf>,
-    verifier_policies_file: Option<&PathBuf>,
-    verifier_challenge_db: Option<&PathBuf>,
+    receipt_db_path: &Path,
+    revocation_db_path: &Path,
+    authority_seed_path: &Path,
+    budget_db_path: &Path,
+    enterprise_providers_file: Option<&Path>,
+    scim_lifecycle_file: Option<&Path>,
+    verifier_policies_file: Option<&Path>,
+    verifier_challenge_db: Option<&Path>,
 ) -> ServerGuard {
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.current_dir(workspace_root()).args([
@@ -194,8 +194,8 @@ fn make_receipt(
 }
 
 fn seed_subject_history(
-    receipt_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    budget_db_path: &Path,
     subject_kp: &Keypair,
 ) -> String {
     let authority = LocalCapabilityAuthority::new(Keypair::generate());
@@ -264,11 +264,11 @@ fn seed_subject_history(
 }
 
 fn create_passport(
-    receipt_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    budget_db_path: &Path,
     subject_hex: &str,
-    passport_path: &PathBuf,
-    signing_seed_path: &PathBuf,
+    passport_path: &Path,
+    signing_seed_path: &Path,
 ) {
     create_passport_with_enterprise_identity(
         receipt_db_path,
@@ -281,12 +281,12 @@ fn create_passport(
 }
 
 fn create_passport_with_enterprise_identity(
-    receipt_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    budget_db_path: &Path,
     subject_hex: &str,
-    passport_path: &PathBuf,
-    signing_seed_path: &PathBuf,
-    enterprise_identity_path: Option<&PathBuf>,
+    passport_path: &Path,
+    signing_seed_path: &Path,
+    enterprise_identity_path: Option<&Path>,
 ) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.current_dir(workspace_root());
@@ -321,7 +321,7 @@ fn create_passport_with_enterprise_identity(
     );
 }
 
-fn create_challenge(output_path: &PathBuf, verifier: &str, verifier_policy_path: Option<&PathBuf>) {
+fn create_challenge(output_path: &Path, verifier: &str, verifier_policy_path: Option<&Path>) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.current_dir(workspace_root()).args([
         "passport",
@@ -350,7 +350,7 @@ fn create_challenge(output_path: &PathBuf, verifier: &str, verifier_policy_path:
 fn create_remote_challenge(
     base_url: &str,
     service_token: &str,
-    output_path: &PathBuf,
+    output_path: &Path,
     verifier: &str,
     policy_id: &str,
 ) {
@@ -382,10 +382,10 @@ fn create_remote_challenge(
 }
 
 fn create_signed_verifier_policy(
-    output_path: &PathBuf,
-    registry_path: &PathBuf,
-    signing_seed_path: &PathBuf,
-    raw_policy_path: &PathBuf,
+    output_path: &Path,
+    registry_path: &Path,
+    signing_seed_path: &Path,
+    raw_policy_path: &Path,
     policy_id: &str,
     verifier: &str,
 ) {
@@ -423,10 +423,10 @@ fn create_signed_verifier_policy(
 }
 
 fn create_challenge_response(
-    passport_path: &PathBuf,
-    challenge_path: &PathBuf,
-    holder_seed_path: &PathBuf,
-    response_path: &PathBuf,
+    passport_path: &Path,
+    challenge_path: &Path,
+    holder_seed_path: &Path,
+    response_path: &Path,
 ) {
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -453,7 +453,7 @@ fn create_challenge_response(
     );
 }
 
-fn write_capability_policy(path: &PathBuf, ttl: u64, tools: &[(&str, &str, &str)]) {
+fn write_capability_policy(path: &Path, ttl: u64, tools: &[(&str, &str, &str)]) {
     let mut yaml =
         "kernel:\n  max_capability_ttl: 3600\ncapabilities:\n  default:\n    tools:\n".to_string();
     for (server, tool, operation) in tools {
@@ -464,12 +464,12 @@ fn write_capability_policy(path: &PathBuf, ttl: u64, tools: &[(&str, &str, &str)
     fs::write(path, yaml).expect("write capability policy");
 }
 
-fn write_single_capability_policy(path: &PathBuf) {
+fn write_single_capability_policy(path: &Path) {
     write_capability_policy(path, 300, &[("filesystem", "read_file", "read")]);
 }
 
 fn write_enterprise_capability_policy(
-    path: &PathBuf,
+    path: &Path,
     organization_id: &str,
     groups: &[&str],
     roles: &[&str],
@@ -500,7 +500,7 @@ fn write_enterprise_capability_policy(
     fs::write(path, yaml).expect("write enterprise capability policy");
 }
 
-fn write_enterprise_provider_registry(path: &PathBuf, records: &[serde_json::Value]) {
+fn write_enterprise_provider_registry(path: &Path, records: &[serde_json::Value]) {
     fs::write(
         path,
         serde_json::to_vec_pretty(&serde_json::json!({
@@ -584,7 +584,7 @@ fn scim_enterprise_provider_record(
 }
 
 fn write_enterprise_identity(
-    path: &PathBuf,
+    path: &Path,
     provider_record_id: Option<&str>,
     organization_id: &str,
     groups: &[&str],
@@ -618,7 +618,7 @@ fn write_enterprise_identity(
 }
 
 fn write_scim_enterprise_identity(
-    path: &PathBuf,
+    path: &Path,
     provider_record_id: Option<&str>,
     organization_id: &str,
     groups: &[&str],
@@ -654,7 +654,7 @@ fn write_scim_enterprise_identity(
 }
 
 fn write_scim_lifecycle_registry(
-    path: &PathBuf,
+    path: &Path,
     provider_id: &str,
     organization_id: &str,
     groups: &[&str],
@@ -825,7 +825,7 @@ fn setup_enterprise_federated_issue_case(
         &revocation_db_path,
         &authority_seed_path,
         &budget_db_path,
-        enterprise_providers_file.as_ref(),
+        enterprise_providers_file.as_deref(),
     );
 
     let client = Client::builder().build().expect("build reqwest client");
@@ -843,12 +843,12 @@ fn setup_enterprise_federated_issue_case(
 }
 
 fn create_federated_delegation_policy(
-    output_path: &PathBuf,
-    signing_seed_path: &PathBuf,
+    output_path: &Path,
+    signing_seed_path: &Path,
     issuer: &str,
     partner: &str,
     verifier: &str,
-    capability_policy_path: &PathBuf,
+    capability_policy_path: &Path,
     parent_capability_id: Option<&str>,
 ) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
@@ -887,8 +887,8 @@ fn create_federated_delegation_policy(
 }
 
 fn create_evidence_federation_policy(
-    output_path: &PathBuf,
-    signing_seed_path: &PathBuf,
+    output_path: &Path,
+    signing_seed_path: &Path,
     issuer: &str,
     partner: &str,
     capability_id: &str,

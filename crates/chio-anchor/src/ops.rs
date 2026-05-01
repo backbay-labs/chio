@@ -404,6 +404,35 @@ mod tests {
     };
     use crate::bundle::AnchorLaneKind;
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
     #[test]
     fn indexer_cursor_classifies_drift() {
         let cursor = AnchorIndexerCursor::from_sequences(AnchorIndexerCursorInput {
@@ -430,7 +459,7 @@ mod tests {
             reason: Some("root registry divergence under investigation".to_string()),
         };
         let error = ensure_anchor_operation_allowed(controls, AnchorOperationKind::PublishRoot)
-            .expect_err("publish should be denied");
+            .test_expect_err("publish should be denied");
         assert!(error
             .to_string()
             .contains("anchor operation PublishRoot denied"));
@@ -457,7 +486,7 @@ mod tests {
         let report: AnchorRuntimeReport = serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_ANCHOR_RUNTIME_REPORT_EXAMPLE.json"
         ))
-        .expect("example report");
+        .test_expect("example report");
         assert_eq!(report.schema, CHIO_ANCHOR_RUNTIME_REPORT_SCHEMA);
         assert_eq!(report.controls.mode, AnchorEmergencyMode::RecoveryOnly);
         assert_eq!(report.lanes.len(), 3);

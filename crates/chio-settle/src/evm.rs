@@ -1608,7 +1608,6 @@ fn u256_to_bytes32(value: U256) -> [u8; 32] {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::SettlementPolicyConfig;
@@ -1633,6 +1632,40 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::{Arc, Mutex};
+
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E> {
+        fn test_expect(self, context: &'static str) -> T {
+            match self {
+                Ok(value) => value,
+                Err(_) => panic!("{context}"),
+            }
+        }
+
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(_) => panic!("expected Ok result"),
+            }
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(_) => panic!("{context} unexpectedly succeeded"),
+                Err(error) => error,
+            }
+        }
+    }
 
     fn sample_config() -> SettlementChainConfig {
         sample_config_with_rpc_url("http://127.0.0.1:8545".to_string())
@@ -1664,17 +1697,18 @@ mod tests {
 
     impl MockJsonRpcServer {
         fn spawn(responses: Vec<Value>) -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock RPC listener");
-            let address = listener.local_addr().expect("listener address");
+            let listener = TcpListener::bind("127.0.0.1:0").test_expect("bind mock RPC listener");
+            let address = listener.local_addr().test_expect("listener address");
             let requests = Arc::new(Mutex::new(Vec::new()));
             let request_log = Arc::clone(&requests);
             let handle = thread::spawn(move || {
                 for response in responses {
-                    let (mut stream, _) = listener.accept().expect("accept mock RPC connection");
+                    let (mut stream, _) =
+                        listener.accept().test_expect("accept mock RPC connection");
                     let request = read_http_request(&mut stream);
                     request_log
                         .lock()
-                        .expect("request log lock")
+                        .test_expect("request log lock")
                         .push(parse_json_request(&request));
                     write_http_json_response(&mut stream, 200, &response);
                 }
@@ -1691,13 +1725,13 @@ mod tests {
         }
 
         fn requests(&self) -> Vec<Value> {
-            self.requests.lock().expect("request log lock").clone()
+            self.requests.lock().test_expect("request log lock").clone()
         }
 
         fn join(self) {
             self.handle
                 .join()
-                .expect("mock RPC thread should exit cleanly");
+                .test_expect("mock RPC thread should exit cleanly");
         }
     }
 
@@ -1705,7 +1739,7 @@ mod tests {
         serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_WEB3_SETTLEMENT_DISPATCH_EXAMPLE.json"
         ))
-        .unwrap()
+        .test_unwrap()
     }
 
     fn hex_dispatch() -> Web3SettlementDispatchArtifact {
@@ -1722,7 +1756,7 @@ mod tests {
         serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
         ))
-        .expect("parse primary proof example")
+        .test_expect("parse primary proof example")
     }
 
     fn operator_keypair() -> Keypair {
@@ -1752,7 +1786,7 @@ mod tests {
         };
         let (signature, _) = operator
             .sign_canonical(&certificate)
-            .expect("binding signature");
+            .test_expect("binding signature");
         SignedWeb3IdentityBinding {
             certificate,
             signature,
@@ -1831,7 +1865,7 @@ mod tests {
             },
             &keypair,
         )
-        .expect("capital instruction")
+        .test_expect("capital instruction")
     }
 
     fn sample_receipt(
@@ -1853,7 +1887,7 @@ mod tests {
                     "currency": "USD",
                     "to": beneficiary_address,
                 }))
-                .expect("receipt params"),
+                .test_expect("receipt params"),
                 decision: Decision::Allow,
                 content_hash: sha256_hex(format!("settlement:{receipt_id}").as_bytes()),
                 policy_hash: sha256_hex(b"policy:web3"),
@@ -1865,7 +1899,7 @@ mod tests {
             },
             keypair,
         )
-        .expect("receipt")
+        .test_expect("receipt")
     }
 
     fn sample_credit_bond(
@@ -1960,7 +1994,7 @@ mod tests {
             },
             &keypair,
         )
-        .expect("credit bond")
+        .test_expect("credit bond")
     }
 
     fn rpc_result(result: Value) -> Value {
@@ -1993,7 +2027,7 @@ mod tests {
         let mut content_length = 0_usize;
 
         loop {
-            let read = stream.read(&mut chunk).expect("read request");
+            let read = stream.read(&mut chunk).test_expect("read request");
             if read == 0 {
                 break;
             }
@@ -2011,7 +2045,7 @@ mod tests {
             }
         }
 
-        String::from_utf8(request).expect("request should be valid UTF-8")
+        String::from_utf8(request).test_expect("request should be valid UTF-8")
     }
 
     fn find_header_end(request: &[u8]) -> Option<usize> {
@@ -2040,7 +2074,7 @@ mod tests {
             .split_once("\r\n\r\n")
             .map(|(_, body)| body)
             .unwrap_or_default();
-        serde_json::from_str(body).expect("request body should be JSON")
+        serde_json::from_str(body).test_expect("request body should be JSON")
     }
 
     fn write_http_json_response<W: Write>(stream: &mut W, status: u16, body: &Value) {
@@ -2053,7 +2087,7 @@ mod tests {
         );
         stream
             .write_all(response.as_bytes())
-            .expect("write mock response");
+            .test_expect("write mock response");
     }
 
     fn http_status_text(status: u16) -> &'static str {
@@ -2074,9 +2108,9 @@ mod tests {
             },
             &config,
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(scaled, 1_500_000);
-        let restored = scale_token_minor_units_to_chio_amount(scaled, "USD", &config).unwrap();
+        let restored = scale_token_minor_units_to_chio_amount(scaled, "USD", &config).test_unwrap();
         assert_eq!(restored.units, 150);
     }
 
@@ -2087,12 +2121,12 @@ mod tests {
             "0x9e7e9d75ef18f8924a938f06c9838a8d6c6b9600dba88b35d28f6d54e2a71803",
             "escrow_id",
         )
-        .unwrap();
+        .test_unwrap();
         let receipt_hash = parse_b256_hex(
             "0x8d4f1c4eff7a6ec4cb9f3d5347ea50ccaa43d562e2eb06b1e0dab0633d14c0e3",
             "receipt_hash",
         )
-        .unwrap();
+        .test_unwrap();
         let digest = dual_sign_digest(
             &config,
             &config.escrow_contract,
@@ -2100,29 +2134,31 @@ mod tests {
             &receipt_hash,
             1_500_000,
         )
-        .unwrap();
+        .test_unwrap();
         let signature = sign_digest(
             "0x1000000000000000000000000000000000000000000000000000000000000002",
             &digest,
         )
-        .unwrap();
+        .test_unwrap();
         let message = Message::from_digest(*digest.as_ref());
         let secp = Secp256k1::new();
-        let recovery_id = RecoveryId::try_from((signature.v - 27) as i32).unwrap();
+        let recovery_id = RecoveryId::try_from((signature.v - 27) as i32).test_unwrap();
         let mut bytes = [0_u8; 64];
-        bytes[..32].copy_from_slice(&hex::decode(signature.r.trim_start_matches("0x")).unwrap());
-        bytes[32..].copy_from_slice(&hex::decode(signature.s.trim_start_matches("0x")).unwrap());
-        let recoverable = RecoverableSignature::from_compact(&bytes, recovery_id).unwrap();
-        let recovered = secp.recover_ecdsa(message, &recoverable).unwrap();
+        bytes[..32]
+            .copy_from_slice(&hex::decode(signature.r.trim_start_matches("0x")).test_unwrap());
+        bytes[32..]
+            .copy_from_slice(&hex::decode(signature.s.trim_start_matches("0x")).test_unwrap());
+        let recoverable = RecoverableSignature::from_compact(&bytes, recovery_id).test_unwrap();
+        let recovered = secp.recover_ecdsa(message, &recoverable).test_unwrap();
         let expected = SecpPublicKey::from_secret_key(
             &secp,
             &SecretKey::from_byte_array(
                 hex::decode("1000000000000000000000000000000000000000000000000000000000000002")
-                    .unwrap()
+                    .test_unwrap()
                     .try_into()
-                    .unwrap(),
+                    .test_unwrap(),
             )
-            .unwrap(),
+            .test_unwrap(),
         );
         assert_eq!(recovered, expected);
     }
@@ -2135,7 +2171,7 @@ mod tests {
             "0x1000000000000000000000000000000000000002",
             42_000,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(prepared.amount_minor_units, 42_000);
         assert_eq!(prepared.call.from_address, prepared.owner_address);
@@ -2153,7 +2189,7 @@ mod tests {
             &dispatch,
             "0x1000000000000000000000000000000000000009",
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(refund.escrow_id, dispatch.escrow_id);
         assert_eq!(refund.call.to_address, config.escrow_contract);
         assert!(refund.call.data.starts_with("0x"));
@@ -2163,7 +2199,7 @@ mod tests {
             "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "0x1000000000000000000000000000000000000009",
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(expiry.chain_id, config.chain_id);
         assert_eq!(expiry.call.to_address, config.bond_vault_contract);
     }
@@ -2179,7 +2215,7 @@ mod tests {
             "tx-failed".to_string(),
             "node rejected tx".to_string(),
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(
             failure.lifecycle_state,
             Web3SettlementLifecycleState::Failed
@@ -2195,7 +2231,7 @@ mod tests {
             "exec-failed".to_string(),
             true,
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(
             reversal.lifecycle_state,
             Web3SettlementLifecycleState::ChargedBack
@@ -2247,7 +2283,7 @@ mod tests {
             }],
         };
 
-        let finalized = finalize_escrow_dispatch(&prepared, &receipt).unwrap();
+        let finalized = finalize_escrow_dispatch(&prepared, &receipt).test_unwrap();
 
         assert_eq!(finalized.expected_escrow_id, observed_id);
         assert_eq!(finalized.dispatch.escrow_id, observed_id);
@@ -2295,7 +2331,7 @@ mod tests {
             }],
         };
 
-        let finalized = finalize_bond_lock(&prepared, &receipt).unwrap();
+        let finalized = finalize_bond_lock(&prepared, &receipt).test_unwrap();
 
         assert_eq!(finalized.vault_id, vault_id);
     }
@@ -2320,13 +2356,13 @@ mod tests {
 
         let validation = static_validate_call(&config, &call)
             .await
-            .expect("eth_call should succeed");
+            .test_expect("eth_call should succeed");
         let estimated = estimate_call_gas(&config, &call)
             .await
-            .expect("gas estimate should succeed");
+            .test_expect("gas estimate should succeed");
         let tx_hash = submit_call(&config, &call)
             .await
-            .expect("submission should succeed");
+            .test_expect("submission should succeed");
 
         let requests = server.requests();
         server.join();
@@ -2359,7 +2395,7 @@ mod tests {
 
         let tx_hash = submit_call(&config, &call)
             .await
-            .expect("submission should succeed");
+            .test_expect("submission should succeed");
 
         let requests = server.requests();
         server.join();
@@ -2401,7 +2437,7 @@ mod tests {
             "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         )
         .await
-        .expect("receipt should decode");
+        .test_expect("receipt should decode");
 
         let requests = server.requests();
         server.join();
@@ -2425,7 +2461,7 @@ mod tests {
             "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         )
         .await
-        .expect_err("RPC error should fail");
+        .test_expect_err("RPC error should fail");
         error_server.join();
         assert!(matches!(error, SettlementError::Rpc(_)));
 
@@ -2443,7 +2479,7 @@ mod tests {
             "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         )
         .await
-        .expect_err("missing block hash should fail");
+        .test_expect_err("missing block hash should fail");
         missing_server.join();
         assert!(error.to_string().contains("receipt missing blockHash"));
     }
@@ -2456,17 +2492,17 @@ mod tests {
                     terms: IChioEscrow::EscrowTerms {
                         capabilityId: B256::from([0x11; 32]),
                         depositor: Address::from_str("0x1000000000000000000000000000000000000001")
-                            .unwrap(),
+                            .test_unwrap(),
                         beneficiary: Address::from_str(
                             "0x1000000000000000000000000000000000000002",
                         )
-                        .unwrap(),
+                        .test_unwrap(),
                         token: Address::from_str("0x1000000000000000000000000000000000000003")
-                            .unwrap(),
+                            .test_unwrap(),
                         maxAmount: U256::from(1_500_000_u64),
                         deadline: U256::from(1_700_003_000_u64),
                         operator: Address::from_str("0x1000000000000000000000000000000000000004")
-                            .unwrap(),
+                            .test_unwrap(),
                         operatorKeyHash: B256::from([0x22; 32]),
                     },
                     deposited: U256::from(1_500_000_u64),
@@ -2480,15 +2516,15 @@ mod tests {
                         bondId: B256::from([0x31; 32]),
                         facilityId: B256::from([0x32; 32]),
                         principal: Address::from_str("0x1000000000000000000000000000000000000005",)
-                            .unwrap(),
+                            .test_unwrap(),
                         token: Address::from_str("0x1000000000000000000000000000000000000006")
-                            .unwrap(),
+                            .test_unwrap(),
                         collateralAmount: U256::from(2_000_000_u64),
                         reserveRequirementAmount: U256::from(250_000_u64),
                         expiresAt: U256::from(1_800_000_000_u64),
                         reserveRequirementRatioBps: 2500,
                         operator: Address::from_str("0x1000000000000000000000000000000000000007",)
-                            .unwrap(),
+                            .test_unwrap(),
                     },
                     lockedAmount: U256::from(2_000_000_u64),
                     slashedAmount: U256::from(125_000_u64),
@@ -2504,13 +2540,13 @@ mod tests {
             "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         )
         .await
-        .expect("escrow snapshot should decode");
+        .test_expect("escrow snapshot should decode");
         let bond = read_bond_snapshot(
             &config,
             "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         )
         .await
-        .expect("bond snapshot should decode");
+        .test_expect("bond snapshot should decode");
 
         let requests = server.requests();
         server.join();
@@ -2560,7 +2596,7 @@ mod tests {
 
         let prepared = prepare_web3_escrow_dispatch(&config, &request, &binding)
             .await
-            .expect("dispatch should prepare");
+            .test_expect("dispatch should prepare");
 
         let requests = server.requests();
         server.join();
@@ -2584,7 +2620,7 @@ mod tests {
         binding.certificate.purpose = vec![Web3KeyBindingPurpose::Anchor];
         binding.signature = operator_keypair()
             .sign_canonical(&binding.certificate)
-            .expect("binding signature")
+            .test_expect("binding signature")
             .0;
 
         let valid_request = EscrowDispatchRequest {
@@ -2608,7 +2644,7 @@ mod tests {
 
         let binding_error = prepare_web3_escrow_dispatch(&config, &valid_request, &binding)
             .await
-            .expect_err("binding without settle purpose should fail");
+            .test_expect_err("binding without settle purpose should fail");
         assert!(binding_error
             .to_string()
             .contains("binding does not include Settle purpose"));
@@ -2625,7 +2661,7 @@ mod tests {
         let binding = sample_binding_for_config(&config);
         let instruction_error = prepare_web3_escrow_dispatch(&config, &mismatch_request, &binding)
             .await
-            .expect_err("mismatched beneficiary should fail");
+            .test_expect_err("mismatched beneficiary should fail");
         assert!(instruction_error.to_string().contains(
             "beneficiary address must match capital instruction destination_account_ref"
         ));
@@ -2637,7 +2673,7 @@ mod tests {
             .completion_flow_row_id = Some("economic-completion-flow:other-receipt".to_string());
         let provenance_error = prepare_web3_escrow_dispatch(&config, &provenance_request, &binding)
             .await
-            .expect_err("mismatched completion-flow provenance should fail");
+            .test_expect_err("mismatched completion-flow provenance should fail");
         drop(provenance_error);
     }
 
@@ -2652,7 +2688,7 @@ mod tests {
         config.escrow_contract = dispatch.escrow_contract.clone();
 
         let full = prepare_merkle_release(&config, &dispatch, &proof, EscrowExecutionAmount::Full)
-            .expect("full merkle release should prepare");
+            .test_expect("full merkle release should prepare");
         let partial_amount = MonetaryAmount {
             units: dispatch.settlement_amount.units / 2,
             currency: dispatch.settlement_amount.currency.clone(),
@@ -2663,7 +2699,7 @@ mod tests {
             &proof,
             EscrowExecutionAmount::Partial(partial_amount.clone()),
         )
-        .expect("partial merkle release should prepare");
+        .test_expect("partial merkle release should prepare");
 
         assert!(!full.partial);
         assert!(partial.partial);
@@ -2695,7 +2731,7 @@ mod tests {
                     observed_amount: dual_dispatch.settlement_amount.clone(),
                 },
             )
-            .expect("dual-sign release should prepare");
+            .test_expect("dual-sign release should prepare");
 
         assert_eq!(release.call.to_address, dual_config.escrow_contract);
         assert_eq!(release.observed_amount, dual_dispatch.settlement_amount);
@@ -2719,7 +2755,7 @@ mod tests {
             },
         )
         .await
-        .expect("bond lock should prepare");
+        .test_expect("bond lock should prepare");
 
         let requests = server.requests();
         server.join();
@@ -2736,7 +2772,7 @@ mod tests {
             &config.operator_address,
             &sample_primary_proof(),
         )
-        .expect("bond release should prepare");
+        .test_expect("bond release should prepare");
         let impair = prepare_bond_impair(
             &config,
             &prepared.vault_id,
@@ -2752,7 +2788,7 @@ mod tests {
             }],
             &sample_primary_proof(),
         )
-        .expect("bond impair should prepare");
+        .test_expect("bond impair should prepare");
 
         assert_eq!(release.call.to_address, config.bond_vault_contract);
         assert_eq!(release.vault_id, prepared.vault_id);
@@ -2779,7 +2815,7 @@ mod tests {
             }],
             &sample_primary_proof(),
         )
-        .expect_err("mismatched shares should fail");
+        .test_expect_err("mismatched shares should fail");
         assert!(share_error
             .to_string()
             .contains("slash shares must sum to slash_amount"));
@@ -2809,7 +2845,7 @@ mod tests {
                 logs: vec![],
             },
         )
-        .expect_err("failed receipt should fail closed");
+        .test_expect_err("failed receipt should fail closed");
         assert!(finalize_error
             .to_string()
             .contains("failed before escrow identity could be finalized"));
@@ -2825,7 +2861,7 @@ mod tests {
         });
         assert_eq!(request["gas"], serde_json::json!("0x5208"));
 
-        let chain_error = parse_eip155_chain_id("solana:mainnet").expect_err("unsupported id");
+        let chain_error = parse_eip155_chain_id("solana:mainnet").test_expect_err("unsupported id");
         assert!(matches!(chain_error, SettlementError::Unsupported(_)));
 
         let log_error = parse_log_entry(&serde_json::json!({
@@ -2833,11 +2869,11 @@ mod tests {
             "topics": ["0x1111111111111111111111111111111111111111111111111111111111111111"],
             "data": "not-hex"
         }))
-        .expect_err("bad log payload");
+        .test_expect_err("bad log payload");
         assert!(matches!(log_error, SettlementError::Serialization(_)));
 
-        let overflow =
-            u256_to_u128(U256::from_limbs([0, 0, 1, 0]), "field").expect_err("overflowed u128");
+        let overflow = u256_to_u128(U256::from_limbs([0, 0, 1, 0]), "field")
+            .test_expect_err("overflowed u128");
         assert!(matches!(overflow, SettlementError::InvalidInput(_)));
     }
 }

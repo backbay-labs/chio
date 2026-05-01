@@ -147,7 +147,7 @@ fn assert_unit_result_matches(
     expected: Result<(), &'static str>,
 ) {
     match (actual, expected) {
-        (Ok(actual), Ok(expected)) => assert_eq!(actual, expected),
+        (Ok(()), Ok(())) => {}
         (Err(actual), Err(expected)) => assert_eq!(error_kind(&actual), expected),
         (actual, expected) => {
             panic!("mutation result mismatch: actual={actual:?}, expected={expected:?}")

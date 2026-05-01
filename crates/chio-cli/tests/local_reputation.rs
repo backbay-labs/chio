@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -71,11 +71,11 @@ impl Drop for ServerGuard {
 fn spawn_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
-    policy_path: &PathBuf,
-    receipt_db_path: &PathBuf,
-    revocation_db_path: &PathBuf,
-    authority_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    policy_path: &Path,
+    receipt_db_path: &Path,
+    revocation_db_path: &Path,
+    authority_db_path: &Path,
+    budget_db_path: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -118,11 +118,11 @@ fn wait_for_trust_service(client: &Client, base_url: &str) {
 }
 
 fn create_passport(
-    receipt_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    budget_db_path: &Path,
     subject_hex: &str,
-    passport_path: &PathBuf,
-    signing_seed_path: &PathBuf,
+    passport_path: &Path,
+    signing_seed_path: &Path,
 ) {
     let create_passport = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -216,7 +216,7 @@ fn imported_scope_json() -> String {
 
 #[allow(clippy::too_many_arguments)]
 fn import_federated_reputation_share(
-    receipt_db_path: &PathBuf,
+    receipt_db_path: &Path,
     share_id: &str,
     subject_key: &str,
     issuer: &str,
@@ -293,8 +293,8 @@ fn import_federated_reputation_share(
 }
 
 fn seed_subject_history(
-    receipt_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    budget_db_path: &Path,
     subject_kp: &Keypair,
 ) -> String {
     let authority = LocalCapabilityAuthority::new(Keypair::generate());

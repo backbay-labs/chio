@@ -391,6 +391,35 @@ mod tests {
         SETTLEMENT_COMPLETION_FLOW_ROW_ID_PREFIX,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
     #[test]
     fn indexer_cursor_classifies_lagging() {
         let cursor = SettlementIndexerCursor::from_blocks(SettlementIndexerCursorInput {
@@ -416,7 +445,7 @@ mod tests {
         };
         let error =
             ensure_settlement_operation_allowed(controls, SettlementOperationKind::DispatchEscrow)
-                .expect_err("dispatch should be denied");
+                .test_expect_err("dispatch should be denied");
         assert!(error
             .to_string()
             .contains("settlement operation DispatchEscrow denied"));
@@ -438,7 +467,7 @@ mod tests {
         let report: SettlementRuntimeReport = serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_SETTLE_RUNTIME_REPORT_EXAMPLE.json"
         ))
-        .expect("example report");
+        .test_expect("example report");
         assert_eq!(report.schema, CHIO_SETTLE_RUNTIME_REPORT_SCHEMA);
         assert_eq!(report.controls.mode, SettlementEmergencyMode::RefundOnly);
         assert_eq!(report.recoveries.len(), 1);
@@ -478,19 +507,20 @@ mod tests {
 
     #[test]
     fn completion_flow_binding_round_trips() {
-        let row_id = settlement_completion_flow_row_id("rcpt-1").expect("row id");
+        let row_id = settlement_completion_flow_row_id("rcpt-1").test_expect("row id");
         assert_eq!(
             row_id,
             format!("{SETTLEMENT_COMPLETION_FLOW_ROW_ID_PREFIX}{}", "rcpt-1")
         );
-        ensure_settlement_completion_flow_binding(&row_id, "rcpt-1").expect("matching binding");
+        ensure_settlement_completion_flow_binding(&row_id, "rcpt-1")
+            .test_expect("matching binding");
     }
 
     #[test]
     fn completion_flow_binding_rejects_mismatch() {
         let error =
             ensure_settlement_completion_flow_binding("economic-completion-flow:rcpt-1", "rcpt-2")
-                .expect_err("binding mismatch should fail");
+                .test_expect_err("binding mismatch should fail");
         assert!(error.to_string().contains("resolved receipt"));
     }
 }

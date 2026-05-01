@@ -883,8 +883,14 @@ mod tests {
         let receipt = sample_receipt(1);
         let canonical = canonical_json_bytes(&receipt).expect("canonical receipt");
         let checkpoint_keypair = Keypair::generate();
-        let checkpoint = build_checkpoint(1, 1, 1, &[canonical.clone()], &checkpoint_keypair)
-            .expect("checkpoint");
+        let checkpoint = build_checkpoint(
+            1,
+            1,
+            1,
+            std::slice::from_ref(&canonical),
+            &checkpoint_keypair,
+        )
+        .expect("checkpoint");
         let tree = MerkleTree::from_leaves(&[canonical]).expect("merkle tree");
         let proof =
             build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 1).expect("proof");

@@ -19,11 +19,30 @@ use chio_manifest::{
 };
 use serde_json::{json, Value};
 
+trait TestUnwrap<T> {
+    fn test_unwrap(self, context: &str) -> T;
+}
+
+impl<T, E> TestUnwrap<T> for Result<T, E>
+where
+    E: std::fmt::Display,
+{
+    fn test_unwrap(self, context: &str) -> T {
+        self.unwrap_or_else(|error| panic!("{context}: {error}"))
+    }
+}
+
+impl<T> TestUnwrap<T> for Option<T> {
+    fn test_unwrap(self, context: &str) -> T {
+        self.unwrap_or_else(|| panic!("{context}"))
+    }
+}
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
-        .expect("crate is nested under repo root")
+        .test_unwrap("crate is nested under repo root")
         .to_path_buf()
 }
 
@@ -52,7 +71,7 @@ fn signing_fixture_path() -> PathBuf {
 }
 
 fn pretty_json(value: &Value) -> String {
-    let mut rendered = serde_json::to_string_pretty(value).expect("serialize fixture");
+    let mut rendered = serde_json::to_string_pretty(value).test_unwrap("serialize fixture");
     rendered.push('\n');
     rendered
 }
@@ -154,7 +173,7 @@ fn receipt_cases() -> Vec<Value> {
         "path": "/workspace/docs/roadmap.md",
         "mode": "read"
     }))
-    .expect("allow action");
+    .test_unwrap("allow action");
     let allow_receipt = ChioReceipt::sign(
         base_receipt_body(
             "rcpt-bindings-allow",
@@ -164,14 +183,14 @@ fn receipt_cases() -> Vec<Value> {
         ),
         &keypair,
     )
-    .expect("allow receipt");
-    let allow_verification = verify_receipt(&allow_receipt).expect("allow verification");
+    .test_unwrap("allow receipt");
+    let allow_verification = verify_receipt(&allow_receipt).test_unwrap("allow verification");
 
     let deny_action = ToolCallAction::from_parameters(json!({
         "path": "/etc/shadow",
         "mode": "read"
     }))
-    .expect("deny action");
+    .test_unwrap("deny action");
     let deny_receipt = ChioReceipt::sign(
         base_receipt_body(
             "rcpt-bindings-deny",
@@ -184,14 +203,14 @@ fn receipt_cases() -> Vec<Value> {
         ),
         &keypair,
     )
-    .expect("deny receipt");
-    let deny_verification = verify_receipt(&deny_receipt).expect("deny verification");
+    .test_unwrap("deny receipt");
+    let deny_verification = verify_receipt(&deny_receipt).test_unwrap("deny verification");
 
     let mut invalid_hash_action = ToolCallAction::from_parameters(json!({
         "path": "/workspace/docs/private.md",
         "mode": "read"
     }))
-    .expect("invalid hash action");
+    .test_unwrap("invalid hash action");
     invalid_hash_action.parameter_hash =
         "0000000000000000000000000000000000000000000000000000000000000000".to_string();
     let invalid_hash_receipt = ChioReceipt::sign(
@@ -203,9 +222,9 @@ fn receipt_cases() -> Vec<Value> {
         ),
         &keypair,
     )
-    .expect("invalid hash receipt");
+    .test_unwrap("invalid hash receipt");
     let invalid_hash_verification =
-        verify_receipt(&invalid_hash_receipt).expect("invalid hash verification");
+        verify_receipt(&invalid_hash_receipt).test_unwrap("invalid hash verification");
 
     let mut invalid_signature_receipt = ChioReceipt::sign(
         base_receipt_body(
@@ -214,16 +233,16 @@ fn receipt_cases() -> Vec<Value> {
                 "path": "/workspace/docs/roadmap.md",
                 "mode": "read"
             }))
-            .expect("invalid signature action"),
+            .test_unwrap("invalid signature action"),
             Decision::Allow,
             &keypair,
         ),
         &keypair,
     )
-    .expect("invalid signature receipt");
+    .test_unwrap("invalid signature receipt");
     invalid_signature_receipt.policy_hash = "policy-bindings-v2".to_string();
     let invalid_signature_verification =
-        verify_receipt(&invalid_signature_receipt).expect("invalid signature verification");
+        verify_receipt(&invalid_signature_receipt).test_unwrap("invalid signature verification");
 
     vec![
         receipt_case_value(
@@ -263,7 +282,7 @@ fn receipt_case_value(
         "id": id,
         "description": description,
         "receipt": receipt,
-        "receipt_body_canonical_json": receipt_body_canonical_json(receipt).expect("canonical receipt body"),
+        "receipt_body_canonical_json": receipt_body_canonical_json(receipt).test_unwrap("canonical receipt body"),
         "expected": {
             "signature_valid": verification.signature_valid,
             "parameter_hash_valid": verification.parameter_hash_valid,
@@ -352,9 +371,9 @@ fn signing_json_case_value(
 fn signing_vector_fixture() -> Value {
     let seed_hex = "09".repeat(32);
     let signed_utf8 =
-        sign_utf8_message_ed25519("hello chio", &seed_hex).expect("sign utf8 message");
+        sign_utf8_message_ed25519("hello chio", &seed_hex).test_unwrap("sign utf8 message");
     let signed_json =
-        sign_json_str_ed25519("{\"z\":1,\"a\":2}", &seed_hex).expect("sign json string");
+        sign_json_str_ed25519("{\"z\":1,\"a\":2}", &seed_hex).test_unwrap("sign json string");
 
     json!({
         "version": 1,
@@ -392,7 +411,7 @@ fn signing_vector_fixture() -> Value {
                 "tampered_canonical_json_message",
                 "Verification fails if the JSON payload changes after signing.",
                 "{\"z\":2,\"a\":2}",
-                &canonicalize_json_str("{\"z\":2,\"a\":2}").expect("canonicalize tampered json"),
+                &canonicalize_json_str("{\"z\":2,\"a\":2}").test_unwrap("canonicalize tampered json"),
                 &signed_json.public_key_hex,
                 &signed_json.signature_hex,
                 false,
@@ -434,7 +453,7 @@ fn signed_delegation_link(
         },
         delegator,
     )
-    .expect("delegation link")
+    .test_unwrap("delegation link")
 }
 
 fn base_capability_body(
@@ -468,7 +487,7 @@ fn capability_case_value(
         "description": description,
         "verify_at": verify_at,
         "capability": capability,
-        "capability_body_canonical_json": capability_body_canonical_json(capability).expect("canonical capability body"),
+        "capability_body_canonical_json": capability_body_canonical_json(capability).test_unwrap("canonical capability body"),
         "expected": {
             "signature_valid": verification.signature_valid,
             "delegation_chain_valid": verification.delegation_chain_valid,
@@ -496,10 +515,10 @@ fn capability_cases() -> Vec<Value> {
         ),
         &issuer,
     )
-    .expect("valid capability");
+    .test_unwrap("valid capability");
     let valid_verify_at = 1710000400;
     let valid_verification = verify_capability(&valid_capability, valid_verify_at, Some(4))
-        .expect("valid capability verification");
+        .test_unwrap("valid capability verification");
 
     let expired_capability = CapabilityToken::sign(
         base_capability_body(
@@ -512,10 +531,10 @@ fn capability_cases() -> Vec<Value> {
         ),
         &issuer,
     )
-    .expect("expired capability");
+    .test_unwrap("expired capability");
     let expired_verify_at = 1710000400;
     let expired_verification = verify_capability(&expired_capability, expired_verify_at, Some(4))
-        .expect("expired capability verification");
+        .test_unwrap("expired capability verification");
 
     let not_yet_valid_capability = CapabilityToken::sign(
         base_capability_body(
@@ -528,11 +547,11 @@ fn capability_cases() -> Vec<Value> {
         ),
         &issuer,
     )
-    .expect("not yet valid capability");
+    .test_unwrap("not yet valid capability");
     let not_yet_valid_verify_at = 1710000400;
     let not_yet_valid_verification =
         verify_capability(&not_yet_valid_capability, not_yet_valid_verify_at, Some(4))
-            .expect("not yet valid capability verification");
+            .test_unwrap("not yet valid capability verification");
 
     let mut tampered_capability = CapabilityToken::sign(
         base_capability_body(
@@ -545,12 +564,12 @@ fn capability_cases() -> Vec<Value> {
         ),
         &issuer,
     )
-    .expect("tampered capability");
+    .test_unwrap("tampered capability");
     tampered_capability.scope.grants[0].tool_name = "file_write".to_string();
     let tampered_verify_at = 1710000400;
     let tampered_verification =
         verify_capability(&tampered_capability, tampered_verify_at, Some(4))
-            .expect("tampered capability verification");
+            .test_unwrap("tampered capability verification");
 
     let mut invalid_delegation_link =
         signed_delegation_link("cap-bindings-broken-chain", &issuer, &delegatee, 1710000300);
@@ -566,11 +585,11 @@ fn capability_cases() -> Vec<Value> {
         ),
         &issuer,
     )
-    .expect("broken chain capability");
+    .test_unwrap("broken chain capability");
     let broken_chain_verify_at = 1710000400;
     let broken_chain_verification =
         verify_capability(&broken_chain_capability, broken_chain_verify_at, Some(4))
-            .expect("broken chain capability verification");
+            .test_unwrap("broken chain capability verification");
 
     vec![
         capability_case_value(
@@ -677,7 +696,7 @@ fn signed_manifest_with_manual_signature(
 ) -> SignedManifest {
     let (signature, _bytes) = signer
         .sign_canonical(&manifest)
-        .expect("manual manifest signature");
+        .test_unwrap("manual manifest signature");
     SignedManifest {
         manifest,
         signature,
@@ -695,7 +714,7 @@ fn manifest_case_value(
         "id": id,
         "description": description,
         "signed_manifest": signed_manifest,
-        "manifest_body_canonical_json": signed_manifest_body_canonical_json(signed_manifest).expect("canonical manifest body"),
+        "manifest_body_canonical_json": signed_manifest_body_canonical_json(signed_manifest).test_unwrap("canonical manifest body"),
         "expected": {
             "structure_valid": verification.structure_valid,
             "signature_valid": verification.signature_valid,
@@ -713,42 +732,42 @@ fn manifest_cases() -> Vec<Value> {
         &sample_signed_manifest(server.public_key().to_hex(), &["file_read"]),
         &server,
     )
-    .expect("valid signed manifest");
+    .test_unwrap("valid signed manifest");
     let valid_verification =
-        verify_signed_manifest(&valid_signed_manifest).expect("valid manifest verification");
+        verify_signed_manifest(&valid_signed_manifest).test_unwrap("valid manifest verification");
 
     let mut tampered_signed_manifest = sign_manifest(
         &sample_signed_manifest(server.public_key().to_hex(), &["file_read"]),
         &server,
     )
-    .expect("tampered signed manifest");
+    .test_unwrap("tampered signed manifest");
     tampered_signed_manifest.manifest.version = "1.0.1".to_string();
-    let tampered_verification =
-        verify_signed_manifest(&tampered_signed_manifest).expect("tampered manifest verification");
+    let tampered_verification = verify_signed_manifest(&tampered_signed_manifest)
+        .test_unwrap("tampered manifest verification");
 
     let mismatched_key_signed_manifest = sign_manifest(
         &sample_signed_manifest(alternate.public_key().to_hex(), &["file_read"]),
         &server,
     )
-    .expect("mismatched key manifest");
+    .test_unwrap("mismatched key manifest");
     let mismatched_key_verification = verify_signed_manifest(&mismatched_key_signed_manifest)
-        .expect("mismatched key manifest verification");
+        .test_unwrap("mismatched key manifest verification");
 
     let duplicate_tool_manifest =
         sample_signed_manifest(server.public_key().to_hex(), &["file_read", "file_read"]);
     let duplicate_tool_signed_manifest =
         signed_manifest_with_manual_signature(duplicate_tool_manifest, &server);
     let duplicate_tool_verification = verify_signed_manifest(&duplicate_tool_signed_manifest)
-        .expect("duplicate tool manifest verification");
+        .test_unwrap("duplicate tool manifest verification");
 
     let invalid_embedded_key_signed_manifest = sign_manifest(
         &sample_signed_manifest("not-a-public-key".to_string(), &["file_read", "file_write"]),
         &server,
     )
-    .expect("invalid embedded key manifest");
+    .test_unwrap("invalid embedded key manifest");
     let invalid_embedded_key_verification =
         verify_signed_manifest(&invalid_embedded_key_signed_manifest)
-            .expect("invalid embedded key manifest verification");
+            .test_unwrap("invalid embedded key manifest verification");
 
     vec![
         manifest_case_value(
@@ -840,10 +859,12 @@ fn manifest_vector_fixture_matches_checked_in_json() {
 #[test]
 fn canonical_fixture_cases_round_trip_through_public_api() {
     let fixture = canonical_vector_fixture();
-    for case in fixture["cases"].as_array().expect("cases array") {
-        let input = case["input_json"].as_str().expect("input_json");
-        let expected = case["canonical_json"].as_str().expect("canonical_json");
-        let actual = canonicalize_json_str(input).expect("canonicalize case");
+    for case in fixture["cases"].as_array().test_unwrap("cases array") {
+        let input = case["input_json"].as_str().test_unwrap("input_json");
+        let expected = case["canonical_json"]
+            .as_str()
+            .test_unwrap("canonical_json");
+        let actual = canonicalize_json_str(input).test_unwrap("canonicalize case");
         assert_eq!(actual, expected, "canonical case {}", case["id"]);
     }
 }
@@ -852,11 +873,11 @@ fn canonical_fixture_cases_round_trip_through_public_api() {
 fn hashing_fixture_cases_round_trip_through_public_api() {
     // Read the on-disk corpus so the test exercises every case regardless of
     // whether the in-Rust generator has been updated.
-    let raw = fs::read_to_string(hashing_fixture_path()).expect("read hashing fixture");
-    let fixture: Value = serde_json::from_str(&raw).expect("parse hashing fixture");
-    for case in fixture["cases"].as_array().expect("cases array") {
-        let input = case["input_utf8"].as_str().expect("input_utf8");
-        let expected = case["sha256_hex"].as_str().expect("sha256_hex");
+    let raw = fs::read_to_string(hashing_fixture_path()).test_unwrap("read hashing fixture");
+    let fixture: Value = serde_json::from_str(&raw).test_unwrap("parse hashing fixture");
+    for case in fixture["cases"].as_array().test_unwrap("cases array") {
+        let input = case["input_utf8"].as_str().test_unwrap("input_utf8");
+        let expected = case["sha256_hex"].as_str().test_unwrap("sha256_hex");
         let actual = sha256_hex_utf8(input);
         assert_eq!(actual, expected, "hashing case {}", case["id"]);
     }
@@ -865,14 +886,14 @@ fn hashing_fixture_cases_round_trip_through_public_api() {
 #[test]
 fn receipt_fixture_cases_round_trip_through_public_api() {
     // Read the on-disk corpus so the round-trip covers every case.
-    let raw = fs::read_to_string(receipt_fixture_path()).expect("read receipt fixture");
-    let fixture: Value = serde_json::from_str(&raw).expect("parse receipt fixture");
-    for case in fixture["cases"].as_array().expect("cases array") {
+    let raw = fs::read_to_string(receipt_fixture_path()).test_unwrap("read receipt fixture");
+    let fixture: Value = serde_json::from_str(&raw).test_unwrap("parse receipt fixture");
+    for case in fixture["cases"].as_array().test_unwrap("cases array") {
         let receipt: ChioReceipt =
-            serde_json::from_value(case["receipt"].clone()).expect("parse receipt case");
+            serde_json::from_value(case["receipt"].clone()).test_unwrap("parse receipt case");
         let expected: ReceiptVerification =
-            serde_json::from_value(case["expected"].clone()).expect("parse expectation");
-        let actual = verify_receipt(&receipt).expect("verify receipt case");
+            serde_json::from_value(case["expected"].clone()).test_unwrap("parse expectation");
+        let actual = verify_receipt(&receipt).test_unwrap("verify receipt case");
         assert_eq!(actual, expected, "receipt case {}", case["id"]);
     }
 }
@@ -882,23 +903,30 @@ fn signing_fixture_cases_round_trip_through_public_api() {
     // Read the on-disk corpus. Per-case `signing_key_seed_hex` overrides pin
     // the keypair for cases that use an alternate seed; honoring them makes the
     // round-trip exact for those cases.
-    let raw = fs::read_to_string(signing_fixture_path()).expect("read signing fixture");
-    let fixture: Value = serde_json::from_str(&raw).expect("parse signing fixture");
+    let raw = fs::read_to_string(signing_fixture_path()).test_unwrap("read signing fixture");
+    let fixture: Value = serde_json::from_str(&raw).test_unwrap("parse signing fixture");
     let global_seed_hex = fixture["signing_key_seed_hex"]
         .as_str()
-        .expect("signing_key_seed_hex");
+        .test_unwrap("signing_key_seed_hex");
 
-    for case in fixture["utf8_cases"].as_array().expect("utf8_cases array") {
-        let input = case["input_utf8"].as_str().expect("input_utf8");
-        let public_key_hex = case["public_key_hex"].as_str().expect("public_key_hex");
-        let signature_hex = case["signature_hex"].as_str().expect("signature_hex");
-        let expected_verify = case["expected_verify"].as_bool().expect("expected_verify");
+    for case in fixture["utf8_cases"]
+        .as_array()
+        .test_unwrap("utf8_cases array")
+    {
+        let input = case["input_utf8"].as_str().test_unwrap("input_utf8");
+        let public_key_hex = case["public_key_hex"]
+            .as_str()
+            .test_unwrap("public_key_hex");
+        let signature_hex = case["signature_hex"].as_str().test_unwrap("signature_hex");
+        let expected_verify = case["expected_verify"]
+            .as_bool()
+            .test_unwrap("expected_verify");
         let seed_hex = case["signing_key_seed_hex"]
             .as_str()
             .unwrap_or(global_seed_hex);
 
         if expected_verify {
-            let signed = sign_utf8_message_ed25519(input, seed_hex).expect("sign utf8 case");
+            let signed = sign_utf8_message_ed25519(input, seed_hex).test_unwrap("sign utf8 case");
             assert_eq!(
                 signed.public_key_hex, public_key_hex,
                 "utf8 sign {}",
@@ -912,29 +940,38 @@ fn signing_fixture_cases_round_trip_through_public_api() {
         }
 
         let actual = verify_utf8_message_ed25519(input, public_key_hex, signature_hex)
-            .expect("verify utf8 case");
+            .test_unwrap("verify utf8 case");
         assert_eq!(actual, expected_verify, "utf8 verify {}", case["id"]);
     }
 
-    for case in fixture["json_cases"].as_array().expect("json_cases array") {
-        let input = case["input_json"].as_str().expect("input_json");
-        let canonical_json = case["canonical_json"].as_str().expect("canonical_json");
-        let public_key_hex = case["public_key_hex"].as_str().expect("public_key_hex");
-        let signature_hex = case["signature_hex"].as_str().expect("signature_hex");
-        let expected_verify = case["expected_verify"].as_bool().expect("expected_verify");
+    for case in fixture["json_cases"]
+        .as_array()
+        .test_unwrap("json_cases array")
+    {
+        let input = case["input_json"].as_str().test_unwrap("input_json");
+        let canonical_json = case["canonical_json"]
+            .as_str()
+            .test_unwrap("canonical_json");
+        let public_key_hex = case["public_key_hex"]
+            .as_str()
+            .test_unwrap("public_key_hex");
+        let signature_hex = case["signature_hex"].as_str().test_unwrap("signature_hex");
+        let expected_verify = case["expected_verify"]
+            .as_bool()
+            .test_unwrap("expected_verify");
         let seed_hex = case["signing_key_seed_hex"]
             .as_str()
             .unwrap_or(global_seed_hex);
 
         assert_eq!(
-            canonicalize_json_str(input).expect("canonicalize json case"),
+            canonicalize_json_str(input).test_unwrap("canonicalize json case"),
             canonical_json,
             "json canonical {}",
             case["id"]
         );
 
         if expected_verify {
-            let signed = sign_json_str_ed25519(input, seed_hex).expect("sign json case");
+            let signed = sign_json_str_ed25519(input, seed_hex).test_unwrap("sign json case");
             assert_eq!(
                 signed.canonical_json, canonical_json,
                 "json sign {}",
@@ -953,7 +990,7 @@ fn signing_fixture_cases_round_trip_through_public_api() {
         }
 
         let actual = verify_json_str_signature_ed25519(input, public_key_hex, signature_hex)
-            .expect("verify json case");
+            .test_unwrap("verify json case");
         assert_eq!(actual, expected_verify, "json verify {}", case["id"]);
     }
 }
@@ -964,19 +1001,19 @@ fn capability_fixture_cases_round_trip_through_public_api() {
     // cross-language consumers can compare against the same vectors. Cases with
     // depth-aware behavior carry an optional `max_delegation_depth` plus
     // `expected_with_max_delegation_depth` pair; this test asserts both branches when present.
-    let raw = fs::read_to_string(capability_fixture_path()).expect("read capability fixture");
-    let fixture: Value = serde_json::from_str(&raw).expect("parse capability fixture");
-    for case in fixture["cases"].as_array().expect("cases array") {
+    let raw = fs::read_to_string(capability_fixture_path()).test_unwrap("read capability fixture");
+    let fixture: Value = serde_json::from_str(&raw).test_unwrap("parse capability fixture");
+    for case in fixture["cases"].as_array().test_unwrap("cases array") {
         let capability: CapabilityToken =
-            serde_json::from_value(case["capability"].clone()).expect("parse capability case");
-        let verify_at = case["verify_at"].as_u64().expect("verify_at");
-        let expected: CapabilityVerification =
-            serde_json::from_value(case["expected"].clone()).expect("parse capability expectation");
+            serde_json::from_value(case["capability"].clone()).test_unwrap("parse capability case");
+        let verify_at = case["verify_at"].as_u64().test_unwrap("verify_at");
+        let expected: CapabilityVerification = serde_json::from_value(case["expected"].clone())
+            .test_unwrap("parse capability expectation");
 
         // Depth-agnostic verification: every consumer in the cross-language
         // matrix (chio-go, chio-py, chio-ts) runs this exact assertion.
         let actual_no_depth =
-            verify_capability(&capability, verify_at, None).expect("verify capability case");
+            verify_capability(&capability, verify_at, None).test_unwrap("verify capability case");
         assert_eq!(
             actual_no_depth, expected,
             "capability case {} (no max depth)",
@@ -997,9 +1034,9 @@ fn capability_fixture_cases_round_trip_through_public_api() {
                 .unwrap_or_else(|| case["expected"].clone());
             let depth_expected: CapabilityVerification =
                 serde_json::from_value(depth_expected_value)
-                    .expect("parse depth-aware capability expectation");
+                    .test_unwrap("parse depth-aware capability expectation");
             let actual_with_depth = verify_capability(&capability, verify_at, Some(max_depth))
-                .expect("verify capability case (max depth)");
+                .test_unwrap("verify capability case (max depth)");
             assert_eq!(
                 actual_with_depth, depth_expected,
                 "capability case {} (max_delegation_depth={})",
@@ -1012,15 +1049,16 @@ fn capability_fixture_cases_round_trip_through_public_api() {
 #[test]
 fn manifest_fixture_cases_round_trip_through_public_api() {
     // Read the on-disk corpus as ground truth.
-    let raw = std::fs::read_to_string(manifest_fixture_path()).expect("read manifest fixture");
-    let fixture: Value = serde_json::from_str(&raw).expect("parse manifest fixture");
-    for case in fixture["cases"].as_array().expect("cases array") {
+    let raw = std::fs::read_to_string(manifest_fixture_path()).test_unwrap("read manifest fixture");
+    let fixture: Value = serde_json::from_str(&raw).test_unwrap("parse manifest fixture");
+    for case in fixture["cases"].as_array().test_unwrap("cases array") {
         let signed_manifest: SignedManifest =
             serde_json::from_value(case["signed_manifest"].clone())
-                .expect("parse signed manifest case");
-        let expected: ManifestVerification =
-            serde_json::from_value(case["expected"].clone()).expect("parse manifest expectation");
-        let actual = verify_signed_manifest(&signed_manifest).expect("verify signed manifest case");
+                .test_unwrap("parse signed manifest case");
+        let expected: ManifestVerification = serde_json::from_value(case["expected"].clone())
+            .test_unwrap("parse manifest expectation");
+        let actual =
+            verify_signed_manifest(&signed_manifest).test_unwrap("verify signed manifest case");
         assert_eq!(actual, expected, "manifest case {}", case["id"]);
     }
 }

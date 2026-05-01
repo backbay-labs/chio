@@ -580,7 +580,7 @@ mod tests {
     fn temp_registry_path() -> std::path::PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
+            .test_unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("chio-enterprise-provider-registry-{nonce}.json"))
     }
@@ -588,7 +588,7 @@ mod tests {
     fn temp_discovery_path() -> std::path::PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
+            .test_unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("chio-certify-discovery-network-{nonce}.json"))
     }
@@ -600,6 +600,28 @@ mod tests {
                 assert_eq!(chio.domain().as_str(), expected_domain);
             }
             other => panic!("expected registry-backed CliError::Chio, got: {other:?}"),
+        }
+    }
+
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Some(value) => value,
+                None => panic!("expected Some(..), got None"),
+            }
         }
     }
 
@@ -724,16 +746,12 @@ mod tests {
         invalid_record.issuer = None;
         registry.upsert(invalid_record.clone());
 
-        registry.save(&path).expect("save registry");
-        let loaded = EnterpriseProviderRegistry::load(&path).expect("load registry");
+        registry.save(&path).test_unwrap();
+        let loaded = EnterpriseProviderRegistry::load(&path).test_unwrap();
 
         assert_eq!(loaded.version, ENTERPRISE_PROVIDER_REGISTRY_VERSION);
         assert_eq!(
-            loaded
-                .providers
-                .get("oidc")
-                .expect("provider present")
-                .validation_errors,
+            loaded.providers.get("oidc").test_unwrap().validation_errors,
             invalid_record.validate()
         );
 
@@ -807,16 +825,12 @@ mod tests {
         invalid.registry_url = "west.example.com".to_string();
         network.upsert(invalid.clone());
 
-        network.save(&path).expect("save discovery network");
-        let loaded = CertificationDiscoveryNetwork::load(&path).expect("load discovery network");
+        network.save(&path).test_unwrap();
+        let loaded = CertificationDiscoveryNetwork::load(&path).test_unwrap();
 
         assert_eq!(loaded.version, CERTIFICATION_DISCOVERY_NETWORK_VERSION);
         assert_eq!(
-            loaded
-                .operators
-                .get("west")
-                .expect("operator present")
-                .validation_errors,
+            loaded.operators.get("west").test_unwrap().validation_errors,
             invalid.validate()
         );
 
@@ -855,7 +869,7 @@ mod tests {
         assert_eq!(
             network
                 .validated_operator("east")
-                .expect("validated operator")
+                .test_unwrap()
                 .registry_url,
             "https://east.example.com"
         );

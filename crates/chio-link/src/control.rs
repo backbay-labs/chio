@@ -191,6 +191,7 @@ impl ChioLinkControlState {
 mod tests {
     use super::ChioLinkControlState;
     use crate::config::{PairRuntimeOverride, PriceOracleConfig};
+    use crate::test_support::TestUnwrap;
 
     #[test]
     fn control_state_tracks_pause_chain_and_pair_changes() {
@@ -203,7 +204,7 @@ mod tests {
             .pairs
             .iter()
             .find(|pair| pair.base == "BTC" && pair.quote == "USD")
-            .expect("btc/usd pair")
+            .test_unwrap("btc/usd pair")
             .clone();
         let mut state = ChioLinkControlState::new(1_764_825_600, config.operator);
         state.record_global_pause(
@@ -223,7 +224,7 @@ mod tests {
                 1_764_825_620,
                 "leave standby chain disabled",
             )
-            .expect("chain update");
+            .test_unwrap("chain update");
         state
             .record_pair_override(
                 PairRuntimeOverride {
@@ -235,7 +236,7 @@ mod tests {
                 1_764_825_630,
                 "disable pair",
             )
-            .expect("pair override");
+            .test_unwrap("pair override");
         assert_eq!(state.history.len(), 3);
         assert!(state.operator.global_pause);
         assert!(

@@ -216,10 +216,10 @@ async fn mpsc_signing_path_applies_backpressure_at_capacity() {
     // saturation check below is meaningful (smaller defaults would let
     // the runtime drain everything before backpressure has any chance
     // to engage).
+    let default_capacity = chio_kernel::SIGNING_CHANNEL_DEFAULT_CAPACITY;
     assert!(
-        chio_kernel::SIGNING_CHANNEL_DEFAULT_CAPACITY >= 16,
-        "default capacity {} too small to exercise backpressure",
-        chio_kernel::SIGNING_CHANNEL_DEFAULT_CAPACITY
+        default_capacity >= 16,
+        "default capacity {default_capacity} too small to exercise backpressure"
     );
 
     // Queue twice the default capacity. With a fast signer this races

@@ -352,7 +352,6 @@ fn recovery_action_for_projection(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -372,6 +371,40 @@ mod tests {
 
     use super::*;
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E> {
+        fn test_expect(self, context: &'static str) -> T {
+            match self {
+                Ok(value) => value,
+                Err(_) => panic!("{context}"),
+            }
+        }
+
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(_) => panic!("expected Ok result"),
+            }
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(_) => panic!("{context} unexpectedly succeeded"),
+                Err(error) => error,
+            }
+        }
+    }
+
     struct MockJsonRpcServer {
         base_url: String,
         requests: Arc<Mutex<Vec<Value>>>,
@@ -380,25 +413,26 @@ mod tests {
 
     impl MockJsonRpcServer {
         fn spawn(envelopes: Vec<Value>) -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock JSON-RPC listener");
-            let address = listener.local_addr().expect("listener address");
+            let listener =
+                TcpListener::bind("127.0.0.1:0").test_expect("bind mock JSON-RPC listener");
+            let address = listener.local_addr().test_expect("listener address");
             let base_url = format!("http://127.0.0.1:{}", address.port());
             let requests = Arc::new(Mutex::new(Vec::new()));
             let requests_for_thread = Arc::clone(&requests);
 
             let handle = thread::spawn(move || {
                 for envelope in envelopes {
-                    let (mut stream, _) = listener.accept().expect("accept mock request");
+                    let (mut stream, _) = listener.accept().test_expect("accept mock request");
                     stream
                         .set_read_timeout(Some(Duration::from_secs(2)))
-                        .expect("set read timeout");
+                        .test_expect("set read timeout");
                     let request = read_http_request(&mut stream);
                     requests_for_thread
                         .lock()
-                        .expect("lock request log")
+                        .test_expect("lock request log")
                         .push(parse_json_request(&request));
                     write_http_json_response(&mut stream, 200, &envelope);
-                    stream.flush().expect("flush mock response");
+                    stream.flush().test_expect("flush mock response");
                 }
             });
 
@@ -414,11 +448,11 @@ mod tests {
         }
 
         fn requests(&self) -> Vec<Value> {
-            self.requests.lock().expect("lock request log").clone()
+            self.requests.lock().test_expect("lock request log").clone()
         }
 
         fn join(self) {
-            self.handle.join().expect("join mock JSON-RPC server");
+            self.handle.join().test_expect("join mock JSON-RPC server");
         }
     }
 
@@ -491,7 +525,7 @@ mod tests {
         let mut dispatch: Web3SettlementDispatchArtifact = serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_WEB3_SETTLEMENT_DISPATCH_EXAMPLE.json"
         ))
-        .expect("dispatch example should parse");
+        .test_expect("dispatch example should parse");
         dispatch.escrow_id =
             "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
         dispatch.settlement_path = Web3SettlementPath::DualSignature;
@@ -530,7 +564,7 @@ mod tests {
         let mut content_length = 0_usize;
 
         loop {
-            let read = stream.read(&mut chunk).expect("read request");
+            let read = stream.read(&mut chunk).test_expect("read request");
             if read == 0 {
                 break;
             }
@@ -548,7 +582,7 @@ mod tests {
             }
         }
 
-        String::from_utf8(request).expect("request should be valid UTF-8")
+        String::from_utf8(request).test_expect("request should be valid UTF-8")
     }
 
     fn find_header_end(request: &[u8]) -> Option<usize> {
@@ -577,7 +611,7 @@ mod tests {
             .split_once("\r\n\r\n")
             .map(|(_, body)| body)
             .unwrap_or_default();
-        serde_json::from_str(body).expect("request body should be JSON")
+        serde_json::from_str(body).test_expect("request body should be JSON")
     }
 
     fn write_http_json_response<W: Write>(stream: &mut W, status: u16, body: &Value) {
@@ -590,7 +624,7 @@ mod tests {
         );
         stream
             .write_all(response.as_bytes())
-            .expect("write mock response");
+            .test_expect("write mock response");
     }
 
     fn http_status_text(status: u16) -> &'static str {
@@ -603,8 +637,8 @@ mod tests {
 
     #[test]
     fn parse_hex_u64_accepts_and_rejects_expected_values() {
-        assert_eq!(parse_hex_u64("0x2a").expect("hex should parse"), 42);
-        let error = parse_hex_u64("nope").expect_err("bad hex should fail");
+        assert_eq!(parse_hex_u64("0x2a").test_expect("hex should parse"), 42);
+        let error = parse_hex_u64("nope").test_expect_err("bad hex should fail");
         assert!(matches!(error, SettlementError::Rpc(_)));
     }
 
@@ -665,7 +699,7 @@ mod tests {
 
         let assessment = inspect_finality_for_receipt(&config, &receipt, 500_000, None)
             .await
-            .expect("assessment should succeed");
+            .test_expect("assessment should succeed");
 
         let requests = server.requests();
         server.join();
@@ -693,7 +727,7 @@ mod tests {
         let assessment =
             inspect_finality_for_receipt(&config, &receipt, 500_000, Some(1_700_010_000))
                 .await
-                .expect("assessment should succeed");
+                .test_expect("assessment should succeed");
 
         server.join();
 
@@ -717,7 +751,7 @@ mod tests {
         let assessment =
             inspect_finality_for_receipt(&config, &receipt, 500_000, Some(1_700_020_000))
                 .await
-                .expect("assessment should succeed");
+                .test_expect("assessment should succeed");
 
         server.join();
 
@@ -736,7 +770,7 @@ mod tests {
         let mismatch =
             inspect_finality_for_receipt(&mismatch_config, &receipt, 500_000, Some(1_700_020_000))
                 .await
-                .expect("assessment should succeed");
+                .test_expect("assessment should succeed");
         mismatch_server.join();
         assert_eq!(mismatch.status, SettlementFinalityStatus::Reorged);
 
@@ -748,7 +782,7 @@ mod tests {
         let missing =
             inspect_finality_for_receipt(&missing_config, &receipt, 500_000, Some(1_700_020_000))
                 .await
-                .expect("assessment should succeed");
+                .test_expect("assessment should succeed");
         missing_server.join();
         assert_eq!(missing.status, SettlementFinalityStatus::Reorged);
     }
@@ -776,7 +810,7 @@ mod tests {
         let (receipt, assessment) =
             inspect_finality(&config, "0xdeadbeef", 50_000, Some(1_700_004_000))
                 .await
-                .expect("finality inspection should succeed");
+                .test_expect("finality inspection should succeed");
 
         let requests = server.requests();
         server.join();
@@ -801,7 +835,7 @@ mod tests {
         let receipt = sample_receipt(100, "0xaaa", 1_700_000_000);
         let error = inspect_finality_for_receipt(&error_config, &receipt, 500_000, None)
             .await
-            .expect_err("RPC error should fail");
+            .test_expect_err("RPC error should fail");
         error_server.join();
         assert!(matches!(error, SettlementError::Rpc(_)));
 
@@ -810,7 +844,7 @@ mod tests {
         let missing_field_config = sample_config(missing_field_server.base_url());
         let error = inspect_finality_for_receipt(&missing_field_config, &receipt, 500_000, None)
             .await
-            .expect_err("missing block number should fail");
+            .test_expect_err("missing block number should fail");
         missing_field_server.join();
         assert!(error.to_string().contains("latest block missing number"));
     }
@@ -824,17 +858,17 @@ mod tests {
                     terms: IChioEscrow::EscrowTerms {
                         capabilityId: B256::from([0x11; 32]),
                         depositor: Address::from_str("0x1000000000000000000000000000000000000001",)
-                            .unwrap(),
+                            .test_unwrap(),
                         beneficiary: Address::from_str(
                             "0x1000000000000000000000000000000000000002",
                         )
-                        .unwrap(),
+                        .test_unwrap(),
                         token: Address::from_str("0x1000000000000000000000000000000000000003",)
-                            .unwrap(),
+                            .test_unwrap(),
                         maxAmount: U256::from(1_500_000_u64),
                         deadline: U256::from(1_700_003_000_u64),
                         operator: Address::from_str("0x1000000000000000000000000000000000000004",)
-                            .unwrap(),
+                            .test_unwrap(),
                         operatorKeyHash: B256::from([0x22; 32]),
                     },
                     deposited: U256::from(1_500_000_u64),
@@ -876,7 +910,7 @@ mod tests {
             },
         )
         .await
-        .expect("projection should succeed");
+        .test_expect("projection should succeed");
 
         server.join();
 
@@ -905,17 +939,17 @@ mod tests {
                     terms: IChioEscrow::EscrowTerms {
                         capabilityId: B256::from([0x33; 32]),
                         depositor: Address::from_str("0x1000000000000000000000000000000000000001",)
-                            .unwrap(),
+                            .test_unwrap(),
                         beneficiary: Address::from_str(
                             "0x1000000000000000000000000000000000000002",
                         )
-                        .unwrap(),
+                        .test_unwrap(),
                         token: Address::from_str("0x1000000000000000000000000000000000000003",)
-                            .unwrap(),
+                            .test_unwrap(),
                         maxAmount: U256::from(1_500_000_u64),
                         deadline: U256::from(1_700_050_000_u64),
                         operator: Address::from_str("0x1000000000000000000000000000000000000004",)
-                            .unwrap(),
+                            .test_unwrap(),
                         operatorKeyHash: B256::from([0x44; 32]),
                     },
                     deposited: U256::from(1_500_000_u64),
@@ -960,7 +994,7 @@ mod tests {
             },
         )
         .await
-        .expect("projection should succeed");
+        .test_expect("projection should succeed");
 
         server.join();
 
@@ -1008,15 +1042,15 @@ mod tests {
                         bondId: B256::from([0x55; 32]),
                         facilityId: B256::from([0x66; 32]),
                         principal: Address::from_str("0x1000000000000000000000000000000000000001",)
-                            .unwrap(),
+                            .test_unwrap(),
                         token: Address::from_str("0x1000000000000000000000000000000000000002",)
-                            .unwrap(),
+                            .test_unwrap(),
                         collateralAmount: U256::from(1_000_u64),
                         reserveRequirementAmount: U256::from(250_u64),
                         expiresAt: U256::from(1_700_100_000_u64),
                         reserveRequirementRatioBps: 2_500_u16,
                         operator: Address::from_str("0x1000000000000000000000000000000000000003",)
-                            .unwrap(),
+                            .test_unwrap(),
                     },
                     lockedAmount: U256::from(1_000_u64),
                     slashedAmount: U256::from(slashed_minor_units),
@@ -1031,7 +1065,7 @@ mod tests {
                 "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             )
             .await
-            .expect("bond observation should succeed");
+            .test_expect("bond observation should succeed");
 
             server.join();
 

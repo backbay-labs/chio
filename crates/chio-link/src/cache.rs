@@ -108,6 +108,7 @@ fn normalized_price(rate: &ExchangeRate) -> Result<u128, PriceOracleError> {
 mod tests {
     use super::PriceCache;
     use crate::config::PriceOracleConfig;
+    use crate::test_support::TestUnwrap;
     use crate::ExchangeRate;
 
     fn sample_rate(numerator: u128, fetched_at: u64) -> ExchangeRate {
@@ -130,18 +131,18 @@ mod tests {
     #[test]
     fn returns_twap_when_enabled() {
         let config = PriceOracleConfig::base_mainnet_default("https://example.invalid");
-        let pair = config.pair("ETH", "USD").expect("pair").clone();
+        let pair = config.pair("ETH", "USD").test_unwrap("pair").clone();
         let mut cache = PriceCache::default();
         cache
             .record(&pair, sample_rate(300_000, 1_743_292_700), 1_743_292_700)
-            .expect("record");
+            .test_unwrap("record");
         cache
             .record(&pair, sample_rate(306_000, 1_743_292_760), 1_743_292_760)
-            .expect("record");
+            .test_unwrap("record");
         let rate = cache
             .resolve(&pair, 1_743_292_780)
-            .expect("resolve")
-            .expect("rate");
+            .test_unwrap("resolve")
+            .test_unwrap("rate");
         assert_eq!(rate.source, "chainlink:twap");
         assert_eq!(rate.rate_numerator, 3_030_000_000_000_000);
         assert_eq!(rate.rate_denominator, 1_000_000_000_000);
@@ -150,18 +151,18 @@ mod tests {
     #[test]
     fn drops_expired_observations() {
         let config = PriceOracleConfig::base_mainnet_default("https://example.invalid");
-        let pair = config.pair("ETH", "USD").expect("pair").clone();
+        let pair = config.pair("ETH", "USD").test_unwrap("pair").clone();
         let mut cache = PriceCache::default();
         cache
             .record(&pair, sample_rate(300_000, 1_743_292_000), 1_743_292_000)
-            .expect("record");
+            .test_unwrap("record");
         cache
             .record(&pair, sample_rate(306_000, 1_743_292_760), 1_743_292_760)
-            .expect("record");
+            .test_unwrap("record");
         let rate = cache
             .resolve(&pair, 1_743_292_780)
-            .expect("resolve")
-            .expect("rate");
+            .test_unwrap("resolve")
+            .test_unwrap("rate");
         assert_eq!(rate.rate_numerator, 306_000);
         assert_eq!(rate.rate_denominator, 100);
     }

@@ -25,6 +25,41 @@ use chio_settle::{
 use serde::Serialize;
 use serde_json::json;
 
+trait TestUnwrap<T> {
+    fn test_unwrap(self) -> T;
+}
+
+impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+    fn test_unwrap(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+        }
+    }
+}
+
+impl<T> TestUnwrap<T> for Option<T> {
+    fn test_unwrap(self) -> T {
+        match self {
+            Some(value) => value,
+            None => panic!("expected Some(..), got None"),
+        }
+    }
+}
+
+trait TestUnwrapErr<E> {
+    fn test_unwrap_err(self) -> E;
+}
+
+impl<T: std::fmt::Debug, E> TestUnwrapErr<E> for Result<T, E> {
+    fn test_unwrap_err(self) -> E {
+        match self {
+            Ok(value) => panic!("expected Err(..), got Ok({value:?})"),
+            Err(error) => error,
+        }
+    }
+}
+
 struct StaticBackend {
     kind: OracleBackendKind,
     responses: BTreeMap<String, Result<ExchangeRate, PriceOracleError>>,
@@ -93,10 +128,10 @@ fn output_root() -> PathBuf {
 
 fn write_json(path: &Path, value: &impl Serialize) {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("create output directory");
+        fs::create_dir_all(parent).test_unwrap();
     }
-    let payload = serde_json::to_vec_pretty(value).expect("serialize json");
-    fs::write(path, payload).expect("write json output");
+    let payload = serde_json::to_vec_pretty(value).test_unwrap();
+    fs::write(path, payload).test_unwrap();
 }
 
 #[tokio::test]
@@ -141,14 +176,13 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
             })
         }),
     ));
-    let oracle =
-        ChioLinkOracle::new_with_backends(config, primary, Some(fallback)).expect("oracle");
+    let oracle = ChioLinkOracle::new_with_backends(config, primary, Some(fallback)).test_unwrap();
 
     let mut link_state = ChioLinkControlState::new(generated_at - 120, initial_operator);
     oracle
         .set_global_pause(true, Some("investigating price-source drift".to_string()))
         .await
-        .expect("set global pause");
+        .test_unwrap();
     link_state.record_global_pause(
         true,
         Some("investigating price-source drift".to_string()),
@@ -157,10 +191,7 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
         generated_at - 110,
         "pause all conversions while chain and pair controls are reviewed",
     );
-    oracle
-        .set_global_pause(false, None)
-        .await
-        .expect("clear global pause");
+    oracle.set_global_pause(false, None).await.test_unwrap();
     link_state.record_global_pause(
         false,
         None,
@@ -172,7 +203,7 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
     oracle
         .set_chain_enabled(ARBITRUM_ONE_CHAIN_ID, true)
         .await
-        .expect("enable standby chain");
+        .test_unwrap();
     link_state
         .record_chain_enabled(
             ARBITRUM_ONE_CHAIN_ID,
@@ -182,11 +213,11 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
             generated_at - 95,
             "verify standby chain can be toggled before final disable",
         )
-        .expect("record chain enable");
+        .test_unwrap();
     oracle
         .set_chain_enabled(ARBITRUM_ONE_CHAIN_ID, false)
         .await
-        .expect("disable standby chain");
+        .test_unwrap();
     link_state
         .record_chain_enabled(
             ARBITRUM_ONE_CHAIN_ID,
@@ -196,13 +227,13 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
             generated_at - 90,
             "leave standby chain disabled after the drill",
         )
-        .expect("record chain disable");
+        .test_unwrap();
     let btc_pair = oracle
         .config()
         .pairs
         .iter()
         .find(|pair| pair.base == "BTC" && pair.quote == "USD")
-        .expect("btc pair")
+        .test_unwrap()
         .clone();
     let disabled_btc = PairRuntimeOverride {
         enabled: false,
@@ -211,7 +242,7 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
     oracle
         .set_pair_override(disabled_btc.clone())
         .await
-        .expect("disable btc/usd pair");
+        .test_unwrap();
     link_state
         .record_pair_override(
             disabled_btc,
@@ -220,8 +251,8 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
             generated_at - 80,
             "freeze BTC/USD while operator incident review remains open",
         )
-        .expect("record pair override");
-    let link_report = oracle.runtime_report().await.expect("runtime report");
+        .test_unwrap();
+    let link_report = oracle.runtime_report().await.test_unwrap();
     assert!(!link_report.global_pause);
     assert!(link_report
         .alerts
@@ -254,12 +285,12 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
         anchor_state.controls.clone(),
         AnchorOperationKind::PublishRoot,
     )
-    .expect_err("publish root denied during recovery");
+    .test_unwrap_err();
     ensure_anchor_operation_allowed(
         anchor_state.controls.clone(),
         AnchorOperationKind::ConfirmPublication,
     )
-    .expect("confirm publication allowed");
+    .test_unwrap();
 
     let root_registry_indexer = AnchorIndexerCursor::from_sequences(AnchorIndexerCursorInput {
         service_id: "root-registry-indexer".to_string(),
@@ -377,12 +408,12 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
         settlement_state.controls.clone(),
         SettlementOperationKind::DispatchEscrow,
     )
-    .expect_err("dispatch denied during refund-only mode");
+    .test_unwrap_err();
     ensure_settlement_operation_allowed(
         settlement_state.controls.clone(),
         SettlementOperationKind::RefundEscrow,
     )
-    .expect("refund allowed");
+    .test_unwrap();
 
     let escrow_indexer = SettlementIndexerCursor::from_blocks(SettlementIndexerCursorInput {
         service_id: "escrow-release-indexer".to_string(),
@@ -547,33 +578,29 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
     write_json(&root.join("incident-audit.json"), &incident_audit);
 
     let written_link: chio_link::monitor::OracleRuntimeReport = serde_json::from_slice(
-        &fs::read(runtime_reports_dir.join("chio-link-runtime-report.json"))
-            .expect("read link report"),
+        &fs::read(runtime_reports_dir.join("chio-link-runtime-report.json")).test_unwrap(),
     )
-    .expect("parse link report");
+    .test_unwrap();
     assert!(written_link.pairs.iter().any(|pair| pair.pair == "BTC/USD"
         && pair.status == chio_link::monitor::PairHealthStatus::Paused));
     let written_anchor: AnchorRuntimeReport = serde_json::from_slice(
-        &fs::read(runtime_reports_dir.join("chio-anchor-runtime-report.json"))
-            .expect("read anchor report"),
+        &fs::read(runtime_reports_dir.join("chio-anchor-runtime-report.json")).test_unwrap(),
     )
-    .expect("parse anchor report");
+    .test_unwrap();
     assert_eq!(
         written_anchor.controls.mode,
         AnchorEmergencyMode::RecoveryOnly
     );
     let written_settlement: SettlementRuntimeReport = serde_json::from_slice(
-        &fs::read(runtime_reports_dir.join("chio-settle-runtime-report.json"))
-            .expect("read settlement report"),
+        &fs::read(runtime_reports_dir.join("chio-settle-runtime-report.json")).test_unwrap(),
     )
-    .expect("parse settlement report");
+    .test_unwrap();
     assert_eq!(
         written_settlement.controls.mode,
         SettlementEmergencyMode::RefundOnly
     );
-    let written_audit: serde_json::Value = serde_json::from_slice(
-        &fs::read(root.join("incident-audit.json")).expect("read incident audit"),
-    )
-    .expect("parse incident audit");
+    let written_audit: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("incident-audit.json")).test_unwrap())
+            .test_unwrap();
     assert_eq!(written_audit["schema"], "chio.web3-ops-incident-audit.v1");
 }

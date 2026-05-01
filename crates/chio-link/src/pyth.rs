@@ -209,6 +209,7 @@ struct PythPriceComponent {
 #[cfg(test)]
 mod tests {
     use crate::config::{PairConfig, PairPolicy, PythFeedConfig, BASE_MAINNET_CHAIN_ID};
+    use crate::test_support::{TestUnwrap, TestUnwrapErr};
     use crate::OracleBackend;
 
     use super::{
@@ -234,7 +235,7 @@ mod tests {
     fn normalizes_pyth_decimal_components() {
         let rate = build_exchange_rate(
             &pair(),
-            pair().pyth.as_ref().expect("feed"),
+            pair().pyth.as_ref().test_unwrap("feed"),
             PythPriceComponent {
                 price: "184136023127".to_string(),
                 conf: "177166324".to_string(),
@@ -243,7 +244,7 @@ mod tests {
             },
             1_743_292_780,
         )
-        .expect("exchange rate");
+        .test_unwrap("exchange rate");
         assert_eq!(rate.rate_numerator, 184_136_023_127);
         assert_eq!(rate.rate_denominator, 100_000_000);
         assert_eq!(rate.confidence_numerator, Some(177_166_324));
@@ -265,7 +266,7 @@ mod tests {
             "https://hermes.pyth.network/",
             "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
         )
-        .expect("latest price url");
+        .test_unwrap("latest price url");
 
         assert_eq!(
             url.as_str(),
@@ -275,7 +276,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_base_urls() {
-        let error = build_latest_price_url("not a url", "0xfeed").expect_err("invalid url");
+        let error = build_latest_price_url("not a url", "0xfeed").test_unwrap_err("invalid url");
 
         assert!(matches!(
             error,
@@ -286,17 +287,21 @@ mod tests {
     #[test]
     fn decimal_component_conversion_handles_positive_exponents() {
         let ratio =
-            decimal_components_to_ratio("15", 2, &pair(), pair().pyth.as_ref().expect("feed"))
-                .expect("ratio");
+            decimal_components_to_ratio("15", 2, &pair(), pair().pyth.as_ref().test_unwrap("feed"))
+                .test_unwrap("ratio");
 
         assert_eq!(ratio, (1_500, 1));
     }
 
     #[test]
     fn decimal_component_conversion_rejects_negative_values() {
-        let error =
-            decimal_components_to_ratio("-5", -8, &pair(), pair().pyth.as_ref().expect("feed"))
-                .expect_err("negative values should fail");
+        let error = decimal_components_to_ratio(
+            "-5",
+            -8,
+            &pair(),
+            pair().pyth.as_ref().test_unwrap("feed"),
+        )
+        .test_unwrap_err("negative values should fail");
 
         assert!(matches!(error, crate::PriceOracleError::InvalidFeed(_)));
     }
@@ -304,16 +309,16 @@ mod tests {
     #[test]
     fn decimal_component_conversion_rejects_zero_and_overflow() {
         let zero_error =
-            decimal_components_to_ratio("0", -8, &pair(), pair().pyth.as_ref().expect("feed"))
-                .expect_err("zero values should fail");
+            decimal_components_to_ratio("0", -8, &pair(), pair().pyth.as_ref().test_unwrap("feed"))
+                .test_unwrap_err("zero values should fail");
         assert!(matches!(
             zero_error,
             crate::PriceOracleError::InvalidFeed(_)
         ));
 
         let overflow_error =
-            decimal_components_to_ratio("1", 39, &pair(), pair().pyth.as_ref().expect("feed"))
-                .expect_err("positive exponent overflow");
+            decimal_components_to_ratio("1", 39, &pair(), pair().pyth.as_ref().test_unwrap("feed"))
+                .test_unwrap_err("positive exponent overflow");
         assert!(matches!(
             overflow_error,
             crate::PriceOracleError::ArithmeticOverflow(_)
@@ -324,7 +329,7 @@ mod tests {
     fn exchange_rates_fail_when_the_quote_is_stale() {
         let error = build_exchange_rate(
             &pair(),
-            pair().pyth.as_ref().expect("feed"),
+            pair().pyth.as_ref().test_unwrap("feed"),
             PythPriceComponent {
                 price: "184136023127".to_string(),
                 conf: "177166324".to_string(),
@@ -333,14 +338,14 @@ mod tests {
             },
             1_743_292_780,
         )
-        .expect_err("stale rates should fail");
+        .test_unwrap_err("stale rates should fail");
 
         assert!(matches!(error, crate::PriceOracleError::Stale { .. }));
     }
 
     #[tokio::test]
     async fn backend_rejects_pairs_without_pyth_feeds() {
-        let backend = PythHermesClient::new("https://hermes.pyth.network").expect("client");
+        let backend = PythHermesClient::new("https://hermes.pyth.network").test_unwrap("client");
         let pair = PairConfig {
             base: "ETH".to_string(),
             quote: "USD".to_string(),
@@ -353,7 +358,7 @@ mod tests {
         let error = backend
             .read_rate(&pair, 1_743_292_780)
             .await
-            .expect_err("missing feed");
+            .test_unwrap_err("missing feed");
 
         assert!(matches!(
             error,

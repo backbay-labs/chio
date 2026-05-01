@@ -190,6 +190,19 @@ mod tests {
         AnchorAutomationExecutionOutcome, EvmAnchorTarget,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(_) => panic!("expected Ok result"),
+            }
+        }
+    }
+
     fn sample_binding() -> SignedWeb3IdentityBinding {
         let keypair = Keypair::generate();
         let certificate = Web3IdentityBindingCertificate {
@@ -204,7 +217,7 @@ mod tests {
             nonce: "bind-001".to_string(),
         };
         SignedWeb3IdentityBinding {
-            signature: keypair.sign_canonical(&certificate).unwrap().0,
+            signature: keypair.sign_canonical(&certificate).test_unwrap().0,
             certificate,
         }
     }
@@ -213,7 +226,7 @@ mod tests {
         let proof: chio_core::web3::AnchorInclusionProof = serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
         ))
-        .unwrap();
+        .test_unwrap();
         kernel_checkpoint_from_statement(&checkpoint_statement_from_kernel(
             &kernel_checkpoint_from_statement(&proof.checkpoint_statement),
         ))
@@ -234,13 +247,13 @@ mod tests {
         let binding = sample_binding();
         let checkpoint = sample_checkpoint();
         let target = sample_target();
-        let publication = prepare_root_publication(&target, &checkpoint, &binding).unwrap();
+        let publication = prepare_root_publication(&target, &checkpoint, &binding).test_unwrap();
         let registration = prepare_delegate_registration(
             &target,
             "0x1000000000000000000000000000000000000002",
             1_744_086_400,
         )
-        .unwrap();
+        .test_unwrap();
 
         let job = build_anchor_publication_job(
             &target,
@@ -249,7 +262,7 @@ mod tests {
             publication,
             Some(registration),
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(job.schema, "chio.anchor-automation-job.v1");
         assert!(job.operator_override_required);
@@ -261,13 +274,13 @@ mod tests {
         let binding = sample_binding();
         let checkpoint = sample_checkpoint();
         let target = sample_target();
-        let publication = prepare_root_publication(&target, &checkpoint, &binding).unwrap();
+        let publication = prepare_root_publication(&target, &checkpoint, &binding).test_unwrap();
         let registration = prepare_delegate_registration(
             &target,
             "0x1000000000000000000000000000000000000002",
             1_744_086_400,
         )
-        .unwrap();
+        .test_unwrap();
         let job = build_anchor_publication_job(
             &target,
             "0 */6 * * *",
@@ -275,7 +288,7 @@ mod tests {
             publication,
             Some(registration),
         )
-        .unwrap();
+        .test_unwrap();
         let execution = AnchorAutomationExecution {
             job_id: job.job_id.clone(),
             fired_at: 1_744_000_000,
@@ -287,6 +300,6 @@ mod tests {
             outcome: AnchorAutomationExecutionOutcome::Executed,
         };
 
-        assess_anchor_automation_execution(&job, &execution).unwrap();
+        assess_anchor_automation_execution(&job, &execution).test_unwrap();
     }
 }

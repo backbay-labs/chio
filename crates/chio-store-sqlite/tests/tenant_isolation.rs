@@ -17,8 +17,6 @@
 //! The tenant_id is derived from the receipt body -- the store does not
 //! accept caller-injected tenant hints, per Phase 1.5 threat model.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -27,10 +25,31 @@ use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction}
 use chio_kernel::receipt_query::ReceiptQuery;
 use chio_store_sqlite::SqliteReceiptStore;
 
+trait TestResultOk<T, E> {
+    fn test_expect(self, context: &'static str) -> T;
+    fn test_unwrap(self) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E> {
+    fn test_expect(self, context: &'static str) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("{context}"),
+        }
+    }
+
+    fn test_unwrap(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("expected Ok result"),
+        }
+    }
+}
+
 fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system time before unix epoch")
+        .test_expect("system time before unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("chio-{prefix}-{nonce}.sqlite3"))
 }
@@ -51,7 +70,7 @@ fn signed_receipt(id: &str, capability_id: &str, tenant: Option<&str>) -> ChioRe
             tool_server: "srv".to_string(),
             tool_name: "ping".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({}))
-                .expect("tool action hash"),
+                .test_expect("tool action hash"),
             decision: Decision::Allow,
             content_hash: "c".to_string(),
             policy_hash: "p".to_string(),
@@ -63,7 +82,7 @@ fn signed_receipt(id: &str, capability_id: &str, tenant: Option<&str>) -> ChioRe
         },
         &kp,
     )
-    .expect("signed receipt")
+    .test_expect("signed receipt")
 }
 
 fn basic_query(tenant: Option<String>) -> ReceiptQuery {
@@ -77,7 +96,7 @@ fn basic_query(tenant: Option<String>) -> ReceiptQuery {
 #[test]
 fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
     let path = unique_db_path("tenant-isolation");
-    let store = SqliteReceiptStore::open(&path).expect("open store");
+    let store = SqliteReceiptStore::open(&path).test_expect("open store");
     assert!(
         store.strict_tenant_isolation_enabled(),
         "strict tenant isolation must be enabled by default"
@@ -92,7 +111,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
         );
         store
             .append_chio_receipt_returning_seq(&r)
-            .expect("append tenant-A receipt");
+            .test_expect("append tenant-A receipt");
     }
     // 3 receipts for tenant B.
     for i in 0..3 {
@@ -103,7 +122,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
         );
         store
             .append_chio_receipt_returning_seq(&r)
-            .expect("append tenant-B receipt");
+            .test_expect("append tenant-B receipt");
     }
     // 2 pre-migration legacy receipts without a tenant_id. These land in
     // the store with `tenant_id IS NULL`.
@@ -115,13 +134,13 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
         );
         store
             .append_chio_receipt_returning_seq(&r)
-            .expect("append legacy receipt");
+            .test_expect("append legacy receipt");
     }
 
     // Default strict mode: tenant A only sees its own rows.
     let a_page = store
         .query_receipts(&basic_query(Some("tenant-A".to_string())))
-        .expect("query tenant-A");
+        .test_expect("query tenant-A");
     assert_eq!(
         a_page.total_count, 5,
         "tenant A default visibility must exclude legacy NULL rows"
@@ -134,7 +153,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
     // Tenant B sees only its own rows by default.
     let b_page = store
         .query_receipts(&basic_query(Some("tenant-B".to_string())))
-        .expect("query tenant-B");
+        .test_expect("query tenant-B");
     assert_eq!(b_page.total_count, 3);
     assert_eq!(b_page.receipts.len(), 3);
     for stored in &b_page.receipts {
@@ -150,7 +169,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
 
     let a_compat = store
         .query_receipts(&basic_query(Some("tenant-A".to_string())))
-        .expect("query tenant-A compat");
+        .test_expect("query tenant-A compat");
     assert_eq!(
         a_compat.total_count, 7,
         "compat mode must include legacy NULL rows in tenant-A view"
@@ -166,7 +185,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
 
     let b_compat = store
         .query_receipts(&basic_query(Some("tenant-B".to_string())))
-        .expect("query tenant-B compat");
+        .test_expect("query tenant-B compat");
     assert_eq!(b_compat.total_count, 5);
     for stored in &b_compat.receipts {
         let tid = stored.receipt.tenant_id.as_deref();
@@ -180,7 +199,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
     // regardless of strict toggle.
     let admin = store
         .query_receipts(&basic_query(None))
-        .expect("admin query");
+        .test_expect("admin query");
     assert_eq!(admin.total_count, 10);
     assert_eq!(admin.receipts.len(), 10);
 
@@ -190,7 +209,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
     // fallback set again.
     let a_strict_again = store
         .query_receipts(&basic_query(Some("tenant-A".to_string())))
-        .expect("query tenant-A strict again");
+        .test_expect("query tenant-A strict again");
     assert_eq!(a_strict_again.total_count, 5);
 
     cleanup(&path);
@@ -199,7 +218,7 @@ fn tenant_scoped_queries_respect_and_leak_only_legacy_null_rows() {
 #[test]
 fn tenant_filter_none_returns_all_rows_regardless_of_tags() {
     let path = unique_db_path("tenant-isolation-all");
-    let store = SqliteReceiptStore::open(&path).expect("open store");
+    let store = SqliteReceiptStore::open(&path).test_expect("open store");
 
     // Three distinct tenants + legacy nulls.
     for (tenant, count) in [
@@ -214,13 +233,13 @@ fn tenant_filter_none_returns_all_rows_regardless_of_tags() {
             let r = signed_receipt(&id, &capability_id, tenant);
             store
                 .append_chio_receipt_returning_seq(&r)
-                .expect("append receipt");
+                .test_expect("append receipt");
         }
     }
 
     let page = store
         .query_receipts(&basic_query(None))
-        .expect("query without tenant filter");
+        .test_expect("query without tenant filter");
     assert_eq!(page.total_count, 10);
     assert_eq!(page.receipts.len(), 10);
 
@@ -230,7 +249,7 @@ fn tenant_filter_none_returns_all_rows_regardless_of_tags() {
     store.with_strict_tenant_isolation(true);
     let page_admin_strict = store
         .query_receipts(&basic_query(None))
-        .expect("admin query under strict mode");
+        .test_expect("admin query under strict mode");
     assert_eq!(page_admin_strict.total_count, 10);
 
     cleanup(&path);
@@ -242,18 +261,18 @@ fn tenant_a_queries_never_return_tenant_b_rows() {
     // tenant B queries." Verified from both directions and under strict
     // isolation so the NULL-fallback cannot mask a regression.
     let path = unique_db_path("tenant-isolation-cross");
-    let store = SqliteReceiptStore::open(&path).expect("open store");
+    let store = SqliteReceiptStore::open(&path).test_expect("open store");
 
     let a = signed_receipt("rcpt-secret-a", "cap-a", Some("tenant-A"));
     let b = signed_receipt("rcpt-secret-b", "cap-b", Some("tenant-B"));
-    store.append_chio_receipt_returning_seq(&a).unwrap();
-    store.append_chio_receipt_returning_seq(&b).unwrap();
+    store.append_chio_receipt_returning_seq(&a).test_unwrap();
+    store.append_chio_receipt_returning_seq(&b).test_unwrap();
 
     store.with_strict_tenant_isolation(true);
 
     let a_view = store
         .query_receipts(&basic_query(Some("tenant-A".to_string())))
-        .expect("query tenant-A");
+        .test_expect("query tenant-A");
     assert_eq!(a_view.total_count, 1);
     assert_eq!(a_view.receipts.len(), 1);
     assert_eq!(a_view.receipts[0].receipt.id, "rcpt-secret-a");
@@ -267,7 +286,7 @@ fn tenant_a_queries_never_return_tenant_b_rows() {
 
     let b_view = store
         .query_receipts(&basic_query(Some("tenant-B".to_string())))
-        .expect("query tenant-B");
+        .test_expect("query tenant-B");
     assert_eq!(b_view.total_count, 1);
     assert_eq!(b_view.receipts[0].receipt.id, "rcpt-secret-b");
     assert!(

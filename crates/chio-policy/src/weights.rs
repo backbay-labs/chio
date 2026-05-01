@@ -289,8 +289,10 @@ mod tests {
 
     #[test]
     fn variant_serialization_matches_snake_case() {
-        let mut cfg = WeightsCardConfig::default();
-        cfg.mode = WeightsCardRequired::Required;
+        let mut cfg = WeightsCardConfig {
+            mode: WeightsCardRequired::Required,
+            ..WeightsCardConfig::default()
+        };
         let s = match serde_yml::to_string(&cfg.mode) {
             Ok(s) => s.trim().to_string(),
             Err(e) => panic!("serialize must succeed: {e}"),

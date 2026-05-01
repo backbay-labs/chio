@@ -861,6 +861,35 @@ mod tests {
         GENERIC_LISTING_ARTIFACT_SCHEMA, GENERIC_NAMESPACE_ARTIFACT_SCHEMA,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn sample_namespace(owner_id: &str, signing_keypair: &Keypair) -> GenericNamespaceArtifact {
         GenericNamespaceArtifact {
             schema: GENERIC_NAMESPACE_ARTIFACT_SCHEMA.to_string(),
@@ -907,7 +936,7 @@ mod tests {
 
     fn signed_sample_listing(owner_id: &str, signing_keypair: &Keypair) -> SignedGenericListing {
         SignedGenericListing::sign(sample_listing(owner_id, signing_keypair), signing_keypair)
-            .expect("sign sample listing")
+            .test_expect("sign sample listing")
     }
 
     fn sample_publisher(
@@ -960,8 +989,9 @@ mod tests {
             },
             121,
         )
-        .expect("build activation");
-        SignedGenericTrustActivation::sign(activation, &authority_keypair).expect("sign activation")
+        .test_expect("build activation");
+        SignedGenericTrustActivation::sign(activation, &authority_keypair)
+            .test_expect("sign activation")
     }
 
     fn sample_charter_request() -> GenericGovernanceCharterIssueRequest {
@@ -997,10 +1027,10 @@ mod tests {
                 &sample_charter_request(),
                 130,
             )
-            .expect("build charter"),
+            .test_expect("build charter"),
             authority_keypair,
         )
-        .expect("sign charter")
+        .test_expect("sign charter")
     }
 
     fn sample_case_issue_request(
@@ -1053,10 +1083,10 @@ mod tests {
                 &sample_charter_request(),
                 130,
             )
-            .expect("build charter"),
+            .test_expect("build charter"),
             &authority_keypair,
         )
-        .expect("sign charter");
+        .test_expect("sign charter");
         let case = SignedGenericGovernanceCase::sign(
             build_generic_governance_case_artifact(
                 "origin-a",
@@ -1084,10 +1114,10 @@ mod tests {
                 },
                 140,
             )
-            .expect("build case"),
+            .test_expect("build case"),
             &authority_keypair,
         )
-        .expect("sign case");
+        .test_expect("sign case");
 
         let evaluation = evaluate_generic_governance_case(
             &GenericGovernanceCaseEvaluationRequest {
@@ -1104,7 +1134,7 @@ mod tests {
             },
             150,
         )
-        .expect("evaluate governance");
+        .test_expect("evaluate governance");
         assert!(!evaluation.blocks_admission);
         assert_eq!(
             evaluation.findings[0].code,
@@ -1125,10 +1155,10 @@ mod tests {
                 &sample_charter_request(),
                 130,
             )
-            .expect("build charter"),
+            .test_expect("build charter"),
             &authority_keypair,
         )
-        .expect("sign charter");
+        .test_expect("sign charter");
         let case = SignedGenericGovernanceCase::sign(
             build_generic_governance_case_artifact(
                 "origin-a",
@@ -1156,10 +1186,10 @@ mod tests {
                 },
                 140,
             )
-            .expect("build case"),
+            .test_expect("build case"),
             &authority_keypair,
         )
-        .expect("sign case");
+        .test_expect("sign case");
 
         let evaluation = evaluate_generic_governance_case(
             &GenericGovernanceCaseEvaluationRequest {
@@ -1176,7 +1206,7 @@ mod tests {
             },
             150,
         )
-        .expect("evaluate governance");
+        .test_expect("evaluate governance");
         assert!(evaluation.findings.is_empty());
         assert!(evaluation.blocks_admission);
         assert_eq!(
@@ -1196,7 +1226,7 @@ mod tests {
         forged_activation_body.local_operator_name = Some("Remote B".to_string());
         let forged_activation =
             SignedGenericTrustActivation::sign(forged_activation_body, &Keypair::generate())
-                .expect("sign forged activation");
+                .test_expect("sign forged activation");
         let charter = SignedGenericGovernanceCharter::sign(
             build_generic_governance_charter_artifact(
                 "origin-a",
@@ -1204,10 +1234,10 @@ mod tests {
                 &sample_charter_request(),
                 130,
             )
-            .expect("build charter"),
+            .test_expect("build charter"),
             &authority_keypair,
         )
-        .expect("sign charter");
+        .test_expect("sign charter");
 
         let error = build_generic_governance_case_artifact(
             "origin-a",
@@ -1235,7 +1265,7 @@ mod tests {
             },
             140,
         )
-        .expect_err("non-local activation authority rejected");
+        .test_expect_err("non-local activation authority rejected");
         assert!(error.contains("issued by the governing operator"));
     }
 
@@ -1252,10 +1282,10 @@ mod tests {
                 &sample_charter_request(),
                 130,
             )
-            .expect("build charter"),
+            .test_expect("build charter"),
             &authority_keypair,
         )
-        .expect("sign charter");
+        .test_expect("sign charter");
         let case = SignedGenericGovernanceCase::sign(
             build_generic_governance_case_artifact(
                 "origin-a",
@@ -1283,16 +1313,16 @@ mod tests {
                 },
                 140,
             )
-            .expect("build case"),
+            .test_expect("build case"),
             &authority_keypair,
         )
-        .expect("sign case");
+        .test_expect("sign case");
         let mut forged_activation_body = activation.body.clone();
         forged_activation_body.local_operator_id = "remote-b".to_string();
         forged_activation_body.local_operator_name = Some("Remote B".to_string());
         let forged_activation =
             SignedGenericTrustActivation::sign(forged_activation_body, &Keypair::generate())
-                .expect("sign forged activation");
+                .test_expect("sign forged activation");
 
         let evaluation = evaluate_generic_governance_case(
             &GenericGovernanceCaseEvaluationRequest {
@@ -1309,7 +1339,7 @@ mod tests {
             },
             150,
         )
-        .expect("evaluate governance");
+        .test_expect("evaluate governance");
         assert!(!evaluation.blocks_admission);
         assert_eq!(
             evaluation.findings[0].code,
@@ -1330,10 +1360,10 @@ mod tests {
                 &sample_charter_request(),
                 130,
             )
-            .expect("build charter"),
+            .test_expect("build charter"),
             &authority_keypair,
         )
-        .expect("sign charter");
+        .test_expect("sign charter");
         let case = SignedGenericGovernanceCase::sign(
             build_generic_governance_case_artifact(
                 "origin-a",
@@ -1361,10 +1391,10 @@ mod tests {
                 },
                 140,
             )
-            .expect("build case"),
+            .test_expect("build case"),
             &authority_keypair,
         )
-        .expect("sign case");
+        .test_expect("sign case");
 
         let evaluation = evaluate_generic_governance_case(
             &GenericGovernanceCaseEvaluationRequest {
@@ -1381,7 +1411,7 @@ mod tests {
             },
             150,
         )
-        .expect("evaluate governance");
+        .test_expect("evaluate governance");
         assert_eq!(
             evaluation.findings[0].code,
             GenericGovernanceFindingCode::CharterScopeMismatch
@@ -1401,10 +1431,10 @@ mod tests {
                 &sample_charter_request(),
                 130,
             )
-            .expect("build charter"),
+            .test_expect("build charter"),
             &authority_keypair,
         )
-        .expect("sign charter");
+        .test_expect("sign charter");
         let case = SignedGenericGovernanceCase::sign(
             build_generic_governance_case_artifact(
                 "origin-a",
@@ -1432,10 +1462,10 @@ mod tests {
                 },
                 140,
             )
-            .expect("build case"),
+            .test_expect("build case"),
             &authority_keypair,
         )
-        .expect("sign case");
+        .test_expect("sign case");
 
         let evaluation = evaluate_generic_governance_case(
             &GenericGovernanceCaseEvaluationRequest {
@@ -1452,7 +1482,7 @@ mod tests {
             },
             150,
         )
-        .expect("evaluate governance");
+        .test_expect("evaluate governance");
         assert_eq!(
             evaluation.findings[0].code,
             GenericGovernanceFindingCode::AppealTargetMissing
@@ -1468,7 +1498,7 @@ mod tests {
             policy_reference: None,
         }
         .validate()
-        .expect_err("blank operator ids rejected");
+        .test_expect_err("blank operator ids rejected");
 
         assert!(error.contains("authority_scope.allowed_listing_operator_ids[0]"));
     }
@@ -1494,7 +1524,7 @@ mod tests {
             note: None,
         }
         .validate()
-        .expect_err("expired charters rejected");
+        .test_expect_err("expired charters rejected");
 
         assert!(error.contains("expires_at must be greater than issued_at"));
     }
@@ -1528,7 +1558,7 @@ mod tests {
             note: None,
         }
         .validate()
-        .expect_err("escalated cases require operator targets");
+        .test_expect_err("escalated cases require operator targets");
 
         assert!(error.contains("escalated case requires escalated_to_operator_ids"));
     }
@@ -1562,7 +1592,7 @@ mod tests {
             note: None,
         }
         .validate()
-        .expect_err("appeal target only valid for appeal cases");
+        .test_expect_err("appeal target only valid for appeal cases");
 
         assert!(error.contains("only valid for appeal cases"));
     }
@@ -1578,7 +1608,7 @@ mod tests {
 
         let error = sample_case_issue_request(charter, tampered_listing, None)
             .validate()
-            .expect_err("tampered listing signature rejected");
+            .test_expect_err("tampered listing signature rejected");
 
         assert!(error.contains("listing signature is invalid"));
     }
@@ -1595,7 +1625,7 @@ mod tests {
 
         let error = sample_case_issue_request(charter, listing, Some(tampered_activation))
             .validate()
-            .expect_err("tampered activation signature rejected");
+            .test_expect_err("tampered activation signature rejected");
 
         assert!(error.contains("trust activation signature is invalid"));
     }
@@ -1611,7 +1641,7 @@ mod tests {
             &request,
             130,
         )
-        .expect("build charter");
+        .test_expect("build charter");
 
         assert_eq!(charter.issued_at, 777);
         assert_eq!(charter.governing_operator_id, "origin-a");
@@ -1635,10 +1665,10 @@ mod tests {
                 ),
                 140,
             )
-            .expect("build case"),
+            .test_expect("build case"),
             &authority_keypair,
         )
-        .expect("sign case");
+        .test_expect("sign case");
         let mut tampered_case = case.clone();
         tampered_case.body.note = Some("tampered".to_string());
 
@@ -1657,7 +1687,7 @@ mod tests {
             },
             150,
         )
-        .expect("evaluate governance");
+        .test_expect("evaluate governance");
 
         assert_eq!(
             evaluation.findings[0].code,
@@ -1680,10 +1710,10 @@ mod tests {
         case_request.evidence_refs[0].reference_id = "incident-1".to_string();
         let case = SignedGenericGovernanceCase::sign(
             build_generic_governance_case_artifact("origin-a", &case_request, 140)
-                .expect("build case"),
+                .test_expect("build case"),
             &authority_keypair,
         )
-        .expect("sign case");
+        .test_expect("sign case");
         let prior_case = SignedGenericGovernanceCase::sign(
             GenericGovernanceCaseArtifact {
                 schema: GENERIC_GOVERNANCE_CASE_ARTIFACT_SCHEMA.to_string(),
@@ -1713,7 +1743,7 @@ mod tests {
             },
             &authority_keypair,
         )
-        .expect("sign prior case");
+        .test_expect("sign prior case");
 
         let evaluation = evaluate_generic_governance_case(
             &GenericGovernanceCaseEvaluationRequest {
@@ -1730,7 +1760,7 @@ mod tests {
             },
             150,
         )
-        .expect("evaluate governance");
+        .test_expect("evaluate governance");
 
         assert_eq!(
             evaluation.findings[0].code,

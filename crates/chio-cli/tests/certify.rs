@@ -1,7 +1,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -67,8 +67,8 @@ impl Drop for ServerGuard {
 fn spawn_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
-    certification_registry_file: Option<&PathBuf>,
-    certification_discovery_file: Option<&PathBuf>,
+    certification_registry_file: Option<&Path>,
+    certification_discovery_file: Option<&Path>,
     advertise_url: Option<&str>,
     certification_public_metadata_ttl_seconds: Option<u64>,
 ) -> ServerGuard {
@@ -119,10 +119,10 @@ fn spawn_trust_service(
 fn spawn_trust_service_with_public_registry(
     listen: std::net::SocketAddr,
     service_token: &str,
-    certification_registry_file: Option<&PathBuf>,
+    certification_registry_file: Option<&Path>,
     advertise_url: &str,
-    receipt_db_path: &PathBuf,
-    authority_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    authority_db_path: &Path,
 ) -> ServerGuard {
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.current_dir(workspace_root()).args([
@@ -166,7 +166,7 @@ fn wait_for_trust_service(client: &Client, base_url: &str) {
     panic!("trust service did not become ready");
 }
 
-fn write_scenario(dir: &PathBuf, id: &str) {
+fn write_scenario(dir: &Path, id: &str) {
     fs::create_dir_all(dir).expect("create scenarios dir");
     fs::write(
         dir.join(format!("{id}.json")),
@@ -189,7 +189,7 @@ fn write_scenario(dir: &PathBuf, id: &str) {
     .expect("write scenario");
 }
 
-fn write_results(dir: &PathBuf, scenario_id: &str, status: &str) {
+fn write_results(dir: &Path, scenario_id: &str, status: &str) {
     fs::create_dir_all(dir).expect("create results dir");
     fs::write(
         dir.join("results.json"),
@@ -211,7 +211,7 @@ fn write_results(dir: &PathBuf, scenario_id: &str, status: &str) {
     .expect("write results");
 }
 
-fn write_discovery_network(path: &PathBuf, operators: &[(&str, &str, &str, bool)]) {
+fn write_discovery_network(path: &Path, operators: &[(&str, &str, &str, bool)]) {
     let operators_json = operators
         .iter()
         .map(
@@ -242,10 +242,10 @@ fn write_discovery_network(path: &PathBuf, operators: &[(&str, &str, &str, bool)
 }
 
 fn run_certify_check(
-    scenarios_dir: &PathBuf,
-    results_dir: &PathBuf,
-    output_path: &PathBuf,
-    seed_path: &PathBuf,
+    scenarios_dir: &Path,
+    results_dir: &Path,
+    output_path: &Path,
+    seed_path: &Path,
     tool_server_id: &str,
     tool_server_name: Option<&str>,
 ) {
@@ -279,7 +279,7 @@ fn run_certify_check(
 fn publish_remote_certification(
     base_url: &str,
     service_token: &str,
-    artifact_path: &PathBuf,
+    artifact_path: &Path,
 ) -> serde_json::Value {
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -340,8 +340,8 @@ fn revoke_remote_certification(
 }
 
 fn issue_local_liability_provider(
-    receipt_db_path: &PathBuf,
-    authority_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    authority_db_path: &Path,
     provider_id: &str,
 ) -> serde_json::Value {
     let provider_file = unique_path("chio-generic-listing-provider", ".json");

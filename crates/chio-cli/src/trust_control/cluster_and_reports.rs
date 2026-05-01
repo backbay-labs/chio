@@ -3868,7 +3868,6 @@ fn build_capital_allocation_decision_artifact_from_store(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod cluster_and_reports_tests {
     use super::*;
     use axum::body::to_bytes;
@@ -3876,9 +3875,44 @@ mod cluster_and_reports_tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Some(value) => value,
+                None => panic!("expected Some(..), got None"),
+            }
+        }
+    }
+
+    trait TestUnwrapErr<E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T: std::fmt::Debug, E> TestUnwrapErr<E> for Result<T, E> {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err(..), got Ok({value:?})"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn base_config() -> TrustServiceConfig {
         TrustServiceConfig {
-            listen: "127.0.0.1:0".parse().expect("parse listen addr"),
+            listen: "127.0.0.1:0".parse().test_unwrap(),
             service_token: "token".to_string(),
             receipt_db_path: None,
             revocation_db_path: None,
@@ -3918,7 +3952,7 @@ mod cluster_and_reports_tests {
         config.revocation_db_path = revocation_db_path;
         config.budget_db_path = budget_db_path;
         let cluster =
-            build_cluster_state(&config, config.listen).expect("build cluster runtime state");
+            build_cluster_state(&config, config.listen).test_unwrap();
         TrustServiceState {
             config,
             enterprise_provider_registry: None,
@@ -3933,7 +3967,7 @@ mod cluster_and_reports_tests {
     fn unique_temp_path(prefix: &str, extension: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system time after unix epoch")
+            .test_unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{nonce}.{extension}"))
     }
@@ -3948,7 +3982,7 @@ mod cluster_and_reports_tests {
                 capability_id: capability_id.to_string(),
                 tool_server: "wrapped-http-mock".to_string(),
                 tool_name: "echo_json".to_string(),
-                action: ToolCallAction::from_parameters(parameters).expect("hash parameters"),
+                action: ToolCallAction::from_parameters(parameters).test_unwrap(),
                 decision: Decision::Allow,
                 content_hash: "content-hash".to_string(),
                 policy_hash: "policy-hash".to_string(),
@@ -3960,7 +3994,7 @@ mod cluster_and_reports_tests {
             },
             &keypair,
         )
-        .expect("sign tool receipt")
+        .test_unwrap()
     }
 
     fn sample_child_receipt(id: &str, suffix: &str) -> ChildRequestReceipt {
@@ -3969,9 +4003,9 @@ mod cluster_and_reports_tests {
             chio_core::receipt::ChildRequestReceiptBody {
                 id: id.to_string(),
                 timestamp: 13,
-                session_id: chio_core::session::SessionId::new(&format!("sess-{suffix}")),
-                parent_request_id: chio_core::session::RequestId::new(&format!("parent-{suffix}")),
-                request_id: chio_core::session::RequestId::new(&format!("child-{suffix}")),
+                session_id: chio_core::session::SessionId::new(format!("sess-{suffix}")),
+                parent_request_id: chio_core::session::RequestId::new(format!("parent-{suffix}")),
+                request_id: chio_core::session::RequestId::new(format!("child-{suffix}")),
                 operation_kind: chio_core::session::OperationKind::CreateMessage,
                 terminal_state: OperationTerminalState::Completed,
                 outcome_hash: "outcome-hash".to_string(),
@@ -3981,7 +4015,7 @@ mod cluster_and_reports_tests {
             },
             &keypair,
         )
-        .expect("sign child receipt")
+        .test_unwrap()
     }
 
     fn sample_capability(id: &str) -> CapabilityToken {
@@ -3999,7 +4033,7 @@ mod cluster_and_reports_tests {
             },
             &issuer,
         )
-        .expect("sign capability token")
+        .test_unwrap()
     }
 
     #[test]
@@ -4010,14 +4044,14 @@ mod cluster_and_reports_tests {
         invalid.authority_seed_path = Some(unique_temp_path("authority", "seed"));
 
         let error = build_cluster_state(&invalid, invalid.listen)
-            .expect_err("clustered mode should reject authority seed files");
+            .test_unwrap_err();
         assert!(error
             .to_string()
             .contains("--authority-db instead of --authority-seed-file"));
 
         assert!(
-            build_cluster_state(&base_config(), "127.0.0.1:0".parse().unwrap())
-                .expect("standalone without advertise URL")
+            build_cluster_state(&base_config(), "127.0.0.1:0".parse().test_unwrap())
+                .test_unwrap()
                 .is_none()
         );
 
@@ -4026,7 +4060,7 @@ mod cluster_and_reports_tests {
         standalone_advertised.advertise_url = Some("http://127.0.0.1:3200/".to_string());
         assert!(
             build_cluster_state(&standalone_advertised, standalone_advertised.listen)
-                .expect("standalone advertise URL should not enable cluster validation")
+                .test_unwrap()
                 .is_none()
         );
 
@@ -4039,9 +4073,9 @@ mod cluster_and_reports_tests {
         ];
 
         let cluster = build_cluster_state(&config, config.listen)
-            .expect("build cluster state")
-            .expect("cluster should be enabled");
-        let guard = cluster.lock().expect("cluster guard");
+            .test_unwrap()
+            .test_unwrap();
+        let guard = cluster.lock().test_unwrap();
         assert_eq!(guard.self_url, "http://127.0.0.1:3200");
         assert_eq!(guard.peers.len(), 1);
         assert!(guard.peers.contains_key("http://127.0.0.1:3300"));
@@ -4050,11 +4084,11 @@ mod cluster_and_reports_tests {
     #[test]
     fn cluster_peer_url_validation_rejects_local_networks_by_default() {
         let error = normalize_cluster_config_url("http://127.0.0.1:3300", false)
-            .expect_err("loopback cluster URLs require explicit local mode");
+            .test_unwrap_err();
         assert!(error.to_string().contains("--allow-local-peer-urls"));
 
         let normalized = normalize_cluster_config_url(" http://127.0.0.1:3300/ ", true)
-            .expect("local cluster mode permits loopback URLs");
+            .test_unwrap();
         assert_eq!(normalized, "http://127.0.0.1:3300");
     }
 
@@ -4081,11 +4115,11 @@ mod cluster_and_reports_tests {
         assert_eq!(initial.election_term, 0);
         assert!(cluster_authority_lease_view_locked(&mut cluster, &initial).is_none());
 
-        cluster.peers.get_mut("http://node-b").unwrap().health = PeerHealth::Healthy;
+        cluster.peers.get_mut("http://node-b").test_unwrap().health = PeerHealth::Healthy;
         cluster
             .peers
             .get_mut("http://node-b")
-            .unwrap()
+            .test_unwrap()
             .last_contact_at = Some(unix_timestamp_now());
         let with_quorum = compute_cluster_consensus_locked(&mut cluster);
         assert_eq!(with_quorum.role, "leader");
@@ -4094,24 +4128,24 @@ mod cluster_and_reports_tests {
         assert_eq!(with_quorum.reachable_nodes, 2);
         assert_eq!(with_quorum.election_term, 1);
         let with_quorum_lease = cluster_authority_lease_view_locked(&mut cluster, &with_quorum)
-            .expect("authority lease");
+            .test_unwrap();
         assert_eq!(with_quorum_lease.lease_epoch, 1);
         assert!(with_quorum_lease.lease_id.contains("http://node-a"));
         assert!(with_quorum_lease.lease_expires_at >= unix_timestamp_now());
 
-        cluster.peers.get_mut("http://node-c").unwrap().health = PeerHealth::Healthy;
+        cluster.peers.get_mut("http://node-c").test_unwrap().health = PeerHealth::Healthy;
         cluster
             .peers
             .get_mut("http://node-c")
-            .unwrap()
+            .test_unwrap()
             .last_contact_at = Some(unix_timestamp_now());
         let stable = compute_cluster_consensus_locked(&mut cluster);
         assert_eq!(stable.role, "leader");
         assert_eq!(stable.election_term, 1);
         assert_eq!(stable.reachable_nodes, 3);
 
-        cluster.peers.get_mut("http://node-b").unwrap().health = PeerHealth::Unhealthy;
-        cluster.peers.get_mut("http://node-c").unwrap().health = PeerHealth::Unhealthy;
+        cluster.peers.get_mut("http://node-b").test_unwrap().health = PeerHealth::Unhealthy;
+        cluster.peers.get_mut("http://node-c").test_unwrap().health = PeerHealth::Unhealthy;
         let lost_quorum = compute_cluster_consensus_locked(&mut cluster);
         assert_eq!(lost_quorum.role, "candidate");
         assert!(!lost_quorum.has_quorum);
@@ -4153,8 +4187,8 @@ mod cluster_and_reports_tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
-            .expect("read JSON response body");
-        let body: Value = serde_json::from_slice(&body).expect("decode JSON body");
+            .test_unwrap();
+        let body: Value = serde_json::from_slice(&body).test_unwrap();
         assert_eq!(body["stored"], Value::Bool(true));
         assert_eq!(
             body["handledBy"],
@@ -4176,8 +4210,8 @@ mod cluster_and_reports_tests {
         assert_eq!(scalar.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let body = to_bytes(scalar.into_body(), usize::MAX)
             .await
-            .expect("read scalar error body");
-        let text = String::from_utf8(body.to_vec()).expect("decode error body");
+            .test_unwrap();
+        let text = String::from_utf8(body.to_vec()).test_unwrap();
         assert!(text.contains("success responses must be JSON objects"));
     }
 
@@ -4213,7 +4247,7 @@ mod cluster_and_reports_tests {
             },
         );
 
-        let commit = budget_write_quorum_commit_view(&state, 8).expect("budget quorum commit");
+        let commit = budget_write_quorum_commit_view(&state, 8).test_unwrap();
         assert!(commit.quorum_committed);
         assert_eq!(commit.quorum_size, 2);
         assert_eq!(commit.committed_nodes, 2);
@@ -4229,8 +4263,8 @@ mod cluster_and_reports_tests {
         );
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
-            .expect("read quorum commit response body");
-        let body: Value = serde_json::from_slice(&body).expect("decode quorum commit body");
+            .test_unwrap();
+        let body: Value = serde_json::from_slice(&body).test_unwrap();
         assert_eq!(body["budgetCommit"]["budgetSeq"], Value::from(8));
         assert_eq!(body["budgetCommit"]["commitIndex"], Value::from(8));
         assert_eq!(body["budgetCommit"]["quorumCommitted"], Value::Bool(true));
@@ -4307,13 +4341,13 @@ mod cluster_and_reports_tests {
         assert_eq!(peer_lineage_seq(&state, "http://node-b"), 5);
         assert_eq!(
             peer_revocation_cursor(&state, "http://node-b")
-                .expect("revocation cursor")
+                .test_unwrap()
                 .capability_id,
             "cap-1"
         );
         assert_eq!(
             peer_budget_cursor(&state, "http://node-b")
-                .expect("budget cursor")
+                .test_unwrap()
                 .grant_index,
             2
         );
@@ -4332,7 +4366,7 @@ mod cluster_and_reports_tests {
     #[test]
     fn auth_helpers_and_metered_billing_validation_cover_error_paths() {
         let mut headers = HeaderMap::new();
-        let auth_error = bearer_token_from_headers(&headers).expect_err("missing bearer token");
+        let auth_error = bearer_token_from_headers(&headers).test_unwrap_err();
         assert_eq!(auth_error.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
             auth_error
@@ -4347,13 +4381,13 @@ mod cluster_and_reports_tests {
             HeaderValue::from_static("Bearer issue-token"),
         );
         assert_eq!(
-            bearer_token_from_headers(&headers).expect("extract bearer token"),
+            bearer_token_from_headers(&headers).test_unwrap(),
             "issue-token"
         );
         assert!(validate_service_auth(&headers, "issue-token").is_ok());
 
         let invalid_auth = validate_service_auth(&headers, "other-token")
-            .expect_err("mismatched control token should fail");
+            .test_unwrap_err();
         assert_eq!(invalid_auth.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
             invalid_auth
@@ -4373,7 +4407,7 @@ mod cluster_and_reports_tests {
             issued_at,
             None,
         )
-        .expect("cluster peer signature");
+        .test_unwrap();
         headers.clear();
         headers.insert(
             CLUSTER_NODE_ID_HEADER,
@@ -4381,18 +4415,18 @@ mod cluster_and_reports_tests {
         );
         headers.insert(
             CLUSTER_AUTH_ISSUED_AT_HEADER,
-            HeaderValue::from_str(&issued_at.to_string()).expect("issued-at header"),
+            HeaderValue::from_str(&issued_at.to_string()).test_unwrap(),
         );
         headers.insert(
             CLUSTER_AUTH_SIGNATURE_HEADER,
-            HeaderValue::from_str(&signature).expect("signature header"),
+            HeaderValue::from_str(&signature).test_unwrap(),
         );
         let peer = validate_cluster_peer_auth(
             &headers,
             &cluster_state.config,
             INTERNAL_CLUSTER_STATUS_PATH,
         )
-        .expect("validate allowlisted cluster peer");
+        .test_unwrap();
         assert_eq!(peer.node_id, "http://node-b");
 
         headers.insert(
@@ -4404,14 +4438,14 @@ mod cluster_and_reports_tests {
             &cluster_state.config,
             INTERNAL_CLUSTER_STATUS_PATH,
         )
-        .expect_err("invalid cluster peer signature should fail");
+        .test_unwrap_err();
         assert_eq!(invalid_peer.status(), StatusCode::UNAUTHORIZED);
         clear_cluster_peer_auth_failures(&cluster_peer_auth_unverified_failure_key(
             "http://node-b",
             INTERNAL_CLUSTER_STATUS_PATH,
         ));
 
-        let expired_issued_at = issued_at - (CLUSTER_AUTH_MAX_SKEW_SECS as i64) - 1;
+        let expired_issued_at = issued_at - CLUSTER_AUTH_MAX_SKEW_SECS - 1;
         let expired_signature = cluster_peer_auth_signature(
             &cluster_state.config.service_token,
             "http://node-b",
@@ -4419,21 +4453,21 @@ mod cluster_and_reports_tests {
             expired_issued_at,
             None,
         )
-        .expect("expired cluster peer signature");
+        .test_unwrap();
         headers.insert(
             CLUSTER_AUTH_ISSUED_AT_HEADER,
-            HeaderValue::from_str(&expired_issued_at.to_string()).expect("expired issued-at"),
+            HeaderValue::from_str(&expired_issued_at.to_string()).test_unwrap(),
         );
         headers.insert(
             CLUSTER_AUTH_SIGNATURE_HEADER,
-            HeaderValue::from_str(&expired_signature).expect("expired signature header"),
+            HeaderValue::from_str(&expired_signature).test_unwrap(),
         );
         let expired_peer = validate_cluster_peer_auth(
             &headers,
             &cluster_state.config,
             INTERNAL_CLUSTER_STATUS_PATH,
         )
-        .expect_err("expired cluster peer auth should fail");
+        .test_unwrap_err();
         assert_eq!(expired_peer.status(), StatusCode::UNAUTHORIZED);
         clear_cluster_peer_auth_failures("http://node-b");
 
@@ -4441,25 +4475,25 @@ mod cluster_and_reports_tests {
             let invalid_issued_at = issued_at + attempt as i64;
             headers.insert(
                 CLUSTER_AUTH_ISSUED_AT_HEADER,
-                HeaderValue::from_str(&invalid_issued_at.to_string()).expect("issued-at header"),
+                HeaderValue::from_str(&invalid_issued_at.to_string()).test_unwrap(),
             );
             headers.insert(
                 CLUSTER_AUTH_SIGNATURE_HEADER,
                 HeaderValue::from_str(&format!("deadbeef-{attempt}"))
-                    .expect("invalid signature header"),
+                    .test_unwrap(),
             );
             let response = validate_cluster_peer_auth(
                 &headers,
                 &cluster_state.config,
                 INTERNAL_CLUSTER_STATUS_PATH,
             )
-            .expect_err("invalid cluster peer signature should fail");
+            .test_unwrap_err();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         }
         let limited_issued_at = issued_at + CLUSTER_AUTH_FAILURE_BURST as i64;
         headers.insert(
             CLUSTER_AUTH_ISSUED_AT_HEADER,
-            HeaderValue::from_str(&limited_issued_at.to_string()).expect("issued-at header"),
+            HeaderValue::from_str(&limited_issued_at.to_string()).test_unwrap(),
         );
         headers.insert(
             CLUSTER_AUTH_SIGNATURE_HEADER,
@@ -4470,22 +4504,22 @@ mod cluster_and_reports_tests {
             &cluster_state.config,
             INTERNAL_CLUSTER_STATUS_PATH,
         )
-        .expect_err("repeated failures should trip rate limit");
+        .test_unwrap_err();
         assert_eq!(limited_peer.status(), StatusCode::TOO_MANY_REQUESTS);
         headers.insert(
             CLUSTER_AUTH_ISSUED_AT_HEADER,
-            HeaderValue::from_str(&issued_at.to_string()).expect("issued-at header"),
+            HeaderValue::from_str(&issued_at.to_string()).test_unwrap(),
         );
         headers.insert(
             CLUSTER_AUTH_SIGNATURE_HEADER,
-            HeaderValue::from_str(&signature).expect("signature header"),
+            HeaderValue::from_str(&signature).test_unwrap(),
         );
         let peer_after_spoofed_failures = validate_cluster_peer_auth(
             &headers,
             &cluster_state.config,
             INTERNAL_CLUSTER_STATUS_PATH,
         )
-        .expect("spoofed invalid signatures must not rate limit the verified peer");
+        .test_unwrap();
         assert_eq!(peer_after_spoofed_failures.node_id, "http://node-b");
         clear_cluster_peer_auth_failures(&cluster_peer_auth_unverified_failure_key(
             "http://node-b",
@@ -4560,30 +4594,30 @@ mod cluster_and_reports_tests {
 
         {
             let revocation_store = SqliteRevocationStore::open(&source_revocation_db)
-                .expect("open source revocation db");
+                .test_unwrap();
             revocation_store
                 .upsert_revocation(&RevocationRecord {
                     capability_id: "cap-1".to_string(),
                     revoked_at: 17,
                 })
-                .expect("write revocation");
+                .test_unwrap();
         }
         {
             let receipt_store =
-                SqliteReceiptStore::open(&source_receipt_db).expect("open source receipt db");
+                SqliteReceiptStore::open(&source_receipt_db).test_unwrap();
             receipt_store
                 .append_chio_receipt(&sample_tool_receipt("tool-1", "cap-1"))
-                .expect("append tool receipt");
+                .test_unwrap();
             receipt_store
                 .append_child_receipt(&sample_child_receipt("child-1", "alpha"))
-                .expect("append child receipt");
+                .test_unwrap();
             receipt_store
                 .record_capability_snapshot(&sample_capability("cap-1"), None)
-                .expect("record capability snapshot");
+                .test_unwrap();
         }
         {
             let budget_store =
-                SqliteBudgetStore::open(&source_budget_db).expect("open source budget db");
+                SqliteBudgetStore::open(&source_budget_db).test_unwrap();
             budget_store
                 .try_charge_cost_with_ids(
                     "cap-1",
@@ -4595,13 +4629,13 @@ mod cluster_and_reports_tests {
                     Some("hold-1"),
                     Some("hold-1:authorize"),
                 )
-                .expect("authorize budget exposure");
+                .test_unwrap();
             budget_store
                 .reduce_charge_cost_with_ids("cap-1", 0, 4, Some("hold-1"), Some("hold-1:release"))
-                .expect("release budget exposure");
+                .test_unwrap();
         }
 
-        let snapshot = build_cluster_state_snapshot(&source_state).expect("build cluster snapshot");
+        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
         assert_eq!(snapshot.replication.tool_seq, 1);
         assert_eq!(snapshot.replication.child_seq, 1);
         assert_eq!(snapshot.replication.lineage_seq, 1);
@@ -4620,58 +4654,58 @@ mod cluster_and_reports_tests {
                 .replication
                 .revocation_cursor
                 .as_ref()
-                .expect("revocation cursor")
+                .test_unwrap()
                 .capability_id,
             "cap-1"
         );
 
         let generated_at = snapshot.generated_at;
         apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .expect("apply cluster snapshot");
+            .test_unwrap();
 
         let revocations = SqliteRevocationStore::open(&target_revocation_db)
-            .expect("open target revocation db")
+            .test_unwrap()
             .list_revocations_after(MAX_LIST_LIMIT, None, None)
-            .expect("list replicated revocations");
+            .test_unwrap();
         assert_eq!(revocations.len(), 1);
         assert_eq!(revocations[0].capability_id, "cap-1");
 
         let receipt_store =
-            SqliteReceiptStore::open(&target_receipt_db).expect("open target receipt db");
+            SqliteReceiptStore::open(&target_receipt_db).test_unwrap();
         assert_eq!(
             receipt_store
                 .list_tool_receipts_after_seq(0, MAX_LIST_LIMIT)
-                .expect("list replicated tool receipts")
+                .test_unwrap()
                 .len(),
             1
         );
         assert_eq!(
             receipt_store
                 .list_child_receipts_after_seq(0, MAX_LIST_LIMIT)
-                .expect("list replicated child receipts")
+                .test_unwrap()
                 .len(),
             1
         );
         assert_eq!(
             receipt_store
                 .list_capability_snapshots_after_seq(0, MAX_LIST_LIMIT)
-                .expect("list replicated lineage")
+                .test_unwrap()
                 .len(),
             1
         );
 
         let budgets = SqliteBudgetStore::open(&target_budget_db)
-            .expect("open target budget db")
+            .test_unwrap()
             .list_usages_after(MAX_LIST_LIMIT, None)
-            .expect("list replicated budgets");
+            .test_unwrap();
         assert_eq!(budgets.len(), 1);
         assert_eq!(budgets[0].invocation_count, 1);
         assert_eq!(budgets[0].total_cost_exposed, 5);
         assert_eq!(budgets[0].total_cost_realized_spend, 0);
         let mutation_events = SqliteBudgetStore::open(&target_budget_db)
-            .expect("open target budget db")
+            .test_unwrap()
             .list_mutation_events(10, Some("cap-1"), Some(0))
-            .expect("list replicated mutation events");
+            .test_unwrap();
         assert_eq!(
             mutation_events
                 .iter()
@@ -4685,13 +4719,13 @@ mod cluster_and_reports_tests {
         assert_eq!(peer_lineage_seq(&target_state, "http://node-a"), 1);
         assert_eq!(
             peer_budget_cursor(&target_state, "http://node-a")
-                .expect("replicated budget cursor")
+                .test_unwrap()
                 .seq,
             2
         );
         assert_eq!(
             peer_revocation_cursor(&target_state, "http://node-a")
-                .expect("replicated revocation cursor")
+                .test_unwrap()
                 .capability_id,
             "cap-1"
         );
@@ -4729,7 +4763,7 @@ mod cluster_and_reports_tests {
 
         {
             let budget_store =
-                SqliteBudgetStore::open(&source_budget_db).expect("open source budget db");
+                SqliteBudgetStore::open(&source_budget_db).test_unwrap();
             let allowed = budget_store
                 .try_charge_cost_with_ids(
                     "cap-denied-only",
@@ -4741,15 +4775,15 @@ mod cluster_and_reports_tests {
                     Some("cap-denied-only-hold-1"),
                     Some("cap-denied-only-hold-1:authorize"),
                 )
-                .expect("record denied budget mutation");
+                .test_unwrap();
             assert!(!allowed);
             assert!(budget_store
                 .list_usages_after(MAX_LIST_LIMIT, None)
-                .expect("list source usages")
+                .test_unwrap()
                 .is_empty());
             let delta =
                 collect_budget_mutation_event_views_after_seq(&budget_store, 0, MAX_LIST_LIMIT)
-                    .expect("collect denied event delta");
+                    .test_unwrap();
             assert_eq!(delta.len(), 1);
             assert_eq!(delta[0].event_seq, 1);
             assert_eq!(delta[0].allowed, Some(false));
@@ -4759,11 +4793,11 @@ mod cluster_and_reports_tests {
                 1,
                 MAX_LIST_LIMIT
             )
-            .expect("collect empty denied event delta")
+            .test_unwrap()
             .is_empty());
         }
 
-        let snapshot = build_cluster_state_snapshot(&source_state).expect("build cluster snapshot");
+        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
         assert_eq!(snapshot.replication.budget_seq, 1);
         assert!(snapshot.budgets.is_empty());
         assert_eq!(snapshot.budget_mutation_events.len(), 1);
@@ -4776,17 +4810,17 @@ mod cluster_and_reports_tests {
         assert_eq!(snapshot.budget_mutation_events[0].usage_seq, None);
 
         apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .expect("apply cluster snapshot");
+            .test_unwrap();
 
         let target_store =
-            SqliteBudgetStore::open(&target_budget_db).expect("open target budget db");
+            SqliteBudgetStore::open(&target_budget_db).test_unwrap();
         assert!(target_store
             .list_usages_after(MAX_LIST_LIMIT, None)
-            .expect("list target usages")
+            .test_unwrap()
             .is_empty());
         let mutation_events = target_store
             .list_mutation_events(10, Some("cap-denied-only"), Some(0))
-            .expect("list replicated denied events");
+            .test_unwrap();
         assert_eq!(mutation_events.len(), 1);
         assert_eq!(
             mutation_events[0].event_id,
@@ -4799,7 +4833,7 @@ mod cluster_and_reports_tests {
 
         assert_eq!(
             peer_budget_cursor(&target_state, "http://node-a")
-                .expect("replicated denied budget cursor")
+                .test_unwrap()
                 .seq,
             1
         );
@@ -4827,7 +4861,7 @@ mod cluster_and_reports_tests {
 
         {
             let budget_store =
-                SqliteBudgetStore::open(&source_budget_db).expect("open source budget db");
+                SqliteBudgetStore::open(&source_budget_db).test_unwrap();
             budget_store
                 .upsert_usage(&chio_kernel::BudgetUsageRecord {
                     capability_id: "cap-usage-only".to_string(),
@@ -4838,10 +4872,10 @@ mod cluster_and_reports_tests {
                     total_cost_exposed: 550,
                     total_cost_realized_spend: 375,
                 })
-                .expect("seed source usage row");
+                .test_unwrap();
             assert!(budget_store
                 .list_mutation_events(10, Some("cap-usage-only"), Some(0))
-                .expect("list source mutation events")
+                .test_unwrap()
                 .is_empty());
         }
 
@@ -4856,7 +4890,7 @@ mod cluster_and_reports_tests {
             },
         );
 
-        let snapshot = build_cluster_state_snapshot(&source_state).expect("build cluster snapshot");
+        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
         assert_eq!(snapshot.replication.budget_seq, 0);
         assert_eq!(snapshot.budgets.len(), 1);
         assert!(snapshot.budget_mutation_events.is_empty());
@@ -4864,13 +4898,13 @@ mod cluster_and_reports_tests {
         assert_eq!(snapshot.budgets[0].seq, Some(42));
 
         apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .expect("apply cluster snapshot");
+            .test_unwrap();
 
         let target_store =
-            SqliteBudgetStore::open(&target_budget_db).expect("open target budget db");
+            SqliteBudgetStore::open(&target_budget_db).test_unwrap();
         let usages = target_store
             .list_usages_after(MAX_LIST_LIMIT, None)
-            .expect("list target usages");
+            .test_unwrap();
         assert_eq!(usages.len(), 1);
         assert_eq!(usages[0].capability_id, "cap-usage-only");
         assert_eq!(usages[0].invocation_count, 7);
@@ -4879,7 +4913,7 @@ mod cluster_and_reports_tests {
         assert_eq!(usages[0].total_cost_realized_spend, 375);
         assert!(target_store
             .list_mutation_events(10, Some("cap-usage-only"), Some(0))
-            .expect("list replicated mutation events")
+            .test_unwrap()
             .is_empty());
         drop(target_store);
 
@@ -4920,7 +4954,7 @@ mod cluster_and_reports_tests {
     #[test]
     fn budget_delta_import_preserves_record_only_legacy_deltas() {
         let budget_db = unique_temp_path("cluster-legacy-budget-delta", "sqlite3");
-        let mut store = SqliteBudgetStore::open(&budget_db).expect("open budget db");
+        let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
         let response = BudgetDeltaResponse {
             records: vec![BudgetUsageView {
                 capability_id: "cap-legacy".to_string(),
@@ -4935,29 +4969,29 @@ mod cluster_and_reports_tests {
         };
 
         let outcome = import_budget_delta_response(&mut store, &response, None)
-            .expect("import legacy record-only budget delta");
+            .test_unwrap();
         assert_eq!(outcome.applied_count, 1);
         assert!(outcome.should_continue);
-        assert_eq!(outcome.next_cursor.expect("legacy cursor").seq, 42);
+        assert_eq!(outcome.next_cursor.test_unwrap().seq, 42);
 
         let usage = store
             .get_usage("cap-legacy", 0)
-            .expect("load imported usage")
-            .expect("legacy usage row");
+            .test_unwrap()
+            .test_unwrap();
         assert_eq!(usage.invocation_count, 3);
         assert_eq!(usage.seq, 42);
         assert_eq!(usage.total_cost_exposed, 55);
         assert_eq!(usage.total_cost_realized_spend, 21);
         assert!(store
             .list_mutation_events(10, Some("cap-legacy"), Some(0))
-            .expect("list mutation events")
+            .test_unwrap()
             .is_empty());
     }
 
     #[test]
     fn budget_delta_import_rejects_oversized_peer_payloads() {
         let budget_db = unique_temp_path("cluster-oversized-budget-delta", "sqlite3");
-        let mut store = SqliteBudgetStore::open(&budget_db).expect("open budget db");
+        let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
         let response = BudgetDeltaResponse {
             records: (0..=BUDGET_DELTA_MAX_RECORDS)
                 .map(|idx| BudgetUsageView {
@@ -4993,8 +5027,8 @@ mod cluster_and_reports_tests {
         );
 
         for state in [&source_state, &target_state] {
-            let cluster = state.cluster.as_ref().expect("cluster state");
-            let mut guard = cluster.lock().expect("cluster guard");
+            let cluster = state.cluster.as_ref().test_unwrap();
+            let mut guard = cluster.lock().test_unwrap();
             for peer in guard.peers.values_mut() {
                 peer.health = PeerHealth::Healthy;
                 peer.last_contact_at = Some(unix_timestamp_now());
@@ -5002,35 +5036,35 @@ mod cluster_and_reports_tests {
         }
 
         let initial_target_consensus =
-            cluster_consensus_view(&target_state).expect("initial target consensus");
+            cluster_consensus_view(&target_state).test_unwrap();
         assert_eq!(
             initial_target_consensus.leader_url.as_deref(),
             Some("http://node-0")
         );
         assert_eq!(initial_target_consensus.election_term, 1);
 
-        let snapshot = build_cluster_state_snapshot(&source_state).expect("build cluster snapshot");
+        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
         assert_eq!(snapshot.election_term, 1);
         assert_eq!(
             snapshot
                 .authority_lease
                 .as_ref()
-                .expect("snapshot authority lease")
+                .test_unwrap()
                 .leader_url,
             "http://node-a"
         );
 
         apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .expect("apply cluster snapshot");
+            .test_unwrap();
 
         let seeded_consensus =
-            cluster_consensus_view(&target_state).expect("seeded target consensus");
+            cluster_consensus_view(&target_state).test_unwrap();
         assert_eq!(
             seeded_consensus.leader_url.as_deref(),
             Some("http://node-0")
         );
         assert_eq!(seeded_consensus.election_term, 2);
-        let seeded_lease = cluster_authority_lease_view(&target_state).expect("seeded lease");
+        let seeded_lease = cluster_authority_lease_view(&target_state).test_unwrap();
         assert_eq!(seeded_lease.authority_id, "http://node-0");
         assert_eq!(seeded_lease.lease_epoch, 2);
     }
@@ -5039,10 +5073,10 @@ mod cluster_and_reports_tests {
     fn build_cluster_state_seeds_persisted_authority_fence_term() {
         let authority_db_path = unique_temp_path("cluster-authority-fence", "sqlite3");
         let authority =
-            SqliteCapabilityAuthority::open(&authority_db_path).expect("open authority db");
+            SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
         authority
             .seed_cluster_fence(Some("http://node-b"), 7)
-            .expect("seed persisted authority fence");
+            .test_unwrap();
 
         let mut config = base_config();
         config.advertise_url = Some("http://node-a".to_string());
@@ -5050,9 +5084,9 @@ mod cluster_and_reports_tests {
         config.authority_db_path = Some(authority_db_path.clone());
 
         let cluster = build_cluster_state(&config, config.listen)
-            .expect("build cluster with persisted authority fence")
-            .expect("cluster enabled");
-        let guard = cluster.lock().expect("cluster guard");
+            .test_unwrap()
+            .test_unwrap();
+        let guard = cluster.lock().test_unwrap();
         assert_eq!(guard.election_term, 7);
         assert_eq!(guard.last_leader_url.as_deref(), Some("http://node-b"));
 
@@ -5064,10 +5098,10 @@ mod cluster_and_reports_tests {
         let authority_db_path =
             unique_temp_path("cluster-authority-fence-unknown-leader", "sqlite3");
         let authority =
-            SqliteCapabilityAuthority::open(&authority_db_path).expect("open authority db");
+            SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
         authority
             .seed_cluster_fence(Some("http://node-z"), 7)
-            .expect("seed persisted authority fence");
+            .test_unwrap();
 
         let mut config = base_config();
         config.advertise_url = Some("http://node-a".to_string());
@@ -5075,9 +5109,9 @@ mod cluster_and_reports_tests {
         config.authority_db_path = Some(authority_db_path.clone());
 
         let cluster = build_cluster_state(&config, config.listen)
-            .expect("build cluster with persisted authority fence")
-            .expect("cluster enabled");
-        let guard = cluster.lock().expect("cluster guard");
+            .test_unwrap()
+            .test_unwrap();
+        let guard = cluster.lock().test_unwrap();
         assert_eq!(guard.election_term, 7);
         assert!(
             guard.last_leader_url.is_none(),
@@ -5092,11 +5126,11 @@ mod cluster_and_reports_tests {
         let authority_db_path =
             unique_temp_path("cluster-authority-fence-stale-generation", "sqlite3");
         let authority =
-            SqliteCapabilityAuthority::open(&authority_db_path).expect("open authority db");
+            SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
         authority
             .seed_cluster_fence(Some("http://node-b"), 7)
-            .expect("seed persisted authority fence");
-        authority.rotate().expect("rotate authority");
+            .test_unwrap();
+        authority.rotate().test_unwrap();
 
         let mut config = base_config();
         config.advertise_url = Some("http://node-a".to_string());
@@ -5104,9 +5138,9 @@ mod cluster_and_reports_tests {
         config.authority_db_path = Some(authority_db_path.clone());
 
         let cluster = build_cluster_state(&config, config.listen)
-            .expect("build cluster with stale persisted authority fence")
-            .expect("cluster enabled");
-        let guard = cluster.lock().expect("cluster guard");
+            .test_unwrap()
+            .test_unwrap();
+        let guard = cluster.lock().test_unwrap();
         assert_eq!(guard.election_term, 0);
         assert!(guard.last_leader_url.is_none());
 
@@ -5116,7 +5150,7 @@ mod cluster_and_reports_tests {
     #[test]
     fn apply_cluster_snapshot_fails_when_authority_fence_persistence_fails() {
         let authority_db_path = unique_temp_path("cluster-authority-fence-dir", "d");
-        std::fs::create_dir_all(&authority_db_path).expect("create authority directory");
+        std::fs::create_dir_all(&authority_db_path).test_unwrap();
 
         let source_state =
             state_with_cluster("http://node-a", &["http://node-b"], None, None, None);
@@ -5129,17 +5163,17 @@ mod cluster_and_reports_tests {
         );
 
         for state in [&source_state, &target_state] {
-            let cluster = state.cluster.as_ref().expect("cluster state");
-            let mut guard = cluster.lock().expect("cluster guard");
+            let cluster = state.cluster.as_ref().test_unwrap();
+            let mut guard = cluster.lock().test_unwrap();
             for peer in guard.peers.values_mut() {
                 peer.health = PeerHealth::Healthy;
                 peer.last_contact_at = Some(unix_timestamp_now());
             }
         }
 
-        let snapshot = build_cluster_state_snapshot(&source_state).expect("build cluster snapshot");
+        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
         let error = apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .expect_err("snapshot apply should fail when authority fence persistence fails");
+            .test_unwrap_err();
         let error_text = error.to_string();
         assert!(
             error_text.contains("directory") || error_text.contains("open database file"),

@@ -834,6 +834,28 @@ mod tests {
     };
     use chio_core_types::capability::{CapabilityTokenBody, ChioScope, Operation, ToolGrant};
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Some(value) => value,
+                None => panic!("expected Some(..), got None"),
+            }
+        }
+    }
+
     fn signed_capability_token_json(issuer: &Keypair, id: &str) -> String {
         signed_capability_token_json_with_scope(issuer, id, ChioScope::default())
     }
@@ -854,10 +876,10 @@ mod tests {
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
             },
-            &issuer,
+            issuer,
         )
-        .unwrap();
-        serde_json::to_string(&token).unwrap()
+        .test_unwrap();
+        serde_json::to_string(&token).test_unwrap()
     }
 
     fn caller() -> CallerIdentity {
@@ -913,7 +935,7 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::SessionAllow,
             })
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_allowed());
         assert_eq!(
@@ -953,7 +975,7 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::DenyByDefault,
             })
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_denied());
         assert_eq!(result.receipt.response_status, 403);
@@ -981,7 +1003,7 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::SessionAllow,
             })
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_denied());
         assert_eq!(result.receipt.evidence.len(), 1);
@@ -1012,7 +1034,7 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::DenyByDefault,
             })
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_allowed());
         assert_eq!(result.receipt.capability_id.as_deref(), Some("cap-123"));
@@ -1046,7 +1068,7 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::DenyByDefault,
             })
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_denied());
         assert!(result.receipt.capability_id.is_none());
@@ -1076,7 +1098,7 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::DenyByDefault,
             })
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_denied());
         assert_eq!(result.receipt.capability_id, None);
@@ -1111,7 +1133,7 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::DenyByDefault,
             })
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_allowed());
         assert_eq!(
@@ -1143,13 +1165,15 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::SessionAllow,
             })
-            .unwrap()
+            .test_unwrap()
             .receipt;
         let kernel_receipt_id =
             metadata_string(decision.metadata.as_ref(), CHIO_KERNEL_RECEIPT_ID_KEY)
                 .map(ToOwned::to_owned)
-                .unwrap();
-        let final_receipt = shared.finalize_decision_receipt(&decision, 204).unwrap();
+                .test_unwrap();
+        let final_receipt = shared
+            .finalize_decision_receipt(&decision, 204)
+            .test_unwrap();
 
         assert_ne!(final_receipt.id, decision.id);
         assert_eq!(final_receipt.response_status, 204);
@@ -1254,7 +1278,7 @@ mod tests {
                 model_metadata: None,
                 policy: HttpAuthorityPolicy::DenyByDefault,
             })
-            .unwrap();
+            .test_unwrap();
 
         assert!(result.verdict.is_denied());
         assert!(result.receipt.capability_id.is_none());

@@ -526,6 +526,32 @@ mod tests {
         EvmPublicationReceipt,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E> {
+        fn test_expect(self, context: &'static str) -> T {
+            match self {
+                Ok(value) => value,
+                Err(_) => panic!("{context}"),
+            }
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(_) => panic!("{context} unexpectedly succeeded"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn bind_mock_json_rpc_listener() -> Option<TcpListener> {
         match TcpListener::bind("127.0.0.1:0") {
             Ok(listener) => Some(listener),
@@ -553,24 +579,24 @@ mod tests {
     impl MockJsonRpcServer {
         fn spawn(envelopes: Vec<Value>) -> Option<Self> {
             let listener = bind_mock_json_rpc_listener()?;
-            let address = listener.local_addr().expect("listener address");
+            let address = listener.local_addr().test_expect("listener address");
             let base_url = format!("http://127.0.0.1:{}", address.port());
             let requests = Arc::new(Mutex::new(Vec::new()));
             let requests_for_thread = Arc::clone(&requests);
 
             let handle = thread::spawn(move || {
                 for envelope in envelopes {
-                    let (mut stream, _) = listener.accept().expect("accept mock request");
+                    let (mut stream, _) = listener.accept().test_expect("accept mock request");
                     stream
                         .set_read_timeout(Some(Duration::from_secs(2)))
-                        .expect("set read timeout");
+                        .test_expect("set read timeout");
                     let request = read_http_request(&mut stream);
                     requests_for_thread
                         .lock()
-                        .expect("lock request log")
+                        .test_expect("lock request log")
                         .push(parse_json_request(&request));
                     write_http_json_response(&mut stream, 200, &envelope);
-                    stream.flush().expect("flush mock response");
+                    stream.flush().test_expect("flush mock response");
                 }
             });
 
@@ -586,11 +612,11 @@ mod tests {
         }
 
         fn requests(&self) -> Vec<Value> {
-            self.requests.lock().expect("lock request log").clone()
+            self.requests.lock().test_expect("lock request log").clone()
         }
 
         fn join(self) {
-            self.handle.join().expect("join mock JSON-RPC server");
+            self.handle.join().test_expect("join mock JSON-RPC server");
         }
     }
 
@@ -598,7 +624,7 @@ mod tests {
         serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
         ))
-        .expect("parse primary proof example")
+        .test_expect("parse primary proof example")
     }
 
     fn sample_binding() -> SignedWeb3IdentityBinding {
@@ -656,7 +682,7 @@ mod tests {
         let mut content_length = 0_usize;
 
         loop {
-            let read = stream.read(&mut chunk).expect("read request");
+            let read = stream.read(&mut chunk).test_expect("read request");
             if read == 0 {
                 break;
             }
@@ -674,7 +700,7 @@ mod tests {
             }
         }
 
-        String::from_utf8(request).expect("request should be valid UTF-8")
+        String::from_utf8(request).test_expect("request should be valid UTF-8")
     }
 
     fn find_header_end(request: &[u8]) -> Option<usize> {
@@ -703,7 +729,7 @@ mod tests {
             .split_once("\r\n\r\n")
             .map(|(_, body)| body)
             .unwrap_or_default();
-        serde_json::from_str(body).expect("request body should be JSON")
+        serde_json::from_str(body).test_expect("request body should be JSON")
     }
 
     fn write_http_json_response<W: Write>(stream: &mut W, status: u16, body: &Value) {
@@ -716,7 +742,7 @@ mod tests {
         );
         stream
             .write_all(response.as_bytes())
-            .expect("write mock response");
+            .test_expect("write mock response");
     }
 
     fn http_status_text(status: u16) -> &'static str {
@@ -735,7 +761,7 @@ mod tests {
         binding.certificate.purpose = vec![Web3KeyBindingPurpose::Settle];
 
         let error = prepare_root_publication(&target, &checkpoint, &binding)
-            .expect_err("binding without anchor purpose should fail");
+            .test_expect_err("binding without anchor purpose should fail");
 
         assert!(matches!(error, crate::AnchorError::InvalidBinding(_)));
         assert!(error.to_string().contains("anchor purpose"));
@@ -749,7 +775,7 @@ mod tests {
         binding.certificate.chain_scope = vec!["eip155:1".to_string()];
 
         let error = prepare_root_publication(&target, &checkpoint, &binding)
-            .expect_err("binding should reject uncovered chain");
+            .test_expect_err("binding should reject uncovered chain");
 
         assert!(matches!(error, crate::AnchorError::InvalidBinding(_)));
         assert!(error.to_string().contains("does not cover"));
@@ -764,7 +790,7 @@ mod tests {
             "0x1000000000000000000000000000000000000009".to_string();
 
         let error = prepare_root_publication(&target, &checkpoint, &binding)
-            .expect_err("binding should reject settlement mismatch");
+            .test_expect_err("binding should reject settlement mismatch");
 
         assert!(matches!(error, crate::AnchorError::InvalidBinding(_)));
         assert!(error
@@ -781,7 +807,7 @@ mod tests {
         binding.certificate.settlement_address = target.operator_address.clone();
 
         let error = prepare_root_publication(&target, &checkpoint, &binding)
-            .expect_err("invalid operator address should fail");
+            .test_expect_err("invalid operator address should fail");
 
         assert!(matches!(error, crate::AnchorError::InvalidInput(_)));
     }
@@ -791,15 +817,15 @@ mod tests {
         let target = sample_target("http://127.0.0.1:8545");
 
         let blank = prepare_delegate_registration(&target, "   ", 30)
-            .expect_err("blank delegate should fail");
+            .test_expect_err("blank delegate should fail");
         assert!(blank.to_string().contains("delegate address is required"));
 
         let zero = prepare_delegate_registration(&target, &target.publisher_address, 0)
-            .expect_err("zero delegate expiry should fail");
+            .test_expect_err("zero delegate expiry should fail");
         assert!(zero.to_string().contains("must be non-zero"));
 
         let invalid = prepare_delegate_registration(&target, "invalid-address", 30)
-            .expect_err("invalid delegate address should fail");
+            .test_expect_err("invalid delegate address should fail");
         assert!(matches!(invalid, crate::AnchorError::InvalidInput(_)));
     }
 
@@ -815,9 +841,9 @@ mod tests {
         let binding = sample_binding();
         let publication =
             prepare_root_publication(&sample_target(server.base_url()), &checkpoint, &binding)
-                .expect("prepare publication");
+                .test_expect("prepare publication");
 
-        let tx_hash = publish_root(&publication).await.expect("publish root");
+        let tx_hash = publish_root(&publication).await.test_expect("publish root");
 
         assert_eq!(tx_hash, "0xabc123");
         let requests = server.requests();
@@ -844,11 +870,11 @@ mod tests {
         let binding = sample_binding();
         let publication =
             prepare_root_publication(&sample_target(server.base_url()), &checkpoint, &binding)
-                .expect("prepare publication");
+                .test_expect("prepare publication");
 
         let error = publish_root(&publication)
             .await
-            .expect_err("non-string tx hash should fail");
+            .test_expect_err("non-string tx hash should fail");
 
         server.join();
         assert!(error.to_string().contains("did not return a tx hash"));
@@ -866,11 +892,11 @@ mod tests {
         let binding = sample_binding();
         let publication =
             prepare_root_publication(&sample_target(server.base_url()), &checkpoint, &binding)
-                .expect("prepare publication");
+                .test_expect("prepare publication");
 
         let error = publish_root(&publication)
             .await
-            .expect_err("RPC error should fail");
+            .test_expect_err("RPC error should fail");
 
         server.join();
         assert!(error.to_string().contains("denied"));
@@ -906,7 +932,7 @@ mod tests {
 
         let receipt = confirm_root_publication(&target, &checkpoint, &binding, "0xdeadbeef")
             .await
-            .expect("confirm publication");
+            .test_expect("confirm publication");
 
         let requests = server.requests();
         server.join();
@@ -933,7 +959,7 @@ mod tests {
 
         let error = confirm_root_publication(&target, &checkpoint, &binding, "0xdeadbeef")
             .await
-            .expect_err("failed tx status should fail");
+            .test_expect_err("failed tx status should fail");
 
         server.join();
         assert!(error.to_string().contains("failed with status 0x0"));
@@ -968,7 +994,7 @@ mod tests {
 
         let error = confirm_root_publication(&target, &checkpoint, &binding, "0xdeadbeef")
             .await
-            .expect_err("mismatched registry entry should fail");
+            .test_expect_err("mismatched registry entry should fail");
 
         server.join();
         assert!(error
@@ -992,7 +1018,7 @@ mod tests {
 
         let guard = inspect_publication_guard(&target)
             .await
-            .expect("inspect guard");
+            .test_expect("inspect guard");
 
         server.join();
         assert!(guard.publisher_authorized);
@@ -1017,7 +1043,7 @@ mod tests {
 
         let error = ensure_publication_ready(&target, 42)
             .await
-            .expect_err("unauthorized publisher should fail");
+            .test_expect_err("unauthorized publisher should fail");
 
         server.join();
         assert!(error.to_string().contains("not authorized"));
@@ -1039,7 +1065,7 @@ mod tests {
 
         let error = ensure_publication_ready(&target, 41)
             .await
-            .expect_err("checkpoint regression should fail");
+            .test_expect_err("checkpoint regression should fail");
 
         server.join();
         assert!(error.to_string().contains("must be >="));
@@ -1061,7 +1087,7 @@ mod tests {
 
         let guard = ensure_publication_ready(&target, 42)
             .await
-            .expect("checkpoint 42 should be accepted");
+            .test_expect("checkpoint 42 should be accepted");
 
         server.join();
         assert_eq!(guard.next_checkpoint_seq_min, 42);
@@ -1079,7 +1105,7 @@ mod tests {
 
         let verified = verify_inclusion_onchain(&target, &proof)
             .await
-            .expect("verify inclusion");
+            .test_expect("verify inclusion");
 
         let requests = server.requests();
         server.join();

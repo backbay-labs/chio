@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -58,8 +58,8 @@ fn read_child_stderr(child: &mut Child) -> String {
 fn spawn_trust_service_with_policy_registry(
     listen: std::net::SocketAddr,
     service_token: &str,
-    enterprise_providers_file: Option<&PathBuf>,
-    verifier_policies_file: Option<&PathBuf>,
+    enterprise_providers_file: Option<&Path>,
+    verifier_policies_file: Option<&Path>,
 ) -> ServerGuard {
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.current_dir(workspace_root()).args([
@@ -93,15 +93,15 @@ fn spawn_trust_service_with_policy_registry(
 
 fn start_trust_service(
     service_token: &str,
-    enterprise_providers_file: &PathBuf,
+    enterprise_providers_file: &Path,
 ) -> (ServerGuard, Client, String) {
     start_trust_service_with_policy_registry(service_token, Some(enterprise_providers_file), None)
 }
 
 fn start_trust_service_with_policy_registry(
     service_token: &str,
-    enterprise_providers_file: Option<&PathBuf>,
-    verifier_policies_file: Option<&PathBuf>,
+    enterprise_providers_file: Option<&Path>,
+    verifier_policies_file: Option<&Path>,
 ) -> (ServerGuard, Client, String) {
     let _lock = TRUST_SERVICE_START_LOCK
         .lock()
@@ -181,7 +181,7 @@ fn provider_record_json(
     })
 }
 
-fn write_registry(path: &PathBuf, records: &[serde_json::Value]) {
+fn write_registry(path: &Path, records: &[serde_json::Value]) {
     fs::write(
         path,
         serde_json::to_vec_pretty(&serde_json::json!({

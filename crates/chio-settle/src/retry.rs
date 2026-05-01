@@ -213,6 +213,10 @@ impl DeadLetterRecord {
 mod tests {
     use super::*;
 
+    fn require_some<T>(value: Option<T>, context: &'static str) -> T {
+        value.unwrap_or_else(|| panic!("{context}"))
+    }
+
     #[test]
     fn schema_is_stable() {
         assert_eq!(SETTLE_DEAD_LETTER_SCHEMA, "chio.settle.dead-letter.v1");
@@ -305,10 +309,7 @@ mod tests {
             .with_pipeline_error(&SettlementError::Rpc("connection refused".to_string()));
         assert_eq!(record.attempts, 3);
         assert_eq!(record.schema, SETTLE_DEAD_LETTER_SCHEMA);
-        let pipeline = record
-            .pipeline_error
-            .as_deref()
-            .expect("pipeline error attached");
+        let pipeline = require_some(record.pipeline_error.as_deref(), "pipeline error attached");
         assert!(pipeline.contains("connection refused"));
     }
 

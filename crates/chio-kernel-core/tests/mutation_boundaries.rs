@@ -143,24 +143,17 @@ fn resolve_matching_grants_enforces_path_constraints_and_specificity() {
         ..ChioScope::default()
     };
     let allowed = serde_json::json!({ "path": "/workspace/private/report.txt" });
-    let matches = resolve_matching_grants(&scope, "read", "files", &allowed);
-    let Ok(matches) = matches else {
-        assert!(false, "allowed path should match both grants");
-        return;
-    };
+    let matches = resolve_matching_grants(&scope, "read", "files", &allowed)
+        .unwrap_or_else(|error| panic!("allowed path should match both grants: {error:?}"));
     assert_eq!(matches.len(), 2);
     assert_eq!(matches[0].index, 1);
     assert_eq!(matches[0].specificity, (1, 1, 1));
 
     let denied = serde_json::json!({ "path": "/workspace/public/report.txt" });
-    let matches = resolve_matching_grants(&scope, "read", "files", &denied);
-    let Ok(matches) = matches else {
-        assert!(
-            false,
-            "denied path should still match unconstrained fallback"
-        );
-        return;
-    };
+    let matches =
+        resolve_matching_grants(&scope, "read", "files", &denied).unwrap_or_else(|error| {
+            panic!("denied path should still match unconstrained fallback: {error:?}")
+        });
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].index, 0);
 }

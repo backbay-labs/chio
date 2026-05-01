@@ -1769,7 +1769,6 @@ pub fn cmd_evidence_verify(input: &Path, json_output: bool) -> Result<(), CliErr
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -1780,6 +1779,41 @@ mod tests {
         EvidenceChildReceiptScope, EvidenceExportBundle, EvidenceExportQuery,
         EvidenceRetentionMetadata, EvidenceToolReceiptRecord,
     };
+
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Some(value) => value,
+                None => panic!("expected Some(..), got None"),
+            }
+        }
+    }
+
+    trait TestUnwrapErr<E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T: std::fmt::Debug, E> TestUnwrapErr<E> for Result<T, E> {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err(..), got Ok({value:?})"),
+                Err(error) => error,
+            }
+        }
+    }
 
     fn assert_registry_error(err: &CliError, expected_code: &str, expected_domain: &str) {
         match err {
@@ -1794,7 +1828,7 @@ mod tests {
     fn unique_test_dir(name: &str) -> PathBuf {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system clock")
+            .test_unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!(
             "chio-evidence-{name}-{}-{stamp}",
@@ -1805,11 +1839,11 @@ mod tests {
     #[test]
     fn output_path_file_uses_cli_domain() {
         let temp = unique_test_dir("file-output");
-        std::fs::create_dir_all(&temp).expect("create temp dir");
+        std::fs::create_dir_all(&temp).test_unwrap();
         let output = temp.join("evidence-output");
-        std::fs::write(&output, b"not a directory").expect("write output file");
+        std::fs::write(&output, b"not a directory").test_unwrap();
 
-        let error = ensure_clean_output_dir(&output).expect_err("file output path should fail");
+        let error = ensure_clean_output_dir(&output).test_unwrap_err();
 
         assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
         let _ = std::fs::remove_dir_all(&temp);
@@ -1818,13 +1852,12 @@ mod tests {
     #[test]
     fn output_path_nonempty_directory_uses_cli_domain() {
         let temp = unique_test_dir("nonempty-output");
-        std::fs::create_dir_all(&temp).expect("create temp dir");
+        std::fs::create_dir_all(&temp).test_unwrap();
         let output = temp.join("evidence-output");
-        std::fs::create_dir_all(&output).expect("create output dir");
-        std::fs::write(output.join("existing.json"), b"{}").expect("write existing file");
+        std::fs::create_dir_all(&output).test_unwrap();
+        std::fs::write(output.join("existing.json"), b"{}").test_unwrap();
 
-        let error =
-            ensure_clean_output_dir(&output).expect_err("non-empty output path should fail");
+        let error = ensure_clean_output_dir(&output).test_unwrap_err();
 
         assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
         let _ = std::fs::remove_dir_all(&temp);
@@ -1842,7 +1875,7 @@ mod tests {
                 action: ToolCallAction::from_parameters(
                     serde_json::json!({"release":"candidate-1"}),
                 )
-                .expect("action"),
+                .test_unwrap(),
                 decision: Decision::Allow,
                 content_hash: "content-export-1".to_string(),
                 policy_hash: "policy-export-1".to_string(),
@@ -1854,18 +1887,24 @@ mod tests {
             },
             &keypair,
         )
-        .expect("sign receipt")
+        .test_unwrap()
     }
 
     fn sample_bundle() -> EvidenceExportBundle {
         let receipt = sample_receipt();
-        let canonical = canonical_json_bytes(&receipt).expect("canonical receipt");
+        let canonical = canonical_json_bytes(&receipt).test_unwrap();
         let checkpoint_keypair = Keypair::generate();
-        let checkpoint = build_checkpoint(1, 1, 1, &[canonical.clone()], &checkpoint_keypair)
-            .expect("checkpoint");
-        let tree = chio_core::merkle::MerkleTree::from_leaves(&[canonical]).expect("merkle tree");
+        let checkpoint = build_checkpoint(
+            1,
+            1,
+            1,
+            std::slice::from_ref(&canonical),
+            &checkpoint_keypair,
+        )
+        .test_unwrap();
+        let tree = chio_core::merkle::MerkleTree::from_leaves(&[canonical]).test_unwrap();
         let proof = chio_kernel::build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 1)
-            .expect("proof");
+            .test_unwrap();
         EvidenceExportBundle {
             query: EvidenceExportQuery::default(),
             tool_receipts: vec![EvidenceToolReceiptRecord { seq: 1, receipt }],
@@ -1900,7 +1939,7 @@ mod tests {
                 tenant: None,
             },
         )
-        .expect("merge should preserve tenant scope");
+        .test_unwrap();
 
         assert_eq!(merged.capability_id.as_deref(), Some("cap-1"));
         assert_eq!(merged.agent_subject.as_deref(), Some("agent-1"));
@@ -1925,7 +1964,7 @@ mod tests {
                 tenant: Some("tenant-b".to_string()),
             },
         )
-        .expect_err("tenant scope expansion should fail");
+        .test_unwrap_err();
 
         assert!(error.to_string().contains("tenant"));
     }
@@ -1948,7 +1987,7 @@ mod tests {
                 tenant: Some("tenant-b".to_string()),
             },
         )
-        .expect_err("tenant scope expansion should fail");
+        .test_unwrap_err();
 
         assert!(error.to_string().contains("tenant scope"));
     }
@@ -1956,8 +1995,8 @@ mod tests {
     #[test]
     fn checkpoint_transparency_records_match_derived_chain() {
         let kp = Keypair::generate();
-        let first = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp)
-            .expect("first checkpoint");
+        let first =
+            build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp).test_unwrap();
         let second = build_checkpoint_with_previous(
             2,
             3,
@@ -1966,11 +2005,10 @@ mod tests {
             &kp,
             Some(&first),
         )
-        .expect("second checkpoint");
+        .test_unwrap();
         let checkpoints = vec![first, second];
 
-        let summary =
-            validate_checkpoint_transparency_summary(&checkpoints).expect("transparency summary");
+        let summary = validate_checkpoint_transparency_summary(&checkpoints).test_unwrap();
         verify_checkpoint_transparency_records(
             &checkpoints,
             &summary.publications,
@@ -1978,14 +2016,14 @@ mod tests {
             &summary.consistency_proofs,
             &summary.equivocations,
         )
-        .expect("matching transparency records");
+        .test_unwrap();
     }
 
     #[test]
     fn checkpoint_transparency_verification_fails_closed_on_equivocation() {
         let kp = Keypair::generate();
-        let first = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp)
-            .expect("first checkpoint");
+        let first =
+            build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp).test_unwrap();
         let second = build_checkpoint_with_previous(
             2,
             3,
@@ -1994,7 +2032,7 @@ mod tests {
             &kp,
             Some(&first),
         )
-        .expect("second checkpoint");
+        .test_unwrap();
         let fork = build_checkpoint_with_previous(
             2,
             3,
@@ -2003,10 +2041,10 @@ mod tests {
             &kp,
             Some(&first),
         )
-        .expect("fork checkpoint");
+        .test_unwrap();
 
-        let error = validate_checkpoint_transparency_summary(&[first, second, fork])
-            .expect_err("forked checkpoints should fail");
+        let error =
+            validate_checkpoint_transparency_summary(&[first, second, fork]).test_unwrap_err();
         assert!(
             error.to_string().contains("equivocation"),
             "unexpected error: {error}"
@@ -2017,7 +2055,7 @@ mod tests {
     fn anchored_transparency_claims_fail_closed_during_export_verification() {
         let bundle = sample_bundle();
         let transparency =
-            validate_checkpoint_transparency_summary(&bundle.checkpoints).expect("summary");
+            validate_checkpoint_transparency_summary(&bundle.checkpoints).test_unwrap();
         let anchored_claims = EvidenceTransparencyClaims {
             schema: chio_kernel::evidence_export::EVIDENCE_TRANSPARENCY_CLAIMS_SCHEMA.to_string(),
             publication_state:
@@ -2041,7 +2079,7 @@ mod tests {
 
         let error =
             verify_transparency_claim_boundary(Some(&anchored_claims), &bundle, &transparency)
-                .expect_err("anchored claims should fail closed");
+                .test_unwrap_err();
 
         assert!(
             error.to_string().contains("claim boundary does not match"),
@@ -2071,13 +2109,9 @@ mod tests {
     #[test]
     fn anchored_transparency_claims_verify_when_publications_carry_valid_bindings() {
         let bundle = sample_bundle();
-        let checkpoint = bundle
-            .checkpoints
-            .first()
-            .cloned()
-            .expect("sample checkpoint");
+        let checkpoint = bundle.checkpoints.first().cloned().test_unwrap();
         let mut transparency =
-            validate_checkpoint_transparency_summary(&bundle.checkpoints).expect("summary");
+            validate_checkpoint_transparency_summary(&bundle.checkpoints).test_unwrap();
         let binding = chio_core::receipt::CheckpointPublicationTrustAnchorBinding {
             publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
                 chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog,
@@ -2096,7 +2130,7 @@ mod tests {
                 &checkpoint,
                 binding,
             )
-            .expect("anchored publication"),
+            .test_unwrap(),
         ];
         let anchored_claims =
             build_evidence_transparency_claims(&bundle, &transparency, Some("anchor-root-1"));
@@ -2108,21 +2142,17 @@ mod tests {
             &transparency.consistency_proofs,
             &transparency.equivocations,
         )
-        .expect("bound publication records should verify");
+        .test_unwrap();
         verify_transparency_claim_boundary(Some(&anchored_claims), &bundle, &transparency)
-            .expect("bound transparency claims should verify");
+            .test_unwrap();
     }
 
     #[test]
     fn evidence_export_fails_closed_on_stale_or_missing_publication() {
         let bundle = sample_bundle();
-        let checkpoint = bundle
-            .checkpoints
-            .first()
-            .cloned()
-            .expect("sample checkpoint");
+        let checkpoint = bundle.checkpoints.first().cloned().test_unwrap();
         let mut transparency =
-            validate_checkpoint_transparency_summary(&bundle.checkpoints).expect("summary");
+            validate_checkpoint_transparency_summary(&bundle.checkpoints).test_unwrap();
         let binding = chio_core::receipt::CheckpointPublicationTrustAnchorBinding {
             publication_identity: chio_core::receipt::CheckpointPublicationIdentity::new(
                 chio_core::receipt::CheckpointPublicationIdentityKind::LocalLog,
@@ -2141,19 +2171,19 @@ mod tests {
                 &checkpoint,
                 binding,
             )
-            .expect("anchored publication"),
+            .test_unwrap(),
         ];
         let anchored_claims =
             build_evidence_transparency_claims(&bundle, &transparency, Some("anchor-root-1"));
 
         let missing_publication =
-            validate_checkpoint_transparency_summary(&bundle.checkpoints).expect("missing");
+            validate_checkpoint_transparency_summary(&bundle.checkpoints).test_unwrap();
         let missing_error = verify_transparency_claim_boundary(
             Some(&anchored_claims),
             &bundle,
             &missing_publication,
         )
-        .expect_err("missing publication records should fail closed");
+        .test_unwrap_err();
         assert!(
             missing_error
                 .to_string()
@@ -2170,7 +2200,7 @@ mod tests {
             &transparency.consistency_proofs,
             &transparency.equivocations,
         )
-        .expect_err("stale publication metadata should fail closed");
+        .test_unwrap_err();
         assert!(
             stale_error
                 .to_string()

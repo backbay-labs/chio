@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::too_many_arguments, clippy::unwrap_used)]
 
 use std::collections::HashMap;
 use std::fs;
@@ -684,9 +684,9 @@ fn sample_child_receipt(id: &str, request_suffix: &str) -> ChildRequestReceipt {
         ChildRequestReceiptBody {
             id: id.to_string(),
             timestamp: 2,
-            session_id: SessionId::new(&format!("sess-{request_suffix}")),
-            parent_request_id: RequestId::new(&format!("parent-{request_suffix}")),
-            request_id: RequestId::new(&format!("child-{request_suffix}")),
+            session_id: SessionId::new(format!("sess-{request_suffix}")),
+            parent_request_id: RequestId::new(format!("parent-{request_suffix}")),
+            request_id: RequestId::new(format!("child-{request_suffix}")),
             operation_kind: OperationKind::CreateMessage,
             terminal_state: OperationTerminalState::Completed,
             outcome_hash: "outcome-hash".to_string(),
@@ -715,7 +715,7 @@ fn sample_capability(id: &str, subject_kp: &Keypair, issuer_kp: &Keypair) -> Cap
     .expect("sign capability")
 }
 
-fn assert_write_visibility_metadata<'a>(response: &'a Value) -> &'a str {
+fn assert_write_visibility_metadata(response: &Value) -> &str {
     assert_eq!(response["visibleAtLeader"].as_bool(), Some(true));
     let leader_url = response["leaderUrl"].as_str().expect("leaderUrl metadata");
     assert_eq!(response["handledBy"].as_str(), Some(leader_url));

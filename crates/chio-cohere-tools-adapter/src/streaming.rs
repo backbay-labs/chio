@@ -180,9 +180,19 @@ fn deny_reason_text(reason: &DenyReason) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    fn require_ok<T, E>(result: Result<T, E>, context: &'static str) -> T
+    where
+        E: std::fmt::Debug,
+    {
+        result.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+    }
+
+    fn require_some<T>(value: Option<T>, context: &'static str) -> T {
+        value.unwrap_or_else(|| panic!("{context}"))
+    }
 
     #[test]
     fn parse_sse_frames_ignores_unknown_fields() {
@@ -195,10 +205,13 @@ mod tests {
                   data: {\"event_type\":\"text-delta\",\"text\":\"hi\"}\n\
                   bare-line-no-colon\n\
                   \n";
-        let frames = parse_sse_frames(raw).expect("unknown SSE fields must be tolerated");
+        let frames = require_ok(
+            parse_sse_frames(raw),
+            "unknown SSE fields must be tolerated",
+        );
         assert_eq!(frames.len(), 1);
         let frame = &frames[0];
-        let data = frame.data.as_ref().expect("frame has data");
+        let data = require_some(frame.data.as_ref(), "frame has data");
         assert_eq!(
             data.get("event_type").and_then(serde_json::Value::as_str),
             Some("text-delta")

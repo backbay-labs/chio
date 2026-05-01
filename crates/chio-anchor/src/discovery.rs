@@ -576,6 +576,42 @@ mod tests {
         CHIO_ANCHOR_RUNTIME_REPORT_SCHEMA,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(_) => panic!("expected Ok result"),
+            }
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E> {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(_) => panic!("expected Err result"),
+                Err(error) => error,
+            }
+        }
+    }
+
+    trait TestOptionExt<T> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T> TestOptionExt<T> for Option<T> {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|| panic!("{context}"))
+        }
+    }
+
     fn sample_binding_with_keypair() -> (Keypair, SignedWeb3IdentityBinding) {
         let keypair = Keypair::generate();
         let certificate = Web3IdentityBindingCertificate {
@@ -590,7 +626,7 @@ mod tests {
             nonce: "anchor-discovery-1".to_string(),
         };
         let binding = SignedWeb3IdentityBinding {
-            signature: keypair.sign_canonical(&certificate).unwrap().0,
+            signature: keypair.sign_canonical(&certificate).test_unwrap().0,
             certificate,
         };
         (keypair, binding)
@@ -647,12 +683,12 @@ mod tests {
     fn discovery_artifact_rejects_invalid_binding_signature() {
         let mut binding = sample_binding();
         binding.certificate.chio_identity = "did:chio:tampered".to_string();
-        let verification_error = verify_web3_identity_binding(&binding).unwrap_err();
+        let verification_error = verify_web3_identity_binding(&binding).test_unwrap_err();
         assert!(verification_error
             .to_string()
             .contains("identity binding signature verification failed"));
 
-        let error = build_anchor_discovery_artifact(&sample_config(), &binding).unwrap_err();
+        let error = build_anchor_discovery_artifact(&sample_config(), &binding).test_unwrap_err();
 
         assert!(error
             .to_string()
@@ -663,9 +699,9 @@ mod tests {
     fn discovery_artifact_rejects_binding_without_target_chain_scope() {
         let (keypair, mut binding) = sample_binding_with_keypair();
         binding.certificate.chain_scope = vec!["eip155:42161".to_string()];
-        binding.signature = keypair.sign_canonical(&binding.certificate).unwrap().0;
+        binding.signature = keypair.sign_canonical(&binding.certificate).test_unwrap().0;
 
-        let error = build_anchor_discovery_artifact(&sample_config(), &binding).unwrap_err();
+        let error = build_anchor_discovery_artifact(&sample_config(), &binding).test_unwrap_err();
 
         assert!(error.to_string().contains("does not cover eip155:8453"));
     }
@@ -675,9 +711,9 @@ mod tests {
         let (keypair, mut binding) = sample_binding_with_keypair();
         binding.certificate.settlement_address =
             "0x2222222222222222222222222222222222222222".to_string();
-        binding.signature = keypair.sign_canonical(&binding.certificate).unwrap().0;
+        binding.signature = keypair.sign_canonical(&binding.certificate).test_unwrap().0;
 
-        let error = build_anchor_discovery_artifact(&sample_config(), &binding).unwrap_err();
+        let error = build_anchor_discovery_artifact(&sample_config(), &binding).test_unwrap_err();
 
         assert!(error
             .to_string()
@@ -700,14 +736,14 @@ mod tests {
             ),
             120,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(
             artifact
                 .service
                 .service_endpoint
                 .current_freshness
-                .expect("freshness state")
+                .test_expect("freshness state")
                 .status,
             AnchorDiscoveryFreshnessStatus::Paused
         );
@@ -734,13 +770,13 @@ mod tests {
             ),
             120,
         )
-        .unwrap();
+        .test_unwrap();
 
         let freshness = artifact
             .service
             .service_endpoint
             .current_freshness
-            .expect("freshness state");
+            .test_expect("freshness state");
         assert_eq!(freshness.status, AnchorDiscoveryFreshnessStatus::Stale);
         assert_eq!(freshness.publication_age_secs, None);
     }
@@ -772,14 +808,14 @@ mod tests {
             &report,
             120,
         )
-        .unwrap();
+        .test_unwrap();
 
         let chain_runtime = artifact
             .service
             .service_endpoint
             .chain_runtime
             .first()
-            .expect("chain runtime");
+            .test_expect("chain runtime");
         assert_eq!(chain_runtime.chain_id, "eip155:8453");
         assert_eq!(chain_runtime.status, AnchorDiscoveryFreshnessStatus::Stale);
         assert!(chain_runtime.has_active_conflict);
@@ -792,7 +828,7 @@ mod tests {
                 .service
                 .service_endpoint
                 .current_freshness
-                .expect("freshness state")
+                .test_expect("freshness state")
                 .status,
             AnchorDiscoveryFreshnessStatus::Stale
         );

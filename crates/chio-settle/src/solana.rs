@@ -244,7 +244,6 @@ pub fn compare_commitments(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
@@ -252,11 +251,40 @@ mod tests {
     use chio_core::web3::{SignedWeb3IdentityBinding, Web3IdentityBindingCertificate};
     use serde_json::json;
 
+    trait TestResultOk<T, E> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err result, got Ok: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn sample_request() -> (SolanaSettlementConfig, SolanaSettlementRequest) {
         let keypair = Keypair::from_seed_hex(
             "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         )
-        .unwrap();
+        .test_unwrap();
         let receipt = ChioReceipt::sign(
             ChioReceiptBody {
                 id: "rcpt-sol-1".to_string(),
@@ -264,7 +292,7 @@ mod tests {
                 capability_id: "cap-sol-1".to_string(),
                 tool_server: "chio-settle".to_string(),
                 tool_name: "release_escrow".to_string(),
-                action: ToolCallAction::from_parameters(json!({"amount": 125})).unwrap(),
+                action: ToolCallAction::from_parameters(json!({"amount": 125})).test_unwrap(),
                 decision: Decision::Allow,
                 content_hash: "content".to_string(),
                 policy_hash: "policy".to_string(),
@@ -276,7 +304,7 @@ mod tests {
             },
             &keypair,
         )
-        .unwrap();
+        .test_unwrap();
         let binding = SignedWeb3IdentityBinding {
             certificate: Web3IdentityBindingCertificate {
                 schema: chio_core::web3::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
@@ -301,7 +329,7 @@ mod tests {
                     expires_at: 1_774_828_800,
                     nonce: "nonce".to_string(),
                 };
-                keypair.sign_canonical(&certificate).unwrap().0
+                keypair.sign_canonical(&certificate).test_unwrap().0
             },
         };
         (
@@ -334,7 +362,7 @@ mod tests {
     #[test]
     fn solana_path_verifies_binding_and_receipt() {
         let (config, request) = sample_request();
-        let prepared = prepare_solana_settlement(&config, &request).unwrap();
+        let prepared = prepare_solana_settlement(&config, &request).test_unwrap();
         assert_eq!(prepared.settlement_amount_minor_units, 1_250_000);
         assert_eq!(prepared.ed25519_program_id, SOLANA_ED25519_PROGRAM_ID);
     }
@@ -344,7 +372,7 @@ mod tests {
         let (mut config, request) = sample_request();
         config.evidence_substrate.checkpoint_statements = false;
 
-        let error = prepare_solana_settlement(&config, &request).unwrap_err();
+        let error = prepare_solana_settlement(&config, &request).test_unwrap_err();
         assert!(error
             .to_string()
             .contains("kernel-signed checkpoint statements"));

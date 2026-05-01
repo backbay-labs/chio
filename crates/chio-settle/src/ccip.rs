@@ -221,11 +221,40 @@ mod tests {
         CcipLaneConfig, CcipMessageStatus,
     };
 
+    trait TestResultOk<T, E> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err result, got Ok: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn sample_receipt() -> Web3SettlementExecutionReceiptArtifact {
         serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_WEB3_SETTLEMENT_RECEIPT_EXAMPLE.json"
         ))
-        .unwrap()
+        .test_unwrap()
     }
 
     fn sample_lane() -> CcipLaneConfig {
@@ -247,7 +276,7 @@ mod tests {
             1_744_000_000,
             1_744_001_900,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(message.status, CcipMessageStatus::Prepared);
         assert_eq!(message.min_validity_secs, 1_800);
@@ -261,7 +290,7 @@ mod tests {
             1_744_000_000,
             1_744_000_100,
         )
-        .unwrap_err();
+        .test_unwrap_err();
         assert!(error.to_string().contains("below required minimum"));
     }
 
@@ -273,7 +302,7 @@ mod tests {
             1_744_000_000,
             1_744_001_900,
         )
-        .unwrap();
+        .test_unwrap();
         let mut seen = HashSet::new();
 
         let first = reconcile_ccip_delivery(
@@ -286,7 +315,7 @@ mod tests {
             },
             &mut seen,
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(first.status, CcipMessageStatus::Reconciled);
 
         let duplicate = reconcile_ccip_delivery(
@@ -299,7 +328,7 @@ mod tests {
             },
             &mut seen,
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(duplicate.status, CcipMessageStatus::DuplicateSuppressed);
 
         let delayed_message = prepare_ccip_settlement_message(
@@ -308,7 +337,7 @@ mod tests {
             1_744_000_000,
             1_744_001_900,
         )
-        .unwrap();
+        .test_unwrap();
         let delayed = reconcile_ccip_delivery(
             &delayed_message,
             &CcipDeliveryObservation {
@@ -319,7 +348,7 @@ mod tests {
             },
             &mut HashSet::new(),
         )
-        .unwrap();
+        .test_unwrap();
         assert_eq!(delayed.status, CcipMessageStatus::Delayed);
     }
 }

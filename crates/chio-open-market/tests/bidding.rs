@@ -16,6 +16,35 @@ use chio_open_market::{
     ACCEPTED_BID_SCHEMA, ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA,
 };
 
+trait TestResultOk<T, E> {
+    fn test_expect(self, context: &'static str) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E>
+where
+    E: std::fmt::Debug,
+{
+    fn test_expect(self, context: &'static str) -> T {
+        self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+    }
+}
+
+trait TestResultErr<T, E> {
+    fn test_expect_err(self, context: &'static str) -> E;
+}
+
+impl<T, E> TestResultErr<T, E> for Result<T, E>
+where
+    T: std::fmt::Debug,
+{
+    fn test_expect_err(self, context: &'static str) -> E {
+        match self {
+            Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+            Err(error) => error,
+        }
+    }
+}
+
 fn namespace(keypair: &Keypair) -> GenericNamespaceOwnership {
     GenericNamespaceOwnership {
         namespace: "https://registry.chio.example".to_string(),
@@ -56,7 +85,7 @@ fn signed_listing(
         },
         boundary: GenericListingBoundary::default(),
     };
-    SignedGenericListing::sign(body, keypair).expect("sign listing")
+    SignedGenericListing::sign(body, keypair).test_expect("sign listing")
 }
 
 fn publisher() -> GenericRegistryPublisher {
@@ -127,7 +156,7 @@ fn pricing_hint_with_scope(
         },
         operator,
     )
-    .expect("sign hint")
+    .test_expect("sign hint")
 }
 
 fn listing_entry(
@@ -183,11 +212,11 @@ fn signed_bid_request(
         bid_request(agent_id, max_units, window_seconds, now),
         agent_keypair,
     )
-    .expect("sign bid")
+    .test_expect("sign bid")
 }
 
 fn resign_bid_request(agent_keypair: &Keypair, request: &BidRequest) -> SignedBidRequest {
-    SignedBidRequest::sign(request.clone(), agent_keypair).expect("re-sign bid")
+    SignedBidRequest::sign(request.clone(), agent_keypair).test_expect("re-sign bid")
 }
 
 #[test]
@@ -214,19 +243,19 @@ fn bid_happy_path_mints_token_and_accept_records_settlement() {
             now: 120,
         },
     )
-    .expect("bid succeeds");
+    .test_expect("bid succeeds");
 
     assert_eq!(ask.body.schema, ASK_RESPONSE_SCHEMA);
     assert_eq!(ask.body.quoted_price.units, 100);
-    assert!(ask.verify_signature().expect("verify ask"));
+    assert!(ask.verify_signature().test_expect("verify ask"));
 
-    let accepted = accept(&ask, "receipt-from-settlement", 130).expect("accept succeeds");
+    let accepted = accept(&ask, "receipt-from-settlement", 130).test_expect("accept succeeds");
     assert_eq!(accepted.schema, ACCEPTED_BID_SCHEMA);
     assert_eq!(accepted.bid_receipt_id, "receipt-from-settlement");
     assert_eq!(accepted.quoted_price.units, 100);
 
     // The AcceptedBid body is canonical-JSON signable.
-    let bytes = canonical_json_bytes(&accepted).expect("canonical accepted bytes");
+    let bytes = canonical_json_bytes(&accepted).test_expect("canonical accepted bytes");
     assert!(!bytes.is_empty());
 }
 
@@ -254,10 +283,10 @@ fn accept_rejects_timestamp_before_ask_issuance() {
             now: 120,
         },
     )
-    .expect("bid succeeds");
+    .test_expect("bid succeeds");
 
     let error = accept(&ask, "receipt-from-settlement", 119)
-        .expect_err("acceptance before issuance rejected");
+        .test_expect_err("acceptance before issuance rejected");
     assert_eq!(
         error,
         BiddingError::InvalidRequest("accepted_at must not precede ask issued_at".to_string())
@@ -289,7 +318,7 @@ fn bid_fails_closed_on_stale_listing_freshness() {
             now: 120,
         },
     )
-    .expect_err("stale listing rejected");
+    .test_expect_err("stale listing rejected");
     assert_eq!(error, BiddingError::ListingStale);
 }
 
@@ -317,7 +346,7 @@ fn bid_fails_closed_on_revoked_listing() {
             now: 120,
         },
     )
-    .expect_err("revoked listing rejected");
+    .test_expect_err("revoked listing rejected");
     assert_eq!(error, BiddingError::ListingNotActive);
 }
 
@@ -348,7 +377,7 @@ fn bid_refuses_mismatched_listing_id() {
             now: 120,
         },
     )
-    .expect_err("mismatched listing rejected");
+    .test_expect_err("mismatched listing rejected");
     assert_eq!(error, BiddingError::ListingMismatch);
 }
 
@@ -389,7 +418,7 @@ fn bid_allows_deeper_scope_prefix_without_rewriting_tool_name() {
             now: 120,
         },
     )
-    .expect("bid succeeds for deeper capability scope");
+    .test_expect("bid succeeds for deeper capability scope");
 
     assert_eq!(ask.body.token_offer.scope.grants[0].tool_name, "search");
 }
@@ -422,7 +451,7 @@ fn bid_rejects_sibling_scope_prefixes() {
             now: 120,
         },
     )
-    .expect_err("sibling scope should be rejected");
+    .test_expect_err("sibling scope should be rejected");
 
     assert_eq!(error, BiddingError::ScopeOutsideListing);
 }
@@ -451,7 +480,7 @@ fn accept_refuses_empty_bid_receipt_id() {
             now: 120,
         },
     )
-    .expect("bid succeeds");
-    let error = accept(&ask, "", 130).expect_err("empty receipt rejected");
+    .test_expect("bid succeeds");
+    let error = accept(&ask, "", 130).test_expect_err("empty receipt rejected");
     matches!(error, BiddingError::InvalidRequest(_));
 }

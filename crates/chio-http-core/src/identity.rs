@@ -89,6 +89,19 @@ impl CallerIdentity {
 mod tests {
     use super::*;
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
     #[test]
     fn anonymous_identity() {
         let id = CallerIdentity::anonymous();
@@ -108,8 +121,8 @@ mod tests {
             tenant: Some("acme".to_string()),
             agent_id: None,
         };
-        let h1 = id.identity_hash().unwrap();
-        let h2 = id.identity_hash().unwrap();
+        let h1 = id.identity_hash().test_unwrap();
+        let h2 = id.identity_hash().test_unwrap();
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64); // SHA-256 hex
     }
@@ -126,8 +139,8 @@ mod tests {
             tenant: None,
             agent_id: Some("agent-42".to_string()),
         };
-        let json = serde_json::to_string(&id).unwrap();
-        let back: CallerIdentity = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&id).test_unwrap();
+        let back: CallerIdentity = serde_json::from_str(&json).test_unwrap();
         assert_eq!(back.subject, "svc-agent");
         assert_eq!(back.agent_id.as_deref(), Some("agent-42"));
     }
@@ -144,8 +157,8 @@ mod tests {
             tenant: Some("acme-corp".to_string()),
             agent_id: None,
         };
-        let json = serde_json::to_string(&id).unwrap();
-        let back: CallerIdentity = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&id).test_unwrap();
+        let back: CallerIdentity = serde_json::from_str(&json).test_unwrap();
         assert_eq!(back.subject, "CN=service.internal");
         assert!(back.verified);
         assert_eq!(back.tenant.as_deref(), Some("acme-corp"));
@@ -173,8 +186,8 @@ mod tests {
             tenant: None,
             agent_id: None,
         };
-        let json = serde_json::to_string(&id).unwrap();
-        let back: CallerIdentity = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&id).test_unwrap();
+        let back: CallerIdentity = serde_json::from_str(&json).test_unwrap();
         match &back.auth_method {
             AuthMethod::Cookie {
                 cookie_name,
@@ -207,15 +220,15 @@ mod tests {
             tenant: None,
             agent_id: None,
         };
-        let h1 = id1.identity_hash().unwrap();
-        let h2 = id2.identity_hash().unwrap();
+        let h1 = id1.identity_hash().test_unwrap();
+        let h2 = id2.identity_hash().test_unwrap();
         assert_ne!(h1, h2);
     }
 
     #[test]
     fn anonymous_identity_serde_omits_optional_fields() {
         let id = CallerIdentity::anonymous();
-        let json = serde_json::to_string(&id).unwrap();
+        let json = serde_json::to_string(&id).test_unwrap();
         // tenant and agent_id should be skipped because of skip_serializing_if
         assert!(!json.contains("tenant"));
         assert!(!json.contains("agent_id"));

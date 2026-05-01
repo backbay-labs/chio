@@ -10,79 +10,101 @@
 //! * Expiry + retention grace period allows a slot to be recycled only
 //!   after `expires_at` is in the past.
 
-#![allow(clippy::expect_used, clippy::unwrap_used)]
-
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_kernel::ExecutionNonceStore;
 use chio_store_sqlite::SqliteExecutionNonceStore;
 
+trait TestResultOk<T, E> {
+    fn test_expect(self, context: &'static str) -> T;
+    fn test_unwrap(self) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E> {
+    fn test_expect(self, context: &'static str) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("{context}"),
+        }
+    }
+
+    fn test_unwrap(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("expected Ok result"),
+        }
+    }
+}
+
 fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("time before epoch")
+        .test_expect("time before epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
 }
 
 #[test]
 fn fresh_nonce_is_reserved() {
-    let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
-    assert!(store.reserve("nonce-a").unwrap());
+    let store = SqliteExecutionNonceStore::open_in_memory().test_unwrap();
+    assert!(store.reserve("nonce-a").test_unwrap());
 }
 
 #[test]
 fn replayed_nonce_is_rejected_within_retention() {
-    let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
+    let store = SqliteExecutionNonceStore::open_in_memory().test_unwrap();
     // Use try_reserve directly to lock the clock so retention is
     // guaranteed to still apply on the second call.
     let now = 1_000_000;
     let expires_at = now + 60;
-    assert!(store.try_reserve("nonce-b", now, expires_at).unwrap());
-    assert!(!store.try_reserve("nonce-b", now + 1, expires_at).unwrap());
+    assert!(store.try_reserve("nonce-b", now, expires_at).test_unwrap());
+    assert!(!store
+        .try_reserve("nonce-b", now + 1, expires_at)
+        .test_unwrap());
 }
 
 #[test]
 fn expired_row_is_pruned_and_slot_becomes_free() {
-    let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
-    assert!(store.try_reserve("nonce-c", 1_000, 1_010).unwrap());
+    let store = SqliteExecutionNonceStore::open_in_memory().test_unwrap();
+    assert!(store.try_reserve("nonce-c", 1_000, 1_010).test_unwrap());
     // The signed `expires_at` is the primary replay defence; the store
     // row GC here just bounds the table size.
-    assert!(store.try_reserve("nonce-c", 2_000, 2_060).unwrap());
+    assert!(store.try_reserve("nonce-c", 2_000, 2_060).test_unwrap());
 }
 
 #[test]
 fn persists_consumed_marker_across_reopen() {
     let path = unique_db_path("chio-exec-nonce-persist");
     {
-        let store = SqliteExecutionNonceStore::open(&path).unwrap();
+        let store = SqliteExecutionNonceStore::open(&path).test_unwrap();
         assert!(store
             .try_reserve("persistent-id", 1_000, 10_000_000_000)
-            .unwrap());
+            .test_unwrap());
     }
-    let reopened = SqliteExecutionNonceStore::open(&path).unwrap();
+    let reopened = SqliteExecutionNonceStore::open(&path).test_unwrap();
     assert!(!reopened
         .try_reserve("persistent-id", 1_001, 10_000_000_000)
-        .unwrap());
+        .test_unwrap());
     let _ = std::fs::remove_file(path);
 }
 
 #[test]
 fn distinct_ids_each_succeed() {
-    let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
-    assert!(store.reserve("a").unwrap());
-    assert!(store.reserve("b").unwrap());
-    assert!(store.reserve("c").unwrap());
-    assert!(!store.reserve("a").unwrap());
-    assert!(!store.reserve("b").unwrap());
+    let store = SqliteExecutionNonceStore::open_in_memory().test_unwrap();
+    assert!(store.reserve("a").test_unwrap());
+    assert!(store.reserve("b").test_unwrap());
+    assert!(store.reserve("c").test_unwrap());
+    assert!(!store.reserve("a").test_unwrap());
+    assert!(!store.reserve("b").test_unwrap());
 }
 
 #[test]
 fn trait_reserve_uses_wall_clock_now() {
     // Sanity: the trait impl goes through try_reserve with a now
     // derived from SystemTime, so it should succeed for a fresh id.
-    let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
+    let store = SqliteExecutionNonceStore::open_in_memory().test_unwrap();
     assert!(
-        <SqliteExecutionNonceStore as ExecutionNonceStore>::reserve(&store, "trait-path").unwrap()
+        <SqliteExecutionNonceStore as ExecutionNonceStore>::reserve(&store, "trait-path")
+            .test_unwrap()
     );
 }

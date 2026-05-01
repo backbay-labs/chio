@@ -1,7 +1,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -56,10 +56,10 @@ impl Drop for ServerGuard {
 fn spawn_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
-    receipt_db_path: &PathBuf,
-    revocation_db_path: &PathBuf,
-    authority_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    receipt_db_path: &Path,
+    revocation_db_path: &Path,
+    authority_db_path: &Path,
+    budget_db_path: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -171,7 +171,7 @@ fn child_receipt_with_ts(id: &str, timestamp: u64) -> ChildRequestReceipt {
     .expect("sign child receipt")
 }
 
-fn export_fixture_package(receipt_db_path: &PathBuf, output_dir: &PathBuf) {
+fn export_fixture_package(receipt_db_path: &Path, output_dir: &Path) {
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .arg("--receipt-db")
@@ -192,8 +192,8 @@ fn export_fixture_package(receipt_db_path: &PathBuf, output_dir: &PathBuf) {
 }
 
 fn create_federation_policy(
-    output_path: &PathBuf,
-    signing_seed_path: &PathBuf,
+    output_path: &Path,
+    signing_seed_path: &Path,
     issuer: &str,
     partner: &str,
     capability_id: &str,

@@ -14,8 +14,37 @@ use chio_reputation::{
     ReliabilityMetrics, ResourceStewardshipMetrics, SpecializationMetrics,
 };
 
+trait TestUnwrap<T> {
+    fn test_unwrap(self, context: &str) -> T;
+}
+
+impl<T, E> TestUnwrap<T> for Result<T, E>
+where
+    E: std::fmt::Display,
+{
+    fn test_unwrap(self, context: &str) -> T {
+        self.unwrap_or_else(|error| panic!("{context}: {error}"))
+    }
+}
+
+trait TestUnwrapErr<E> {
+    fn test_unwrap_err(self, context: &str) -> E;
+}
+
+impl<T, E> TestUnwrapErr<E> for Result<T, E>
+where
+    T: std::fmt::Debug,
+{
+    fn test_unwrap_err(self, context: &str) -> E {
+        match self {
+            Ok(value) => panic!("{context}: unexpected Ok({value:?})"),
+            Err(error) => error,
+        }
+    }
+}
+
 fn did_from_public_key(public_key: chio_core::PublicKey) -> DidChio {
-    DidChio::from_public_key(public_key).expect("ed25519 key")
+    DidChio::from_public_key(public_key).test_unwrap("ed25519 key")
 }
 
 fn sample_scorecard(subject_key: &str) -> LocalReputationScorecard {
@@ -119,11 +148,12 @@ fn passport_issue_verify_and_present_round_trip() {
         1_710_000_000,
         1_710_086_400,
     )
-    .expect("issue reputation credential");
-    let passport =
-        build_agent_passport(&holder_did.to_string(), vec![credential]).expect("build passport");
+    .test_unwrap("issue reputation credential");
+    let passport = build_agent_passport(&holder_did.to_string(), vec![credential])
+        .test_unwrap("build passport");
 
-    let verification = verify_agent_passport(&passport, 1_710_000_100).expect("verify passport");
+    let verification =
+        verify_agent_passport(&passport, 1_710_000_100).test_unwrap("verify passport");
     assert_eq!(verification.subject, holder_did.to_string());
     assert_eq!(verification.credential_count, 1);
 
@@ -138,13 +168,13 @@ fn passport_issue_verify_and_present_round_trip() {
             ..PassportVerifierPolicy::default()
         }),
     )
-    .expect("build challenge");
+    .test_unwrap("build challenge");
     let response =
         respond_to_passport_presentation_challenge(&holder, &passport, &challenge, 1_710_000_120)
-            .expect("respond to challenge");
+            .test_unwrap("respond to challenge");
     let verification =
         verify_passport_presentation_response(&response, Some(&challenge), 1_710_000_120)
-            .expect("verify presentation response");
+            .test_unwrap("verify presentation response");
 
     assert!(verification.accepted);
     assert!(verification.policy_evaluated);
@@ -165,9 +195,9 @@ fn presentation_rejects_holder_mismatch() {
         1_710_000_000,
         1_710_086_400,
     )
-    .expect("issue credential");
-    let passport =
-        build_agent_passport(&holder_did.to_string(), vec![credential]).expect("build passport");
+    .test_unwrap("issue credential");
+    let passport = build_agent_passport(&holder_did.to_string(), vec![credential])
+        .test_unwrap("build passport");
     let challenge = create_passport_presentation_challenge(
         "https://verifier.example.com",
         "nonce-123",
@@ -176,7 +206,7 @@ fn presentation_rejects_holder_mismatch() {
         PassportPresentationOptions::default(),
         None,
     )
-    .expect("build challenge");
+    .test_unwrap("build challenge");
 
     let error = respond_to_passport_presentation_challenge(
         &wrong_holder,
@@ -184,7 +214,7 @@ fn presentation_rejects_holder_mismatch() {
         &challenge,
         1_710_000_120,
     )
-    .expect_err("wrong holder should fail closed");
+    .test_unwrap_err("wrong holder should fail closed");
 
     assert!(matches!(error, CredentialError::PresentationHolderMismatch));
 }
@@ -200,12 +230,12 @@ fn signed_verifier_policy_activation_window_is_inclusive() {
         1_710_000_300,
         PassportVerifierPolicy::default(),
     )
-    .expect("sign verifier policy");
+    .test_unwrap("sign verifier policy");
 
     ensure_signed_passport_verifier_policy_active(&document, 1_710_000_000)
-        .expect("created_at boundary should be valid");
+        .test_unwrap("created_at boundary should be valid");
     ensure_signed_passport_verifier_policy_active(&document, 1_710_000_300)
-        .expect("expires_at boundary should be valid");
+        .test_unwrap("expires_at boundary should be valid");
 }
 
 #[test]

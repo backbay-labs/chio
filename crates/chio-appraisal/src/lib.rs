@@ -2196,6 +2196,50 @@ mod tests {
     };
     use serde_json::json;
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+        }
+
+        fn test_unwrap(self) -> T {
+            self.unwrap_or_else(|error| panic!("expected Ok result: {error:?}"))
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(value) => panic!("{context} unexpectedly succeeded: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
+
+    trait TestOptionExt<T> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T> TestOptionExt<T> for Option<T> {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|| panic!("{context}"))
+        }
+    }
+
     fn sample_evidence() -> RuntimeAttestationEvidence {
         RuntimeAttestationEvidence {
             schema: "chio.runtime-attestation.azure-maa.jwt.v1".to_string(),
@@ -2310,14 +2354,15 @@ mod tests {
     fn sample_signed_descriptor(
         signer: &crate::crypto::Keypair,
     ) -> SignedRuntimeAttestationVerifierDescriptor {
-        SignedExportEnvelope::sign(sample_descriptor_document(), signer).expect("sign descriptor")
+        SignedExportEnvelope::sign(sample_descriptor_document(), signer)
+            .test_expect("sign descriptor")
     }
 
     fn sample_signed_reference_value_set(
         signer: &crate::crypto::Keypair,
     ) -> SignedRuntimeAttestationReferenceValueSet {
         SignedExportEnvelope::sign(sample_reference_value_set(), signer)
-            .expect("sign reference values")
+            .test_expect("sign reference values")
     }
 
     fn sample_trust_bundle_document(
@@ -2349,7 +2394,7 @@ mod tests {
 
     fn sample_appraisal_result() -> RuntimeAttestationAppraisalResult {
         let appraisal = derive_runtime_attestation_appraisal(&sample_evidence())
-            .expect("derive sample appraisal");
+            .test_expect("derive sample appraisal");
         let report = RuntimeAttestationAppraisalReport {
             schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
             generated_at: 150,
@@ -2362,13 +2407,13 @@ mod tests {
             },
         };
         RuntimeAttestationAppraisalResult::from_report("did:chio:test:issuer", &report)
-            .expect("result from sample report")
+            .test_expect("result from sample report")
     }
 
     #[test]
     fn verified_runtime_attestation_record_requires_local_trust_boundary_for_tier_promotion() {
         let verified =
-            verify_runtime_attestation_record(&sample_evidence(), None, 150).expect("record");
+            verify_runtime_attestation_record(&sample_evidence(), None, 150).test_expect("record");
 
         assert_eq!(verified.verified_at, 150);
         assert_eq!(
@@ -2378,7 +2423,7 @@ mod tests {
         assert_eq!(
             verified
                 .workload_identity()
-                .expect("verified record should carry canonical workload identity")
+                .test_expect("verified record should carry canonical workload identity")
                 .trust_domain,
             "contoso.test"
         );
@@ -2416,7 +2461,7 @@ mod tests {
             Some(&sample_trust_policy()),
             150,
         )
-        .expect("trusted record");
+        .test_expect("trusted record");
 
         assert!(verified.policy_outcome.trust_policy_configured);
         assert!(verified.policy_outcome.accepted);
@@ -2442,7 +2487,7 @@ mod tests {
         let evidence = sample_nitro_evidence();
         let verified =
             verify_runtime_attestation_record(&evidence, Some(&sample_nitro_trust_policy()), 150)
-                .expect("nitro record should verify across the trust boundary");
+                .test_expect("nitro record should verify across the trust boundary");
 
         assert!(verified.is_locally_accepted());
         assert_eq!(verified.effective_tier(), RuntimeAssuranceTier::Verified);
@@ -2466,7 +2511,7 @@ mod tests {
         descriptor.schema = "chio.runtime-attestation.verifier-descriptor.v0".to_string();
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("invalid descriptor schema")
+                .test_expect_err("invalid descriptor schema")
                 .to_string()
                 .contains("schema must be")
         );
@@ -2475,7 +2520,7 @@ mod tests {
         descriptor.descriptor_id = "  ".to_string();
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("empty descriptor id")
+                .test_expect_err("empty descriptor id")
                 .to_string()
                 .contains("descriptor_id")
         );
@@ -2484,7 +2529,7 @@ mod tests {
         descriptor.verifier = " ".to_string();
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("empty verifier")
+                .test_expect_err("empty verifier")
                 .to_string()
                 .contains("non-empty verifier")
         );
@@ -2493,7 +2538,7 @@ mod tests {
         descriptor.adapter = " ".to_string();
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("empty adapter")
+                .test_expect_err("empty adapter")
                 .to_string()
                 .contains("non-empty adapter")
         );
@@ -2502,7 +2547,7 @@ mod tests {
         descriptor.issued_at = 301;
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("inverted descriptor window")
+                .test_expect_err("inverted descriptor window")
                 .to_string()
                 .contains("must not expire before it is issued")
         );
@@ -2511,7 +2556,7 @@ mod tests {
         descriptor.attestation_schemas.clear();
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("missing schemas")
+                .test_expect_err("missing schemas")
                 .to_string()
                 .contains("at least one attestation schema")
         );
@@ -2523,7 +2568,7 @@ mod tests {
         ];
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("unsorted schemas")
+                .test_expect_err("unsorted schemas")
                 .to_string()
                 .contains("sorted unique order")
         );
@@ -2532,7 +2577,7 @@ mod tests {
         descriptor.attestation_schemas = vec![String::new()];
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("empty schema entry")
+                .test_expect_err("empty schema entry")
                 .to_string()
                 .contains("cannot contain empty values")
         );
@@ -2541,7 +2586,7 @@ mod tests {
         descriptor.appraisal_artifact_schema = "chio.runtime-attestation.other.v1".to_string();
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("wrong artifact schema")
+                .test_expect_err("wrong artifact schema")
                 .to_string()
                 .contains("canonical appraisal artifact schema")
         );
@@ -2550,7 +2595,7 @@ mod tests {
         descriptor.appraisal_result_schema = "chio.runtime-attestation.other-result.v1".to_string();
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("wrong result schema")
+                .test_expect_err("wrong result schema")
                 .to_string()
                 .contains("canonical appraisal result schema")
         );
@@ -2559,7 +2604,7 @@ mod tests {
         descriptor.signing_key_fingerprints.clear();
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("missing signing keys")
+                .test_expect_err("missing signing keys")
                 .to_string()
                 .contains("at least one signing-key fingerprint")
         );
@@ -2569,7 +2614,7 @@ mod tests {
             vec!["sha256:key-b".to_string(), "sha256:key-a".to_string()];
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("unsorted signing keys")
+                .test_expect_err("unsorted signing keys")
                 .to_string()
                 .contains("sorted unique order")
         );
@@ -2578,7 +2623,7 @@ mod tests {
         descriptor.signing_key_fingerprints = vec![" ".to_string()];
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("empty signing key")
+                .test_expect_err("empty signing key")
                 .to_string()
                 .contains("cannot contain empty values")
         );
@@ -2587,7 +2632,7 @@ mod tests {
         descriptor.reference_values_uri = Some(" ".to_string());
         assert!(
             validate_runtime_attestation_verifier_descriptor(&descriptor)
-                .expect_err("empty reference_values_uri")
+                .test_expect_err("empty reference_values_uri")
                 .to_string()
                 .contains("reference_values_uri")
         );
@@ -2596,13 +2641,13 @@ mod tests {
         let signed = sample_signed_descriptor(&signer);
         assert!(
             verify_signed_runtime_attestation_verifier_descriptor(&signed, 50)
-                .expect_err("descriptor not yet valid")
+                .test_expect_err("descriptor not yet valid")
                 .to_string()
                 .contains("not yet valid")
         );
         assert!(
             verify_signed_runtime_attestation_verifier_descriptor(&signed, 400)
-                .expect_err("descriptor expired")
+                .test_expect_err("descriptor expired")
                 .to_string()
                 .contains("has expired")
         );
@@ -2611,7 +2656,7 @@ mod tests {
         tampered.body.verifier = "https://maa.other.example".to_string();
         assert!(
             verify_signed_runtime_attestation_verifier_descriptor(&tampered, 150)
-                .expect_err("descriptor signature failure")
+                .test_expect_err("descriptor signature failure")
                 .to_string()
                 .contains("signature verification failed")
         );
@@ -2623,7 +2668,7 @@ mod tests {
         reference_value_set.schema = "chio.runtime-attestation.reference-values.v0".to_string();
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("invalid reference-value schema")
+                .test_expect_err("invalid reference-value schema")
                 .to_string()
                 .contains("schema must be")
         );
@@ -2632,7 +2677,7 @@ mod tests {
         reference_value_set.reference_value_id = " ".to_string();
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("empty reference_value_id")
+                .test_expect_err("empty reference_value_id")
                 .to_string()
                 .contains("reference_value_id")
         );
@@ -2641,7 +2686,7 @@ mod tests {
         reference_value_set.descriptor_id = " ".to_string();
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("empty descriptor_id")
+                .test_expect_err("empty descriptor_id")
                 .to_string()
                 .contains("descriptor_id")
         );
@@ -2650,7 +2695,7 @@ mod tests {
         reference_value_set.attestation_schema = " ".to_string();
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("empty attestation schema")
+                .test_expect_err("empty attestation schema")
                 .to_string()
                 .contains("attestation_schema")
         );
@@ -2659,7 +2704,7 @@ mod tests {
         reference_value_set.issued_at = 301;
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("inverted reference-value window")
+                .test_expect_err("inverted reference-value window")
                 .to_string()
                 .contains("must not expire before it is issued")
         );
@@ -2668,7 +2713,7 @@ mod tests {
         reference_value_set.source_uri = Some(" ".to_string());
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("empty source uri")
+                .test_expect_err("empty source uri")
                 .to_string()
                 .contains("source_uri")
         );
@@ -2677,7 +2722,7 @@ mod tests {
         reference_value_set.measurements.clear();
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("missing measurements")
+                .test_expect_err("missing measurements")
                 .to_string()
                 .contains("at least one measurement")
         );
@@ -2686,7 +2731,7 @@ mod tests {
         reference_value_set.superseded_by = Some("azure-rv-2".to_string());
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("active state with supersession")
+                .test_expect_err("active state with supersession")
                 .to_string()
                 .contains("cannot include supersession or revocation fields")
         );
@@ -2695,7 +2740,7 @@ mod tests {
         reference_value_set.state = RuntimeAttestationReferenceValueState::Superseded;
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("superseded without successor")
+                .test_expect_err("superseded without successor")
                 .to_string()
                 .contains("must include superseded_by")
         );
@@ -2705,7 +2750,7 @@ mod tests {
         reference_value_set.superseded_by = Some("azure-rv-1".to_string());
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("self supersession")
+                .test_expect_err("self supersession")
                 .to_string()
                 .contains("cannot supersede itself")
         );
@@ -2716,7 +2761,7 @@ mod tests {
         reference_value_set.revoked_reason = Some("compromised".to_string());
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("superseded with revoked_reason")
+                .test_expect_err("superseded with revoked_reason")
                 .to_string()
                 .contains("cannot include revoked_reason")
         );
@@ -2727,7 +2772,7 @@ mod tests {
         reference_value_set.revoked_reason = Some("compromised".to_string());
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("revoked with superseded_by")
+                .test_expect_err("revoked with superseded_by")
                 .to_string()
                 .contains("cannot include superseded_by")
         );
@@ -2737,7 +2782,7 @@ mod tests {
         reference_value_set.revoked_reason = Some(" ".to_string());
         assert!(
             validate_runtime_attestation_reference_value_set(&reference_value_set)
-                .expect_err("revoked without reason")
+                .test_expect_err("revoked without reason")
                 .to_string()
                 .contains("must include revoked_reason")
         );
@@ -2746,13 +2791,13 @@ mod tests {
         let signed = sample_signed_reference_value_set(&signer);
         assert!(
             verify_signed_runtime_attestation_reference_value_set(&signed, 50)
-                .expect_err("reference values not yet valid")
+                .test_expect_err("reference values not yet valid")
                 .to_string()
                 .contains("not yet valid")
         );
         assert!(
             verify_signed_runtime_attestation_reference_value_set(&signed, 400)
-                .expect_err("reference values expired")
+                .test_expect_err("reference values expired")
                 .to_string()
                 .contains("has expired")
         );
@@ -2761,7 +2806,7 @@ mod tests {
         tampered.body.source_uri = Some("https://maa.other.example/reference-values".to_string());
         assert!(
             verify_signed_runtime_attestation_reference_value_set(&tampered, 150)
-                .expect_err("reference-value signature failure")
+                .test_expect_err("reference-value signature failure")
                 .to_string()
                 .contains("signature verification failed")
         );
@@ -2776,77 +2821,76 @@ mod tests {
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.schema = "chio.runtime-attestation.trust-bundle.v0".to_string();
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("invalid bundle schema")
+            .test_expect_err("invalid bundle schema")
             .to_string()
             .contains("schema must be"));
 
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.bundle_id = " ".to_string();
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("empty bundle id")
+            .test_expect_err("empty bundle id")
             .to_string()
             .contains("bundle_id"));
 
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.publisher = " ".to_string();
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("empty bundle publisher")
+            .test_expect_err("empty bundle publisher")
             .to_string()
             .contains("non-empty publisher"));
 
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.version = 0;
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("bundle version zero")
+            .test_expect_err("bundle version zero")
             .to_string()
             .contains("non-zero version"));
 
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.issued_at = 301;
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("inverted bundle window")
+            .test_expect_err("inverted bundle window")
             .to_string()
             .contains("must not expire before it is issued"));
 
         let bundle = sample_trust_bundle_document(&signer);
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 50)
-            .expect_err("bundle not yet valid")
+            .test_expect_err("bundle not yet valid")
             .to_string()
             .contains("not yet valid"));
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 400)
-            .expect_err("bundle expired")
+            .test_expect_err("bundle expired")
             .to_string()
             .contains("has expired"));
 
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.descriptors.clear();
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("bundle without descriptors")
+            .test_expect_err("bundle without descriptors")
             .to_string()
             .contains("at least one verifier descriptor"));
 
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.descriptors = vec![descriptor.clone(), descriptor.clone()];
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("duplicate descriptor ids")
+            .test_expect_err("duplicate descriptor ids")
             .to_string()
             .contains("duplicate verifier descriptor"));
 
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.reference_values = vec![reference_value.clone(), reference_value.clone()];
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("duplicate reference-value ids")
+            .test_expect_err("duplicate reference-value ids")
             .to_string()
             .contains("duplicate reference-value set"));
 
         let mut unknown_reference = sample_reference_value_set();
         unknown_reference.descriptor_id = "azure-other".to_string();
         let mut bundle = sample_trust_bundle_document(&signer);
-        bundle.reference_values =
-            vec![SignedExportEnvelope::sign(unknown_reference, &signer)
-                .expect("sign unknown reference")];
+        bundle.reference_values = vec![SignedExportEnvelope::sign(unknown_reference, &signer)
+            .test_expect("sign unknown reference")];
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("unknown descriptor")
+            .test_expect_err("unknown descriptor")
             .to_string()
             .contains("unknown verifier descriptor"));
 
@@ -2857,10 +2901,10 @@ mod tests {
         bundle.reference_values =
             vec![
                 SignedExportEnvelope::sign(schema_mismatch_reference, &signer)
-                    .expect("sign schema mismatch reference"),
+                    .test_expect("sign schema mismatch reference"),
             ];
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("schema outside descriptor")
+            .test_expect_err("schema outside descriptor")
             .to_string()
             .contains("outside descriptor"));
 
@@ -2870,20 +2914,20 @@ mod tests {
         superseded_reference.superseded_by = Some("azure-rv-next".to_string());
         let mut bundle = sample_trust_bundle_document(&signer);
         bundle.reference_values = vec![SignedExportEnvelope::sign(superseded_reference, &signer)
-            .expect("sign superseded reference")];
+            .test_expect("sign superseded reference")];
         assert!(validate_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("missing superseded successor")
+            .test_expect_err("missing superseded successor")
             .to_string()
             .contains("unknown successor"));
 
         let signed_bundle =
             SignedExportEnvelope::sign(sample_trust_bundle_document(&signer), &signer)
-                .expect("sign trust bundle");
+                .test_expect("sign trust bundle");
         let mut tampered = signed_bundle.clone();
         tampered.body.publisher = "https://trust.other.example".to_string();
         assert!(
             verify_signed_runtime_attestation_trust_bundle(&tampered, 150)
-                .expect_err("bundle signature failure")
+                .test_expect_err("bundle signature failure")
                 .to_string()
                 .contains("signature verification failed")
         );
@@ -2895,7 +2939,7 @@ mod tests {
             sample_appraisal_result(),
             &crate::crypto::Keypair::generate(),
         )
-        .expect("sign result");
+        .test_expect("sign result");
 
         let import = evaluate_imported_runtime_attestation_appraisal(
             &RuntimeAttestationAppraisalImportRequest {
@@ -2920,8 +2964,8 @@ mod tests {
         let mut result = sample_appraisal_result();
         result.exporter_policy_outcome.accepted = false;
         let signer = crate::crypto::Keypair::generate();
-        let signed_result =
-            SignedRuntimeAttestationAppraisalResult::sign(result, &signer).expect("sign result");
+        let signed_result = SignedRuntimeAttestationAppraisalResult::sign(result, &signer)
+            .test_expect("sign result");
 
         let import = evaluate_imported_runtime_attestation_appraisal(
             &RuntimeAttestationAppraisalImportRequest {
@@ -2994,7 +3038,7 @@ mod tests {
         );
 
         let appraisal = derive_runtime_attestation_appraisal(&sample_evidence())
-            .expect("derive appraisal for result guard test");
+            .test_expect("derive appraisal for result guard test");
         let report = RuntimeAttestationAppraisalReport {
             schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
             generated_at: 150,
@@ -3009,7 +3053,7 @@ mod tests {
 
         assert!(
             RuntimeAttestationAppraisalResult::from_report("  ", &report)
-                .expect_err("empty issuer")
+                .test_expect_err("empty issuer")
                 .to_string()
                 .contains("issuer must not be empty")
         );
@@ -3020,7 +3064,7 @@ mod tests {
             "did:chio:test:issuer",
             &missing_artifact_report,
         )
-        .expect_err("missing artifact")
+        .test_expect_err("missing artifact")
         .to_string()
         .contains("missing the nested artifact"));
 
@@ -3055,7 +3099,7 @@ mod tests {
         };
 
         let appraisal = derive_runtime_attestation_appraisal(&evidence)
-            .expect("aws nitro evidence should derive");
+            .test_expect("aws nitro evidence should derive");
         assert_eq!(
             appraisal.verifier_family,
             AttestationVerifierFamily::AwsNitro
@@ -3072,7 +3116,7 @@ mod tests {
             appraisal.normalized_assertions["pcrs"],
             json!({"0": "0123"})
         );
-        let artifact = appraisal.artifact.expect("aws appraisal artifact");
+        let artifact = appraisal.artifact.test_expect("aws appraisal artifact");
         assert!(artifact.claims.normalized_claims.iter().any(|claim| {
             claim.code == RuntimeAttestationNormalizedClaimCode::MeasurementRegisters
                 && claim.value == json!({"0": "0123"})
@@ -3081,7 +3125,7 @@ mod tests {
         let mut unsupported = sample_evidence();
         unsupported.schema = "chio.runtime-attestation.unknown.v1".to_string();
         let error = derive_runtime_attestation_appraisal(&unsupported)
-            .expect_err("unsupported schema should fail");
+            .test_expect_err("unsupported schema should fail");
         assert!(matches!(
             error,
             RuntimeAttestationAppraisalError::UnsupportedSchema { schema }
@@ -3112,7 +3156,7 @@ mod tests {
         assert_eq!(appraisal.effective_tier, RuntimeAssuranceTier::Attested);
         let artifact = appraisal
             .artifact
-            .expect("accepted appraisal should carry artifact");
+            .test_expect("accepted appraisal should carry artifact");
         assert_eq!(
             artifact.schema,
             RUNTIME_ATTESTATION_APPRAISAL_ARTIFACT_SCHEMA
@@ -3161,7 +3205,7 @@ mod tests {
         );
         let artifact = appraisal
             .artifact
-            .expect("rejected appraisal should carry artifact");
+            .test_expect("rejected appraisal should carry artifact");
         assert_eq!(
             artifact.policy.verdict,
             RuntimeAttestationAppraisalVerdict::Rejected
@@ -3203,7 +3247,7 @@ mod tests {
         };
 
         let appraisal = derive_runtime_attestation_appraisal(&evidence)
-            .expect("google evidence should derive a canonical appraisal");
+            .test_expect("google evidence should derive a canonical appraisal");
         assert_eq!(
             appraisal.verifier_family,
             AttestationVerifierFamily::GoogleAttestation
@@ -3219,7 +3263,7 @@ mod tests {
         assert_eq!(appraisal.normalized_assertions["secureBoot"], "enabled");
         let artifact = appraisal
             .artifact
-            .expect("derived appraisal should carry artifact");
+            .test_expect("derived appraisal should carry artifact");
         assert_eq!(
             artifact.claims.normalized_assertions["secureBoot"],
             "enabled"
@@ -3248,7 +3292,7 @@ mod tests {
             runtime_identity: Some("spiffe://chio.example/workloads/enterprise".to_string()),
             workload_identity: Some(
                 WorkloadIdentity::parse_spiffe_uri("spiffe://chio.example/workloads/enterprise")
-                    .expect("parse enterprise workload identity"),
+                    .test_expect("parse enterprise workload identity"),
             ),
             claims: Some(json!({
                 "enterpriseVerifier": {
@@ -3264,7 +3308,7 @@ mod tests {
         };
 
         let appraisal = derive_runtime_attestation_appraisal(&evidence)
-            .expect("enterprise evidence should derive a canonical appraisal");
+            .test_expect("enterprise evidence should derive a canonical appraisal");
         assert_eq!(
             appraisal.verifier_family,
             AttestationVerifierFamily::EnterpriseVerifier
@@ -3284,7 +3328,7 @@ mod tests {
         );
         let artifact = appraisal
             .artifact
-            .expect("derived appraisal should carry artifact");
+            .test_expect("derived appraisal should carry artifact");
         assert_eq!(artifact.verifier.adapter, ENTERPRISE_VERIFIER_ADAPTER);
         assert!(artifact.claims.normalized_claims.iter().any(|claim| {
             claim.code == RuntimeAttestationNormalizedClaimCode::MeasurementDigest
@@ -3395,7 +3439,7 @@ mod tests {
                 expires_at: 300,
             },
         )
-        .expect("descriptor");
+        .test_expect("descriptor");
         let reference_values = create_signed_runtime_attestation_reference_value_set(
             RuntimeAttestationReferenceValueSetArgs {
                 signer: &signer,
@@ -3412,7 +3456,7 @@ mod tests {
                 measurements: BTreeMap::from([("mrEnclave".to_string(), json!("abc123"))]),
             },
         )
-        .expect("reference values");
+        .test_expect("reference values");
         let bundle =
             create_signed_runtime_attestation_trust_bundle(RuntimeAttestationTrustBundleArgs {
                 signer: &signer,
@@ -3424,10 +3468,10 @@ mod tests {
                 descriptors: vec![descriptor],
                 reference_values: vec![reference_values],
             })
-            .expect("bundle");
+            .test_expect("bundle");
 
         let verification =
-            verify_signed_runtime_attestation_trust_bundle(&bundle, 150).expect("verify");
+            verify_signed_runtime_attestation_trust_bundle(&bundle, 150).test_expect("verify");
 
         assert_eq!(verification.schema, RUNTIME_ATTESTATION_TRUST_BUNDLE_SCHEMA);
         assert_eq!(verification.descriptor_count, 1);
@@ -3455,7 +3499,7 @@ mod tests {
                 expires_at: 120,
             },
         )
-        .expect("descriptor");
+        .test_expect("descriptor");
         let bundle =
             create_signed_runtime_attestation_trust_bundle(RuntimeAttestationTrustBundleArgs {
                 signer: &signer,
@@ -3467,10 +3511,10 @@ mod tests {
                 descriptors: vec![descriptor],
                 reference_values: Vec::new(),
             })
-            .expect("bundle");
+            .test_expect("bundle");
 
         let error = verify_signed_runtime_attestation_trust_bundle(&bundle, 150)
-            .expect_err("expired descriptor");
+            .test_expect_err("expired descriptor");
         assert!(error
             .to_string()
             .contains("verifier descriptor `azure-prod` has expired"));
@@ -3493,7 +3537,7 @@ mod tests {
                 expires_at: 300,
             },
         )
-        .expect("descriptor");
+        .test_expect("descriptor");
         let reference_a = create_signed_runtime_attestation_reference_value_set(
             RuntimeAttestationReferenceValueSetArgs {
                 signer: &signer,
@@ -3510,7 +3554,7 @@ mod tests {
                 measurements: BTreeMap::from([("mrEnclave".to_string(), json!("abc123"))]),
             },
         )
-        .expect("reference values");
+        .test_expect("reference values");
         let reference_b = create_signed_runtime_attestation_reference_value_set(
             RuntimeAttestationReferenceValueSetArgs {
                 signer: &signer,
@@ -3527,7 +3571,7 @@ mod tests {
                 measurements: BTreeMap::from([("mrEnclave".to_string(), json!("def456"))]),
             },
         )
-        .expect("reference values");
+        .test_expect("reference values");
         let error =
             create_signed_runtime_attestation_trust_bundle(RuntimeAttestationTrustBundleArgs {
                 signer: &signer,
@@ -3539,7 +3583,7 @@ mod tests {
                 descriptors: vec![descriptor],
                 reference_values: vec![reference_a, reference_b],
             })
-            .expect_err("ambiguous reference values");
+            .test_expect_err("ambiguous reference values");
         assert!(error
             .to_string()
             .contains("ambiguous active reference values"));
@@ -3562,7 +3606,7 @@ mod tests {
                 expires_at: 300,
             },
         )
-        .expect("descriptor");
+        .test_expect("descriptor");
         let reference_values = create_signed_runtime_attestation_reference_value_set(
             RuntimeAttestationReferenceValueSetArgs {
                 signer: &signer,
@@ -3579,7 +3623,7 @@ mod tests {
                 measurements: BTreeMap::from([("hwModel".to_string(), json!("GCP_AMD_SEV"))]),
             },
         )
-        .expect("reference values");
+        .test_expect("reference values");
         let error =
             create_signed_runtime_attestation_trust_bundle(RuntimeAttestationTrustBundleArgs {
                 signer: &signer,
@@ -3591,14 +3635,15 @@ mod tests {
                 descriptors: vec![descriptor],
                 reference_values: vec![reference_values],
             })
-            .expect_err("mismatched reference values");
+            .test_expect_err("mismatched reference values");
         assert!(error.to_string().contains("does not match verifier-family"));
     }
 
     #[test]
     fn runtime_attestation_appraisal_result_ids_are_deterministic() {
         let evidence = sample_evidence();
-        let appraisal = derive_runtime_attestation_appraisal(&evidence).expect("derive appraisal");
+        let appraisal =
+            derive_runtime_attestation_appraisal(&evidence).test_expect("derive appraisal");
         let report = RuntimeAttestationAppraisalReport {
             schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
             generated_at: 150,
@@ -3612,10 +3657,10 @@ mod tests {
         };
 
         let first = RuntimeAttestationAppraisalResult::from_report("did:chio:test:issuer", &report)
-            .unwrap();
+            .test_unwrap();
         let second =
             RuntimeAttestationAppraisalResult::from_report("did:chio:test:issuer", &report)
-                .unwrap();
+                .test_unwrap();
 
         assert_eq!(
             first.schema,
@@ -3628,7 +3673,8 @@ mod tests {
     #[test]
     fn imported_runtime_attestation_rejects_invalid_signature() {
         let evidence = sample_evidence();
-        let appraisal = derive_runtime_attestation_appraisal(&evidence).expect("derive appraisal");
+        let appraisal =
+            derive_runtime_attestation_appraisal(&evidence).test_expect("derive appraisal");
         let report = RuntimeAttestationAppraisalReport {
             schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
             generated_at: 150,
@@ -3642,9 +3688,9 @@ mod tests {
         };
         let result =
             RuntimeAttestationAppraisalResult::from_report("did:chio:test:issuer", &report)
-                .unwrap();
+                .test_unwrap();
         let signer = crate::crypto::Keypair::generate();
-        let signed = SignedRuntimeAttestationAppraisalResult::sign(result, &signer).unwrap();
+        let signed = SignedRuntimeAttestationAppraisalResult::sign(result, &signer).test_unwrap();
         let mut tampered = signed.clone();
         tampered.body.issuer = "did:chio:test:other".to_string();
 
@@ -3680,7 +3726,8 @@ mod tests {
     #[test]
     fn imported_runtime_attestation_can_be_attenuated_locally() {
         let evidence = sample_evidence();
-        let appraisal = derive_runtime_attestation_appraisal(&evidence).expect("derive appraisal");
+        let appraisal =
+            derive_runtime_attestation_appraisal(&evidence).test_expect("derive appraisal");
         let report = RuntimeAttestationAppraisalReport {
             schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
             generated_at: 150,
@@ -3694,9 +3741,9 @@ mod tests {
         };
         let result =
             RuntimeAttestationAppraisalResult::from_report("did:chio:test:issuer", &report)
-                .unwrap();
+                .test_unwrap();
         let signer = crate::crypto::Keypair::generate();
-        let signed = SignedRuntimeAttestationAppraisalResult::sign(result, &signer).unwrap();
+        let signed = SignedRuntimeAttestationAppraisalResult::sign(result, &signer).test_unwrap();
 
         let import = evaluate_imported_runtime_attestation_appraisal(
             &RuntimeAttestationAppraisalImportRequest {
@@ -3731,7 +3778,8 @@ mod tests {
     #[test]
     fn imported_runtime_attestation_rejects_stale_result_and_evidence() {
         let evidence = sample_evidence();
-        let appraisal = derive_runtime_attestation_appraisal(&evidence).expect("derive appraisal");
+        let appraisal =
+            derive_runtime_attestation_appraisal(&evidence).test_expect("derive appraisal");
         let report = RuntimeAttestationAppraisalReport {
             schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
             generated_at: 150,
@@ -3745,9 +3793,9 @@ mod tests {
         };
         let result =
             RuntimeAttestationAppraisalResult::from_report("did:chio:test:issuer", &report)
-                .unwrap();
+                .test_unwrap();
         let signer = crate::crypto::Keypair::generate();
-        let signed = SignedRuntimeAttestationAppraisalResult::sign(result, &signer).unwrap();
+        let signed = SignedRuntimeAttestationAppraisalResult::sign(result, &signer).test_unwrap();
 
         let import = evaluate_imported_runtime_attestation_appraisal(
             &RuntimeAttestationAppraisalImportRequest {
@@ -3782,7 +3830,8 @@ mod tests {
     #[test]
     fn imported_runtime_attestation_rejects_schema_family_mismatch() {
         let evidence = sample_evidence();
-        let appraisal = derive_runtime_attestation_appraisal(&evidence).expect("derive appraisal");
+        let appraisal =
+            derive_runtime_attestation_appraisal(&evidence).test_expect("derive appraisal");
         let report = RuntimeAttestationAppraisalReport {
             schema: RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA.to_string(),
             generated_at: 150,
@@ -3796,10 +3845,10 @@ mod tests {
         };
         let mut result =
             RuntimeAttestationAppraisalResult::from_report("did:chio:test:issuer", &report)
-                .unwrap();
+                .test_unwrap();
         result.appraisal.verifier.verifier_family = AttestationVerifierFamily::GoogleAttestation;
         let signer = crate::crypto::Keypair::generate();
-        let signed = SignedRuntimeAttestationAppraisalResult::sign(result, &signer).unwrap();
+        let signed = SignedRuntimeAttestationAppraisalResult::sign(result, &signer).test_unwrap();
 
         let import = evaluate_imported_runtime_attestation_appraisal(
             &RuntimeAttestationAppraisalImportRequest {

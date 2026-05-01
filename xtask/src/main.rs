@@ -1444,56 +1444,6 @@ fn describe_manifest_drift(existing: &str, computed: &str) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pascal_case_handles_kebab_and_snake() {
-        assert_eq!(pascal_case("trust-control"), "TrustControl");
-        assert_eq!(pascal_case("tool_call_request"), "ToolCallRequest");
-        assert_eq!(pascal_case("agent"), "Agent");
-        assert_eq!(pascal_case("inclusion-proof"), "InclusionProof");
-    }
-
-    #[test]
-    fn pascal_case_passes_through_pascal_input() {
-        // Already-PascalCase input is preserved (no separators to split on).
-        assert_eq!(pascal_case("Capability"), "Capability");
-    }
-
-    #[test]
-    fn ts_namespace_name_derives_group_and_stem() {
-        let p = Path::new("spec/schemas/chio-wire/v1/capability/grant.schema.json");
-        assert_eq!(ts_namespace_name(p).as_deref(), Some("Capability_Grant"));
-        let p = Path::new("spec/schemas/chio-wire/v1/trust-control/lease.schema.json");
-        assert_eq!(ts_namespace_name(p).as_deref(), Some("TrustControl_Lease"));
-        let p = Path::new("spec/schemas/chio-wire/v1/jsonrpc/request.schema.json");
-        assert_eq!(ts_namespace_name(p).as_deref(), Some("Jsonrpc_Request"));
-    }
-
-    #[test]
-    fn ts_namespace_name_rejects_non_schema_paths() {
-        assert!(ts_namespace_name(Path::new("/tmp/foo.txt")).is_none());
-    }
-
-    #[test]
-    fn ts_header_includes_pin_and_sha() {
-        let header = ts_header("deadbeef");
-        assert!(header.contains("DO NOT EDIT"));
-        assert!(header.contains("cargo xtask codegen --lang ts"));
-        assert!(header.contains("json-schema-to-typescript 15.0.4"));
-        assert!(header.contains("Schema SHA: deadbeef"));
-        assert!(header.contains("/* eslint-disable */"));
-    }
-
-    #[test]
-    fn normalize_ts_chunk_strips_trailing_newlines() {
-        assert_eq!(normalize_ts_chunk("hello\n\n\n"), "hello");
-        assert_eq!(normalize_ts_chunk("multi\nline\n"), "multi\nline");
-    }
-}
-
 fn workspace_root() -> Result<PathBuf, XtaskError> {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let mut here = PathBuf::from(manifest_dir);
@@ -2182,5 +2132,55 @@ impl TempDir {
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pascal_case_handles_kebab_and_snake() {
+        assert_eq!(pascal_case("trust-control"), "TrustControl");
+        assert_eq!(pascal_case("tool_call_request"), "ToolCallRequest");
+        assert_eq!(pascal_case("agent"), "Agent");
+        assert_eq!(pascal_case("inclusion-proof"), "InclusionProof");
+    }
+
+    #[test]
+    fn pascal_case_passes_through_pascal_input() {
+        // Already-PascalCase input is preserved (no separators to split on).
+        assert_eq!(pascal_case("Capability"), "Capability");
+    }
+
+    #[test]
+    fn ts_namespace_name_derives_group_and_stem() {
+        let p = Path::new("spec/schemas/chio-wire/v1/capability/grant.schema.json");
+        assert_eq!(ts_namespace_name(p).as_deref(), Some("Capability_Grant"));
+        let p = Path::new("spec/schemas/chio-wire/v1/trust-control/lease.schema.json");
+        assert_eq!(ts_namespace_name(p).as_deref(), Some("TrustControl_Lease"));
+        let p = Path::new("spec/schemas/chio-wire/v1/jsonrpc/request.schema.json");
+        assert_eq!(ts_namespace_name(p).as_deref(), Some("Jsonrpc_Request"));
+    }
+
+    #[test]
+    fn ts_namespace_name_rejects_non_schema_paths() {
+        assert!(ts_namespace_name(Path::new("/tmp/foo.txt")).is_none());
+    }
+
+    #[test]
+    fn ts_header_includes_pin_and_sha() {
+        let header = ts_header("deadbeef");
+        assert!(header.contains("DO NOT EDIT"));
+        assert!(header.contains("cargo xtask codegen --lang ts"));
+        assert!(header.contains("json-schema-to-typescript 15.0.4"));
+        assert!(header.contains("Schema SHA: deadbeef"));
+        assert!(header.contains("/* eslint-disable */"));
+    }
+
+    #[test]
+    fn normalize_ts_chunk_strips_trailing_newlines() {
+        assert_eq!(normalize_ts_chunk("hello\n\n\n"), "hello");
+        assert_eq!(normalize_ts_chunk("multi\nline\n"), "multi\nline");
     }
 }

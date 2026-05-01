@@ -5,10 +5,46 @@ use chio_kernel::budget_store::BudgetEventAuthority;
 use chio_kernel::{BudgetStore, RevocationRecord};
 use chio_store_sqlite::{SqliteBudgetStore, SqliteCapabilityAuthority, SqliteRevocationStore};
 
+trait TestResultOk<T, E> {
+    fn test_expect(self, context: &'static str) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E> {
+    fn test_expect(self, context: &'static str) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => panic!("{context}"),
+        }
+    }
+}
+
+trait TestResultErr<T, E> {
+    fn test_expect_err(self, context: &'static str) -> E;
+}
+
+impl<T, E> TestResultErr<T, E> for Result<T, E> {
+    fn test_expect_err(self, context: &'static str) -> E {
+        match self {
+            Ok(_) => panic!("{context} unexpectedly succeeded"),
+            Err(error) => error,
+        }
+    }
+}
+
+trait TestOptionExt<T> {
+    fn test_expect(self, context: &'static str) -> T;
+}
+
+impl<T> TestOptionExt<T> for Option<T> {
+    fn test_expect(self, context: &'static str) -> T {
+        self.unwrap_or_else(|| panic!("{context}"))
+    }
+}
+
 fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system time before unix epoch")
+        .test_expect("system time before unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
 }
@@ -31,19 +67,21 @@ fn authority(authority_id: &str, lease_id: &str, lease_epoch: u64) -> BudgetEven
 fn sqlite_capability_authority_rotates_and_applies_newer_snapshot() {
     let primary_path = unique_db_path("chio-authority-primary");
     let replica_path = unique_db_path("chio-authority-replica");
-    let primary = SqliteCapabilityAuthority::open(&primary_path).expect("open primary authority");
-    let replica = SqliteCapabilityAuthority::open(&replica_path).expect("open replica authority");
+    let primary =
+        SqliteCapabilityAuthority::open(&primary_path).test_expect("open primary authority");
+    let replica =
+        SqliteCapabilityAuthority::open(&replica_path).test_expect("open replica authority");
     let primary_local_key_before = primary
         .current_keypair()
-        .expect("read primary local signing key")
+        .test_expect("read primary local signing key")
         .public_key();
 
-    let rotated = replica.rotate().expect("rotate replica authority");
-    let snapshot = replica.snapshot().expect("snapshot replica authority");
+    let rotated = replica.rotate().test_expect("rotate replica authority");
+    let snapshot = replica.snapshot().test_expect("snapshot replica authority");
     let replaced = primary
         .apply_snapshot(&snapshot)
-        .expect("apply newer replica snapshot");
-    let status = primary.status().expect("read primary status");
+        .test_expect("apply newer replica snapshot");
+    let status = primary.status().test_expect("read primary status");
 
     assert!(replaced);
     assert_eq!(snapshot.public_key_hex, rotated.public_key.to_hex());
@@ -52,7 +90,7 @@ fn sqlite_capability_authority_rotates_and_applies_newer_snapshot() {
     assert_eq!(
         primary
             .local_keypair()
-            .expect("read primary local signing custody after snapshot")
+            .test_expect("read primary local signing custody after snapshot")
             .public_key(),
         primary_local_key_before
     );
@@ -75,13 +113,13 @@ fn sqlite_capability_authority_rotates_and_applies_newer_snapshot() {
 #[test]
 fn sqlite_capability_authority_rejects_snapshot_with_invalid_public_key() {
     let path = unique_db_path("chio-authority-invalid-snapshot");
-    let authority = SqliteCapabilityAuthority::open(&path).expect("open authority");
-    let mut snapshot = authority.snapshot().expect("snapshot authority");
+    let authority = SqliteCapabilityAuthority::open(&path).test_expect("open authority");
+    let mut snapshot = authority.snapshot().test_expect("snapshot authority");
     snapshot.public_key_hex = "deadbeef".to_string();
 
     let error = authority
         .apply_snapshot(&snapshot)
-        .expect_err("invalid public key should fail closed");
+        .test_expect_err("invalid public key should fail closed");
     assert!(error.to_string().contains("invalid public key"));
 
     cleanup_sqlite_files(&path);
@@ -91,46 +129,46 @@ fn sqlite_capability_authority_rejects_snapshot_with_invalid_public_key() {
 fn sqlite_budget_and_revocation_paths_cover_limits_and_ordering() {
     let budget_path = unique_db_path("chio-budget-store");
     let revocation_path = unique_db_path("chio-revocation-store");
-    let budget_store = SqliteBudgetStore::open(&budget_path).expect("open budget store");
+    let budget_store = SqliteBudgetStore::open(&budget_path).test_expect("open budget store");
     let revocation_store =
-        SqliteRevocationStore::open(&revocation_path).expect("open revocation store");
+        SqliteRevocationStore::open(&revocation_path).test_expect("open revocation store");
 
     assert!(budget_store
         .try_charge_cost("cap-1", 0, Some(2), 5, Some(10), Some(10))
-        .expect("charge within limits"));
+        .test_expect("charge within limits"));
     assert!(!budget_store
         .try_charge_cost("cap-1", 0, Some(2), 6, Some(5), Some(10))
-        .expect("per-invocation cap should fail closed"));
+        .test_expect("per-invocation cap should fail closed"));
 
     let charged = budget_store
         .get_usage("cap-1", 0)
-        .expect("load charged usage")
-        .expect("charged usage exists");
+        .test_expect("load charged usage")
+        .test_expect("charged usage exists");
     assert_eq!(charged.invocation_count, 1);
     assert_eq!(
         charged
             .committed_cost_units()
-            .expect("derive charged total"),
+            .test_expect("derive charged total"),
         5
     );
 
     budget_store
         .reduce_charge_cost("cap-1", 0, 3)
-        .expect("reduce charged budget");
+        .test_expect("reduce charged budget");
     let reduced = budget_store
         .get_usage("cap-1", 0)
-        .expect("reload reduced usage")
-        .expect("reduced usage exists");
+        .test_expect("reload reduced usage")
+        .test_expect("reduced usage exists");
     assert_eq!(
         reduced
             .committed_cost_units()
-            .expect("derive reduced total"),
+            .test_expect("derive reduced total"),
         2
     );
     assert_eq!(
         budget_store
             .list_usages_after(10, Some(0))
-            .expect("list replicated budgets")
+            .test_expect("list replicated budgets")
             .len(),
         1
     );
@@ -140,23 +178,23 @@ fn sqlite_budget_and_revocation_paths_cover_limits_and_ordering() {
             capability_id: "cap-1".to_string(),
             revoked_at: 100,
         })
-        .expect("insert first revocation");
+        .test_expect("insert first revocation");
     revocation_store
         .upsert_revocation(&RevocationRecord {
             capability_id: "cap-2".to_string(),
             revoked_at: 100,
         })
-        .expect("insert second revocation");
+        .test_expect("insert second revocation");
     revocation_store
         .upsert_revocation(&RevocationRecord {
             capability_id: "cap-3".to_string(),
             revoked_at: 101,
         })
-        .expect("insert third revocation");
+        .test_expect("insert third revocation");
 
     let after = revocation_store
         .list_revocations_after(10, Some(100), Some("cap-1"))
-        .expect("list revocations after cursor");
+        .test_expect("list revocations after cursor");
     let capability_ids = after
         .iter()
         .map(|record| record.capability_id.as_str())
@@ -177,7 +215,7 @@ fn sqlite_budget_hold_authority_metadata_persists_across_reopen() {
     let advanced = authority("budget-primary", "lease-7", 8);
 
     {
-        let store = SqliteBudgetStore::open(&path).expect("open budget store");
+        let store = SqliteBudgetStore::open(&path).test_expect("open budget store");
         assert!(store
             .try_charge_cost_with_ids_and_authority(
                 "cap-lease",
@@ -190,14 +228,14 @@ fn sqlite_budget_hold_authority_metadata_persists_across_reopen() {
                 Some(authorize_event_id),
                 Some(&initial),
             )
-            .expect("authorize hold with lease metadata"));
+            .test_expect("authorize hold with lease metadata"));
     }
 
     {
-        let store = SqliteBudgetStore::open(&path).expect("reopen budget store");
+        let store = SqliteBudgetStore::open(&path).test_expect("reopen budget store");
         let events = store
             .list_mutation_events(10, Some("cap-lease"), Some(0))
-            .expect("load events after reopen");
+            .test_expect("load events after reopen");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].authority.as_ref(), Some(&initial));
 
@@ -210,7 +248,7 @@ fn sqlite_budget_hold_authority_metadata_persists_across_reopen() {
                 Some("hold-cap-lease-0:release-missing"),
                 None,
             )
-            .expect_err("missing lease metadata should fail closed");
+            .test_expect_err("missing lease metadata should fail closed");
         assert!(error
             .to_string()
             .contains("requires authority lease metadata"));
@@ -224,7 +262,7 @@ fn sqlite_budget_hold_authority_metadata_persists_across_reopen() {
                 Some(release_event_id),
                 Some(&advanced),
             )
-            .expect_err("advanced lease metadata should fail closed");
+            .test_expect_err("advanced lease metadata should fail closed");
         assert!(advanced_error
             .to_string()
             .contains("advanced beyond the open lease"));
@@ -238,19 +276,19 @@ fn sqlite_budget_hold_authority_metadata_persists_across_reopen() {
                 Some(release_event_id),
                 Some(&initial),
             )
-            .expect("release hold with matching lease metadata");
+            .test_expect("release hold with matching lease metadata");
 
         let usage = store
             .get_usage("cap-lease", 0)
-            .expect("reload usage")
-            .expect("usage exists");
+            .test_expect("reload usage")
+            .test_expect("usage exists");
         assert_eq!(usage.invocation_count, 1);
         assert_eq!(usage.total_cost_exposed, 75);
         assert_eq!(usage.total_cost_realized_spend, 0);
 
         let events = store
             .list_mutation_events(10, Some("cap-lease"), Some(0))
-            .expect("reload events after release");
+            .test_expect("reload events after release");
         assert_eq!(events.len(), 2);
         assert_eq!(events[1].authority.as_ref(), Some(&initial));
     }
@@ -266,7 +304,7 @@ fn sqlite_budget_authorize_idempotency_persists_across_reopen() {
     let authority = authority("budget-primary", "lease-12", 12);
 
     {
-        let store = SqliteBudgetStore::open(&path).expect("open budget store");
+        let store = SqliteBudgetStore::open(&path).test_expect("open budget store");
         assert!(store
             .try_charge_cost_with_ids_and_authority(
                 "cap-idempotent",
@@ -279,11 +317,11 @@ fn sqlite_budget_authorize_idempotency_persists_across_reopen() {
                 Some(authorize_event_id),
                 Some(&authority),
             )
-            .expect("authorize hold before reopen"));
+            .test_expect("authorize hold before reopen"));
     }
 
     {
-        let store = SqliteBudgetStore::open(&path).expect("reopen budget store");
+        let store = SqliteBudgetStore::open(&path).test_expect("reopen budget store");
         assert!(store
             .try_charge_cost_with_ids_and_authority(
                 "cap-idempotent",
@@ -296,19 +334,19 @@ fn sqlite_budget_authorize_idempotency_persists_across_reopen() {
                 Some(authorize_event_id),
                 Some(&authority),
             )
-            .expect("replay identical authorize after reopen"));
+            .test_expect("replay identical authorize after reopen"));
 
         let usage = store
             .get_usage("cap-idempotent", 0)
-            .expect("reload usage")
-            .expect("usage exists");
+            .test_expect("reload usage")
+            .test_expect("usage exists");
         assert_eq!(usage.invocation_count, 1);
         assert_eq!(usage.total_cost_exposed, 100);
         assert_eq!(usage.total_cost_realized_spend, 0);
 
         let events = store
             .list_mutation_events(10, Some("cap-idempotent"), Some(0))
-            .expect("reload events");
+            .test_expect("reload events");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_id, authorize_event_id);
         assert_eq!(events[0].authority.as_ref(), Some(&authority));

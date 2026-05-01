@@ -56,7 +56,8 @@ mod tests {
     };
 
     fn assert_contract_artifact(name: &str, body: &str) {
-        let parsed: Value = serde_json::from_str(body).unwrap();
+        let parsed: Value =
+            serde_json::from_str(body).unwrap_or_else(|error| panic!("parse {name}: {error}"));
         assert_eq!(parsed["contractName"], name);
         assert!(parsed["abi"].is_array());
         assert!(parsed["bytecode"].as_str().is_some());
@@ -85,14 +86,15 @@ mod tests {
 
     #[test]
     fn bundled_devnet_artifacts_parse() {
-        let deployment: Value = serde_json::from_str(CHIO_LOCAL_DEVNET_DEPLOYMENT).unwrap();
+        let deployment: Value = serde_json::from_str(CHIO_LOCAL_DEVNET_DEPLOYMENT)
+            .unwrap_or_else(|error| panic!("parse local devnet deployment: {error}"));
         assert_eq!(
             deployment["manifest_id"],
             "chio.web3-deployment.local-devnet.v1"
         );
 
-        let qualification: Value =
-            serde_json::from_str(CHIO_LOCAL_DEVNET_QUALIFICATION_REPORT).unwrap();
+        let qualification: Value = serde_json::from_str(CHIO_LOCAL_DEVNET_QUALIFICATION_REPORT)
+            .unwrap_or_else(|error| panic!("parse local devnet qualification report: {error}"));
         assert_eq!(
             qualification["report_id"],
             "chio.web3-contract-qualification.local-devnet.v1"

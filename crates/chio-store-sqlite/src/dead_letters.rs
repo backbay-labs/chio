@@ -214,12 +214,48 @@ mod tests {
     use r2d2::Pool;
     use r2d2_sqlite::SqliteConnectionManager;
 
+    trait TestResultOk<T, E> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E> {
+        fn test_expect(self, context: &'static str) -> T {
+            match self {
+                Ok(value) => value,
+                Err(_) => panic!("{context}"),
+            }
+        }
+    }
+
+    trait TestResultErr<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E> {
+        fn test_expect_err(self, context: &'static str) -> E {
+            match self {
+                Ok(_) => panic!("{context} unexpectedly succeeded"),
+                Err(error) => error,
+            }
+        }
+    }
+
+    trait TestOptionExt<T> {
+        fn test_expect(self, context: &'static str) -> T;
+    }
+
+    impl<T> TestOptionExt<T> for Option<T> {
+        fn test_expect(self, context: &'static str) -> T {
+            self.unwrap_or_else(|| panic!("{context}"))
+        }
+    }
+
     fn pool() -> Pool<SqliteConnectionManager> {
         let manager = SqliteConnectionManager::memory();
         Pool::builder()
             .max_size(2)
             .build(manager)
-            .expect("test pool builds")
+            .test_expect("test pool builds")
     }
 
     fn sample_record(receipt_id: &str, attempts: u32) -> DeadLetterRecord {
@@ -230,37 +266,44 @@ mod tests {
     #[test]
     fn migration_is_idempotent() {
         let pool = pool();
-        SqliteDeadLetterStore::open_with_pool(pool.clone()).expect("first open");
-        SqliteDeadLetterStore::open_with_pool(pool).expect("second open");
+        SqliteDeadLetterStore::open_with_pool(pool.clone()).test_expect("first open");
+        SqliteDeadLetterStore::open_with_pool(pool).test_expect("second open");
     }
 
     #[test]
     fn insert_persists_and_get_round_trips() {
-        let store = SqliteDeadLetterStore::open_with_pool(pool()).expect("store opens");
+        let store = SqliteDeadLetterStore::open_with_pool(pool()).test_expect("store opens");
         let record = sample_record("rcpt-1", 4);
-        assert!(store.insert(&record).expect("insert ok"));
-        let loaded = store.get("rcpt-1").expect("get ok").expect("row present");
+        assert!(store.insert(&record).test_expect("insert ok"));
+        let loaded = store
+            .get("rcpt-1")
+            .test_expect("get ok")
+            .test_expect("row present");
         assert_eq!(loaded, record);
     }
 
     #[test]
     fn insert_is_idempotent_on_byte_identical_replays() {
-        let store = SqliteDeadLetterStore::open_with_pool(pool()).expect("store opens");
+        let store = SqliteDeadLetterStore::open_with_pool(pool()).test_expect("store opens");
         let record = sample_record("rcpt-2", 3);
-        assert!(store.insert(&record).expect("first insert returns true"));
-        assert!(!store.insert(&record).expect("second insert returns false"));
+        assert!(store
+            .insert(&record)
+            .test_expect("first insert returns true"));
+        assert!(!store
+            .insert(&record)
+            .test_expect("second insert returns false"));
     }
 
     #[test]
     fn insert_with_different_bytes_returns_conflict() {
-        let store = SqliteDeadLetterStore::open_with_pool(pool()).expect("store opens");
+        let store = SqliteDeadLetterStore::open_with_pool(pool()).test_expect("store opens");
         let record = sample_record("rcpt-3", 2);
-        store.insert(&record).expect("first insert");
+        store.insert(&record).test_expect("first insert");
         let mut conflicting = record.clone();
         conflicting.reason = "different reason".to_string();
         let err = store
             .insert(&conflicting)
-            .expect_err("byte-different second insert errors");
+            .test_expect_err("byte-different second insert errors");
         match err {
             DeadLetterStoreError::Conflict(message) => {
                 assert!(message.contains("rcpt-3"));
@@ -271,17 +314,17 @@ mod tests {
 
     #[test]
     fn list_orders_by_finalization_time_then_receipt_id() {
-        let store = SqliteDeadLetterStore::open_with_pool(pool()).expect("store opens");
+        let store = SqliteDeadLetterStore::open_with_pool(pool()).test_expect("store opens");
         let mut a = sample_record("rcpt-b", 1);
         a.finalized_at = 5;
         let mut b = sample_record("rcpt-a", 1);
         b.finalized_at = 5;
         let mut c = sample_record("rcpt-c", 1);
         c.finalized_at = 10;
-        store.insert(&a).expect("insert a");
-        store.insert(&b).expect("insert b");
-        store.insert(&c).expect("insert c");
-        let listed = store.list().expect("list ok");
+        store.insert(&a).test_expect("insert a");
+        store.insert(&b).test_expect("insert b");
+        store.insert(&c).test_expect("insert c");
+        let listed = store.list().test_expect("list ok");
         assert_eq!(
             listed
                 .iter()
@@ -293,11 +336,11 @@ mod tests {
 
     #[test]
     fn clear_removes_existing_row() {
-        let store = SqliteDeadLetterStore::open_with_pool(pool()).expect("store opens");
+        let store = SqliteDeadLetterStore::open_with_pool(pool()).test_expect("store opens");
         let record = sample_record("rcpt-4", 1);
-        store.insert(&record).expect("insert");
-        assert!(store.clear("rcpt-4").expect("clear ok"));
-        assert!(store.get("rcpt-4").expect("get ok").is_none());
-        assert!(!store.clear("rcpt-4").expect("idempotent clear ok"));
+        store.insert(&record).test_expect("insert");
+        assert!(store.clear("rcpt-4").test_expect("clear ok"));
+        assert!(store.get("rcpt-4").test_expect("get ok").is_none());
+        assert!(!store.clear("rcpt-4").test_expect("idempotent clear ok"));
     }
 }

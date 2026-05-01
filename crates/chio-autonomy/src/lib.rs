@@ -1553,6 +1553,21 @@ where
 mod tests {
     use super::*;
 
+    fn parse_fixture<T>(fixture: &'static str, body: &str) -> T
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        serde_json::from_str(body)
+            .unwrap_or_else(|error| panic!("{fixture} fixture must parse: {error}"))
+    }
+
+    fn require_valid<T, E>(result: Result<T, E>, context: &'static str) -> T
+    where
+        E: std::fmt::Debug,
+    {
+        result.unwrap_or_else(|error| panic!("{context} should validate: {error:?}"))
+    }
+
     fn sample_input() -> AutonomousPricingInputArtifact {
         AutonomousPricingInputArtifact {
             schema: CHIO_AUTONOMOUS_PRICING_INPUT_SCHEMA.to_string(),
@@ -1972,47 +1987,71 @@ mod tests {
 
     #[test]
     fn reference_artifacts_parse_and_validate() {
-        let envelope: AutonomousPricingAuthorityEnvelopeArtifact = serde_json::from_str(
+        let envelope: AutonomousPricingAuthorityEnvelopeArtifact = parse_fixture(
+            "CHIO_AUTONOMOUS_PRICING_AUTHORITY_ENVELOPE",
             include_str!("../../../docs/standards/CHIO_AUTONOMOUS_PRICING_AUTHORITY_ENVELOPE.json"),
-        )
-        .unwrap();
-        let decision: AutonomousPricingDecisionArtifact = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_AUTONOMOUS_PRICING_DECISION_EXAMPLE.json"
-        ))
-        .unwrap();
-        let optimization: CapitalPoolOptimizationArtifact = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_CAPITAL_POOL_OPTIMIZATION_EXAMPLE.json"
-        ))
-        .unwrap();
-        let simulation: CapitalPoolSimulationReport = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_CAPITAL_POOL_SIMULATION_EXAMPLE.json"
-        ))
-        .unwrap();
-        let execution: AutonomousExecutionDecisionArtifact = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_AUTONOMOUS_EXECUTION_EXAMPLE.json"
-        ))
-        .unwrap();
-        let comparison: AutonomousComparisonReport = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_AUTONOMOUS_COMPARISON_REPORT_EXAMPLE.json"
-        ))
-        .unwrap();
-        let drift: AutonomousDriftReport = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_AUTONOMOUS_DRIFT_REPORT_EXAMPLE.json"
-        ))
-        .unwrap();
-        let matrix: AutonomousQualificationMatrix = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_AUTONOMOUS_QUALIFICATION_MATRIX.json"
-        ))
-        .unwrap();
+        );
+        let decision: AutonomousPricingDecisionArtifact = parse_fixture(
+            "CHIO_AUTONOMOUS_PRICING_DECISION_EXAMPLE",
+            include_str!("../../../docs/standards/CHIO_AUTONOMOUS_PRICING_DECISION_EXAMPLE.json"),
+        );
+        let optimization: CapitalPoolOptimizationArtifact = parse_fixture(
+            "CHIO_CAPITAL_POOL_OPTIMIZATION_EXAMPLE",
+            include_str!("../../../docs/standards/CHIO_CAPITAL_POOL_OPTIMIZATION_EXAMPLE.json"),
+        );
+        let simulation: CapitalPoolSimulationReport = parse_fixture(
+            "CHIO_CAPITAL_POOL_SIMULATION_EXAMPLE",
+            include_str!("../../../docs/standards/CHIO_CAPITAL_POOL_SIMULATION_EXAMPLE.json"),
+        );
+        let execution: AutonomousExecutionDecisionArtifact = parse_fixture(
+            "CHIO_AUTONOMOUS_EXECUTION_EXAMPLE",
+            include_str!("../../../docs/standards/CHIO_AUTONOMOUS_EXECUTION_EXAMPLE.json"),
+        );
+        let comparison: AutonomousComparisonReport = parse_fixture(
+            "CHIO_AUTONOMOUS_COMPARISON_REPORT_EXAMPLE",
+            include_str!("../../../docs/standards/CHIO_AUTONOMOUS_COMPARISON_REPORT_EXAMPLE.json"),
+        );
+        let drift: AutonomousDriftReport = parse_fixture(
+            "CHIO_AUTONOMOUS_DRIFT_REPORT_EXAMPLE",
+            include_str!("../../../docs/standards/CHIO_AUTONOMOUS_DRIFT_REPORT_EXAMPLE.json"),
+        );
+        let matrix: AutonomousQualificationMatrix = parse_fixture(
+            "CHIO_AUTONOMOUS_QUALIFICATION_MATRIX",
+            include_str!("../../../docs/standards/CHIO_AUTONOMOUS_QUALIFICATION_MATRIX.json"),
+        );
 
-        validate_autonomous_pricing_authority_envelope(&envelope).unwrap();
-        validate_autonomous_pricing_decision(&decision).unwrap();
-        validate_capital_pool_optimization(&optimization).unwrap();
-        validate_capital_pool_simulation_report(&simulation).unwrap();
-        validate_autonomous_execution_decision(&execution).unwrap();
-        validate_autonomous_comparison_report(&comparison).unwrap();
-        validate_autonomous_drift_report(&drift).unwrap();
-        validate_autonomous_qualification_matrix(&matrix).unwrap();
+        require_valid(
+            validate_autonomous_pricing_authority_envelope(&envelope),
+            "autonomous pricing authority envelope",
+        );
+        require_valid(
+            validate_autonomous_pricing_decision(&decision),
+            "autonomous pricing decision",
+        );
+        require_valid(
+            validate_capital_pool_optimization(&optimization),
+            "capital pool optimization",
+        );
+        require_valid(
+            validate_capital_pool_simulation_report(&simulation),
+            "capital pool simulation report",
+        );
+        require_valid(
+            validate_autonomous_execution_decision(&execution),
+            "autonomous execution decision",
+        );
+        require_valid(
+            validate_autonomous_comparison_report(&comparison),
+            "autonomous comparison report",
+        );
+        require_valid(
+            validate_autonomous_drift_report(&drift),
+            "autonomous drift report",
+        );
+        require_valid(
+            validate_autonomous_qualification_matrix(&matrix),
+            "autonomous qualification matrix",
+        );
     }
 
     #[test]
@@ -2131,10 +2170,10 @@ mod tests {
 
     #[test]
     fn qualification_matrix_requires_requirement_ids() {
-        let mut matrix: AutonomousQualificationMatrix = serde_json::from_str(include_str!(
-            "../../../docs/standards/CHIO_AUTONOMOUS_QUALIFICATION_MATRIX.json"
-        ))
-        .unwrap();
+        let mut matrix: AutonomousQualificationMatrix = parse_fixture(
+            "CHIO_AUTONOMOUS_QUALIFICATION_MATRIX",
+            include_str!("../../../docs/standards/CHIO_AUTONOMOUS_QUALIFICATION_MATRIX.json"),
+        );
         matrix.cases[0].requirement_ids.clear();
         assert!(matches!(
             validate_autonomous_qualification_matrix(&matrix),

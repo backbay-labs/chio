@@ -50,6 +50,19 @@ impl std::fmt::Display for HttpMethod {
 mod tests {
     use super::*;
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
     #[test]
     fn safe_methods() {
         assert!(HttpMethod::Get.is_safe());
@@ -74,9 +87,9 @@ mod tests {
     #[test]
     fn serde_roundtrip() {
         let method = HttpMethod::Post;
-        let json = serde_json::to_string(&method).unwrap();
+        let json = serde_json::to_string(&method).test_unwrap();
         assert_eq!(json, "\"POST\"");
-        let back: HttpMethod = serde_json::from_str(&json).unwrap();
+        let back: HttpMethod = serde_json::from_str(&json).test_unwrap();
         assert_eq!(back, method);
     }
 }

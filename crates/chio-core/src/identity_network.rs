@@ -749,6 +749,16 @@ where
 mod tests {
     use super::*;
 
+    fn expect_contract_err<T>(
+        result: Result<T, IdentityNetworkContractError>,
+        context: &str,
+    ) -> IdentityNetworkContractError {
+        match result {
+            Ok(_) => panic!("{context}: unexpected success"),
+            Err(error) => error,
+        }
+    }
+
     fn hex(seed: char) -> String {
         std::iter::repeat_n(seed, 64).collect()
     }
@@ -1109,8 +1119,10 @@ mod tests {
     fn profile_requires_chio_anchor_and_broader_support() {
         let mut profile = sample_profile();
         profile.binding_policy.requires_chio_subject_provenance = false;
-        let error = validate_public_identity_profile(&profile)
-            .expect_err("missing chio subject provenance");
+        let error = expect_contract_err(
+            validate_public_identity_profile(&profile),
+            "missing chio subject provenance",
+        );
         assert!(matches!(
             error,
             IdentityNetworkContractError::InvalidProfile(_)
@@ -1119,7 +1131,10 @@ mod tests {
         let mut profile = sample_profile();
         profile.supported_subject_methods = vec![IdentityDidMethod::DidChio];
         profile.supported_issuer_methods = vec![IdentityDidMethod::DidChio];
-        let error = validate_public_identity_profile(&profile).expect_err("missing broader method");
+        let error = expect_contract_err(
+            validate_public_identity_profile(&profile),
+            "missing broader method",
+        );
         assert!(matches!(
             error,
             IdentityNetworkContractError::InvalidProfile(_)
@@ -1130,8 +1145,10 @@ mod tests {
     fn wallet_directory_requires_verifier_guardrails() {
         let mut entry = sample_directory_entry();
         entry.lookup_guardrails.requires_explicit_verifier_binding = false;
-        let error = validate_public_wallet_directory_entry(&entry)
-            .expect_err("missing verifier binding guardrail");
+        let error = expect_contract_err(
+            validate_public_wallet_directory_entry(&entry),
+            "missing verifier binding guardrail",
+        );
         assert!(matches!(
             error,
             IdentityNetworkContractError::InvalidDirectoryEntry(_)
@@ -1236,8 +1253,10 @@ mod tests {
             WalletTransportMode::Oid4vpSameDevice,
             WalletTransportMode::Oid4vpCrossDevice,
         ];
-        let error = validate_public_wallet_routing_manifest(&manifest)
-            .expect_err("missing relay transport");
+        let error = expect_contract_err(
+            validate_public_wallet_routing_manifest(&manifest),
+            "missing relay transport",
+        );
         assert!(matches!(
             error,
             IdentityNetworkContractError::DuplicateValue(_)
@@ -1330,8 +1349,10 @@ mod tests {
     fn qualification_matrix_requires_requirement_coverage() {
         let mut matrix = sample_matrix();
         matrix.cases.pop();
-        validate_identity_interop_qualification_matrix(&matrix)
-            .expect_err("missing requirement coverage");
+        let _ = expect_contract_err(
+            validate_identity_interop_qualification_matrix(&matrix),
+            "missing requirement coverage",
+        );
     }
 
     #[test]
@@ -1522,25 +1543,30 @@ mod tests {
         let profile: PublicIdentityProfileArtifact = serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_PUBLIC_IDENTITY_PROFILE.json"
         ))
-        .unwrap();
-        validate_public_identity_profile(&profile).unwrap();
+        .unwrap_or_else(|error| panic!("parse public identity profile fixture: {error}"));
+        validate_public_identity_profile(&profile)
+            .unwrap_or_else(|error| panic!("validate public identity profile fixture: {error:?}"));
 
         let entry: PublicWalletDirectoryEntryArtifact = serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_PUBLIC_WALLET_DIRECTORY_ENTRY_EXAMPLE.json"
         ))
-        .unwrap();
-        validate_public_wallet_directory_entry(&entry).unwrap();
+        .unwrap_or_else(|error| panic!("parse wallet directory entry fixture: {error}"));
+        validate_public_wallet_directory_entry(&entry)
+            .unwrap_or_else(|error| panic!("validate wallet directory entry fixture: {error:?}"));
 
         let routing: PublicWalletRoutingManifestArtifact = serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_PUBLIC_WALLET_ROUTING_EXAMPLE.json"
         ))
-        .unwrap();
-        validate_public_wallet_routing_manifest(&routing).unwrap();
+        .unwrap_or_else(|error| panic!("parse wallet routing manifest fixture: {error}"));
+        validate_public_wallet_routing_manifest(&routing)
+            .unwrap_or_else(|error| panic!("validate wallet routing manifest fixture: {error:?}"));
 
         let matrix: IdentityInteropQualificationMatrix = serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_PUBLIC_IDENTITY_QUALIFICATION_MATRIX.json"
         ))
-        .unwrap();
-        validate_identity_interop_qualification_matrix(&matrix).unwrap();
+        .unwrap_or_else(|error| panic!("parse identity qualification matrix fixture: {error}"));
+        validate_identity_interop_qualification_matrix(&matrix).unwrap_or_else(|error| {
+            panic!("validate identity qualification matrix fixture: {error:?}")
+        });
     }
 }

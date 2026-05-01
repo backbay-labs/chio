@@ -3,7 +3,7 @@
 use std::fs;
 use std::io::Read;
 use std::net::{SocketAddr, TcpListener};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -108,7 +108,7 @@ fn spawn_passport_issuance_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
     advertise_url: &str,
-    passport_issuance_offers_file: &PathBuf,
+    passport_issuance_offers_file: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -138,8 +138,8 @@ fn spawn_portable_passport_issuance_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
     advertise_url: &str,
-    authority_seed_file: &PathBuf,
-    passport_issuance_offers_file: &PathBuf,
+    authority_seed_file: &Path,
+    passport_issuance_offers_file: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -171,9 +171,9 @@ fn spawn_portable_passport_lifecycle_issuance_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
     advertise_url: &str,
-    authority_seed_file: &PathBuf,
-    passport_issuance_offers_file: &PathBuf,
-    passport_statuses_file: &PathBuf,
+    authority_seed_file: &Path,
+    passport_issuance_offers_file: &Path,
+    passport_statuses_file: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -209,8 +209,8 @@ fn spawn_passport_lifecycle_issuance_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
     advertise_url: &str,
-    passport_issuance_offers_file: &PathBuf,
-    passport_statuses_file: &PathBuf,
+    passport_issuance_offers_file: &Path,
+    passport_statuses_file: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -244,7 +244,7 @@ fn spawn_passport_challenge_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
     advertise_url: &str,
-    verifier_challenge_db: &PathBuf,
+    verifier_challenge_db: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -272,8 +272,8 @@ fn spawn_passport_interop_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
     advertise_url: &str,
-    passport_issuance_offers_file: &PathBuf,
-    verifier_challenge_db: &PathBuf,
+    passport_issuance_offers_file: &Path,
+    verifier_challenge_db: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -305,10 +305,10 @@ fn spawn_portable_oid4vp_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
     advertise_url: &str,
-    authority_seed_file: &PathBuf,
-    passport_issuance_offers_file: &PathBuf,
-    verifier_challenge_db: &PathBuf,
-    passport_statuses_file: &PathBuf,
+    authority_seed_file: &Path,
+    passport_issuance_offers_file: &Path,
+    verifier_challenge_db: &Path,
+    passport_statuses_file: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -346,10 +346,10 @@ fn spawn_portable_oid4vp_trust_service_with_authority_db(
     listen: std::net::SocketAddr,
     service_token: &str,
     advertise_url: &str,
-    authority_db_file: &PathBuf,
-    passport_issuance_offers_file: &PathBuf,
-    verifier_challenge_db: &PathBuf,
-    passport_statuses_file: &PathBuf,
+    authority_db_file: &Path,
+    passport_issuance_offers_file: &Path,
+    verifier_challenge_db: &Path,
+    passport_statuses_file: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
@@ -528,7 +528,7 @@ fn sample_evidence() -> ChioCredentialEvidence {
     }
 }
 
-fn write_enterprise_identity(path: &PathBuf) {
+fn write_enterprise_identity(path: &Path) {
     fs::write(
         path,
         serde_json::to_vec_pretty(&serde_json::json!({
@@ -555,7 +555,7 @@ fn write_enterprise_identity(path: &PathBuf) {
 }
 
 fn write_passport_artifact(
-    path: &PathBuf,
+    path: &Path,
     subject: &Keypair,
     issuer: &Keypair,
     issued_at: u64,
@@ -593,7 +593,7 @@ fn write_passport_artifact(
         .expect("passport json")
 }
 
-fn publish_passport_status(passport_path: &PathBuf, registry_path: &PathBuf) -> serde_json::Value {
+fn publish_passport_status(passport_path: &Path, registry_path: &Path) -> serde_json::Value {
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())
         .args([

@@ -344,9 +344,24 @@ impl LocalDevnetDeployment {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    trait TestResultErr<T, E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T, E> TestResultErr<T, E> for Result<T, E>
+    where
+        T: std::fmt::Debug,
+    {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err result, got Ok: {value:?}"),
+                Err(error) => error,
+            }
+        }
+    }
 
     fn sample_chain_config() -> SettlementChainConfig {
         SettlementChainConfig {
@@ -381,7 +396,7 @@ mod tests {
         let mut config = sample_chain_config();
         config.evidence_substrate.durable_receipts = false;
 
-        let error = config.validate().unwrap_err();
+        let error = config.validate().test_unwrap_err();
         assert!(error.to_string().contains("durable local receipt storage"));
     }
 
@@ -390,7 +405,7 @@ mod tests {
         let mut config = sample_chain_config();
         config.evidence_substrate.checkpoint_statements = false;
 
-        let error = config.validate().unwrap_err();
+        let error = config.validate().test_unwrap_err();
         assert!(error
             .to_string()
             .contains("kernel-signed checkpoint statements"));

@@ -17,6 +17,29 @@ use chio_core::web3::{
 };
 use chio_kernel::checkpoint::{build_checkpoint, CheckpointError};
 
+trait TestResultOk<T, E> {
+    fn test_expect(self, context: &'static str) -> T;
+}
+
+impl<T, E> TestResultOk<T, E> for Result<T, E>
+where
+    E: std::fmt::Debug,
+{
+    fn test_expect(self, context: &'static str) -> T {
+        self.unwrap_or_else(|error| panic!("{context}: {error:?}"))
+    }
+}
+
+trait TestOptionExt<T> {
+    fn test_expect(self, context: &'static str) -> T;
+}
+
+impl<T> TestOptionExt<T> for Option<T> {
+    fn test_expect(self, context: &'static str) -> T {
+        self.unwrap_or_else(|| panic!("{context}"))
+    }
+}
+
 #[test]
 fn anchor_public_types_capture_discovery_shape() {
     let endpoint = AnchorDiscoveryServiceEndpoint {
@@ -57,7 +80,7 @@ fn anchor_discovery_reports_publication_policy_and_current_freshness_state() {
     };
     let signature = keypair
         .sign_canonical(&certificate)
-        .expect("binding signature")
+        .test_expect("binding signature")
         .0;
     let binding = SignedWeb3IdentityBinding {
         certificate,
@@ -94,10 +117,12 @@ fn anchor_discovery_reports_publication_policy_and_current_freshness_state() {
     };
 
     let artifact = build_anchor_discovery_artifact_with_runtime(&config, &binding, &report, 120)
-        .expect("discovery artifact");
+        .test_expect("discovery artifact");
 
     let endpoint = artifact.service.service_endpoint;
-    let policy = endpoint.publication_policy.expect("publication policy");
+    let policy = endpoint
+        .publication_policy
+        .test_expect("publication policy");
     assert_eq!(policy.primary_lane, AnchorLaneKind::EvmPrimary);
     assert!(policy.secondary_lanes.contains(&AnchorLaneKind::BitcoinOts));
     assert!(policy.secondary_lanes.contains(&AnchorLaneKind::SolanaMemo));
@@ -114,7 +139,7 @@ fn anchor_discovery_reports_publication_policy_and_current_freshness_state() {
         "operator-owned-root delegate-published-via-root-registry-authorization"
     );
 
-    let freshness = endpoint.current_freshness.expect("freshness state");
+    let freshness = endpoint.current_freshness.test_expect("freshness state");
     assert_eq!(freshness.status, AnchorDiscoveryFreshnessStatus::Lagging);
     assert_eq!(freshness.latest_checkpoint_seq, 42);
     assert_eq!(freshness.indexed_checkpoint_seq, 41);

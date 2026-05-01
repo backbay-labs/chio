@@ -277,7 +277,9 @@ mod tests {
     #[test]
     fn portable_claim_catalog_defaults_and_validation_guards_hold() {
         let catalog = ChioPortableClaimCatalog::default();
-        catalog.validate().expect("default portable claim catalog");
+        catalog
+            .validate()
+            .unwrap_or_else(|error| panic!("default portable claim catalog: {error}"));
         assert!(catalog.supports_selective_disclosure("chio_issuer_dids"));
         assert!(!catalog.supports_selective_disclosure("unknown_claim"));
 
@@ -299,7 +301,7 @@ mod tests {
         let binding = ChioPortableIdentityBinding::default();
         binding
             .validate()
-            .expect("default portable identity binding");
+            .unwrap_or_else(|error| panic!("default portable identity binding: {error}"));
 
         let mut invalid = binding.clone();
         invalid.schema = "chio.portable-identity-binding.v9".to_string();
@@ -319,7 +321,7 @@ mod tests {
         let binding = ChioGovernedAuthorizationBinding::default();
         binding
             .validate()
-            .expect("default governed authorization binding");
+            .unwrap_or_else(|error| panic!("default governed authorization binding: {error}"));
 
         let mut invalid = binding.clone();
         invalid.schema = "chio.governed-auth-binding.v9".to_string();

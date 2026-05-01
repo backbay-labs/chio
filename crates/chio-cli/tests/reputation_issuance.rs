@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -47,11 +47,11 @@ impl Drop for ServerGuard {
 fn spawn_trust_service(
     listen: std::net::SocketAddr,
     service_token: &str,
-    policy_path: &PathBuf,
-    receipt_db_path: &PathBuf,
-    revocation_db_path: &PathBuf,
-    authority_db_path: &PathBuf,
-    budget_db_path: &PathBuf,
+    policy_path: &Path,
+    receipt_db_path: &Path,
+    revocation_db_path: &Path,
+    authority_db_path: &Path,
+    budget_db_path: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .current_dir(workspace_root())

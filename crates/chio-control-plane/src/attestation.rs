@@ -1995,11 +1995,44 @@ mod tests {
     use rsa::traits::PublicKeyParts;
     use serde_json::json;
 
+    trait TestUnwrap<T> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+            }
+        }
+    }
+
+    impl<T> TestUnwrap<T> for Option<T> {
+        fn test_unwrap(self) -> T {
+            match self {
+                Some(value) => value,
+                None => panic!("expected Some(..), got None"),
+            }
+        }
+    }
+
+    trait TestUnwrapErr<E> {
+        fn test_unwrap_err(self) -> E;
+    }
+
+    impl<T: std::fmt::Debug, E> TestUnwrapErr<E> for Result<T, E> {
+        fn test_unwrap_err(self) -> E {
+            match self {
+                Ok(value) => panic!("expected Err(..), got Ok({value:?})"),
+                Err(error) => error,
+            }
+        }
+    }
+
     fn sign_rs256_jwt(private_key: &rsa::RsaPrivateKey, header: Value, claims: Value) -> String {
-        let header =
-            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).expect("serialize JWT header"));
-        let payload =
-            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).expect("serialize JWT claims"));
+        let header = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).test_unwrap());
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).test_unwrap());
         let signed_input = format!("{header}.{payload}");
         let signature = RsaPkcs1v15SigningKey::<Sha256>::new(private_key.clone())
             .sign_with_rng(&mut OsRng, signed_input.as_bytes());
@@ -2029,33 +2062,31 @@ mod tests {
     }
 
     fn generate_aws_nitro_test_materials() -> AwsNitroTestMaterials {
-        let mut root_params = CertificateParams::new(Vec::<String>::new()).expect("root params");
+        let mut root_params = CertificateParams::new(Vec::<String>::new()).test_unwrap();
         root_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
         root_params.distinguished_name = DistinguishedName::new();
         root_params
             .distinguished_name
             .push(DnType::CommonName, "Chio Nitro Root");
-        let root_key = RcgenKeyPair::generate_for(&PKCS_ECDSA_P384_SHA384).expect("root key");
-        let root_cert = root_params
-            .self_signed(&root_key)
-            .expect("self-signed root certificate");
+        let root_key = RcgenKeyPair::generate_for(&PKCS_ECDSA_P384_SHA384).test_unwrap();
+        let root_cert = root_params.self_signed(&root_key).test_unwrap();
 
-        let mut leaf_params = CertificateParams::new(Vec::<String>::new()).expect("leaf params");
+        let mut leaf_params = CertificateParams::new(Vec::<String>::new()).test_unwrap();
         leaf_params.distinguished_name = DistinguishedName::new();
         leaf_params
             .distinguished_name
             .push(DnType::CommonName, "Chio Nitro Leaf");
         leaf_params.is_ca = IsCa::NoCa;
-        let leaf_key = RcgenKeyPair::generate_for(&PKCS_ECDSA_P384_SHA384).expect("leaf key");
+        let leaf_key = RcgenKeyPair::generate_for(&PKCS_ECDSA_P384_SHA384).test_unwrap();
         let leaf_cert = leaf_params
             .signed_by(&leaf_key, &root_cert, &root_key)
-            .expect("signed leaf certificate");
+            .test_unwrap();
 
         AwsNitroTestMaterials {
             root_pem: root_cert.pem(),
             leaf_der: leaf_cert.der().to_vec(),
             leaf_signing_key: P384SigningKey::from_pkcs8_der(&leaf_key.serialize_der())
-                .expect("decode leaf signing key"),
+                .test_unwrap(),
         }
     }
 
@@ -2113,17 +2144,17 @@ mod tests {
             ),
         ]);
         let mut payload_bytes = Vec::new();
-        cbor_into_writer(&payload, &mut payload_bytes).expect("encode nitro payload");
+        cbor_into_writer(&payload, &mut payload_bytes).test_unwrap();
 
         let protected = CborValue::Map(vec![(
             CborValue::Integer(COSE_HEADER_ALGORITHM_KEY.into()),
             CborValue::Integer(COSE_ES384_ALGORITHM.into()),
         )]);
         let mut protected_bytes = Vec::new();
-        cbor_into_writer(&protected, &mut protected_bytes).expect("encode protected headers");
+        cbor_into_writer(&protected, &mut protected_bytes).test_unwrap();
 
-        let sig_structure = build_cose_sign1_sig_structure(&protected_bytes, &payload_bytes)
-            .expect("build Sig_structure");
+        let sig_structure =
+            build_cose_sign1_sig_structure(&protected_bytes, &payload_bytes).test_unwrap();
         let signature: P384Signature = materials.leaf_signing_key.sign(&sig_structure);
         let signature = signature.to_bytes().to_vec();
 
@@ -2134,23 +2165,23 @@ mod tests {
             CborValue::Bytes(signature),
         ]);
         let mut bytes = Vec::new();
-        cbor_into_writer(&sign1, &mut bytes).expect("encode COSE_Sign1");
+        cbor_into_writer(&sign1, &mut bytes).test_unwrap();
         bytes
     }
 
     fn current_unix_time() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
+            .test_unwrap()
             .as_secs()
     }
 
     fn serve_json_once(body: &str) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local listener");
-        let address = listener.local_addr().expect("listener address");
+        let listener = TcpListener::bind("127.0.0.1:0").test_unwrap();
+        let address = listener.local_addr().test_unwrap();
         let body = body.to_string();
         thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept test request");
+            let (mut stream, _) = listener.accept().test_unwrap();
             let mut request = [0_u8; 1024];
             let _ = stream.read(&mut request);
             let response = format!(
@@ -2158,16 +2189,14 @@ mod tests {
                 body.len(),
                 body
             );
-            stream
-                .write_all(response.as_bytes())
-                .expect("write test response");
+            stream.write_all(response.as_bytes()).test_unwrap();
         });
         format!("http://{address}")
     }
 
     fn closed_local_url() -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind closed-port probe");
-        let address = listener.local_addr().expect("probe address");
+        let listener = TcpListener::bind("127.0.0.1:0").test_unwrap();
+        let address = listener.local_addr().test_unwrap();
         drop(listener);
         format!("http://{address}")
     }
@@ -2183,7 +2212,7 @@ mod tests {
             runtime_identity: Some("spiffe://chio.example/workloads/enterprise".to_string()),
             workload_identity: Some(
                 WorkloadIdentity::parse_spiffe_uri("spiffe://chio.example/workloads/enterprise")
-                    .expect("parse workload identity"),
+                    .test_unwrap(),
             ),
             claims: Some(json!({
                 "enterpriseVerifier": {
@@ -2226,7 +2255,7 @@ mod tests {
             allow_debug_mode: false,
             expected_nonce_hex: None,
         };
-        let aws_adapter = AwsNitroVerifierAdapter::new(aws_policy.clone()).expect("aws adapter");
+        let aws_adapter = AwsNitroVerifierAdapter::new(aws_policy.clone()).test_unwrap();
         assert_eq!(
             default_aws_nitro_runtime_tier(),
             RuntimeAssuranceTier::Attested
@@ -2301,7 +2330,7 @@ mod tests {
             Err(AwsNitroVerificationError::InvalidPolicy(_))
         ));
 
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let azure_policy = AzureMaaVerificationPolicy {
             issuer: "https://maa.contoso.test".to_string(),
             allowed_attestation_types: vec!["sgx".to_string()],
@@ -2312,7 +2341,7 @@ mod tests {
             azure_policy.clone(),
             rsa_jwk_set(&private_key, "maa-key"),
         )
-        .expect("azure adapter");
+        .test_unwrap();
         assert_eq!(
             default_azure_maa_runtime_tier(),
             RuntimeAssuranceTier::Attested
@@ -2351,7 +2380,7 @@ mod tests {
             google_policy.clone(),
             GoogleConfidentialVmJwks { keys: Vec::new() },
         )
-        .expect("google adapter");
+        .test_unwrap();
         assert_eq!(
             default_google_confidential_vm_runtime_tier(),
             RuntimeAssuranceTier::Attested
@@ -2413,7 +2442,7 @@ mod tests {
             tier: RuntimeAssuranceTier::Attested,
         };
         let enterprise_adapter =
-            EnterpriseVerifierAdapter::new(enterprise_policy.clone()).expect("enterprise adapter");
+            EnterpriseVerifierAdapter::new(enterprise_policy.clone()).test_unwrap();
         assert_eq!(
             default_enterprise_verifier_runtime_tier(),
             RuntimeAssuranceTier::Attested
@@ -2479,15 +2508,11 @@ mod tests {
     #[test]
     fn attestation_oidc_and_metadata_helpers_cover_parse_and_resolution_edges() {
         assert_eq!(
-            AzureMaaJwtAlgorithm::parse("RS256")
-                .expect("parse RS256")
-                .as_str(),
+            AzureMaaJwtAlgorithm::parse("RS256").test_unwrap().as_str(),
             "RS256"
         );
         assert_eq!(
-            AzureMaaJwtAlgorithm::parse("PS256")
-                .expect("parse PS256")
-                .as_str(),
+            AzureMaaJwtAlgorithm::parse("PS256").test_unwrap().as_str(),
             "PS256"
         );
         assert!(matches!(
@@ -2496,14 +2521,14 @@ mod tests {
         ));
         assert!(AzureMaaResolvedJwk {
             key: rsa::RsaPrivateKey::new(&mut OsRng, 2048)
-                .expect("rsa key")
+                .test_unwrap()
                 .to_public_key(),
             alg_hint: None,
         }
         .supports_alg(AzureMaaJwtAlgorithm::Rs256));
         assert!(!AzureMaaResolvedJwk {
             key: rsa::RsaPrivateKey::new(&mut OsRng, 2048)
-                .expect("rsa key")
+                .test_unwrap()
                 .to_public_key(),
             alg_hint: Some("PS256".to_string()),
         }
@@ -2527,9 +2552,7 @@ mod tests {
             GoogleConfidentialVmVerificationError::KeyAlgorithmMismatch(alg) if alg == "RS256"
         ));
 
-        assert!(decode_cose_protected_headers(&[])
-            .expect("empty protected headers")
-            .is_empty());
+        assert!(decode_cose_protected_headers(&[]).test_unwrap().is_empty());
         assert!(matches!(
             decode_cose_protected_headers(b"not-cbor"),
             Err(AwsNitroVerificationError::InvalidCose(_))
@@ -2586,13 +2609,11 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(
-            google_token_audiences(&Value::String("chio-runtime".to_string()))
-                .expect("single audience"),
+            google_token_audiences(&Value::String("chio-runtime".to_string())).test_unwrap(),
             vec!["chio-runtime".to_string()]
         );
         assert_eq!(
-            google_token_audiences(&json!(["chio-runtime", "", 7, "fallback"]))
-                .expect("array audience"),
+            google_token_audiences(&json!(["chio-runtime", "", 7, "fallback"])).test_unwrap(),
             vec!["chio-runtime".to_string(), "fallback".to_string()]
         );
         assert!(matches!(
@@ -2606,7 +2627,7 @@ mod tests {
         assert_eq!(canonicalize_issuer("issuer.example/"), "issuer.example");
 
         assert_eq!(
-            resolve_workload_identity(None, None).expect("no workload path"),
+            resolve_workload_identity(None, None).test_unwrap(),
             (None, None)
         );
         let runtime = json!({
@@ -2617,16 +2638,12 @@ mod tests {
             }
         });
         let (runtime_identity, workload_identity) =
-            resolve_workload_identity(Some(&runtime), Some("nested.spiffe"))
-                .expect("resolve nested workload");
+            resolve_workload_identity(Some(&runtime), Some("nested.spiffe")).test_unwrap();
         assert_eq!(
             runtime_identity.as_deref(),
             Some("spiffe://contoso.test/runtime/worker")
         );
-        assert_eq!(
-            workload_identity.expect("workload identity").trust_domain,
-            "contoso.test"
-        );
+        assert_eq!(workload_identity.test_unwrap().trust_domain, "contoso.test");
         assert!(matches!(
             resolve_workload_identity(None, Some("nested.spiffe")),
             Err(AzureMaaVerificationError::InvalidWorkloadClaim(path))
@@ -2645,23 +2662,23 @@ mod tests {
             Err(AzureMaaVerificationError::InvalidWorkloadIdentity(_))
         ));
 
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let jwks_json =
-            serde_json::to_string(&rsa_jwk_set(&private_key, "maa-key-1")).expect("serialize jwks");
+            serde_json::to_string(&rsa_jwk_set(&private_key, "maa-key-1")).test_unwrap();
 
         let azure_metadata_url = serve_json_once(
             r#"{"issuer":"https://maa.contoso.test","jwksUri":"https://maa.contoso.test/keys"}"#,
         );
         assert_eq!(
             fetch_azure_maa_openid_metadata(&azure_metadata_url)
-                .expect("fetch azure metadata")
+                .test_unwrap()
                 .jwks_uri,
             "https://maa.contoso.test/keys"
         );
         let azure_jwks_url = serve_json_once(&jwks_json);
         assert_eq!(
             fetch_azure_maa_jwks(&azure_jwks_url)
-                .expect("fetch azure jwks")
+                .test_unwrap()
                 .keys
                 .len(),
             1
@@ -2682,14 +2699,14 @@ mod tests {
         );
         assert_eq!(
             fetch_google_confidential_vm_openid_metadata(&google_metadata_url)
-                .expect("fetch google metadata")
+                .test_unwrap()
                 .issuer,
             "https://confidentialcomputing.googleapis.com"
         );
         let google_jwks_url = serve_json_once(&jwks_json);
         assert_eq!(
             fetch_google_confidential_vm_jwks(&google_jwks_url)
-                .expect("fetch google jwks")
+                .test_unwrap()
                 .keys
                 .len(),
             1
@@ -2708,11 +2725,11 @@ mod tests {
 
     #[test]
     fn attestation_jwk_resolution_and_aws_helpers_cover_remaining_error_branches() {
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let compatible = rsa_jwk_set(&private_key, "maa-key-1");
         let resolved =
             resolve_signing_key(&compatible, Some("maa-key-1"), AzureMaaJwtAlgorithm::Rs256)
-                .expect("resolve by kid");
+                .test_unwrap();
         assert!(resolved.supports_alg(AzureMaaJwtAlgorithm::Rs256));
 
         let mismatched_alg = AzureMaaJwks {
@@ -2919,22 +2936,19 @@ mod tests {
             max_evidence_age_seconds: 120,
             tier: RuntimeAssuranceTier::Attested,
         };
-        let adapter = EnterpriseVerifierAdapter::new(policy.clone()).expect("enterprise adapter");
+        let adapter = EnterpriseVerifierAdapter::new(policy.clone()).test_unwrap();
 
         assert!(matches!(
             adapter.verify_and_appraise("{", now),
             Err(EnterpriseVerifierVerificationError::InvalidEnvelope(_))
         ));
 
-        let signed = SignedExportEnvelope::sign(sample_enterprise_evidence(now), &signer)
-            .expect("sign evidence");
+        let signed =
+            SignedExportEnvelope::sign(sample_enterprise_evidence(now), &signer).test_unwrap();
         let mut tampered = signed.clone();
         tampered.body.verifier = "https://attest.other.example".to_string();
         assert!(matches!(
-            adapter.verify_and_appraise(
-                &serde_json::to_string(&tampered).expect("serialize tampered evidence"),
-                now
-            ),
+            adapter.verify_and_appraise(&serde_json::to_string(&tampered).test_unwrap(), now),
             Err(EnterpriseVerifierVerificationError::InvalidSignature)
         ));
 
@@ -2942,13 +2956,9 @@ mod tests {
             schema: "chio.runtime-attestation.other.v1".to_string(),
             ..sample_enterprise_evidence(now)
         };
-        let unsupported =
-            SignedExportEnvelope::sign(unsupported, &signer).expect("sign unsupported");
+        let unsupported = SignedExportEnvelope::sign(unsupported, &signer).test_unwrap();
         assert!(matches!(
-            adapter.verify_and_appraise(
-                &serde_json::to_string(&unsupported).expect("serialize unsupported evidence"),
-                now
-            ),
+            adapter.verify_and_appraise(&serde_json::to_string(&unsupported).test_unwrap(), now),
             Err(EnterpriseVerifierVerificationError::UnsupportedSchema { .. })
         ));
 
@@ -2956,12 +2966,9 @@ mod tests {
             verifier: "https://attest.other.example".to_string(),
             ..sample_enterprise_evidence(now)
         };
-        let mismatch = SignedExportEnvelope::sign(mismatch, &signer).expect("sign mismatch");
+        let mismatch = SignedExportEnvelope::sign(mismatch, &signer).test_unwrap();
         assert!(matches!(
-            adapter.verify_and_appraise(
-                &serde_json::to_string(&mismatch).expect("serialize mismatch evidence"),
-                now
-            ),
+            adapter.verify_and_appraise(&serde_json::to_string(&mismatch).test_unwrap(), now),
             Err(EnterpriseVerifierVerificationError::VerifierMismatch { .. })
         ));
 
@@ -2970,12 +2977,9 @@ mod tests {
             expires_at: now.saturating_add(300),
             ..sample_enterprise_evidence(now)
         };
-        let future = SignedExportEnvelope::sign(future, &signer).expect("sign future evidence");
+        let future = SignedExportEnvelope::sign(future, &signer).test_unwrap();
         assert!(matches!(
-            adapter.verify_and_appraise(
-                &serde_json::to_string(&future).expect("serialize future evidence"),
-                now
-            ),
+            adapter.verify_and_appraise(&serde_json::to_string(&future).test_unwrap(), now),
             Err(EnterpriseVerifierVerificationError::EvidenceNotValid { .. })
         ));
 
@@ -2984,12 +2988,9 @@ mod tests {
             expires_at: now.saturating_add(300),
             ..sample_enterprise_evidence(now)
         };
-        let stale = SignedExportEnvelope::sign(stale, &signer).expect("sign stale evidence");
+        let stale = SignedExportEnvelope::sign(stale, &signer).test_unwrap();
         assert!(matches!(
-            adapter.verify_and_appraise(
-                &serde_json::to_string(&stale).expect("serialize stale evidence"),
-                now
-            ),
+            adapter.verify_and_appraise(&serde_json::to_string(&stale).test_unwrap(), now),
             Err(EnterpriseVerifierVerificationError::EvidenceTooOld { .. })
         ));
 
@@ -2997,13 +2998,9 @@ mod tests {
             tier: RuntimeAssuranceTier::Verified,
             ..sample_enterprise_evidence(now)
         };
-        let too_high =
-            SignedExportEnvelope::sign(too_high, &signer).expect("sign high-tier evidence");
+        let too_high = SignedExportEnvelope::sign(too_high, &signer).test_unwrap();
         assert!(matches!(
-            adapter.verify_and_appraise(
-                &serde_json::to_string(&too_high).expect("serialize high-tier evidence"),
-                now
-            ),
+            adapter.verify_and_appraise(&serde_json::to_string(&too_high).test_unwrap(), now),
             Err(EnterpriseVerifierVerificationError::TierTooHigh { .. })
         ));
 
@@ -3053,7 +3050,7 @@ mod tests {
 
     #[test]
     fn azure_maa_jwt_normalizes_runtime_attestation_and_workload_identity() {
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let token = sign_rs256_jwt(
             &private_key,
             json!({"alg": "RS256", "kid": "maa-key-1", "typ": "JWT"}),
@@ -3086,7 +3083,7 @@ mod tests {
             &rsa_jwk_set(&private_key, "maa-key-1"),
             150,
         )
-        .expect("verify azure maa token");
+        .test_unwrap();
 
         assert_eq!(evidence.schema, AZURE_MAA_ATTESTATION_SCHEMA);
         assert_eq!(evidence.verifier, "https://maa.contoso.test");
@@ -3099,19 +3096,19 @@ mod tests {
             evidence
                 .workload_identity
                 .as_ref()
-                .expect("typed workload identity")
+                .test_unwrap()
                 .trust_domain,
             "contoso.test"
         );
         assert_eq!(
-            evidence.claims.expect("vendor claims")["azureMaa"]["attestationType"],
+            evidence.claims.test_unwrap()["azureMaa"]["attestationType"],
             "sgx"
         );
     }
 
     #[test]
     fn azure_maa_jwt_rejects_disallowed_attestation_type() {
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let token = sign_rs256_jwt(
             &private_key,
             json!({"alg": "RS256", "kid": "maa-key-1", "typ": "JWT"}),
@@ -3137,7 +3134,7 @@ mod tests {
             &rsa_jwk_set(&private_key, "maa-key-1"),
             150,
         )
-        .expect_err("unexpected attestation type should fail");
+        .test_unwrap_err();
         assert!(matches!(
             error,
             AzureMaaVerificationError::DisallowedAttestationType { .. }
@@ -3153,15 +3150,13 @@ mod tests {
             workload_claim_path: None,
         };
 
-        let error = policy
-            .validate()
-            .expect_err("phase-58 bridge must not widen assurance tiers yet");
+        let error = policy.validate().test_unwrap_err();
         assert!(matches!(error, AzureMaaVerificationError::InvalidPolicy(_)));
     }
 
     #[test]
     fn azure_maa_adapter_emits_canonical_appraisal_contract() {
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let token = sign_rs256_jwt(
             &private_key,
             json!({"alg": "RS256", "kid": "maa-key-1", "typ": "JWT"}),
@@ -3189,11 +3184,9 @@ mod tests {
             },
             rsa_jwk_set(&private_key, "maa-key-1"),
         )
-        .expect("build adapter");
+        .test_unwrap();
 
-        let verified = adapter
-            .verify_and_appraise(&token, 150)
-            .expect("verify and appraise azure maa token");
+        let verified = adapter.verify_and_appraise(&token, 150).test_unwrap();
 
         assert_eq!(verified.appraisal.adapter, AZURE_MAA_VERIFIER_ADAPTER);
         assert_eq!(
@@ -3243,7 +3236,7 @@ mod tests {
 
     #[test]
     fn google_confidential_vm_jwt_verifies_and_appraises() {
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let token = sign_rs256_jwt(
             &private_key,
             json!({"alg": "RS256", "kid": "google-key-1", "typ": "JWT"}),
@@ -3275,7 +3268,7 @@ mod tests {
             &rsa_jwk_set(&private_key, "google-key-1"),
             150,
         )
-        .expect("verify google confidential vm token");
+        .test_unwrap();
 
         assert_eq!(evidence.schema, GOOGLE_CONFIDENTIAL_VM_ATTESTATION_SCHEMA);
         assert_eq!(
@@ -3283,7 +3276,7 @@ mod tests {
             Some("//compute.googleapis.com/projects/demo/zones/us-central1-a/instances/vm-1")
         );
         assert_eq!(
-            evidence.claims.as_ref().expect("vendor claims")["googleAttestation"]["hardwareModel"],
+            evidence.claims.as_ref().test_unwrap()["googleAttestation"]["hardwareModel"],
             "GCP_AMD_SEV"
         );
 
@@ -3297,7 +3290,7 @@ mod tests {
 
     #[test]
     fn google_confidential_vm_jwt_rejects_audience_mismatch() {
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let token = sign_rs256_jwt(
             &private_key,
             json!({"alg": "RS256", "kid": "google-key-1", "typ": "JWT"}),
@@ -3327,7 +3320,7 @@ mod tests {
             &rsa_jwk_set(&private_key, "google-key-1"),
             150,
         )
-        .expect_err("unexpected audience should fail");
+        .test_unwrap_err();
         assert!(matches!(
             error,
             GoogleConfidentialVmVerificationError::AudienceMismatch
@@ -3336,7 +3329,7 @@ mod tests {
 
     #[test]
     fn google_confidential_vm_jwt_rejects_insecure_boot() {
-        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).expect("generate rsa key");
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).test_unwrap();
         let token = sign_rs256_jwt(
             &private_key,
             json!({"alg": "RS256", "kid": "google-key-1", "typ": "JWT"}),
@@ -3366,7 +3359,7 @@ mod tests {
             &rsa_jwk_set(&private_key, "google-key-1"),
             150,
         )
-        .expect_err("insecure boot should fail");
+        .test_unwrap_err();
         assert!(matches!(
             error,
             GoogleConfidentialVmVerificationError::InsecureBoot
@@ -3395,12 +3388,11 @@ mod tests {
             expected_nonce_hex: Some("cafe".to_string()),
         };
 
-        let evidence =
-            verify_aws_nitro_attestation_document(&document, &policy, now).expect("verify nitro");
+        let evidence = verify_aws_nitro_attestation_document(&document, &policy, now).test_unwrap();
         assert_eq!(evidence.schema, AWS_NITRO_ATTESTATION_SCHEMA);
         assert_eq!(evidence.verifier, "aws-nitro");
         assert_eq!(
-            evidence.claims.as_ref().expect("vendor claims")["awsNitro"]["moduleId"],
+            evidence.claims.as_ref().test_unwrap()["awsNitro"]["moduleId"],
             "i-arcnitro123"
         );
 
@@ -3426,8 +3418,8 @@ mod tests {
             expected_nonce_hex: None,
         };
 
-        let error = verify_aws_nitro_attestation_document(&document, &policy, now)
-            .expect_err("mismatched PCR should fail");
+        let error =
+            verify_aws_nitro_attestation_document(&document, &policy, now).test_unwrap_err();
         assert!(matches!(
             error,
             AwsNitroVerificationError::PcrMismatch { index: 0 }
@@ -3451,8 +3443,8 @@ mod tests {
             expected_nonce_hex: None,
         };
 
-        let error = verify_aws_nitro_attestation_document(&document, &policy, now)
-            .expect_err("stale document should fail");
+        let error =
+            verify_aws_nitro_attestation_document(&document, &policy, now).test_unwrap_err();
         assert!(matches!(
             error,
             AwsNitroVerificationError::StaleDocument { .. }
@@ -3476,8 +3468,8 @@ mod tests {
             expected_nonce_hex: None,
         };
 
-        let error = verify_aws_nitro_attestation_document(&document, &policy, now)
-            .expect_err("debug-mode evidence should fail");
+        let error =
+            verify_aws_nitro_attestation_document(&document, &policy, now).test_unwrap_err();
         assert!(matches!(
             error,
             AwsNitroVerificationError::DebugModeEvidence
@@ -3505,8 +3497,8 @@ mod tests {
             expected_nonce_hex: Some("beef".to_string()),
         };
 
-        let error = verify_aws_nitro_attestation_document(&document, &policy, now)
-            .expect_err("nonce mismatch should fail");
+        let error =
+            verify_aws_nitro_attestation_document(&document, &policy, now).test_unwrap_err();
         assert!(matches!(error, AwsNitroVerificationError::NonceMismatch));
     }
 
@@ -3525,7 +3517,7 @@ mod tests {
 
         let error =
             verify_aws_nitro_attestation_document(b"not-cbor", &policy, current_unix_time())
-                .expect_err("malformed COSE should fail");
+                .test_unwrap_err();
         assert!(matches!(error, AwsNitroVerificationError::InvalidCose(_)));
     }
 
@@ -3543,7 +3535,7 @@ mod tests {
             runtime_identity: Some("spiffe://chio.example/workloads/enterprise".to_string()),
             workload_identity: Some(
                 WorkloadIdentity::parse_spiffe_uri("spiffe://chio.example/workloads/enterprise")
-                    .expect("parse workload identity"),
+                    .test_unwrap(),
             ),
             claims: Some(json!({
                 "enterpriseVerifier": {
@@ -3557,21 +3549,18 @@ mod tests {
                 }
             })),
         };
-        let signed = SignedExportEnvelope::sign(evidence.clone(), &signer).expect("sign evidence");
+        let signed = SignedExportEnvelope::sign(evidence.clone(), &signer).test_unwrap();
         let adapter = EnterpriseVerifierAdapter::new(EnterpriseVerifierVerificationPolicy {
             verifier: "https://attest.contoso.example".to_string(),
             trusted_signer_keys: vec![signer.public_key().to_hex()],
             max_evidence_age_seconds: 120,
             tier: RuntimeAssuranceTier::Attested,
         })
-        .expect("create enterprise adapter");
+        .test_unwrap();
 
         let verified = adapter
-            .verify_and_appraise(
-                &serde_json::to_string(&signed).expect("serialize signed evidence"),
-                now,
-            )
-            .expect("verify enterprise evidence");
+            .verify_and_appraise(&serde_json::to_string(&signed).test_unwrap(), now)
+            .test_unwrap();
         assert_eq!(verified.evidence, evidence);
         assert_eq!(
             verified.appraisal.verifier_family,
@@ -3610,21 +3599,18 @@ mod tests {
             },
             &actual_signer,
         )
-        .expect("sign enterprise evidence");
+        .test_unwrap();
         let adapter = EnterpriseVerifierAdapter::new(EnterpriseVerifierVerificationPolicy {
             verifier: "https://attest.contoso.example".to_string(),
             trusted_signer_keys: vec![trusted_signer.public_key().to_hex()],
             max_evidence_age_seconds: 120,
             tier: RuntimeAssuranceTier::Attested,
         })
-        .expect("create enterprise adapter");
+        .test_unwrap();
 
         let error = adapter
-            .verify_and_appraise(
-                &serde_json::to_string(&signed).expect("serialize signed evidence"),
-                now,
-            )
-            .expect_err("untrusted signer should fail");
+            .verify_and_appraise(&serde_json::to_string(&signed).test_unwrap(), now)
+            .test_unwrap_err();
         assert!(matches!(
             error,
             EnterpriseVerifierVerificationError::UntrustedSigner { .. }

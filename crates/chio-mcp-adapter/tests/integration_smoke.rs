@@ -10,6 +10,28 @@ use chio_mcp_adapter::{
 };
 use serde_json::{json, Value};
 
+trait TestUnwrap<T> {
+    fn test_unwrap(self) -> T;
+}
+
+impl<T, E: std::fmt::Debug> TestUnwrap<T> for Result<T, E> {
+    fn test_unwrap(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(error) => panic!("expected Ok(..), got Err({error:?})"),
+        }
+    }
+}
+
+impl<T> TestUnwrap<T> for Option<T> {
+    fn test_unwrap(self) -> T {
+        match self {
+            Some(value) => value,
+            None => panic!("expected Some(..), got None"),
+        }
+    }
+}
+
 struct EchoServer;
 
 impl ToolServerConnection for EchoServer {
@@ -72,7 +94,7 @@ fn make_edge() -> ChioMcpEdge {
             },
             300,
         )
-        .expect("issue capability")];
+        .test_unwrap()];
     let manifest_key = Keypair::generate();
 
     ChioMcpEdge::new(
@@ -106,7 +128,7 @@ fn make_edge() -> ChioMcpEdge {
             public_key: manifest_key.public_key().to_hex(),
         }],
     )
-    .expect("create MCP edge")
+    .test_unwrap()
 }
 
 struct LoopbackEdgeState {
@@ -128,7 +150,7 @@ impl LoopbackEdgeTransport {
                 "method": "initialize",
                 "params": {}
             }))
-            .expect("initialize loopback edge");
+            .test_unwrap();
         assert!(initialize.get("error").is_none());
         assert!(edge
             .handle_jsonrpc(json!({
@@ -215,14 +237,14 @@ fn adapter_generates_manifest_and_invokes_through_real_mcp_jsonrpc() {
         Box::new(LoopbackEdgeTransport::new()),
     );
 
-    let manifest = adapter.generate_manifest().expect("generate manifest");
+    let manifest = adapter.generate_manifest().test_unwrap();
     assert_eq!(manifest.tools.len(), 1);
     assert_eq!(manifest.tools[0].name, "echo_json");
     assert!(!manifest.tools[0].has_side_effects);
 
     let result = adapter
         .invoke("echo_json", json!({ "city": "Boston" }))
-        .expect("invoke tool");
+        .test_unwrap();
     assert_eq!(result["isError"], false);
     assert_eq!(result["structuredContent"]["temperature"], 22.5);
 }
