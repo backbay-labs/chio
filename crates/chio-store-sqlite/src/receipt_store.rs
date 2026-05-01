@@ -361,7 +361,7 @@ impl SqliteReceiptStore {
     ) -> Result<u64, ReceiptStoreError> {
         let receipt = decode_canonical_chio_receipt(canonical.as_ref())?;
         let raw_json = canonical_receipt_json(canonical.as_ref())?;
-        self.append_chio_receipt_canonical_record(&receipt, raw_json)
+        self.append_verified_chio_receipt_record(&receipt, raw_json)
     }
 
     pub fn append_chio_receipt_canonical_bytes_returning_seq(
@@ -371,7 +371,7 @@ impl SqliteReceiptStore {
         self.append_chio_receipt_canonical_returning_seq(canonical)
     }
 
-    fn append_chio_receipt_canonical_record(
+    fn append_verified_chio_receipt_record(
         &self,
         receipt: &ChioReceipt,
         raw_json: &str,

@@ -105,7 +105,8 @@ impl CanonicalReceiptSink for ReceiptStoreCanonicalAdapter {
         &self,
         receipt: CanonicalChioReceipt,
     ) -> Result<(), ReceiptStoreError> {
-        self.store.append_chio_receipt(receipt.receipt())
+        self.store
+            .append_chio_receipt_canonical(receipt.receipt(), receipt.canonical().as_ref())
     }
 }
 

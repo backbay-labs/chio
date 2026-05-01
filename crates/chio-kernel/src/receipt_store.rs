@@ -1,3 +1,4 @@
+use chio_core::canonical::CanonicalBytes;
 use chio_core::capability::CapabilityToken;
 use chio_core::credit::CreditBondRow;
 use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
@@ -66,6 +67,13 @@ pub enum ReceiptStoreError {
 
 pub trait ReceiptStore: Send + Sync {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError>;
+    fn append_chio_receipt_canonical(
+        &self,
+        receipt: &ChioReceipt,
+        _canonical: &CanonicalBytes,
+    ) -> Result<(), ReceiptStoreError> {
+        self.append_chio_receipt(receipt)
+    }
     fn append_chio_receipt_returning_seq(
         &self,
         receipt: &ChioReceipt,
