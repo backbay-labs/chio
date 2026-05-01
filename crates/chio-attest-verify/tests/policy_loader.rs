@@ -13,7 +13,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 use chio_attest_verify::policy::TenantPolicy;
-use chio_attest_verify::policy_loader::{TenantPolicyLoader, DEFAULT_STALENESS_HORIZON};
+use chio_attest_verify::policy_loader::{
+    TenantPolicyLoader, DEFAULT_STALENESS_HORIZON, MAX_POLICY_CERTIFICATE_BYTES,
+};
 use chio_attest_verify::{AttestError, AttestVerifier, ExpectedIdentity, VerifiedAttestation};
 
 const BOOTSTRAP_FIXTURE: &str = include_str!("fixtures/policies/bootstrap.toml");
@@ -117,9 +119,9 @@ fn release_signer_identity() -> ExpectedIdentity {
 }
 
 fn fresh_now() -> SystemTime {
-    // 2026-05-01T00:00:00Z = 1_777_680_000 unix seconds. One month after
+    // 2026-05-01T00:00:00Z = 1_777_593_600 unix seconds. One month after
     // the bootstrap fixture's signed_at, well within a 90-day horizon.
-    SystemTime::UNIX_EPOCH + Duration::from_secs(1_777_680_000)
+    SystemTime::UNIX_EPOCH + Duration::from_secs(1_777_593_600)
 }
 
 fn canonical_bytes_for(toml_text: &str) -> Vec<u8> {
@@ -276,6 +278,31 @@ fn malformed_toml_rejected_before_any_verifier_call() {
     assert!(
         !verifier.was_called(),
         "verifier MUST NOT be invoked on structurally-invalid policies"
+    );
+}
+
+#[test]
+fn oversized_certificate_rejected_before_any_verifier_call() {
+    let canonical = canonical_bytes_for(BOOTSTRAP_FIXTURE);
+    let verifier = RecordingVerifier::new(canonical, PLACEHOLDER_SIGNATURE.to_vec());
+    let loader = TenantPolicyLoader::with_default_horizon();
+    let certificate = vec![b'A'; MAX_POLICY_CERTIFICATE_BYTES + 1];
+
+    let result = loader.load_signed(
+        &verifier,
+        &release_signer_identity(),
+        BOOTSTRAP_FIXTURE.as_bytes(),
+        &certificate,
+        fresh_now(),
+    );
+
+    match result {
+        Err(AttestError::Malformed(msg)) => assert!(msg.contains("certificate"), "got: {msg}"),
+        other => panic!("expected Malformed certificate-size error, got {other:?}"),
+    }
+    assert!(
+        !verifier.was_called(),
+        "verifier MUST NOT be invoked on oversized signer certificates"
     );
 }
 
