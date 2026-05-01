@@ -95,3 +95,48 @@ fn arena_evolve_refuses_zero_generations() {
         .expect("arena evolve --generations 0");
     assert!(!out.status.success(), "zero generations should fail");
 }
+
+#[test]
+fn arena_evolve_rejects_budget_overrides_above_milestone_cap() {
+    let tmp = tempfile::tempdir().unwrap();
+    let seed = write_seed(tmp.path());
+    let too_many_generations = Command::new(cargo_bin())
+        .args([
+            "arena",
+            "evolve",
+            seed.to_str().unwrap(),
+            "--generations",
+            "201",
+        ])
+        .output()
+        .expect("arena evolve high generations");
+    assert!(
+        !too_many_generations.status.success(),
+        "generation cap should fail closed"
+    );
+    let stderr = String::from_utf8(too_many_generations.stderr).unwrap();
+    assert!(
+        stderr.contains("--generations") && stderr.contains("200"),
+        "expected generation cap error, got {stderr}"
+    );
+
+    let too_much_wall = Command::new(cargo_bin())
+        .args([
+            "arena",
+            "evolve",
+            seed.to_str().unwrap(),
+            "--wall-seconds",
+            "1801",
+        ])
+        .output()
+        .expect("arena evolve high wall clock");
+    assert!(
+        !too_much_wall.status.success(),
+        "wall-clock cap should fail closed"
+    );
+    let stderr = String::from_utf8(too_much_wall.stderr).unwrap();
+    assert!(
+        stderr.contains("--wall-seconds") && stderr.contains("1800"),
+        "expected wall-clock cap error, got {stderr}"
+    );
+}
