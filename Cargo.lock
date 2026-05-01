@@ -3852,6 +3852,7 @@ version = "0.1.0"
 dependencies = [
  "chio-attest-verify",
  "chio-core-types",
+ "chio-lineage",
  "chrono",
  "hex",
  "serde",
