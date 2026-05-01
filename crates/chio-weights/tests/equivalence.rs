@@ -79,6 +79,14 @@ struct NormalizedReceiptBody {
     verdict: NormalizedVerdict,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct CardBoundVerdictProjection {
+    policy_id: &'static str,
+    scenario_id: String,
+    invocation: NormalizedInvocation,
+    verdict: NormalizedVerdict,
+}
+
 #[derive(Debug, Clone)]
 struct CapturedKernelVerdict {
     fixture_id: String,
@@ -220,38 +228,38 @@ fn smoke_subset_card_a_and_card_b_agree_on_canonical_verdicts() {
     let a = card_a();
     let b = card_b();
 
-    // Canonicalise the normalized verdict for every captured record
-    // under each card. The verdict bytes carry no card-specific fields
-    // (cards bind the kernel binding context, not the verdict body),
-    // so the byte projection under card A MUST equal the projection
-    // under card B for every fixture.
+    // Canonicalise the normalized verdict projection for every captured
+    // record under each card. The verdict projection is derived from
+    // distinct card-bound receipt bodies and excludes only card_id, so
+    // the byte comparison still exercises the A/B card path.
     for entry in &captured {
-        let bytes_a = match canonical_json_bytes_for(
-            "card-a normalized receipt",
-            &normalized_receipt_body(&manifest.matrix_id, &a, entry),
-        ) {
+        let body_a = normalized_receipt_body(&manifest.matrix_id, &a, entry);
+        let body_b = normalized_receipt_body(&manifest.matrix_id, &b, entry);
+        let bytes_a = match canonical_json_bytes_for("card-a normalized receipt", &body_a) {
             Ok(b) => b,
             Err(e) => panic!("canonicalize card-a: {e}"),
         };
-        let bytes_b = match canonical_json_bytes_for(
-            "card-b normalized receipt",
-            &normalized_receipt_body(&manifest.matrix_id, &b, entry),
-        ) {
+        let bytes_b = match canonical_json_bytes_for("card-b normalized receipt", &body_b) {
             Ok(b) => b,
             Err(e) => panic!("canonicalize card-b: {e}"),
         };
-        // The two cards have distinct card_id projection; what we
-        // assert here is the verdict-only projection (without card_id)
-        // is byte-identical, which is the operational-equivalence
-        // claim the M07 oracle codifies.
-        let verdict_a = match canonical_json_bytes_for("card-a verdict only", &entry.verdict) {
-            Ok(b) => b,
-            Err(e) => panic!("canonicalize card-a verdict: {e}"),
-        };
-        let verdict_b = match canonical_json_bytes_for("card-b verdict only", &entry.verdict) {
-            Ok(b) => b,
-            Err(e) => panic!("canonicalize card-b verdict: {e}"),
-        };
+        assert_ne!(
+            bytes_a, bytes_b,
+            "card A and card B receipt bytes must be distinct before card_id stripping on {}",
+            entry.fixture_id
+        );
+        let verdict_a_projection = card_bound_verdict_projection(&body_a);
+        let verdict_b_projection = card_bound_verdict_projection(&body_b);
+        let verdict_a =
+            match canonical_json_bytes_for("card-a card-bound verdict", &verdict_a_projection) {
+                Ok(b) => b,
+                Err(e) => panic!("canonicalize card-a verdict: {e}"),
+            };
+        let verdict_b =
+            match canonical_json_bytes_for("card-b card-bound verdict", &verdict_b_projection) {
+                Ok(b) => b,
+                Err(e) => panic!("canonicalize card-b verdict: {e}"),
+            };
         if let Err(e) =
             assert_canonical_bytes_eq("card-pair operational verdict", &verdict_a, &verdict_b)
         {
@@ -353,8 +361,9 @@ fn assert_byte_equal_normalized_receipts(
         Ok(b) => b,
         Err(e) => panic!("canonicalize first: {e}"),
     };
+    let first_verdict_projection = card_bound_verdict_projection(&first_body);
     let first_verdict_bytes =
-        match canonical_json_bytes_for("first card-bound verdict", &first.verdict) {
+        match canonical_json_bytes_for("first card-bound verdict", &first_verdict_projection) {
             Ok(b) => b,
             Err(e) => panic!("canonicalize first verdict: {e}"),
         };
@@ -371,10 +380,12 @@ fn assert_byte_equal_normalized_receipts(
         ) {
             panic!("{} card-bound receipt mismatch: {e}", entry.fixture_id);
         }
-        let verdict_bytes = match canonical_json_bytes_for("card-bound verdict", &entry.verdict) {
-            Ok(b) => b,
-            Err(e) => panic!("canonicalize {} verdict: {e}", entry.fixture_id),
-        };
+        let verdict_projection = card_bound_verdict_projection(&body);
+        let verdict_bytes =
+            match canonical_json_bytes_for("card-bound verdict", &verdict_projection) {
+                Ok(b) => b,
+                Err(e) => panic!("canonicalize {} verdict: {e}", entry.fixture_id),
+            };
         if let Err(e) = assert_canonical_bytes_eq(
             "card-bound verdict cross-provider equality",
             &first_verdict_bytes,
@@ -382,6 +393,15 @@ fn assert_byte_equal_normalized_receipts(
         ) {
             panic!("{} card-bound verdict mismatch: {e}", entry.fixture_id);
         }
+    }
+}
+
+fn card_bound_verdict_projection(body: &NormalizedReceiptBody) -> CardBoundVerdictProjection {
+    CardBoundVerdictProjection {
+        policy_id: body.policy_id,
+        scenario_id: body.scenario_id.clone(),
+        invocation: body.invocation.clone(),
+        verdict: body.verdict.clone(),
     }
 }
 

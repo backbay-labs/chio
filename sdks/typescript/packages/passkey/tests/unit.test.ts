@@ -275,6 +275,26 @@ describe('requestCapability', () => {
     );
   });
 
+  test('malformed challenge bytes become internal-encoding', async () => {
+    const fetchImpl = makeFetch([
+      async () =>
+        new Response(JSON.stringify({ challenge: '%%%not-base64url%%%' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ]);
+    let err: unknown;
+    try {
+      await requestCapability(baseOpts({ fetchImpl }));
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(RequestCapabilityError);
+    expect((err as RequestCapabilityError).code).toBe(
+      'urn:chio:error:custody:internal-encoding',
+    );
+  });
+
   test('round-trips audience + scopes verbatim into mint body', async () => {
     let captured: Record<string, unknown> | undefined;
     const fetchImpl = makeFetch([
