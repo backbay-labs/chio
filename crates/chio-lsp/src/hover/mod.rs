@@ -16,6 +16,7 @@ use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Posi
 
 use crate::completion::{guards as guard_catalog, scopes as scope_catalog};
 use crate::document::DocumentLanguage;
+use crate::position::{byte_to_utf16_column, utf16_to_byte_offset};
 
 /// Compute hover content at a position. Returns `None` if the cursor is
 /// not on a recognised URN.
@@ -30,9 +31,12 @@ pub fn hover(language: DocumentLanguage, text: &str, position: Position) -> Opti
 
     let lines: Vec<&str> = text.split('\n').collect();
     let line = lines.get(position.line as usize).copied()?;
-    let (start, end, urn) = extract_urn_at(line, position.character as usize)?;
+    let column = utf16_to_byte_offset(line, position.character);
+    let (start, end, urn) = extract_urn_at(line, column)?;
 
     let help = lookup_help(&urn)?;
+    let start_column = byte_to_utf16_column(line, start);
+    let end_column = byte_to_utf16_column(line, end);
 
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
@@ -40,8 +44,8 @@ pub fn hover(language: DocumentLanguage, text: &str, position: Position) -> Opti
             value: format!("**{urn}**\n\n{help}"),
         }),
         range: Some(Range::new(
-            Position::new(position.line, start as u32),
-            Position::new(position.line, end as u32),
+            Position::new(position.line, start_column),
+            Position::new(position.line, end_column),
         )),
     })
 }
@@ -132,5 +136,19 @@ mod tests {
             Position::new(0, 0),
         );
         assert!(h.is_none());
+    }
+
+    #[test]
+    fn hover_handles_non_ascii_prefix_with_utf16_range() {
+        let line = "café urn:chio:error:capability:expired";
+        let h =
+            hover(DocumentLanguage::ChioYaml, line, Position::new(0, 9)).expect("hover present");
+
+        let range = h.range.expect("range");
+        assert_eq!(range.start.character, 5);
+        assert_eq!(
+            range.end.character,
+            5 + "urn:chio:error:capability:expired".len() as u32
+        );
     }
 }
