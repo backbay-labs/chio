@@ -184,15 +184,25 @@ impl RevocationView {
         &self,
         candidate: RevocationSnapshot,
     ) -> Result<Arc<RevocationSnapshot>, RevocationViewError> {
-        let current = self.load();
-        if candidate.epoch <= current.epoch {
-            return Err(RevocationViewError::NonMonotoneEpoch {
-                candidate: candidate.epoch,
-                installed: current.epoch,
-            });
+        let candidate_epoch = candidate.epoch;
+        let candidate = Arc::new(candidate);
+
+        loop {
+            let current = self.load();
+            if candidate_epoch <= current.epoch {
+                return Err(RevocationViewError::NonMonotoneEpoch {
+                    candidate: candidate_epoch,
+                    installed: current.epoch,
+                });
+            }
+
+            let previous = self
+                .inner
+                .compare_and_swap(&current, Arc::clone(&candidate));
+            if Arc::ptr_eq(&current, &*previous) {
+                return Ok(current);
+            }
         }
-        self.inner.store(Arc::new(candidate));
-        Ok(current)
     }
 
     /// Convenience for the most common dispatch lookup.
@@ -210,6 +220,10 @@ impl RevocationView {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
+    extern crate std;
+
+    use self::std::sync::Barrier;
+    use self::std::thread;
     use super::*;
     use alloc::vec;
     use alloc::vec::Vec;
@@ -284,6 +298,40 @@ mod tests {
             }
         );
         assert!(!view.is_revoked(&RevocationViewSubject::from("dave")));
+    }
+
+    #[test]
+    fn install_if_newer_is_atomic_across_concurrent_writers() {
+        let view = Arc::new(RevocationView::new());
+        let barrier = Arc::new(Barrier::new(8));
+        let mut handles = Vec::new();
+
+        for epoch in 1..=8_u64 {
+            let view = Arc::clone(&view);
+            let barrier = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                barrier.wait();
+                let _ = view.install_if_newer(snapshot(epoch, &["alice"]));
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert_eq!(view.current_epoch(), 8);
+        assert!(view.is_revoked(&RevocationViewSubject::from("alice")));
+        let err = view
+            .install_if_newer(snapshot(7, &["bob"]))
+            .expect_err("stale concurrent write must fail closed");
+        assert_eq!(
+            err,
+            RevocationViewError::NonMonotoneEpoch {
+                candidate: 7,
+                installed: 8
+            }
+        );
+        assert!(!view.is_revoked(&RevocationViewSubject::from("bob")));
     }
 
     #[test]
