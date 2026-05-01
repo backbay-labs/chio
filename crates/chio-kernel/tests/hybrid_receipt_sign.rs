@@ -1,13 +1,11 @@
-//! Hybrid receipt signing path integration tests (M03.P2.T2).
+//! Hybrid receipt signing path integration tests.
 //!
 //! Pins the kernel-side construction of the hybrid signing backend from a
 //! configured `crypto_floor` and a 32-byte ML-DSA-65 keygen seed, and the
 //! receipt sign-then-verify round trip through `&dyn SigningBackend`. The
 //! test deliberately exercises both the classical-only path under
-//! `allow_classical` (byte-identity baseline for M03.P2.T5) and the hybrid
-//! path under `allow_hybrid` and `pq_required`.
-//!
-//! Trust-boundary milestone: M03 P2.T2.
+//! `allow_classical` (byte-identity baseline) and the hybrid path under
+//! `allow_hybrid` and `pq_required`.
 
 #![cfg(feature = "pq")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -116,16 +114,14 @@ fn allow_hybrid_with_seed_constructs_hybrid_backend() {
 fn pq_required_with_seed_constructs_hybrid_backend() {
     let kp = Keypair::generate();
     let seed = fixture_pq_seed();
-    let backend =
-        kernel_signing_backend(KernelCryptoFloor::PqRequired, kp, Some(&seed)).unwrap();
+    let backend = kernel_signing_backend(KernelCryptoFloor::PqRequired, kp, Some(&seed)).unwrap();
     assert_eq!(backend.algorithm(), SigningAlgorithm::Hybrid);
 }
 
 #[test]
 fn classical_receipt_byte_identical_under_allow_classical() {
     // Byte-identity contract: receipts signed under `allow_classical`
-    // serialize byte-for-byte the same as the trajectory-1 path. This is
-    // the regression M03.P2.T5 escalates into a v3.18 fixture replay.
+    // serialize byte-for-byte the same as the legacy classical path.
     let kp = Keypair::generate();
     let backend =
         kernel_signing_backend(KernelCryptoFloor::AllowClassical, kp.clone(), None).unwrap();
@@ -143,7 +139,9 @@ fn classical_receipt_byte_identical_under_allow_classical() {
     assert_eq!(body_bytes_pre, body_bytes_post);
 
     // Signature verifies via the issuer key.
-    assert!(receipt.kernel_key.verify(&body_bytes_post, &receipt.signature));
+    assert!(receipt
+        .kernel_key
+        .verify(&body_bytes_post, &receipt.signature));
 }
 
 #[test]
@@ -205,11 +203,8 @@ fn classical_and_hybrid_canonical_bytes_diverge_only_on_signature() {
     )
     .unwrap();
     let body_classical = build_body(classical_kp.public_key());
-    let receipt_classical = sign_receipt_body_with_backend(
-        body_classical.clone(),
-        backend_classical.as_ref(),
-    )
-    .unwrap();
+    let receipt_classical =
+        sign_receipt_body_with_backend(body_classical.clone(), backend_classical.as_ref()).unwrap();
     assert_eq!(
         receipt_classical.signature.algorithm(),
         SigningAlgorithm::Ed25519

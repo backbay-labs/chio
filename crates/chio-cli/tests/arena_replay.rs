@@ -1,4 +1,4 @@
-//! M08.P5.T5 - integration coverage for `arc arena replay`.
+//! Integration coverage for `arc arena replay`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

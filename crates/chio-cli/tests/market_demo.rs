@@ -1,4 +1,4 @@
-//! M09 P4.T7 end-to-end marketplace demo.
+//! End-to-end marketplace demo.
 //!
 //! The demo exercises the priced-guard surface end to end:
 //!
@@ -9,14 +9,14 @@
 //!    receives a credit ceiling above zero.
 //! 3. Construct a signed `ChioReceipt` modelling the guard's per-call
 //!    receipt, run it through `LocalCreditAccount`, and assert exactly
-//!    one IOU envelope is minted (the M09.P1 invariant).
+//!    one IOU envelope is minted (the credit-IOU invariant).
 //! 4. Hand the same receipt to a `SettlementHook` shim, assert exactly
 //!    one settlement is `Accepted`, with byte-stable receipt content
-//!    (the M09.P2.T4 observer-only invariant).
+//!    (the observer-only invariant).
 //!
 //! The fixture stays in process: no OCI registry, no real cosign
-//! verifier, and no live kernel. The trajectory-1 M06 publish-and-pull
-//! path is preserved verbatim by everything the test does not touch.
+//! verifier, and no live kernel. The publish-and-pull path is
+//! preserved verbatim by everything the test does not touch.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -177,7 +177,7 @@ fn install_priced_guard_run_call_one_iou_one_settlement() {
     assert_eq!(envelope.body.amount_units, price.units);
     assert_eq!(envelope.body.currency, "USD");
 
-    // Re-evaluation is idempotent (M09.P1.T4 invariant): same IOU id.
+    // Re-evaluation is idempotent (IOU id invariant): same IOU id.
     let again = account
         .evaluate(&receipt)
         .expect("re-evaluate")

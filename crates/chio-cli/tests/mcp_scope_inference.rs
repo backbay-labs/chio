@@ -1,5 +1,5 @@
-// Trajectory-2 M07 P2.T3 -- per-tool capability scope inference and the
-// default-deny manifest scaffold.
+// Per-tool capability scope inference and the default-deny manifest
+// scaffold.
 //
 // We feed `chio mcp wrap --print-scopes --tools-fixture <path>` a static
 // JSON `tools/list` corpus and assert the rendered scaffold:

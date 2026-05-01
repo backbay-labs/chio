@@ -1,9 +1,9 @@
-//! M04 Phase 3 kernel-side delegation step.
+//! Kernel-side delegation step.
 //!
 //! Behind the `delegation_v2` cargo feature, the kernel consults the
-//! installed [`RevocationView`] (M04 P2.T4) on every delegated dispatch
-//! and denies the capability if any link in its delegation chain (or
-//! the leaf capability itself) appears in the revoked set.
+//! installed [`RevocationView`] on every delegated dispatch and denies
+//! the capability if any link in its delegation chain (or the leaf
+//! capability itself) appears in the revoked set.
 //!
 //! This is the trust-boundary's fail-closed step: when no view is
 //! installed the helper returns `Ok(())`, falling back to the legacy

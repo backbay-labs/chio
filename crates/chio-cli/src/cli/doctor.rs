@@ -17,8 +17,7 @@ pub struct DoctorArgs {
     pub json: bool,
 
     /// Run idempotent repairs after probes complete. Destructive
-    /// repairs are explicitly rejected; consult
-    /// `.planning/audits/M01-error-taxonomy.md` for the allowed set.
+    /// repairs are explicitly rejected.
     #[arg(long, default_value_t = false)]
     pub fix: bool,
 

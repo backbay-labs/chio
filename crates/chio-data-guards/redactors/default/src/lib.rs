@@ -1,11 +1,9 @@
-//! Default redactor for `chio:guards/redact@0.1.0` (M10 Phase 1 Task 5).
+//! Default redactor for `chio:guards/redact@0.1.0`.
 //!
-//! The WIT shape is locked in
-//! `.planning/trajectory/10-tee-replay-harness.md` (lines 317-364) and
-//! lives in `wit/chio-guards-redact/world.wit`. This crate ships the
-//! default regex-driven implementation Chio's tee uses before any frame
-//! is buffered; tenants may swap in a signed override module under
-//! `[tee.redactors]` per the trajectory doc.
+//! The WIT shape lives in `wit/chio-guards-redact/world.wit`. This
+//! crate ships the default regex-driven implementation Chio's tee uses
+//! before any frame is buffered; tenants may swap in a signed override
+//! module under `[tee.redactors]`.
 //!
 //! Coverage:
 //!
@@ -15,8 +13,7 @@
 //! - bearer tokens: `Authorization: Bearer <...>` strips the token body.
 //!
 //! Failure mode: an `Err` returned from [`redact_payload`] MUST cause
-//! the tee to refuse persistence and emit `tee.redact_failed` per the
-//! trajectory doc.
+//! the tee to refuse persistence and emit `tee.redact_failed`.
 //!
 //! The crate is callable directly from native Rust today; a future
 //! ticket lights up the `wasm32-wasip2` `wit_bindgen::generate!`

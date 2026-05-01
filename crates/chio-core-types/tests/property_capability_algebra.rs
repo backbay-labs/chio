@@ -1,20 +1,20 @@
 //! Capability algebra property invariants for `chio-core-types`.
 //!
-//! Five (M03) + three (M04 P3) named invariants. Names must not be renamed:
+//! Eight named invariants. Names must not be renamed:
 //! - `scope_subset_reflexive`
 //! - `scope_subset_transitive_normalized`
 //! - `tool_grant_subset_implies_scope_subset`
 //! - `validate_attenuation_monotonic_under_chain_extension`
 //! - `delegation_depth_bounded_by_root`
-//! - `delegate_strictly_weakens` (M04.P3.T3)
-//! - `delegate_chain_extension_monotone` (M04.P3.T3)
-//! - `delegate_revoked_parent_revokes_children` (M04.P3.T3)
+//! - `delegate_strictly_weakens`
+//! - `delegate_chain_extension_monotone`
+//! - `delegate_revoked_parent_revokes_children`
 //!
-//! Live-API note for the M04.P3 invariants: the `delegate` mint helper
-//! lives behind the `chio-core-types` `delegation_v2` feature flag, which
-//! is OFF by default for the trust-boundary trajectory. The invariants
-//! here intentionally encode the algebraic properties using the
-//! always-on primitives (`validate_attenuation`,
+//! Live-API note for the recursive-delegation invariants: the
+//! `delegate` mint helper lives behind the `chio-core-types`
+//! `delegation_v2` feature flag, which is OFF by default. The
+//! invariants here intentionally encode the algebraic properties using
+//! the always-on primitives (`validate_attenuation`,
 //! `validate_delegation_chain`, the `is_subset_of` algebra) plus a
 //! free-standing revocation-set predicate. That keeps the gate_check
 //! green without needing the v2 feature flipped on by default.
@@ -359,18 +359,16 @@ proptest! {
     }
 }
 
-// ----- M04.P3.T3 named invariants ---------------------------------------
+// ----- Recursive-delegation named invariants -----------------------------
 //
 // These three invariants are the recursive-delegation primitive's
-// safety net. Each maps directly onto a Lean 4 theorem queued for M04
-// P4 (`delegate_no_widen`, `attenuation_monotone`, `revocation_is_cut`).
+// safety net. Each maps directly onto a Lean 4 theorem
+// (`delegate_no_widen`, `attenuation_monotone`, `revocation_is_cut`).
 
 /// Build a sequence of `(parent_scope, child_scope)` hops where each child
 /// is an attenuation of its predecessor. Returns the per-hop pair list so
 /// invariants can inspect each step.
-fn delegation_hop_chain_strategy(
-    max_hops: usize,
-) -> BoxedStrategy<Vec<(ChioScope, ChioScope)>> {
+fn delegation_hop_chain_strategy(max_hops: usize) -> BoxedStrategy<Vec<(ChioScope, ChioScope)>> {
     scope_strategy()
         .prop_flat_map(move |root| {
             let init: BoxedStrategy<Vec<(ChioScope, ChioScope)>> = Just(Vec::new()).boxed();
@@ -407,7 +405,7 @@ fn delegation_hop_chain_strategy(
 proptest! {
     #![proptest_config(proptest_config_for_lane(64))]
 
-    /// Invariant 6 (M04.P3.T3): a single delegation hop strictly weakens
+    /// Invariant 6: a single delegation hop strictly weakens
     /// the parent scope under the live `is_subset_of` algebra.
     ///
     /// "Strictly weakens" here means `child.is_subset_of(parent) &&
@@ -430,7 +428,7 @@ proptest! {
         );
     }
 
-    /// Invariant 7 (M04.P3.T3): extending a delegation chain by one
+    /// Invariant 7: extending a delegation chain by one
     /// validated hop is monotone: the receiver scope at depth N+1 is a
     /// subset of the receiver scope at depth N.
     #[test]
@@ -449,7 +447,7 @@ proptest! {
         }
     }
 
-    /// Invariant 8 (M04.P3.T3): revoking any ancestor in a delegation
+    /// Invariant 8: revoking any ancestor in a delegation
     /// chain transitively revokes every descendant.
     ///
     /// Live-API note: the chio-core-types layer does not own the

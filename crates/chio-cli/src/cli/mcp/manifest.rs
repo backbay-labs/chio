@@ -1,9 +1,8 @@
 // Default-deny manifest scaffold renderer for `arc mcp wrap`.
 //
-// Trajectory-2 M07 P2.T3 emits a TOML scaffold that the user reviews
-// before promoting. The scaffold lives at
-// `~/.config/chio/mcp/<server-id>.toml` by convention; the renderer is
-// pure so tests can compare bytes.
+// Emits a TOML scaffold that the user reviews before promoting. The
+// scaffold lives at `~/.config/chio/mcp/<server-id>.toml` by convention;
+// the renderer is pure so tests can compare bytes.
 
 /// Render the inferred capability scaffold to a TOML string. The output
 /// is deterministic: tools are sorted alphabetically, scopes are emitted

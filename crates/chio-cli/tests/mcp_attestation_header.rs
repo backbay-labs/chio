@@ -1,5 +1,5 @@
-// Trajectory-2 M07 P2.T5 -- "Chio-verified" attestation header embedded
-// in wrapped tool responses.
+// "Chio-verified" attestation header embedded in wrapped tool
+// responses.
 //
 // `chio mcp wrap --self-test-attestation <tool>` is a deterministic
 // renderer for the attestation block; it runs the same code path that
@@ -12,9 +12,9 @@
 //   tool-call panel.
 // - `schema`: the URN identifying the attestation schema version
 //   (`urn:chio:attest:tool-call/v1`). Bumping this URN is a breaking
-//   change tracked in the audit doc.
+//   change.
 // - `tool`: the tool name being attested.
-// - `verifier`: the trajectory-1 crate that owns the verifier surface
+// - `verifier`: the crate that owns the verifier surface
 //   (`chio-attest-verify`). Consumers MUST re-run that verifier against
 //   the receipt before trusting the header as authority.
 #![allow(clippy::expect_used, clippy::unwrap_used)]

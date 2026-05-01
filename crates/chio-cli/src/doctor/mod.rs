@@ -8,16 +8,15 @@
 //! runner aggregates the reports and derives an exit code from the
 //! worst observed severity.
 //!
-//! Cross-milestone consumers:
+//! Probe substrates:
 //!
-//! - `oci`: trajectory-1 M06 `chio-guard-registry` is the OCI substrate.
-//! - `cosign`: trajectory-1 M06 `chio-attest-verify` is the cosign verifier.
-//! - `otel`: trajectory-1 M10 `chio-otel-receipt-exporter` defines the
-//!   OTLP endpoint shape.
-//! - `kernel_runtime`: trajectory-1 M05 `chio-tower` exposes `/metrics`
-//!   and the `chio_kernel_dispatch_inflight` gauge.
-//! - `chio_yaml`: trajectory-1 M01 `spec/schemas/chio-wire/v1/`
-//!   schemas anchor the schema check.
+//! - `oci`: `chio-guard-registry` is the OCI substrate.
+//! - `cosign`: `chio-attest-verify` is the cosign verifier.
+//! - `otel`: `chio-otel-receipt-exporter` defines the OTLP endpoint shape.
+//! - `kernel_runtime`: `chio-tower` exposes `/metrics` and the
+//!   `chio_kernel_dispatch_inflight` gauge.
+//! - `chio_yaml`: `spec/schemas/chio-wire/v1/` schemas anchor the schema
+//!   check.
 //!
 //! Test-injection helpers (`with_root`, `with_endpoint`, ...) are
 //! exercised by the per-probe integration tests under

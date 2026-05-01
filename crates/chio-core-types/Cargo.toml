@@ -70,13 +70,11 @@ std = [
 # `aws-lc-rs` itself is std-only.
 fips = ["dep:aws-lc-rs", "std"]
 pq = ["dep:fips204"]
-# M04 Phase 3 recursive-delegation primitive. Default OFF so the wave-W2
-# trust-boundary milestone can ship the new mint helper, the
-# `DelegationReceipt` envelope, and the `ScopeAttenuation` request type
-# behind a feature flag while trajectory-2 M07 framework adapters opt in
-# explicitly. Implies `std` because the receipt envelope's
-# canonical-JSON round-trip path uses `serde_json::to_value`, which
-# requires the std hash-map backend.
+# Recursive-delegation primitive. Default OFF so callers opt in
+# explicitly to the new mint helper, the `DelegationReceipt` envelope,
+# and the `ScopeAttenuation` request type. Implies `std` because the
+# receipt envelope's canonical-JSON round-trip path uses
+# `serde_json::to_value`, which requires the std hash-map backend.
 delegation_v2 = ["std"]
 
 [dev-dependencies]

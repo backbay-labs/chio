@@ -2,8 +2,8 @@
 //!
 //! Resolves the configured guard registry endpoint and surfaces a
 //! reachability report. The probe consumes `chio-guard-registry`
-//! (trajectory-1 M06) read-only: it reads the configured registry
-//! reference but never duplicates the pull path.
+//! read-only: it reads the configured registry reference but never
+//! duplicates the pull path.
 //!
 //! Test mode and `CHIO_DOCTOR_SKIP_NETWORK=1` short-circuit any actual
 //! network reach, returning an info-level report instead. The probe is

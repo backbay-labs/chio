@@ -9,8 +9,8 @@
 //! directly: those schemas live in JSON and target wire types, not the
 //! `chio.yaml` config surface. This probe enforces the local config
 //! contract (required top-level keys, scalar shape) and leaves
-//! wire-type validation to the LSP (M01 P4) which will load the JSON
-//! schemas as a unit.
+//! wire-type validation to the LSP, which loads the JSON schemas as a
+//! unit.
 
 use std::path::PathBuf;
 

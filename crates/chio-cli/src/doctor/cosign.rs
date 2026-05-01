@@ -1,8 +1,8 @@
 //! Cosign guard-bundle freshness probe.
 //!
-//! Consumes `chio-attest-verify` (trajectory-1 M06) read-only. The
-//! probe inspects a local guard bundle directory or sigstore bundle
-//! file and reports staleness based on the embedded signing time.
+//! Consumes `chio-attest-verify` read-only. The probe inspects a local
+//! guard bundle directory or sigstore bundle file and reports staleness
+//! based on the embedded signing time.
 //! When no bundle is configured the probe returns an info-level
 //! report rather than a hard failure.
 

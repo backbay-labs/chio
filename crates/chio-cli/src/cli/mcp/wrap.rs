@@ -1,11 +1,11 @@
 // `arc mcp wrap` -- stdio child orchestration with verdict gating per
 // `tools/call`.
 //
-// Trajectory-2 M07 P2.T2 introduces this module. The flow is:
+// Flow:
 //
 //   1. Spawn the user's MCP server via [`StdioMcpTransport::spawn`] (the
-//      trajectory-1 transport already performs the `initialize` handshake
-//      and drives newline-delimited JSON-RPC over stdio).
+//      transport performs the `initialize` handshake and drives
+//      newline-delimited JSON-RPC over stdio).
 //   2. Pull `tools/list` once on warmup so we can render the inferred
 //      capability scope manifest scaffold and the IDE config blobs.
 //   3. Stream a JSON-RPC frame loop on stdin: each `tools/call` is gated
@@ -15,9 +15,9 @@
 //
 // We model the verdict gate as a trait so the e2e test can swap in a
 // pure-Rust gate without spinning up the kernel; the production gate
-// delegates to `verdict_for_provider_invocation` (the trajectory-1
-// M07.P1.T4 kernel shim) once the kernel surface stabilizes for the
-// stdio wrap path. The trait surface is identical either way.
+// delegates to `verdict_for_provider_invocation` once the kernel surface
+// stabilizes for the stdio wrap path. The trait surface is identical
+// either way.
 
 /// Decision returned by a [`VerdictGate`] for a single `tools/call`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,22 +87,21 @@ pub(crate) struct McpWrapArgs {
     pub(crate) display_name: Option<String>,
 
     /// Render the manifest scaffold from a JSON `tools/list` fixture file
-    /// instead of spawning the wrapped child. Used by the M07 P2 scope
-    /// inference and emit-config tests so they stay hermetic on shared
-    /// CI runners.
+    /// instead of spawning the wrapped child. Used by the scope inference
+    /// and emit-config tests so they stay hermetic on shared CI runners.
     #[arg(long)]
     pub(crate) tools_fixture: Option<std::path::PathBuf>,
 
     /// Drive the wrap loop against an in-process JSON-RPC fixture (a
     /// JSON object with `tools` and `responses` arrays). Reads JSON-RPC
     /// frames from stdin and emits framed responses on stdout, gated by
-    /// the manifest scaffold. Used by the M07 P2.T6 e2e test so the
+    /// the manifest scaffold. Used by the e2e test so the
     /// stdio-orchestration round-trip can run without a real wrapped
     /// child.
     #[arg(long)]
     pub(crate) e2e_fixture: Option<std::path::PathBuf>,
 
-    /// Self-test mode for the M07 P2.T5 attestation header. Prints the
+    /// Self-test mode for the attestation header. Prints the
     /// "Chio-verified" attestation block for the given tool name as
     /// JSON and exits.
     #[arg(long)]

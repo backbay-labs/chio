@@ -1,4 +1,4 @@
-//! Integration tests for the OCI reachability probe (M01.P3.T3).
+//! Integration tests for the OCI reachability probe.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

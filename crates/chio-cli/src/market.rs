@@ -1,25 +1,24 @@
-//! `arc guard market {list,info,install}` CLI subcommands (M09 P4.T4-T6).
+//! `arc guard market {list,info,install}` CLI subcommands.
 //!
-//! The marketplace surface reuses the chio-guard-registry pull path
-//! (trajectory-1 M06) for fetching artifacts. Listing and info read from
-//! a local marketplace catalog file ("the catalog") that records, for
-//! each guard ref, the manifest fields landed in M09.P4.T1
-//! (`GuardPrice`, `ReputationTier`) plus a recent settlement summary
-//! emitted by the M09 P2 settlement observer.
+//! The marketplace surface reuses the `chio-guard-registry` pull path
+//! for fetching artifacts. Listing and info read from a local
+//! marketplace catalog file ("the catalog") that records, for each
+//! guard ref, the manifest fields (`GuardPrice`, `ReputationTier`) plus
+//! a recent settlement summary emitted by the settlement observer.
 //!
 //! The catalog format is intentionally simple: a JSON array of
 //! [`MarketCatalogEntry`] under the path resolved by
-//! `arc guard market --catalog <PATH>`. The end-to-end demo test
-//! (M09.P4.T7) writes this catalog directly. A production deployment
-//! refreshes the catalog by walking the OCI registry and indexing
-//! manifests; that loop is deliberately out of scope for this phase.
+//! `arc guard market --catalog <PATH>`. The end-to-end demo test writes
+//! this catalog directly. A production deployment refreshes the catalog
+//! by walking the OCI registry and indexing manifests; that loop is
+//! deliberately out of scope.
 //!
 //! Three contracts the marketplace preserves:
 //!
-//! - Discovery is gated by tenant reputation tier; publication is
-//!   gated by the existing trajectory-1 M06 cosign bundle path. Tier
-//!   gating filters output but never weakens cosign verification.
-//! - `install` consults the M04 revocation oracle by way of the
+//! - Discovery is gated by tenant reputation tier; publication is gated
+//!   by the cosign bundle path. Tier gating filters output but never
+//!   weakens cosign verification.
+//! - `install` consults the revocation oracle by way of the
 //!   underwriting credit-limit helper; `publisher_revoked = true`
 //!   denies regardless of tier.
 //! - Re-installing the same ref is idempotent.

@@ -1,10 +1,9 @@
 // "Chio-verified" attestation header for wrapped tool responses.
 //
-// Trajectory-2 M07 P2.T5. Every `tools/call` result that flows through
-// the wrap loop carries a `_meta.chio_verified` block that surfaces
-// inside IDEs that render custom annotations. The block is small and
-// stable so downstream consumers can pattern-match it without parsing
-// the human message:
+// Every `tools/call` result that flows through the wrap loop carries a
+// `_meta.chio_verified` block that surfaces inside IDEs that render
+// custom annotations. The block is small and stable so downstream
+// consumers can pattern-match it without parsing the human message:
 //
 //   {
 //     "header": "Chio-verified",
@@ -13,9 +12,9 @@
 //     "verifier": "chio-attest-verify"
 //   }
 //
-// The `verifier` slot points at the trajectory-1 `chio-attest-verify`
-// crate that owns the verifier surface; consumers MUST re-run the
-// verifier against the receipt before treating the header as authority.
+// The `verifier` slot points at the `chio-attest-verify` crate that
+// owns the verifier surface; consumers MUST re-run the verifier against
+// the receipt before treating the header as authority.
 
 const ATTESTATION_HEADER: &str = "Chio-verified";
 pub(crate) const ATTESTATION_SCHEMA: &str = "urn:chio:attest:tool-call/v1";

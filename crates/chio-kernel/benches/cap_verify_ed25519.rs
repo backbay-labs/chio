@@ -1,5 +1,5 @@
-//! M05 baseline bench: cap_verify_ed25519.
-//! Body fills in M05 P1 / P2 once the async-kernel pivot lands.
+//! Baseline bench: cap_verify_ed25519.
+//! Body fills in once the async-kernel pivot lands.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 

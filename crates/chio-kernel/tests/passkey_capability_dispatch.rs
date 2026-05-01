@@ -1,4 +1,4 @@
-//! Kernel-side passkey-capability dispatch coverage (M10.P2.T5).
+//! Kernel-side passkey-capability dispatch coverage.
 //!
 //! Asserts that [`chio_kernel::custody::PasskeyCapabilityVerifier`]:
 //!
@@ -9,9 +9,9 @@
 //! - rejects expired capabilities,
 //! - rejects signatures from a foreign issuer key.
 //!
-//! Per the M10.P2.T5 soft-dep, the verifier surface is `&self`-only;
-//! these tests therefore consume the verifier behind an `Arc<>` to make
-//! the discipline observable from the test harness.
+//! The verifier surface is `&self`-only; these tests therefore consume
+//! the verifier behind an `Arc<>` to make the discipline observable
+//! from the test harness.
 
 use std::sync::Arc;
 
@@ -113,7 +113,7 @@ fn dispatch_rejects_foreign_issuer_signature_fail_closed() {
 
 #[test]
 fn verifier_is_send_sync_and_shared_behind_arc() {
-    // No &mut self on the verifier surface (M10.P2.T5 soft-dep). The
+    // No &mut self on the verifier surface. The
     // verifier is consumable behind Arc<> across threads. We exercise
     // that explicitly so a future regression that introduces &mut self
     // would fail to compile this fixture.

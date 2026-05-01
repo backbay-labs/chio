@@ -1,8 +1,8 @@
-//! Kernel binding refusal integration tests (P4.T5).
+//! Kernel binding refusal integration tests.
 //!
-//! Locks the M10 P4 kernel binding refusal contract end to end:
-//! provider bind verifies (a) weights_hash byte-equality against the
-//! card, (b) requested capability set is a subset of the card's
+//! Locks the kernel binding refusal contract end to end: provider bind
+//! verifies (a) weights_hash byte-equality against the card,
+//! (b) requested capability set is a subset of the card's
 //! allowed_capability_set, and (c) no requested tool intersects the
 //! card's banned_tools. Any failing gate surfaces a stable
 //! urn:chio:error:weights:* code.
@@ -34,8 +34,7 @@ fn bind_succeeds_when_weights_scope_and_tools_all_admissible() {
     let scopes = StringSet::new(["tool:read", "tool:write"]);
     let tools = StringSet::new(["tool:read"]);
     let req = WeightsBindingRequest {
-        loaded_weights_hash:
-            "0000000000000000000000000000000000000000000000000000000000000001",
+        loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
         requested_scopes: &scopes,
         requested_tools: &tools,
     };
@@ -48,8 +47,7 @@ fn bind_rejects_weights_hash_mismatch() {
     let scopes = StringSet::new(["tool:read"]);
     let tools = StringSet::new(["tool:read"]);
     let req = WeightsBindingRequest {
-        loaded_weights_hash:
-            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        loaded_weights_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
         requested_scopes: &scopes,
         requested_tools: &tools,
     };
@@ -76,8 +74,7 @@ fn bind_rejects_scope_outside_allowed_set() {
     let scopes = StringSet::new(["tool:read", "tool:admin"]);
     let tools = StringSet::default();
     let req = WeightsBindingRequest {
-        loaded_weights_hash:
-            "0000000000000000000000000000000000000000000000000000000000000001",
+        loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
         requested_scopes: &scopes,
         requested_tools: &tools,
     };
@@ -95,8 +92,7 @@ fn bind_rejects_banned_tool_intersection() {
     let scopes = StringSet::new(["tool:read"]);
     let tools = StringSet::new(["tool:read", "tool:exec"]);
     let req = WeightsBindingRequest {
-        loaded_weights_hash:
-            "0000000000000000000000000000000000000000000000000000000000000001",
+        loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
         requested_scopes: &scopes,
         requested_tools: &tools,
     };
@@ -117,8 +113,7 @@ fn banned_tool_first_overlap_is_returned_lexicographically() {
     let scopes = StringSet::default();
     let tools = StringSet::new(["tool:exec", "tool:shell"]);
     let req = WeightsBindingRequest {
-        loaded_weights_hash:
-            "0000000000000000000000000000000000000000000000000000000000000001",
+        loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
         requested_scopes: &scopes,
         requested_tools: &tools,
     };
@@ -136,8 +131,7 @@ fn weights_mismatch_short_circuits_before_scope_check() {
     let scopes = StringSet::new(["tool:admin"]);
     let tools = StringSet::default();
     let req = WeightsBindingRequest {
-        loaded_weights_hash:
-            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        loaded_weights_hash: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         requested_scopes: &scopes,
         requested_tools: &tools,
     };
@@ -151,8 +145,7 @@ fn empty_request_accepts_when_card_matches_weights() {
     let scopes = StringSet::default();
     let tools = StringSet::default();
     let req = WeightsBindingRequest {
-        loaded_weights_hash:
-            "0000000000000000000000000000000000000000000000000000000000000001",
+        loaded_weights_hash: "0000000000000000000000000000000000000000000000000000000000000001",
         requested_scopes: &scopes,
         requested_tools: &tools,
     };

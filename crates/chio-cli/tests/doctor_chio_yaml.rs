@@ -1,4 +1,4 @@
-//! Integration tests for the `chio.yaml` schema probe (M01.P3.T6).
+//! Integration tests for the `chio.yaml` schema probe.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

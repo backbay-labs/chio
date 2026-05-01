@@ -1,10 +1,8 @@
-//! Capability token signing/verification under `crypto_floor` (M03.P2.T3).
+//! Capability token signing/verification under `crypto_floor`.
 //!
 //! Pins the dispatch table for `CapabilityToken::verify_signature_with_floor`
 //! across all combinations of (signature algorithm, configured floor).
 //! Threat model row `pq_signature_downgrade` is the surface this guards.
-//!
-//! Trust-boundary milestone: M03 P2.T3.
 
 #![cfg(feature = "pq")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -192,8 +190,7 @@ fn floor_rejection_fires_before_crypto_check() {
 fn legacy_verify_signature_unchanged_on_classical() {
     // Byte-equivalence regression: the legacy `verify_signature` entry
     // point continues to work on a classical token without observing the
-    // floor. This is the contract M03.P2.T5 expands into a v3.18 fixture
-    // replay.
+    // floor.
     let cap = classical_token();
     assert!(cap.verify_signature().unwrap());
 }

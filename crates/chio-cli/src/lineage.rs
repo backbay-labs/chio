@@ -1,9 +1,9 @@
-//! `arc lineage {query,diff,roots}` CLI surface (M09 P5.T7).
+//! `arc lineage {query,diff,roots}` CLI surface.
 //!
 //! - `query` runs a forward or reverse query starting from a seed node id
 //!   on a fixture lineage JSON dump. The dump is the same format the
-//!   M09 P5.T8 static viewer reads; this lets the CLI exercise the same
-//!   query layer the tests use without inventing a new wire format.
+//!   static viewer reads; this lets the CLI exercise the same query
+//!   layer the tests use without inventing a new wire format.
 //! - `diff` computes the symmetric edge diff between two lineage dumps
 //!   (typically guard `v1` vs `v2`).
 //! - `roots` reads pinned-frontier artifacts from a directory and lists

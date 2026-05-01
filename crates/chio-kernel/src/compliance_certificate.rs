@@ -1,4 +1,4 @@
-//! Session compliance certificate issuance with hybrid signing (M03.P2.T4).
+//! Session compliance certificate issuance with hybrid signing.
 //!
 //! A `SessionComplianceCertificate` is a kernel-signed envelope that
 //! attests a session's receipt log was free of policy violations against
@@ -8,14 +8,14 @@
 //!
 //! ## Why this module exists
 //!
-//! Trajectory-1 shipped a Sigstore-only compliance certificate inside
-//! `chio-acp-proxy` that consumes a bare `Keypair` for Ed25519 signing.
-//! M03 P2 needs the same envelope shape signed through an arbitrary
-//! `&dyn SigningBackend` so a `HybridBackend` can produce
-//! `Signature::Hybrid` envelopes under `crypto_floor=allow_hybrid` or
-//! `pq_required`. This module is the kernel-side hybrid path; it wraps
-//! a body identical in shape to the acp-proxy form but signs through the
-//! `chio-core-types` backend abstraction.
+//! `chio-acp-proxy` ships a Sigstore-only compliance certificate that
+//! consumes a bare `Keypair` for Ed25519 signing. The kernel needs the
+//! same envelope shape signed through an arbitrary `&dyn SigningBackend`
+//! so a `HybridBackend` can produce `Signature::Hybrid` envelopes under
+//! `crypto_floor=allow_hybrid` or `pq_required`. This module is the
+//! kernel-side hybrid path; it wraps a body identical in shape to the
+//! acp-proxy form but signs through the `chio-core-types` backend
+//! abstraction.
 //!
 //! Spec reference: `spec/COMPLIANCE-CERTIFICATE.md`.
 //!
@@ -64,7 +64,7 @@ pub struct SessionComplianceCertificateBody {
 /// `crypto_floor=allow_hybrid` or `pq_required` the signature is
 /// [`Signature::Hybrid`] and the public key is [`PublicKey::Hybrid`];
 /// otherwise both fields carry classical material (Ed25519 / P-256 /
-/// P-384) and remain byte-identical to the trajectory-1 envelope.
+/// P-384) and remain byte-identical to the classical envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionComplianceCertificate {
     /// Body the signature covers.
@@ -122,7 +122,7 @@ pub enum ComplianceCertificateError {
 /// authoritative and tamper-evident: a body with a different floor than
 /// the issuance call rejects fail-closed at issuance time, not at first
 /// audit. Under `KernelCryptoFloor::AllowClassical` this produces a
-/// classical-only envelope byte-identical to the trajectory-1 form (when
+/// classical-only envelope byte-identical to the legacy form (when
 /// the body's `crypto_floor` field agrees with the configured floor).
 ///
 /// # Errors
@@ -159,10 +159,10 @@ pub fn issue_session_compliance_certificate(
 /// `crypto_floor`.
 ///
 /// Performs the same dispatch table as
-/// `CapabilityToken::verify_signature_with_floor` (M03.P2.T3): floor
-/// rejection BEFORE cryptographic verification, fail-closed on a
-/// mismatch between the body's `crypto_floor` field and the verification
-/// floor, fail-closed on signature failures.
+/// `CapabilityToken::verify_signature_with_floor`: floor rejection BEFORE
+/// cryptographic verification, fail-closed on a mismatch between the
+/// body's `crypto_floor` field and the verification floor, fail-closed on
+/// signature failures.
 ///
 /// # Errors
 ///
