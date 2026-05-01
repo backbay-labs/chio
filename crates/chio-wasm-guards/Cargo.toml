@@ -15,8 +15,8 @@ name = "chio_wasm_guards"
 # `wasmtime-runtime` is a default feature: it is the only working backend
 # in production today, every internal consumer either enables it
 # explicitly (e.g. chio-cli) or feature-gates with
-# `#![cfg(feature = "wasmtime-runtime")]`, and the M05.P3 escape harness
-# at `tests/escape/` requires it for the typed-error post-conditions to
+# `#![cfg(feature = "wasmtime-runtime")]`, and the escape harness at
+# `tests/escape/` requires it for the typed-error post-conditions to
 # fire. Callers that need a backend-free build can opt out via
 # `default-features = false`.
 default = ["wasmtime-runtime"]
@@ -77,8 +77,8 @@ name = "guard_pool_checkout_p99"
 harness = false
 required-features = ["wasmtime-runtime"]
 
-# WASM guard escape harness (M05.P3). Aggregates per-class companion
-# fixtures under `tests/escape/`. Required-feature gate matches the
+# WASM guard escape harness. Aggregates per-class companion fixtures
+# under `tests/escape/`. Required-feature gate matches the
 # wasmtime-runtime backend the escape vectors actually drive.
 [[test]]
 name = "escape"

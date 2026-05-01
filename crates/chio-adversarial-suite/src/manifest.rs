@@ -1,8 +1,8 @@
 //! Cross-SDK verdict-matrix manifest emitted by the adversarial suite.
 //!
-//! The manifest is consumed by trajectory-2 M02's cross-language verdict
-//! differential. Each manifest entry pins a non-pending bundled case with
-//! enough provenance for an SDK to look up the JSON-on-disk by id and to
+//! The manifest is consumed by the cross-language verdict differential.
+//! Each manifest entry pins a non-pending bundled case with enough
+//! provenance for an SDK to look up the JSON-on-disk by id and to
 //! verify it has not silently mutated by comparing the case's content
 //! sha256 with the value carried in the manifest. Pending cases are
 //! deliberately excluded: they have not yet been triaged into a binding
@@ -10,8 +10,7 @@
 //! divergence signal or paper one over.
 //!
 //! The manifest is `serde_json::Value`-shaped; producers and consumers
-//! agree on the field names and the schema version. M05.P2.T4 ships the
-//! producer; the consumer ships in trajectory-2 M02.
+//! agree on the field names and the schema version.
 //!
 //! Wire-shape (canonical JSON, sorted keys, two-space indent):
 //!
@@ -53,7 +52,7 @@ pub struct ManifestEntry {
     pub id: String,
     /// Adversarial attack class.
     pub class: AttackClass,
-    /// Expected verdict; always `DENY` for the M05 suite.
+    /// Expected verdict; always `DENY` for the adversarial suite.
     pub expected_verdict: ExpectedVerdict,
     /// Stable deny reason string asserted by downstream harnesses.
     pub expected_reason: String,

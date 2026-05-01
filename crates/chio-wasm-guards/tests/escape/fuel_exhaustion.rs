@@ -9,8 +9,6 @@
 //! `set_fuel(fuel_limit)` call at evaluate-time. When fuel reaches zero
 //! wasmtime traps; the host wraps the trap as
 //! `WasmGuardError::FuelExhausted` (or a fall-through `Trap`).
-//!
-//! Owner: M05.P3.T2.
 
 use chio_wasm_guards::abi::WasmGuardAbi;
 use chio_wasm_guards::error::WasmGuardError;

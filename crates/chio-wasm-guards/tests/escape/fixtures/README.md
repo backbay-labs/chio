@@ -1,7 +1,5 @@
 # Escape harness static fixtures
 
-Owner: M05.P3.T4.
-
 Static byte fixtures consumed by `crates/chio-wasm-guards/tests/escape/`.
 The malformed-component-encoding class lives here (raw `.wasm` blobs);
 the signed-but-malicious class is generated programmatically at test

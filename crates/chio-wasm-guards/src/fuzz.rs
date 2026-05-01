@@ -141,7 +141,7 @@ pub fn fuzz_wit_host_call_boundary(data: &[u8]) {
 }
 
 // ---------------------------------------------------------------------------
-// WASM guard escape fuzzer (M05.P3)
+// WASM guard escape fuzzer
 // ---------------------------------------------------------------------------
 
 /// Tiny fuel ceiling used for the escape harness `evaluate` step.
@@ -161,8 +161,7 @@ const ESCAPE_FUZZ_FUEL_LIMIT: u64 = 50_000;
 /// Companion to [`fuzz_wasm_preinstantiate_validate`]: that target validates
 /// the pre-execution parse + import-namespace check; this one drives the
 /// post-load runtime path through a single `evaluate` call. Together they
-/// span the eight escape classes catalogued at
-/// `.planning/trajectory-2/05-adversarial-escape-threat-model.md` (P3):
+/// span the eight escape classes:
 /// undeclared host imports, oversized linear memory, fuel-budget exhaustion,
 /// table grow/abuse, stack overflow via deep recursion, host reentry,
 /// malformed component-model encoding, and signed-but-malicious modules.

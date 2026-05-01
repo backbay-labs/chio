@@ -1,4 +1,4 @@
-//! M06 guard-pool checkout p99 bench.
+//! Guard-pool checkout p99 bench.
 //!
 //! The measurement keeps module compilation and InstancePre creation outside
 //! the timed loop. Each iteration exercises a warmed tenant ring checkout via

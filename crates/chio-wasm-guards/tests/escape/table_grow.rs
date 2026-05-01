@@ -12,8 +12,6 @@
 //! commits the allocation. A static initial-table size that bloats the
 //! module past `DEFAULT_MAX_MODULE_SIZE` is also caught at module-load
 //! time as `WasmGuardError::ModuleTooLarge`.
-//!
-//! Owner: M05.P3.T3.
 
 use chio_wasm_guards::abi::WasmGuardAbi;
 use chio_wasm_guards::error::WasmGuardError;

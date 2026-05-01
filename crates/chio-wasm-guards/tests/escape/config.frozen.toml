@@ -1,13 +1,11 @@
 # Frozen runtime-limit snapshot for the WASM-guard escape harness.
 #
-# Owner: M05.P3.T5 determinism gate.
-#
 # Every escape companion fixture under
 # `crates/chio-wasm-guards/tests/escape/` loads these limits and asserts
 # them against the live `chio-wasm-guards` constants. Any change to
 # `MAX_MEMORY_BYTES`, `DEFAULT_MAX_MODULE_SIZE`, or the fuel ceiling
 # enforced by the host runtime must be paired with a deliberate update
-# here AND a CODEOWNERS review (per the M05 threat-model risk register
+# here AND a CODEOWNERS review (matches the threat-model risk-register
 # entry on "false negatives from runtime config drift").
 #
 # Format: TOML, schema_version = 1.

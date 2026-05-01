@@ -15,14 +15,11 @@
 //! behavior through the standard escape paths (ImportViolation,
 //! ModuleTooLarge, FuelExhausted, Trap...).
 //!
-//! Cross-link: trajectory-1 M06 chio-guard-registry cosign-verified
-//! fixtures live in `crates/chio-guard-registry/tests/`. The
-//! sigstore-bundle path is content-agnostic in exactly the same way as
-//! the ed25519 sidecar path; using ed25519 here keeps the harness
-//! self-contained and avoids pulling sigstore into the unit-test
-//! dependency closure.
-//!
-//! Owner: M05.P3.T4.
+//! Cross-link: chio-guard-registry cosign-verified fixtures live in
+//! `crates/chio-guard-registry/tests/`. The sigstore-bundle path is
+//! content-agnostic in exactly the same way as the ed25519 sidecar
+//! path; using ed25519 here keeps the harness self-contained and avoids
+//! pulling sigstore into the unit-test dependency closure.
 
 use chio_wasm_guards::abi::WasmGuardAbi;
 use chio_wasm_guards::error::WasmGuardError;
@@ -105,8 +102,7 @@ fn signed_oversize_memory_is_caught_at_instantiate() {
     let signed = sign_bytes(&sk, &bytes, "evil-mem", "1.0.0");
     let pk_hex = hex::encode(sk.verifying_key().to_bytes());
 
-    verify_signed_module(&bytes, &signed, &pk_hex)
-        .expect("malicious module is correctly signed");
+    verify_signed_module(&bytes, &signed, &pk_hex).expect("malicious module is correctly signed");
 
     let (_engine, mut backend) = fresh_wasmtime_backend();
     backend

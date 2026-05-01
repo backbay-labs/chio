@@ -19,17 +19,17 @@
 #                       emits the plain regression test and prints a warning.
 #
 #   --mode adversarial  Promotes a libFuzzer crash that decodes cleanly
-#                       through one of M05's trust-boundary surfaces into
+#                       through one of the trust-boundary surfaces into
 #                       a triage-pending case under
 #                       crates/chio-adversarial-suite/cases/<class>/<sha>.json
 #                       with `expected_verdict: "DENY"` placeholder and
 #                       `pending: true`. Requires --class (one of the
-#                       eight M05 attack classes) and --threat-id (a
+#                       eight attack classes) and --threat-id (a
 #                       chio-threat-model.v1.json identifier). The
-#                       pending flag is stripped only by a human triager
-#                       (see M05.P5.T6). No regression .rs file is
-#                       emitted; the M05 adversarial harnesses already
-#                       iterate the bundled cases.
+#                       pending flag is stripped only by a human triager.
+#                       No regression .rs file is emitted; the
+#                       adversarial harnesses already iterate the
+#                       bundled cases.
 #
 # In all three modes the seed is moved into fuzz/corpus/<target>/<sha>.bin
 # so future fuzz runs continue exercising it. Re-promoting a seed whose
@@ -385,7 +385,7 @@ EOF
         # Triage gate: emit a pending case under
         # crates/chio-adversarial-suite/cases/<class>/<sha16>.json so a
         # human triager can confirm the verdict, fill in expected_reason,
-        # and strip the pending flag (M05.P5.T6 enforces this gate).
+        # and strip the pending flag.
         CASES_DIR="$REPO_ROOT/crates/chio-adversarial-suite/cases/$CLASS"
         mkdir -p "$CASES_DIR"
         CASE_ID="${CLASS//_/-}-${SHA16}"
@@ -502,8 +502,9 @@ else
 fi
 
 # Append a [[seed]] entry to fuzz/corpus_metadata.toml when the file
-# exists so the M05.P2.T2 gate stays green after a fresh promotion.
-# Idempotent: skip the append when the path is already indexed.
+# exists so the corpus-metadata gate stays green after a fresh
+# promotion. Idempotent: skip the append when the path is already
+# indexed.
 METADATA="$REPO_ROOT/fuzz/corpus_metadata.toml"
 if [[ -f "$METADATA" ]]; then
     DEST_REL="fuzz/corpus/$TARGET/$SHA.bin"
