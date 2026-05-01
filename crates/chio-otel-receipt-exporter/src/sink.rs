@@ -105,7 +105,8 @@ impl CanonicalReceiptSink for ReceiptStoreCanonicalAdapter {
         &self,
         receipt: CanonicalChioReceipt,
     ) -> Result<(), ReceiptStoreError> {
-        self.store.append_chio_receipt(receipt.receipt())
+        self.store
+            .append_chio_receipt_canonical(receipt.receipt(), receipt.canonical().as_ref())
     }
 }
 
@@ -121,6 +122,15 @@ pub enum OTelReceiptExportError {
     Queue(String),
     #[error("failed to append Chio receipt: {0}")]
     ReceiptStore(#[from] ReceiptStoreError),
+}
+
+impl OTelReceiptExportError {
+    pub(crate) fn is_retryable_batch_error(&self) -> bool {
+        matches!(
+            self,
+            Self::ReceiptStore(ReceiptStoreError::Pool(_)) | Self::Queue(_)
+        )
+    }
 }
 
 pub struct ReceiptStoreSink {

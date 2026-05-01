@@ -1,8 +1,8 @@
 use super::support::{
     checkpoint_error_to_receipt_store, ensure_checkpoint_transparency_guards,
-    ensure_chio_receipt_verified, ensure_transparency_projection_guards,
-    load_claim_tree_canonical_bytes_range, load_persisted_checkpoint_row,
-    parse_persisted_checkpoint_row, verify_checkpoint_chain_integrity,
+    ensure_transparency_projection_guards, load_claim_tree_canonical_bytes_range,
+    load_persisted_checkpoint_row, parse_persisted_checkpoint_row,
+    verify_checkpoint_chain_integrity,
 };
 use super::*;
 
@@ -11,10 +11,8 @@ impl SqliteReceiptStore {
         &self,
         receipt: &ChioReceipt,
     ) -> Result<u64, ReceiptStoreError> {
-        ensure_chio_receipt_verified(receipt)?;
         let raw_json = serde_json::to_string(receipt)?;
-        sqlite_i64(receipt.timestamp, "receipt timestamp")?;
-        self.receipt_commit_actor.append(receipt.clone(), raw_json)
+        self.append_verified_chio_receipt_record(receipt, &raw_json)
     }
 
     /// Store a signed KernelCheckpoint in the kernel_checkpoints table.

@@ -947,8 +947,8 @@ impl SqliteReceiptStore {
 
         drop(connection);
 
-        let reader_pool = build_receipt_pool(path, pool_config.reader_pool_max_size)?;
-        let writer_pool = build_receipt_pool(path, pool_config.writer_pool_max_size)?;
+        let reader_pool = build_receipt_pool(path, pool_config.reader_pool_max_size, "reader")?;
+        let writer_pool = build_receipt_pool(path, pool_config.writer_pool_max_size, "writer")?;
 
         Ok(Self {
             receipt_commit_actor: ReceiptCommitActor::start(writer_pool),
@@ -975,7 +975,13 @@ impl SqliteReceiptStore {
 fn build_receipt_pool(
     path: &Path,
     max_size: u32,
+    pool_name: &str,
 ) -> Result<Pool<SqliteConnectionManager>, ReceiptStoreError> {
+    if max_size == 0 {
+        return Err(ReceiptStoreError::Pool(format!(
+            "{pool_name} receipt sqlite pool max_size must be greater than zero"
+        )));
+    }
     let manager = SqliteConnectionManager::file(path).with_init(|connection| {
         configure_sqlite_connection(connection).map_err(|error| match error {
             ReceiptStoreError::Sqlite(error) => error,

@@ -16,8 +16,7 @@ mod queue_core;
 #[cfg(not(loom))]
 pub mod sink;
 
-pub const METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
-pub const METRIC_CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
+pub use chio_kernel::{METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL};
 
 #[cfg(not(loom))]
 pub use denylist::{

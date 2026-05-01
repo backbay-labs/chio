@@ -4443,6 +4443,24 @@ impl ReceiptStore for SqliteReceiptStore {
         self.append_chio_receipt_returning_seq(receipt).map(|_| ())
     }
 
+    fn append_chio_receipt_canonical(
+        &self,
+        _receipt: &ChioReceipt,
+        canonical: &CanonicalBytes,
+    ) -> Result<(), ReceiptStoreError> {
+        let decoded = decode_canonical_chio_receipt(canonical)?;
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        let raw_json = canonical_receipt_json(canonical)?;
+        self.append_verified_chio_receipt_record(&decoded, raw_json)?;
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &decoded.id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     fn append_chio_receipt_returning_seq(
         &self,
         receipt: &ChioReceipt,

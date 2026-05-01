@@ -167,6 +167,7 @@ fn receipt_commit_actor_loop(
     pool: Pool<SqliteConnectionManager>,
     receiver: mpsc::Receiver<ReceiptCommitCommand>,
 ) {
+    let mut pending_flush_error: Option<ReceiptStoreError> = None;
     while let Ok(command) = receiver.recv() {
         match command {
             ReceiptCommitCommand::Append(request) => {
@@ -183,10 +184,14 @@ fn receipt_commit_actor_loop(
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     }
                 }
-                commit_receipt_batch(&pool, requests, flushes);
+                pending_flush_error = commit_receipt_batch(&pool, requests, flushes);
             }
             ReceiptCommitCommand::Flush(response) => {
-                let _ = response.send(Ok(()));
+                let result = match &pending_flush_error {
+                    Some(error) => Err(receipt_store_error_snapshot(error)),
+                    None => Ok(()),
+                };
+                let _ = response.send(result);
             }
         }
     }
@@ -196,7 +201,7 @@ fn commit_receipt_batch(
     pool: &Pool<SqliteConnectionManager>,
     requests: Vec<ReceiptCommitRequest>,
     flushes: Vec<mpsc::SyncSender<Result<(), ReceiptStoreError>>>,
-) {
+) -> Option<ReceiptStoreError> {
     let results = append_receipt_batch(pool, &requests);
     let flush_error = results
         .iter()
@@ -211,6 +216,7 @@ fn commit_receipt_batch(
         };
         let _ = response.send(result);
     }
+    flush_error
 }
 
 fn append_receipt_batch(
@@ -361,7 +367,7 @@ impl SqliteReceiptStore {
     ) -> Result<u64, ReceiptStoreError> {
         let receipt = decode_canonical_chio_receipt(canonical.as_ref())?;
         let raw_json = canonical_receipt_json(canonical.as_ref())?;
-        self.append_chio_receipt_canonical_record(&receipt, raw_json)
+        self.append_verified_chio_receipt_record(&receipt, raw_json)
     }
 
     pub fn append_chio_receipt_canonical_bytes_returning_seq(
@@ -371,7 +377,7 @@ impl SqliteReceiptStore {
         self.append_chio_receipt_canonical_returning_seq(canonical)
     }
 
-    fn append_chio_receipt_canonical_record(
+    fn append_verified_chio_receipt_record(
         &self,
         receipt: &ChioReceipt,
         raw_json: &str,

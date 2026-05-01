@@ -32,7 +32,14 @@ impl OtlpGrpcIngress {
         &self,
         request: &OtlpGrpcTraceExport,
     ) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
-        Ok(self.bounded.export(request.clone())?.sink)
+        let summary = self.bounded.export(request.clone())?;
+        if summary.queue.dropped_batches() > 0 {
+            return Err(OTelReceiptExportError::Queue(format!(
+                "OTEL queue dropped {} batch(es) during export",
+                summary.queue.dropped_batches()
+            )));
+        }
+        Ok(summary.sink)
     }
 
     pub fn enqueue(
@@ -132,6 +139,13 @@ impl From<BoundedQueuePushSummary> for OtlpExporterEnqueueSummary {
             queued_spans: summary.queued_spans,
             queued_bytes: summary.queued_bytes,
         }
+    }
+}
+
+impl OtlpExporterEnqueueSummary {
+    fn dropped_batches(self) -> usize {
+        self.dropped_oldest_batches
+            .saturating_add(self.dropped_incoming_batches)
     }
 }
 
@@ -238,7 +252,11 @@ impl BoundedOtlpGrpcIngress {
             let item_summary = match self.sink.export_traces(&export) {
                 Ok(item_summary) => item_summary,
                 Err(error) => {
+                    let retain_batch = error.is_retryable_batch_error();
                     self.record_append_error(spans)?;
+                    if !retain_batch {
+                        let _ = self.pop_front()?;
+                    }
                     return Err(error);
                 }
             };
@@ -629,6 +647,39 @@ mod tests {
     }
 
     #[test]
+    fn ingress_facade_reports_queue_admission_drops() -> Result<(), Box<dyn Error>> {
+        let recorder = Arc::new(RecordingCanonicalSink::default());
+        let sink = ReceiptStoreSink::new_canonical(
+            recorder,
+            ReceiptStoreSinkConfig::new(Keypair::generate()),
+        );
+        let ingress = OtlpGrpcIngress::with_queue_config(
+            sink,
+            OtlpExporterQueueConfig {
+                max_queued_batches: 0,
+                max_queued_spans: 8,
+                max_queued_bytes: 8192,
+                drain_limit: 8,
+            },
+        );
+
+        let error = match ingress.export(&export_with_span("span-dropped")) {
+            Ok(_) => {
+                return Err(std::io::Error::other("dropped export was reported as accepted").into())
+            }
+            Err(error) => error,
+        };
+        let snapshot = ingress.snapshot()?;
+
+        assert!(matches!(error, OTelReceiptExportError::Queue(_)));
+        assert_eq!(snapshot.dropped_incoming_batches, 1);
+        assert_eq!(snapshot.dropped_incoming_spans, 1);
+        assert_eq!(snapshot.appended_batches, 0);
+
+        Ok(())
+    }
+
+    #[test]
     fn bounded_ingress_keeps_failed_append_queued() -> Result<(), Box<dyn Error>> {
         let sink = ReceiptStoreSink::new_canonical(
             Arc::new(FailingCanonicalSink),
@@ -646,6 +697,34 @@ mod tests {
         assert_eq!(enqueue.enqueued_batches, 1);
         assert!(matches!(error, OTelReceiptExportError::ReceiptStore(_)));
         assert_eq!(snapshot.queued_batches, 1);
+        assert_eq!(snapshot.append_error_batches, 1);
+        assert_eq!(snapshot.append_error_spans, 1);
+        assert_eq!(snapshot.appended_batches, 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_ingress_drops_non_retryable_failed_batch() -> Result<(), Box<dyn Error>> {
+        let recorder = Arc::new(RecordingCanonicalSink::default());
+        let ingress = bounded_ingress(recorder, OtlpExporterQueueConfig::default());
+        let invalid = OtlpGrpcTraceExport::from_spans(vec![OtlpSpan::new(
+            "not-a-trace-id",
+            "0123456789abcdef",
+            "span-invalid",
+        )
+        .with_attribute("chio.verdict", serde_json::json!("allow"))]);
+
+        let enqueue = ingress.enqueue(invalid)?;
+        let error = match ingress.drain() {
+            Ok(_) => return Err(std::io::Error::other("invalid batch was accepted").into()),
+            Err(error) => error,
+        };
+        let snapshot = ingress.snapshot()?;
+
+        assert_eq!(enqueue.enqueued_batches, 1);
+        assert!(matches!(error, OTelReceiptExportError::InvalidSpan(_)));
+        assert_eq!(snapshot.queued_batches, 0);
         assert_eq!(snapshot.append_error_batches, 1);
         assert_eq!(snapshot.append_error_spans, 1);
         assert_eq!(snapshot.appended_batches, 0);

@@ -1276,6 +1276,81 @@ fn receipt_commit_flush_reports_queued_batch_error() -> Result<(), Box<dyn std::
 }
 
 #[test]
+fn receipt_commit_flush_reports_full_batch_error() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-receipts-full-batch-flush-error");
+    let store = SqliteReceiptStore::open(&path)?;
+    let mut results = Vec::new();
+
+    for i in 0..RECEIPT_GROUP_COMMIT_MAX_BATCH {
+        let mut receipt = sample_receipt_with_id(&format!("rcpt-full-batch-flush-error-{i}"));
+        if i == RECEIPT_GROUP_COMMIT_MAX_BATCH - 1 {
+            receipt.timestamp = u64::MAX;
+        }
+        let raw_json = serde_json::to_string(&receipt)?;
+        let (response, result) = std::sync::mpsc::sync_channel(1);
+        store
+            .receipt_commit_actor
+            .sender
+            .send(ReceiptCommitCommand::Append(Box::new(
+                ReceiptCommitRequest {
+                    receipt,
+                    raw_json,
+                    response,
+                },
+            )))
+            .map_err(|_| std::io::Error::other("send receipt append command"))?;
+        results.push(result);
+    }
+
+    let error = match store.flush_receipt_writes() {
+        Ok(()) => panic!("expected timestamp conflict after full receipt batch"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        chio_kernel::ReceiptStoreError::Conflict(message)
+            if message.contains("receipt timestamp")
+    ));
+    for result in results {
+        assert!(result
+            .recv()
+            .map_err(|_| std::io::Error::other("receive receipt append result"))?
+            .is_err());
+    }
+    assert_eq!(store.tool_receipt_count()?, 0);
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
+fn receipt_pool_sizes_reject_zero_capacity() {
+    let path = unique_db_path("chio-receipts-zero-pool");
+
+    let reader_error = match SqliteReceiptStore::open_with_pool_sizes(&path, 0, 1) {
+        Ok(_) => panic!("expected zero reader pool capacity to fail"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        reader_error,
+        chio_kernel::ReceiptStoreError::Pool(message)
+            if message.contains("reader receipt sqlite pool max_size")
+    ));
+
+    let writer_error = match SqliteReceiptStore::open_with_pool_sizes(&path, 1, 0) {
+        Ok(_) => panic!("expected zero writer pool capacity to fail"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        writer_error,
+        chio_kernel::ReceiptStoreError::Pool(message)
+            if message.contains("writer receipt sqlite pool max_size")
+    ));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn append_chio_receipt_returning_seq_supports_concurrent_writers() {
     let path = unique_db_path("chio-receipts-concurrent");
     let store = Arc::new(SqliteReceiptStore::open(&path).unwrap());
