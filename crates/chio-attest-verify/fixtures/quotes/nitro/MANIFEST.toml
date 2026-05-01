@@ -15,48 +15,48 @@ path = "positive/nitro_kernel_seed_09_root_08.bin"
 role = "positive"
 role_tag = "aws-nitro-bound-default"
 note = "Bound to KERNEL_SEED=[9;32], RECEIPT_ROOT=[8;32]; default cabundle."
-size_bytes = 1220
-sha256 = "37554054ed94289532d2e76829b608f301f9f006700bbc03538f01289cd67568"
+size_bytes = 1296
+sha256 = "654c779495d9deaa2bb9aab28fb6f9f4effba10ac981fb9c48981d10c2142fa4"
 
 [[fixture]]
 path = "positive/nitro_kernel_seed_09_root_08_alt_module.bin"
 role = "positive"
 role_tag = "aws-nitro-bound-alt-module-id"
 note = "Same binding; alternate module_id exercises text field path."
-size_bytes = 1219
-sha256 = "6851467442335131847c16e3e46bb3cd69272a70188fc4f3e5b0e0437a129e34"
+size_bytes = 1295
+sha256 = "de6897c96693996874321ddf4e032b13429fb36e73629fda1c3a428fc12f780d"
 
 [[fixture]]
 path = "positive/nitro_kernel_seed_09_root_08_long_sig.bin"
 role = "positive"
 role_tag = "aws-nitro-bound-long-sig"
-note = "Bound; alternate signature length exercises envelope tail."
-size_bytes = 1256
-sha256 = "ef0c300febd9a78ab16ecbbe9a0b90c9799655d233094ac04b9260722b93aa6c"
+note = "Bound; alternate timestamp changes the signed COSE payload."
+size_bytes = 1296
+sha256 = "33e929ef40e090a09b2d7193acb756924cdec8097a3253854958985da6ab1b6f"
 
 [[fixture]]
 path = "positive/nitro_kernel_seed_09_root_08_alt_sig_byte.bin"
 role = "positive"
 role_tag = "aws-nitro-bound-alt-sig-byte"
-note = "Bound; alternate signature byte exercises envelope tail."
-size_bytes = 1220
-sha256 = "e37b3c5daa2f5eee064b70be4835560f3e073f159d8f439cdb5439c69cc833b8"
+note = "Bound; alternate module id changes the signed COSE payload."
+size_bytes = 1296
+sha256 = "197a38c1dade2e2b88d804b24f9caf53767d19f7b61fac3487b4f7776cad4c89"
 
 [[fixture]]
 path = "negative/nitro_user_data_unbound.bin"
 role = "negative"
 role_tag = "aws-nitro-user-data-mismatch"
 note = "user_data bound to a different kernel key plus receipt root."
-size_bytes = 1220
-sha256 = "a0cb026084f108b2067e4acf0223b4436c88c0038a7bf5426e83c9588842167e"
+size_bytes = 1296
+sha256 = "c62e735238e58344c9786aff30f441ee4622ab8235c6ef6ff5c3490a8df7d405"
 
 [[fixture]]
 path = "negative/nitro_mismatched_pcr0.bin"
 role = "negative"
 role_tag = "aws-nitro-pcr0-mismatch"
 note = "Bound user_data; PCR0 is not the pinned launch image."
-size_bytes = 1220
-sha256 = "0a8ae750681e8b8f1ba180d59c557e0c23d18247f4cc2124dfb0de9b95487e2b"
+size_bytes = 1296
+sha256 = "88778f39d06f55d00b599951ff7d8e0bdedd14b3457b706baca565b4740769eb"
 
 [[fixture]]
 path = "negative/nitro_certificate_mismatch.bin"
@@ -64,7 +64,7 @@ role = "negative"
 role_tag = "aws-nitro-document-leaf-mismatch"
 note = "Bound; document certificate field is not the trusted chain leaf."
 size_bytes = 1220
-sha256 = "ba6c53eac9e161a3297a10147bedd371d0e54f9c2b5c34896da5e2e8ef9a53f8"
+sha256 = "682e5ff7dd76a22bc721fcf9df8b3d96ab856a11c5edec2c937d2c1f1320e0a0"
 
 [[fixture]]
 path = "negative/nitro_root_rotation_signed_under_old_root.bin"
@@ -72,5 +72,5 @@ role = "negative"
 role_tag = "aws-nitro-root-rotation-old-leaf"
 note = "Document presents a leaf that the new (rotated) chain does not vouch for."
 size_bytes = 1228
-sha256 = "132d1394c1635ca596620df1fd6ae9900a8bc662ced6aed2b3609ded86af3387"
+sha256 = "d5bc87ed4583c40ad74abf80792d10176c25a543acc325a5f3a4f830c4dd0411"
 

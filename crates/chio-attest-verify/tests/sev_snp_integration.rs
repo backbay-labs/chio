@@ -36,12 +36,15 @@ use chio_attest_verify::{
     AttestError, QuoteTcbStatus, QuoteVerificationContext, QuoteVerifier, TeeKind,
 };
 use chio_core_types::crypto::Keypair;
+use p384::ecdsa::{SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
 
 const FIXTURES_DIR: &str = "fixtures/quotes/sev_snp";
 const KERNEL_SEED: [u8; 32] = [9u8; 32];
 const RECEIPT_ROOT: [u8; 32] = [8u8; 32];
 const PINNED_LAUNCH_DIGEST: [u8; 48] = [0x4Cu8; 48];
+const VCEK_ATTESTATION_KEY_SEED: [u8; 48] = [0x43u8; 48];
+const VLEK_ATTESTATION_KEY_SEED: [u8; 48] = [0x44u8; 48];
 
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(FIXTURES_DIR)
@@ -52,12 +55,21 @@ fn manifest_text() -> String {
         .expect("MANIFEST.toml must exist; run the generate_sev_snp_fixtures example to regenerate")
 }
 
+fn attestation_public_key(seed: &[u8; 48]) -> Vec<u8> {
+    let signing_key = SigningKey::from_bytes(seed.into()).unwrap();
+    let verifying_key = VerifyingKey::from(&signing_key);
+    verifying_key.to_encoded_point(false).as_bytes().to_vec()
+}
+
 fn collateral_at(now: SystemTime) -> SevSnpCollateral {
     let root = b"amd-kds-root-fixture".to_vec();
     SevSnpCollateral::new(
         root.clone(),
-        vec![b"amd-vcek-leaf-fixture".to_vec(), root.clone()],
-        vec![b"amd-vlek-leaf-fixture".to_vec(), root],
+        vec![
+            attestation_public_key(&VCEK_ATTESTATION_KEY_SEED),
+            root.clone(),
+        ],
+        vec![attestation_public_key(&VLEK_ATTESTATION_KEY_SEED), root],
         7,
         QuoteTcbStatus::UpToDate,
         now - Duration::from_secs(60),

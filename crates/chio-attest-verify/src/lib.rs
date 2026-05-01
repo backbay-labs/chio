@@ -42,6 +42,8 @@ pub mod sev_snp;
 mod sigstore;
 #[cfg(feature = "tee-quotes")]
 pub mod tdx;
+#[cfg(feature = "tee-quotes")]
+mod tee_signature;
 
 pub use crate::policy::{TenantPolicy, BOOTSTRAP_TENANT_ID, TENANT_POLICY_SCHEMA_VERSION};
 pub use crate::policy_loader::{TenantPolicyLoader, DEFAULT_STALENESS_HORIZON};

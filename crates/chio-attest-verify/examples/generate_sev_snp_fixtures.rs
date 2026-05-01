@@ -38,6 +38,7 @@ mod inner {
 
     use chio_attest_verify::expect_report_data;
     use chio_core_types::crypto::Keypair;
+    use p384::ecdsa::{signature::Signer as _, Signature as P384Signature, SigningKey};
     use sha2::{Digest, Sha256};
 
     const SEV_SNP_HEADER_AND_BODY_LEN: usize = 0x300;
@@ -64,6 +65,8 @@ mod inner {
     /// Launch digest pinned by the verifier; positive fixtures embed
     /// this value as the `measurement` field.
     pub(super) const PINNED_LAUNCH_DIGEST: [u8; 48] = [0x4Cu8; 48];
+    const VCEK_ATTESTATION_KEY_SEED: [u8; 48] = [0x43u8; 48];
+    const VLEK_ATTESTATION_KEY_SEED: [u8; 48] = [0x44u8; 48];
 
     #[derive(Debug)]
     struct FixtureSpec {
@@ -79,11 +82,24 @@ mod inner {
         measurement: [u8; 48],
         report_data: [u8; 64],
         body_marker: &'static [u8],
-        sig_byte: u8,
+    }
+
+    fn signing_key(seed: &[u8; 48]) -> SigningKey {
+        SigningKey::from_bytes(seed.into()).unwrap()
+    }
+
+    fn sign_report(key_select: u8, message: &[u8]) -> Vec<u8> {
+        let seed = if key_select == KEY_SELECT_VLEK {
+            &VLEK_ATTESTATION_KEY_SEED
+        } else {
+            &VCEK_ATTESTATION_KEY_SEED
+        };
+        let signature: P384Signature = signing_key(seed).sign(message);
+        signature.to_vec()
     }
 
     fn write_envelope(spec: &FixtureSpec) -> Vec<u8> {
-        let signature_len = 1usize;
+        let signature_len = 96usize;
         let mut quote = vec![0u8; SEV_SNP_SIGNATURE_BYTES_OFFSET + signature_len];
         quote[SEV_SNP_VERSION_OFFSET..SEV_SNP_VERSION_OFFSET + 4]
             .copy_from_slice(&spec.version.to_le_bytes());
@@ -105,7 +121,9 @@ mod inner {
             .copy_from_slice(&spec.report_data);
         quote[SEV_SNP_SIGNATURE_LEN_OFFSET..SEV_SNP_SIGNATURE_LEN_OFFSET + 4]
             .copy_from_slice(&(signature_len as u32).to_le_bytes());
-        quote[SEV_SNP_SIGNATURE_BYTES_OFFSET] = spec.sig_byte;
+        let signature = sign_report(spec.key_select, &quote[..SEV_SNP_HEADER_AND_BODY_LEN]);
+        quote[SEV_SNP_SIGNATURE_BYTES_OFFSET..SEV_SNP_SIGNATURE_BYTES_OFFSET + signature_len]
+            .copy_from_slice(&signature);
         quote
     }
 
@@ -133,7 +151,6 @@ mod inner {
                 measurement: PINNED_LAUNCH_DIGEST,
                 report_data: bound,
                 body_marker: b"chio-sev-snp-positive-vcek",
-                sig_byte: 0xA1,
             },
             FixtureSpec {
                 file_name: "positive/sev_snp_kernel_seed_09_root_08_vlek.bin",
@@ -148,7 +165,6 @@ mod inner {
                 measurement: PINNED_LAUNCH_DIGEST,
                 report_data: bound,
                 body_marker: b"chio-sev-snp-positive-vlek",
-                sig_byte: 0xA2,
             },
             FixtureSpec {
                 file_name: "positive/sev_snp_kernel_seed_09_root_08_vmpl1.bin",
@@ -163,7 +179,6 @@ mod inner {
                 measurement: PINNED_LAUNCH_DIGEST,
                 report_data: bound,
                 body_marker: b"chio-sev-snp-positive-vmpl1",
-                sig_byte: 0xA3,
             },
             FixtureSpec {
                 file_name: "positive/sev_snp_kernel_seed_09_root_08_alt_sig.bin",
@@ -178,7 +193,6 @@ mod inner {
                 measurement: PINNED_LAUNCH_DIGEST,
                 report_data: bound,
                 body_marker: b"chio-sev-snp-positive-alt-sig",
-                sig_byte: 0xB1,
             },
         ];
 
@@ -196,7 +210,6 @@ mod inner {
                 measurement: PINNED_LAUNCH_DIGEST,
                 report_data: unrelated_pair,
                 body_marker: b"chio-sev-snp-negative-unbound",
-                sig_byte: 0xC1,
             },
             FixtureSpec {
                 file_name: "negative/sev_snp_mismatched_launch_digest.bin",
@@ -211,7 +224,6 @@ mod inner {
                 measurement: [0x11u8; 48],
                 report_data: bound,
                 body_marker: b"chio-sev-snp-negative-launch-digest",
-                sig_byte: 0xC2,
             },
             FixtureSpec {
                 file_name: "negative/sev_snp_stale_tcb_marker.bin",
@@ -226,7 +238,6 @@ mod inner {
                 measurement: PINNED_LAUNCH_DIGEST,
                 report_data: bound,
                 body_marker: b"chio-sev-snp-negative-stale-tcb",
-                sig_byte: 0xC3,
             },
             FixtureSpec {
                 file_name: "negative/sev_snp_sig_algo_key_select_mismatch.bin",
@@ -241,7 +252,6 @@ mod inner {
                 measurement: PINNED_LAUNCH_DIGEST,
                 report_data: bound,
                 body_marker: b"chio-sev-snp-negative-sig-algo-key-select",
-                sig_byte: 0xC4,
             },
         ];
 

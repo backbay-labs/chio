@@ -44,6 +44,7 @@
 
 use std::time::SystemTime;
 
+use crate::tee_signature::verify_p384_signature_with_attestation_key;
 use crate::{
     expect_report_data, AttestError, QuoteTcbStatus, QuoteVerificationContext, QuoteVerifier,
     TeeKind, VerifiedQuote,
@@ -248,6 +249,12 @@ impl QuoteVerifier for SevSnpVerifier {
     ) -> Result<VerifiedQuote, AttestError> {
         let parsed = ParsedSevSnpQuote::parse(quote)?;
         let tcb_status = self.verify_collateral(parsed.key_select)?;
+        let attestation_key = self.attestation_key(parsed.key_select)?;
+        verify_p384_signature_with_attestation_key(
+            attestation_key,
+            &parsed.signed_report,
+            &parsed.signature,
+        )?;
 
         if parsed.measurement != self.expected_launch_digest {
             return Err(AttestError::QuoteRejected(
@@ -274,6 +281,8 @@ struct ParsedSevSnpQuote {
     key_select: SevSnpKeySelect,
     measurement: [u8; 48],
     report_data: [u8; 64],
+    signed_report: Vec<u8>,
+    signature: Vec<u8>,
 }
 
 impl ParsedSevSnpQuote {
@@ -373,7 +382,20 @@ impl ParsedSevSnpQuote {
             key_select,
             measurement,
             report_data,
+            signed_report: quote[..SEV_SNP_HEADER_AND_BODY_LEN].to_vec(),
+            signature: quote[SEV_SNP_SIGNATURE_BYTES_OFFSET..expected_len].to_vec(),
         })
+    }
+}
+
+impl SevSnpVerifier {
+    fn attestation_key(&self, key_select: SevSnpKeySelect) -> Result<&[u8], AttestError> {
+        let chain = match key_select {
+            SevSnpKeySelect::Vcek => &self.collateral.vcek_chain_der,
+            SevSnpKeySelect::Vlek => &self.collateral.vlek_chain_der,
+        };
+        let leaf = chain.first().ok_or(AttestError::TrustRoot)?;
+        Ok(leaf.as_slice())
     }
 }
 

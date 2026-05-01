@@ -50,8 +50,9 @@
 use std::time::{Duration, SystemTime};
 
 use coset::cbor::Value as CborValue;
-use coset::{CborSerializable, CoseSign1};
+use coset::{Algorithm, CborSerializable, CoseSign1};
 
+use crate::tee_signature::verify_p384_signature_with_attestation_key;
 use crate::{
     expect_report_data, AttestError, QuoteTcbStatus, QuoteVerificationContext, QuoteVerifier,
     TeeKind, VerifiedQuote,
@@ -209,9 +210,21 @@ impl QuoteVerifier for NitroVerifier {
                 "nitro cose_sign1 signature is empty".to_string(),
             ));
         }
+        if cose.protected.header.alg != Some(Algorithm::Assigned(coset::iana::Algorithm::ES384)) {
+            return Err(AttestError::Malformed(
+                "nitro cose_sign1 algorithm is not ES384".to_string(),
+            ));
+        }
 
         let parsed = ParsedNitroDocument::parse(payload_bytes)?;
         let tcb_status = self.verify_collateral(&parsed.certificate)?;
+        cose.verify_signature(b"", |signature, signed_message| {
+            verify_p384_signature_with_attestation_key(
+                &parsed.certificate,
+                signed_message,
+                signature,
+            )
+        })?;
 
         if parsed.pcr0 != self.expected_pcr0 {
             return Err(AttestError::QuoteRejected(
