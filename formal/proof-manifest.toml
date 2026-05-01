@@ -158,3 +158,37 @@ notes = [
 discharged_assumptions = [
   "RETIRED-SQLITE-CROSS-ROW|MonotoneLog (formal/tla/RevocationPropagation.tla),budget_per_row_invariant (crates/chio-kernel/src/budget_store.rs::BudgetUsageRecord)|crates/chio-kernel/src/receipt_store.rs,crates/chio-kernel/src/budget_store.rs,crates/chio-kernel-core/src/evaluate.rs::evaluate|Cross-row SQLite atomicity for the audit-log append plus budget-state update is no longer assumed. The MonotoneLog TLA invariant proves the per-authority receipt log is append-only and strictly time-monotone, and the per single-row write budget invariant proves BudgetUsageRecord updates are individually atomic and monotone in seq/total_cost. Their conjunction means a partial-pair crash is observable: the next evaluate either sees no receipt (deny) or sees an inconsistent budget row that the per-row invariant rejects (deny). Therefore no allow can outrun its log entry without violating one of two named properties, and the prior cross-row assumption is retired.",
 ]
+
+# M04 P5.T5 assumptions-toml ledger row.
+#
+# Decision: ASSUME-NETWORK-TRANSPORT remains in
+# `formal/assumptions.toml` `required_assumption_ids` unchanged.
+#
+# Rationale: the M04.P4.T6 `RevocationFreshness` invariant in
+# `formal/tla/RevocationPropagation.tla` (~L321) constrains every
+# recorded local revocation epoch to be strictly less than the global
+# clock value, which discharges only the LOCAL freshness gate
+# (single-authority observed-epoch monotonicity vs the model clock).
+# It does NOT model multiple gossip peers, vector-clock-ordered
+# delivery, or any other cross-peer ordering primitive: the predicate
+# is `\A a \in ProcSet, c \in CapSet : rev_epoch[a][c] # 0 =>
+# rev_epoch[a][c] < clock`, where `clock` is a single shared variable
+# rather than a per-peer logical timestamp.
+#
+# Therefore the cross-peer ordering claim that
+# `ASSUME-NETWORK-TRANSPORT` covers ("authenticated messages received
+# by Chio are not silently rewritten below TLS or signature checks")
+# remains audited rather than discharged. The wire-level signature
+# pinning in `crates/chio-federation/src/revocation_gossip.rs`
+# (signer_id pin, signature verification before
+# `RevocationView::install_if_newer`) is the operational mitigation;
+# the formal discharge is left for a future milestone that ships a
+# distributed-time TLA model.
+#
+# This ledger row exists so the milestone-success criterion ("the
+# `assumptions.toml` ledger updated (or explicitly documented as
+# unchanged)") is traceable from the proof-manifest, not just the
+# audit doc.
+m04_p5_t5_assumptions_decision = "ASSUME-NETWORK-TRANSPORT-unchanged"
+m04_p5_t5_rationale_anchor = "formal/tla/RevocationPropagation.tla::RevocationFreshness"
+m04_p5_t5_audit_doc = ".planning/audits/M04-delegation-revocation.md"

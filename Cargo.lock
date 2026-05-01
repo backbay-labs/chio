@@ -3585,6 +3585,8 @@ dependencies = [
 name = "chio-revocation-oracle"
 version = "0.1.0"
 dependencies = [
+ "chio-federation",
+ "chio-kernel-core",
  "criterion",
  "proptest",
  "rs_merkle",

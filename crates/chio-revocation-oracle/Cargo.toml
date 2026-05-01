@@ -18,13 +18,41 @@ thiserror = { workspace = true }
 rs_merkle = { workspace = true }
 sha2 = { workspace = true }
 
+[features]
+default = []
+# M04 P5.T1 acceptance gate: enables the 3-tier swarm e2e test which
+# wires this crate's signed-epoch-root path through the federation
+# gossip push queue into a `chio-kernel-core::RevocationView` cache.
+# The feature is dev-only (no library-side surface changes); it gates
+# the integration test target itself so the workspace default build
+# stays untouched.
+delegation_v2 = []
+
 [dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }
+chio-federation = { path = "../chio-federation" }
+chio-kernel-core = { path = "../chio-kernel-core" }
 
 [[bench]]
 name = "oracle_throughput"
 harness = false
+
+# M04.P5.T1 swarm acceptance test target. Runs only with
+# `--features delegation_v2` so the trust-boundary surface stays gated.
+[[test]]
+name = "swarm_revocation_e2e"
+path = "tests/swarm_revocation_e2e.rs"
+required-features = ["delegation_v2"]
+
+# M04.P5.T2 receipt-chain proof target. Walks the JSONL receipt log
+# emitted by an in-process re-run of the swarm fixture and asserts
+# the trajectory-1 M03 NoAllowAfterRevoke invariant on the real
+# receipts: every allow has seen_epoch < revoke_epoch.
+[[test]]
+name = "receipt_chain_proof"
+path = "tests/receipt_chain_proof.rs"
+required-features = ["delegation_v2"]
 
 [lints.clippy]
 unwrap_used = "deny"

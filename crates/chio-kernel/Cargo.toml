@@ -13,7 +13,14 @@ publish = false
 name = "chio_kernel"
 
 [features]
-default = ["legacy-sync"]
+# M04.P5.T3 (default-on flip): `delegation_v2` is now part of the kernel's
+# default feature set so the trust-boundary trajectory's recursive-
+# delegation oracle consultation runs on every dispatch out of the box.
+# Downstream consumers that need the legacy single-step path can opt
+# back via `default-features = false` plus an explicit `legacy-sync`
+# selection. See `docs/migrations/M04-delegation-v2.md` for the full
+# upgrade contract.
+default = ["legacy-sync", "delegation_v2"]
 legacy-sync = []
 dhat-heap = []
 otel = ["dep:opentelemetry-semantic-conventions"]
