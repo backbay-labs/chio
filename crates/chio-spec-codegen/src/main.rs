@@ -23,7 +23,8 @@ use std::process::ExitCode;
 
 const USAGE: &str = "usage: chio-spec-codegen <schemas-dir> <out-dir>\n\
                      \x20      chio-spec-codegen --errors-only\n\
-                     \x20      chio-spec-codegen --threat-model <input.json> --out <stubs-dir>";
+                     \x20      chio-spec-codegen --threat-model <input.json> --out <stubs-dir>\n\
+                     \x20      chio-spec-codegen --threat-model-doc [--repo-root <path>]";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -46,6 +47,44 @@ fn main() -> ExitCode {
                     out.join(chio_spec_codegen::ERROR_CODES_OUTPUT).display(),
                     out.join(chio_spec_codegen::MOD_FILE).display()
                 );
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("chio-spec-codegen: {err}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
+    if schemas_dir == "--threat-model-doc" {
+        // chio-spec-codegen --threat-model-doc [--repo-root <path>]
+        let repo_root: PathBuf = match args.next().as_deref() {
+            None => match std::env::current_dir() {
+                Ok(d) => d,
+                Err(err) => {
+                    eprintln!("error: cannot resolve current directory: {err}");
+                    return ExitCode::FAILURE;
+                }
+            },
+            Some("--repo-root") => match args.next() {
+                Some(p) => PathBuf::from(p),
+                None => {
+                    eprintln!("error: --repo-root requires a path argument");
+                    return ExitCode::FAILURE;
+                }
+            },
+            Some(other) => {
+                eprintln!("error: unexpected argument {other}");
+                return ExitCode::FAILURE;
+            }
+        };
+        if args.next().is_some() {
+            eprintln!("error: unexpected extra argument");
+            return ExitCode::FAILURE;
+        }
+        return match chio_spec_codegen::codegen_threat_coverage_doc_default(&repo_root) {
+            Ok(out) => {
+                println!("wrote {}", out.display());
                 ExitCode::SUCCESS
             }
             Err(err) => {
