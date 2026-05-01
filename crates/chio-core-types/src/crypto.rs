@@ -1215,9 +1215,9 @@ pub fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>> {
 
 /// Serialize a value to shared canonical JSON bytes.
 pub fn canonical_json_shared_bytes<T: Serialize>(value: &T) -> Result<SharedCanonicalBytes> {
-    Ok(SharedCanonicalBytes::new(CanonicalBytes::from_serializable(
-        value,
-    )?))
+    Ok(SharedCanonicalBytes::new(
+        CanonicalBytes::from_serializable(value)?,
+    ))
 }
 
 /// Serialize a value to a canonical JSON string (RFC 8785 / JCS).
