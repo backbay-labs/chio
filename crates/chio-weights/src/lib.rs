@@ -44,6 +44,5 @@ pub use bundle::{verify_model_card_bundle, VerifiedModelCard};
 pub use card::{weights_hash_of, ModelCard, StringSet, CARD_VERSION_V1};
 pub use error::WeightsError;
 pub use lineage::{
-    anchor_model_card, verify_model_card_anchor, ModelCardLineageAnchor,
-    MODEL_CARD_ANCHOR_SCHEMA,
+    anchor_model_card, verify_model_card_anchor, ModelCardLineageAnchor, MODEL_CARD_ANCHOR_SCHEMA,
 };
