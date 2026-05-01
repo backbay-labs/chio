@@ -24,6 +24,7 @@ schemars = "0.8"
 serde_json = { workspace = true }
 prettyplease = "0.2"
 syn = { version = "2", features = ["full"] }
+jsonschema = { workspace = true }
 
 [lints]
 workspace = true

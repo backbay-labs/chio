@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://chio.dev/spec/security/chio-threat-model.schema.json",
+  "title": "Chio Threat Model v1",
+  "description": "Schema for spec/security/chio-threat-model.v1.json. Asserts the four top-level keys, the boundary.surfaces and boundary.assets enums, and the per-threat object shape (id, name, surfaces, mitigations, residualRisk, optional coveredBy and coverage_state).",
+  "type": "object",
+  "required": ["schema", "updatedAt", "boundary", "threats"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "chio.threat-model.v1"
+    },
+    "updatedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "boundary": {
+      "type": "object",
+      "required": ["focus", "surfaces", "assets"],
+      "additionalProperties": false,
+      "properties": {
+        "focus": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surfaces": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "native_chio",
+              "hosted_mcp",
+              "trust_control",
+              "kernel_to_tool"
+            ]
+          }
+        },
+        "assets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "capability_tokens",
+              "delegation_state",
+              "session_sender_binding",
+              "kernel_authenticity",
+              "tool_execution_confinement",
+              "receipts",
+              "runtime_availability"
+            ]
+          }
+        }
+      }
+    },
+    "threats": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/threat"
+      }
+    },
+    "transportRequirements": {
+      "type": "object"
+    }
+  },
+  "definitions": {
+    "threat": {
+      "type": "object",
+      "required": ["id", "name", "surfaces", "mitigations", "residualRisk"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "minLength": 3
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "mitigations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/mitigation"
+          }
+        },
+        "residualRisk": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coveredBy": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "coverage_state": {
+          "type": "string",
+          "enum": ["covered", "partial", "pending"],
+          "description": "Coverage status of the threat ID. covered = a green test exists; partial = test exists but defends only part of the attack surface (residual gap documented in the milestone audit doc for the partial owner); pending = no test mapping yet. The threat-model-coverage CI gate (M05.P5.T4) treats partial as PASS but flags it under a separate Partial heading in docs/security/threat-coverage.md."
+        }
+      }
+    },
+    "mitigation": {
+      "type": "object",
+      "required": ["status", "control"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["existing", "planned"]
+        },
+        "control": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
