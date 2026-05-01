@@ -786,7 +786,6 @@ fn render_error_registry(path: &Path, registry: &ErrorRegistry) -> Result<String
     body.push_str("        Some(first)\n");
     body.push_str("    }\n");
     body.push_str("}\n\n");
-    body.push_str("#[must_use]\n");
     body.push_str(
         "pub fn lookup_legacy_string_code_matches(\n    code: &str,\n) -> impl Iterator<Item = &'static ErrorCodeSpec> + '_ {\n",
     );

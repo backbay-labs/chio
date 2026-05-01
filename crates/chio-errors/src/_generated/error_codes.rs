@@ -1060,7 +1060,6 @@ pub fn lookup_legacy_string_code(code: &str) -> Option<&'static ErrorCodeSpec> {
     }
 }
 
-#[must_use]
 pub fn lookup_legacy_string_code_matches(
     code: &str,
 ) -> impl Iterator<Item = &'static ErrorCodeSpec> + '_ {
