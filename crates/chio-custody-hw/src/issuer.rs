@@ -128,10 +128,10 @@ impl IssuerService {
         self
     }
 
-    /// Attach a [`CredentialRevocationOracle`] (M10.P2.T3 cascade).
+    /// Attach a [`CredentialRevocationOracle`] for the revocation cascade.
     ///
     /// Builder-style: returns the issuer with the revocation cascade
-    /// wired through the M04 sparse-Merkle oracle. When set, every mint
+    /// wired through the sparse-Merkle oracle. When set, every mint
     /// consults the oracle BEFORE recording the nonce or signing; a
     /// revoked credential fails-closed with
     /// [`CustodyError::CredentialRevoked`].
@@ -159,7 +159,7 @@ impl IssuerService {
     ///   [`CustodyError::UserVerificationRequired`]. Custody issuance
     ///   requires UV; an authenticator that verified cryptographically but
     ///   did not perform a user-verifying gesture (PIN, biometric) is
-    ///   possession-only authentication, which the M10 trust contract
+    ///   possession-only authentication, which the custody trust contract
     ///   forbids.
     pub fn mint_capability(
         &self,
@@ -178,13 +178,12 @@ impl IssuerService {
             return Err(CustodyError::UserVerificationRequired);
         }
 
-        // Revocation cascade (M10.P2.T3). The check happens AFTER
-        // audience and UV gates but BEFORE recording the nonce or
-        // signing so a revoked credential never advances the nonce
-        // store nor consumes a signing budget. The cascade is
-        // synchronous from the issuer's point of view: revoking the
-        // credential at the M04 oracle denies the next mint within
-        // the current epoch.
+        // Revocation cascade. The check happens AFTER audience and UV
+        // gates but BEFORE recording the nonce or signing so a revoked
+        // credential never advances the nonce store nor consumes a
+        // signing budget. The cascade is synchronous from the issuer's
+        // point of view: revoking the credential at the oracle denies
+        // the next mint within the current epoch.
         if let Some(oracle) = &self.revocation {
             if oracle.is_revoked(&verified.credential_id_b64)? {
                 return Err(CustodyError::CredentialRevoked);
@@ -199,8 +198,8 @@ impl IssuerService {
             now,
         );
 
-        // Replay-attack resistance (M10.P2.T2). The nonce store is keyed
-        // on (credential_id, challenge_nonce). The check happens BEFORE
+        // Replay-attack resistance. The nonce store is keyed on
+        // (credential_id, challenge_nonce). The check happens BEFORE
         // signing so a replayed assertion never produces a signed
         // capability, even if the signer is fast enough to keep up.
         // Retention is `cap.exp + clock_skew` (clock_skew = 30s default

@@ -1,4 +1,4 @@
-//! `arc bind <provider> --card <path>` subcommand (M10 P4.T6).
+//! `arc bind <provider> --card <path>` subcommand.
 //!
 //! Loads a model card from disk, optionally verifies the cosign bundle
 //! through `chio_attest_verify::SigstoreVerifier::verify_bundle`, and

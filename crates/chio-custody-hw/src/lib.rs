@@ -20,11 +20,10 @@
 //!
 //! # Forbidden constructs
 //!
-//! Per the workspace EXECUTION-BOARD policy "No verifier or trust-boundary
-//! stubs", this crate forbids `unsafe`, `unwrap`, and `expect` at the lint
-//! level. PRs touching this crate also require a
-//! `rg -n 'todo!\(|unimplemented!\(|panic!\('` sweep across `src/` and
-//! `tests/`.
+//! No verifier or trust-boundary stubs: this crate forbids `unsafe`,
+//! `unwrap`, and `expect` at the lint level. PRs touching this crate
+//! also require a `rg -n 'todo!\(|unimplemented!\(|panic!\('` sweep
+//! across `src/` and `tests/`.
 
 #![forbid(unsafe_code)]
 #![forbid(clippy::unwrap_used)]

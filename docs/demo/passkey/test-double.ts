@@ -50,7 +50,7 @@ function asArrayBuffer(s: string): ArrayBuffer {
 function fixtureCapability(audience: string, scopes: string[], nonce: string): Record<string, unknown> {
   // iat / exp are static-fixture timestamps so the demo render is
   // reproducible; in production the issuer fills them off the kernel
-  // clock (M10.P1.T3).
+  // clock.
   return {
     audience,
     credential_id: FIXTURE_CREDENTIAL_ID,
@@ -153,7 +153,7 @@ export async function simulateKernelCall(
   cap: { credential_id: string },
   state: RevocationState,
 ): Promise<KernelVerdict> {
-  // No real network; the kernel-side e2e (P2.T6) covers the wire path.
+  // No real network; the kernel-side e2e covers the wire path.
   if (state.revokedCredentialIds.has(cap.credential_id)) {
     return { allowed: false, errorCode: 'urn:chio:error:custody:credential-revoked' };
   }

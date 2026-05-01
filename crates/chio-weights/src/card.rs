@@ -18,8 +18,8 @@
 //! # Trust contract
 //!
 //! - `weights_hash` is a lowercase 64-character hexadecimal SHA-256 digest.
-//!   The kernel binding refusal (P4.T5) recomputes the digest from the
-//!   loaded weights blob and rejects fail-closed on mismatch.
+//!   The kernel binding refusal recomputes the digest from the loaded
+//!   weights blob and rejects fail-closed on mismatch.
 //! - `allowed_capability_set` is the upper bound on the kernel's grantable
 //!   scope set under this card. Provider bind verifies subset containment
 //!   for the requested capability set.
@@ -172,9 +172,7 @@ impl ModelCard {
                 self.card_version
             )));
         }
-        if self.weights_hash.len() != 64
-            || !self.weights_hash.bytes().all(is_lowercase_hex_byte)
-        {
+        if self.weights_hash.len() != 64 || !self.weights_hash.bytes().all(is_lowercase_hex_byte) {
             return Err(WeightsError::SchemaRejected(format!(
                 "weights_hash must be 64 lowercase hex chars, got {:?}",
                 self.weights_hash
@@ -225,7 +223,7 @@ impl ModelCard {
 }
 
 /// Compute the lowercase hex SHA-256 of a byte slice. Used by the kernel
-/// binding refusal path in P4.T5 to recompute `weights_hash` from a loaded
+/// binding refusal path to recompute `weights_hash` from a loaded
 /// weights blob.
 #[must_use]
 pub fn weights_hash_of(bytes: &[u8]) -> String {

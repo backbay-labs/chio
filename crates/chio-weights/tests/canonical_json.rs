@@ -7,7 +7,7 @@
 //!
 //! Two implementations of the schema (Rust, TypeScript / Python / Go)
 //! producing the same logical card MUST produce byte-identical output;
-//! cosign signatures (P4.T3) are taken over these bytes.
+//! cosign signatures are taken over these bytes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -54,7 +54,10 @@ fn canonical_json_round_trips_through_decode() {
     let again = ModelCard::from_canonical_json(&bytes).unwrap();
     assert_eq!(card, again, "decode must reconstruct the input card");
     let bytes2 = again.to_canonical_json().unwrap();
-    assert_eq!(bytes, bytes2, "re-encode must produce byte-identical output");
+    assert_eq!(
+        bytes, bytes2,
+        "re-encode must produce byte-identical output"
+    );
 }
 
 #[test]

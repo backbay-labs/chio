@@ -1,4 +1,4 @@
-//! Replay-attack resistance integration coverage (M10.P2.T2).
+//! Replay-attack resistance integration coverage.
 //!
 //! Each test below exercises the issuer with a [`PasskeyNonceStore`]
 //! attached:

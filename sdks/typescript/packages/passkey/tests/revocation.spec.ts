@@ -1,11 +1,12 @@
-// M10.P3.T4: end-to-end revocation test.
+// End-to-end revocation test.
 //
 // Asserts that a capability minted from a passkey assertion is denied at
-// the kernel within an M04 epoch (one second in the test config) after
-// the issuer revokes the underlying WebAuthn credential. The kernel side
-// of the same scenario is covered by crates/chio-custody-hw end-to-end
-// (M10.P2.T6); this file pins the browser-side contract so the SDK
-// surface signals the cascade with a stable urn:chio:error:* code.
+// the kernel within one revocation-oracle epoch (one second in the test
+// config) after the issuer revokes the underlying WebAuthn credential.
+// The kernel side of the same scenario is covered by
+// crates/chio-custody-hw end-to-end; this file pins the browser-side
+// contract so the SDK surface signals the cascade with a stable
+// urn:chio:error:* code.
 //
 // Cascade shape (matches the kernel-side e2e):
 //
@@ -158,9 +159,9 @@ describe('@chio/passkey revocation cascade', () => {
   test('mint after revoke returns a fresh capability the kernel still denies', async () => {
     // Browser-side mint succeeds (the test-double doesn't gate mint on
     // revocation; that policy lives at the issuer in the kernel-side
-    // implementation, M10.P2.T3). Even so, the kernel verdict denies the
-    // capability because the credential id is in the revocation set, so
-    // the cascade closes the loop.
+    // implementation). Even so, the kernel verdict denies the capability
+    // because the credential id is in the revocation set, so the cascade
+    // closes the loop.
     const cap = await requestCapability({
       rpId: 'localhost',
       audience: AUDIENCE,

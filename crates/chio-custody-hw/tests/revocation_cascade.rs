@@ -1,7 +1,7 @@
-//! Revocation-cascade integration coverage (M10.P2.T3).
+//! Revocation-cascade integration coverage.
 //!
-//! Soft-dep from the ticket: "Revoking the WebAuthn credential at the
-//! issuer denies next call within an M04 epoch." These tests assert that
+//! Invariant: revoking the WebAuthn credential at the issuer denies the
+//! next call within one revocation-oracle epoch. These tests assert that
 //! invariant end to end through the issuer mint surface.
 
 use std::sync::Arc;
