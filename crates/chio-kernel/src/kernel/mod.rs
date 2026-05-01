@@ -871,8 +871,8 @@ pub struct KernelConfig {
 /// `allow_hybrid`, `pq_required`) and pairs the floor with the operator's
 /// 32-byte ML-DSA-65 keygen seed. Construct one of these from a parsed
 /// HushSpec policy plus the boot-loaded PQ seed and pass it to
-/// [`ChioKernel::with_hybrid_signing_backend`] to obtain a `Box<dyn
-/// SigningBackend>` for hybrid receipt signing.
+/// [`ChioKernel::with_hybrid_signing_backend`] with a verified self-quote
+/// port to obtain a `Box<dyn SigningBackend>` for hybrid receipt signing.
 ///
 /// Kept as a separate input rather than folded into [`KernelConfig`] so the
 /// existing struct literal stays byte-identical for legacy callers.
@@ -892,14 +892,17 @@ pub struct HybridSigningConfig {
 
 impl ChioKernel {
     /// Construct the hybrid signing backend the kernel would use under
-    /// `hybrid`'s configured floor and PQ key material.
+    /// `hybrid`'s configured floor and PQ key material after the kernel
+    /// self-quote gate has run.
     ///
     /// Threads the kernel's classical Ed25519 keypair into a
     /// [`chio_core::crypto::Ed25519Backend`] under
     /// [`KernelCryptoFloor::AllowClassical`], or composes it with an
     /// [`chio_core::crypto::MlDsa65Backend`] derived from `hybrid.pq_signing_seed`
     /// into a [`chio_core::crypto::HybridBackend`] under
-    /// [`KernelCryptoFloor::AllowHybrid`] or [`KernelCryptoFloor::PqRequired`].
+    /// [`KernelCryptoFloor::AllowHybrid`] or [`KernelCryptoFloor::PqRequired`],
+    /// but only after [`crate::boot::load_kernel_signing_backend_after_self_quote`]
+    /// accepts `self_quote_bytes`.
     ///
     /// Receipt body construction continues to flow through the existing
     /// inline path (`build_and_sign_receipt`); callers that opt in to
@@ -908,19 +911,25 @@ impl ChioKernel {
     ///
     /// # Errors
     ///
-    /// Returns [`KernelSigningBackendError::HybridFloorRequiresPqKey`] if
-    /// the configured floor needs a PQ key but `hybrid.pq_signing_seed` is
-    /// `None`. Mirrors the policy-level check in
-    /// `chio_policy::CryptoFloor::validate_with_pq_key` so the boot path
-    /// catches the misconfiguration even when the policy crate is bypassed.
+    /// Returns [`crate::boot::KernelBootError::SelfQuoteRejected`] when the
+    /// self-quote verifier rejects a non-classical floor, or
+    /// [`crate::boot::KernelBootError::SigningBackend`] when the configured
+    /// floor needs a PQ key but `hybrid.pq_signing_seed` is `None`. Mirrors
+    /// the policy-level check in `chio_policy::CryptoFloor::validate_with_pq_key`
+    /// so the boot path catches the misconfiguration even when the policy crate
+    /// is bypassed.
     pub fn with_hybrid_signing_backend(
         &self,
         hybrid: &HybridSigningConfig,
-    ) -> Result<Box<dyn chio_core::crypto::SigningBackend>, KernelSigningBackendError> {
-        crate::kernel_signing_backend(
+        self_quote_bytes: &[u8],
+        verifier: &dyn crate::boot::KernelSelfQuoteVerifier,
+    ) -> Result<Box<dyn chio_core::crypto::SigningBackend>, crate::boot::KernelBootError> {
+        crate::boot::load_kernel_signing_backend_after_self_quote(
             hybrid.crypto_floor,
             self.config.keypair.clone(),
             hybrid.pq_signing_seed.as_ref(),
+            self_quote_bytes,
+            verifier,
         )
     }
 }
