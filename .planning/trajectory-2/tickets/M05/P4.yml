@@ -12,7 +12,7 @@
   milestone: M05
   phase: 4
   title: Define TenantPolicy schema in chio-attest-verify with reserved pq_identity_regexps field and signed_at staleness horizon (default 90 days, fail-closed)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-attest-verify/src/policy.rs
@@ -30,7 +30,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 73201afce
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -39,7 +39,7 @@
   milestone: M05
   phase: 4
   title: Implement TenantPolicy loader with Sigstore-signed verification and 90-day staleness fail-closed (horizon configurable; default 90 days; loader rejects signed_at older than horizon)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-attest-verify/src/policy.rs
@@ -58,7 +58,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: 30ad6538b
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -67,7 +67,7 @@
   milestone: M05
   phase: 4
   title: Replace inline ExpectedIdentity construction at every workspace call site with expected_for_tenant
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-attest-verify/src/lib.rs
@@ -86,7 +86,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: bbb9600f7
   merged_sha: null
   opened_ts: null
   merged_ts: null
@@ -95,7 +95,7 @@
   milestone: M05
   phase: 4
   title: Author expected-identity migration audit doc with per-call-site before/after listing
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - docs/security/expected-identity-migration.md
@@ -110,7 +110,7 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
+  first_commit_sha: e411746df
   merged_sha: null
   opened_ts: null
   merged_ts: null
