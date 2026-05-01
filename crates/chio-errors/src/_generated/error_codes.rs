@@ -953,9 +953,22 @@ pub fn lookup_error_code(urn: &str) -> Option<&'static ErrorCodeSpec> {
 
 #[must_use]
 pub fn lookup_legacy_string_code(code: &str) -> Option<&'static ErrorCodeSpec> {
+    let mut matches = lookup_legacy_string_code_matches(code);
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        None
+    } else {
+        Some(first)
+    }
+}
+
+#[must_use]
+pub fn lookup_legacy_string_code_matches(
+    code: &str,
+) -> impl Iterator<Item = &'static ErrorCodeSpec> + '_ {
     ERROR_CODES
         .iter()
-        .find(|entry| entry.legacy_string_code == code)
+        .filter(move |entry| entry.legacy_string_code == code)
 }
 
 #[must_use]

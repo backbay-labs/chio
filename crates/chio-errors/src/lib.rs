@@ -6,7 +6,8 @@ pub mod jsonrpc_bridge;
 mod severity;
 
 pub use _generated::error_codes::{
-    lookup_error_code, lookup_jsonrpc_code, lookup_legacy_string_code, ErrorCodeSpec, ERROR_CODES,
+    lookup_error_code, lookup_jsonrpc_code, lookup_legacy_string_code,
+    lookup_legacy_string_code_matches, ErrorCodeSpec, ERROR_CODES,
 };
 pub use code::Code;
 pub use diagnostic::{diagnostic, error, ChioError, Diagnostic};

@@ -778,7 +778,21 @@ fn render_error_registry(path: &Path, registry: &ErrorRegistry) -> Result<String
     body.push_str(
         "pub fn lookup_legacy_string_code(code: &str) -> Option<&'static ErrorCodeSpec> {\n",
     );
-    body.push_str("    ERROR_CODES.iter().find(|entry| entry.legacy_string_code == code)\n");
+    body.push_str("    let mut matches = lookup_legacy_string_code_matches(code);\n");
+    body.push_str("    let first = matches.next()?;\n");
+    body.push_str("    if matches.next().is_some() {\n");
+    body.push_str("        None\n");
+    body.push_str("    } else {\n");
+    body.push_str("        Some(first)\n");
+    body.push_str("    }\n");
+    body.push_str("}\n\n");
+    body.push_str("#[must_use]\n");
+    body.push_str(
+        "pub fn lookup_legacy_string_code_matches(\n    code: &str,\n) -> impl Iterator<Item = &'static ErrorCodeSpec> + '_ {\n",
+    );
+    body.push_str("    ERROR_CODES\n");
+    body.push_str("        .iter()\n");
+    body.push_str("        .filter(move |entry| entry.legacy_string_code == code)\n");
     body.push_str("}\n\n");
     body.push_str("#[must_use]\n");
     body.push_str("pub fn lookup_jsonrpc_code(code: i32) -> Option<&'static ErrorCodeSpec> {\n");
