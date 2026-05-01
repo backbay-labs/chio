@@ -35,7 +35,7 @@ pub struct CanonicalJsonWitness;
 /// The wrapped buffer is immutable once constructed, so downstream signing,
 /// storage, and export paths can share it without reserializing or risking
 /// accidental mutation.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct CanonicalBytes<W = CanonicalJsonWitness> {
     bytes: Vec<u8>,
     witness: PhantomData<W>,
@@ -556,7 +556,7 @@ mod tests {
         assert_eq!(wrapped.as_bytes(), bytes.as_slice());
         assert_eq!(wrapped.len(), bytes.len());
         assert!(!wrapped.is_empty());
-        assert_eq!(wrapped.clone().into_vec(), bytes);
+        assert_eq!(wrapped.into_vec(), bytes);
 
         Ok(())
     }

@@ -39,8 +39,11 @@
 
 use alloc::boxed::Box;
 use alloc::format;
+#[cfg(not(target_has_atomic = "ptr"))]
+use alloc::rc::Rc as SharedCanonicalBytesInner;
 use alloc::string::{String, ToString};
-use alloc::sync::Arc;
+#[cfg(target_has_atomic = "ptr")]
+use alloc::sync::Arc as SharedCanonicalBytesInner;
 use alloc::vec::Vec;
 
 use ed25519_dalek::{
@@ -54,7 +57,7 @@ use crate::canonical::{CanonicalBytes, CanonicalJsonWitness};
 use crate::error::{Error, Result};
 
 /// Shared canonical JSON bytes suitable for signing and verification.
-pub type SharedCanonicalBytes = Arc<CanonicalBytes<CanonicalJsonWitness>>;
+pub type SharedCanonicalBytes = SharedCanonicalBytesInner<CanonicalBytes<CanonicalJsonWitness>>;
 
 /// Wire algorithm-set suffix for Ed25519 plus ML-DSA-65 hybrid material.
 pub const HYBRID_ED25519_MLDSA65: &str = "ed25519+mldsa65";
@@ -201,8 +204,9 @@ impl Keypair {
     /// Returns the signature and the canonical bytes that were signed, so the
     /// caller can store or transmit them alongside the signature.
     pub fn sign_canonical<T: Serialize>(&self, value: &T) -> Result<(Signature, Vec<u8>)> {
-        let signed = self.sign_canonical_shared(value)?;
-        Ok(signed.into_signature_and_bytes())
+        let canonical = CanonicalBytes::from_serializable(value)?;
+        let signature = self.sign(canonical.as_bytes());
+        Ok((signature, canonical.into_vec()))
     }
 
     /// Sign a serializable value after converting it to shared canonical JSON.
@@ -863,8 +867,9 @@ pub fn sign_canonical_with_backend<T: Serialize>(
     backend: &dyn SigningBackend,
     value: &T,
 ) -> Result<(Signature, Vec<u8>)> {
-    let signed = sign_canonical_with_backend_shared(backend, value)?;
-    Ok(signed.into_signature_and_bytes())
+    let canonical = CanonicalBytes::from_serializable(value)?;
+    let signature = backend.sign_canonical_bytes(&canonical)?;
+    Ok((signature, canonical.into_vec()))
 }
 
 /// Sign shared canonical JSON bytes with the given backend.
@@ -1210,7 +1215,9 @@ pub fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>> {
 
 /// Serialize a value to shared canonical JSON bytes.
 pub fn canonical_json_shared_bytes<T: Serialize>(value: &T) -> Result<SharedCanonicalBytes> {
-    Ok(Arc::new(CanonicalBytes::from_serializable(value)?))
+    Ok(SharedCanonicalBytes::new(CanonicalBytes::from_serializable(
+        value,
+    )?))
 }
 
 /// Serialize a value to a canonical JSON string (RFC 8785 / JCS).
@@ -1325,7 +1332,7 @@ mod tests {
             .verify_shared_canonical(signed.canonical(), signed.signature()));
 
         let shared = signed.canonical().clone();
-        assert!(Arc::ptr_eq(signed.canonical(), &shared));
+        assert!(SharedCanonicalBytes::ptr_eq(signed.canonical(), &shared));
 
         let (legacy_signature, legacy_bytes) = kp.sign_canonical(&value)?;
         assert_eq!(&legacy_signature, signed.signature());
@@ -1341,7 +1348,7 @@ mod tests {
         let canonical = canonical_json_shared_bytes(&value)?;
         let signed = sign_shared_canonical_with_backend(&backend, canonical.clone())?;
 
-        assert!(Arc::ptr_eq(&canonical, signed.canonical()));
+        assert!(SharedCanonicalBytes::ptr_eq(&canonical, signed.canonical()));
         assert!(backend
             .public_key()
             .verify_shared_canonical(signed.canonical(), signed.signature()));
