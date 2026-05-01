@@ -45,6 +45,15 @@ name = "swarm_revocation_e2e"
 path = "tests/swarm_revocation_e2e.rs"
 required-features = ["delegation_v2"]
 
+# M04.P5.T2 receipt-chain proof target. Walks the JSONL receipt log
+# emitted by an in-process re-run of the swarm fixture and asserts
+# the trajectory-1 M03 NoAllowAfterRevoke invariant on the real
+# receipts: every allow has seen_epoch < revoke_epoch.
+[[test]]
+name = "receipt_chain_proof"
+path = "tests/receipt_chain_proof.rs"
+required-features = ["delegation_v2"]
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
