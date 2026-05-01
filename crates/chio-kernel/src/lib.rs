@@ -441,3 +441,7 @@ pub mod settlement_observer {
 /// without reaching into crate-private module paths.
 pub const SIGNING_CHANNEL_DEFAULT_CAPACITY: usize =
     kernel::signing_task::DEFAULT_SIGNING_CHANNEL_CAPACITY;
+
+/// Prometheus counter name emitted when the bounded receipt-signing channel
+/// blocks under backpressure.
+pub use kernel::signing_task::METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL;

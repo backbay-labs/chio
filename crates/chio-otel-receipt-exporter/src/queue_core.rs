@@ -103,8 +103,8 @@ impl<T: BoundedQueueItem> BoundedDropOldestQueue<T> {
         }
 
         while self.queue.len() + 1 > limits.max_queued_batches
-            || self.queued_spans + item_spans > limits.max_queued_spans
-            || self.queued_bytes + item_bytes > limits.max_queued_bytes
+            || self.queued_spans.saturating_add(item_spans) > limits.max_queued_spans
+            || self.queued_bytes.saturating_add(item_bytes) > limits.max_queued_bytes
         {
             let Some(dropped) = self.pop_front() else {
                 break;

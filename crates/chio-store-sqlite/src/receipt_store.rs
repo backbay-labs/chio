@@ -109,9 +109,10 @@ pub(crate) type SqliteStoreConnection = PooledConnection<SqliteConnectionManager
 
 const RECEIPT_GROUP_COMMIT_MAX_BATCH: usize = 64;
 const RECEIPT_GROUP_COMMIT_FLUSH_DELAY: Duration = Duration::from_micros(500);
+const RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY: usize = RECEIPT_GROUP_COMMIT_MAX_BATCH * 16;
 
 struct ReceiptCommitActor {
-    sender: mpsc::Sender<ReceiptCommitCommand>,
+    sender: mpsc::SyncSender<ReceiptCommitCommand>,
 }
 
 struct ReceiptCommitRequest {
@@ -127,7 +128,7 @@ enum ReceiptCommitCommand {
 
 impl ReceiptCommitActor {
     fn start(pool: Pool<SqliteConnectionManager>) -> Self {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = receipt_commit_channel();
         thread::spawn(move || receipt_commit_actor_loop(pool, receiver));
         Self { sender }
     }
@@ -157,6 +158,13 @@ impl ReceiptCommitActor {
             .recv()
             .map_err(|_| receipt_actor_unavailable_error())?
     }
+}
+
+fn receipt_commit_channel() -> (
+    mpsc::SyncSender<ReceiptCommitCommand>,
+    mpsc::Receiver<ReceiptCommitCommand>,
+) {
+    mpsc::sync_channel(RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY)
 }
 
 fn receipt_actor_unavailable_error() -> ReceiptStoreError {
@@ -312,6 +320,29 @@ mod underwriting_credit;
 
 use support::*;
 pub(crate) use support::{decode_verified_child_receipt, decode_verified_chio_receipt};
+
+#[cfg(test)]
+mod receipt_commit_actor_tests {
+    use super::*;
+
+    #[test]
+    fn receipt_commit_actor_channel_has_fixed_capacity() -> Result<(), Box<dyn std::error::Error>> {
+        let (sender, _receiver) = receipt_commit_channel();
+        for _ in 0..RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY {
+            let (response, _result) = mpsc::sync_channel(1);
+            sender.try_send(ReceiptCommitCommand::Flush(response))?;
+        }
+
+        let (response, _result) = mpsc::sync_channel(1);
+        match sender.try_send(ReceiptCommitCommand::Flush(response)) {
+            Err(mpsc::TrySendError::Full(_)) => Ok(()),
+            Err(mpsc::TrySendError::Disconnected(_)) => {
+                Err("commit actor channel disconnected unexpectedly".into())
+            }
+            Ok(()) => Err("commit actor channel accepted beyond fixed capacity".into()),
+        }
+    }
+}
 
 impl SqliteReceiptStore {
     pub(crate) fn connection(&self) -> Result<SqliteStoreConnection, ReceiptStoreError> {

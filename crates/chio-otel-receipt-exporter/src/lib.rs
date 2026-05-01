@@ -16,6 +16,7 @@ mod queue_core;
 #[cfg(not(loom))]
 pub mod sink;
 
+#[cfg(not(loom))]
 pub use chio_kernel::{METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL};
 
 #[cfg(not(loom))]
@@ -32,5 +33,6 @@ pub use ingress::{
 #[cfg(not(loom))]
 pub use sink::{
     CanonicalChioReceipt, CanonicalReceiptSink, OTelReceiptExportError, ReceiptStoreSink,
-    ReceiptStoreSinkConfig, ReceiptStoreSinkSummary,
+    ReceiptStoreSinkConfig, ReceiptStoreSinkSummary, RECEIPT_EXPORT_MAX_ESTIMATED_BYTES,
+    RECEIPT_EXPORT_MAX_RESOURCE_SPANS, RECEIPT_EXPORT_MAX_SPANS,
 };

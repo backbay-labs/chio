@@ -395,10 +395,9 @@ impl OtlpGrpcTraceExport {
     }
 
     pub fn estimated_bytes(&self) -> usize {
-        self.resource_spans
-            .iter()
-            .map(OtlpResourceSpans::estimated_bytes)
-            .sum()
+        self.resource_spans.iter().fold(0usize, |total, resource| {
+            total.saturating_add(resource.estimated_bytes())
+        })
     }
 }
 
@@ -408,15 +407,17 @@ impl OtlpResourceSpans {
     }
 
     fn estimated_bytes(&self) -> usize {
-        self.resource_attributes
+        let resource_bytes = self
+            .resource_attributes
             .iter()
             .map(OtlpAttribute::estimated_bytes)
-            .sum::<usize>()
-            + self
-                .spans
-                .iter()
-                .map(OtlpSpan::estimated_bytes)
-                .sum::<usize>()
+            .fold(0usize, usize::saturating_add);
+        let span_bytes = self
+            .spans
+            .iter()
+            .map(OtlpSpan::estimated_bytes)
+            .fold(0usize, usize::saturating_add);
+        resource_bytes.saturating_add(span_bytes)
     }
 }
 
@@ -461,22 +462,30 @@ impl OtlpSpan {
     }
 
     fn estimated_bytes(&self) -> usize {
-        self.trace_id.len()
-            + self.span_id.len()
-            + self.name.len()
-            + self
-                .attributes
-                .iter()
-                .map(OtlpAttribute::estimated_bytes)
-                .sum::<usize>()
-            + usize::from(self.started_at_unix_nano.is_some()) * std::mem::size_of::<u64>()
-            + usize::from(self.ended_at_unix_nano.is_some()) * std::mem::size_of::<u64>()
+        let attribute_bytes = self
+            .attributes
+            .iter()
+            .map(OtlpAttribute::estimated_bytes)
+            .fold(0usize, usize::saturating_add);
+        self.trace_id
+            .len()
+            .saturating_add(self.span_id.len())
+            .saturating_add(self.name.len())
+            .saturating_add(attribute_bytes)
+            .saturating_add(
+                usize::from(self.started_at_unix_nano.is_some()) * std::mem::size_of::<u64>(),
+            )
+            .saturating_add(
+                usize::from(self.ended_at_unix_nano.is_some()) * std::mem::size_of::<u64>(),
+            )
     }
 }
 
 impl OtlpAttribute {
     fn estimated_bytes(&self) -> usize {
-        self.key.len() + json_estimated_bytes(&self.value)
+        self.key
+            .len()
+            .saturating_add(json_estimated_bytes(&self.value))
     }
 }
 
@@ -495,11 +504,14 @@ fn json_estimated_bytes(value: &serde_json::Value) -> usize {
         serde_json::Value::Bool(_) => 1,
         serde_json::Value::Number(number) => number.to_string().len(),
         serde_json::Value::String(string) => string.len(),
-        serde_json::Value::Array(values) => values.iter().map(json_estimated_bytes).sum(),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .map(json_estimated_bytes)
+            .fold(0usize, usize::saturating_add),
         serde_json::Value::Object(map) => map
             .iter()
-            .map(|(key, value)| key.len() + json_estimated_bytes(value))
-            .sum(),
+            .map(|(key, value)| key.len().saturating_add(json_estimated_bytes(value)))
+            .fold(0usize, usize::saturating_add),
     }
 }
 

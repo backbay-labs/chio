@@ -13,6 +13,10 @@ use uuid::Uuid;
 use crate::denylist::strip_denied_attributes;
 use crate::ingress::{attributes_to_map, OtlpGrpcTraceExport, OtlpSpan};
 
+pub const RECEIPT_EXPORT_MAX_RESOURCE_SPANS: usize = 4_096;
+pub const RECEIPT_EXPORT_MAX_SPANS: usize = 65_536;
+pub const RECEIPT_EXPORT_MAX_ESTIMATED_BYTES: usize = 64 * 1024 * 1024;
+
 #[derive(Clone)]
 pub struct ReceiptStoreSinkConfig {
     pub signing_keypair: Keypair,
@@ -161,6 +165,7 @@ impl ReceiptStoreSink {
         &self,
         export: &OtlpGrpcTraceExport,
     ) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
+        validate_export_batch_limits(export)?;
         let receipts = export
             .spans()
             .map(|span| self.canonical_receipt_for_span(span))
@@ -235,6 +240,33 @@ impl ReceiptStoreSink {
             .map_err(OTelReceiptExportError::Sign)?;
         CanonicalChioReceipt::from_receipt(receipt)
     }
+}
+
+fn validate_export_batch_limits(
+    export: &OtlpGrpcTraceExport,
+) -> Result<(), OTelReceiptExportError> {
+    let resource_spans = export.resource_spans.len();
+    if resource_spans > RECEIPT_EXPORT_MAX_RESOURCE_SPANS {
+        return Err(OTelReceiptExportError::Queue(format!(
+            "OTLP export resource span group count {resource_spans} exceeds max {RECEIPT_EXPORT_MAX_RESOURCE_SPANS}"
+        )));
+    }
+
+    let span_count = export.span_count();
+    if span_count > RECEIPT_EXPORT_MAX_SPANS {
+        return Err(OTelReceiptExportError::Queue(format!(
+            "OTLP export span count {span_count} exceeds max {RECEIPT_EXPORT_MAX_SPANS}"
+        )));
+    }
+
+    let estimated_bytes = export.estimated_bytes();
+    if estimated_bytes > RECEIPT_EXPORT_MAX_ESTIMATED_BYTES {
+        return Err(OTelReceiptExportError::Queue(format!(
+            "OTLP export estimated byte size {estimated_bytes} exceeds max {RECEIPT_EXPORT_MAX_ESTIMATED_BYTES}"
+        )));
+    }
+
+    Ok(())
 }
 
 fn receipt_metadata(
