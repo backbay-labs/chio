@@ -47,6 +47,27 @@ use crate::AttestError;
 /// other value fail-closed.
 pub const TENANT_POLICY_SCHEMA_VERSION: u32 = 1;
 
+/// Maximum raw TOML policy size accepted at the trust boundary.
+pub const MAX_TENANT_POLICY_BYTES: usize = 64 * 1024;
+
+/// Maximum number of tenant identity regexes accepted in one policy.
+pub const MAX_IDENTITY_REGEXPS: usize = 32;
+
+/// Maximum byte length of one identity regex.
+pub const MAX_IDENTITY_REGEXP_BYTES: usize = 2048;
+
+/// Maximum number of OIDC issuers accepted in one policy.
+pub const MAX_OIDC_ISSUERS: usize = 16;
+
+/// Maximum byte length of one OIDC issuer URL.
+pub const MAX_OIDC_ISSUER_BYTES: usize = 2048;
+
+/// Maximum byte length of the base64-encoded policy signature field.
+pub const MAX_POLICY_SIGNATURE_BYTES: usize = 16 * 1024;
+
+/// Maximum number of reserved PQ identity regexes accepted in one policy.
+pub const MAX_PQ_IDENTITY_REGEXPS: usize = 32;
+
 /// Canonical bootstrap tenant identifier shipped under
 /// `crates/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`. The
 /// bootstrap policy is signed by the workspace release identity (the same
@@ -104,6 +125,13 @@ impl TenantPolicy {
     /// required field is empty, if the schema version is unsupported, or if
     /// any of the regex strings fails to compile.
     pub fn from_toml_slice(bytes: &[u8]) -> Result<Self, AttestError> {
+        if bytes.len() > MAX_TENANT_POLICY_BYTES {
+            return Err(AttestError::Malformed(format!(
+                "policy is {} bytes, exceeding {} byte limit",
+                bytes.len(),
+                MAX_TENANT_POLICY_BYTES
+            )));
+        }
         let text = std::str::from_utf8(bytes)
             .map_err(|err| AttestError::Malformed(format!("policy is not utf-8: {err}")))?;
         let parsed: Self = toml::from_str(text)
@@ -130,8 +158,22 @@ impl TenantPolicy {
                 "identity_regexps is empty".to_owned(),
             ));
         }
+        if self.identity_regexps.len() > MAX_IDENTITY_REGEXPS {
+            return Err(AttestError::Malformed(format!(
+                "identity_regexps has {} entries, exceeding {} entry limit",
+                self.identity_regexps.len(),
+                MAX_IDENTITY_REGEXPS
+            )));
+        }
         if self.oidc_issuers.is_empty() {
             return Err(AttestError::Malformed("oidc_issuers is empty".to_owned()));
+        }
+        if self.oidc_issuers.len() > MAX_OIDC_ISSUERS {
+            return Err(AttestError::Malformed(format!(
+                "oidc_issuers has {} entries, exceeding {} entry limit",
+                self.oidc_issuers.len(),
+                MAX_OIDC_ISSUERS
+            )));
         }
         if self.signed_at.trim().is_empty() {
             return Err(AttestError::Malformed("signed_at is empty".to_owned()));
@@ -139,7 +181,26 @@ impl TenantPolicy {
         if self.signature.trim().is_empty() {
             return Err(AttestError::Malformed("signature is empty".to_owned()));
         }
+        if self.signature.len() > MAX_POLICY_SIGNATURE_BYTES {
+            return Err(AttestError::Malformed(format!(
+                "signature is {} bytes, exceeding {} byte limit",
+                self.signature.len(),
+                MAX_POLICY_SIGNATURE_BYTES
+            )));
+        }
+        if !self.signature.is_ascii() {
+            return Err(AttestError::Malformed(
+                "signature must be ASCII base64".to_owned(),
+            ));
+        }
         for pattern in &self.identity_regexps {
+            if pattern.len() > MAX_IDENTITY_REGEXP_BYTES {
+                return Err(AttestError::Malformed(format!(
+                    "identity_regexp is {} bytes, exceeding {} byte limit",
+                    pattern.len(),
+                    MAX_IDENTITY_REGEXP_BYTES
+                )));
+            }
             regex::Regex::new(pattern).map_err(|err| {
                 AttestError::Malformed(format!(
                     "identity_regexp {pattern:?} does not compile: {err}"
@@ -152,8 +213,29 @@ impl TenantPolicy {
                     "oidc_issuers contains an empty entry".to_owned(),
                 ));
             }
+            if issuer.len() > MAX_OIDC_ISSUER_BYTES {
+                return Err(AttestError::Malformed(format!(
+                    "oidc_issuer is {} bytes, exceeding {} byte limit",
+                    issuer.len(),
+                    MAX_OIDC_ISSUER_BYTES
+                )));
+            }
+        }
+        if self.pq_identity_regexps.len() > MAX_PQ_IDENTITY_REGEXPS {
+            return Err(AttestError::Malformed(format!(
+                "pq_identity_regexps has {} entries, exceeding {} entry limit",
+                self.pq_identity_regexps.len(),
+                MAX_PQ_IDENTITY_REGEXPS
+            )));
         }
         for pattern in &self.pq_identity_regexps {
+            if pattern.len() > MAX_IDENTITY_REGEXP_BYTES {
+                return Err(AttestError::Malformed(format!(
+                    "pq_identity_regexp is {} bytes, exceeding {} byte limit",
+                    pattern.len(),
+                    MAX_IDENTITY_REGEXP_BYTES
+                )));
+            }
             regex::Regex::new(pattern).map_err(|err| {
                 AttestError::Malformed(format!(
                     "pq_identity_regexp {pattern:?} does not compile: {err}"

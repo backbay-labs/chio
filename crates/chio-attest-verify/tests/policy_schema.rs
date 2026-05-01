@@ -5,7 +5,11 @@
 
 use std::time::{Duration, SystemTime};
 
-use chio_attest_verify::policy::TenantPolicy;
+use chio_attest_verify::policy::{
+    TenantPolicy, MAX_IDENTITY_REGEXPS, MAX_IDENTITY_REGEXP_BYTES, MAX_OIDC_ISSUERS,
+    MAX_OIDC_ISSUER_BYTES, MAX_POLICY_SIGNATURE_BYTES, MAX_PQ_IDENTITY_REGEXPS,
+    MAX_TENANT_POLICY_BYTES,
+};
 use chio_attest_verify::{AttestError, TENANT_POLICY_SCHEMA_VERSION};
 
 fn sample_toml() -> &'static str {
@@ -58,6 +62,140 @@ signature = "AAAA"
         AttestError::Malformed(msg) => {
             assert!(msg.contains("identity_regexps"), "got: {msg}");
         }
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_oversized_policy_bytes_before_parse() {
+    let bytes = vec![b'a'; MAX_TENANT_POLICY_BYTES + 1];
+    let err = TenantPolicy::from_toml_slice(&bytes).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("exceeding"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_too_many_identity_regexps() {
+    let regexps = (0..=MAX_IDENTITY_REGEXPS)
+        .map(|i| format!("\"https://example.com/{i}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let toml = format!(
+        r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = [{regexps}]
+oidc_issuers = ["https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#
+    );
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("identity_regexps"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_oversized_identity_regexp() {
+    let pattern = "a".repeat(MAX_IDENTITY_REGEXP_BYTES + 1);
+    let toml = format!(
+        r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["{pattern}"]
+oidc_issuers = ["https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#
+    );
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("identity_regexp"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_too_many_or_oversized_issuers() {
+    let issuers = (0..=MAX_OIDC_ISSUERS)
+        .map(|i| format!("\"https://issuer{i}.example.com\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let toml = format!(
+        r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["https://github\\.com/acme/.*"]
+oidc_issuers = [{issuers}]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#
+    );
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("oidc_issuers"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+
+    let issuer = format!("https://{}.example.com", "a".repeat(MAX_OIDC_ISSUER_BYTES));
+    let toml = format!(
+        r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["https://github\\.com/acme/.*"]
+oidc_issuers = ["{issuer}"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+"#
+    );
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("oidc_issuer"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_oversized_signature_and_pq_regexps() {
+    let signature = "A".repeat(MAX_POLICY_SIGNATURE_BYTES + 1);
+    let toml = format!(
+        r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["https://github\\.com/acme/.*"]
+oidc_issuers = ["https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "{signature}"
+"#
+    );
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("signature"), "got: {msg}"),
+        other => panic!("expected Malformed, got {other:?}"),
+    }
+
+    let pq_regexps = (0..=MAX_PQ_IDENTITY_REGEXPS)
+        .map(|i| format!("\"pq:{i}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let toml = format!(
+        r#"
+tenant_id = "acme"
+version = 1
+identity_regexps = ["https://github\\.com/acme/.*"]
+oidc_issuers = ["https://token.actions.githubusercontent.com"]
+signed_at = "2026-04-01T00:00:00Z"
+signature = "AAAA"
+pq_identity_regexps = [{pq_regexps}]
+"#
+    );
+    let err = TenantPolicy::from_toml_slice(toml.as_bytes()).unwrap_err();
+    match err {
+        AttestError::Malformed(msg) => assert!(msg.contains("pq_identity_regexps"), "got: {msg}"),
         other => panic!("expected Malformed, got {other:?}"),
     }
 }

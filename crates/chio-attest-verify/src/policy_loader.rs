@@ -42,6 +42,9 @@ use crate::{AttestError, AttestVerifier, ExpectedIdentity};
 /// cadence; loader rejects policies older than this fail-closed.
 pub const DEFAULT_STALENESS_HORIZON: Duration = Duration::from_secs(90 * 24 * 60 * 60);
 
+/// Maximum raw PEM certificate bytes accepted by the tenant-policy loader.
+pub const MAX_POLICY_CERTIFICATE_BYTES: usize = 256 * 1024;
+
 /// Fail-closed loader for [`TenantPolicy`] files.
 ///
 /// Construct once at startup with the desired staleness horizon (default
@@ -114,6 +117,13 @@ impl TenantPolicyLoader {
     {
         // 1) Parse and structurally validate.
         let policy = TenantPolicy::from_toml_slice(policy_toml)?;
+        if certificate_pem.len() > MAX_POLICY_CERTIFICATE_BYTES {
+            return Err(AttestError::Malformed(format!(
+                "policy signer certificate is {} bytes, exceeding {} byte limit",
+                certificate_pem.len(),
+                MAX_POLICY_CERTIFICATE_BYTES
+            )));
+        }
 
         // 2) Verify the signature over the canonical bytes.
         let canonical = policy.canonical_signing_bytes()?;

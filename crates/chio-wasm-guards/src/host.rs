@@ -69,6 +69,9 @@ pub const MAX_LOG_MESSAGE_LEN: usize = 4096;
 /// Maximum length of a config key in bytes.
 pub const MAX_CONFIG_KEY_LEN: usize = 1024;
 
+/// Maximum bytes returned by one policy-context bundle read.
+pub const MAX_BUNDLE_READ_BYTES: u32 = 64 * 1024;
+
 // ---------------------------------------------------------------------------
 // WasmHostState
 // ---------------------------------------------------------------------------
@@ -188,6 +191,11 @@ impl WasmHostState {
 }
 
 fn slice_blob(blob: &[u8], offset: u64, len: u32) -> Result<Vec<u8>, String> {
+    if len > MAX_BUNDLE_READ_BYTES {
+        return Err(format!(
+            "bundle blob read length {len} exceeds limit {MAX_BUNDLE_READ_BYTES}"
+        ));
+    }
     let start =
         usize::try_from(offset).map_err(|_| "bundle blob offset exceeds host usize".to_string())?;
     let length =
@@ -199,7 +207,17 @@ fn slice_blob(blob: &[u8], offset: u64, len: u32) -> Result<Vec<u8>, String> {
         ));
     }
 
-    let end = start.saturating_add(length).min(blob.len());
+    let end = start
+        .checked_add(length)
+        .ok_or_else(|| "bundle blob range overflows host usize".to_string())?;
+    if end > blob.len() {
+        return Err(format!(
+            "bundle blob range {}..{} exceeds blob length {}",
+            start,
+            end,
+            blob.len()
+        ));
+    }
     Ok(blob[start..end].to_vec())
 }
 
