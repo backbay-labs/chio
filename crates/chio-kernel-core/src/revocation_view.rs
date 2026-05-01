@@ -241,7 +241,9 @@ mod tests {
         let view = RevocationView::new();
         let prev = view.install_if_newer(snapshot(1, &["alice"])).unwrap();
         assert_eq!(prev.epoch, 0);
-        let prev2 = view.install_if_newer(snapshot(5, &["alice", "bob"])).unwrap();
+        let prev2 = view
+            .install_if_newer(snapshot(5, &["alice", "bob"]))
+            .unwrap();
         assert_eq!(prev2.epoch, 1);
         assert_eq!(view.current_epoch(), 5);
         assert!(view.is_revoked(&RevocationViewSubject::from("alice")));

@@ -1,4 +1,4 @@
-//! Phase 20.3 -- bilateral cross-kernel co-signing tests.
+//! Bilateral cross-kernel co-signing tests.
 //!
 //! Covers the happy path (two kernels both sign the same receipt and either
 //! side can verify the dual-signed artifact), the wrong-peer-key rejection

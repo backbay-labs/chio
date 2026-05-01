@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-//! Phase 20.1 trust-tier synthesis tests plus passport extension coverage.
+//! Trust-tier synthesis tests plus passport extension coverage.
 
 use chio_core::Keypair;
 use chio_credentials::{

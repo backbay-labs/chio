@@ -1,4 +1,4 @@
-//! End-to-end revocation-gossip integration test (M04.P2.T5).
+//! End-to-end revocation-gossip integration test.
 //!
 //! Topology: a single oracle node `A` running the in-memory revocation
 //! oracle plus a [`RevocationGossipPushQueue`] that fans roots out to
@@ -7,21 +7,19 @@
 //! (no network sleep, no scheduler tricks): the test measures the cost of
 //! the gossip code path itself, not the link.
 //!
-//! The plan asserts oracle-insert at A is observable at the verifier
-//! within 500 ms median across 100 trials. With localhost transport that
-//! median should land deep in microseconds; the assertion is the upper
-//! bound the trajectory-2 plan promised, so the test deliberately keeps a
-//! generous absolute ceiling and verifies the gossip path itself moves
-//! roots monotonically without losing the latest revocation.
+//! The verifier-visibility contract is that oracle-insert at A must be
+//! observable at the verifier within 500 ms median across 100 trials.
+//! With localhost transport that median should land deep in microseconds;
+//! the assertion keeps a generous absolute ceiling and verifies the gossip
+//! path itself moves roots monotonically without losing the latest
+//! revocation.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::cmp::Ordering;
 use std::time::Instant;
 
-use chio_federation::{
-    RevocationGossipBatch, RevocationGossipPushQueue, RevocationRootGossip,
-};
+use chio_federation::{RevocationGossipBatch, RevocationGossipPushQueue, RevocationRootGossip};
 use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
 use chio_revocation_oracle::{
     DigestRootSigner, EpochNonce, InMemoryRevocationOracle, RevocationKey, RevocationOracle,
@@ -58,7 +56,9 @@ impl Verifier {
         signer: &DigestRootSigner,
         subject: &RevocationViewSubject,
     ) {
-        frame.validate_envelope().expect("envelope structurally valid");
+        frame
+            .validate_envelope()
+            .expect("envelope structurally valid");
         frame
             .signed_root
             .verify(signer)
@@ -132,11 +132,12 @@ fn oracle_insert_visible_at_verifier_within_budget() {
         let start = Instant::now();
 
         // 1. Oracle A inserts the revocation. This advances the epoch.
-        let _root = oracle.insert(key.clone(), issued_at_ms).expect("oracle insert");
+        let _root = oracle
+            .insert(key.clone(), issued_at_ms)
+            .expect("oracle insert");
 
         // 2. Oracle A signs the new epoch root and enqueues for every peer.
-        let signed: SignedEpochRoot =
-            oracle.signed_epoch_root(&signer).expect("sign epoch root");
+        let signed: SignedEpochRoot = oracle.signed_epoch_root(&signer).expect("sign epoch root");
         let delivered = push_queue
             .enqueue_signed_root(signed.clone())
             .expect("enqueue signed root");
@@ -205,8 +206,9 @@ fn verifier_view_is_monotonically_advancing_after_burst() {
     let signer = DigestRootSigner::new("oracle-a", b"burst-secret".to_vec());
     let mut oracle = InMemoryRevocationOracle::new();
     let push_queue = RevocationGossipPushQueue::new(8).expect("push queue");
-    let verifiers: Vec<Verifier> =
-        (0..NUM_PEERS).map(|i| Verifier::new(&format!("v-{}", i))).collect();
+    let verifiers: Vec<Verifier> = (0..NUM_PEERS)
+        .map(|i| Verifier::new(&format!("v-{}", i)))
+        .collect();
     for v in &verifiers {
         push_queue.subscribe(&v.kernel_id).expect("subscribe");
     }

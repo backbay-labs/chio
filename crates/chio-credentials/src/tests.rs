@@ -1992,11 +1992,11 @@ mod tests {
         assert!(matches!(error, CredentialError::InvalidPassportLifecycle(_)));
     }
 
-    /// M04 P2 T6 bridge: a Revoked PassportLifecycleRecord projects into
-    /// a chio_revocation_oracle::PassportRevocationEvent that the oracle
-    /// can ingest, while non-revoked states project to None. The
-    /// projection is read-only on the credentials side so it cannot
-    /// regress the trajectory-1 M03 named property_passport invariants.
+    /// Passport revocation bridge: a Revoked PassportLifecycleRecord
+    /// projects into a chio_revocation_oracle::PassportRevocationEvent
+    /// that the oracle can ingest, while non-revoked states project to
+    /// None. The projection is read-only on the credentials side so it
+    /// cannot regress the named `property_passport` invariants.
     #[test]
     fn revoked_lifecycle_record_projects_into_oracle_bridge_event() {
         let subject = Keypair::from_seed(&[5u8; 32]);

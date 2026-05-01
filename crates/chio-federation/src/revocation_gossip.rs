@@ -5,18 +5,18 @@
 //! peers. The oracle itself owns the sparse-Merkle-tree state and signing;
 //! `chio-federation` only owns the wire envelope, the batched push queue,
 //! and the catch-up gap-fill protocol. Verifiers consult their kernel-core
-//! `RevocationView` cache (M04.P2.T4) which gossip updates fail-closed:
-//! an unverifiable, malformed, or out-of-order gossip frame is dropped and
+//! `RevocationView` cache, which gossip updates fail-closed: an
+//! unverifiable, malformed, or out-of-order gossip frame is dropped and
 //! never silently merged into the cache.
 //!
-//! ## Wire envelope (T1)
+//! ## Wire envelope
 //!
 //! [`RevocationRootGossip`] wraps a single signed epoch root with the
 //! signer identity, signer-id-pinning, and a millisecond timestamp the
 //! receiver can use for freshness gating. The on-the-wire schema is
 //! [`REVOCATION_ROOT_GOSSIP_SCHEMA`].
 //!
-//! ## Push path (T2)
+//! ## Push path
 //!
 //! [`RevocationGossipPushQueue`] owns a bilateral peer registry plus a
 //! per-peer FIFO ring of pending signed roots. The oracle's epoch tick
@@ -28,11 +28,6 @@
 //! transport. Coalescing inside a tick keeps the gossip storm bounded under
 //! high revoke rates (only the latest root per epoch survives a flush, and
 //! an empty queue produces no batch at all).
-//!
-//! Remaining tickets in this phase add:
-//! * pull / catch-up path (T3) -- gap-fill request/response,
-//! * RevocationView cache wiring (T4 -- in `chio-kernel-core`),
-//! * passport-revocation bridge (T6 -- in `chio-revocation-oracle`).
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::{Mutex, PoisonError};
@@ -117,7 +112,9 @@ impl RevocationRootGossip {
     /// a pinned signer before trusting the carried root.
     pub fn validate_envelope(&self) -> Result<(), RevocationGossipError> {
         if self.schema != REVOCATION_ROOT_GOSSIP_SCHEMA {
-            return Err(RevocationGossipError::UnsupportedSchema(self.schema.clone()));
+            return Err(RevocationGossipError::UnsupportedSchema(
+                self.schema.clone(),
+            ));
         }
         if self.epoch != self.signed_root.root.epoch {
             return Err(RevocationGossipError::EpochMismatch {
@@ -146,9 +143,7 @@ pub enum RevocationGossipError {
     #[error("envelope epoch {envelope} disagrees with signed-root epoch {signed}")]
     EpochMismatch { envelope: u64, signed: u64 },
 
-    #[error(
-        "envelope signer_id `{envelope}` disagrees with signed-root signer_id `{signed}`"
-    )]
+    #[error("envelope signer_id `{envelope}` disagrees with signed-root signer_id `{signed}`")]
     SignerIdMismatch { envelope: String, signed: String },
 
     #[error("peer {0} is not subscribed to revocation-root gossip")]
@@ -160,9 +155,7 @@ pub enum RevocationGossipError {
     #[error("catch-up request range inverted: from_epoch {from_epoch} > to_epoch {to_epoch}")]
     CatchupRangeInverted { from_epoch: u64, to_epoch: u64 },
 
-    #[error(
-        "catch-up request range too wide: requested {requested} epochs, hard cap is {max}"
-    )]
+    #[error("catch-up request range too wide: requested {requested} epochs, hard cap is {max}")]
     CatchupRangeTooWide { requested: u64, max: u64 },
 
     #[error(
@@ -182,8 +175,7 @@ pub const REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA: &str =
     "chio.federation-revocation-root-gossip-batch.v1";
 
 /// Schema tag for [`RevocationCatchupRequest`].
-pub const REVOCATION_CATCHUP_REQUEST_SCHEMA: &str =
-    "chio.federation-revocation-catchup-request.v1";
+pub const REVOCATION_CATCHUP_REQUEST_SCHEMA: &str = "chio.federation-revocation-catchup-request.v1";
 
 /// Schema tag for [`RevocationCatchupResponse`].
 pub const REVOCATION_CATCHUP_RESPONSE_SCHEMA: &str =
@@ -219,7 +211,9 @@ impl RevocationGossipBatch {
     /// merging it into a local cache.
     pub fn validate_envelope(&self) -> Result<(), RevocationGossipError> {
         if self.schema != REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA {
-            return Err(RevocationGossipError::UnsupportedSchema(self.schema.clone()));
+            return Err(RevocationGossipError::UnsupportedSchema(
+                self.schema.clone(),
+            ));
         }
         for frame in &self.frames {
             frame.validate_envelope()?;
@@ -405,7 +399,9 @@ impl RevocationCatchupRequest {
 
     pub fn validate_envelope(&self) -> Result<(), RevocationGossipError> {
         if self.schema != REVOCATION_CATCHUP_REQUEST_SCHEMA {
-            return Err(RevocationGossipError::UnsupportedSchema(self.schema.clone()));
+            return Err(RevocationGossipError::UnsupportedSchema(
+                self.schema.clone(),
+            ));
         }
         if self.from_epoch > self.to_epoch {
             return Err(RevocationGossipError::CatchupRangeInverted {
@@ -413,7 +409,10 @@ impl RevocationCatchupRequest {
                 to_epoch: self.to_epoch,
             });
         }
-        let span = self.to_epoch.saturating_sub(self.from_epoch).saturating_add(1);
+        let span = self
+            .to_epoch
+            .saturating_sub(self.from_epoch)
+            .saturating_add(1);
         if span > REVOCATION_CATCHUP_MAX_EPOCHS {
             return Err(RevocationGossipError::CatchupRangeTooWide {
                 requested: span,
@@ -452,7 +451,9 @@ impl RevocationCatchupResponse {
     /// signer before merging into their cache.
     pub fn validate_response(&self) -> Result<(), RevocationGossipError> {
         if self.schema != REVOCATION_CATCHUP_RESPONSE_SCHEMA {
-            return Err(RevocationGossipError::UnsupportedSchema(self.schema.clone()));
+            return Err(RevocationGossipError::UnsupportedSchema(
+                self.schema.clone(),
+            ));
         }
         let mut prev: Option<u64> = None;
         for frame in &self.frames {
@@ -504,7 +505,10 @@ pub fn respond_to_catchup<H: RevocationCatchupHistory>(
     for epoch in request.from_epoch..=request.to_epoch {
         match history.signed_root_at(epoch) {
             Some(signed) => {
-                frames.push(RevocationRootGossip::from_signed(signed, responded_at_unix_ms));
+                frames.push(RevocationRootGossip::from_signed(
+                    signed,
+                    responded_at_unix_ms,
+                ));
                 started = true;
             }
             None => {
@@ -634,8 +638,7 @@ mod tests {
         // re-parse fails closed.
         let signed = signed_root("oracle-a", 5);
         let gossip = RevocationRootGossip::from_signed(signed, 1_700_000_003_000);
-        let mut value: serde_json::Value =
-            serde_json::to_value(&gossip).expect("serialize gossip");
+        let mut value: serde_json::Value = serde_json::to_value(&gossip).expect("serialize gossip");
         let map = value
             .as_object_mut()
             .expect("envelope serializes to a JSON object");
@@ -693,12 +696,20 @@ mod tests {
     fn push_queue_coalesces_lower_epochs() {
         let queue = RevocationGossipPushQueue::new(8).unwrap();
         queue.subscribe("peer-b").unwrap();
-        queue.enqueue_signed_root(signed_root("oracle-a", 1)).unwrap();
-        queue.enqueue_signed_root(signed_root("oracle-a", 2)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 1))
+            .unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 2))
+            .unwrap();
         // Replace same epoch with newer signed-root.
-        queue.enqueue_signed_root(signed_root("oracle-a", 2)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 2))
+            .unwrap();
         // Strictly higher epoch evicts every prior queued root.
-        queue.enqueue_signed_root(signed_root("oracle-a", 3)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 3))
+            .unwrap();
         assert_eq!(queue.pending_for("peer-b").unwrap(), Some(1));
         let batches = queue.flush_batches_at(1_700_000_010_000).unwrap();
         assert_eq!(batches.len(), 1);
@@ -711,7 +722,9 @@ mod tests {
         let queue = RevocationGossipPushQueue::new(8).unwrap();
         queue.subscribe("peer-b").unwrap();
         queue.subscribe("peer-c").unwrap();
-        queue.enqueue_signed_root(signed_root("oracle-a", 5)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 5))
+            .unwrap();
         // Drain peer-b explicitly by removing it before flush; peer-c keeps
         // its entry. Only peer-c should produce a batch.
         let _ = queue.unsubscribe("peer-b").unwrap();
@@ -733,11 +746,17 @@ mod tests {
         // the newer enqueue must evict via the capacity bound).
         let queue = RevocationGossipPushQueue::new(1).unwrap();
         queue.subscribe("peer-b").unwrap();
-        queue.enqueue_signed_root(signed_root("oracle-a", 5)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 5))
+            .unwrap();
         // Lower epoch: coalesce drops it (epoch 5 already in queue).
-        queue.enqueue_signed_root(signed_root("oracle-a", 4)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 4))
+            .unwrap();
         // Same epoch with refreshed signature replaces.
-        queue.enqueue_signed_root(signed_root("oracle-a", 5)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 5))
+            .unwrap();
         assert_eq!(queue.pending_for("peer-b").unwrap(), Some(1));
         let batches = queue.flush_batches_at(0).unwrap();
         assert_eq!(batches[0].frames[0].epoch, 5);
@@ -747,7 +766,9 @@ mod tests {
     fn push_queue_flush_stamps_now_into_envelope() {
         let queue = RevocationGossipPushQueue::new(8).unwrap();
         queue.subscribe("peer-b").unwrap();
-        queue.enqueue_signed_root(signed_root("oracle-a", 9)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 9))
+            .unwrap();
         let batches = queue.flush_batches_at(1_700_000_020_000).unwrap();
         let frame = &batches[0].frames[0];
         assert_eq!(frame.ts_unix_ms, 1_700_000_020_000);
@@ -760,7 +781,9 @@ mod tests {
     fn batch_envelope_rejects_bad_inner_frame() {
         let queue = RevocationGossipPushQueue::new(8).unwrap();
         queue.subscribe("peer-b").unwrap();
-        queue.enqueue_signed_root(signed_root("oracle-a", 1)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 1))
+            .unwrap();
         let mut batches = queue.flush_batches_at(0).unwrap();
         // Tamper with the inner frame's epoch hint to simulate a corrupted
         // batch on the wire; validate_envelope must surface the inner error.
@@ -781,7 +804,9 @@ mod tests {
     fn batch_envelope_rejects_bad_schema() {
         let queue = RevocationGossipPushQueue::new(8).unwrap();
         queue.subscribe("peer-b").unwrap();
-        queue.enqueue_signed_root(signed_root("oracle-a", 1)).unwrap();
+        queue
+            .enqueue_signed_root(signed_root("oracle-a", 1))
+            .unwrap();
         let mut batches = queue.flush_batches_at(0).unwrap();
         batches[0].schema = "chio.federation-bogus.v1".to_string();
         let err = batches[0]
@@ -835,7 +860,10 @@ mod tests {
         let err = RevocationCatchupRequest::new("peer-a", 0, max, 0)
             .expect_err("oversized range must fail closed");
         match err {
-            RevocationGossipError::CatchupRangeTooWide { requested, max: cap } => {
+            RevocationGossipError::CatchupRangeTooWide {
+                requested,
+                max: cap,
+            } => {
                 assert_eq!(cap, REVOCATION_CATCHUP_MAX_EPOCHS);
                 assert_eq!(requested, max + 1);
             }
@@ -847,7 +875,9 @@ mod tests {
     fn catchup_request_validate_rejects_bad_schema() {
         let mut req = RevocationCatchupRequest::new("peer-a", 1, 3, 0).unwrap();
         req.schema = "chio.federation-bogus.v1".to_string();
-        let err = req.validate_envelope().expect_err("bad schema must fail closed");
+        let err = req
+            .validate_envelope()
+            .expect_err("bad schema must fail closed");
         match err {
             RevocationGossipError::UnsupportedSchema(_) => {}
             other => panic!("unexpected variant: {other:?}"),
@@ -858,8 +888,7 @@ mod tests {
     fn catchup_responder_emits_full_range_in_order() {
         let history = InMemoryHistory::from_range("oracle-a", 5..=8);
         let req = RevocationCatchupRequest::new("peer-a", 5, 8, 0).unwrap();
-        let resp =
-            respond_to_catchup(&req, "oracle-a-host", &history, 1_700_000_030_000).unwrap();
+        let resp = respond_to_catchup(&req, "oracle-a-host", &history, 1_700_000_030_000).unwrap();
         assert_eq!(resp.frames.len(), 4);
         let epochs: Vec<u64> = resp.frames.iter().map(|f| f.epoch).collect();
         assert_eq!(epochs, vec![5, 6, 7, 8]);
