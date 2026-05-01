@@ -93,3 +93,31 @@ fn chio_yaml_probe_returns_info_when_no_doc() {
         .expect("chio_yaml report");
     assert_eq!(report["severity"], "info");
 }
+
+#[test]
+fn doctor_fix_scaffolds_missing_chio_yaml() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = env!("CARGO_BIN_EXE_chio");
+    let out = Command::new(bin)
+        .current_dir(dir.path())
+        .env("CHIO_DOCTOR_SKIP_NETWORK", "1")
+        .args(["doctor", "--json", "--fix"])
+        .output()
+        .expect("doctor --json --fix");
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    let report = parsed["reports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["probe"] == "chio_yaml")
+        .expect("chio_yaml report");
+    assert_eq!(report["severity"], "ok");
+    assert_eq!(report["repaired"], true);
+
+    let body = std::fs::read_to_string(dir.path().join("chio.yaml")).unwrap();
+    assert!(body.contains("version: 1"));
+    assert!(body.contains("policy: ./policy.yaml"));
+}
