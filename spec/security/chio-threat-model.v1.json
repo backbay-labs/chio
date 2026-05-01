@@ -43,7 +43,17 @@
         }
       ],
       "residualRisk": "Compatibility profiles still allow bearer-style capability use when sender constraint is not required, and replay protection weakens across restart or failover when nonce state is only process-local.",
-      "coverage_state": "covered"
+      "coverage_state": "covered",
+      "coveredBy": [
+        "crates/chio-conformance/tests/threats/capability_token_theft.rs",
+        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-001.json",
+        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-002.json",
+        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-005.json",
+        "crates/chio-adversarial-suite/cases/future_dated/future-dated-002.json",
+        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-005.json",
+        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-003.json",
+        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-005.json"
+      ]
     },
     {
       "id": "kernel_impersonation",
@@ -67,7 +77,20 @@
         }
       ],
       "residualRisk": "Plaintext local-development modes intentionally do not provide peer authenticity, and receipt trust still depends on deployment-specific trust-anchor distribution.",
-      "coverage_state": "covered"
+      "coverage_state": "covered",
+      "coveredBy": [
+        "crates/chio-conformance/tests/threats/kernel_impersonation.rs",
+        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-002.json",
+        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-005.json",
+        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-004.json",
+        "crates/chio-adversarial-suite/cases/future_dated/future-dated-005.json",
+        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-001.json",
+        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-002.json",
+        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json",
+        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json",
+        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json",
+        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json"
+      ]
     },
     {
       "id": "tool_server_escape",
@@ -90,7 +113,12 @@
         }
       ],
       "residualRisk": "Chio mediation does not by itself sandbox arbitrary tool-server code; a compromised tool process can still abuse whatever host privileges the operator granted it.",
-      "coverage_state": "covered"
+      "coverage_state": "covered",
+      "coveredBy": [
+        "crates/chio-conformance/tests/threats/tool_server_escape.rs",
+        "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json",
+        "crates/chio-wasm-guards/tests/escape/signed_but_malicious.rs"
+      ]
     },
     {
       "id": "native_channel_replay",
@@ -113,7 +141,21 @@
         }
       ],
       "residualRisk": "The native framed lane has no separate in-band anti-replay mechanism outside the sender-proof and capability systems, so non-DPoP grants remain replayable within their validity window if the transport is exposed.",
-      "coverage_state": "covered"
+      "coverage_state": "covered",
+      "coveredBy": [
+        "crates/chio-conformance/tests/threats/native_channel_replay.rs",
+        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-001.json",
+        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-003.json",
+        "crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-004.json",
+        "crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-003.json",
+        "crates/chio-adversarial-suite/cases/future_dated/future-dated-001.json",
+        "crates/chio-adversarial-suite/cases/future_dated/future-dated-003.json",
+        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-003.json",
+        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-001.json",
+        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-002.json",
+        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-003.json",
+        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-003.json"
+      ]
     },
     {
       "id": "resource_exhaustion_dos",
@@ -139,7 +181,14 @@
         }
       ],
       "residualRisk": "Size checks and lifecycle rules reduce but do not eliminate asymmetric workload attacks, and authenticated callers can still consume their own allowed quota share.",
-      "coverage_state": "covered"
+      "coverage_state": "covered",
+      "coveredBy": [
+        "crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs",
+        "crates/chio-wasm-guards/tests/escape/fuel_exhaustion.rs",
+        "crates/chio-wasm-guards/tests/escape/oversize_memory.rs",
+        "crates/chio-wasm-guards/tests/escape/deep_recursion.rs",
+        "crates/chio-wasm-guards/tests/escape/table_grow.rs"
+      ]
     },
     {
       "id": "delegation_chain_abuse",
@@ -164,7 +213,21 @@
         }
       ],
       "residualRisk": "The shipped runtime is stronger than unchecked delegation metadata, but it is not yet a universally recursive, fail-closed delegated-authority proof system at every entry point.",
-      "coverage_state": "covered"
+      "coverage_state": "covered",
+      "coveredBy": [
+        "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs",
+        "crates/chio-adversarial-suite/cases/future_dated/future-dated-004.json",
+        "crates/chio-adversarial-suite/cases/partial_signature/partial-signature-004.json",
+        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-004.json",
+        "crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-005.json",
+        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-001.json",
+        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-002.json",
+        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-004.json",
+        "crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-005.json",
+        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-001.json",
+        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-002.json",
+        "crates/chio-adversarial-suite/cases/scope_superset/scope-superset-004.json"
+      ]
     },
     {
       "id": "ssrf_via_http_substrate",
