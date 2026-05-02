@@ -1,11 +1,16 @@
-//! Baseline bench: dispatch_allow.
-//! Body fills in once the async-kernel pivot lands.
+//! Baseline bench: dispatch_allow on the production kernel dispatch path.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+mod dispatch_request_fixture;
+
+use dispatch_request_fixture::DispatchAllowFixture;
+
 pub fn bench(c: &mut Criterion) {
+    let fixture = DispatchAllowFixture::new();
+
     c.bench_function("dispatch_allow", |b| {
-        b.iter(|| black_box(0_u64));
+        b.iter(|| black_box(fixture.dispatch_allow_once()));
     });
 }
 

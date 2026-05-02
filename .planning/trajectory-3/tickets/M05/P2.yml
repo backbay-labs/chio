@@ -10,7 +10,7 @@
   milestone: M05
   phase: 2
   title: DispatchRequest fixture + production dispatch path thread-through + reference-runner contract doc
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-kernel/benches/dispatch_request_fixture.rs
@@ -28,16 +28,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 413e4476ab40592c94505747d2b2a545251f4c36
+  merged_sha: 413e4476ab40592c94505747d2b2a545251f4c36
+  opened_ts: "2026-05-02T10:01:30Z"
+  merged_ts: "2026-05-02T10:01:30Z"
 
 - id: M05.P2.T2
   milestone: M05
   phase: 2
   title: Replace dispatch_allow Criterion 0_u64 probe with real wall-clock measurement on production dispatch path
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
     - crates/chio-kernel/benches/dispatch_allow.rs
@@ -53,7 +53,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc4716e414ba107cba9f6bb71c0d15b0199f1a3d
+  merged_sha: bc4716e414ba107cba9f6bb71c0d15b0199f1a3d
+  opened_ts: "2026-05-02T10:01:30Z"
+  merged_ts: "2026-05-02T10:01:30Z"
