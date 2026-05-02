@@ -110,6 +110,22 @@ classes per crate):
 - `chio-guards` and `chio-anchor` bounded shards too small to
   inventory; full sweeps run at P0.T1.
 
+## 2.1. P1 survivor sweep evidence
+
+P1 records targeted survivor-closure tests before the post-P3 gate
+flip. These rows are test evidence, not final cargo-mutants replacement
+metrics; section 4 records the measured full-sweep percentages used for
+activation.
+
+| Ticket | Crate | Evidence | Targeted survivor cluster |
+|--------|-------|----------|---------------------------|
+| M04.P1.T1 | chio-credentials | `crates/chio-credentials/tests/schema_negative.rs` | Negative schema variants for passport, signed verifier policy, presentation challenge, and presentation response fail closed before signature or window checks. |
+| M04.P1.T2 | chio-kernel-core | `crates/chio-kernel-core/tests/normalized_proptest.rs` | Property tests cover wildcard/exact grant subset, operation preservation, required parent constraints, monetary cap narrowing, and resource/prompt parent coverage. |
+| M04.P1.T3 | chio-kernel-core | `crates/chio-kernel-core/tests/scope_proptest.rs` | Property tests exercise path-prefix normalization, exact and glob domain constraints, inclusive length/argument-size boundaries, and exact-grant specificity sorting. |
+| M04.P1.T4 | chio-attest-verify | `crates/chio-attest-verify/tests/sigstore_negative.rs` plus fixture modules under `tests/fixtures/` | Sigstore verifier rejects synthetic cert-time, malformed-chain, wrong-root, issuer-mismatch, and malformed-bundle inputs through the public fail-closed verifier surface. |
+| M04.P1.T5 | chio-policy | `crates/chio-policy/tests/{validate_boundary.rs,conditions_match_arms.rs,compiler_overlap.rs}` | Boundary tests cover validation limits, weekday/timezone condition arms, midnight wrapping, confirmation-glob overlap, human approval fallback thresholds, and default-allow fail-closed scope compilation. |
+| M04.P1.T6 | chio-guards, chio-anchor | `crates/chio-guards/tests/mutation_gap_closure.rs`; `crates/chio-anchor/tests/mutation_gap_closure.rs` | Guards tests cover forbidden-path exception precedence, path-allowlist fallback, egress block precedence, and secret-pattern load-time rejection. Anchor tests cover emergency controls, lane classification precedence, OTS contiguity/calendar requirements, and Solana memo identity fields. |
+
 ## 3. Verdict-matrix advisory baseline
 
 P0 advisory driver inventory is read from

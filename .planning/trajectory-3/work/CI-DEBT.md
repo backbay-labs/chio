@@ -25,3 +25,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #461 (`029479b291c4b8eeeec38952cb28ab33a6bab4ce`): M02.P4 partner integration spike; skipped hosted CI wait for METR ingest sample, partner feedback audit docs, optional partner_review schema/verifier checks, and ticket stamps.
 - PR #462 (`64ef66b63c7b40cd92b721086000430a711a90b4`): M02.P5 conformance memo closeout; skipped hosted CI wait for memo verifier CLI, signed METR memo artifacts, audit closure, README partnership note, and ticket stamps.
 - PR #463 (`5e9c65126422fea5306cd41e38d0413b15fa44fd`): M04.P0 mutation baseline audit; skipped hosted CI wait for mutation-gate audit baseline, trajectory-3 mutants-baseline.toml, and ticket stamps.
+- PR #464 (`581a09519b7d0d9ecdc2f6e7d37083b570fc2bbd`): M04.P1 mutation survivor sweep tests; skipped hosted CI wait for credentials, kernel-core, attest-verify, policy, guards, anchor mutation-gap tests, audit evidence, and ticket stamps.

@@ -2526,7 +2526,7 @@
   phase: 1
   title: chio-credentials is_supported_*_schema negative tests; raise kill rate to
     >= 90%
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - crates/chio-credentials/tests/schema_negative.rs
@@ -2546,15 +2546,15 @@
   agent_role: quality-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c1a3128656a5dafcb7b19b3c3fd8e28108524558
+  merged_sha: c1a3128656a5dafcb7b19b3c3fd8e28108524558
+  opened_ts: '2026-05-02T08:07:19Z'
+  merged_ts: '2026-05-02T08:07:19Z'
 - id: M04.P1.T2
   milestone: M04
   phase: 1
   title: chio-kernel-core normalized.rs proptests on subset and grant types
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - crates/chio-kernel-core/tests/normalized_proptest.rs
@@ -2576,15 +2576,15 @@
   agent_role: quality-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9b434ce5c46dd4375cb51da2ac98a8fe62b8a742
+  merged_sha: 9b434ce5c46dd4375cb51da2ac98a8fe62b8a742
+  opened_ts: '2026-05-02T08:07:19Z'
+  merged_ts: '2026-05-02T08:07:19Z'
 - id: M04.P1.T3
   milestone: M04
   phase: 1
   title: chio-kernel-core scope.rs proptests on wildcard, path-prefix, domain, normalize-path
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-kernel-core/tests/scope_proptest.rs
@@ -2603,16 +2603,16 @@
   agent_role: quality-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 93fbdc3e8b01a2e0919e32057951c3b678a2b13a
+  merged_sha: 93fbdc3e8b01a2e0919e32057951c3b678a2b13a
+  opened_ts: '2026-05-02T08:07:19Z'
+  merged_ts: '2026-05-02T08:07:19Z'
 - id: M04.P1.T4
   milestone: M04
   phase: 1
   title: chio-attest-verify fixture suite (cert-time, malformed-chain, oidc-mismatch);
     raise kill rate to >= 65%
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - crates/chio-attest-verify/tests/fixtures/cert_time.rs
@@ -2637,16 +2637,16 @@
   agent_role: crypto-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 60d0e4d38ba63140242ef40b6b32c1c679ca1fcf
+  merged_sha: 60d0e4d38ba63140242ef40b6b32c1c679ca1fcf
+  opened_ts: '2026-05-02T08:07:19Z'
+  merged_ts: '2026-05-02T08:07:19Z'
 - id: M04.P1.T5
   milestone: M04
   phase: 1
   title: chio-policy full sweep + boundary tests on validate, conditions, compiler;
     raise to >= 80%
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - crates/chio-policy/tests/validate_boundary.rs
@@ -2667,15 +2667,15 @@
   agent_role: quality-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 672d680f4fa156f0309896d1994202af4b93fc51
+  merged_sha: 672d680f4fa156f0309896d1994202af4b93fc51
+  opened_ts: '2026-05-02T08:07:19Z'
+  merged_ts: '2026-05-02T08:07:19Z'
 - id: M04.P1.T6
   milestone: M04
   phase: 1
   title: chio-guards and chio-anchor full sweeps + targeted gap closure
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - crates/chio-guards/tests/mutation_gap_closure.rs
@@ -2698,10 +2698,10 @@
   agent_role: quality-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c9385742ee3b2c3b800d6f12a5397fa9447cbcc8
+  merged_sha: c9385742ee3b2c3b800d6f12a5397fa9447cbcc8
+  opened_ts: '2026-05-02T08:07:19Z'
+  merged_ts: '2026-05-02T08:07:19Z'
 - id: M04.P2.T1
   milestone: M04
   phase: 2
