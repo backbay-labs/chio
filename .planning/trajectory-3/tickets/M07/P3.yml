@@ -14,7 +14,7 @@
   milestone: M07
   phase: 3
   title: sdks/jvm/chio-kernel-mobile Gradle scaffold with build.gradle.kts and Kotlin package layout
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - sdks/jvm/chio-kernel-mobile/build.gradle.kts
@@ -35,16 +35,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: "2026-05-02T13:36:35Z"
+  merged_ts: "2026-05-02T13:36:35Z"
 
 - id: M07.P3.T2
   milestone: M07
   phase: 3
   title: scripts/build-android-aar.sh produces AAR via cargo ndk plus uniffi-bindgen plus gradle
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - scripts/build-android-aar.sh
@@ -62,16 +62,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: "2026-05-02T13:36:35Z"
+  merged_ts: "2026-05-02T13:36:35Z"
 
 - id: M07.P3.T3
   milestone: M07
   phase: 3
   title: PlayIntegrity.kt Standard API wrapper and Keystore.kt with StrongBox-backed key generation
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/PlayIntegrity.kt
@@ -91,16 +91,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: "2026-05-02T13:36:35Z"
+  merged_ts: "2026-05-02T13:36:35Z"
 
 - id: M07.P3.T4
   milestone: M07
   phase: 3
   title: chio-custody-hw attestation play_integrity verifier with pinned Google attestation root
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-custody-hw/src/attestation/play_integrity.rs
@@ -122,16 +122,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: "2026-05-02T13:36:35Z"
+  merged_ts: "2026-05-02T13:36:35Z"
 
 - id: M07.P3.T5
   milestone: M07
   phase: 3
   title: androidTest instrumentation harness for full Play Integrity forward-to-kernel flow
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - sdks/jvm/chio-kernel-mobile/src/androidTest/kotlin/dev/chio/kernel/PlayIntegrityInstrumentedTest.kt
@@ -150,7 +150,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: "2026-05-02T13:36:35Z"
+  merged_ts: "2026-05-02T13:36:35Z"
