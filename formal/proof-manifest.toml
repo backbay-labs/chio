@@ -120,12 +120,11 @@ allowed_assumption_modules = [
   "Chio.Core.Revocation",
 ]
 
-allowed_axioms = [
-  "Chio.Core.verifyCapabilitySignature",
-]
+allowed_axioms = []
 
 allowed_open_modules = [
   "Chio.Core",
+  "Chio.Proofs",
   "Chio.Spec",
   "Lake",
   "DSL",

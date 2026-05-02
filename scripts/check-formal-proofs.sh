@@ -165,8 +165,6 @@ if inventory.get("schema") != "chio.theorem-inventory.v1":
 assumptions = inventory.get("assumptions", [])
 approved_axioms = manifest.get("allowed_axioms", [])
 approved_open_modules = set(manifest.get("allowed_open_modules", []))
-if not assumptions:
-    raise SystemExit("theorem inventory assumptions list is empty")
 
 if sorted(assumption.get("leanName") for assumption in assumptions) != sorted(approved_axioms):
     raise SystemExit("approved axiom list does not match theorem inventory assumptions")
@@ -392,7 +390,8 @@ if found_exports:
 shadowing_abbrevs = sorted(
     f"{full_name} ({file}:{line})"
     for full_name, short_name, file, line in found_abbrevs
-    if full_name in approved_axiom_names or short_name in approved_axiom_short_names
+    if approved_axiom_names
+    and (full_name in approved_axiom_names or short_name in approved_axiom_short_names)
 )
 if shadowing_abbrevs:
     raise SystemExit(f"Lean abbrevs shadow approved axioms: {', '.join(shadowing_abbrevs)}")
