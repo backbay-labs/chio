@@ -308,6 +308,7 @@ scope statement, and landing-page evidence.
 | Final report submitted to HITRUST | 2026-05-02 | submitted | `HITRUST-QA-SUBMIT-M09-P5-2026-05-02` |
 | HITRUST QA round | 2026-05-02 | passed with no revision request | `HITRUST-QA-PASS-M09-P5-2026-05-02` |
 | Certificate received | 2026-05-02 | issued | `compliance/hitrust/certificate/certificate.md` |
+| Renewal trigger filed | 2026-05-02 | filed | `compliance/hitrust/renewal/renewal-trigger.md` |
 
 Final report submitted to HITRUST: 2026-05-02 by the selected external
 assessor after P4 draft-report clarifications closed with no Critical,
@@ -321,6 +322,10 @@ scope statement without expanding the certificate boundary.
 Certificate received: HITRUST-i1-CHIO-V318-DP-2026-0502, issued
 2026-05-02 to the Chio v3.18 design-partner deployment. The
 expiration date is 2027-05-02, one year after issuance.
+
+Renewal trigger filed: the renewal window opens 2027-02-01 and the
+latest kickoff date is 2027-03-03, giving trajectory-4 a 60-90 day
+planning window before certificate expiration.
 
 ## 7. Closure attestations
 
