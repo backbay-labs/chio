@@ -57,9 +57,9 @@ at audit-doc open.
 
 ## 3. Reproducible-build evidence
 
-- rebuilder identity: Backbay Platform Assurance sister-team lane
-  outside the Chio core team; signed request sent 2026-05-02,
-  response pending final stabilization replay.
+- rebuilder identity: primary Backbay Platform Assurance sister-team
+  lane outside the Chio core team; backup M08 reviewer rebuild scope if
+  vendor calendar allows. Signed request sent 2026-05-02.
 - matched hash: pending final stabilization replay; expected source
   is `scripts/rebuild-from-source.sh v3.18`.
 - date received: pending final stabilization replay

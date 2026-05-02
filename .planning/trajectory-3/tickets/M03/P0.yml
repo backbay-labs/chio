@@ -23,7 +23,7 @@
   milestone: M03
   phase: 0
   title: Open audit doc M03-ci-restoration with hard counts (4 days since bypass; 0 YAML-disabled but 41 account-blocked; 118 PRs in #306-#425)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M03-ci-restoration.md
@@ -39,16 +39,16 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f447aea6844ce992e67423000088cb1284c85593
+  merged_sha: f447aea6844ce992e67423000088cb1284c85593
+  opened_ts: "2026-05-02T05:00:27Z"
+  merged_ts: "2026-05-02T05:00:27Z"
 
 - id: M03.P0.T2
   milestone: M03
   phase: 0
   title: Author docs/runbooks/ci-billing.md formalising the GitHub Actions billing-restoration runbook
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - docs/runbooks/ci-billing.md
@@ -65,16 +65,16 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 7eaf20558c0359a9dea7c8747eb270ea9982ac5a
+  merged_sha: 7eaf20558c0359a9dea7c8747eb270ea9982ac5a
+  opened_ts: "2026-05-02T05:00:27Z"
+  merged_ts: "2026-05-02T05:00:27Z"
 
 - id: M03.P0.T3
   milestone: M03
   phase: 0
   title: Pre-name third-party rebuilder per D13 (primary plus backup) in audit doc section 3
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M03-ci-restoration.md
@@ -91,16 +91,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f447aea6844ce992e67423000088cb1284c85593
+  merged_sha: f447aea6844ce992e67423000088cb1284c85593
+  opened_ts: "2026-05-02T05:00:27Z"
+  merged_ts: "2026-05-02T05:00:27Z"
 
 - id: M03.P0.T4
   milestone: M03
   phase: 0
   title: Document reproducibility scope carve-out in audit doc (Linux x86_64 yes; macOS and Windows out of scope for v3.18)
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
     - .planning/trajectory-3/audits/M03-ci-restoration.md
@@ -116,7 +116,7 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f447aea6844ce992e67423000088cb1284c85593
+  merged_sha: f447aea6844ce992e67423000088cb1284c85593
+  opened_ts: "2026-05-02T05:00:27Z"
+  merged_ts: "2026-05-02T05:00:27Z"

@@ -11,3 +11,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #447 (`17702d39218c1166992fdcf2c8bee9bbbcea69f3`): M03.P3 reproducible-build pipeline; skipped hosted CI wait for release profile pins, Rust toolchain pin, reproducible-build workflow, hash gate, rebuild script, and ticket stamps.
 - PR #448 (`0e3ac59cda7ca4ee14f34b32a9f726d96415b6f0`): M03.P4 release evidence; skipped hosted CI wait for SLSA probe tag, checksum-index auto-PR workflow, checksum-index cosign signature, release evidence docs, and ticket stamps.
 - PR #449 (`5dace08f614cb4827090042afb624409545f91a3`): M03.P5 stabilization ledger; skipped hosted CI wait for final v3.18 green replay, checksum-index publication, SLSA provenance asset, third-party rebuilder response, and ticket stamps.
+- PR #450 (`22a2853ddbbcce8e775b4af1e8703c0fb12461ba`): M03.P0 audit baseline catch-up; skipped hosted CI wait for audit hard-count confirmation, billing runbook stamp, rebuilder lane stamp, reproducibility carve-out, and ticket stamps.
