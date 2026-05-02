@@ -77,6 +77,12 @@ values at M03.P5.
 P4 probe target:
 
 - Probe tag: `v0.0.0-m03-probe`
+- Probe source SHA: `3353b75b36c8562299b693bf2526b663a88b303e`
+- Release-binaries probe run:
+  `https://github.com/bb-connor/arc/actions/runs/25244116322`
+- Probe state at PR open: queued under the 2026-05-02 steering policy;
+  completion is carried in `.planning/trajectory-3/work/CI-DEBT.md`
+  final stabilization replay.
 - Source workflow: `.github/workflows/release-binaries.yml`
 - SLSA workflow: `.github/workflows/slsa.yml`
 - Expected provenance asset:
