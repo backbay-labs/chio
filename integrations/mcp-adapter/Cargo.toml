@@ -1,0 +1,25 @@
+[package]
+name = "chio-mcp-adapter-integration"
+description = "Streamable HTTP MCP integration package for Chio marketplace distribution"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_mcp_adapter_integration"
+
+[dependencies]
+base64 = { workspace = true }
+chio-mcp-edge = { path = "../../crates/chio-mcp-edge" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
