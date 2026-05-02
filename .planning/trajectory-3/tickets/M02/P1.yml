@@ -12,7 +12,7 @@
   milestone: M02
   phase: 1
   title: Commit contracted partner identity into audit closure block and tickets README
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M02-ai-lab.md
@@ -29,16 +29,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f2ef9e60f29c97781ba0a567b5fd35259daad24e
+  merged_sha: f2ef9e60f29c97781ba0a567b5fd35259daad24e
+  opened_ts: "2026-05-02T06:20:54Z"
+  merged_ts: "2026-05-02T06:20:54Z"
 
 - id: M02.P1.T2
   milestone: M02
   phase: 1
   title: Draft partner Q&A (signature scheme, ingest language, citation window)
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - .planning/trajectory-3/research/m02/PARTNER-QA.md
@@ -56,16 +56,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 6f52649129607ca11c6cb2f0a73f281153388305
+  merged_sha: 6f52649129607ca11c6cb2f0a73f281153388305
+  opened_ts: "2026-05-02T06:20:54Z"
+  merged_ts: "2026-05-02T06:20:54Z"
 
 - id: M02.P1.T3
   milestone: M02
   phase: 1
   title: Freeze textual bundle format sketch for partner pre-review
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - .planning/trajectory-3/research/m02/BUNDLE-SKETCH.md
@@ -82,16 +82,16 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 730e8e1fc5e6f71884531b5ea9574b515147b908
+  merged_sha: 730e8e1fc5e6f71884531b5ea9574b515147b908
+  opened_ts: "2026-05-02T06:20:54Z"
+  merged_ts: "2026-05-02T06:20:54Z"
 
 - id: M02.P1.T4
   milestone: M02
   phase: 1
   title: Open partnership-note draft PR with placeholders for memo URL and hash
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/research/m02/PARTNERSHIP-NOTE-DRAFT.md
@@ -107,7 +107,7 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 89de08cfa0ff9e0bb26ac5a8e5edee40a6b19aae
+  merged_sha: 89de08cfa0ff9e0bb26ac5a8e5edee40a6b19aae
+  opened_ts: "2026-05-02T06:20:54Z"
+  merged_ts: "2026-05-02T06:20:54Z"
