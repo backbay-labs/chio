@@ -1,17 +1,7 @@
 {
   "schema": "chio.theorem-inventory.v1",
   "rootModule": "formal/lean4/Chio/Chio.lean",
-  "assumptions": [
-    {
-      "id": "assumption.crypto.verify_capability_signature",
-      "leanName": "Chio.Core.verifyCapabilitySignature",
-      "file": "formal/lean4/Chio/Chio/Core/Revocation.lean",
-      "kind": "axiom",
-      "rootImported": true,
-      "claimClass": "audited_axiom",
-      "notes": "Axiomatized capability-signature verification over a trusted key set. This is an audited proof assumption, not a theorem over the concrete Rust Ed25519 or canonicalization implementation."
-    }
-  ],
+  "assumptions": [],
   "theorems": [
     {
       "id": "core.scope.empty_isSubsetOf",
