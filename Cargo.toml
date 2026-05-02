@@ -92,6 +92,7 @@ members = [
     "crates/chio-manifest",
     "crates/chio-store-sqlite",
     "crates/chio-workflow",
+    "integrations/aws-bedrock/control-plane",
     #
     # HTTP & session
     "crates/chio-hosted-mcp",
@@ -183,6 +184,8 @@ panic = "abort"
 
 [workspace.dependencies]
 aws-sdk-bedrockruntime = "1.130.0"
+aws-sdk-marketplaceentitlement = "1"
+aws-sdk-marketplacemetering = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
