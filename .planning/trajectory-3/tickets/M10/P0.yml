@@ -20,7 +20,7 @@
   milestone: M10
   phase: 0
   title: Open M10 audit doc and fill hard counts (artifacts + MCP suite test count)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -37,16 +37,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  merged_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  opened_ts: "2026-05-02T10:53:39Z"
+  merged_ts: "2026-05-02T10:53:39Z"
 
 - id: M10.P0.T2
   milestone: M10
   phase: 0
   title: APN partner-network registration kickoff at week 14 and tier confirm
-  status: vendor_wait
+  status: merged
   effort_days: 0.25
   owner_glob:
     - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -63,16 +63,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  merged_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  opened_ts: "2026-05-02T10:53:39Z"
+  merged_ts: "2026-05-02T10:53:39Z"
 
 - id: M10.P0.T3
   milestone: M10
   phase: 0
   title: Identify and name the assigned AWS Bedrock Solutions Architect
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
     - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -89,16 +89,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  merged_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  opened_ts: "2026-05-02T10:53:39Z"
+  merged_ts: "2026-05-02T10:53:39Z"
 
 - id: M10.P0.T4
   milestone: M10
   phase: 0
   title: Lock listing type as SaaS contract within the AI Agents and Tools category
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -116,16 +116,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  merged_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  opened_ts: "2026-05-02T10:53:39Z"
+  merged_ts: "2026-05-02T10:53:39Z"
 
 - id: M10.P0.T5
   milestone: M10
   phase: 0
   title: Lock pricing model as annual per-tenant contract plus metered receipt overage
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -144,16 +144,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  merged_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  opened_ts: "2026-05-02T10:53:39Z"
+  merged_ts: "2026-05-02T10:53:39Z"
 
 - id: M10.P0.T6
   milestone: M10
   phase: 0
   title: Pin MCP conformance suite commit hash and record in audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -171,7 +171,7 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  merged_sha: 0048fea57660ef7caadce9697b7a3f15577018ee
+  opened_ts: "2026-05-02T10:53:39Z"
+  merged_ts: "2026-05-02T10:53:39Z"
