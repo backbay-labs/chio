@@ -14,7 +14,7 @@
   milestone: M07
   phase: 4
   title: Mobile-side offline-queue impl (iOS Keychain plus Android EncryptedSharedPreferences)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - sdks/swift/Sources/Chio/OfflineQueue.swift
@@ -32,16 +32,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  merged_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  opened_ts: "2026-05-02T13:52:46Z"
+  merged_ts: "2026-05-02T13:52:46Z"
 
 - id: M07.P4.T2
   milestone: M07
   phase: 4
   title: POST-on-reconnect path with retry policy and typed urn:chio:error:mobile error codes
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - sdks/swift/Sources/Chio/ReceiptPoster.swift
@@ -61,16 +61,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  merged_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  opened_ts: "2026-05-02T13:52:46Z"
+  merged_ts: "2026-05-02T13:52:46Z"
 
 - id: M07.P4.T3
   milestone: M07
   phase: 4
   title: Hosted-oracle round-trip test against M01 fixture endpoint with iOS and Android signed receipts
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel-mobile/tests/oracle_round_trip.rs
@@ -89,16 +89,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  merged_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  opened_ts: "2026-05-02T13:52:46Z"
+  merged_ts: "2026-05-02T13:52:46Z"
 
 - id: M07.P4.T4
   milestone: M07
   phase: 4
   title: Audit-doc attestation chain documentation update with concrete fixture references
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M07-mobile-mvp.md
@@ -114,7 +114,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  merged_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  opened_ts: "2026-05-02T13:52:46Z"
+  merged_ts: "2026-05-02T13:52:46Z"
