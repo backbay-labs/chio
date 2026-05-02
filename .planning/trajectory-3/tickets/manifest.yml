@@ -5250,7 +5250,7 @@
   milestone: M08
   phase: 0
   title: Vendor-question response loop during weeks 3-4 (split per inbound question)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5271,16 +5271,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f767cc75c545691336efee8191a36944af844bba
+  merged_sha: f767cc75c545691336efee8191a36944af844bba
+  opened_ts: '2026-05-02T19:46:01Z'
+  merged_ts: '2026-05-02T19:46:01Z'
 - id: M08.P0.T7
   milestone: M08
   phase: 0
   title: Author vendor selection memo (D12 final pick + D07 budget variance + E&O
     check)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5300,15 +5300,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f49402090f40dbd5fa6bc2b225eab0dd3cc9a589
+  merged_sha: f49402090f40dbd5fa6bc2b225eab0dd3cc9a589
+  opened_ts: '2026-05-02T19:46:01Z'
+  merged_ts: '2026-05-02T19:46:01Z'
 - id: M08.P0.T8
   milestone: M08
   phase: 0
   title: SOW redline + signature (10-day right-of-reply + 1-week re-test pinned)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5331,16 +5331,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b5206c4082ede4c0e0babe3973b970b25d095185
+  merged_sha: b5206c4082ede4c0e0babe3973b970b25d095185
+  opened_ts: '2026-05-02T19:46:01Z'
+  merged_ts: '2026-05-02T19:46:01Z'
 - id: M08.P0.T9
   milestone: M08
   phase: 0
   title: Seed audit doc with starting counts (PROTOCOL line count, source line counts,
     threat rows)
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5358,10 +5358,10 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 63ce992add2158cd6d541acddecbdb39b7c8d165
+  merged_sha: 63ce992add2158cd6d541acddecbdb39b7c8d165
+  opened_ts: '2026-05-02T19:46:01Z'
+  merged_ts: '2026-05-02T19:46:01Z'
 - id: M08.P1.T1
   milestone: M08
   phase: 1
@@ -6179,7 +6179,7 @@
   phase: 0
   title: Receive RFP responses and record quote variance against D07 band in audit
     doc
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -6197,16 +6197,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc51cbb9b9166fa5572c782fc0948f574bfd7b75
+  merged_sha: bc51cbb9b9166fa5572c782fc0948f574bfd7b75
+  opened_ts: '2026-05-02T19:46:01Z'
+  merged_ts: '2026-05-02T19:46:01Z'
 - id: M09.P0.T8
   milestone: M09
   phase: 0
   title: Contract assessor and capture signed scope memo before P1 gap assessment
     opens
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - compliance/hitrust/scope-boundary.md
@@ -6226,10 +6226,10 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 540e7972138d07b92277bf20e6997714a0c2a529
+  merged_sha: 540e7972138d07b92277bf20e6997714a0c2a529
+  opened_ts: '2026-05-02T19:46:01Z'
+  merged_ts: '2026-05-02T19:46:01Z'
 - id: M09.P1.T1
   milestone: M09
   phase: 1
