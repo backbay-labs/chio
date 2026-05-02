@@ -124,6 +124,7 @@ activation.
 | M04.P1.T3 | chio-kernel-core | `crates/chio-kernel-core/tests/scope_proptest.rs` | Property tests exercise path-prefix normalization, exact and glob domain constraints, inclusive length/argument-size boundaries, and exact-grant specificity sorting. |
 | M04.P1.T4 | chio-attest-verify | `crates/chio-attest-verify/tests/sigstore_negative.rs` plus fixture modules under `tests/fixtures/` | Sigstore verifier rejects synthetic cert-time, malformed-chain, wrong-root, issuer-mismatch, and malformed-bundle inputs through the public fail-closed verifier surface. |
 | M04.P1.T5 | chio-policy | `crates/chio-policy/tests/{validate_boundary.rs,conditions_match_arms.rs,compiler_overlap.rs}` | Boundary tests cover validation limits, weekday/timezone condition arms, midnight wrapping, confirmation-glob overlap, human approval fallback thresholds, and default-allow fail-closed scope compilation. |
+| M04.P1.T6 | chio-guards, chio-anchor | `crates/chio-guards/tests/mutation_gap_closure.rs`; `crates/chio-anchor/tests/mutation_gap_closure.rs` | Guards tests cover forbidden-path exception precedence, path-allowlist fallback, egress block precedence, and secret-pattern load-time rejection. Anchor tests cover emergency controls, lane classification precedence, OTS contiguity/calendar requirements, and Solana memo identity fields. |
 
 ## 3. Verdict-matrix advisory baseline
 
