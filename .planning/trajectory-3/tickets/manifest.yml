@@ -1299,8 +1299,8 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: 25d8bc9f5da4f9fc278b13d66fafc68ea17b256
-  merged_sha: 25d8bc9f5da4f9fc278b13d66fafc68ea17b256
+  first_commit_sha: 25d8bc9f58e597d6c6dfdff2a44a40ae3ab51782
+  merged_sha: 25d8bc9f58e597d6c6dfdff2a44a40ae3ab51782
   opened_ts: '2026-05-02T07:19:52Z'
   merged_ts: '2026-05-02T07:19:52Z'
 - id: M02.P4.T2
@@ -2726,7 +2726,7 @@
   milestone: M05
   phase: 2
   title: DispatchRequest fixture + production dispatch path thread-through + reference-runner contract doc
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-kernel/benches/dispatch_request_fixture.rs
@@ -2744,15 +2744,15 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 413e4476ab40592c94505747d2b2a545251f4c36
+  merged_sha: 413e4476ab40592c94505747d2b2a545251f4c36
+  opened_ts: '2026-05-02T10:01:30Z'
+  merged_ts: '2026-05-02T10:01:30Z'
 - id: M05.P2.T2
   milestone: M05
   phase: 2
   title: Replace dispatch_allow Criterion 0_u64 probe with real wall-clock measurement on production dispatch path
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - crates/chio-kernel/benches/dispatch_allow.rs
@@ -2768,15 +2768,15 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc4716e414ba107cba9f6bb71c0d15b0199f1a3d
+  merged_sha: bc4716e414ba107cba9f6bb71c0d15b0199f1a3d
+  opened_ts: '2026-05-02T10:01:30Z'
+  merged_ts: '2026-05-02T10:01:30Z'
 - id: M05.P3.T1
   milestone: M05
   phase: 3
   title: Replace dispatch_allow_dhat 0_u64 probe and 0/0 budgets with measured allocation-count baseline
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - crates/chio-kernel/benches/dispatch_allow_dhat.rs
@@ -2793,15 +2793,15 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 64d0012ec388e6893ead2cb0c465177839eb12e9
+  merged_sha: 64d0012ec388e6893ead2cb0c465177839eb12e9
+  opened_ts: '2026-05-02T10:14:27Z'
+  merged_ts: '2026-05-02T10:14:27Z'
 - id: M05.P4.T1
   milestone: M05
   phase: 4
   title: Flip pq_signature_downgrade and tee_quote_forgery from pending to covered with populated test bodies
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-conformance/tests/threats/pq_signature_downgrade.rs
@@ -2819,15 +2819,15 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 379b91e0c1a8b23082ab5f23338043612858c7d1
+  merged_sha: 379b91e0c1a8b23082ab5f23338043612858c7d1
+  opened_ts: '2026-05-02T10:31:50Z'
+  merged_ts: '2026-05-02T10:31:50Z'
 - id: M05.P4.T2
   milestone: M05
   phase: 4
   title: Reclassify six remaining advisory pending threats with deferred_to references; flip passkey and audience to covered
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - spec/security/chio-threat-model.v1.json
@@ -2847,15 +2847,15 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 379b91e0c1a8b23082ab5f23338043612858c7d1
+  merged_sha: 379b91e0c1a8b23082ab5f23338043612858c7d1
+  opened_ts: '2026-05-02T10:31:50Z'
+  merged_ts: '2026-05-02T10:31:50Z'
 - id: M05.P4.T3
   milestone: M05
   phase: 4
   title: Flip threat-coverage CI gate to fail-closed on partial and on pending without deferred_to + add state-matrix unit test
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - scripts/check-threat-coverage.sh
@@ -2873,15 +2873,15 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 379b91e0c1a8b23082ab5f23338043612858c7d1
+  merged_sha: 379b91e0c1a8b23082ab5f23338043612858c7d1
+  opened_ts: '2026-05-02T10:31:50Z'
+  merged_ts: '2026-05-02T10:31:50Z'
 - id: M05.P5.T1
   milestone: M05
   phase: 5
   title: Regenerate docs/security/threat-coverage.md so Partial heading is empty and verify zero-partial JSON state
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - docs/security/threat-coverage.md
@@ -2897,15 +2897,15 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b18574df549e2313ccbade96a2d76973af58b070
+  merged_sha: b18574df549e2313ccbade96a2d76973af58b070
+  opened_ts: '2026-05-02T10:42:18Z'
+  merged_ts: '2026-05-02T10:42:18Z'
 - id: M05.P5.T2
   milestone: M05
   phase: 5
   title: Close M05 audit doc Section 4 with post-flip CI run URL and emit M08 reviewer cross-ref hook
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .planning/trajectory-3/audits/M05-threat-coverage.md
@@ -2922,10 +2922,10 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 45d50a5d2ed40e982d588fc4095a387ef82b51b3
+  merged_sha: 45d50a5d2ed40e982d588fc4095a387ef82b51b3
+  opened_ts: '2026-05-02T10:42:18Z'
+  merged_ts: '2026-05-02T10:42:18Z'
 - id: M06.P0.T1
   milestone: M06
   phase: 0

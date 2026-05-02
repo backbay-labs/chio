@@ -2,8 +2,8 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T02:19:05Z",
-  "current_wave": "W1",
+  "last_checkpoint_at": "2026-05-02T10:44:30Z",
+  "current_wave": "W2",
   "halt": {
     "halted": false,
     "reason": null,
@@ -12,74 +12,88 @@
   },
   "milestones": {
     "M01": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
     "M02": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
     "M03": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
     "M04": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
     "M05": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
     "M06": {
-      "status": "ticket files authored",
+      "status": "ready",
       "phase": "ready_for_p0",
       "owner_branch": null,
       "trust_boundary": true
     },
     "M07": {
-      "status": "ticket files authored",
+      "status": "ready",
       "phase": "ready_for_p0",
       "owner_branch": null,
       "trust_boundary": true
     },
     "M08": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
+      "status": "vendor_wait",
+      "phase": "P0_merged",
       "owner_branch": null,
       "trust_boundary": true,
       "lane": "vendor"
     },
     "M09": {
-      "status": "ticket files authored",
-      "phase": "ready_for_p0",
+      "status": "vendor_wait",
+      "phase": "P0_merged",
       "owner_branch": null,
       "trust_boundary": true,
       "lane": "vendor"
     },
     "M10": {
-      "status": "ticket files authored",
+      "status": "ready",
       "phase": "ready_for_p0",
       "owner_branch": null,
       "trust_boundary": true
     }
   },
   "waves": {
-    "W1": ["M01", "M02", "M03", "M04", "M05"],
-    "W2": ["M06", "M07"],
-    "W3": ["M10"]
+    "W1": [
+      "M01",
+      "M02",
+      "M03",
+      "M04",
+      "M05"
+    ],
+    "W2": [
+      "M06",
+      "M07"
+    ],
+    "W3": [
+      "M10"
+    ]
   },
-  "vendor_calendars": ["M08", "M09"],
+  "vendor_calendars": [
+    "M08",
+    "M09"
+  ],
   "customer_evidence": {
     "M01": null,
     "M02": null
@@ -89,7 +103,39 @@
     "Wave 0 is the authoring wave: narrative + tickets land before any P0 wave-opener.",
     "All ten milestones are trust-boundary; security x2 review applies on every PR.",
     "M08 + M09 vendor calendars open week 1, parallel to all code waves.",
-    "Customer evidence freshness window is 7 days per D15; design-partner withdrawal is halt trigger 12."
+    "Customer evidence freshness window is 7 days per D15; design-partner withdrawal is halt trigger 12.",
+    "W1 closeout checkpoint 2026-05-02T10:44:30Z: M01-M05 P5 merged, manifest regenerated, current_wave advanced to W2."
   ],
-  "wave_heads": {}
+  "wave_heads": {
+    "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35"
+  },
+  "wave_status": {
+    "W1": {
+      "status": "complete",
+      "closed_at": "2026-05-02T10:44:30Z",
+      "head_sha": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
+      "milestones": [
+        "M01",
+        "M02",
+        "M03",
+        "M04",
+        "M05"
+      ]
+    },
+    "W2": {
+      "status": "in_progress",
+      "started_at": "2026-05-02T10:44:30Z",
+      "milestones": [
+        "M06",
+        "M07"
+      ],
+      "early_calendar_trigger": "M10.P0"
+    },
+    "W3": {
+      "status": "pending",
+      "milestones": [
+        "M10"
+      ]
+    }
+  }
 }
