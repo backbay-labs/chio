@@ -1,21 +1,26 @@
 //! Allocation-count bench for the dispatch_allow baseline.
 
+mod dispatch_request_fixture;
+
+use dispatch_request_fixture::DispatchAllowFixture;
+
 #[cfg(any(dhat, feature = "dhat-heap"))]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-const DISPATCH_ALLOW_TOTAL_BLOCK_BUDGET: u64 = 0;
-const DISPATCH_ALLOW_TOTAL_BYTE_BUDGET: u64 = 0;
+const DISPATCH_ALLOW_TOTAL_BLOCK_BUDGET: u64 = 512;
+const DISPATCH_ALLOW_TOTAL_BYTE_BUDGET: u64 = 40_960;
 
-fn dispatch_allow_probe() -> u64 {
-    std::hint::black_box(0_u64)
+fn dispatch_allow_probe(fixture: &DispatchAllowFixture) -> bool {
+    std::hint::black_box(fixture.dispatch_allow_once())
 }
 
 #[cfg(any(dhat, feature = "dhat-heap"))]
 fn main() {
+    let fixture = DispatchAllowFixture::new();
     let _profiler = dhat::Profiler::builder().testing().build();
 
-    std::hint::black_box(dispatch_allow_probe());
+    std::hint::black_box(dispatch_allow_probe(&fixture));
 
     let stats = dhat::HeapStats::get();
     println!(
