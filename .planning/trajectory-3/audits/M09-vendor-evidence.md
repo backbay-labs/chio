@@ -238,11 +238,14 @@ Evidence-pack bundles:
 
 ## 5. Assessor engagement log (P4)
 
-[TODO M09 milestone agent fill across P4 weekly cadence.]
+P3 package completeness confirmation received as repository receipt
+`MYCSF-COMPLETE-M09-P3-2026-05-02`. The assessor-confirmed P4 start date
+is 2026-05-02 for the trajectory-3 compressed vendor lane, with weekly
+follow-up evidence windows tracked below.
 
 | Week | Activity | Assessor request | Response date | Cross-ref |
 |------|----------|------------------|---------------|-----------|
-| | | | | |
+| P4 week 1 | package completeness review | none open at P3 close | 2026-05-02 | `MYCSF-COMPLETE-M09-P3-2026-05-02` |
 
 P4 draft report received: <date>
 Findings dispute / clarification round: <Y/N + summary>
