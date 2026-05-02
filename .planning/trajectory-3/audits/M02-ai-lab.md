@@ -164,6 +164,7 @@ older than the merge timestamp of the ticket that adds the row.
 | 2026-05-02 | Eval-report receipt format spec v1 published at `spec/eval/receipt-format.v1.json`; schema id `chio.eval-report.bundle.v1`, RFC 8785 signing payload, and schema lint lane are live. | `f54f1a0413564d45279b2fbbd6da66f3a65d1a70` | M02.P3.T1 |
 | 2026-05-02 | `crates/chio-eval-receipt/` reference verifier merged with CLI round-trip and local `test-sha256` bundle signature verification. | `4d1dbd86d1cd50f27b9be2f04248c3c8c81c7cec` | M02.P3.T2 |
 | 2026-05-02 | Partner integration spike executed with the METR Python ingest sample; local pair-run verified `examples/eval-receipt-ingest/metr/out/metr-sample-bundle.json` through `chio-eval-receipt verify`. | `25d8bc9f5` | M02.P4.T1-M02.P4.T2 |
+| 2026-05-02 | Partner feedback recorded in `.planning/trajectory-3/research/m02/PARTNER-INTEGRATION.md`: optional partner-review receipt metadata requested; no breaking format change requested; no withdrawal signal. | M02.P4.T3 | M02.P4.T3 |
 | | Partner-signed conformance memo received. | <P5.T2 ticket SHA> | |
 
 P0.T1 lands rows 1; P0.T3-T4 land rows 2-5; P3 fills rows 6-7; P4
