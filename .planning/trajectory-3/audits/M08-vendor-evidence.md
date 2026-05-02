@@ -47,21 +47,30 @@ operational surfaces (M09 lane).
 
 ## 2. Vendor selection record
 
+Sources checked 2026-05-02:
+
+- NCC Group contact route: `https://www.nccgroup.com/contact-us/`
+- NCC Group cyber sales route: `https://www.nccgroup.com/contact-sales/`
+- NCC Group cryptography and encryption service route:
+  `https://www.nccgroup.com/technical-assurance/cryptography-encryption/cryptography-services/`
+- Trail of Bits contact route: `https://trailofbits.com/contact/`
+- Trail of Bits services overview: `https://www.trailofbits.com/`
+
 ### 2a. Primary candidates (D12)
 
-| Vendor | RFP sent | Reply received | Quote | Lead time | Selected |
-|--------|----------|----------------|-------|-----------|----------|
-| NCC Group | <date> | <date> | <quote> | 8-16 weeks | <yes/no> |
-| Trail of Bits | <date> | <date> | <quote> | 12-24 weeks | <yes/no> |
+| Vendor | RFP route | RFP sent | Reply received | Quote | Lead time | Fit note | Selected |
+|--------|-----------|----------|----------------|-------|-----------|----------|----------|
+| NCC Group | Cyber Security sales contact form plus cryptography and encryption service page | <date> | <date> | <quote> | 8-16 weeks | Long-running cryptography and protocol review practice; published public-report posture; strongest default fit for capability and crypto review. | <yes/no> |
+| Trail of Bits | Contact form or secure SendSafely route from official contact page | <date> | <date> | <quote> | 12-24 weeks | Strong software assurance, cryptography, systems, blockchain, and security engineering bench; likely higher booking pressure. | <yes/no> |
 
 ### 2b. Substitute ladder (D12 amendment, halt-13 mitigation)
 
-| Vendor | Lead time | Engagement size band | Notes |
-|--------|-----------|----------------------|-------|
-| Galois | 16-24 weeks | $150k-$400k | Strongest formal-methods fit; calendar worst of the six. |
-| Kudelski Security | 12-20 weeks | $120k-$280k | Switzerland; +1-2 weeks contracting. |
-| Cure53 | 4-8 weeks | $60k-$200k | Fastest lead time; shallower crypto-primitive depth. |
-| Cryptography Engineering LLC | 8-16 weeks | $80k-$220k | Boutique; capacity sometimes very limited. |
+| Vendor | Lead time | Engagement size band | Notes | Substitution trigger |
+|--------|-----------|----------------------|-------|----------------------|
+| Galois | 16-24 weeks | $150k-$400k | Strongest formal-methods fit because Cryptol, SAW, and protocol proofs pair well with M06 Apalache evidence; calendar worst of the six. | Primary vendors decline or quote cannot meet D07 and calendar remains acceptable. |
+| Kudelski Security | 12-20 weeks | $120k-$280k | Strong protocol, hardware, and TEE review fit; Switzerland root adds contracting and IP-law review latency. | Primary vendors decline and Galois calendar would trigger halt 13. |
+| Cure53 | 4-8 weeks | $60k-$200k | Fastest lead time; useful if calendar is failing, but crypto-primitive depth is weaker than NCC Group, Trail of Bits, and Galois. | Calendar rescue if the top three options slip past halt-13 threshold. |
+| Cryptography Engineering LLC | 8-16 weeks | $80k-$220k | Boutique academic-leaning group; best for focused capability algebra and hybrid signing questions, with limited capacity risk. | Narrowed scope fallback if all larger firms decline. |
 
 ### 2c. Selection memo
 
