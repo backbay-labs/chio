@@ -8,6 +8,14 @@ pub const URN_APP_ATTEST_APP_MISMATCH: &str = "urn:chio:error:custody:app-attest
 pub const URN_APP_ATTEST_CHALLENGE_MISMATCH: &str =
     "urn:chio:error:custody:app-attest-challenge-mismatch";
 pub const URN_APP_ATTEST_KEY_MISMATCH: &str = "urn:chio:error:custody:app-attest-key-mismatch";
+pub const URN_PLAY_INTEGRITY_INVALID_TOKEN: &str =
+    "urn:chio:error:custody:play-integrity-invalid-token";
+pub const URN_PLAY_INTEGRITY_NONCE_MISMATCH: &str =
+    "urn:chio:error:custody:play-integrity-nonce-mismatch";
+pub const URN_PLAY_INTEGRITY_APP_REJECTED: &str =
+    "urn:chio:error:custody:play-integrity-app-rejected";
+pub const URN_PLAY_INTEGRITY_DEVICE_REJECTED: &str =
+    "urn:chio:error:custody:play-integrity-device-rejected";
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AttestationError {
@@ -25,6 +33,16 @@ pub enum AttestationError {
     MissingField(&'static str),
     #[error("app attest: unsupported format {0}")]
     UnsupportedFormat(String),
+    #[error("play integrity: invalid token: {0}")]
+    PlayIntegrityInvalidToken(String),
+    #[error("play integrity: nonce mismatch")]
+    PlayIntegrityNonceMismatch,
+    #[error("play integrity: app rejected")]
+    PlayIntegrityAppRejected,
+    #[error("play integrity: device rejected")]
+    PlayIntegrityDeviceRejected,
+    #[error("play integrity: package mismatch")]
+    PlayIntegrityPackageMismatch,
 }
 
 impl AttestationError {
@@ -38,6 +56,12 @@ impl AttestationError {
             Self::AppIdentifierMismatch => URN_APP_ATTEST_APP_MISMATCH,
             Self::ChallengeMismatch => URN_APP_ATTEST_CHALLENGE_MISMATCH,
             Self::KeyIdMismatch => URN_APP_ATTEST_KEY_MISMATCH,
+            Self::PlayIntegrityInvalidToken(_) => URN_PLAY_INTEGRITY_INVALID_TOKEN,
+            Self::PlayIntegrityNonceMismatch => URN_PLAY_INTEGRITY_NONCE_MISMATCH,
+            Self::PlayIntegrityAppRejected | Self::PlayIntegrityPackageMismatch => {
+                URN_PLAY_INTEGRITY_APP_REJECTED
+            }
+            Self::PlayIntegrityDeviceRejected => URN_PLAY_INTEGRITY_DEVICE_REJECTED,
         }
     }
 }
