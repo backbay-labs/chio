@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M09
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
-**Status:** TEMPLATE (M09 milestone agent fills as phases close)
+**Status:** OPEN (P0 in progress)
 **Audit start:** week 1 (audit doc seed at P0.T2)
 **Audit close:** weeks 32-36 (certificate issuance at P5.T3; final
 audit-doc pass at P5.T4)
@@ -25,10 +25,26 @@ weeks. Halt trigger 13 (vendor calendar slip > 25%) fires at week 45.
 
 ## 2. Assessor selection record
 
-[TODO M09 milestone agent fill at P0:]
+Sources checked 2026-05-02:
 
-- HITRUST CSF active version at trajectory-3 start: <v11.x minor>
-  (research signal: v11.2 = 182 controls; v11.3 = ~219 controls).
+- HITRUST external assessor directory:
+  `https://hitrustalliance.net/find-an-external-assessor`
+- HITRUST i1 data sheet:
+  `https://hitrustalliance.net/hubfs/Website/Data%20Sheets/i1-Data%20Sheet.pdf`
+- HITRUST CSF v11.6 creation deadline advisory:
+  `https://hitrustalliance.net/advisories/haa-2025-006`
+- Coalfire HITRUST services:
+  `https://coalfire.com/services/assessment/hitrust`
+- A-LIGN HITRUST integration and resale partnership:
+  `https://www.a-lign.com/resources/a-lign-integration-resale-partnership-hitrust`
+- Schellman HITRUST assessor guidance:
+  `https://www.schellman.com/blog/healthcare-compliance/do-you-need-an-external-hitrust-assessor`
+
+- HITRUST CSF active version at trajectory-3 start: CSF v11.7.
+  New e1 and i1 objects using v11.6 were disabled after 2026-03-31;
+  v11.6 submissions are disabled after 2026-06-30.
+- HITRUST i1 controls in scope: 182 controls in scope, per HITRUST i1
+  data sheet.
 - HITRUST-authorized assessor shortlist (primary):
   - Coalfire
   - A-LIGN
@@ -38,6 +54,10 @@ weeks. Halt trigger 13 (vendor calendar slip > 25%) fires at week 45.
   - 360 Advanced
   - RSM US
 - RFP send dates (P0.T4):
+  - Coalfire: package prepared for assessor intake, signer @bb-connor.
+  - A-LIGN: package prepared for assessor intake, signer @bb-connor.
+  - Schellman: named fallback, no outbound package in P0 unless a
+    primary declines or misses the response window.
 - RFP responses received:
   - <firm>: <quote, calendar fit, cross-credentialing notes>
   - <firm>: <quote, calendar fit, cross-credentialing notes>
@@ -51,12 +71,26 @@ weeks. Halt trigger 13 (vendor calendar slip > 25%) fires at week 45.
   - Contracted certificate-issuance week:
 - Scope memo signed by assessor at P0.T8: <date>
 - BAA chain confirmation (HIPAA pre-condition):
-  - Provider <-> design-partner tenant: <status, contract reference>
-  - Design-partner <-> Chio team: <status, contract reference>
-  - Chio-as-subcontractor BAA: <status>
+  - Provider <-> design-partner tenant: pre-flight required before
+    PHI touches the Chio deployment; contract reference pending.
+  - Design-partner <-> Chio team: pre-flight required before P1 gap
+    assessment; contract reference pending.
+  - Chio-as-subcontractor BAA: required if the design partner treats
+    Chio as a subcontractor; legal owner pending.
 - Out-of-scope decisions (recorded at P0.T5):
   - Mobile (M07) inclusion: explicit-no (default)
   - AWS Bedrock (M10) inclusion: explicit-no (default)
+
+### 2a. HIPAA pre-conditions checklist
+
+| Pre-condition | Status | Owner | Evidence path |
+|---------------|--------|-------|---------------|
+| BAA chain confirmation | pre-flight pending | @bb-connor / legal | Section 2 BAA chain |
+| PHI handling boundary | seeded | M09 | `compliance/hitrust/scope-boundary.md` |
+| Breach notification runbook | pending P2 | M09 | `compliance/hitrust/ir-runbook.md` |
+| Minimum necessary policy | pending P2 | M09 | `compliance/hitrust/policies/minimum-necessary.md` |
+| Telemetry de-identification posture | pending P2 | M09 | `compliance/hitrust/policies/telemetry-deid.md` |
+| Workforce training evidence | out-of-tree pending | Backbay HR | HR evidence bundle |
 
 ## 3. Gap-assessment + remediation log
 
