@@ -2639,7 +2639,7 @@
   milestone: M05
   phase: 1
   title: LoadedWeights trait surface in chio-provider-conformance + kernel binding refusal wiring
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-provider-conformance/src/loaded_weights.rs
@@ -2659,15 +2659,15 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: ce80c7e66612b23dc3ce70f646aabebf198c591d
+  merged_sha: ce80c7e66612b23dc3ce70f646aabebf198c591d
+  opened_ts: '2026-05-02T09:39:02Z'
+  merged_ts: '2026-05-02T09:39:02Z'
 - id: M05.P1.T2
   milestone: M05
   phase: 1
   title: Per-adapter LoadedWeights implementations (pure-API providers return Unavailable; local providers recompute digest)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-anthropic-tools-adapter/src/loaded_weights.rs
@@ -2692,15 +2692,15 @@
   agent_role: provider-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 84b6c102d9072ab2678140670b688f4c1a7d392e
+  merged_sha: 84b6c102d9072ab2678140670b688f4c1a7d392e
+  opened_ts: '2026-05-02T09:39:02Z'
+  merged_ts: '2026-05-02T09:39:02Z'
 - id: M05.P1.T3
   milestone: M05
   phase: 1
   title: weights_hash_spoof conformance test body + JSON state flip + coverage.yaml row flip
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - crates/chio-conformance/tests/threats/weights_hash_spoof.rs
@@ -2718,10 +2718,10 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 80651189b130c4c2d8ef6bd9c9c1dcee635837e8
+  merged_sha: 80651189b130c4c2d8ef6bd9c9c1dcee635837e8
+  opened_ts: '2026-05-02T09:39:02Z'
+  merged_ts: '2026-05-02T09:39:02Z'
 - id: M05.P2.T1
   milestone: M05
   phase: 2
