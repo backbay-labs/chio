@@ -4277,7 +4277,7 @@
   phase: 0
   title: Fill M07 audit doc hard counts (C-ABI 7 target, iOS 15.0, Android API 26,
     account IDs)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M07-mobile-mvp.md
@@ -4297,15 +4297,15 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f9d8774235d1c13a1ce57b40dcc35104fe760b4e
+  merged_sha: f9d8774235d1c13a1ce57b40dcc35104fe760b4e
+  opened_ts: '2026-05-02T12:45:05Z'
+  merged_ts: '2026-05-02T12:45:05Z'
 - id: M07.P0.T2
   milestone: M07
   phase: 0
   title: Baseline qualify-mobile-kernel.sh run and record per-lane statuses
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M07-mobile-mvp.md
@@ -4323,16 +4323,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f9d8774235d1c13a1ce57b40dcc35104fe760b4e
+  merged_sha: f9d8774235d1c13a1ce57b40dcc35104fe760b4e
+  opened_ts: '2026-05-02T12:45:05Z'
+  merged_ts: '2026-05-02T12:45:05Z'
 - id: M07.P0.T3
   milestone: M07
   phase: 0
   title: Crate inventory PR refreshing bindings README to anticipate P1 UDL entries
     (no behaviour change)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - crates/chio-kernel-mobile/bindings/README.md
@@ -4352,16 +4352,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f9d8774235d1c13a1ce57b40dcc35104fe760b4e
+  merged_sha: f9d8774235d1c13a1ce57b40dcc35104fe760b4e
+  opened_ts: '2026-05-02T12:45:05Z'
+  merged_ts: '2026-05-02T12:45:05Z'
 - id: M07.P0.T4
   milestone: M07
   phase: 0
   title: Append mobile_attestation_replay, device_key_extraction, play_integrity_token_replay
     rows to threat model
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - spec/security/chio-threat-model.v1.json
@@ -4382,10 +4382,10 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f9d8774235d1c13a1ce57b40dcc35104fe760b4e
+  merged_sha: f9d8774235d1c13a1ce57b40dcc35104fe760b4e
+  opened_ts: '2026-05-02T12:45:05Z'
+  merged_ts: '2026-05-02T12:45:05Z'
 - id: M07.P1.T1
   milestone: M07
   phase: 1
