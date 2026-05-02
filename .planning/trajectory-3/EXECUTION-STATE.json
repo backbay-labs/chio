@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T12:16:24Z",
+  "last_checkpoint_at": "2026-05-02T12:30:21Z",
   "current_wave": "W2",
   "halt": {
     "halted": false,
@@ -42,8 +42,8 @@
       "trust_boundary": true
     },
     "M06": {
-      "status": "in_progress",
-      "phase": "P4_merged",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
@@ -110,11 +110,12 @@
     "M06.P1 Apalache subset merged 2026-05-02T11:21:06Z: Common.tla bounds, four invariant specs/configs, apalache-nightly workflow, and mapping rows recorded.",
     "M06.P2 cargo-vet expansion merged 2026-05-02T11:35:35Z: first-party cert rows 179, exemption blocks 836, standalone cargo-vet workflow added, and m06-revocation-oracle-pivot close trigger recorded.",
     "M06.P3 SBOM publication pipeline merged 2026-05-02T11:45:39Z: standalone sbom workflow, source and binary CycloneDX paths, cosign signing, and M09 assessor consumability handoff recorded.",
-    "M06.P4 CVE monitor merged 2026-05-02T12:16:24Z: cargo-audit plus osv-scanner workflow, GitHub Issue routing, deny.toml advisory refresh, and m06-supply-chain-pivot close trigger recorded."
+    "M06.P4 CVE monitor merged 2026-05-02T12:16:24Z: cargo-audit plus osv-scanner workflow, GitHub Issue routing, deny.toml advisory refresh, and m06-supply-chain-pivot close trigger recorded.",
+    "M06.P5 closeout merged 2026-05-02T12:30:21Z: Apalache contractor sign-off packet, audit close, ReceiptBeforeAllow assumption discharge, and CI-debt replay note recorded."
   ],
   "wave_heads": {
     "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
-    "W2": "55dc5dd0389c3fbcdd8e57c065c4213f0ef1a777"
+    "W2": "de287d4da4b059ba3352dddc19000690a4216377"
   },
   "wave_status": {
     "W1": {
