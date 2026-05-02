@@ -26,3 +26,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #462 (`64ef66b63c7b40cd92b721086000430a711a90b4`): M02.P5 conformance memo closeout; skipped hosted CI wait for memo verifier CLI, signed METR memo artifacts, audit closure, README partnership note, and ticket stamps.
 - PR #463 (`5e9c65126422fea5306cd41e38d0413b15fa44fd`): M04.P0 mutation baseline audit; skipped hosted CI wait for mutation-gate audit baseline, trajectory-3 mutants-baseline.toml, and ticket stamps.
 - PR #464 (`581a09519b7d0d9ecdc2f6e7d37083b570fc2bbd`): M04.P1 mutation survivor sweep tests; skipped hosted CI wait for credentials, kernel-core, attest-verify, policy, guards, anchor mutation-gap tests, audit evidence, and ticket stamps.
+- PR #465 (`01b75ee4df744b34c4375e2581d4c15bc284837f`): M04.P2 verdict-matrix Python and Go driver activation; skipped hosted CI wait for driver status flips, 48-scenario Python and Go local semantic emitters, conformance schema-map repair, audit evidence, and ticket stamps.
