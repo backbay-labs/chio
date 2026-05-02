@@ -214,8 +214,13 @@ classification per P1.T3.
   hash `sha256:512d0f69d7aacb93dd39ccbb23bd7f24030c68fca58013fa8c8e1e9568d6641c`;
   received 2026-06-01 and recorded inside the D15 7-day closure
   attestation window (P5.T2).
-- 30-day incident report: <attach> (P4.T5)
-- Operator runbook live URL: <url> (P5.T3)
+- 30-day incident report: section 9 rollup row and evidence log row
+  dated 2026-05-31 (P4.T5).
+- Operator runbook live URL:
+  `https://github.com/bb-connor/arc/tree/main/docs/operator-runbook`;
+  source path `docs/operator-runbook/` contains the six core files
+  plus `onboarding.md`, `topology.md`, `quota.md`, and
+  `phi-policy.md` (P5.T3).
 - Log-export schema v1 path: `spec/audit-log/export-schema.v1.json`
   (P5.T4)
 - Both audit-handoff freezes closed at M01.P5.T5:
