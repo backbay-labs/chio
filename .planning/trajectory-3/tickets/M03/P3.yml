@@ -25,7 +25,7 @@
   milestone: M03
   phase: 3
   title: Pin [profile.release] block in workspace Cargo.toml (codegen-units=1, lto=fat, strip=symbols, panic=abort)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - Cargo.toml
@@ -44,16 +44,16 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 290a76a58179ed1b111525d586e63ae0598e03cc
+  merged_sha: 290a76a58179ed1b111525d586e63ae0598e03cc
+  opened_ts: "2026-05-02T04:27:45Z"
+  merged_ts: "2026-05-02T04:27:45Z"
 
 - id: M03.P3.T2
   milestone: M03
   phase: 3
   title: Land rust-toolchain.toml at workspace root pinning channel to exact version (1.85.0 for v3.18); update ci.yml to honour it
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - rust-toolchain.toml
@@ -72,16 +72,16 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 218bf9e1ce518d5b1f2034b3de6f1fc5c3a5f6ba
+  merged_sha: 218bf9e1ce518d5b1f2034b3de6f1fc5c3a5f6ba
+  opened_ts: "2026-05-02T04:27:45Z"
+  merged_ts: "2026-05-02T04:27:45Z"
 
 - id: M03.P3.T3
   milestone: M03
   phase: 3
   title: Author .github/workflows/reproducible-build.yml with builder-a and builder-b on independent ubuntu-24.04 instances (SOURCE_DATE_EPOCH from tag commit time)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - .github/workflows/reproducible-build.yml
@@ -99,16 +99,16 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 566f10c9bbee224d0f018667ffd776c68d6a188e
+  merged_sha: 566f10c9bbee224d0f018667ffd776c68d6a188e
+  opened_ts: "2026-05-02T04:27:45Z"
+  merged_ts: "2026-05-02T04:27:45Z"
 
 - id: M03.P3.T4
   milestone: M03
   phase: 3
   title: Author reproducibility-gate job in reproducible-build.yml that diffs sha256 of every chio-cli binary across the two builders; fails on mismatch
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .github/workflows/reproducible-build.yml
@@ -126,16 +126,16 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 566f10c9bbee224d0f018667ffd776c68d6a188e
+  merged_sha: 566f10c9bbee224d0f018667ffd776c68d6a188e
+  opened_ts: "2026-05-02T04:27:45Z"
+  merged_ts: "2026-05-02T04:27:45Z"
 
 - id: M03.P3.T5
   milestone: M03
   phase: 3
   title: Author scripts/rebuild-from-source.sh that reproduces the build outside hosted CI (reads rust-toolchain.toml, sets SOURCE_DATE_EPOCH from tag commit)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - scripts/rebuild-from-source.sh
@@ -152,7 +152,7 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: fd3ea22ab550b0e5b62dbd1c5c98d1c4def93e27
+  merged_sha: fd3ea22ab550b0e5b62dbd1c5c98d1c4def93e27
+  opened_ts: "2026-05-02T04:27:45Z"
+  merged_ts: "2026-05-02T04:27:45Z"

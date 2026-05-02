@@ -70,8 +70,8 @@ jobs:
 
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
-          rustup default stable
+          rustup toolchain install --profile minimal --component rustfmt --component clippy
+          rustup show active-toolchain
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
@@ -265,8 +265,8 @@ jobs:
 
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
@@ -312,8 +312,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
       - name: Install cargo-vet
         run: cargo install cargo-vet --locked --version 0.10.2
       - name: cargo vet --locked
@@ -328,8 +328,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked --version 0.19.4
       - name: cargo deny check advisories
@@ -441,8 +441,8 @@ jobs:
 
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler

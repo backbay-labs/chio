@@ -172,6 +172,12 @@ rust_public_entrypoints = [
 unwrap_used = "deny"
 expect_used = "deny"
 
+[profile.release]
+codegen-units = 1
+lto = "fat"
+strip = "symbols"
+panic = "abort"
+
 [workspace.dependencies]
 aws-sdk-bedrockruntime = "1.130.0"
 serde = { version = "1", features = ["derive"] }
