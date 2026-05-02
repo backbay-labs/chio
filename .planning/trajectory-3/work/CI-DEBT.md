@@ -24,3 +24,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #460 (`b0bc369667625998b03a5022f6b44cc472978c3d`): M02.P3 eval-report bundle implementation; skipped hosted CI wait for schema, verifier CLI, PyO3 binding, golden vector regen, schema-lint workflow, and ticket stamps.
 - PR #461 (`029479b291c4b8eeeec38952cb28ab33a6bab4ce`): M02.P4 partner integration spike; skipped hosted CI wait for METR ingest sample, partner feedback audit docs, optional partner_review schema/verifier checks, and ticket stamps.
 - PR #462 (`64ef66b63c7b40cd92b721086000430a711a90b4`): M02.P5 conformance memo closeout; skipped hosted CI wait for memo verifier CLI, signed METR memo artifacts, audit closure, README partnership note, and ticket stamps.
+- PR #463 (`5e9c65126422fea5306cd41e38d0413b15fa44fd`): M04.P0 mutation baseline audit; skipped hosted CI wait for mutation-gate audit baseline, trajectory-3 mutants-baseline.toml, and ticket stamps.
