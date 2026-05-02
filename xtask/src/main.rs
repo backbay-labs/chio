@@ -92,8 +92,8 @@ use serde::de::Error as _;
 use serde_yml::Value;
 use sha2::{Digest, Sha256};
 
-mod snippets_subcommand;
 mod eval_receipt_regen;
+mod snippets_subcommand;
 
 const TRAJECTORY_1_MANIFEST_HEADER: &str = "\
 # GENERATED from per-phase files under .planning/trajectory/tickets/M{nn}/P{n}.yml

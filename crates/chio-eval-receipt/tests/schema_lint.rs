@@ -7,9 +7,8 @@ use serde_json::Value;
 
 #[test]
 fn eval_receipt_schema_is_pinned() -> Result<(), Box<dyn Error>> {
-    let schema_bytes = fs::read_to_string(
-        workspace_root().join("spec/eval/receipt-format.v1.json"),
-    )?;
+    let schema_bytes =
+        fs::read_to_string(workspace_root().join("spec/eval/receipt-format.v1.json"))?;
     let schema: Value = serde_json::from_str(&schema_bytes)?;
 
     assert_eq!(
@@ -31,9 +30,8 @@ fn eval_receipt_schema_is_pinned() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn golden_eval_vector_verifies() -> Result<(), Box<dyn Error>> {
-    let bundle_json = fs::read_to_string(
-        workspace_root().join("tests/bindings/vectors/eval/v1.json"),
-    )?;
+    let bundle_json =
+        fs::read_to_string(workspace_root().join("tests/bindings/vectors/eval/v1.json"))?;
     let verified = verify_bundle(&bundle_json)?;
 
     assert_eq!(verified.bundle_id, "urn:chio:eval-bundle:metr:golden-v1");

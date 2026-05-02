@@ -30,6 +30,9 @@ fn run() -> Result<String, String> {
         .map_err(|err| format!("failed to verify {bundle_path}: {err}"))?;
     Ok(format!(
         "verified {} receipts={} signatures={} corpus_sha256={}",
-        verified.bundle_id, verified.receipt_count, verified.signature_count, verified.corpus_sha256
+        verified.bundle_id,
+        verified.receipt_count,
+        verified.signature_count,
+        verified.corpus_sha256
     ))
 }

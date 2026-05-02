@@ -7,9 +7,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::export::{
-    sha256_hex, VERDICT_MATRIX_CORPUS_SHA256, VERDICT_MATRIX_SCENARIO_COUNT,
-};
+use crate::export::{sha256_hex, VERDICT_MATRIX_CORPUS_SHA256, VERDICT_MATRIX_SCENARIO_COUNT};
 use crate::BUNDLE_SCHEMA_ID;
 
 /// Successful bundle verification summary.
@@ -186,8 +184,9 @@ fn canonicalize_json(value: &Value) -> Result<String, BundleError> {
         Value::Null => Ok("null".to_owned()),
         Value::Bool(v) => Ok(if *v { "true" } else { "false" }.to_owned()),
         Value::Number(v) => Ok(v.to_string()),
-        Value::String(v) => serde_json::to_string(v)
-            .map_err(|err| BundleError::Canonicalization(err.to_string())),
+        Value::String(v) => {
+            serde_json::to_string(v).map_err(|err| BundleError::Canonicalization(err.to_string()))
+        }
         Value::Array(values) => {
             let mut output = String::from("[");
             let mut first = true;
@@ -217,9 +216,9 @@ fn canonicalize_json(value: &Value) -> Result<String, BundleError> {
                     .map_err(|err| BundleError::Canonicalization(err.to_string()))?;
                 output.push_str(&key_json);
                 output.push(':');
-                let value = values
-                    .get(key)
-                    .ok_or(BundleError::Canonicalization("missing sorted key".to_owned()))?;
+                let value = values.get(key).ok_or(BundleError::Canonicalization(
+                    "missing sorted key".to_owned(),
+                ))?;
                 output.push_str(&canonicalize_json(value)?);
             }
             output.push('}');
