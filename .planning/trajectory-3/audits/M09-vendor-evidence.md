@@ -203,9 +203,11 @@ bundle upload.
 
 ## 4. Evidence package
 
-[TODO M09 milestone agent fill at P3 close. The evidence pack is
-produced by `compliance/hitrust/build-evidence-pack.sh` and uploaded
-to the assessor's MyCSF portal at P3.T4.]
+P3 finalizes the assessor evidence package. The M06 SBOM prerequisite
+is satisfied by the merged M06 supply-chain lane: `supply-chain/`
+exists and `supply-chain/audits.toml` is present for cargo-vet evidence.
+The evidence pack is produced by `compliance/hitrust/build-evidence-pack.sh`
+and uploaded to the assessor's MyCSF portal at P3.T4.
 
 Cross-references to upstream artifacts (consumed read-only by M09):
 
