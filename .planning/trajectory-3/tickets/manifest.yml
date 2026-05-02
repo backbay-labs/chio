@@ -8167,7 +8167,7 @@
   phase: 5
   title: Submit MCP registry record at registry.modelcontextprotocol.io and capture
     URL
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - integrations/mcp-adapter/registry/server.json
@@ -8188,16 +8188,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f58193c650a8ec2dced5f640e8961d2d2a719c01
+  merged_sha: f58193c650a8ec2dced5f640e8961d2d2a719c01
+  opened_ts: '2026-05-02T17:28:35Z'
+  merged_ts: '2026-05-02T17:28:35Z'
 - id: M10.P5.T2
   milestone: M10
   phase: 5
   title: Confirm conformance suite pass count at as-of-publication commit hash and
     pin in audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -8217,16 +8217,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: cb5742c12c81a166afd91b4ddc495a0af65b6bde
+  merged_sha: cb5742c12c81a166afd91b4ddc495a0af65b6bde
+  opened_ts: '2026-05-02T17:28:35Z'
+  merged_ts: '2026-05-02T17:28:35Z'
 - id: M10.P5.T3
   milestone: M10
   phase: 5
   title: Co-authored APN blog draft submission with AWS SA review (closure on draft
     plus reviewed)
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - docs/distribution/apn-blog/aws-bedrock-mcp-listing.md
@@ -8263,7 +8263,7 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 718d7daaecbc1794341c4fe6cf005f03d96a6cde
+  merged_sha: 718d7daaecbc1794341c4fe6cf005f03d96a6cde
+  opened_ts: '2026-05-02T17:28:35Z'
+  merged_ts: '2026-05-02T17:28:35Z'
