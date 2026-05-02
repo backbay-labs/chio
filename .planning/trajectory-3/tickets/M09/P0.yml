@@ -1,0 +1,224 @@
+# M09 Phase 0 - Audit doc seed + HITRUST scope + assessor shortlist.
+# Source of truth: .planning/trajectory-3/09-hitrust-i1-assessment.md
+# (P0 section). Phase 0 turns the verdict-anchored brief into a
+# contract: a binding scope statement signed by the assessor, an RFP
+# cycle with two firms (plus one fallback per the D12 pattern), and a
+# confirmed BAA chain so P1 gap-assessment does not stall on missing
+# healthcare-tech contracts.
+#
+# Wave: Wv (vendor lane; runs parallel to W1/W2/W3). Tickets are
+# predominantly vendor-coord; engineering surface is limited to the
+# `compliance/hitrust/` directory genesis and audit-doc seeding.
+#
+# Branch prefix: wave/Wv/m09/p0.
+# Reviewer: @bb-connor (single-owner trajectory).
+
+- id: M09.P0.T1
+  milestone: M09
+  phase: 0
+  title: Genesis compliance/hitrust directory with SSP outline, scope diagram, control-mapping skeleton
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - compliance/hitrust/ssp.md
+    - compliance/hitrust/control-mapping.csv
+    - compliance/hitrust/scope-boundary.md
+  shared_paths: []
+  depends_on: []
+  soft_deps:
+    - "RESEARCH.md control families table seeds the SSP control-family scaffolding."
+  gate_check:
+    cmd: test -f compliance/hitrust/ssp.md && test -f compliance/hitrust/control-mapping.csv && test -f compliance/hitrust/scope-boundary.md && head -1 compliance/hitrust/control-mapping.csv | grep -q 'control_id'
+    timeout_seconds: 60
+  worktree_branch: wave/Wv/m09/p0.t1-genesis-compliance-hitrust-tree
+  agent_role: vendor-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P0.T2
+  milestone: M09
+  phase: 0
+  title: Seed M09 audit doc with assessor shortlist, RFP status, BAA status, HIPAA pre-conditions
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/trajectory-3/audits/M09-vendor-evidence.md
+  shared_paths: []
+  depends_on:
+    - M09.P0.T1
+  soft_deps:
+    - "Shortlist primary: Coalfire, A-LIGN, Schellman; fallback: BDO Digital, 360 Advanced, RSM US."
+  gate_check:
+    cmd: test -f .planning/trajectory-3/audits/M09-vendor-evidence.md && grep -q 'Assessor selection record' .planning/trajectory-3/audits/M09-vendor-evidence.md && grep -q 'BAA chain' .planning/trajectory-3/audits/M09-vendor-evidence.md
+    timeout_seconds: 60
+  worktree_branch: wave/Wv/m09/p0.t2-seed-audit-doc
+  agent_role: vendor-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P0.T3
+  milestone: M09
+  phase: 0
+  title: Confirm HITRUST CSF active version and pin control count in SSP and audit doc
+  status: pending
+  effort_days: 0.25
+  owner_glob:
+    - compliance/hitrust/ssp.md
+    - .planning/trajectory-3/audits/M09-vendor-evidence.md
+  shared_paths: []
+  depends_on:
+    - M09.P0.T2
+  soft_deps:
+    - "v11.x active at trajectory-3 start; v11.2 = 182 controls, v11.3 ~219; confirm exact minor version with HITRUST."
+  gate_check:
+    cmd: grep -E 'CSF v11\\.[0-9]+' compliance/hitrust/ssp.md && grep -E 'controls in scope' .planning/trajectory-3/audits/M09-vendor-evidence.md
+    timeout_seconds: 60
+  worktree_branch: wave/Wv/m09/p0.t3-pin-csf-version
+  agent_role: vendor-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P0.T4
+  milestone: M09
+  phase: 0
+  title: Author RFP and send to two HITRUST-authorized assessor firms with named fallback
+  status: pending
+  effort_days: 1
+  owner_glob:
+    - compliance/hitrust/rfp/rfp.md
+    - .planning/trajectory-3/audits/M09-vendor-evidence.md
+  shared_paths: []
+  depends_on:
+    - M09.P0.T2
+  soft_deps:
+    - "D12 pattern: two-vendor primary RFP plus one named fallback."
+    - "RFP includes scope (v3.18 + Opus per D09), calendar band (12-36 weeks), budget posture (D07 $80-150k), MyCSF portal expectations."
+  gate_check:
+    cmd: test -f compliance/hitrust/rfp/rfp.md && grep -q 'v3.18' compliance/hitrust/rfp/rfp.md && grep -q 'Opus' compliance/hitrust/rfp/rfp.md && grep -q 'RFP send dates' .planning/trajectory-3/audits/M09-vendor-evidence.md
+    timeout_seconds: 60
+  worktree_branch: wave/Wv/m09/p0.t4-author-and-send-rfp
+  agent_role: vendor-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P0.T5
+  milestone: M09
+  phase: 0
+  title: Pin scope statement to v3.18 plus Opus deployment and record explicit out-of-scope decisions
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - compliance/hitrust/scope-boundary.md
+    - .planning/trajectory-3/audits/M09-vendor-evidence.md
+  shared_paths: []
+  depends_on:
+    - M09.P0.T1
+  soft_deps:
+    - "Per D09: single-tenant, single-version, single-deployment-environment scope."
+    - "Mobile (M07) and AWS Bedrock (M10) inclusion default explicit-no; record decision."
+  gate_check:
+    cmd: "grep -q 'single-tenant' compliance/hitrust/scope-boundary.md && grep -q 'v3.18' compliance/hitrust/scope-boundary.md && grep -q 'Mobile (M07) inclusion: explicit-no' .planning/trajectory-3/audits/M09-vendor-evidence.md"
+    timeout_seconds: 60
+  worktree_branch: wave/Wv/m09/p0.t5-pin-scope-statement
+  agent_role: vendor-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P0.T6
+  milestone: M09
+  phase: 0
+  title: Confirm HIPAA BAA chain (provider to Opus to Backbay) and surface gaps to user
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/trajectory-3/audits/M09-vendor-evidence.md
+  shared_paths: []
+  depends_on:
+    - M09.P0.T2
+  soft_deps:
+    - "HIPAA pre-condition; halt-trigger candidate not currently in AUTONOMOUS-PROMPT canonical eleven."
+    - "If Chio is treated as a subcontractor of Opus, a Backbay-Opus BAA is required."
+  gate_check:
+    cmd: grep -q 'BAA chain confirmation' .planning/trajectory-3/audits/M09-vendor-evidence.md && grep -E 'Provider <-> Opus:.*[a-z]' .planning/trajectory-3/audits/M09-vendor-evidence.md
+    timeout_seconds: 60
+  worktree_branch: wave/Wv/m09/p0.t6-confirm-baa-chain
+  agent_role: vendor-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P0.T7
+  milestone: M09
+  phase: 0
+  title: Receive RFP responses and record quote variance against D07 band in audit doc
+  status: pending
+  effort_days: 0.25
+  owner_glob:
+    - .planning/trajectory-3/audits/M09-vendor-evidence.md
+  shared_paths: []
+  depends_on:
+    - M09.P0.T4
+  soft_deps:
+    - "D07 band $80-150k. If all quotes outside band, surface to user as budget-amendment decision."
+  gate_check:
+    cmd: grep -E 'RFP responses received' .planning/trajectory-3/audits/M09-vendor-evidence.md && grep -E 'Quoted fixed fee' .planning/trajectory-3/audits/M09-vendor-evidence.md
+    timeout_seconds: 60
+  worktree_branch: wave/Wv/m09/p0.t7-record-rfp-responses
+  agent_role: vendor-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M09.P0.T8
+  milestone: M09
+  phase: 0
+  title: Contract assessor and capture signed scope memo before P1 gap assessment opens
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - compliance/hitrust/scope-boundary.md
+    - .planning/trajectory-3/audits/M09-vendor-evidence.md
+  shared_paths: []
+  depends_on:
+    - M09.P0.T7
+    - M09.P0.T5
+    - M09.P0.T6
+  soft_deps:
+    - "R10 mitigation: scope memo signed by assessor before P1 starts."
+  gate_check:
+    cmd: grep -E 'Scope memo signed by assessor' .planning/trajectory-3/audits/M09-vendor-evidence.md && grep -E 'Selected assessor' .planning/trajectory-3/audits/M09-vendor-evidence.md
+    timeout_seconds: 60
+  worktree_branch: wave/Wv/m09/p0.t8-contract-assessor
+  agent_role: vendor-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null

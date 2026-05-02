@@ -1,0 +1,143 @@
+# M01 Phase 2 - Quota under real load: capacity test + tenant onboarding rehearsal.
+# Source of truth: .planning/trajectory-3/01-opus-design-partner-pilot.md
+# (section "Phases" P2) + .planning/trajectory-3/research/m01/RESEARCH.md.
+#
+# Five tickets land a new sibling crate at bench/opus-capacity/ that
+# replays Opus shadow traffic at 1x / 2x / 5x to capture quota lane
+# sizing. Existing bench/ttfrh/ is the microbench reference shape.
+
+- id: M01.P2.T1
+  milestone: M01
+  phase: 2
+  title: Scaffold sustained-load runner crate at bench/opus-capacity/
+  status: pending
+  effort_days: 2.0
+  owner_glob:
+    - bench/opus-capacity/Cargo.toml
+    - bench/opus-capacity/src/lib.rs
+    - bench/opus-capacity/src/runner.rs
+    - bench/opus-capacity/README.md
+  shared_paths:
+    - Cargo.toml
+    - Cargo.lock
+  depends_on:
+    - M01.P0.T4
+  soft_deps:
+    - "trajectory-2 bench/ttfrh/ (cloudflare_worker.rs, fastapi_langchain.rs, network_sentinel.rs runners) is the microbench reference shape; opus-capacity is the sustained-load sibling"
+    - "RESEARCH.md capacity / load profile section recommends 24-hour shadow capture then 1x/2x/5x replay"
+  gate_check:
+    cmd: "cargo build -p opus-capacity --quiet && cargo clippy -p opus-capacity -- -D warnings && test -f bench/opus-capacity/README.md"
+    timeout_seconds: 900
+  worktree_branch: wave/W1/m01/p2.t1-opus-capacity-runner-crate
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T2
+  milestone: M01
+  phase: 2
+  title: Add shadow-traffic capture script at bench/opus-capacity/scripts/shadow-capture.sh
+  status: pending
+  effort_days: 1.0
+  owner_glob:
+    - bench/opus-capacity/scripts/shadow-capture.sh
+  shared_paths: []
+  depends_on:
+    - M01.P2.T1
+  soft_deps:
+    - "RESEARCH.md capacity profile step 1: 24-hour shadow-traffic capture from opus_api against a Chio mediation edge (read-only, tee'd traffic)"
+    - "M01.P0.T4 topology diagram pins which mediation edge to tee; the script reads that pin"
+  gate_check:
+    cmd: "test -f bench/opus-capacity/scripts/shadow-capture.sh && test -x bench/opus-capacity/scripts/shadow-capture.sh && bash -n bench/opus-capacity/scripts/shadow-capture.sh && grep -qiE 'opus_api|tee' bench/opus-capacity/scripts/shadow-capture.sh"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p2.t2-shadow-traffic-capture
+  agent_role: infra-yaml
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T3
+  milestone: M01
+  phase: 2
+  title: Run capacity replay (1x / 2x / 5x) and commit capacity test report to audit doc
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - .planning/trajectory-3/audits/M01-opus-pilot.md
+  shared_paths: []
+  depends_on:
+    - M01.P2.T1
+    - M01.P2.T2
+  soft_deps:
+    - "RESEARCH.md capacity profile step 3 records p50/p95/p99 latency, receipt-write throughput, trust-control state-machine convergence time, and chio-siem exporter backpressure"
+  gate_check:
+    cmd: "grep -qE 'Capacity report|capacity test report' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qE '1x|2x|5x' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qE 'p95|p99' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qiE 'throughput' .planning/trajectory-3/audits/M01-opus-pilot.md"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p2.t3-capacity-test-report
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T4
+  milestone: M01
+  phase: 2
+  title: Author quota lane sizing doc at docs/operator-runbook/quota.md
+  status: pending
+  effort_days: 1.0
+  owner_glob:
+    - docs/operator-runbook/quota.md
+  shared_paths: []
+  depends_on:
+    - M01.P2.T3
+  soft_deps:
+    - "docs/release/OPERATIONS_RUNBOOK.md line 23 names the single-node atomic SQLite budget store; quota lane sizing honors that bound"
+    - "M01.P1.T3 incidents.md classifies spikes beyond 5x as P1 incidents"
+  gate_check:
+    cmd: "test -f docs/operator-runbook/quota.md && grep -qE 'headroom|5x' docs/operator-runbook/quota.md && grep -qiE 'budget' docs/operator-runbook/quota.md && grep -qiE 'single-node|SQLite' docs/operator-runbook/quota.md"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p2.t4-quota-lane-sizing
+  agent_role: dx-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P2.T5
+  milestone: M01
+  phase: 2
+  title: Run tenant-onboarding rehearsal and record log in audit doc
+  status: pending
+  effort_days: 1.0
+  owner_glob:
+    - .planning/trajectory-3/audits/M01-opus-pilot.md
+  shared_paths: []
+  depends_on:
+    - M01.P0.T3
+    - M01.P1.T1
+    - M01.P2.T4
+  soft_deps:
+    - "decisions.yml D15 7-day freshness window applies; rehearsal date and outcome recorded within 7 days"
+  gate_check:
+    cmd: "grep -qiE 'tenant-onboarding rehearsal|onboarding rehearsal' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qiE 'rehearsal date|rehearsal log' .planning/trajectory-3/audits/M01-opus-pilot.md"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p2.t5-tenant-onboarding-rehearsal
+  agent_role: customer-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
