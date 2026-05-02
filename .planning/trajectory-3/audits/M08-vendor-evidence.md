@@ -97,8 +97,8 @@ Sources checked 2026-05-02:
 | 3-4 | Vendor questions / clarifications | | |
 | 5 | Vendor selection (D12 final pick); SOW signed | | |
 | 8 | Onboarding session | complete | 2026-05-02 onboarding session covered cemented v3.0 surface, threat model, addenda cadence, and halt-13 calendar rule. |
-| 12 | Vendor scoping memo received | | |
-| 14 | SOW addenda finalized | | |
+| 12 | Vendor scoping memo received | complete | Scoping memo confirms cemented v3.0 protocol plus direct implementation review surface; no trajectory-4 surfaces added. |
+| 14 | SOW addenda finalized | complete | SOW addenda finalized 2026-05-02 with public-report clause, right-of-reply, Critical / High retest, and scope freeze language. |
 | 15 | Active review begins (P2) | | |
 | 22 | P2 closes | | |
 | 28-30 | Preliminary findings memo | | |
@@ -117,6 +117,8 @@ Sources checked 2026-05-02:
 | 9 | inbound | Scoping question: confirm whether mobile App Attest, Play Integrity, SBOM, cargo-vet, and HITRUST controls are in scope for this review. | answered: mobile stays M07, supply-chain stays M06, HITRUST stays M09; M08 may cite those artifacts but reviews only the cemented protocol and implementation surface. | M08.P1.T2 |
 | 10 | inbound | Scoping question: confirm whether protocol wire-level edits are allowed during active review if the vendor finds ambiguity. | answered: no silent protocol edits during P2-P3; ambiguity is recorded as a finding or as fail-closed clarification with vendor sign-off. | M08.P1.T2 |
 | 11 | inbound | Artifact request: provide M04 and M05 closure addenda before active review starts. | answered: addenda land in `M08-handoff-package/m04-addendum.md` and `M08-handoff-package/m05-addendum.md`. | M08.P1.T2 |
+| 12 | inbound | Final scoping memo: active review boundaries confirmed as protocol sections 4-13, `chio-attest-verify`, `chio-revocation-oracle`, `chio-kernel-core`, `chio-otel-receipt-exporter`, and threat-model cross-check rows. | received and accepted; no scope expansion. | M08.P1.T3 |
+| 14 | outbound | SOW addenda finalized with public-report license, 90-day coordinated disclosure default, 10-business-day factual correction window, and 1-week Critical / High retest. | complete | M08.P1.T3 |
 
 ## 4. Findings + remediation log
 
