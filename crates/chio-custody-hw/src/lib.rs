@@ -29,6 +29,7 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
+pub mod attestation;
 pub mod capability;
 pub mod error;
 pub mod issuer;
@@ -37,6 +38,10 @@ pub mod nonce_store;
 pub mod revocation;
 pub mod verifier;
 
+pub use attestation::{
+    verify_app_attest, AppAttestVerificationInput, AttestationError, VerifiedAppAttest,
+    APP_ATTEST_FORMAT,
+};
 pub use capability::{PasskeyCapability, ScopeSet};
 pub use error::CustodyError;
 pub use issuer::{IssuerService, MintRequest, MintResponse};
