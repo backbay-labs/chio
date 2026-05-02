@@ -137,14 +137,23 @@ accepted risk.]
 
 | Control ID | Family | Gap (P1) | Severity | Remediation (P2) | Phase | Cross-ref |
 |------------|--------|----------|----------|------------------|-------|-----------|
-| | | | | | | |
+| Sev-1-GOV-BAA | Privacy and Compliance | BAA chain references not attached to assessor evidence channel | Sev-1 | attach private BAA reference receipt before PHI sample upload | P2/P3 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-IR-001 | Incident Management | HIPAA breach-notification runbook missing | Sev-1 | author `compliance/hitrust/ir-runbook.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-PRIV-001 | Privacy Practices | Minimum-necessary policy missing | Sev-1 | author `compliance/hitrust/policies/minimum-necessary.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-PRIV-002 | Privacy Practices | Telemetry de-identification posture missing | Sev-1 | author `compliance/hitrust/policies/telemetry-deid.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-ACCESS-001 | Access Control | Quarterly human access-review cadence missing | Sev-1 | author access-review policy and first-cycle evidence | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-KEY-001 | Development and Operations | Key-rotation schedule missing | Sev-1 | author key-rotation policy | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-2-FORMAL-001 | Development | Formal evidence bridge missing | Sev-2 | author assessor-readable formal evidence bridge | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-2-CLOUD-001 | Physical and Environmental Security | Cloud-provider inheritance references missing | Sev-2 | attach encryption-at-rest and physical-security inheritance pointers | P2 | `compliance/hitrust/gap-report/gap-report.md` |
 
-Total i1 controls in scope: <P0 count>
-Pre-existing-evidence inheritance: <P1 count, target 40-60>
-Net-new remediation: <P1 count, target 120-160>
-Sev-1 closed in P2: <P2 count>
-Sev-2 closed in P2: <P2 count>
-Sev-3 accepted-risk: <P2 count + cross-ref to risk register>
+Total i1 controls in scope: 182
+Pre-existing-evidence inheritance: 46 rows ready through inherited
+evidence packets
+Partial controls needing P2 policy or P3 bundle evidence: 83
+Net-new remediation: 53 controls
+Sev-1 closed in P2: pending
+Sev-2 closed in P2: pending
+Sev-3 accepted-risk: 4 candidate rows, pending P2 risk register cross-ref
 
 ### 3a. P1 cross-milestone evidence inheritance inventory
 
