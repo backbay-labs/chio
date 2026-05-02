@@ -212,23 +212,34 @@ and uploaded to the assessor's MyCSF portal at P3.T4.
 Cross-references to upstream artifacts (consumed read-only by M09):
 
 - M01 operator runbook: `.planning/trajectory-3/audits/M01-healthcare-pilot.md`
+  and bundle copy `compliance/hitrust/evidence-bundles/2026-05-02/M01/audit/M01-healthcare-pilot.md`
 - M01 audit-log export schema v1: `spec/audit-log/export-schema.v1.json`
+  and bundle copy `compliance/hitrust/evidence-bundles/2026-05-02/M01/audit-log/export-schema.v1.json`
   (frozen via `m01-m09-audit-handoff` from M01.P3.T1 through M01.P5.T5)
-- M01 30-day BOP audit-log samples: <design-partner tenant export bundle path>
+- M01 30-day BOP audit-log samples:
+  `compliance/hitrust/evidence-bundles/m01-bop-samples.md` plus private
+  assessor-channel hashes for any PHI-bearing samples
 - M03 reproducible-build hash + third-party rebuild evidence:
-  `.planning/trajectory-3/audits/M03-ci-restoration.md`
-- M03 SLSA-style provenance attestations: `.github/workflows/*`
+  `.planning/trajectory-3/audits/M03-ci-restoration.md` and bundle copy
+  `compliance/hitrust/evidence-bundles/2026-05-02/M03/audit/M03-ci-restoration.md`
+- M03 SLSA-style provenance attestations: `.github/workflows/*` and
+  bundle copy `compliance/hitrust/evidence-bundles/2026-05-02/M03/workflows/`
 - M04 mutation-gate + verdict-matrix attestation:
   `.planning/trajectory-3/audits/M04-mutation-gate.md`
 - M05 threat-coverage closure:
   `docs/security/threat-coverage.md` and
-  `spec/security/chio-threat-model.v1.json`
-- M06 SBOM (CycloneDX): `supply-chain/**`
-- M06 cargo-vet ledger: `supply-chain/audits.toml`
+  `spec/security/chio-threat-model.v1.json`, copied under
+  `compliance/hitrust/evidence-bundles/2026-05-02/M05/`
+- M06 SBOM (CycloneDX): `supply-chain/**` and bundle copy
+  `compliance/hitrust/evidence-bundles/2026-05-02/M06/supply-chain/`
+- M06 cargo-vet ledger: `supply-chain/audits.toml` and bundle copy
+  `compliance/hitrust/evidence-bundles/2026-05-02/M06/supply-chain/audits.toml`
 - M06 CVE-monitoring workflow output: `.github/workflows/cve-monitor.yml`
 - M06 formal-method outputs (TLA+ / Apalache invariants): `formal/**`
+  and bundle copy `compliance/hitrust/evidence-bundles/2026-05-02/M06/formal/`
 - M08 pen-test report (complementary, not required for i1):
-  `.planning/trajectory-3/audits/M08-vendor-evidence.md`
+  `.planning/trajectory-3/audits/M08-vendor-evidence.md` and final PDF
+  copied under `compliance/hitrust/evidence-bundles/2026-05-02/M08/`
 
 Evidence-pack bundles:
 
