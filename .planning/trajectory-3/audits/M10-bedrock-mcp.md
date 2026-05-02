@@ -146,8 +146,7 @@ AUTONOMOUS-PROMPT.
 
 - AWS marketplace listing URL: <fill>
 - AWS approval date: <YYYY-MM-DD>
-- AWS marketing review submission date (AI Agents and Tools category
-  gate): <YYYY-MM-DD>
+- AWS marketing review submission date (AI Agents and Tools category gate): 2026-05-02
 - AWS marketing review status (placement on category page; may slip
   past week 30): <fill>
 - MCP conformance entry URL at registry.modelcontextprotocol.io:
