@@ -8,12 +8,14 @@
 #![forbid(unsafe_code)]
 
 pub mod export;
+pub mod verify;
 
 pub use export::{
     export_scenario_run, Bundle, Corpus, EvalRunMeta, EvalRunMetaParts, ExportError, Producer,
     Receipt, ReceiptEntry, ReceiptEvidence, ReceiptParts, VERDICT_MATRIX_CORPUS_SHA256,
     VERDICT_MATRIX_MANIFEST_PATH, VERDICT_MATRIX_SCENARIO_COUNT,
 };
+pub use verify::{test_signature_for_bundle_json, verify_bundle, BundleError, VerifiedBundle};
 
 /// Schema id reserved for the eval-report receipt bundle.
 pub const BUNDLE_SCHEMA_ID: &str = "chio.eval-report.bundle.v1";
@@ -48,15 +50,25 @@ impl EvalReceiptSurface {
         }
     }
 
+    /// Return the P3 verifier descriptor.
+    pub const fn p3_verifier() -> Self {
+        Self {
+            schema_id: BUNDLE_SCHEMA_ID,
+            schema_path: BUNDLE_SCHEMA_PATH,
+            partner: P0_PARTNER,
+            stage: "p3-verifier",
+        }
+    }
+
     /// Fail closed until P3 lands verifier implementation.
-    pub const fn verifier_ready(&self) -> bool {
-        false
+    pub fn verifier_ready(&self) -> bool {
+        matches!(self.stage, "p3-verifier")
     }
 }
 
 /// Return the current eval-receipt verifier surface descriptor.
 pub const fn surface() -> EvalReceiptSurface {
-    EvalReceiptSurface::p0_placeholder()
+    EvalReceiptSurface::p3_verifier()
 }
 
 #[cfg(test)]
@@ -69,7 +81,7 @@ mod tests {
         assert_eq!(surface.schema_id, BUNDLE_SCHEMA_ID);
         assert_eq!(surface.schema_path, BUNDLE_SCHEMA_PATH);
         assert_eq!(surface.partner, P0_PARTNER);
-        assert_eq!(surface.stage, "p0-placeholder");
-        assert!(!surface.verifier_ready());
+        assert_eq!(surface.stage, "p3-verifier");
+        assert!(surface.verifier_ready());
     }
 }

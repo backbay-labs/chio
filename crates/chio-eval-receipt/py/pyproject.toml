@@ -1,0 +1,18 @@
+[build-system]
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
+
+[project]
+name = "chio-eval-receipt-py"
+version = "0.1.0"
+description = "Python binding smoke surface for Chio eval-report receipt bundles"
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+]
+
+[tool.maturin]
+module-name = "chio_eval_receipt_py"
+bindings = "pyo3"
+features = []

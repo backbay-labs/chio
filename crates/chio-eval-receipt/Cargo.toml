@@ -13,7 +13,12 @@ name = "chio_eval_receipt"
 path = "src/lib.rs"
 
 [dependencies]
+serde_json.workspace = true
 sha2.workspace = true
+
+[[bin]]
+name = "chio-eval-receipt"
+path = "src/bin/cli.rs"
 
 [lints]
 workspace = true

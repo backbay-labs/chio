@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/spec/eval/receipt-format.v1.json",
+  "title": "Chio eval-report receipt bundle v1",
+  "description": "Schema chio.eval-report.bundle.v1. The outer signature covers the bundle with signatures removed and the remaining JSON canonicalized as rfc8785.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "bundle_id",
+    "created_at",
+    "producer",
+    "eval_run",
+    "corpus",
+    "receipts",
+    "signatures"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.eval-report.bundle.v1"
+    },
+    "bundle_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "eval_run": {
+      "$ref": "#/$defs/eval_run"
+    },
+    "corpus": {
+      "$ref": "#/$defs/corpus"
+    },
+    "receipts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/receipt_entry"
+      }
+    },
+    "signatures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/signature"
+      }
+    }
+  },
+  "$defs": {
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "repository",
+        "commit",
+        "workflow_run_url"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workflow_run_url": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "eval_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "partner",
+        "partner_slug",
+        "pipeline",
+        "pipeline_language",
+        "model_under_eval",
+        "scorer_name",
+        "scorer_version"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "partner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "partner_slug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pipeline": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pipeline_language": {
+          "type": "string",
+          "enum": [
+            "python",
+            "go",
+            "rust"
+          ]
+        },
+        "model_under_eval": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scorer_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scorer_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "scenario_count",
+        "corpus_sha256",
+        "manifest_path"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenario_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "corpus_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "manifest_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "receipt_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario_id",
+        "category",
+        "verdict",
+        "receipt_payload",
+        "receipt_sha256",
+        "evidence"
+      ],
+      "properties": {
+        "scenario_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny"
+          ]
+        },
+        "receipt_payload": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receipt_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_id",
+        "sample_id"
+      ],
+      "properties": {
+        "trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sample_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "key_id",
+        "signature",
+        "signed_payload"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "test-sha256",
+            "sigstore-cosign",
+            "pgp-detached"
+          ]
+        },
+        "key_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signature": {
+          "type": "string",
+          "minLength": 1
+        },
+        "certificate": {
+          "type": "string"
+        },
+        "signed_payload": {
+          "const": "bundle_without_signatures:rfc8785"
+        }
+      }
+    }
+  }
+}

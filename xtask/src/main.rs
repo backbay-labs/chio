@@ -9,6 +9,8 @@
 //! cargo xtask validate-scenarios
 //! cargo xtask freeze-vectors
 //! cargo xtask freeze-vectors --check
+//! cargo xtask eval-receipt-regen
+//! cargo xtask eval-receipt-regen --check
 //! ```
 //!
 //! `trajectory regen-manifest` walks `.planning/trajectory/tickets/M*/P*.yml`,
@@ -90,6 +92,7 @@ use serde::de::Error as _;
 use serde_yml::Value;
 use sha2::{Digest, Sha256};
 
+mod eval_receipt_regen;
 mod snippets_subcommand;
 
 const TRAJECTORY_1_MANIFEST_HEADER: &str = "\
@@ -187,6 +190,7 @@ fn main() -> ExitCode {
         "trajectory" => run_trajectory(args.collect()),
         "validate-scenarios" => validate_scenarios(args.collect()),
         "freeze-vectors" => freeze_vectors(args.collect()),
+        "eval-receipt-regen" => eval_receipt_regen::run(args.collect()),
         "codegen" => run_codegen(args.collect()),
         "errors" => run_errors(args.collect()),
         "snippets" => run_snippets(args.collect()),
@@ -210,6 +214,7 @@ fn print_help() {
     println!("  trajectory regen-manifest [--trajectory trajectory-2] [--check]");
     println!("  validate-scenarios");
     println!("  freeze-vectors [--check]");
+    println!("  eval-receipt-regen [--check]");
     println!("  errors regen [--check]");
     println!("  snippets regen [--check]");
     println!("  codegen rust [--check]");

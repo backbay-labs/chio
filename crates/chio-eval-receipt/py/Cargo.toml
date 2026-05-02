@@ -1,0 +1,21 @@
+[package]
+name = "chio-eval-receipt-py"
+description = "Python binding smoke surface for Chio eval-report receipt bundles."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_eval_receipt_py"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+chio-eval-receipt = { path = ".." }
+pyo3 = { version = "0.22", features = ["auto-initialize"] }
+
+[lints]
+workspace = true
