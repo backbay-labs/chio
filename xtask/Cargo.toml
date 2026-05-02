@@ -16,3 +16,4 @@ sha2 = { workspace = true }
 jsonschema = { workspace = true }
 chio-spec-validate = { path = "../crates/chio-spec-validate" }
 chio-spec-codegen = { path = "../crates/chio-spec-codegen" }
+chio-eval-receipt = { path = "../crates/chio-eval-receipt" }
