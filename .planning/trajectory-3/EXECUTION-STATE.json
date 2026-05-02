@@ -1,0 +1,95 @@
+{
+  "schema_version": "1",
+  "trajectory": "trajectory-3",
+  "started_at": "2026-05-02T02:19:05Z",
+  "last_checkpoint_at": "2026-05-02T02:19:05Z",
+  "current_wave": "W1",
+  "halt": {
+    "halted": false,
+    "reason": null,
+    "trigger_event_id": null,
+    "halted_at": null
+  },
+  "milestones": {
+    "M01": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M02": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M03": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M04": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M05": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M06": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M07": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    },
+    "M08": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true,
+      "lane": "vendor"
+    },
+    "M09": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true,
+      "lane": "vendor"
+    },
+    "M10": {
+      "status": "ticket files authored",
+      "phase": "ready_for_p0",
+      "owner_branch": null,
+      "trust_boundary": true
+    }
+  },
+  "waves": {
+    "W1": ["M01", "M02", "M03", "M04", "M05"],
+    "W2": ["M06", "M07"],
+    "W3": ["M10"]
+  },
+  "vendor_calendars": ["M08", "M09"],
+  "customer_evidence": {
+    "M01": null,
+    "M02": null
+  },
+  "notes": [
+    "Seed state authored 2026-04-30 alongside narrative + ticket scaffold files.",
+    "Wave 0 is the authoring wave: narrative + tickets land before any P0 wave-opener.",
+    "All ten milestones are trust-boundary; security x2 review applies on every PR.",
+    "M08 + M09 vendor calendars open week 1, parallel to all code waves.",
+    "Customer evidence freshness window is 7 days per D15; design-partner withdrawal is halt trigger 12."
+  ],
+  "wave_heads": {}
+}

@@ -1,0 +1,138 @@
+# M05 Audit: Threat-Coverage Closure
+
+**Trajectory:** trajectory-3
+**Milestone:** M05
+**Wave:** W1
+**Status:** TEMPLATE
+**Audit start:** <fill at P0 wave-opener merge>
+**Audit close:** <fill at P5 final ticket merge>
+
+## 1. Audit scope
+
+M05 closes the three named carry-forward gaps from trajectory-2 and
+classifies remaining advisory threats. Release gate: RELEASE_AUDIT;
+zero `coverage_state: partial` rows and zero `coverage_state: pending`
+rows lacking a `deferred_to` reference at milestone close.
+
+Bounded scope per D14:
+
+- weights_hash_spoof (`partial` -> `covered`)
+- dispatch_allow Criterion bench (placeholder -> real check)
+- dispatch_allow dhat bench (third M06 placeholder, evicted)
+- Eight advisory threats classified (`covered` or `deferred_to`)
+- Coverage gate flip (`scripts/check-threat-coverage.sh` fails on
+  `partial` and on `pending` lacking `deferred_to`)
+
+Out of scope per D14: new threat IDs from M07 (mobile) or M10
+(distribution); enum widening; `chio-providers` crate creation.
+
+## 2. Hard counts at P0
+
+Reproduce by running the named command in the worktree at
+`.worktrees/trajectory-3/`. Date stamp: 2026-04-30.
+
+- `coverage_state: partial` row count: 0
+  (`python3 -c "import json; d=json.load(open('spec/security/chio-threat-model.v1.json')); print(sum(1 for t in d['threats'] if t.get('coverage_state')=='partial'))"`)
+- `coverage_state: placeholder` row count: 0 (the JSON enum admits
+  `{covered, partial, pending}` only; `placeholder` is shorthand for
+  the dispatch_allow benches and is not a JSON state)
+- `coverage_state: pending` row count: 11
+  (`python3 -c "import json; d=json.load(open('spec/security/chio-threat-model.v1.json')); print(sum(1 for t in d['threats'] if t.get('coverage_state')=='pending'))"`)
+- `coverage_state: covered` row count: 6
+- Per-threat stub files calling `unimplemented!()`: 11 of 17
+  (`grep -l 'unimplemented!' crates/chio-conformance/tests/threats/*.rs | wc -l`)
+- Advisory threats with no coverage row: 0 (all 17 carry a
+  coverage_state; pending rows lacking `deferred_to` are the closure
+  target, not orphans)
+- `spec/security/coverage.yaml` rows: 3 (`passkey_credential_theft`,
+  `audience_confusion`, `weights_hash_spoof`)
+- coverage.yaml-vs-JSON divergence: 3 rows (all three YAML rows
+  disagree with the JSON state)
+- `crates/chio-kernel/benches/dispatch_allow*.rs`: 2 placeholder
+  benches (Criterion + dhat); both are M05 closure targets
+- `chio-providers` crate existence: NO
+  (`grep -l '^name = "chio-providers"' crates/*/Cargo.toml` returns
+  nothing); LoadedWeights trait lands under `chio-provider-conformance`
+  per research §1 option 1
+
+### 2.1 coverage.yaml vs JSON divergence (P0 reconciliation)
+
+| Threat ID | JSON state | YAML state | P0 reconciliation |
+|-----------|------------|------------|-------------------|
+| passkey_credential_theft | pending | covered | Flip JSON to `covered` (M10.P2.T6 closed); update at P4.T2 |
+| audience_confusion | pending | covered | Flip JSON to `covered` (M10.P2.T4 closed); update at P4.T2 |
+| weights_hash_spoof | pending | partial | M05.P1 closes; flip both surfaces to `covered` at P1.T3 |
+
+### 2.2 dispatch_allow path-of-record (P0.T1 decision)
+
+- Freeze `m05-threat-coverage-pivot.path_globs` names
+  `crates/chio-attest-verify/src/dispatch_allow.rs`.
+- Live placeholders at `crates/chio-kernel/benches/dispatch_allow.rs`
+  and `crates/chio-kernel/benches/dispatch_allow_dhat.rs`.
+- Recommended: amend freeze path_globs to point at the chio-kernel
+  benches.
+- Decision: <fill at P0.T1 merge>
+
+### 2.3 coverage.yaml downstream consumers (P0.T1 grep)
+
+<fill at P0.T1 merge with the list of files referencing
+`spec/security/coverage.yaml` across `.planning/trajectory-2/audits/`,
+`.planning/trajectory-3/audits/`, and `docs/security/`>
+
+## 3. Closure log
+
+| Threat ID | Before | After | Phase | Cross-ref |
+|-----------|--------|-------|-------|-----------|
+| weights_hash_spoof | pending (JSON) / partial (YAML) | covered | P1 | M05.P1.T1, T2, T3; chio-provider-conformance LoadedWeights trait |
+| dispatch_allow (Criterion) | placeholder (0_u64) | real wall-clock check | P2 | M05.P2.T1, T2; benches/dispatch_allow.rs |
+| dispatch_allow_dhat | placeholder (0/0 budgets) | measured allocation budget | P3 | M05.P3.T1; benches/dispatch_allow_dhat.rs |
+| pq_signature_downgrade | pending | covered | P4 | M05.P4.T1; chio-conformance/tests/threats/pq_signature_downgrade.rs |
+| tee_quote_forgery | pending | covered | P4 | M05.P4.T1; chio-conformance/tests/threats/tee_quote_forgery.rs |
+| passkey_credential_theft | pending (JSON) / covered (YAML) | covered | P4 | M05.P4.T2; M10.P2.T6 evidence |
+| audience_confusion | pending (JSON) / covered (YAML) | covered | P4 | M05.P4.T2; M10.P2.T4 evidence |
+| ssrf_via_http_substrate | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <M07 or trajectory-4 ticket> |
+| pii_phi_exposure | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <M07 or trajectory-4 ticket> |
+| agent_velocity_abuse | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <trajectory-4 ticket> |
+| cumulative_data_exfiltration | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <trajectory-4 ticket> |
+| behavioral_sequence_attack | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <trajectory-4 ticket> |
+| wasm_guard_resource_exhaustion | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <trajectory-4 ticket> |
+
+(Per row, fill the actual `deferred_to` ticket id at P4.T2 merge;
+the placeholder bracketed text is the cue to the IMPLEMENT agent.)
+
+### 3.1 Freeze amendment record
+
+<fill at P0.T1 merge: SHA + diff URL of the
+`m05-threat-coverage-pivot.path_globs` amendment>
+
+### 3.2 dispatch_allow real-check measurements
+
+| Bench | Median (ns) | 95% CI | total_blocks | total_bytes | Reference runner |
+|-------|-------------|--------|--------------|-------------|-------------------|
+| dispatch_allow (Criterion) | <fill P2.T2> | <fill P2.T2> | n/a | n/a | 4-core Linux, warm cache |
+| dispatch_allow_dhat | n/a | n/a | <fill P3.T1> | <fill P3.T1> | 4-core Linux, warm cache |
+
+### 3.3 Coverage gate post-flip behavior matrix
+
+| coverage_state | deferred_to | Gate result |
+|----------------|-------------|-------------|
+| covered | irrelevant | PASS if test body populated |
+| covered | irrelevant | FAIL if test body still calls unimplemented!() |
+| partial | irrelevant | FAIL (no escape hatch in trajectory-3) |
+| pending | populated | PASS (advisory deferral) |
+| pending | empty / missing | FAIL |
+| any other | irrelevant | FAIL ("unknown coverage_state") |
+
+(Unit test at `scripts/tests/check-threat-coverage.test.sh` exercises
+the six cells.)
+
+## 4. Closure attestations
+
+- Threat-coverage table validated zero-partial: <CI run URL of the
+  post-flip threat-model-coverage workflow run on the M05.P4.T3
+  merge commit>
+- The M08 reviewer cross-checks closure: <quote / cross-ref to the
+  M08 audit doc evidence-pack section that cites this audit doc and
+  the CI run URL above>
+- Audit doc hash at M08 handoff: <SHA of this file at P5.T2 close;
+  the M08 reviewer cites the hash to confirm artifact identity>

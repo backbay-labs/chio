@@ -1,0 +1,144 @@
+# M01 Phase 0 - Audit doc + Opus contract + tenant onboarding plan.
+# Source of truth: .planning/trajectory-3/01-opus-design-partner-pilot.md
+# (section "Phases" P0) + .planning/trajectory-3/research/m01/RESEARCH.md.
+#
+# Wave-opener for M01. Five tickets that open the audit doc, sign the
+# Opus design-partner contract under D09 + D15, and stand up the
+# tenant-onboarding and topology stub files at docs/operator-runbook/
+# that subsequent phases extend.
+#
+# CROSS-MILESTONE: M01 P0 has no hard freeze trigger. M01.P0.T5
+# captures the PagerDuty contract memo that M01.P1.T4 plumbs.
+#
+# M01 IS a trust-boundary milestone (every trajectory-3 milestone is per
+# OWNERS.toml line 28); reviewer is the human-side @bb-connor only.
+# Per AUTONOMOUS-PROMPT, security x2 review applies on every PR.
+
+- id: M01.P0.T1
+  milestone: M01
+  phase: 0
+  title: Open M01 audit doc and fill the four hard-count rows from RESEARCH.md
+  status: pending
+  effort_days: 1.0
+  owner_glob:
+    - .planning/trajectory-3/audits/M01-opus-pilot.md
+  shared_paths: []
+  depends_on: []
+  soft_deps:
+    - "trajectory-2 docs/release/OPERATIONS_RUNBOOK.md lines 13-26 is the bounded-profile reference; cite verbatim in the hard-count baseline"
+    - "RESEARCH.md PagerDuty / on-call integration plan section names the six gaps tallied in the audit doc baseline"
+  gate_check:
+    cmd: "test -f .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'BOUNDED_OPERATIONAL_PROFILE' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'tenant size' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'PagerDuty' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'spec/audit-log' .planning/trajectory-3/audits/M01-opus-pilot.md"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p0.t1-open-audit-doc-hard-counts
+  agent_role: customer-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P0.T2
+  milestone: M01
+  phase: 0
+  title: Record Opus design-partner contract memo and BAA posture in audit doc evidence log
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/trajectory-3/audits/M01-opus-pilot.md
+  shared_paths: []
+  depends_on:
+    - M01.P0.T1
+  soft_deps:
+    - "decisions.yml D09 ratifies Opus as the M01 design partner; the contract memo is the engineering-side artifact for that decision"
+    - "decisions.yml D15 names the 7-day freshness window the audit doc evidence log enforces"
+  gate_check:
+    cmd: "grep -q 'D09' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qiE 'BAA|Business Associate' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'contract memo' .planning/trajectory-3/audits/M01-opus-pilot.md"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p0.t2-opus-contract-memo
+  agent_role: customer-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P0.T3
+  milestone: M01
+  phase: 0
+  title: Author tenant onboarding plan at docs/operator-runbook/onboarding.md
+  status: pending
+  effort_days: 1.5
+  owner_glob:
+    - docs/operator-runbook/onboarding.md
+  shared_paths: []
+  depends_on:
+    - M01.P0.T1
+  soft_deps:
+    - "docs/release/OPERATIONS_RUNBOOK.md lines 28-78 enumerate the chio trust serve / chio mcp serve-http required runtime inputs the onboarding plan imports"
+    - "clusters/opus/CLAUDE.md names the opus_api service surface the onboarding plan integrates against"
+  gate_check:
+    cmd: "test -f docs/operator-runbook/onboarding.md && [ $(wc -l < docs/operator-runbook/onboarding.md) -ge 50 ] && grep -q 'chio trust serve' docs/operator-runbook/onboarding.md && grep -q 'chio mcp serve-http' docs/operator-runbook/onboarding.md"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p0.t3-tenant-onboarding-plan
+  agent_role: dx-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P0.T4
+  milestone: M01
+  phase: 0
+  title: Author production deployment topology diagram pinning Chio mediation edge placement
+  status: pending
+  effort_days: 1.0
+  owner_glob:
+    - docs/operator-runbook/topology.md
+  shared_paths: []
+  depends_on:
+    - M01.P0.T1
+  soft_deps:
+    - "decisions.yml D09 names Opus cluster (Backbay healthcare) as the deployment target; clusters/opus/apps/opus/services/api/ runs at port 8103"
+    - "RESEARCH.md open question 1 (sidecar / in-process / wrapped MCP edge) is answered in this ticket"
+  gate_check:
+    cmd: "test -f docs/operator-runbook/topology.md && grep -q 'opus_api' docs/operator-runbook/topology.md && grep -qE 'sidecar|in-process|wrapped' docs/operator-runbook/topology.md && grep -q 'single-tenant' docs/operator-runbook/topology.md"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p0.t4-topology-diagram
+  agent_role: kernel-rust
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
+
+- id: M01.P0.T5
+  milestone: M01
+  phase: 0
+  title: Record PagerDuty service-naming and on-call rotation contract memo in audit doc
+  status: pending
+  effort_days: 0.5
+  owner_glob:
+    - .planning/trajectory-3/audits/M01-opus-pilot.md
+  shared_paths: []
+  depends_on:
+    - M01.P0.T2
+  soft_deps:
+    - "crates/chio-siem/src/alerting.rs lines 195-274 ship PagerDutyBackend posting Events API v2; M01 names the routing key the existing source consumes"
+    - "RESEARCH.md PagerDuty / on-call integration plan section enumerates the five-step minimal integration scope this memo formalizes"
+  gate_check:
+    cmd: "grep -q 'chio-opus-pilot-prod' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'events.pagerduty.com/v2/enqueue' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qE 'P0.+5 min|primary on-call' .planning/trajectory-3/audits/M01-opus-pilot.md"
+    timeout_seconds: 300
+  worktree_branch: wave/W1/m01/p0.t5-pagerduty-contract-memo
+  agent_role: customer-coord
+  review_required:
+    - "@bb-connor"
+  first_commit_sha: null
+  merged_sha: null
+  opened_ts: null
+  merged_ts: null
