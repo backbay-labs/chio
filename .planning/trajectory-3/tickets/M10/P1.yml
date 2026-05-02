@@ -19,7 +19,7 @@
   milestone: M10
   phase: 1
   title: Scaffold integrations/aws-bedrock/ with README, CFN stub, IAM stub, diagram placeholder
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - integrations/aws-bedrock/README.md
@@ -40,16 +40,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: cf6ebc14497e4a6fefdf2f871a31ea91bbe01c47
+  merged_sha: cf6ebc14497e4a6fefdf2f871a31ea91bbe01c47
+  opened_ts: "2026-05-02T16:28:55Z"
+  merged_ts: "2026-05-02T16:28:55Z"
 
 - id: M10.P1.T2
   milestone: M10
   phase: 1
   title: Author chio-bedrock Python SDK wrapping the Rust adapter with BedrockChioClient surface
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
     - sdks/python/packages/chio-bedrock/pyproject.toml
@@ -75,16 +75,16 @@
   agent_role: spec-python
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 991d550aaccf93d421b423d3a8b2927e490e4b6d
+  merged_sha: 991d550aaccf93d421b423d3a8b2927e490e4b6d
+  opened_ts: "2026-05-02T16:28:55Z"
+  merged_ts: "2026-05-02T16:28:55Z"
 
 - id: M10.P1.T3
   milestone: M10
   phase: 1
   title: Marketplace SaaS contract integration with GetEntitlements and MeterUsage round-trip
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
     - integrations/aws-bedrock/control-plane/Cargo.toml
@@ -108,16 +108,16 @@
   agent_role: provider-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9177f657baa84d3b7e379b5a9d223871d6a4d097
+  merged_sha: 9177f657baa84d3b7e379b5a9d223871d6a4d097
+  opened_ts: "2026-05-02T16:28:55Z"
+  merged_ts: "2026-05-02T16:28:55Z"
 
 - id: M10.P1.T4
   milestone: M10
   phase: 1
   title: Pin region us-east-1 in the listing artifacts and document the multi-region deferral
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - integrations/aws-bedrock/REGIONS.md
@@ -136,16 +136,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 09d94c98ed5f70c9e3e2cd110d13943d256e5175
+  merged_sha: 09d94c98ed5f70c9e3e2cd110d13943d256e5175
+  opened_ts: "2026-05-02T16:28:55Z"
+  merged_ts: "2026-05-02T16:28:55Z"
 
 - id: M10.P1.T5
   milestone: M10
   phase: 1
   title: Author data-flow diagram for AWS security review (customer VPC plus control plane plus Bedrock)
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - integrations/aws-bedrock/diagrams/data-flow.svg
@@ -165,7 +165,7 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9fd670f37ef8033cfcca6e90fed4435eb3ec4120
+  merged_sha: 9fd670f37ef8033cfcca6e90fed4435eb3ec4120
+  opened_ts: "2026-05-02T16:28:55Z"
+  merged_ts: "2026-05-02T16:28:55Z"

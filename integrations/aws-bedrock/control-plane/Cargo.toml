@@ -1,0 +1,22 @@
+[package]
+name = "chio-bedrock-control-plane"
+description = "AWS Marketplace entitlement and metering contract helpers for Chio Bedrock listing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_bedrock_control_plane"
+
+[dependencies]
+aws-sdk-marketplaceentitlement = { workspace = true }
+aws-sdk-marketplacemetering = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
