@@ -59,6 +59,7 @@ discrete customer or ops-team interaction.]
 | 2026-05-23 | Week 3 incident review completed; no P0/P1/P2 incidents and PHI-leak audit row passed against sampled deny receipts | Design-partner ops team + Chio ops | M01.P4.T3 |
 | 2026-05-30 | Week 4 incident review completed; no open incidents at close and PHI-leak audit row passed against CEF and OCSF exports | Design-partner ops team + Chio ops | M01.P4.T4 |
 | 2026-05-31 | 30-day incident report rollup published; zero P0 incidents, one P2 receipt-export delay, MTTR 18 minutes, no P1 incidents | Chio ops + design-partner ops team | M01.P4.T5 |
+| 2026-05-31 | `m01-m07-audit-handoff` freeze opened for M07 mobile patient-app handoff; audit doc is the stable runbook and schema input for mobile design-partner work | Chio ops | M01.P5.T1 |
 | | Design-partner tenant ops sign-off memo received | Design-partner ops team | M01.P5.T2 |
 
 ## 4. PagerDuty service-naming + on-call rotation contract
