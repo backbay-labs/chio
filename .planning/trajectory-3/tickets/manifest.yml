@@ -154,7 +154,7 @@
   phase: 1
   title: Author docs/operator-runbook/index.md and bounded-profile.md importing OPERATIONS_RUNBOOK
     lines 13-26
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - docs/operator-runbook/index.md
@@ -178,15 +178,15 @@
   agent_role: dx-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 53d9d2667582067cd31ce3c690d4d4267d4be410
+  merged_sha: 53d9d2667582067cd31ce3c690d4d4267d4be410
+  opened_ts: '2026-05-02T05:20:29Z'
+  merged_ts: '2026-05-02T05:20:29Z'
 - id: M01.P1.T2
   milestone: M01
   phase: 1
   title: Author SLO definition at docs/operator-runbook/slo.md
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - docs/operator-runbook/slo.md
@@ -205,15 +205,15 @@
   agent_role: dx-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 589926293e5e099dbc5563607c0ad71b74b428a4
+  merged_sha: 589926293e5e099dbc5563607c0ad71b74b428a4
+  opened_ts: '2026-05-02T05:20:29Z'
+  merged_ts: '2026-05-02T05:20:29Z'
 - id: M01.P1.T3
   milestone: M01
   phase: 1
   title: Author incident classification + MTTR table at docs/operator-runbook/incidents.md
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - docs/operator-runbook/incidents.md
@@ -235,16 +235,16 @@
   agent_role: dx-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4082f403ff89bed2b8ea6070c43396dacc8aa9a2
+  merged_sha: 4082f403ff89bed2b8ea6070c43396dacc8aa9a2
+  opened_ts: '2026-05-02T05:20:29Z'
+  merged_ts: '2026-05-02T05:20:29Z'
 - id: M01.P1.T4
   milestone: M01
   phase: 1
   title: Author PagerDuty integration doc at docs/operator-runbook/pagerduty.md and
     add severity-override config
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - docs/operator-runbook/pagerduty.md
@@ -268,15 +268,15 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 3176fe1c802cf08f2b5e7dc987c00ff1bec1c77d
+  merged_sha: 3176fe1c802cf08f2b5e7dc987c00ff1bec1c77d
+  opened_ts: '2026-05-02T05:20:29Z'
+  merged_ts: '2026-05-02T05:20:29Z'
 - id: M01.P1.T5
   milestone: M01
   phase: 1
   title: Author on-call rotation + escalation policy at docs/operator-runbook/rotations.md
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - docs/operator-runbook/rotations.md
@@ -295,15 +295,15 @@
   agent_role: dx-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f1e271bf42b56aa49e671b548e46b9ccabf5944e
+  merged_sha: f1e271bf42b56aa49e671b548e46b9ccabf5944e
+  opened_ts: '2026-05-02T05:20:29Z'
+  merged_ts: '2026-05-02T05:20:29Z'
 - id: M01.P1.T6
   milestone: M01
   phase: 1
   title: Add weekly PagerDuty heartbeat workflow at .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml
@@ -325,10 +325,10 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0e3112f3f9a5e2888dd9486cca0ad58b9a22672e
+  merged_sha: 0e3112f3f9a5e2888dd9486cca0ad58b9a22672e
+  opened_ts: '2026-05-02T05:20:29Z'
+  merged_ts: '2026-05-02T05:20:29Z'
 - id: M01.P2.T1
   milestone: M01
   phase: 2
