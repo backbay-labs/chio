@@ -1,0 +1,17 @@
+{
+  "consumer": "aws-bedrock-agentcore-gateway",
+  "resource": "https://mcp.chio.example/mcp",
+  "authorization_server": "https://auth.chio.example",
+  "oauth": {
+    "grant_type": "authorization_code_pkce",
+    "token_audience": "https://mcp.chio.example/mcp",
+    "scopes": [
+      "tools.call",
+      "receipts.read"
+    ]
+  },
+  "tool_call": {
+    "name": "chio.bedrock.invoke",
+    "receipt_required": true
+  }
+}

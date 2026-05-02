@@ -3443,6 +3443,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-mcp-adapter-integration"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chio-mcp-edge",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "url",
+]
+
+[[package]]
 name = "chio-mcp-edge"
 version = "0.1.0"
 dependencies = [

@@ -93,6 +93,7 @@ members = [
     "crates/chio-store-sqlite",
     "crates/chio-workflow",
     "integrations/aws-bedrock/control-plane",
+    "integrations/mcp-adapter",
     #
     # HTTP & session
     "crates/chio-hosted-mcp",
