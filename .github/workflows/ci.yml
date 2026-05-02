@@ -13,6 +13,10 @@ name: CI
 #
 #   advisory (do not gate):
 #     - "JVM build", "Coverage", "Mutants"
+#
+# PR-tier CI is intentionally Linux-only. macOS coverage stays in
+# release-binaries.yml for tag releases, where macOS artifact behavior
+# is actually exercised.
 
 on:
   push:

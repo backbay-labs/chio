@@ -68,6 +68,84 @@ at audit-doc open.
 - `reproducibility-gate` run URL:
 - `supply-chain/checksums/v3.18.txt` cosign signature + Rekor UUID:
 
+## 3a. Hosted CI liveness evidence (P1)
+
+P1 records that hosted GitHub Actions is alive and starting real
+workflow runs after trajectory-3 PRs. The 2026-05-02 steering update
+defers full green completion to final stabilization; this section is
+therefore a liveness matrix, not a green-release attestation.
+
+Required-check contexts and current run URLs:
+
+| Required check context | Workflow/run evidence | Status at record time |
+|------------------------|-----------------------|-----------------------|
+| Build, lint, test | https://github.com/bb-connor/arc/actions/runs/25242850087 | queued on `main` push `2d63ff7e36ef86d929e7bc9a14119adee68017d0` |
+| MSRV build and test | https://github.com/bb-connor/arc/actions/runs/25242850087 | queued inside `ci.yml` on `main` push |
+| cargo-vet (supply-chain audit) | https://github.com/bb-connor/arc/actions/runs/25242850087 | queued inside `ci.yml` on `main` push |
+| cargo-deny (supply-chain bans/advisories/licenses) | https://github.com/bb-connor/arc/actions/runs/25242850087 | queued inside `ci.yml` on `main` push |
+| freeze-guard | https://github.com/bb-connor/arc/actions/runs/25242846785 | completed success on PR #444 head `507b11cd0fb2e2260b0639025da25c0714d34060` |
+| bench-regression | https://github.com/bb-connor/arc/actions/runs/25242843165 | queued on PR #444 head `507b11cd0fb2e2260b0639025da25c0714d34060` |
+
+Observed policy state:
+
+- Hosted CI is no longer billing-exhausted at runner-start: real runs
+  are created for PR and `main` push events.
+- Old pre-trajectory-3 failures remain M03.P2 bisect targets.
+- Admin-merged PRs under the 2026-05-02 steering policy are tracked in
+  `.planning/trajectory-3/work/CI-DEBT.md`.
+- Full green required-check closure is deferred to the end-of-trajectory
+  stabilization pass.
+
+### workflow inventory matrix - first file `.github/workflows/bench-regression.yml`
+
+Inventory taken 2026-05-02 from `.github/workflows/`: 41 workflow
+files. All files remain enabled in source. P1 classifies trigger state;
+M03.P2 owns failures found by bisect.
+
+| Workflow file | P1 disposition |
+|---------------|----------------|
+| `.github/workflows/bench-regression.yml` | PR/main trigger observed, completion deferred |
+| `.github/workflows/browser-kernel-twiggy.yml` | PR trigger observed, completion deferred |
+| `.github/workflows/cflite_batch.yml` | schedule/manual, deferred to next schedule or dispatch |
+| `.github/workflows/cflite_pr.yml` | PR capable, deferred to touched-path trigger |
+| `.github/workflows/chio-arena-determinism.yml` | PR/main trigger observed, completion deferred |
+| `.github/workflows/chio-cpp.yml` | PR capable, deferred to touched-path trigger |
+| `.github/workflows/chio-replay-gate.yml` | PR/main trigger observed, completion deferred |
+| `.github/workflows/chio-tee-corpus-expire.yml` | schedule/manual, deferred to next schedule or dispatch |
+| `.github/workflows/chio-tee-fips.yml` | PR capable, deferred to touched-path trigger |
+| `.github/workflows/chio-tee-image.yml` | PR capable, deferred to touched-path trigger |
+| `.github/workflows/ci.yml` | PR/main trigger observed, completion deferred |
+| `.github/workflows/conformance-matrix.yml` | PR capable, deferred to M02/M04 touched-path trigger |
+| `.github/workflows/demo-pages.yml` | PR capable, deferred to touched-path trigger |
+| `.github/workflows/dudect.yml` | schedule/manual, deferred to next schedule or dispatch |
+| `.github/workflows/fuzz.yml` | schedule/manual, deferred to next schedule or dispatch |
+| `.github/workflows/fuzz_corpus_sync.yml` | schedule/manual, deferred to next schedule |
+| `.github/workflows/fuzz_crash_triage.yml` | schedule/manual, deferred to next schedule or dispatch |
+| `.github/workflows/m05-freeze-guard.yml` | PR trigger observed and completed success on PR #444 |
+| `.github/workflows/m06-sustained-p99-nightly.yml` | schedule/manual, deferred to next schedule |
+| `.github/workflows/m06-twiggy-bundle.yml` | PR trigger observed, completion deferred |
+| `.github/workflows/mutants-banner.yml` | PR capable, deferred to M04 mutation work |
+| `.github/workflows/mutants-fuzz-cocoverage.yml` | schedule/manual, deferred to M04 mutation work |
+| `.github/workflows/mutants.yml` | schedule/manual, deferred to M04 mutation work |
+| `.github/workflows/nightly.yml` | schedule, deferred to next schedule |
+| `.github/workflows/provider-conformance.yml` | PR capable, deferred to provider-conformance touched-path trigger |
+| `.github/workflows/release-binaries.yml` | tag-gated, deferred to next release tag |
+| `.github/workflows/release-cpp.yml` | tag-gated, deferred to next release tag |
+| `.github/workflows/release-npm.yml` | tag-gated, deferred to next release tag |
+| `.github/workflows/release-pypi.yml` | tag-gated, deferred to next release tag |
+| `.github/workflows/release-qualification.yml` | main/tag capable, run queued on `main`, completion deferred |
+| `.github/workflows/release-tagged.yml` | tag-gated, deferred to next release tag |
+| `.github/workflows/schema-breaking-change.yml` | PR capable, deferred to schema touched-path trigger |
+| `.github/workflows/sidecar-image.yml` | main trigger observed, completion deferred |
+| `.github/workflows/slsa.yml` | workflow-run/tag gated, deferred to release-binaries success |
+| `.github/workflows/spec-drift.yml` | PR/main trigger observed, completion deferred |
+| `.github/workflows/threat-model-coverage.yml` | main trigger observed, completion deferred |
+| `.github/workflows/ttfrh.yml` | push trigger observed, currently failing and routed to M03.P2 |
+| `.github/workflows/tuf-rebake.yml` | manual/tag capable, deferred to release work |
+| `.github/workflows/vectors-staleness.yml` | schedule/manual, deferred to next schedule or dispatch |
+| `.github/workflows/verdict-matrix.yml` | PR capable, deferred to M02/M04 verdict work |
+| `.github/workflows/web-sdk.yml` | PR capable, deferred to web SDK touched-path trigger |
+
 ## 4. Closure attestations
 
 [TODO M03 milestone agent fill at P5 close:]
