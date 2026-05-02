@@ -1,0 +1,33 @@
+{
+  "tenant_id": "tenant-marketplace-customer-post-listing",
+  "capability_id": "cap-bedrock-converse-2026-05-02",
+  "receipt_intent": {
+    "required": true,
+    "meter_dimension": "bedrock_receipt_overage",
+    "audit_export": "ocsf-json"
+  },
+  "aws": {
+    "region": "us-east-1",
+    "marketplace_product_code": "prod-chio-bedrock",
+    "customer_role_arn": "arn:aws:iam::123456789012:role/ChioBedrockIntegrationRole"
+  },
+  "bedrock": {
+    "model_id": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "Summarize the latest approved care-management policy for this tenant."
+          }
+        ]
+      }
+    ]
+  },
+  "mcp": {
+    "registry_url": "https://registry.modelcontextprotocol.io/servers/dev.chio/chio-governed-tools",
+    "tool_server": "dev.chio/chio-governed-tools",
+    "tool_name": "policy.retrieve",
+    "oauth_scope": "tools.call"
+  }
+}

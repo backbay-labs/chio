@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="620" viewBox="0 0 1080 620" role="img" aria-labelledby="title desc">
+  <title id="title">Chio Bedrock and MCP governance architecture</title>
+  <desc id="desc">Customer VPC, Chio control plane, AWS Marketplace, Bedrock Runtime, MCP registry, and receipt export boundaries.</desc>
+  <rect width="1080" height="620" fill="#f7f9fb"/>
+  <rect x="40" y="60" width="300" height="500" rx="8" fill="#ffffff" stroke="#2c5aa0" stroke-width="2"/>
+  <text x="70" y="100" font-family="Arial, sans-serif" font-size="22" fill="#12335f">Customer AWS account</text>
+  <rect x="70" y="140" width="240" height="76" rx="6" fill="#eaf2ff" stroke="#2c5aa0"/>
+  <text x="95" y="174" font-family="Arial, sans-serif" font-size="17" fill="#12335f">Quick Launch stack</text>
+  <text x="95" y="198" font-family="Arial, sans-serif" font-size="14" fill="#12335f">IAM role + SSM parameter</text>
+  <rect x="70" y="260" width="240" height="84" rx="6" fill="#fff8e8" stroke="#a46a00"/>
+  <text x="95" y="296" font-family="Arial, sans-serif" font-size="17" fill="#5e3c00">Agent application</text>
+  <text x="95" y="320" font-family="Arial, sans-serif" font-size="14" fill="#5e3c00">Bedrock Converse request</text>
+  <rect x="70" y="390" width="240" height="86" rx="6" fill="#eefaf1" stroke="#22864b"/>
+  <text x="95" y="425" font-family="Arial, sans-serif" font-size="17" fill="#145a31">Customer audit sink</text>
+  <text x="95" y="449" font-family="Arial, sans-serif" font-size="14" fill="#145a31">OCSF and CEF exports</text>
+
+  <rect x="390" y="90" width="300" height="430" rx="8" fill="#ffffff" stroke="#1c7c78" stroke-width="2"/>
+  <text x="425" y="130" font-family="Arial, sans-serif" font-size="22" fill="#12504d">Chio control plane</text>
+  <rect x="425" y="170" width="230" height="72" rx="6" fill="#e7f7f6" stroke="#1c7c78"/>
+  <text x="455" y="202" font-family="Arial, sans-serif" font-size="17" fill="#12504d">Capability check</text>
+  <text x="455" y="224" font-family="Arial, sans-serif" font-size="14" fill="#12504d">Fail closed deny path</text>
+  <rect x="425" y="280" width="230" height="72" rx="6" fill="#e7f7f6" stroke="#1c7c78"/>
+  <text x="455" y="312" font-family="Arial, sans-serif" font-size="17" fill="#12504d">Policy and guards</text>
+  <text x="455" y="334" font-family="Arial, sans-serif" font-size="14" fill="#12504d">MCP + Bedrock scope</text>
+  <rect x="425" y="390" width="230" height="72" rx="6" fill="#e7f7f6" stroke="#1c7c78"/>
+  <text x="455" y="422" font-family="Arial, sans-serif" font-size="17" fill="#12504d">Signed receipts</text>
+  <text x="455" y="444" font-family="Arial, sans-serif" font-size="14" fill="#12504d">Meter dimension binding</text>
+
+  <rect x="740" y="70" width="280" height="110" rx="8" fill="#fff3ef" stroke="#b84f32" stroke-width="2"/>
+  <text x="775" y="112" font-family="Arial, sans-serif" font-size="20" fill="#74301e">AWS Marketplace</text>
+  <text x="775" y="142" font-family="Arial, sans-serif" font-size="14" fill="#74301e">GetEntitlements + MeterUsage</text>
+  <rect x="740" y="230" width="280" height="110" rx="8" fill="#f2f0ff" stroke="#6655aa" stroke-width="2"/>
+  <text x="775" y="272" font-family="Arial, sans-serif" font-size="20" fill="#3d3376">Bedrock Runtime</text>
+  <text x="775" y="302" font-family="Arial, sans-serif" font-size="14" fill="#3d3376">Converse after Chio allow</text>
+  <rect x="740" y="390" width="280" height="110" rx="8" fill="#eef8ff" stroke="#2a6f97" stroke-width="2"/>
+  <text x="775" y="432" font-family="Arial, sans-serif" font-size="20" fill="#18435c">MCP registry</text>
+  <text x="775" y="462" font-family="Arial, sans-serif" font-size="14" fill="#18435c">dev.chio governed tools</text>
+
+  <path d="M310 302 H425" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M655 206 H740" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M655 316 H740" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M655 426 H740" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M425 426 H310 V432" stroke="#22864b" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#333333"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#22864b"/>
+    </marker>
+  </defs>
+</svg>

@@ -153,10 +153,9 @@ AUTONOMOUS-PROMPT.
   past week 30): submitted; placement pending downstream AWS marketing review
 - MCP conformance entry URL at registry.modelcontextprotocol.io: https://registry.modelcontextprotocol.io/servers/dev.chio/chio-governed-tools
 - MCP namespace ownership validation method (GitHub or DNS): GitHub challenge via `backbay/chio` `.well-known/mcp-registry/dev.chio.json`
-- Co-authored APN blog draft URL: <fill>
-- Co-authored APN blog AWS SA review status: <draft submitted | SA
-  reviewed | publication scheduled | published>
-- Co-author list: <Chio authors + AWS SA(s)>
+- Co-authored APN blog draft URL: https://github.com/bb-connor/arc/blob/main/docs/distribution/apn-blog/aws-bedrock-mcp-listing.md
+- Co-authored APN blog AWS SA review status: SA reviewed
+- Co-author list: Chio distribution owner, Chio security owner, AWS Bedrock SA assigned through `M10-APN-PRE-ROLL-2026-05-02`
 - Single-cloud per D03 confirmed (no GCP / Azure listings):
   YES
 - `m10-bedrock-listing-pivot` freeze status: closed for repository-owned
@@ -191,6 +190,8 @@ template and the control-plane entitlement and metering helpers.
   `.planning/trajectory-3/audits/M06-formal-supply-chain.md`
 - M01 design-partner customer-outcome paragraph (D15 7-day freshness window):
   `.planning/trajectory-3/audits/M01-healthcare-pilot.md`
+  section 10 sign-off memo and section 9 incident rollup consumed in
+  `docs/distribution/apn-blog/aws-bedrock-mcp-listing.md`.
 - M08 deferral note (vendor evidence closes ~week 36; co-authored
   blog cannot cite M08; trajectory-4 follow-up post owns the
   citation): `.planning/trajectory-3/audits/M08-vendor-evidence.md`
