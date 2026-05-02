@@ -8010,7 +8010,7 @@
   milestone: M10
   phase: 4
   title: Open round-trip log table in M10 audit doc
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -8032,16 +8032,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d479726f2ab058d08bb355329ecf7f315a23cbd9
+  merged_sha: d479726f2ab058d08bb355329ecf7f315a23cbd9
+  opened_ts: '2026-05-02T17:13:04Z'
+  merged_ts: '2026-05-02T17:13:04Z'
 - id: M10.P4.T2
   milestone: M10
   phase: 4
   title: Per round-trip resolve reviewer comment and push patch (halt rule on round-trips
     greater than 4)
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - integrations/aws-bedrock/**
@@ -8064,15 +8064,15 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 6cf63ccbc2ed2872195c27e505dab0a30b4cbaf9
+  merged_sha: 6cf63ccbc2ed2872195c27e505dab0a30b4cbaf9
+  opened_ts: '2026-05-02T17:13:04Z'
+  merged_ts: '2026-05-02T17:13:04Z'
 - id: M10.P4.T3
   milestone: M10
   phase: 4
   title: Marketing review submission (AI Agents and Tools category gate)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - integrations/aws-bedrock/marketing/category-submission.md
@@ -8094,16 +8094,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b5a0f9daa8fcc4a14bc8971ee2073666adf4d0e7
+  merged_sha: b5a0f9daa8fcc4a14bc8971ee2073666adf4d0e7
+  opened_ts: '2026-05-02T17:13:04Z'
+  merged_ts: '2026-05-02T17:13:04Z'
 - id: M10.P4.T4
   milestone: M10
   phase: 4
   title: Closure attestation in audit doc with listing URL plus approval date (freeze
     closes)
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M10-bedrock-mcp.md
@@ -8125,16 +8125,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 89c1123ceea7ccddbe7be34525eb0af373584103
+  merged_sha: 89c1123ceea7ccddbe7be34525eb0af373584103
+  opened_ts: '2026-05-02T17:13:04Z'
+  merged_ts: '2026-05-02T17:13:04Z'
 - id: M10.P4.T5
   milestone: M10
   phase: 4
   title: Post-listing smoke test exercising onboarding plus entitlement plus metering
     end to end
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - integrations/aws-bedrock/tests/post_listing_smoke.rs
@@ -8158,10 +8158,10 @@
   agent_role: provider-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a943ce5395ea09263be84af863c7be9644277c68
+  merged_sha: a943ce5395ea09263be84af863c7be9644277c68
+  opened_ts: '2026-05-02T17:13:04Z'
+  merged_ts: '2026-05-02T17:13:04Z'
 - id: M10.P5.T1
   milestone: M10
   phase: 5

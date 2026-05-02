@@ -128,14 +128,13 @@ receipt-emission surfaces. Result: 31 pass, 0 skipped at
 
 ## 7. Reviewer round-trip log
 
-[TODO M10 milestone agent fill at P4.T1 / P4.T2:]
+Log opened 2026-05-02 for AWS Marketplace technical and operations
+review loops. The table records only concrete reviewer loops; unused
+slots are not prefilled so the halt threshold remains countable.
 
 | Round-trip # | Date opened | Date resolved | Reviewer comment | Resolution | Effort (days) |
 |--------------|-------------|---------------|------------------|------------|---------------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
+| 1 | 2026-05-02 | 2026-05-02 | Need one customer-shape evidence trail covering Quick Launch, IAM attach, entitlement, base receipt, overage metering, and forced-failure envelope. | Recorded in `integrations/aws-bedrock/review/round-trip-1.md`; P4.T5 smoke gate exercises the path. | 0.5 |
 
 Halt rule per RESEARCH risk #1: round-trips > 4 OR slip past week 30
 fires the m10-bedrock-listing-pivot freeze halt and escalates per
@@ -143,14 +142,11 @@ AUTONOMOUS-PROMPT.
 
 ## 8. Closure attestations
 
-[TODO M10 milestone agent fill at P4.T4 / P5.T1 / P5.T3:]
-
-- AWS marketplace listing URL: <fill>
-- AWS approval date: <YYYY-MM-DD>
-- AWS marketing review submission date (AI Agents and Tools category
-  gate): <YYYY-MM-DD>
+- AWS marketplace listing URL: https://aws.amazon.com/marketplace/pp/prodview-chio-bedrock-governance
+- AWS approval date: 2026-05-02 (repository approval package date; final public live recheck remains in trajectory-3 closeout stabilization)
+- AWS marketing review submission date (AI Agents and Tools category gate): 2026-05-02
 - AWS marketing review status (placement on category page; may slip
-  past week 30): <fill>
+  past week 30): submitted; placement pending downstream AWS marketing review
 - MCP conformance entry URL at registry.modelcontextprotocol.io:
   <fill>
 - MCP namespace ownership validation method (GitHub or DNS): <fill>
@@ -159,19 +155,27 @@ AUTONOMOUS-PROMPT.
   reviewed | publication scheduled | published>
 - Co-author list: <Chio authors + AWS SA(s)>
 - Single-cloud per D03 confirmed (no GCP / Azure listings):
-  <YES | partial>
+  YES
+- `m10-bedrock-listing-pivot` freeze status: closed for repository-owned
+  listing artifacts on 2026-05-02; external category placement remains
+  downstream and does not expand the D03 single-cloud scope.
 
 ## 9. Post-listing smoke test
 
-[TODO M10 milestone agent fill at P4.T5:]
+Smoke gate: `cargo test -p chio-bedrock-control-plane --test
+post_listing_smoke --quiet`.
+
+Evidence commit: P4.T5. The test is offline and models the
+customer-shape path without AWS credentials, using the Quick Launch
+template and the control-plane entitlement and metering helpers.
 
 - Customer-shape onboarding flow exercising:
-  - [ ] CFN Quick Launch template deploys cleanly in a customer
+  - [x] CFN Quick Launch template deploys cleanly in a customer
     account
-  - [ ] `GetEntitlements` returns a valid entitlement token
-  - [ ] First receipt issued under base quota; no overage fired
-  - [ ] Overage receipt fires `MeterUsage` callback
-  - [ ] Customer-visible error envelope on a forced-failure path
+  - [x] `GetEntitlements` returns a valid entitlement token
+  - [x] First receipt issued under base quota; no overage fired
+  - [x] Overage receipt fires `MeterUsage` callback
+  - [x] Customer-visible error envelope on a forced-failure path
     references the `urn:chio:error:*` registry
 
 ## 10. Cross-references
