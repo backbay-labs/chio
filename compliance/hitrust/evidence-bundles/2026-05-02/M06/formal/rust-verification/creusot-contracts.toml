@@ -1,0 +1,34 @@
+schema = "chio.creusot-contracts.v1"
+status = "core_contracts_required_for_strict_ci"
+owner = "formal-verification"
+strict_smoke_command = "./scripts/check-creusot-smoke.sh"
+strict_core_command = "./scripts/check-creusot-core.sh"
+
+covered_symbols = [
+  "chio_kernel_core::capability_verify::verify_capability",
+  "chio_kernel_core::capability_verify::verify_capability_with_trusted",
+  "chio_kernel_core::scope::resolve_matching_grants",
+  "chio_kernel_core::scope::resolve_capability_grants",
+  "chio_kernel_core::evaluate::evaluate",
+  "chio_kernel_core::normalized::NormalizedToolGrant::is_subset_of",
+  "chio_kernel_core::normalized::NormalizedResourceGrant::is_subset_of",
+  "chio_kernel_core::normalized::NormalizedPromptGrant::is_subset_of",
+  "chio_kernel_core::normalized::NormalizedScope::is_subset_of",
+  "chio_kernel_core::normalized::NormalizedEvaluationVerdict::try_from_evaluation",
+  "chio_kernel_core::receipts::sign_receipt",
+  "formal/rust-verification/creusot-core::time_window_valid_contract",
+  "formal/rust-verification/creusot-core::budget_commit_remaining_contract",
+  "formal/rust-verification/creusot-core::optional_u32_cap_subset_contract",
+  "formal/rust-verification/creusot-core::required_true_preserved_contract",
+  "formal/rust-verification/creusot-core::dpop_admits_contract",
+  "formal/rust-verification/creusot-core::receipt_fields_coupled_contract",
+]
+
+contract_goals = [
+  "verify_capability returns success only for trusted issuer, valid signature, and valid time window",
+  "scope matching is fail-closed for unsupported constraints and out-of-scope requests",
+  "evaluate returns Allow only after capability, subject, scope, and guard checks pass",
+  "normalized projections preserve every covered proof-facing field",
+  "receipt signing refuses kernel-key mismatch before invoking the signing backend",
+  "proof-facing Creusot wrappers verify pure branch conditions shared with chio-kernel-core::formal_core",
+]

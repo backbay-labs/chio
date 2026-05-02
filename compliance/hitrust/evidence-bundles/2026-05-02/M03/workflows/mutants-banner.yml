@@ -1,0 +1,48 @@
+# mutants-banner.yml - Update the README mutation baseline banner from data.
+
+name: mutants-banner
+
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: mutants-banner
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 1
+
+      - name: Refresh README banner
+        run: |
+          set -euo pipefail
+          scripts/update-mutants-banner.sh
+
+      - name: Open kill-score banner PR
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c
+        with:
+          base: main
+          branch: chore/mutants-kill-score-banner
+          title: "chore(mutants): update kill-score banner"
+          body: |
+            Opened by `mutants-banner.yml` from the committed trust-boundary
+            mutation baseline.
+
+            Reviewer: @bb-connor.
+
+            This PR only refreshes the README scoped mutation baseline from
+            `docs/fuzzing/trust-boundary-mutants-baseline.toml`. Merge
+            remains a maintainer action.
+          commit-message: "chore(mutants): update kill-score banner"
+          reviewers: bb-connor

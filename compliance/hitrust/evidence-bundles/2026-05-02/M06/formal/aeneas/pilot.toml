@@ -1,0 +1,21 @@
+schema = "chio.aeneas-pilot.v1"
+status = "active_pilot"
+owner = "formal-verification"
+source = "formal/aeneas/verified_core.rs"
+check_command = "./scripts/check-aeneas-pilot.sh"
+
+extracted_symbols = [
+  "time_window_valid",
+  "dpop_subset",
+  "budget_precheck",
+  "governed_approval_passes",
+  "evaluate_signature_time_scope",
+  "report_may_use_verified_label",
+]
+
+promotion_criteria = [
+  "Charon and Aeneas versions are pinned together in CI",
+  "Aeneas extracts the pure chio-kernel-core decision modules without unsupported Rust features",
+  "Generated Lean imports are compared against the handwritten Chio.Core and Chio.Proofs modules",
+  "Any missing external model is listed in formal/assumptions.toml or added as an Aeneas Lean model",
+]

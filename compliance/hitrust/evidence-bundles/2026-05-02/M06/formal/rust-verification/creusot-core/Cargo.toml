@@ -1,0 +1,10 @@
+[package]
+name = "chio-creusot-core-contracts"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+creusot-std = { git = "https://github.com/creusot-rs/creusot.git", rev = "a12f3ac7f688c7b93cee2c2eb60282004a2bdb30" }

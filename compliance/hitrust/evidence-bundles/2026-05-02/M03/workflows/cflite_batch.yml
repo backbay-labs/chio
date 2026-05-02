@@ -1,0 +1,165 @@
+# cflite_batch.yml - Nightly ClusterFuzzLite rotation.
+#
+# Rotates one fuzz target per night through the in-tree targets enumerated
+# in fuzz/target-map.toml, 30 minutes per run. Budget-checked against the
+# 1,800 min/30d cap before each rotation step.
+#
+# Storage backend: bb-connor/arc-fuzz-corpus sibling private repo, wired as a
+# FUZZ_CORPUS_PAT-backed `storage-repo` action input when the secret is
+# available. No GCS.
+
+name: cflite_batch
+
+on:
+  schedule:
+    # 02:17 UTC nightly; 17 minutes past the hour to land off the
+    # GitHub Actions cron-storm.
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Force a specific fuzz target (default: today's rotation)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+concurrency:
+  group: cflite-batch
+  cancel-in-progress: false
+
+env:
+  CHIO_FUZZ_DURATION_SECONDS: "1800"   # 30 minutes per nightly rotation
+
+jobs:
+  budget-check:
+    name: fuzz-budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Verify 30-day fuzz budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/check-fuzz-budget.sh "${{ github.repository }}"
+
+  rotate:
+    name: rotate
+    needs: budget-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Install yq
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.local/bin"
+          curl -fsSL --retry 3 \
+            "https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64" \
+            -o "${HOME}/.local/bin/yq"
+          echo "a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7  ${HOME}/.local/bin/yq" | sha256sum -c -
+          chmod +x "${HOME}/.local/bin/yq"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Pick today's target
+        id: pick
+        env:
+          FORCED_TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          mapfile -t targets < <(yq -p=toml -r '.targets | keys | .[]' \
+            fuzz/target-map.toml | sort)
+          if (( ${#targets[@]} == 0 )); then
+            echo "fuzz/target-map.toml has no targets" >&2
+            exit 1
+          fi
+          if [[ -n "${FORCED_TARGET}" ]]; then
+            picked="${FORCED_TARGET}"
+            if ! printf '%s\n' "${targets[@]}" | grep -Fxq -- "${picked}"; then
+              echo "unknown forced fuzz target: ${picked}" >&2
+              exit 1
+            fi
+          else
+            day_index=$(( $(date -u +%s) / 86400 ))
+            picked="${targets[$(( day_index % ${#targets[@]} ))]}"
+          fi
+          printf 'picked: %s (rotation cycle: %d targets)\n' \
+            "${picked}" "${#targets[@]}"
+          {
+            echo "target=${picked}"
+            echo "cycle_size=${#targets[@]}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Detect corpus storage availability
+        id: corpus
+        env:
+          FUZZ_CORPUS_PAT: ${{ secrets.FUZZ_CORPUS_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${FUZZ_CORPUS_PAT}" ]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build ClusterFuzzLite batch fuzzer with corpus storage
+        if: steps.corpus.outputs.enabled == 'true'
+        uses: google/clusterfuzzlite/actions/build_fuzzers@82652fb49e77bc29c35da1167bb286e93c6bcc05
+        env:
+          CHIO_CFLITE_TARGET: ${{ steps.pick.outputs.target }}
+        with:
+          language: rust
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/bb-connor/arc-fuzz-corpus.git
+
+      - name: Build ClusterFuzzLite batch fuzzer without corpus storage
+        if: steps.corpus.outputs.enabled != 'true'
+        uses: google/clusterfuzzlite/actions/build_fuzzers@82652fb49e77bc29c35da1167bb286e93c6bcc05
+        env:
+          CHIO_CFLITE_TARGET: ${{ steps.pick.outputs.target }}
+        with:
+          language: rust
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run ClusterFuzzLite batch with corpus storage
+        if: steps.corpus.outputs.enabled == 'true'
+        uses: google/clusterfuzzlite/actions/run_fuzzers@82652fb49e77bc29c35da1167bb286e93c6bcc05
+        env:
+          CHIO_CFLITE_TARGET: ${{ steps.pick.outputs.target }}
+        with:
+          language: rust
+          fuzz-seconds: ${{ env.CHIO_FUZZ_DURATION_SECONDS }}
+          mode: batch
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # storage-repo is an action input (not a project.yaml field) per
+          # ClusterFuzzLite docs. The PAT-backed URL is required because
+          # GITHUB_TOKEN cannot write the sibling private corpus repo.
+          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/bb-connor/arc-fuzz-corpus.git
+          report-unreproducible-crashes: true
+
+      - name: Run ClusterFuzzLite batch without corpus storage
+        if: steps.corpus.outputs.enabled != 'true'
+        uses: google/clusterfuzzlite/actions/run_fuzzers@82652fb49e77bc29c35da1167bb286e93c6bcc05
+        env:
+          CHIO_CFLITE_TARGET: ${{ steps.pick.outputs.target }}
+        with:
+          language: rust
+          fuzz-seconds: ${{ env.CHIO_FUZZ_DURATION_SECONDS }}
+          mode: batch
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          report-unreproducible-crashes: true
+
+      - name: Upload crash reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cflite-batch-${{ steps.pick.outputs.target }}-${{ github.run_id }}
+          path: ./out/artifacts
+          if-no-files-found: ignore
+          retention-days: 30

@@ -1,0 +1,286 @@
+# spec-drift.yml - Codegen drift gates.
+#
+# Jobs:
+#   - codegen-no-diff: runs `make codegen-check` and fails if any committed
+#     `_generated/` bytes drift from a fresh regeneration.
+#   - header-stamp-untouched: greps every generated file for the canonical
+#     "DO NOT EDIT - regenerate via ..." header; fails if any file is missing it.
+#   - vectors-byte-stable, schema-coverage, cross-lang-bytes: conformance gates.
+
+name: spec-drift
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spec-drift-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('main-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  codegen-no-diff:
+    name: codegen-no-diff (rust+python+ts+go)
+    # owner: M01
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install uv (python codegen toolchain runner)
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
+
+      - name: Install Go (go codegen toolchain)
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: "1.22"
+
+      - name: Install Node.js (ts codegen toolchain)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20"
+
+      - name: Run codegen-check (all four lanes)
+        run: make codegen-check
+
+      - name: Assert no drift in generated files
+        run: |
+          set -euo pipefail
+          # `cargo xtask codegen --lang <lang> --check` already exits non-zero
+          # on byte drift, so reaching this step means each lane saw the
+          # committed bytes match a fresh regeneration. We additionally run
+          # `git diff --exit-code` over the four `_generated/` trees plus the
+          # checked-in Go file to catch any side-effect writes (for example,
+          # `npm ci` mutating package-lock.json).
+          git diff --exit-code \
+            crates/chio-core-types/src/_generated \
+            sdks/python/chio-sdk-python/src/chio_sdk/_generated \
+            sdks/typescript/packages/conformance/src/_generated \
+            sdks/go/chio-go-http/types.go
+
+      - name: Assert no untracked files in generated trees
+        run: |
+          set -euo pipefail
+          # Defense in depth: `git diff --exit-code` only reports changes to
+          # tracked files. If a codegen lane accidentally creates a NEW file
+          # under any `_generated/` tree (or alongside the checked-in Go
+          # file), `git diff` will not flag it. Use `git ls-files --others
+          # --exclude-standard` to list untracked files; fail if any land in
+          # a path the codegen lanes write to.
+          untracked=$(git ls-files --others --exclude-standard -- \
+            crates/chio-core-types/src/_generated \
+            sdks/python/chio-sdk-python/src/chio_sdk/_generated \
+            sdks/typescript/packages/conformance/src/_generated \
+            sdks/go/chio-go-http)
+          if [ -n "$untracked" ]; then
+            echo "::error::codegen produced untracked files in a generated path:"
+            echo "$untracked"
+            exit 1
+          fi
+
+  header-stamp-untouched:
+    name: header-stamp-untouched (do-not-edit grep gate)
+    # owner: M01
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Assert canonical "DO NOT EDIT" header on every generated file
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Per-language stamp tail. The canonical first-line header is
+          #   <comment-marker> DO NOT EDIT - regenerate via '<cmd>'
+          # where <cmd> ends with the language-specific xtask invocation.
+          # We grep the first 16 lines of each file (the headers are 8-12
+          # lines) for the language tail; any file missing it fails the job.
+          fail=0
+
+          check() {
+            local file="$1"
+            local needle="$2"
+            if ! head -16 "$file" | grep -qF "DO NOT EDIT - regenerate"; then
+              echo "MISSING header in $file (no 'DO NOT EDIT - regenerate' line)"
+              fail=1
+              return
+            fi
+            if ! head -16 "$file" | grep -qF "$needle"; then
+              echo "WRONG header tail in $file (expected substring '$needle')"
+              fail=1
+              return
+            fi
+            echo "OK $file"
+          }
+
+          # Rust: `crates/chio-core-types/src/_generated/**/*.rs`
+          # tail substring: `cargo xtask codegen rust`
+          while IFS= read -r f; do
+            check "$f" "cargo xtask codegen rust"
+          done < <(find crates/chio-core-types/src/_generated -type f -name '*.rs' | sort)
+
+          # Python: `sdks/python/chio-sdk-python/src/chio_sdk/_generated/**/*.py`
+          # tail substring: `cargo xtask codegen --lang python`
+          while IFS= read -r f; do
+            check "$f" "cargo xtask codegen --lang python"
+          done < <(find sdks/python/chio-sdk-python/src/chio_sdk/_generated -type f -name '*.py' | sort)
+
+          # TypeScript: `sdks/typescript/packages/conformance/src/_generated/**/*.ts`
+          # tail substring: `cargo xtask codegen --lang ts`
+          while IFS= read -r f; do
+            check "$f" "cargo xtask codegen --lang ts"
+          done < <(find sdks/typescript/packages/conformance/src/_generated -type f -name '*.ts' | sort)
+
+          # Go: single checked-in file `sdks/go/chio-go-http/types.go`
+          # tail substring: `cargo xtask codegen --lang go`
+          check "sdks/go/chio-go-http/types.go" "cargo xtask codegen --lang go"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::header-stamp-untouched: one or more generated files missing the canonical header"
+            exit 1
+          fi
+          echo "header-stamp-untouched: all generated files carry the canonical 'DO NOT EDIT - regenerate' stamp"
+
+  vectors-byte-stable:
+    name: vectors-byte-stable (freeze-vectors --check)
+    # owner: M01
+    # Re-runs `cargo xtask freeze-vectors --check` on every PR so a hand-edit
+    # to a vector payload or MANIFEST.sha256 cannot land without a fresh
+    # regeneration.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LC_ALL: C
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: spec-drift-vectors-byte-stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Verify freeze-vectors are byte-stable
+        run: cargo xtask freeze-vectors --check
+
+      - name: Assert no drift in committed vectors or manifest
+        run: |
+          set -euo pipefail
+          # Defense in depth: if `freeze-vectors --check` passed but a side
+          # effect mutated tests/bindings/vectors/, fail the job rather than
+          # silently absorb the drift. The xtask is supposed to be idempotent
+          # under --check, so this should always be a no-op on green runs.
+          git diff --exit-code tests/bindings/vectors
+
+      - name: Assert no untracked files in vectors tree
+        run: |
+          set -euo pipefail
+          # `git diff --exit-code` only reports changes to tracked files; a
+          # `freeze-vectors --check` lane that accidentally writes a NEW
+          # vector file would slip through. Use `git ls-files --others
+          # --exclude-standard` to flag untracked entries under the vectors
+          # tree and fail the job if any appear.
+          untracked=$(git ls-files --others --exclude-standard -- tests/bindings/vectors)
+          if [ -n "$untracked" ]; then
+            echo "::error::freeze-vectors --check produced untracked files under tests/bindings/vectors:"
+            echo "$untracked"
+            exit 1
+          fi
+
+  schema-coverage:
+    name: schema-coverage (vectors_schema_pair)
+    # owner: M01
+    # Runs the vectors_schema_pair test: asserts every wire schema in
+    # spec/schemas/ has at least one paired vector under tests/bindings/vectors/,
+    # and conversely that every vector references a known schema.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: spec-drift-schema-coverage
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Run vectors_schema_pair coverage test
+        run: |
+          cargo test -p chio-conformance \
+            --test vectors_schema_pair -- --nocapture
+
+  cross-lang-bytes:
+    name: cross-lang-bytes (canonical_json_diff proptest)
+    # owner: M01
+    # Runs the canonical_json_diff proptest, which property-checks the Rust
+    # canonicalizer against RFC 8785 invariants (key ordering, string escapes,
+    # number normalization). The Rust proptest is the gate until Python and
+    # TypeScript SDKs ship first-party byte-equivalence checks.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LC_ALL: C
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: spec-drift-cross-lang-bytes
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Run canonical_json_diff proptest (RFC 8785 invariants)
+        run: |
+          cargo test -p chio-formal-diff-tests \
+            --test canonical_json_diff
+        # Deferred SDK byte-equivalence invocations.
+        #
+        # Once sdks/python/chio-sdk-python and
+        # sdks/typescript/packages/conformance ship a canonicalize-byte-
+        # equivalence test (paired against the Rust canonicalizer over a
+        # shared corpus), add steps here. The expected shape is:
+        #
+        #   - name: Python canonicalize byte-equivalence
+        #     run: |
+        #       cd sdks/python/chio-sdk-python
+        #       uv run pytest tests/test_canonical_byte_equiv.py
+        #
+        #   - name: TypeScript canonicalize byte-equivalence
+        #     run: |
+        #       cd sdks/typescript/packages/conformance
+        #       npm ci && npm test -- canonical-byte-equiv
+        #
+        # Until those harnesses land, the Rust proptest is the
+        # cross-lang-bytes gate (see PROTOCOL.md
+        # "RFC 8785 canonicalization").

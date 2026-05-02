@@ -1,0 +1,327 @@
+# dudect.yml - Nightly timing-leak harness lane.
+#
+# Two-consecutive-run pass rule:
+#
+#   The dudect paper (Reparaz/Balasch/Verbauwhede, 2017) recommends
+#   |t| > 4.5 as the "highly statistically significant" cutoff for a
+#   constant-time violation. On a shared GitHub-hosted runner the
+#   measurement noise floor is high enough that a single-run
+#   above-threshold reading is plausibly a false positive (a noisy
+#   neighbour, a kernel jit warmup, a transient throttle event). To
+#   suppress those, this workflow requires TWO consecutive nightly runs
+#   to BOTH report |t| >= 4.5 for the SAME harness before opening a
+#   GitHub Issue. A single above-threshold reading is recorded as a
+#   workflow artifact but does not fire an alarm.
+#
+# Mechanics:
+#
+#   1. Each nightly run executes all three dudect harnesses in parallel
+#      (`cargo test -p <crate> --features dudect --release <bench> --
+#      --nocapture`), redirects stdout to `<bench>.out`, and pipes each
+#      output through `scripts/check-dudect-threshold.sh --input <file>`.
+#      The script's exit code (0 = under threshold, 1 = over) is captured
+#      per harness as `<bench>.verdict` (the literal string "PASS" or
+#      "FAIL").
+#
+#   2. The current run uploads `dudect-out/` (containing all `*.out` and
+#      `*.verdict` files) as an artifact named `dudect-nightly-<run_id>`.
+#
+#   3. The `correlate` job downloads BOTH the current run's artifact
+#      (just produced) and the most-recent prior `dudect-nightly-*`
+#      artifact via `gh run download`. For each harness, if the verdict
+#      string is "FAIL" in BOTH artifacts, the workflow opens (or
+#      reuses) a GitHub Issue tagged `timing-leak` describing the
+#      sustained leak. Otherwise it records the state and exits clean.
+#
+# continue-on-error is true on every measurement step. The whole lane is
+# advisory: the GitHub Issue IS the signal. The lane never fails the
+# branch protection summary on a single noisy reading.
+#
+# actionlint: required (gate-checked).
+# cron literal: required (gate-checked, "cron:" must appear).
+
+name: dudect
+
+on:
+  schedule:
+    # 04:15 UTC nightly. Sits after fuzz.yml (03:23) and before
+    # mutants-nightly (05:00) so the GitHub-hosted runner pool is not
+    # over-subscribed against the shared 1,800 runner-min/30d cap.
+    - cron: "15 4 * * *"
+  workflow_dispatch:
+    inputs:
+      harness:
+        description: "Force a single harness (default: full matrix)"
+        required: false
+        type: choice
+        options:
+          - all
+          - jwt_verify
+          - mac_eq
+          - scope_subset
+        default: all
+      threshold:
+        description: "Override |t| leak threshold (default 4.5 per dudect paper)"
+        required: false
+        type: string
+        default: "4.5"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  # Scheduled and dispatch runs do not collapse against each other so a
+  # manual sweep can race a cron sweep without cancelling the comparison
+  # baseline. PR triggers are not configured for this workflow.
+  group: dudect-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  # Default leak threshold; overridable via workflow_dispatch input. Kept
+  # in lock-step with `scripts/check-dudect-threshold.sh` default (4.5).
+  CHIO_DUDECT_THRESHOLD: ${{ inputs.threshold || '4.5' }}
+
+jobs:
+  measure:
+    name: dudect-measure (${{ matrix.harness.name }})
+    runs-on: ubuntu-latest
+    # 30 minutes is generous for a single dudect-bencher harness running
+    # in `--release`; the bench iteration cap is wired into the harness
+    # itself via `ctbench_main!`. Belt-and-braces.
+    timeout-minutes: 30
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        harness:
+          - name: jwt_verify
+            crate: chio-credentials
+            test_binary: dudect_jwt_verify
+          - name: mac_eq
+            crate: chio-kernel-core
+            test_binary: dudect_mac_eq
+          - name: scope_subset
+            crate: chio-kernel-core
+            test_binary: dudect_scope_subset
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Skip when forced harness does not match
+        id: forced
+        run: |
+          set -euo pipefail
+          forced='${{ inputs.harness }}'
+          # "all" or empty string both mean "run the full matrix".
+          if [[ -n "${forced}" && "${forced}" != "all" && "${forced}" != '${{ matrix.harness.name }}' ]]; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "skipping ${{ matrix.harness.name }} (forced=${forced})"
+          else
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install nightly Rust toolchain
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          # dudect-bencher 0.7 compiles cleanly on stable; the source doc
+          # picks nightly to keep the dudect lane on the same toolchain
+          # as the libFuzzer lane (fuzz.yml) which simplifies cross-tool
+          # diffing and shared sanitizer experiments later.
+          rustup toolchain install nightly --profile minimal
+          rustup default nightly
+
+      - name: Run dudect harness (release, --features dudect)
+        id: bench
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          mkdir -p dudect-out
+          out_file="dudect-out/${{ matrix.harness.name }}.out"
+          # `--release` is mandatory; debug builds give meaningless timing
+          # distributions. `--nocapture` forwards dudect-bencher's stdout
+          # (which carries the "max t = ..." lines) through cargo so we
+          # can grep them. The harness is wired as `harness = false` so
+          # `ctbench_main!` provides its own argv parser; we pass no
+          # extra dudect flags today (defaults match the source doc).
+          cargo test \
+            -p ${{ matrix.harness.crate }} \
+            --features dudect \
+            --release \
+            --test ${{ matrix.harness.test_binary }} \
+            -- --nocapture \
+            | tee "${out_file}"
+
+      - name: Apply threshold check
+        id: verdict
+        if: steps.forced.outputs.skip == 'false'
+        env:
+          THRESHOLD: ${{ env.CHIO_DUDECT_THRESHOLD }}
+        run: |
+          set -euo pipefail
+          out_file="dudect-out/${{ matrix.harness.name }}.out"
+          verdict_file="dudect-out/${{ matrix.harness.name }}.verdict"
+          # check-dudect-threshold.sh exits 0 on PASS, 1 on FAIL, 2 on
+          # parse error. Capture exit explicitly so the step never fails
+          # the job (advisory lane); persist the literal "PASS"/"FAIL"
+          # to the verdict file for the correlate job to consume.
+          set +e
+          bash scripts/check-dudect-threshold.sh \
+            --input "${out_file}" \
+            --threshold "${THRESHOLD}"
+          rc=$?
+          set -e
+          case "${rc}" in
+            0) echo "PASS" > "${verdict_file}" ;;
+            1) echo "FAIL" > "${verdict_file}" ;;
+            *) echo "ERROR" > "${verdict_file}" ;;
+          esac
+          echo "harness=${{ matrix.harness.name }} verdict=$(cat "${verdict_file}") exit=${rc}"
+
+      - name: Upload per-harness artifact
+        if: always() && steps.forced.outputs.skip == 'false'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dudect-nightly-${{ matrix.harness.name }}-${{ github.run_id }}
+          path: dudect-out/
+          if-no-files-found: warn
+          retention-days: 30
+
+  correlate:
+    name: dudect-correlate (two-consecutive-run rule)
+    needs: measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download current run artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: current-run/
+          pattern: dudect-nightly-*-${{ github.run_id }}
+          merge-multiple: true
+
+      - name: Fetch most-recent prior nightly run id
+        id: prior
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Find the newest completed dudect.yml run BEFORE this one.
+          # `gh run list` returns rows newest-first. Filter to:
+          #   - schedule + workflow_dispatch events only (PR-trigger is
+          #     not configured for this lane, but be defensive),
+          #   - status == "completed" so an in-progress / queued / waiting
+          #     run is not picked as the "prior" baseline (which would
+          #     leave us downloading missing artifacts and silently
+          #     skipping the two-consecutive-run correlation),
+          #   - exclude the current run id.
+          # Empty string means there is no prior nightly yet (first run
+          # in the lane), in which case the correlate job records state
+          # and exits without firing an alarm.
+          prior=$(gh run list \
+            --workflow dudect.yml \
+            --limit 25 \
+            --json databaseId,event,status,createdAt \
+            --jq '
+              [.[]
+                | select(.event == "schedule" or .event == "workflow_dispatch")
+                | select(.status == "completed")
+                | select(.databaseId != ${{ github.run_id }})
+              ]
+              | .[0].databaseId // empty
+            ')
+          if [[ -z "${prior}" ]]; then
+            echo "no prior dudect run found; this is the baseline"
+            echo "prior_id=" >> "${GITHUB_OUTPUT}"
+          else
+            echo "prior dudect run id: ${prior}"
+            echo "prior_id=${prior}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Download prior run artifacts (best-effort)
+        if: steps.prior.outputs.prior_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p prior-run
+          # `gh run download` exits non-zero if the prior run has no
+          # artifacts (rare but possible if it was cancelled before
+          # upload). Soft-fail so we just treat that as "no baseline".
+          gh run download "${{ steps.prior.outputs.prior_id }}" \
+            --pattern 'dudect-nightly-*' \
+            --dir prior-run \
+            || echo "prior run had no dudect artifacts; skipping correlation"
+
+      - name: Correlate verdicts and open issue on sustained leak
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # For each harness, two FAIL verdicts in a row open or reuse
+          # an Issue. The Issue body links both runs so triage starts
+          # with the raw .out files attached to each.
+          alarms=()
+          for harness in jwt_verify mac_eq scope_subset; do
+            cur=$(find current-run -name "${harness}.verdict" -print -quit 2>/dev/null || true)
+            pri=$(find prior-run -name "${harness}.verdict" -print -quit 2>/dev/null || true)
+            cur_v="MISSING"
+            pri_v="MISSING"
+            [[ -n "${cur}" && -r "${cur}" ]] && cur_v=$(cat "${cur}")
+            [[ -n "${pri}" && -r "${pri}" ]] && pri_v=$(cat "${pri}")
+            echo "harness=${harness} prior=${pri_v} current=${cur_v}"
+            if [[ "${cur_v}" == "FAIL" && "${pri_v}" == "FAIL" ]]; then
+              alarms+=("${harness}")
+            fi
+          done
+
+          if [[ ${#alarms[@]} -eq 0 ]]; then
+            echo "no sustained leaks (two-consecutive-run rule); nothing to file"
+            exit 0
+          fi
+
+          cur_run_id="${{ github.run_id }}"
+          prior_run_id="${{ steps.prior.outputs.prior_id }}"
+          for harness in "${alarms[@]}"; do
+            title="dudect: sustained timing leak in ${harness} (t >= 4.5 in 2 consecutive runs)"
+            # Build the issue body via printf to keep the YAML block
+            # scalar parse simple (heredocs with apostrophes + colons
+            # confuse actionlint pre-parse). Backticks inline-quote paths
+            # and identifiers; literal newlines via \n. The single-quoted
+            # format string contains backticks that are Markdown code
+            # spans for the issue body, not command substitution.
+            # shellcheck disable=SC2016
+            body=$(printf 'The nightly dudect lane recorded a Welch t-statistic at or above the 4.5 leak threshold for harness `%s` in TWO consecutive runs. This correlation is no longer dismissable as runner noise and warrants investigation.\n\n- Current run: https://github.com/%s/actions/runs/%s\n- Prior run:   https://github.com/%s/actions/runs/%s\n\nArtifacts `dudect-nightly-%s-<run_id>` carry the raw `%s.out` (full `cargo test` stdout including the dudect "max t" lines) and the per-run `%s.verdict` strings.\n' \
+              "${harness}" \
+              "${GH_REPO}" "${cur_run_id}" \
+              "${GH_REPO}" "${prior_run_id}" \
+              "${harness}" "${harness}" "${harness}")
+            # Reuse an open issue with the same title if present, else
+            # open a new one. `gh issue list` filters by exact title.
+            existing=$(gh issue list \
+              --repo "${GH_REPO}" \
+              --state open \
+              --search "in:title \"${title}\"" \
+              --json number \
+              --jq '.[0].number // empty')
+            if [[ -n "${existing}" ]]; then
+              echo "reusing open issue #${existing} for harness ${harness}"
+              gh issue comment "${existing}" --repo "${GH_REPO}" --body "${body}"
+            else
+              echo "opening new issue for harness ${harness}"
+              gh issue create \
+                --repo "${GH_REPO}" \
+                --title "${title}" \
+                --body "${body}" \
+                --label "timing-leak"
+            fi
+          done

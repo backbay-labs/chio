@@ -1,0 +1,14 @@
+# Apalache counterexample dump directory.
+#
+# The nightly formal-tla-liveness lane (M03.P3.T4) writes raw Apalache
+# counterexample traces here when RevocationEventuallySeen (or any of
+# the safety invariants) fails. Filed issues use the templates under
+# formal/issue-templates/ and link the trace by relative path.
+#
+# Naming convention:
+#   <PropertyName>-<UTC-date>-<short-sha>.txt
+# for example:
+#   RevocationEventuallySeen-2026-05-01-abc1234.txt
+#
+# This .gitkeep exists so the directory is tracked even when no
+# counterexamples are filed. Do not delete.

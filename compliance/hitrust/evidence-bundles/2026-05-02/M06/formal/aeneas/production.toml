@@ -1,0 +1,26 @@
+schema = "chio.aeneas-production.v1"
+status = "production_extraction"
+owner = "formal-verification"
+source = "crates/chio-kernel-core/src/formal_aeneas.rs"
+command = "./scripts/check-aeneas-production.sh"
+equivalence_command = "./scripts/check-aeneas-equivalence.sh"
+equivalence_module = "formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean"
+artifact_report = "target/formal/aeneas-production/equivalence-artifacts.json"
+
+extracted_symbols = [
+  "classify_time_window_code",
+  "time_window_valid",
+  "exact_or_wildcard_covers_by_flags",
+  "prefix_wildcard_or_exact_covers_by_flags",
+  "optional_u32_cap_is_subset",
+  "required_true_is_preserved",
+  "monetary_cap_is_subset_by_parts",
+  "budget_precheck",
+  "budget_commit",
+  "dpop_freshness_valid",
+  "dpop_admits",
+  "nonce_admits",
+  "guard_step_allows",
+  "revocation_snapshot_denies",
+  "receipt_fields_coupled",
+]

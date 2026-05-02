@@ -1,0 +1,445 @@
+# chio-replay-gate.yml - Deterministic-replay corpus gate.
+#
+# Runs the chio-replay-gate corpus on every PR and on push to main /
+# project/* branches. The `--bless` path is the only way to update goldens;
+# CI is banned from blessing (CHIO_BLESS=0 is enforced here and in the binary).
+#
+# Determinism contract: LC_ALL=C and LANG=C are pinned so receipt serialisation
+# and sort orderings are reproducible. CARGO_INCREMENTAL=0 prevents incremental
+# codegen from contributing host-specific state to the receipts the gate compares.
+#
+# The `seed-immutable` job locks tests/replay/test-key.seed. Rotating the seed
+# requires (a) bumping EXPECTED_SEED_SHA256 in this workflow, (b) updating the
+# in-tree .sha256 to match, (c) re-blessing the entire corpus, (d) shipping an
+# explicit `feat!:` commit. Routine PRs cannot change the seed.
+#
+# Required-on-main: `replay-gate / replay-gate (linux)` should be added to the
+# branch ruleset for `main`. The ruleset is managed out-of-band.
+
+name: chio-replay-gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'project/**'
+
+concurrency:
+  group: chio-replay-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Determinism pins: receipt byte-equivalence depends on a stable locale
+  # (string sort orders, number formatting) and a non-incremental codegen path.
+  LC_ALL: C
+  LANG: C
+  CHIO_BLESS: "0"
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  replay-gate:
+    name: replay-gate (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install protobuf compiler
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          for attempt in 1 2 3; do
+            if timeout 180s sudo apt-get update \
+                && timeout 180s sudo apt-get install -y protobuf-compiler; then
+              exit 0
+            fi
+            echo "protobuf compiler install attempt ${attempt} failed; retrying" >&2
+            sleep $((attempt * 10))
+          done
+          echo "protobuf compiler install failed after retries" >&2
+          exit 1
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Confirm CI cannot bless
+        # Defence in depth on top of the binary's CI=true refusal: if
+        # CHIO_BLESS leaks in via a misconfigured runner, fail the job
+        # before any test step executes.
+        run: |
+          set -euo pipefail
+          if [ "${CHIO_BLESS:-0}" != "0" ]; then
+            echo "ERROR: CHIO_BLESS must be 0 in CI; got '${CHIO_BLESS}'" >&2
+            exit 1
+          fi
+          echo "CHIO_BLESS=${CHIO_BLESS} (CI bless ban honoured)"
+
+      - name: Build chio-replay-gate (release)
+        run: cargo build -p chio-replay-gate --release
+
+      - name: Pull and verify chio-tee-corpus artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/pull_tee_corpus.py \
+            --pins tests/replay/corpus_pins.toml \
+            --out target/tee-corpus \
+            --verify-sha256 \
+            --verify-manifest-sig \
+            --allow-unpublished-placeholders
+
+      - name: Run replay-gate corpus smoke
+        run: cargo test -p chio-replay-gate --release --test corpus_smoke
+
+      - name: Run replay-gate golden byte-equivalence (when goldens land)
+        # The golden_byte_equivalence source file may be absent until the
+        # initial bless lands; skip-on-missing keeps the gate green while
+        # still wiring the invocation.
+        #
+        # Fail-closed contract: the previous form was
+        #
+        #     if cargo test ... --no-run --quiet 2>/dev/null; then
+        #       cargo test ...
+        #     else
+        #       echo "skipping"
+        #     fi
+        #
+        # which silently swallowed real compile errors in the test target
+        # (or any transitive workspace dependency) by routing them into
+        # the skip branch. The gate failed open. The shape below splits
+        # the two concerns:
+        #
+        #   1. Target-presence probe: a plain file-existence check on the
+        #      test source by Cargo convention
+        #      (`tests/replay/tests/<name>.rs`). This is the only
+        #      legitimate reason to skip, and it cannot be triggered by a
+        #      compile failure.
+        #   2. Compile-then-run: `--no-run` forces a compile without
+        #      execution; we do NOT redirect stderr and we do NOT branch
+        #      on its exit. A non-zero exit here propagates out (set -e)
+        #      and fails the gate. Once compile succeeds we run the
+        #      target unconditionally.
+        run: |
+          set -euo pipefail
+
+          target_src="tests/replay/tests/golden_byte_equivalence.rs"
+          if [ ! -f "${target_src}" ]; then
+            echo "golden_byte_equivalence source ${target_src} not present (pre-T5 state); skipping"
+            exit 0
+          fi
+
+          # Compile must succeed. A failure here is a real defect (compile
+          # error in golden_byte_equivalence or a transitive workspace
+          # dep), not a missing-target signal, and must fail the gate.
+          cargo test -p chio-replay-gate --release --test golden_byte_equivalence --no-run
+
+          # Compile passed; the target exists and links. Run it.
+          cargo test -p chio-replay-gate --release --test golden_byte_equivalence
+
+  macos-smoke:
+    # Read-only macOS smoke. The Linux `replay-gate` job is the
+    # required-on-main check; this job surfaces platform-specific
+    # determinism breakage (filesystem case folding, BSD vs GNU coreutils,
+    # APFS atime quirks) before it hits a contributor's local machine.
+    name: replay-gate (macos read-only)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install protobuf compiler
+        # Homebrew is preinstalled on macos-latest runners. `brew install`
+        # is a no-op when the formula is already present.
+        run: brew install protobuf
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Confirm CI cannot bless
+        # Mirror the Linux defence in depth: even on a read-only smoke
+        # runner, surface a misconfigured CHIO_BLESS before any test step
+        # runs.
+        run: |
+          set -euo pipefail
+          if [ "${CHIO_BLESS:-0}" != "0" ]; then
+            echo "ERROR: CHIO_BLESS must be 0 in CI; got '${CHIO_BLESS}'" >&2
+            exit 1
+          fi
+          echo "CHIO_BLESS=${CHIO_BLESS} (CI bless ban honoured)"
+
+      - name: Run replay-gate corpus smoke (read-only)
+        # Note: no `--release` build of the gate binary on macOS; the
+        # smoke test target compiles what it needs. The Linux job is the
+        # canonical artifact producer.
+        run: cargo test -p chio-replay-gate --test corpus_smoke
+
+  seed-immutable:
+    # Locks tests/replay/test-key.seed against routine mutation.
+    # Fails closed on: seed missing, seed world-writable, sha256(seed) !=
+    # EXPECTED_SEED_SHA256, or .sha256 file != EXPECTED_SEED_SHA256.
+    # Rotating the seed requires bumping EXPECTED_SEED_SHA256 here,
+    # updating the in-tree .sha256, re-blessing the corpus, and shipping
+    # an explicit `feat!:` commit.
+    name: seed-immutable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Pinned baseline. Mutating this value is the only way to rotate
+      # the test signing seed; doing so requires editing this workflow,
+      # which is a code-reviewed change distinct from edits to
+      # tests/replay/test-key.seed{,.sha256}. Keep this in sync with
+      # tests/replay/test-key.seed.sha256 only when intentionally
+      # rotating; routine PRs must never touch this constant.
+      EXPECTED_SEED_SHA256: "b32580c7001b8ad7cc9d29d4f8d4faf2ad067db558add9bb7e02bf8f5f9a01af"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Verify test signing seed is intact
+        run: |
+          set -euo pipefail
+          seed="tests/replay/test-key.seed"
+          sha_file="tests/replay/test-key.seed.sha256"
+
+          if [ ! -f "${seed}" ]; then
+            echo "ERROR: ${seed} is missing." >&2
+            echo "rotate-seed runbook: see docs/replay.md 'Test signing key management'." >&2
+            exit 1
+          fi
+          if [ ! -f "${sha_file}" ]; then
+            echo "ERROR: ${sha_file} is missing." >&2
+            echo "rotate-seed runbook: see docs/replay.md 'Test signing key management'." >&2
+            exit 1
+          fi
+
+          # Refuse world-writable seeds. `stat -c %a` returns the octal
+          # mode (e.g. `644`); the trailing digit covers the `o` triad.
+          mode="$(stat -c '%a' "${seed}")"
+          other_bits="${mode: -1}"
+          if [ $((other_bits & 2)) -ne 0 ]; then
+            echo "ERROR: ${seed} is world-writable (mode ${mode})." >&2
+            echo "rotate-seed runbook: chmod o-w on the seed and re-push; routine PRs cannot relax permissions." >&2
+            exit 1
+          fi
+
+          # Compute the digest and compare against the workflow-pinned
+          # baseline (NOT the in-tree .sha256 alone; see job-level note).
+          # The .sha256 file is a single 64-char hex line, no filename
+          # suffix (deliberately not `sha256sum -c` format so we can keep
+          # the runbook message tight).
+          actual="$(sha256sum "${seed}" | awk '{print $1}')"
+          documented="$(tr -d '[:space:]' < "${sha_file}")"
+          expected="${EXPECTED_SEED_SHA256}"
+
+          if [ "${actual}" != "${expected}" ]; then
+            echo "ERROR: ${seed} digest mismatch against workflow-pinned baseline." >&2
+            echo "  workflow-pinned EXPECTED_SEED_SHA256: ${expected}" >&2
+            echo "  actual sha256(${seed}):              ${actual}" >&2
+            echo "rotate-seed runbook: routine PRs cannot mutate the test signing seed." >&2
+            echo "  To rotate (all four steps required):" >&2
+            echo "    (a) bump EXPECTED_SEED_SHA256 in .github/workflows/chio-replay-gate.yml," >&2
+            echo "    (b) update tests/replay/test-key.seed.sha256 to match," >&2
+            echo "    (c) re-bless the entire corpus via scripts/bless-replay-goldens.sh," >&2
+            echo "    (d) ship an explicit 'feat!:' commit." >&2
+            echo "  Bumping (b) without (a) will not pass this gate; that is intentional." >&2
+            exit 1
+          fi
+
+          if [ "${documented}" != "${expected}" ]; then
+            echo "ERROR: ${sha_file} does not match workflow-pinned baseline." >&2
+            echo "  workflow-pinned EXPECTED_SEED_SHA256: ${expected}" >&2
+            echo "  in-tree ${sha_file}: ${documented}" >&2
+            echo "rotate-seed runbook: the in-tree .sha256 is documentation; the workflow baseline is the trust root." >&2
+            echo "  To resolve, revert ${sha_file} to ${expected} or follow the four-step rotation ceremony above." >&2
+            exit 1
+          fi
+
+          echo "seed-immutable: ${seed} digest matches workflow-pinned ${expected} (mode ${mode})"
+
+  proptest:
+    # Property-based replay-invariance suite. Three properties run against
+    # arbitrary (decision, payload, clock, nonce) receipt tuples:
+    #   - signing_is_a_function
+    #   - replay_root_is_idempotent
+    #   - shuffle_independent_receipts_preserves_bytes
+    #
+    # Budget: 30s wall-clock enforced via `timeout 30s` in the run step.
+    # PROPTEST_MAX_GLOBAL_REJECTS guards against rejection-budget exhaustion
+    # under shrink (unique-nonce batch strategy).
+    # Failed shrinks persist under tests/replay/proptest-regressions/ and
+    # are uploaded as artifacts so contributors can replay locally.
+    name: proptest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PROPTEST_MAX_GLOBAL_REJECTS: "8192"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install protobuf compiler
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          for attempt in 1 2 3; do
+            if timeout 180s sudo apt-get update \
+                && timeout 180s sudo apt-get install -y protobuf-compiler; then
+              exit 0
+            fi
+            echo "protobuf compiler install attempt ${attempt} failed; retrying" >&2
+            sleep $((attempt * 10))
+          done
+          echo "protobuf compiler install failed after retries" >&2
+          exit 1
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Compile replay proptest target
+        # Compilation can exceed the runtime budget on a cold runner, so keep
+        # it outside the 30s harness timer. The next step is the actual
+        # property execution budget.
+        run: cargo test -p chio-kernel --test replay_proptest --release --no-run
+
+      - name: Run replay proptest (30s budget)
+        # The proptest harness itself is bounded by PROPTEST_CASES inside
+        # the test source. The `timeout 30s` wrapper enforces the doc's
+        # explicit "30 second" budget after runner setup and compilation;
+        # if the harness exceeds 30s of wall clock the wrapper kills it and
+        # the gate fails.
+        run: |
+          set -euo pipefail
+          timeout 30s cargo test -p chio-kernel --test replay_proptest --release -- --nocapture
+
+      - name: Upload proptest regressions on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: proptest-regressions
+          path: tests/replay/proptest-regressions/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  differential:
+    # Linux-only Rust + TypeScript differential gate. The Rust formal
+    # diff-tests harness drives shared replay fixtures and shells out to the
+    # TypeScript conformance runner so anchored root bytes and proof path
+    # structures agree across implementations.
+    name: differential
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install protobuf compiler
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          for attempt in 1 2 3; do
+            if timeout 180s sudo apt-get update \
+                && timeout 180s sudo apt-get install -y protobuf-compiler; then
+              exit 0
+            fi
+            echo "protobuf compiler install attempt ${attempt} failed; retrying" >&2
+            sleep $((attempt * 10))
+          done
+          echo "protobuf compiler install failed after retries" >&2
+          exit 1
+
+      - name: Install Bun toolchain
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.3"
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install TypeScript conformance dependencies
+        run: npm ci --prefix sdks/typescript/packages/conformance
+
+      - name: Run formal anchored-root differential
+        run: cargo test -p chio-formal-diff-tests --test anchored_root
+
+      - name: Run TypeScript replay conformance
+        run: bun test sdks/typescript/packages/conformance/test/replay.spec.ts
+
+  cross-version:
+    # Cross-version receipt-compatibility sanity job. Runs the non-ignored
+    # test in tests/replay/tests/cross_version_replay.rs, which asserts
+    # release_compat_matrix.toml parses and contains at least the floor entries.
+    # The full re-verify suite (--ignored) requires live HTTPS to the release
+    # CDN and is intentionally not part of the default gate.
+    name: cross-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: replay-gate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install protobuf compiler
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          for attempt in 1 2 3; do
+            if timeout 180s sudo apt-get update \
+                && timeout 180s sudo apt-get install -y protobuf-compiler; then
+              exit 0
+            fi
+            echo "protobuf compiler install attempt ${attempt} failed; retrying" >&2
+            sleep $((attempt * 10))
+          done
+          echo "protobuf compiler install failed after retries" >&2
+          exit 1
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Run cross_version_replay (non-ignored sanity)
+        run: cargo test -p chio-replay-gate --test cross_version_replay

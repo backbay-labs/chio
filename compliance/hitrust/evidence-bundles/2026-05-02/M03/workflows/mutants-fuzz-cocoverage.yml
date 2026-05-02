@@ -1,0 +1,171 @@
+# mutants-fuzz-cocoverage.yml - Cross-oracle nightly.
+#
+# Cross-oracle insight: cargo-mutants surviving mutants represent test gaps.
+# The libFuzzer corpus under fuzz/corpus/<target>/ exercises code paths the
+# unit suite does not reach. Replaying the fuzz corpus against each surviving
+# mutant lets the two oracles cover one another.
+# Cocoverage findings are advisory, but setup and budget gates fail closed.
+#
+# Schedule: 05:45 UTC, after mutants-nightly (05:00) and fuzz nightly (03:23).
+
+name: mutants-fuzz-cocoverage
+
+on:
+  schedule:
+    # 05:45 UTC nightly. Late enough that mutants-nightly (05:00) has a
+    # head start producing surviving-mutant artifacts; this workflow can
+    # run independently because it re-derives the surviving-mutant set
+    # from a fresh cargo-mutants invocation. Source doc: nightly only.
+    - cron: "45 5 * * *"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Force a single crate (default: full matrix)"
+        required: false
+        type: string
+      fuzz_runs:
+        description: "Per-target libFuzzer replay runs (default: 200000)"
+        required: false
+        type: string
+        default: "200000"
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  # Scheduled and dispatch runs do not collapse against one another;
+  # let an on-demand sweep race a cron sweep without cancellation.
+  group: mutants-fuzz-cocoverage-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  cocoverage:
+    name: cocoverage (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    # Source doc allots 4 h per crate for the cargo-mutants sweep; the
+    # fuzz-replay phase adds a bounded budget on top. 300 min keeps
+    # headroom under the GitHub 6 h cap.
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - chio-kernel-core
+          - chio-policy
+          - chio-guards
+          - chio-credentials
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Skip when forced package does not match
+        id: forced
+        env:
+          FORCED_PACKAGE: ${{ inputs.package || '' }}
+        run: |
+          set -euo pipefail
+          forced="${FORCED_PACKAGE}"
+          if [[ -n "${forced}" && "${forced}" != '${{ matrix.package }}' ]]; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "skipping ${{ matrix.package }} (forced=${forced})"
+          else
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install stable Rust toolchain
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install nightly Rust toolchain (cargo-fuzz needs nightly)
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          rustup toolchain install nightly --profile minimal
+          rustup component add rust-src --toolchain nightly
+
+      - name: Install cargo-mutants (pinned per Decision 12)
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          # Decision 12: cargo-mutants pinned exactly; do not float.
+          cargo install cargo-mutants --version 25.3.1 --locked
+
+      - name: Install cargo-fuzz
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          cargo install cargo-fuzz --locked --version 0.13.1
+
+      - name: Verify shared 30-day fuzz/mutants budget
+        if: steps.forced.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Cocoverage runs share the 1,800 min/30d envelope with
+          # cflite_*.yml and fuzz.yml. Budget failures stop the job.
+          if [[ -x scripts/check-fuzz-budget.sh ]]; then
+            scripts/check-fuzz-budget.sh "${{ github.repository }}"
+          else
+            echo "scripts/check-fuzz-budget.sh missing or non-executable" >&2
+            exit 2
+          fi
+
+      - name: Run cargo-mutants to enumerate surviving mutants
+        id: mutate
+        if: steps.forced.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          mkdir -p mutants-out/${{ matrix.package }}
+          # Full sweep, JSON outcomes so the cocoverage script can
+          # iterate survivors machine-readably. examine_globs from
+          # .cargo/mutants.toml + per-crate mutants.toml narrow scope to
+          # trust-boundary modules. --timeout 600 caps any single
+          # mutant at 10 minutes.
+          cargo mutants \
+            --package "${{ matrix.package }}" \
+            --no-shuffle \
+            --timeout 600 \
+            --jobs 2 \
+            --output mutants-out/${{ matrix.package }} \
+            --json \
+            || mutants_exit=$?
+          echo "exit=${mutants_exit:-0}" >> "${GITHUB_OUTPUT}"
+          ls -la mutants-out/${{ matrix.package }} || true
+
+      - name: Replay fuzz corpus against surviving mutants
+        id: cocoverage
+        if: steps.forced.outputs.skip == 'false'
+        env:
+          FUZZ_RUNS: ${{ inputs.fuzz_runs || '200000' }}
+        run: |
+          set -euo pipefail
+          mkdir -p cocoverage-out/${{ matrix.package }}
+          # Always advisory: never fail the workflow on cocoverage
+          # signal. The script enumerates surviving mutants, builds the
+          # mutated binary, replays the matching fuzz corpus, and emits
+          # a per-package summary.json plus a human-readable report.md.
+          bash scripts/mutants-fuzz-cocoverage.sh \
+            --package "${{ matrix.package }}" \
+            --mutants-out "mutants-out/${{ matrix.package }}" \
+            --corpus-root "fuzz/corpus" \
+            --report-out "cocoverage-out/${{ matrix.package }}" \
+            --fuzz-runs "${FUZZ_RUNS}" \
+            || echo "advisory: cocoverage script returned non-zero; continuing"
+
+      - name: Upload cocoverage report
+        if: always() && steps.forced.outputs.skip == 'false'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mutants-fuzz-cocoverage-${{ matrix.package }}-${{ github.run_id }}
+          path: |
+            cocoverage-out/${{ matrix.package }}
+            mutants-out/${{ matrix.package }}
+          if-no-files-found: ignore
+          retention-days: 30

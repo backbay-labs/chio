@@ -1,0 +1,238 @@
+# fuzz_corpus_sync.yml - Weekly minimized-corpus sync.
+#
+# Pulls minimized inputs from the arc-fuzz-corpus sibling private repo and
+# PRs them into fuzz/corpus/<target>/ for permanent retention. Every candidate
+# diff is scanned by gitleaks; if any secret-like token is detected the sync
+# FAILS and refuses to commit (no production-issued JWTs or DIDs in seeds).
+#
+# Merge gate: CODEOWNERS rule `fuzz/corpus/**  @bb-connor` requires a
+# maintainer review before the PR can land.
+#
+# Required check name: fuzz_corpus_sync / sync (advisory)
+
+name: fuzz_corpus_sync
+
+on:
+  schedule:
+    # 06:30 UTC every Sunday. Weekly cadence keeps the PR queue light
+    # while still capturing the prior week of cflite_batch minimization.
+    - cron: "30 6 * * 0"
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "arc-fuzz-corpus ref to pull from (default: main)"
+        required: false
+        type: string
+        default: "main"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: fuzz-corpus-sync
+  cancel-in-progress: false
+
+env:
+  CORPUS_REPO: "bb-connor/arc-fuzz-corpus"
+  SOURCE_REF: ${{ inputs.source_ref || 'main' }}
+
+jobs:
+  sync:
+    name: sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout main repo (full history)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          path: chio
+
+      # Sunset gate: refuse to run a corpus sync while
+      # fuzz/upstream_skips.toml contains expired or out-of-bounds entries.
+      - name: Check upstream-skips sunset
+        working-directory: chio
+        run: bash scripts/check-upstream-skips.sh
+
+      - name: Checkout arc-fuzz-corpus sibling repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ env.CORPUS_REPO }}
+          ref: ${{ env.SOURCE_REF }}
+          token: ${{ secrets.FUZZ_CORPUS_PAT }}
+          path: arc-fuzz-corpus
+          fetch-depth: 1
+
+      - name: Record source corpus commit
+        id: source
+        working-directory: arc-fuzz-corpus
+        run: |
+          set -euo pipefail
+          src_sha="$(git rev-parse HEAD)"
+          src_short="$(git rev-parse --short HEAD)"
+          printf 'arc-fuzz-corpus HEAD: %s\n' "${src_sha}"
+          {
+            echo "sha=${src_sha}"
+            echo "short=${src_short}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Copy minimized seeds into fuzz/corpus/<target>/
+        id: copy
+        working-directory: chio
+        run: |
+          set -euo pipefail
+          src_root="${GITHUB_WORKSPACE}/arc-fuzz-corpus/corpus"
+          dst_root="fuzz/corpus"
+          if [[ ! -d "${src_root}" ]]; then
+            echo "no corpus/ directory in arc-fuzz-corpus; nothing to sync"
+            {
+              echo "added_files=0"
+              echo "targets_changed="
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          added=0
+          changed_targets=()
+          for tgt_dir in "${src_root}"/*/; do
+            [[ -d "${tgt_dir}" ]] || continue
+            tgt="$(basename "${tgt_dir}")"
+            mkdir -p "${dst_root}/${tgt}"
+            # Only copy files whose content hash is not already present
+            # in the destination. We rely on filename = sha1(content),
+            # which is libFuzzer's minimization convention.
+            before="$(find "${dst_root}/${tgt}" -type f | wc -l | tr -d ' ')"
+            cp -n "${tgt_dir}"* "${dst_root}/${tgt}/" 2>/dev/null || true
+            after="$(find "${dst_root}/${tgt}" -type f | wc -l | tr -d ' ')"
+            delta=$(( after - before ))
+            if (( delta > 0 )); then
+              added=$(( added + delta ))
+              changed_targets+=("${tgt}:+${delta}")
+            fi
+          done
+          printf 'added %d new minimized seeds across %d targets\n' \
+            "${added}" "${#changed_targets[@]}"
+          printf '  %s\n' "${changed_targets[@]:-(none)}"
+          {
+            echo "added_files=${added}"
+            printf 'targets_changed<<EOF\n%s\nEOF\n' \
+              "$(printf '%s\n' "${changed_targets[@]:-}" | sed '/^$/d')"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Bail out early if no new seeds
+        if: steps.copy.outputs.added_files == '0'
+        run: |
+          echo "no new minimized seeds; skipping gitleaks + PR steps"
+
+      - name: Stage candidate diff (chio worktree)
+        if: steps.copy.outputs.added_files != '0'
+        working-directory: chio
+        run: |
+          set -euo pipefail
+          git config user.name "chio-corpus-sync[bot]"
+          git config user.email "chio-corpus-sync@users.noreply.github.com"
+          git add fuzz/corpus
+          git status --short
+
+      - name: Install gitleaks
+        if: steps.copy.outputs.added_files != '0'
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.local/bin"
+          ver="8.21.2"
+          curl -fsSL --retry 3 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" \
+            -o /tmp/gitleaks.tgz
+          echo "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C "${HOME}/.local/bin" gitleaks
+          chmod +x "${HOME}/.local/bin/gitleaks"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Run gitleaks against candidate corpus diff
+        id: gitleaks
+        if: steps.copy.outputs.added_files != '0'
+        working-directory: chio
+        run: |
+          set -euo pipefail
+          # Scan the staged diff only; refuse to PR if any secret-like
+          # token leaked into the corpus. Exit non-zero on findings so
+          # the workflow fails closed and the PR is never opened.
+          mkdir -p "${GITHUB_WORKSPACE}/gitleaks-out"
+          report="${GITHUB_WORKSPACE}/gitleaks-out/report.json"
+          # gitleaks protect --staged scans staged changes (the seeds
+          # we just copied) without depending on the upstream history.
+          gitleaks protect --staged \
+            --redact \
+            --report-format=json \
+            --report-path="${report}" \
+            --exit-code=1 \
+            --no-banner
+          echo "gitleaks scan clean"
+          {
+            echo "report=${report}"
+            echo "result=clean"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload gitleaks report
+        if: always() && steps.copy.outputs.added_files != '0'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gitleaks-report-${{ github.run_id }}
+          path: gitleaks-out/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Open or update sync PR
+        if: steps.copy.outputs.added_files != '0' && steps.gitleaks.outputs.result == 'clean'
+        working-directory: chio
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ADDED_FILES: ${{ steps.copy.outputs.added_files }}
+          TARGETS_CHANGED: ${{ steps.copy.outputs.targets_changed }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SOURCE_SHORT: ${{ steps.source.outputs.short }}
+        run: |
+          set -euo pipefail
+          branch="bot/fuzz-corpus-sync-$(date -u +%Y%m%d-%H%M%S)"
+          git checkout -b "${branch}"
+          # Build commit message via printf to avoid shell heredoc parsing
+          # surprises in the YAML pre-pass.
+          {
+            printf 'chore(fuzz): sync minimized corpus from arc-fuzz-corpus\n\n'
+            printf 'Pulled %s newly minimized seeds from %s@%s.\n\n' \
+              "${ADDED_FILES}" "${CORPUS_REPO}" "${SOURCE_SHORT}"
+            printf 'Targets touched:\n%s\n\n' "${TARGETS_CHANGED:-(see PR body)}"
+            printf 'gitleaks scan: clean (no secrets in candidate diff).\n'
+          } > /tmp/commit-msg.txt
+          git commit -F /tmp/commit-msg.txt
+          git push -u origin "${branch}"
+          # Build PR body as a plain file; no shell heredoc inside YAML.
+          # Use double-quoted printf so we can escape literal backticks
+          # without tripping shellcheck SC2016 (single-quoted backticks).
+          BT="\`"
+          {
+            printf '## fuzz/corpus sync\n\n'
+            printf "Source: %s%s@%s%s\n" "${BT}" "${CORPUS_REPO}" "${SOURCE_SHA}" "${BT}"
+            printf 'Newly minimized seeds added: **%s**\n\n' "${ADDED_FILES}"
+            printf '### Targets touched\n\n'
+            printf '%s%s%s\n%s\n%s%s%s\n\n' "${BT}" "${BT}" "${BT}" \
+              "${TARGETS_CHANGED:-(none)}" "${BT}" "${BT}" "${BT}"
+            printf '### gitleaks scan\n\n'
+            printf '%s%s%s\nresult clean (no secret-like tokens detected)\n%s%s%s\n\n' \
+              "${BT}" "${BT}" "${BT}" "${BT}" "${BT}" "${BT}"
+            printf 'The gitleaks scan ensures no production-issued JWTs or DIDs\n'
+            printf 'land in seed corpora. If gitleaks fires, the workflow refuses\n'
+            printf 'to open the PR.\n\n'
+            printf '### Maintainer review gate\n\n'
+            printf "The CODEOWNERS rule %sfuzz/corpus/** @bb-connor%s requires\n" \
+              "${BT}" "${BT}"
+            printf 'a @bb-connor review before this PR can merge.\n\n'
+            printf -- '---\n\n'
+            printf "Auto-opened by %s.github/workflows/fuzz_corpus_sync.yml%s.\n" \
+              "${BT}" "${BT}"
+          } > /tmp/pr-body.md
+          gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "${branch}" \
+            --title "chore(fuzz): sync minimized corpus from arc-fuzz-corpus" \
+            --body-file /tmp/pr-body.md

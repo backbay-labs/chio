@@ -1,0 +1,36 @@
+# tuf-rebake.yml - Quarterly TUF trust-root re-bake (M09-owned).
+#
+# The actual re-bake target lives inside chio-attest-verify and lands
+# in M09 P3. This workflow scaffold runs a stub job on a quarterly
+# cron today; once P3 merges the stub gets replaced with the real
+# re-bake invocation against the crate's TUF root.
+
+name: tuf-rebake
+
+on:
+  schedule:
+    # 03:11 UTC on the 1st of every 3rd month (Jan/Apr/Jul/Oct).
+    - cron: "11 3 1 */3 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tuf-rebake
+  cancel-in-progress: false
+
+jobs:
+  rebake:
+    name: tuf-rebake (stub; M09 P3 wires real target)
+    # owner: M09
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Stub - awaiting M09 P3 chio-attest-verify
+        run: |
+          set -euo pipefail
+          echo "tuf-rebake: stub run; chio-attest-verify lands in M09 P3"
+          echo "When P3 merges, replace this step with:"
+          echo "  cargo run -p chio-attest-verify --bin tuf-rebake -- --target prod"
