@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="520" viewBox="0 0 1040 520" role="img" aria-labelledby="title desc">
+  <title id="title">Chio AWS Bedrock architecture</title>
+  <desc id="desc">Chio mediates Bedrock traffic from a customer account through the control plane, then records Marketplace entitlement and metering evidence.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L12,4 L0,8 Z" fill="#111827"/>
+    </marker>
+    <style>
+      .zone { fill: #f8fafc; stroke: #475569; stroke-width: 2; stroke-dasharray: 7 5; }
+      .box { fill: #ffffff; stroke: #111827; stroke-width: 2; rx: 8; }
+      .green { fill: #ecfdf5; stroke: #047857; stroke-width: 2; rx: 8; }
+      .blue { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; rx: 8; }
+      .label { font: 15px sans-serif; fill: #111827; }
+      .small { font: 12px sans-serif; fill: #334155; }
+      .arrow { stroke: #111827; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect class="zone" x="30" y="50" width="275" height="380"/>
+  <text class="label" x="62" y="86">Customer AWS account</text>
+  <rect class="box" x="70" y="130" width="195" height="70"/>
+  <text class="label" x="105" y="162">Agent workload</text>
+  <text class="small" x="105" y="184">customer VPC</text>
+  <rect class="box" x="70" y="275" width="195" height="82"/>
+  <text class="label" x="101" y="307">Integration role</text>
+  <text class="small" x="89" y="329">Bedrock invoke plus STS</text>
+
+  <rect class="zone" x="385" y="50" width="275" height="380"/>
+  <text class="label" x="430" y="86">Chio control plane</text>
+  <rect class="blue" x="425" y="120" width="195" height="64"/>
+  <text class="label" x="460" y="151">Entitlement</text>
+  <text class="small" x="456" y="171">GetEntitlements</text>
+  <rect class="green" x="425" y="220" width="195" height="76"/>
+  <text class="label" x="463" y="251">Policy guards</text>
+  <text class="small" x="459" y="273">signed receipt</text>
+  <rect class="blue" x="425" y="330" width="195" height="64"/>
+  <text class="label" x="470" y="361">Metering</text>
+  <text class="small" x="446" y="381">MeterUsage callback</text>
+
+  <rect class="zone" x="740" y="50" width="270" height="380"/>
+  <text class="label" x="795" y="86">AWS services</text>
+  <rect class="box" x="780" y="145" width="190" height="72"/>
+  <text class="label" x="823" y="177">Bedrock</text>
+  <text class="small" x="806" y="199">Runtime in us-east-1</text>
+  <rect class="blue" x="780" y="295" width="190" height="72"/>
+  <text class="label" x="814" y="327">Marketplace</text>
+  <text class="small" x="801" y="349">SaaS APIs</text>
+
+  <path class="arrow" d="M265 165 C332 165 357 152 425 152"/>
+  <path class="arrow" d="M522 184 L522 220"/>
+  <path class="arrow" d="M620 258 C680 246 720 198 780 181"/>
+  <path class="arrow" d="M265 316 C333 316 357 270 425 258"/>
+  <path class="arrow" d="M620 362 C686 362 721 331 780 331"/>
+  <text class="small" x="319" y="143">tenant request</text>
+  <text class="small" x="657" y="238">governed Bedrock call</text>
+  <text class="small" x="659" y="385">receipt overage</text>
+</svg>
