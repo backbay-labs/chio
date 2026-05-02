@@ -9,3 +9,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #445 (`c1efd4c0e648ad1e31678045d86deda0447422de`): M03.P1 infra/docs; skipped hosted CI wait for CI liveness audit entries, billing runbook, workflow inventory matrix, and Linux-only PR-tier comment.
 - PR #446 (`f2281a9671e7a0f7fd671cc4bc5dd11fc94daf1a`): M03.P2 CI triage; skipped hosted CI wait for bypass catalog, Sidecar Image Dockerfile repair, escalation routing, admin override audit workflow, and ticket stamps.
 - PR #447 (`17702d39218c1166992fdcf2c8bee9bbbcea69f3`): M03.P3 reproducible-build pipeline; skipped hosted CI wait for release profile pins, Rust toolchain pin, reproducible-build workflow, hash gate, rebuild script, and ticket stamps.
+- PR #448 (`0e3ac59cda7ca4ee14f34b32a9f726d96415b6f0`): M03.P4 release evidence; skipped hosted CI wait for SLSA probe tag, checksum-index auto-PR workflow, checksum-index cosign signature, release evidence docs, and ticket stamps.

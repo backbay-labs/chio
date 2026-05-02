@@ -2208,7 +2208,7 @@
   phase: 4
   title: Verify slsa.yml end-to-end against probe tag v0.0.0-m03-probe; record Rekor
     UUID in audit doc
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M03-ci-restoration.md
@@ -2231,16 +2231,16 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 7496af39406d95d25676e330e906876f67ddddab
+  merged_sha: 8a71f695574491b8a2d9719f8d6930ff738b3a68
+  opened_ts: '2026-05-02T04:46:44Z'
+  merged_ts: '2026-05-02T04:51:16Z'
 - id: M03.P4.T2
   milestone: M03
   phase: 4
   title: Extend release-binaries.yml to write supply-chain/checksums/v<tag>.txt after
     the matrix completes; auto-PR against main
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - .github/workflows/release-binaries.yml
@@ -2265,16 +2265,16 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f6a2314dbb79410d84ad60ddc64d57c749ddc0d3
+  merged_sha: f6a2314dbb79410d84ad60ddc64d57c749ddc0d3
+  opened_ts: '2026-05-02T04:46:44Z'
+  merged_ts: '2026-05-02T04:46:44Z'
 - id: M03.P4.T3
   milestone: M03
   phase: 4
   title: cosign-sign supply-chain/checksums/v<tag>.txt; emit v<tag>.txt.sig and v<tag>.txt.pem
     alongside
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .github/workflows/release-binaries.yml
@@ -2296,16 +2296,16 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f6a2314dbb79410d84ad60ddc64d57c749ddc0d3
+  merged_sha: f6a2314dbb79410d84ad60ddc64d57c749ddc0d3
+  opened_ts: '2026-05-02T04:46:44Z'
+  merged_ts: '2026-05-02T04:46:44Z'
 - id: M03.P4.T4
   milestone: M03
   phase: 4
   title: Cite Rekor UUID inside v<tag>.txt as comment header so the in-repo index
     is the index and Rekor is the witness
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .github/workflows/release-binaries.yml
@@ -2327,16 +2327,16 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f6a2314dbb79410d84ad60ddc64d57c749ddc0d3
+  merged_sha: f6a2314dbb79410d84ad60ddc64d57c749ddc0d3
+  opened_ts: '2026-05-02T04:46:44Z'
+  merged_ts: '2026-05-02T04:46:44Z'
 - id: M03.P4.T5
   milestone: M03
   phase: 4
   title: Author docs/release-evidence.md documenting where reviewers fetch checksum
     index, what they verify, and the Rekor witness URL pattern
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - docs/release-evidence.md
@@ -2358,10 +2358,10 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 77c702609dd7c01954fa69f4644690755f54870f
+  merged_sha: 77c702609dd7c01954fa69f4644690755f54870f
+  opened_ts: '2026-05-02T04:46:44Z'
+  merged_ts: '2026-05-02T04:46:44Z'
 - id: M03.P5.T1
   milestone: M03
   phase: 5
