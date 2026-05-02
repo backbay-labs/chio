@@ -86,6 +86,8 @@ path = "verdict_matrix/tests/verdict_matrix_cross_language.rs"
 # M02.P5.T5: cross-language verdict-matrix oracle exercises the WASM
 # browser kernel through its native (non-wasm32) cargo test surface.
 chio-kernel-browser = { version = "0.1.0", path = "../chio-kernel-browser" }
+chio-weights = { version = "0.1.0", path = "../chio-weights" }
+chrono = { workspace = true, features = ["clock"] }
 # M05.P5.T3: threat-model coverage tests load curated adversarial
 # vectors and assert each of the six initial threat IDs is backed
 # by at least one non-pending DENY-asserted case.

@@ -20,6 +20,7 @@
 //! - native_channel_replay
 //! - resource_exhaustion_dos
 //! - delegation_chain_abuse
+//! - weights_hash_spoof
 
 #[path = "threats/common.rs"]
 mod common;
@@ -41,3 +42,6 @@ mod resource_exhaustion_dos;
 
 #[path = "threats/delegation_chain_abuse.rs"]
 mod delegation_chain_abuse;
+
+#[path = "threats/weights_hash_spoof.rs"]
+mod weights_hash_spoof;
