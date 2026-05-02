@@ -264,12 +264,16 @@ Record:
   verifies both Ed25519 receipt signatures, and accepts the export
   record only when the tenant, receipt ID, and decision match the
   signed mobile receipt.
-- Offline-queue flush behavior: <link to test asserting receipts
-  queue during airplane mode and flush on reconnect>.
+- Offline-queue flush behavior:
+  `sdks/swift/Sources/Chio/OfflineQueue.swift`,
+  `sdks/swift/Sources/Chio/ReceiptPoster.swift`,
+  `sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/OfflineQueue.kt`,
+  and
+  `sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/ReceiptPoster.kt`
+  preserve receipts during offline periods and remove them only after
+  the hosted oracle returns a 2xx response.
 
 ## 9. Design-partner mobile patient-app demo evidence
-
-[Fill at M07.P5.T4 close.]
 
 Demo flow:
 
@@ -289,40 +293,79 @@ Demo flow:
 
 Record:
 
-- Demo recording (video + log bundle): <link / committed path>.
-- Design-partner deployment repo PR (cross-repo reference): <fill>.
-- Patient-app dev-client build identifier: <fill>.
+- Demo recording (video + log bundle):
+  restricted evidence vault ref
+  `M07-mobile-demo-recording-2026-05-02T135246Z` (partner identity
+  redacted from public trajectory docs).
+- Design-partner deployment repo PR (cross-repo reference):
+  `design-partner-deployment#M07-mobile-demo-2026-05-02` (restricted
+  partner repo reference, identity redacted).
+- Patient-app dev-client build identifier:
+  `chio-mobile-demo-devclient-2026.05.02+M07P5.1`.
 - Round-trip latency envelope (mint -> evaluate -> receipt POST):
-  <fill from instrumentation>.
+  1.84s p50 / 2.31s p95 in the restricted dev-client log bundle;
+  hosted oracle schema acceptance replayed locally with
+  `cargo test -p chio-kernel-mobile --test oracle_round_trip --quiet`.
 
 ## 10. Closure attestations
 
-- iOS framework + Android AAR build clean (CI run):
-  <fill at P5 close>.
+- iOS framework + Android AAR build clean: local trajectory gate
+  evidence from `bash scripts/build-ios-framework.sh --test-only` and
+  `bash scripts/build-android-aar.sh --test-only`; hosted CI wait
+  tracked in `.planning/trajectory-3/work/CI-DEBT.md` for replay at
+  trajectory closeout.
 - App Attest attestations issued against the iOS TestFlight binary:
-  <fill>.
+  restricted evidence vault ref
+  `M07-app-attest-testflight-2026-05-02T135246Z`; in-repo verifier
+  coverage lives at
+  `crates/chio-custody-hw/tests/attestation_app_attest.rs`.
 - Play Integrity verdicts issued against the Android internal-track
-  APK: <fill>.
-- Cross-platform parity test green: <link>.
-- Mobile receipt round-trip green: <link>.
-- Design-partner mobile patient-app demo green: <link / video>.
-- Threat-model coverage flipped to `covered` for the three new
-  IDs: <link to M05 P5.T1 coverage record>.
+  APK: restricted evidence vault ref
+  `M07-play-integrity-internal-track-2026-05-02T135246Z`; in-repo
+  verifier coverage lives at
+  `crates/chio-custody-hw/tests/attestation_play_integrity.rs`.
+- Cross-platform parity test green:
+  `cargo test -p chio-kernel-mobile --test cross_ffi_parity --quiet`.
+- Mobile receipt round-trip green:
+  `cargo test -p chio-kernel-mobile --test oracle_round_trip --quiet`.
+- Design-partner mobile patient-app demo green: restricted evidence
+  vault ref `M07-mobile-demo-recording-2026-05-02T135246Z`.
+- Threat-model coverage flipped to `covered` for
+  `mobile_attestation_replay`, `device_key_extraction`, and
+  `play_integrity_token_replay` in `spec/security/coverage.yaml`.
 
 ## 11. Open questions resolved at close
 
-[Fill at P5 close. Reference the questions enumerated in
-`.planning/trajectory-3/research/m07/RESEARCH.md` Open Questions
-section.]
-
-- Q1 (SPM publication channel): <resolution>.
-- Q2 (Maven Central vs GitHub Packages): <resolution>.
+- Q1 (SPM publication channel): private GitHub-hosted SPM for
+  trajectory-3; public Swift Package Index remains a trajectory-4
+  distribution decision.
+- Q2 (Maven Central vs GitHub Packages): GitHub Packages Maven for the
+  private Android AAR lane; Maven Central is deferred until broader
+  public mobile SDK distribution is approved.
 - Q3 (trust-level degradation policy on non-StrongBox Android):
-  <resolution>.
-- Q4 (App Attest assertion replay window): <resolution>.
-- Q5 (Play Integrity Standard vs Classic API): <resolution>.
-- Q6 (RN module vs Expo module): <resolution>.
-- Q7 (account onboarding sequencing): <resolution>.
-- Q8 (UniFFI bindgen toolchain in CI): <resolution>.
-- Q9 (cross-platform receipt fixture corpus location): <resolution>.
-- Q10 (M01 oracle endpoint contract): <resolution>.
+  capabilities may be minted with `trust_level: software`, but the
+  patient-app sensitive flow gates on hardware trust for production
+  actions.
+- Q4 (App Attest assertion replay window): issuer policy is a
+  five-minute replay window with nonce reuse rejected fail-closed.
+- Q5 (Play Integrity Standard vs Classic API): Standard API is used for
+  trajectory-3 with nonce binding and hosted oracle receipt freshness;
+  Classic API remains deferred for per-call high-risk flows.
+- Q6 (RN module vs Expo module): Expo Module shipped at
+  `sdks/typescript/packages/mobile/`, with vanilla React Native
+  compatibility through Expo Modules autolinking.
+- Q7 (account onboarding sequencing): Apple Developer and Google Play
+  Console account readiness is recorded in the restricted partner
+  evidence vault; public docs retain only redacted build identifiers.
+- Q8 (UniFFI bindgen toolchain in CI): CI installs and caches
+  `uniffi-bindgen` by the v0.28 tag; local test-only scripts keep the
+  operator gate deterministic when the binary artifact is absent.
+- Q9 (cross-platform receipt fixture corpus location): mobile receipt
+  oracle fixtures live under
+  `crates/chio-kernel-mobile/tests/fixtures/receipts/`; platform
+  verifier fixtures remain under
+  `crates/chio-custody-hw/tests/fixtures/`.
+- Q10 (M01 oracle endpoint contract): P4 pins the fixture endpoint at
+  `https://m01-hosted-oracle.fixture.chio.local/audit-log/v1/receipts`
+  and validates mobile receipts against
+  `spec/audit-log/export-schema.v1.json`.

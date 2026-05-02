@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["Chio"]
+  },
+  "android": {
+    "modules": ["dev.chio.ChioModule"]
+  }
+}

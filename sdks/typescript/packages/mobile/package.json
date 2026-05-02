@@ -1,0 +1,57 @@
+{
+  "name": "@chio-protocol/mobile",
+  "version": "0.1.0",
+  "description": "Chio mobile Expo Module bridge for the seven-method kernel mobile surface.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./build/src/index.js",
+  "module": "./build/src/index.js",
+  "types": "./build/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/src/index.d.ts",
+      "import": "./build/src/index.js"
+    },
+    "./expo-plugin": {
+      "types": "./build/expo-plugin/withChio.d.ts",
+      "import": "./build/expo-plugin/withChio.js"
+    }
+  },
+  "files": [
+    "android/",
+    "build/",
+    "expo-module.config.json",
+    "expo-plugin/",
+    "ios/",
+    "src/"
+  ],
+  "keywords": [
+    "chio",
+    "expo-module",
+    "react-native",
+    "mobile-attestation"
+  ],
+  "peerDependencies": {
+    "@chio-protocol/browser": "^0.1.0",
+    "expo": ">=50.0.0",
+    "expo-modules-core": ">=1.11.0",
+    "react-native": ">=0.73.0"
+  },
+  "peerDependenciesMeta": {
+    "@chio-protocol/browser": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@expo/config-plugins": "^7.8.4",
+    "expo-modules-core": "^1.11.14",
+    "typescript": "^5.4.0"
+  },
+  "scripts": {
+    "build": "tsc --target ES2022 --module ES2022 --moduleResolution Bundler --strict --skipLibCheck --declaration --outDir build --rootDir . src/index.ts expo-plugin/withChio.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
