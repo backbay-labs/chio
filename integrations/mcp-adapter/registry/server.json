@@ -1,0 +1,30 @@
+{
+  "namespace": "dev.chio",
+  "name": "chio-governed-tools",
+  "version": "0.1.0",
+  "description": "Chio-governed MCP server exposing receipt-backed, policy-mediated tool calls.",
+  "transport": {
+    "type": "streamable-http",
+    "endpoint": "https://mcp.chio.dev/mcp",
+    "protected_resource_metadata": "https://mcp.chio.dev/.well-known/oauth-protected-resource"
+  },
+  "oauth_scopes": [
+    "tools.call",
+    "receipts.read"
+  ],
+  "capabilities": {
+    "tools": true,
+    "logging": true,
+    "resources": false,
+    "prompts": false
+  },
+  "dependencies": {
+    "chio-mcp-edge": "0.1.0",
+    "chio-kernel": "0.1.0"
+  },
+  "conformance": {
+    "suite_commit": "17f1f93cc070754cdd290ac13476dcfa13f39855",
+    "pass_count": 31,
+    "skip_count": 0
+  }
+}
