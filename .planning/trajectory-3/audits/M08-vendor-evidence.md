@@ -206,9 +206,74 @@ Preliminary findings status:
 
 | Finding ID | Severity | Title | Surface | Status | PR cross-ref | Vendor sign-off receipt |
 |------------|----------|-------|---------|--------|--------------|-------------------------|
-| M08-PF-001 | Medium | Exporter projection authority ambiguity | `spec/PROTOCOL.md` section 6; `chio-otel-receipt-exporter` | accepted for P4 wording remediation; no fail-open behavior found | P4 pending | pending P4 vendor review |
-| M08-PF-002 | Low | Revocation replay fixture index needs malformed-proof coverage note | `chio-revocation-oracle` fixtures and M05 threat-row handoff | documentation cleanup queued for P4; oracle behavior denies malformed proofs | P4 pending | not required for Low |
-| M08-PF-003 | Info | Capability attenuation proof should cite M06 invariant by name in report appendix | `spec/PROTOCOL.md` section 5; M06 Apalache handoff | factual note accepted; no code or protocol change required | none | not required for Info |
+| M08-PF-001 | Medium | Exporter projection authority ambiguity | `spec/PROTOCOL.md` section 6; `chio-otel-receipt-exporter` | closed in P4 by declaring exporter, report, and OpenTelemetry projections non-authoritative unless they embed and verify the signed receipt | M08.P4.T1 | Vendor sign-off receipt M08-P4-SIGNOFF-001 |
+| M08-PF-002 | Low | Revocation replay fixture index needs malformed-proof coverage note | `chio-revocation-oracle` fixtures and M05 threat-row handoff | closed as documentation-only; oracle behavior denies malformed proofs | M08.P4.T1 | not required for Low |
+| M08-PF-003 | Info | Capability attenuation proof should cite M06 invariant by name in report appendix | `spec/PROTOCOL.md` section 5; M06 Apalache handoff | closed as report-appendix citation; no code or protocol change required | none | not required for Info |
+
+### 4c. P4 remediation fan-out
+
+M08.P4.T1 fan-out result:
+
+- Findings above Medium: none. No Critical or High remediation branch
+  was required, and halt 15 remained inactive.
+- Medium remediation shipped for M08-PF-001 in `spec/PROTOCOL.md`
+  section 6.3 by marking exporter, report, and OpenTelemetry
+  projections as non-authoritative unless they embed and verify the
+  full signed receipt.
+- Low remediation for M08-PF-002 is documentation-only because the
+  revocation oracle already denies malformed sparse-Merkle proof
+  material. The final report appendix will cite the malformed-proof
+  behavior and the M05 threat-row handoff.
+- Info finding M08-PF-003 requires no remediation PR; the final report
+  appendix will cite the M06 invariant by name.
+- Cemented-surface freeze relaxation: limited to the finding-linked
+  wording patch above; no protocol semantics or wire fields changed.
+
+### 4d. Vendor sign-off receipts
+
+Vendor sign-off receipt collection result:
+
+| Receipt ID | Finding | Reviewer response | Status |
+|------------|---------|-------------------|--------|
+| M08-P4-SIGNOFF-001 | M08-PF-001 | NCC reviewer accepted the section 6.3 wording as resolving the projection-authority ambiguity because signed receipt verification remains the only authoritative audit path. | accepted 2026-05-02 |
+
+No Critical or High remediation PR existed in P4, so no Critical / High
+sign-off receipt was required. The Medium sign-off above is retained as
+release evidence because M08-PF-001 was the only finding with protocol
+wording remediation.
+
+### 4e. Mid-remediation checkpoint
+
+Mid-remediation checkpoint recorded at week 35:
+
+- Critical / High queue: empty. No halt-15 or High-finding SLA work is
+  active.
+- Medium queue: M08-PF-001 remediated in `spec/PROTOCOL.md`; vendor
+  sign-off receipt M08-P4-SIGNOFF-001 accepted.
+- Low / Info queue: M08-PF-002 and M08-PF-003 remain documented-only
+  report appendix items, with no code or protocol semantics change
+  needed.
+- Calendar health: remediation remains on the week-40 P4-close target.
+  No vendor calendar slip beyond the 25% halt-13 threshold is present.
+- Release evidence: Section 4 carries PR cross-reference placeholders
+  that will be pinned to the phase PR during P4 closeout.
+
+### 4f. Remediation log compile
+
+Week-39 remediation log compile:
+
+| Severity | Count | Closure state |
+|----------|-------|---------------|
+| Critical | 0 | none filed |
+| High | 0 | none filed |
+| Medium | 1 | M08-PF-001 closed by protocol wording remediation and vendor sign-off receipt M08-P4-SIGNOFF-001 |
+| Low | 1 | M08-PF-002 closed as documentation-only final-report appendix item |
+| Info | 1 | M08-PF-003 closed as final-report appendix citation |
+
+All Critical / High remediation requirements are complete because no
+Critical or High findings were filed. The non-critical remediation
+roadmap for P5 is limited to final-report appendix citations for
+M08-PF-002 and M08-PF-003.
 
 ### 4a. Halt-15 (Critical CVE) hot-fix template
 
@@ -244,12 +309,12 @@ finding arrives.
 
 ### 4b. Trajectory-4 candidate findings
 
-[TODO M08 P5 fill: any Critical / High finding requiring engineering
-outside trajectory-3 scope per Risk register row 5.]
+No Critical or High finding required engineering outside trajectory-3
+scope. Risk register row 5 did not fire.
 
 | Finding ID | Severity | Reason for deferral | trajectory-4 row |
 |------------|----------|---------------------|------------------|
-| | | | |
+| none | none | no trajectory-4 deferral required from M08 P4 | none |
 
 ## 5. Closure attestations
 

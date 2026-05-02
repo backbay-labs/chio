@@ -11,7 +11,7 @@
   milestone: M08
   phase: 4
   title: Remediation PR fan-out (split per finding above Medium; one PR per finding)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -33,16 +33,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 224e9f936ce34439c0243a6c84578a2dfafd84c5
+  merged_sha: 224e9f936ce34439c0243a6c84578a2dfafd84c5
+  opened_ts: '2026-05-02T18:10:51Z'
+  merged_ts: '2026-05-02T18:10:51Z'
 
 - id: M08.P4.T2
   milestone: M08
   phase: 4
   title: Vendor sign-off receipt collection per Critical / High remediation PR
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -59,16 +59,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 983d33843b847b16b7acd858e8babe5d31688b90
+  merged_sha: 983d33843b847b16b7acd858e8babe5d31688b90
+  opened_ts: '2026-05-02T18:10:51Z'
+  merged_ts: '2026-05-02T18:10:51Z'
 
 - id: M08.P4.T3
   milestone: M08
   phase: 4
   title: Mid-remediation checkpoint at week 35 (audit doc remediation-progress summary)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -84,16 +84,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0491e8f3bd1524d6a8b1266433c2a056f92b69cc
+  merged_sha: 0491e8f3bd1524d6a8b1266433c2a056f92b69cc
+  opened_ts: '2026-05-02T18:10:51Z'
+  merged_ts: '2026-05-02T18:10:51Z'
 
 - id: M08.P4.T4
   milestone: M08
   phase: 4
   title: Compile remediation log at week 39 (audit doc Section 4 fully populated)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -111,7 +111,7 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 78416c043402a5b04f84e177aa086d75f401fc42
+  merged_sha: 78416c043402a5b04f84e177aa086d75f401fc42
+  opened_ts: '2026-05-02T18:10:51Z'
+  merged_ts: '2026-05-02T18:10:51Z'
