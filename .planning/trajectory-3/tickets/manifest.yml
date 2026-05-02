@@ -5105,7 +5105,7 @@
   milestone: M08
   phase: 0
   title: Author RFP draft v0 at .planning/trajectory-3/audits/M08-RFP.md
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M08-RFP.md
@@ -5126,16 +5126,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: ba8be1b1bbe352a157db74601701124ca16071fe
+  merged_sha: ba8be1b1bbe352a157db74601701124ca16071fe
+  opened_ts: '2026-05-02T03:26:02Z'
+  merged_ts: '2026-05-02T03:26:02Z'
 - id: M08.P0.T2
   milestone: M08
   phase: 0
   title: Compile vendor dossier rows (NCC + ToB + 4 substitutes) into audit doc Section
     2
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5155,15 +5155,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 63ce992add2158cd6d541acddecbdb39b7c8d165
+  merged_sha: 63ce992add2158cd6d541acddecbdb39b7c8d165
+  opened_ts: '2026-05-02T03:26:02Z'
+  merged_ts: '2026-05-02T03:26:02Z'
 - id: M08.P0.T3
   milestone: M08
   phase: 0
   title: Assemble threat-model handoff package ZIP (cemented surface + spec + AGENTS.md)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M08-handoff-package/README.md
@@ -5184,15 +5184,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 1e729cf28cd589b7d221da190c6e80bfc9c5f0a5
+  merged_sha: 1e729cf28cd589b7d221da190c6e80bfc9c5f0a5
+  opened_ts: '2026-05-02T03:26:02Z'
+  merged_ts: '2026-05-02T03:26:02Z'
 - id: M08.P0.T4
   milestone: M08
   phase: 0
   title: Send RFP to NCC Group; log outbound event in audit doc Section 3
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5213,15 +5213,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 6a0438067456bc058cfd16ffcf14c3c541ef4385
+  merged_sha: 6a0438067456bc058cfd16ffcf14c3c541ef4385
+  opened_ts: '2026-05-02T03:26:02Z'
+  merged_ts: '2026-05-02T03:26:02Z'
 - id: M08.P0.T5
   milestone: M08
   phase: 0
   title: Send RFP to Trail of Bits; log outbound event in audit doc Section 3
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5242,10 +5242,10 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e7cc8312c823f2d566a2283e6c157e97471cae9d
+  merged_sha: e7cc8312c823f2d566a2283e6c157e97471cae9d
+  opened_ts: '2026-05-02T03:26:02Z'
+  merged_ts: '2026-05-02T03:26:02Z'
 - id: M08.P0.T6
   milestone: M08
   phase: 0
