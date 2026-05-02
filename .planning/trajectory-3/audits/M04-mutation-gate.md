@@ -121,6 +121,7 @@ activation.
 |--------|-------|----------|---------------------------|
 | M04.P1.T1 | chio-credentials | `crates/chio-credentials/tests/schema_negative.rs` | Negative schema variants for passport, signed verifier policy, presentation challenge, and presentation response fail closed before signature or window checks. |
 | M04.P1.T2 | chio-kernel-core | `crates/chio-kernel-core/tests/normalized_proptest.rs` | Property tests cover wildcard/exact grant subset, operation preservation, required parent constraints, monetary cap narrowing, and resource/prompt parent coverage. |
+| M04.P1.T3 | chio-kernel-core | `crates/chio-kernel-core/tests/scope_proptest.rs` | Property tests exercise path-prefix normalization, exact and glob domain constraints, inclusive length/argument-size boundaries, and exact-grant specificity sorting. |
 
 ## 3. Verdict-matrix advisory baseline
 
