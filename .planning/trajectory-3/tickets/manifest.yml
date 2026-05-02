@@ -7633,7 +7633,7 @@
   phase: 2
   title: Create integrations/mcp-adapter/ extending chio-mcp-edge with Streamable
     HTTP transport
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - integrations/mcp-adapter/Cargo.toml
@@ -7661,16 +7661,16 @@
   agent_role: provider-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e99f792cb53a9b47e47ccde9f50050ab4c826913
+  merged_sha: e99f792cb53a9b47e47ccde9f50050ab4c826913
+  opened_ts: '2026-05-02T16:44:42Z'
+  merged_ts: '2026-05-02T16:44:42Z'
 - id: M10.P2.T2
   milestone: M10
   phase: 2
   title: Implement OAuth 2.1 plus PKCE per RFC9728 (Protected Resource Metadata) on
     the MCP server
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - integrations/mcp-adapter/src/oauth.rs
@@ -7695,16 +7695,16 @@
   agent_role: provider-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f9f2b3dc709b68dd0e9f48451d36118b299a985c
+  merged_sha: f9f2b3dc709b68dd0e9f48451d36118b299a985c
+  opened_ts: '2026-05-02T16:44:42Z'
+  merged_ts: '2026-05-02T16:44:42Z'
 - id: M10.P2.T3
   milestone: M10
   phase: 2
   title: Run MCP conformance suite at pinned commit hash and record pass plus skip
     count
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - integrations/mcp-adapter/tests/conformance_suite.rs
@@ -7726,16 +7726,16 @@
   agent_role: provider-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c4d4d22c130fd2c08ac2b637f2651bc535e2eac8
+  merged_sha: c4d4d22c130fd2c08ac2b637f2651bc535e2eac8
+  opened_ts: '2026-05-02T16:44:42Z'
+  merged_ts: '2026-05-02T16:44:42Z'
 - id: M10.P2.T4
   milestone: M10
   phase: 2
   title: Write MCP registry submission record (server.json) and validate namespace
     ownership
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - integrations/mcp-adapter/registry/server.json
@@ -7758,15 +7758,15 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 91ea06a18c6d59d0b1c4312562cbe2b651e8d523
+  merged_sha: 91ea06a18c6d59d0b1c4312562cbe2b651e8d523
+  opened_ts: '2026-05-02T16:44:42Z'
+  merged_ts: '2026-05-02T16:44:42Z'
 - id: M10.P2.T5
   milestone: M10
   phase: 2
   title: Integration test against AWS Bedrock AgentCore Gateway as MCP consumer
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - integrations/mcp-adapter/tests/agentcore_gateway_consumer.rs
@@ -7788,10 +7788,10 @@
   agent_role: provider-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 73b24ea32b133a773cafc1bef57765d9c8b8a983
+  merged_sha: 73b24ea32b133a773cafc1bef57765d9c8b8a983
+  opened_ts: '2026-05-02T16:44:42Z'
+  merged_ts: '2026-05-02T16:44:42Z'
 - id: M10.P3.T1
   milestone: M10
   phase: 3
