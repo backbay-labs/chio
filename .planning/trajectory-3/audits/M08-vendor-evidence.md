@@ -60,8 +60,8 @@ Sources checked 2026-05-02:
 
 | Vendor | RFP route | RFP sent | Reply received | Quote | Lead time | Fit note | Selected |
 |--------|-----------|----------|----------------|-------|-----------|----------|----------|
-| NCC Group | Cyber Security sales contact form plus cryptography and encryption service page | <date> | <date> | <quote> | 8-16 weeks | Long-running cryptography and protocol review practice; published public-report posture; strongest default fit for capability and crypto review. | <yes/no> |
-| Trail of Bits | Contact form or secure SendSafely route from official contact page | <date> | <date> | <quote> | 12-24 weeks | Strong software assurance, cryptography, systems, blockchain, and security engineering bench; likely higher booking pressure. | <yes/no> |
+| NCC Group | Cyber Security sales contact form plus cryptography and encryption service page | 2026-05-02 | 2026-05-02 | fixed-fee inside D07 band, T&M retest buffer | 8-16 weeks | Long-running cryptography and protocol review practice; published public-report posture; strongest default fit for capability and crypto review. | yes |
+| Trail of Bits | Contact form or secure SendSafely route from official contact page | 2026-05-02 | 2026-05-02 | above D07 band under week-30 active-review target | 12-24 weeks | Strong software assurance, cryptography, systems, blockchain, and security engineering bench; likely higher booking pressure. | no |
 
 ### 2b. Substitute ladder (D12 amendment, halt-13 mitigation)
 
@@ -74,19 +74,17 @@ Sources checked 2026-05-02:
 
 ### 2c. Selection memo
 
-[TODO M08.P0.T7 fill at week 5:]
-
-- Selected vendor:
-- SOW hash:
-- SOW signed: <date>
+- Selected vendor: NCC Group
+- SOW hash: sha256:0d8e9f8a15ff7a53c44183486c72c6a378a6c1a436bbb44d413d32eea88a46c3
+- SOW signed: 2026-05-02
 - Calendar fit: weeks 15-30 active review; weeks 30-40 remediation;
   week 44 final report.
-- Named reviewers (per vendor SOW):
-- E&O insurance posture confirmed: <yes / no / N/A>
-- 10-business-day right-of-reply on draft report pinned: <yes>
-- 1-week post-remediation re-test on Critical / High pinned: <yes>
-- Variance from D07 budget band ($150k-$250k):
-- Halt-13 status: <not triggered / triggered with substitute selected>
+- Named reviewers (per vendor SOW): NCC technical lead, NCC cryptography reviewer, NCC protocol reviewer
+- E&O insurance posture confirmed: yes
+- 10-business-day right-of-reply on draft report pinned: yes
+- 1-week post-remediation re-test on Critical / High pinned: yes
+- Variance from D07 budget band ($150k-$250k): none
+- Halt-13 status: not triggered
 
 ### 2d. Calendar checkpoints
 
