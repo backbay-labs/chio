@@ -4391,7 +4391,7 @@
   phase: 1
   title: Add attest_app_attest UDL entry plus Rust impl shell delegating to chio-custody-hw
     attestation
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
@@ -4413,15 +4413,15 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 - id: M07.P1.T2
   milestone: M07
   phase: 1
   title: Add attest_play_integrity UDL entry plus Rust impl shell
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
@@ -4440,16 +4440,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 - id: M07.P1.T3
   milestone: M07
   phase: 1
   title: Add verify_mobile_receipt UDL entry delegating to chio-custody-hw attestation
     receipt_chain
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
@@ -4468,16 +4468,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 - id: M07.P1.T4
   milestone: M07
   phase: 1
   title: Cross-platform parity test (mobile UniFFI vs chio-cpp-kernel-ffi byte-equal
     verdicts)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - crates/chio-kernel-mobile/tests/cross_ffi_parity.rs
@@ -4496,16 +4496,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 - id: M07.P1.T5
   milestone: M07
   phase: 1
   title: Refresh bindings README + Swift / Kotlin reference docs to document the seven
     UDL entries
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - crates/chio-kernel-mobile/bindings/README.md
@@ -4525,16 +4525,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 - id: M07.P2.T1
   milestone: M07
   phase: 2
   title: sdks/swift SPM scaffold with binary XCFramework target and ChioFFI module
     map
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - sdks/swift/Package.swift
@@ -4557,16 +4557,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 - id: M07.P2.T2
   milestone: M07
   phase: 2
   title: scripts/build-ios-framework.sh produces XCFramework via cargo + uniffi-bindgen
     + xcodebuild
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - scripts/build-ios-framework.sh
@@ -4589,16 +4589,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 - id: M07.P2.T3
   milestone: M07
   phase: 2
   title: Sources/Chio/AppAttest.swift wrapping DCAppAttestService plus Keystore Secure
     Enclave helper
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - sdks/swift/Sources/Chio/AppAttest.swift
@@ -4620,16 +4620,16 @@
   agent_role: crypto-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 - id: M07.P2.T4
   milestone: M07
   phase: 2
   title: chio-custody-hw attestation submodule app_attest verifier with pinned Apple
     root CA
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - crates/chio-custody-hw/src/attestation/mod.rs
@@ -4654,16 +4654,16 @@
   agent_role: crypto-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 - id: M07.P2.T5
   milestone: M07
   phase: 2
   title: XCTest harness plus simulator integration test for full App Attest forward-to-kernel
     flow
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - sdks/swift/Tests/ChioTests/AppAttestTests.swift
@@ -4684,16 +4684,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 - id: M07.P3.T1
   milestone: M07
   phase: 3
   title: sdks/jvm/chio-kernel-mobile Gradle scaffold with build.gradle.kts and Kotlin
     package layout
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - sdks/jvm/chio-kernel-mobile/build.gradle.kts
@@ -4717,16 +4717,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: '2026-05-02T13:36:35Z'
+  merged_ts: '2026-05-02T13:36:35Z'
 - id: M07.P3.T2
   milestone: M07
   phase: 3
   title: scripts/build-android-aar.sh produces AAR via cargo ndk plus uniffi-bindgen
     plus gradle
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - scripts/build-android-aar.sh
@@ -4747,16 +4747,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: '2026-05-02T13:36:35Z'
+  merged_ts: '2026-05-02T13:36:35Z'
 - id: M07.P3.T3
   milestone: M07
   phase: 3
   title: PlayIntegrity.kt Standard API wrapper and Keystore.kt with StrongBox-backed
     key generation
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/PlayIntegrity.kt
@@ -4781,16 +4781,16 @@
   agent_role: crypto-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: '2026-05-02T13:36:35Z'
+  merged_ts: '2026-05-02T13:36:35Z'
 - id: M07.P3.T4
   milestone: M07
   phase: 3
   title: chio-custody-hw attestation play_integrity verifier with pinned Google attestation
     root
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - crates/chio-custody-hw/src/attestation/play_integrity.rs
@@ -4817,16 +4817,16 @@
   agent_role: crypto-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: '2026-05-02T13:36:35Z'
+  merged_ts: '2026-05-02T13:36:35Z'
 - id: M07.P3.T5
   milestone: M07
   phase: 3
   title: androidTest instrumentation harness for full Play Integrity forward-to-kernel
     flow
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - sdks/jvm/chio-kernel-mobile/src/androidTest/kotlin/dev/chio/kernel/PlayIntegrityInstrumentedTest.kt
@@ -4847,15 +4847,15 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  merged_sha: a1425e01656716721b31c3aa875c91919a8450f6
+  opened_ts: '2026-05-02T13:36:35Z'
+  merged_ts: '2026-05-02T13:36:35Z'
 - id: M07.P4.T1
   milestone: M07
   phase: 4
   title: Mobile-side offline-queue impl (iOS Keychain plus Android EncryptedSharedPreferences)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - sdks/swift/Sources/Chio/OfflineQueue.swift
@@ -4876,16 +4876,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  merged_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  opened_ts: '2026-05-02T13:52:46Z'
+  merged_ts: '2026-05-02T13:52:46Z'
 - id: M07.P4.T2
   milestone: M07
   phase: 4
   title: POST-on-reconnect path with retry policy and typed urn:chio:error:mobile
     error codes
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - sdks/swift/Sources/Chio/ReceiptPoster.swift
@@ -4909,16 +4909,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  merged_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  opened_ts: '2026-05-02T13:52:46Z'
+  merged_ts: '2026-05-02T13:52:46Z'
 - id: M07.P4.T3
   milestone: M07
   phase: 4
   title: Hosted-oracle round-trip test against M01 fixture endpoint with iOS and Android
     signed receipts
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - crates/chio-kernel-mobile/tests/oracle_round_trip.rs
@@ -4939,15 +4939,15 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  merged_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  opened_ts: '2026-05-02T13:52:46Z'
+  merged_ts: '2026-05-02T13:52:46Z'
 - id: M07.P4.T4
   milestone: M07
   phase: 4
   title: Audit-doc attestation chain documentation update with concrete fixture references
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M07-mobile-mvp.md
@@ -4966,16 +4966,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  merged_sha: be72201796d3a15dd2429fe4246e8c31dac13cb2
+  opened_ts: '2026-05-02T13:52:46Z'
+  merged_ts: '2026-05-02T13:52:46Z'
 - id: M07.P5.T1
   milestone: M07
   phase: 5
   title: RN bridge stub at sdks/typescript/packages/mobile shipped as Expo Module
     with seven-method TurboModule
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - sdks/typescript/packages/mobile/package.json
@@ -5003,16 +5003,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  merged_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  opened_ts: '2026-05-02T14:05:49Z'
+  merged_ts: '2026-05-02T14:05:49Z'
 - id: M07.P5.T2
   milestone: M07
   phase: 5
   title: Expo config plugin withChio.ts adding XCFramework and AAR to Expo prebuild
     output
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - sdks/typescript/packages/mobile/expo-plugin/withChio.ts
@@ -5033,16 +5033,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  merged_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  opened_ts: '2026-05-02T14:05:49Z'
+  merged_ts: '2026-05-02T14:05:49Z'
 - id: M07.P5.T3
   milestone: M07
   phase: 5
   title: Patient-app demo integration in design-partner deployment repo (cross-repo
     PR; reference only)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - .planning/trajectory-3/audits/M07-mobile-mvp.md
@@ -5064,15 +5064,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  merged_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  opened_ts: '2026-05-02T14:05:49Z'
+  merged_ts: '2026-05-02T14:05:49Z'
 - id: M07.P5.T4
   milestone: M07
   phase: 5
   title: Demo recording plus closure attestations plus threat-coverage flip
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M07-mobile-mvp.md
@@ -5097,10 +5097,10 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  merged_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  opened_ts: '2026-05-02T14:05:49Z'
+  merged_ts: '2026-05-02T14:05:49Z'
 - id: M08.P0.T1
   milestone: M08
   phase: 0
@@ -7464,7 +7464,7 @@
   phase: 1
   title: Scaffold integrations/aws-bedrock/ with README, CFN stub, IAM stub, diagram
     placeholder
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - integrations/aws-bedrock/README.md
@@ -7487,16 +7487,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: cf6ebc14497e4a6fefdf2f871a31ea91bbe01c47
+  merged_sha: cf6ebc14497e4a6fefdf2f871a31ea91bbe01c47
+  opened_ts: '2026-05-02T16:28:55Z'
+  merged_ts: '2026-05-02T16:28:55Z'
 - id: M10.P1.T2
   milestone: M10
   phase: 1
   title: Author chio-bedrock Python SDK wrapping the Rust adapter with BedrockChioClient
     surface
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - sdks/python/packages/chio-bedrock/pyproject.toml
@@ -7525,16 +7525,16 @@
   agent_role: spec-python
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 991d550aaccf93d421b423d3a8b2927e490e4b6d
+  merged_sha: 991d550aaccf93d421b423d3a8b2927e490e4b6d
+  opened_ts: '2026-05-02T16:28:55Z'
+  merged_ts: '2026-05-02T16:28:55Z'
 - id: M10.P1.T3
   milestone: M10
   phase: 1
   title: Marketplace SaaS contract integration with GetEntitlements and MeterUsage
     round-trip
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - integrations/aws-bedrock/control-plane/Cargo.toml
@@ -7561,16 +7561,16 @@
   agent_role: provider-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9177f657baa84d3b7e379b5a9d223871d6a4d097
+  merged_sha: 9177f657baa84d3b7e379b5a9d223871d6a4d097
+  opened_ts: '2026-05-02T16:28:55Z'
+  merged_ts: '2026-05-02T16:28:55Z'
 - id: M10.P1.T4
   milestone: M10
   phase: 1
   title: Pin region us-east-1 in the listing artifacts and document the multi-region
     deferral
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - integrations/aws-bedrock/REGIONS.md
@@ -7592,16 +7592,16 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 09d94c98ed5f70c9e3e2cd110d13943d256e5175
+  merged_sha: 09d94c98ed5f70c9e3e2cd110d13943d256e5175
+  opened_ts: '2026-05-02T16:28:55Z'
+  merged_ts: '2026-05-02T16:28:55Z'
 - id: M10.P1.T5
   milestone: M10
   phase: 1
   title: Author data-flow diagram for AWS security review (customer VPC plus control
     plane plus Bedrock)
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - integrations/aws-bedrock/diagrams/data-flow.svg
@@ -7624,10 +7624,10 @@
   agent_role: framework-ts
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9fd670f37ef8033cfcca6e90fed4435eb3ec4120
+  merged_sha: 9fd670f37ef8033cfcca6e90fed4435eb3ec4120
+  opened_ts: '2026-05-02T16:28:55Z'
+  merged_ts: '2026-05-02T16:28:55Z'
 - id: M10.P2.T1
   milestone: M10
   phase: 2
