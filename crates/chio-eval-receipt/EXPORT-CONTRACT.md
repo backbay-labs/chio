@@ -96,6 +96,23 @@ infrastructure. It can read static fixture traces and produce the same
 `EvalRunMeta` and receipt wrappers that a vivaria post-run export would
 produce.
 
+### P4 sample handoff
+
+The P4 METR sample should treat this table as the compatibility
+contract. The sample may use local JSON fixtures, but its output must
+populate the same `EvalRunMeta` fields and receipt evidence fields that
+the partner's vivaria trace post-processing job would provide:
+
+- `run_id`: partner trace export id.
+- `pipeline`: `vivaria-trace-postprocess`.
+- `pipeline_language`: `python`.
+- `scorer_name` and `scorer_version`: partner rubric metadata.
+- `model_under_eval`: partner model label.
+- `trace_id` and `sample_id`: per-receipt evidence anchors.
+
+The audit doc links this contract so P5 can show how the signed memo
+connects back to the exact export surface reviewed by the partner.
+
 ## Non-Goals
 
 - Do not edit `crates/chio-conformance/verdict_matrix/**` in P2.
