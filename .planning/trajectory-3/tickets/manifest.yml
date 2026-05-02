@@ -946,7 +946,7 @@
   milestone: M02
   phase: 0
   title: Pin M02 audit doc P0 baseline (corpus sha, scenario count, driver inventory)
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
   - .planning/trajectory-3/audits/M02-ai-lab.md
@@ -965,15 +965,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 5a3d7ee9ba3ca2c956fbf268786059e5aa11069d
+  merged_sha: 5a3d7ee9ba3ca2c956fbf268786059e5aa11069d
+  opened_ts: '2026-05-02T06:12:24Z'
+  merged_ts: '2026-05-02T06:12:24Z'
 - id: M02.P0.T2
   milestone: M02
   phase: 0
   title: Author partner-scoping 1-pager with ranked recommendation
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .planning/trajectory-3/research/m02/PARTNER-SCOPING.md
@@ -994,15 +994,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c513a1cb46c156608756eb75018fa132878c83e2
+  merged_sha: c513a1cb46c156608756eb75018fa132878c83e2
+  opened_ts: '2026-05-02T06:12:24Z'
+  merged_ts: '2026-05-02T06:12:24Z'
 - id: M02.P0.T3
   milestone: M02
   phase: 0
   title: Open three parallel outreach threads and record outreach receipts
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M02-ai-lab.md
@@ -1019,15 +1019,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 55b7c88891270b9138e7fd6421c7349e034d3c2d
+  merged_sha: 55b7c88891270b9138e7fd6421c7349e034d3c2d
+  opened_ts: '2026-05-02T06:12:24Z'
+  merged_ts: '2026-05-02T06:12:24Z'
 - id: M02.P0.T4
   milestone: M02
   phase: 0
   title: Contract one partner by end of week 1 and record acceptance criteria
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - .planning/trajectory-3/audits/M02-ai-lab.md
@@ -1046,15 +1046,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 8482b1f6e4cbdd76fd8e1c371569b3dafa467bd0
+  merged_sha: 8482b1f6e4cbdd76fd8e1c371569b3dafa467bd0
+  opened_ts: '2026-05-02T06:12:24Z'
+  merged_ts: '2026-05-02T06:12:24Z'
 - id: M02.P0.T5
   milestone: M02
   phase: 0
   title: Wave-opener stage chio-eval-receipt placeholder crate and audit cross-refs
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
   - crates/chio-eval-receipt/Cargo.toml
@@ -1075,10 +1075,10 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 2d6c8ed14683301e7b8a55de09a184573d706ede
+  merged_sha: 2d6c8ed14683301e7b8a55de09a184573d706ede
+  opened_ts: '2026-05-02T06:12:24Z'
+  merged_ts: '2026-05-02T06:12:24Z'
 - id: M02.P1.T1
   milestone: M02
   phase: 1
