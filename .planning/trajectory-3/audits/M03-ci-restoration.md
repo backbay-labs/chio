@@ -185,6 +185,15 @@ Known pre-trajectory-3 workflow targets observed during P2:
 | `chio-replay-gate` | queued on latest main, recent success on main push `2d63ff7e36ef86d929e7bc9a14119adee68017d0` | Keep in stabilization watch list |
 | `threat-model-coverage` | success on main push `2754cf28aa3fb702d26172c6a0bebc9aa9adb414` | No P2 fix required |
 
+### escalation routing
+
+M03 owns CI-infrastructure fixups found during the replay surface; M04 owns mutation and verdict-matrix regressions, M05 owns threat-coverage and attest-verify regressions, M06 owns supply-chain regressions, M07 owns mobile regressions, and M08-M10 own vendor or listing evidence regressions.
+
+No catalog-pass result exceeded the escalation cap of five surfaced
+failures. The only active fix made in P2 was the Sidecar Image
+`Dockerfile.sidecar` workspace-member copy repair, because it was a
+narrow CI packaging defect.
+
 ## 4. Closure attestations
 
 [TODO M03 milestone agent fill at P5 close:]
