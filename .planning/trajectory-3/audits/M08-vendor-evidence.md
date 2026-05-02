@@ -334,6 +334,18 @@ status, and release-artifact path confirmation:
 - @bb-connor co-signature: recorded in the release review packet.
 - Draft report status: reviewed and cleared for final publication.
 
+### 5b. Final report receipt
+
+- Final report received: 2026-05-02.
+- Final report artifact:
+  `releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+- Final report PDF hash (sha256):
+  `abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c`
+- Render check: `pdftoppm -png -r 120` produced three readable pages
+  with no clipped text or table overflow after regeneration.
+- Text extraction check: `pypdf` reported 3 pages and extracted the
+  report title from page 1.
+
 [TODO M08.P5.T4 fill at week 44.]
 
 - Final report URL:
