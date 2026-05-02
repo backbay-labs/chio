@@ -3,9 +3,9 @@
 **Trajectory:** trajectory-3
 **Milestone:** M10
 **Wave:** W3 (weeks 22-30) plus W1/W2 pre-roll (week 14 APN onboarding)
-**Status:** P0 pre-roll opened 2026-05-02; APN calendar in vendor_wait.
+**Status:** COMPLETE
 **Audit start:** 2026-05-02T10:50:00Z
-**Audit close:** <fill at P5 final ticket merge>
+**Audit close:** 2026-05-02T17:28:35Z
 
 ## 1. Audit scope
 

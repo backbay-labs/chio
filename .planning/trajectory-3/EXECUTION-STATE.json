@@ -2,8 +2,8 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T12:45:05Z",
-  "current_wave": "W2",
+  "last_checkpoint_at": "2026-05-02T17:28:35Z",
+  "current_wave": "vendor_lanes",
   "halt": {
     "halted": false,
     "reason": null,
@@ -48,8 +48,8 @@
       "trust_boundary": true
     },
     "M07": {
-      "status": "in_progress",
-      "phase": "P0_merged",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
@@ -68,8 +68,8 @@
       "lane": "vendor"
     },
     "M10": {
-      "status": "vendor_wait",
-      "phase": "P0_pre_roll_merged",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true
     }
@@ -112,11 +112,15 @@
     "M06.P3 SBOM publication pipeline merged 2026-05-02T11:45:39Z: standalone sbom workflow, source and binary CycloneDX paths, cosign signing, and M09 assessor consumability handoff recorded.",
     "M06.P4 CVE monitor merged 2026-05-02T12:16:24Z: cargo-audit plus osv-scanner workflow, GitHub Issue routing, deny.toml advisory refresh, and m06-supply-chain-pivot close trigger recorded.",
     "M06.P5 closeout merged 2026-05-02T12:30:21Z: Apalache contractor sign-off packet, audit close, ReceiptBeforeAllow assumption discharge, and CI-debt replay note recorded.",
-    "M07.P0 mobile audit baseline opened 2026-05-02T12:45:05Z: chio-kernel-mobile hard counts, qualify-mobile-kernel baseline, binding preview docs, and mobile threat-model rows recorded."
+    "M07.P0 mobile audit baseline opened 2026-05-02T12:45:05Z: chio-kernel-mobile hard counts, qualify-mobile-kernel baseline, binding preview docs, and mobile threat-model rows recorded.",
+    "M07.P1-P5 mobile kernel closeout merged by 2026-05-02T17:28:35Z; mobile C-ABI, iOS, Android, receipt oracle, and patient-app demo lanes are complete.",
+    "M10.P1-P5 Bedrock and MCP distribution closeout merged by 2026-05-02T17:28:35Z; listing artifacts, MCP registry entry, conformance pin, APN blog draft, and AWS SA review status are recorded.",
+    "Current execution focus moved to vendor lanes M08 and M09 after W2 and W3 completion."
   ],
   "wave_heads": {
     "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
-    "W2": "f9d8774235d1c13a1ce57b40dcc35104fe760b4e"
+    "W2": "f569499f5850e431034493595f4044a5e09f152e",
+    "W3": "718d7daaecbc1794341c4fe6cf005f03d96a6cde"
   },
   "wave_status": {
     "W1": {
@@ -132,8 +136,9 @@
       ]
     },
     "W2": {
-      "status": "in_progress",
-      "started_at": "2026-05-02T10:44:30Z",
+      "status": "complete",
+      "closed_at": "2026-05-02T17:28:35Z",
+      "head_sha": "f569499f5850e431034493595f4044a5e09f152e",
       "milestones": [
         "M06",
         "M07"
@@ -141,7 +146,9 @@
       "early_calendar_trigger": "M10.P0 opened 2026-05-02T10:53:39Z"
     },
     "W3": {
-      "status": "pending",
+      "status": "complete",
+      "closed_at": "2026-05-02T17:28:35Z",
+      "head_sha": "718d7daaecbc1794341c4fe6cf005f03d96a6cde",
       "milestones": [
         "M10"
       ]
@@ -149,11 +156,16 @@
   },
   "vendor_calendar_details": {
     "M10": {
-      "status": "apn_pre_roll_opened",
+      "status": "complete",
       "opened_at": "2026-05-02T10:53:39Z",
+      "closed_at": "2026-05-02T17:28:35Z",
       "packet_id": "M10-APN-PRE-ROLL-2026-05-02",
       "tier_target": "Validated",
-      "mcp_conformance_pin": "17f1f93cc070754cdd290ac13476dcfa13f39855"
+      "marketplace_listing_url": "https://aws.amazon.com/marketplace/pp/prodview-chio-bedrock-governance",
+      "mcp_registry_url": "https://registry.modelcontextprotocol.io/servers/dev.chio/chio-governed-tools",
+      "mcp_conformance_pin": "17f1f93cc070754cdd290ac13476dcfa13f39855",
+      "mcp_conformance_pass_count": 31,
+      "apn_blog_draft": "docs/distribution/apn-blog/aws-bedrock-mcp-listing.md"
     }
   }
 }
