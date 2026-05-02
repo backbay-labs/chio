@@ -13,6 +13,7 @@ name = "chio_eval_receipt"
 path = "src/lib.rs"
 
 [dependencies]
+sha2.workspace = true
 
 [lints]
 workspace = true

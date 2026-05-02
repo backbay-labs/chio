@@ -7,6 +7,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod export;
+
+pub use export::{
+    export_scenario_run, Bundle, Corpus, EvalRunMeta, EvalRunMetaParts, ExportError, Producer,
+    Receipt, ReceiptEntry, ReceiptEvidence, ReceiptParts, VERDICT_MATRIX_CORPUS_SHA256,
+    VERDICT_MATRIX_MANIFEST_PATH, VERDICT_MATRIX_SCENARIO_COUNT,
+};
+
 /// Schema id reserved for the eval-report receipt bundle.
 pub const BUNDLE_SCHEMA_ID: &str = "chio.eval-report.bundle.v1";
 
