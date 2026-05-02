@@ -114,6 +114,15 @@ canonical example links back to the supported web-backend flow.
 - Qualification lanes and required evidence:
   [docs/release/QUALIFICATION.md](docs/release/QUALIFICATION.md)
 
+## External Evidence
+
+- AI lab partner eval-report memo:
+  [.planning/trajectory-3/audits/M02-memo.md](.planning/trajectory-3/audits/M02-memo.md)
+- Partner ingest sample:
+  [examples/eval-receipt-ingest/metr/README.md](examples/eval-receipt-ingest/metr/README.md)
+- M02 audit closure:
+  [.planning/trajectory-3/audits/M02-ai-lab.md](.planning/trajectory-3/audits/M02-ai-lab.md)
+
 ## More
 
 - Install options: [docs/install/README.md](docs/install/README.md)
