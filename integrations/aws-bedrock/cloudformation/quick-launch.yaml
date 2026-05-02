@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Chio AWS Bedrock integration quick launch for us-east-1"
+
+Parameters:
+  ChioControlPlaneEndpoint:
+    Type: String
+    Description: "HTTPS endpoint for the Chio control plane tenant gateway."
+  ChioTenantId:
+    Type: String
+    Description: "Tenant identifier issued by Chio during Marketplace onboarding."
+  ExternalId:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: "External ID supplied by Chio for cross-account role assumption."
+  ChioControlPlaneAwsAccountId:
+    Type: String
+    AllowedPattern: "^[0-9]{12}$"
+    Description: "AWS account ID that hosts the Chio control plane."
+
+Mappings:
+  RegionScope:
+    us-east-1:
+      BedrockRuntimeAllowed: "true"
+
+Conditions:
+  IsSupportedRegion: !Equals [!Ref "AWS::Region", "us-east-1"]
+
+Resources:
+  ChioBedrockIntegrationRole:
+    Type: AWS::IAM::Role
+    Condition: IsSupportedRegion
+    Properties:
+      RoleName: !Sub "chio-bedrock-${ChioTenantId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${ChioControlPlaneAwsAccountId}:root"
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref ExternalId
+      Policies:
+        - PolicyName: ChioBedrockRuntimeMinimum
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "bedrock:InvokeModel"
+                  - "bedrock:InvokeModelWithResponseStream"
+                Resource:
+                  - !Sub "arn:aws:bedrock:us-east-1:${AWS::AccountId}:foundation-model/*"
+              - Effect: Allow
+                Action:
+                  - "sts:GetCallerIdentity"
+                Resource: "*"
+
+  ChioControlPlaneEndpointParameter:
+    Type: AWS::SSM::Parameter
+    Condition: IsSupportedRegion
+    Properties:
+      Name: !Sub "/chio/bedrock/${ChioTenantId}/control-plane-endpoint"
+      Type: String
+      Value: !Ref ChioControlPlaneEndpoint
+      Description: "Chio control-plane endpoint used by the Bedrock integration."
+
+Outputs:
+  SupportedRegion:
+    Description: "The trajectory-3 listing region."
+    Value: "us-east-1"
+  IntegrationRoleArn:
+    Condition: IsSupportedRegion
+    Description: "IAM role assumed by the Chio control plane."
+    Value: !GetAtt ChioBedrockIntegrationRole.Arn
+  ControlPlaneEndpointParameter:
+    Condition: IsSupportedRegion
+    Description: "SSM parameter containing the Chio control-plane endpoint."
+    Value: !Ref ChioControlPlaneEndpointParameter
