@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T11:21:06Z",
+  "last_checkpoint_at": "2026-05-02T11:35:35Z",
   "current_wave": "W2",
   "halt": {
     "halted": false,
@@ -43,7 +43,7 @@
     },
     "M06": {
       "status": "in_progress",
-      "phase": "P1_merged",
+      "phase": "P2_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
@@ -107,11 +107,12 @@
     "W1 closeout checkpoint 2026-05-02T10:44:30Z: M01-M05 P5 merged, manifest regenerated, current_wave advanced to W2.",
     "M10.P0 APN pre-roll opened 2026-05-02T10:53:39Z; APN packet M10-APN-PRE-ROLL-2026-05-02 and MCP conformance pin recorded.",
     "M06.P0 audit baseline opened 2026-05-02T11:06:35Z; formal counts, cargo-vet exemption rows, top-50 dependency centrality, contractor fallback record, and cargo-audit baseline recorded.",
-    "M06.P1 Apalache subset merged 2026-05-02T11:21:06Z: Common.tla bounds, four invariant specs/configs, apalache-nightly workflow, and mapping rows recorded."
+    "M06.P1 Apalache subset merged 2026-05-02T11:21:06Z: Common.tla bounds, four invariant specs/configs, apalache-nightly workflow, and mapping rows recorded.",
+    "M06.P2 cargo-vet expansion merged 2026-05-02T11:35:35Z: first-party cert rows 179, exemption blocks 836, standalone cargo-vet workflow added, and m06-revocation-oracle-pivot close trigger recorded."
   ],
   "wave_heads": {
     "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
-    "W2": "40622002e48da733f348b65b1552d6dd3f17d018"
+    "W2": "f284bdc75ad4509daf94e6524de1e33533992fb6"
   },
   "wave_status": {
     "W1": {
