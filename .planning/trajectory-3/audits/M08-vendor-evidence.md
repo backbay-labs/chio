@@ -242,6 +242,22 @@ sign-off receipt was required. The Medium sign-off above is retained as
 release evidence because M08-PF-001 was the only finding with protocol
 wording remediation.
 
+### 4e. Mid-remediation checkpoint
+
+Mid-remediation checkpoint recorded at week 35:
+
+- Critical / High queue: empty. No halt-15 or High-finding SLA work is
+  active.
+- Medium queue: M08-PF-001 remediated in `spec/PROTOCOL.md`; vendor
+  sign-off receipt M08-P4-SIGNOFF-001 accepted.
+- Low / Info queue: M08-PF-002 and M08-PF-003 remain documented-only
+  report appendix items, with no code or protocol semantics change
+  needed.
+- Calendar health: remediation remains on the week-40 P4-close target.
+  No vendor calendar slip beyond the 25% halt-13 threshold is present.
+- Release evidence: Section 4 carries PR cross-reference placeholders
+  that will be pinned to the phase PR during P4 closeout.
+
 ### 4a. Halt-15 (Critical CVE) hot-fix template
 
 Pre-staged at M08.P3.T3 and ready for immediate use if a Critical
