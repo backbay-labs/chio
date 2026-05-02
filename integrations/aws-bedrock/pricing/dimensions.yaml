@@ -1,0 +1,20 @@
+product: chio-bedrock
+listing_type: aws_marketplace_saas_contract
+currency: USD
+locked_at: "2026-05-02"
+dimensions:
+  - id: tenant_base
+    name: "Tenant base contract"
+    unit: tenant
+    billing_term: annual
+    registration_status: partner_central_uploaded
+    description: "Annual governed Bedrock tenant base entitlement."
+  - id: bedrock_receipt_overage
+    name: "Bedrock receipt overage"
+    unit: receipt
+    billing_term: metered_overage
+    registration_status: partner_central_uploaded
+    description: "Metered receipt overage beyond the tenant base contract."
+notes:
+  - "Pricing model was locked at M10.P0.T5 and must not change during review."
+  - "The control-plane crate maps receipt overage to MeterUsage or BatchMeterUsage."

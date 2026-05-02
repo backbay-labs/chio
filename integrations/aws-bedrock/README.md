@@ -1,46 +1,61 @@
 # Chio AWS Bedrock Integration
 
-This package contains the trajectory-3 AWS Bedrock listing artifacts for
-the Chio control plane. It wraps the existing
+Chio for AWS Bedrock gives agent teams a governed Bedrock path without
+moving the Chio control plane into the customer account. The customer uses
+the Quick Launch template to create a least-privilege integration role in
+`us-east-1`. Chio checks the AWS Marketplace SaaS entitlement, assumes the
+role with the tenant-bound external ID, mediates each Bedrock Converse
+request through Chio policy and guards, signs a receipt, and then reports
+receipt overage through Marketplace metering.
+
+The listing is scoped to AWS Marketplace SaaS contract in the AI Agents
+and Tools category. It wraps the existing
 `crates/chio-bedrock-converse-adapter` Rust substrate for distribution and
-keeps the adapter source unchanged.
+keeps the adapter source unchanged. The listed region is `us-east-1` only;
+multi-region support is recorded as a trajectory-4 candidate in
+`REGIONS.md`.
 
-## Scope
+## Quick Launch
 
-- Listing type: AWS Marketplace SaaS contract in the AI Agents and Tools
-  category.
-- Listed region: `us-east-1`.
-- Bedrock runtime API: Converse and ConverseStream through the existing
-  Chio Bedrock adapter.
-- Marketplace APIs: `GetEntitlements` during tenant onboarding and
-  `MeterUsage` or `BatchMeterUsage` for receipt overage.
-- Receipt boundary: every Bedrock request is mediated by Chio and recorded
-  as a Chio receipt before usage is metered.
+Deploy `cloudformation/quick-launch.yaml` in the customer AWS account:
 
-Multi-region support is intentionally out of scope for trajectory-3. The
-deferral is recorded in `REGIONS.md`.
+1. Confirm the stack region is `us-east-1`.
+2. Provide the Chio tenant ID, Chio control-plane HTTPS endpoint, Chio
+   seller account principal ARN, and tenant-specific external ID.
+3. Review the role policy in `IAM_POLICY.md`.
+4. Launch the stack and send the output role ARN to the Chio onboarding
+   operator.
+5. Chio verifies `sts:GetCallerIdentity`, binds the IAM principal to the
+   tenant, checks `GetEntitlements`, and enables governed Bedrock traffic.
 
-## Contents
+The template stores the Chio control-plane endpoint in SSM Parameter Store
+and creates the integration role used by Chio. It does not grant
+Marketplace entitlement or metering permissions in the customer account;
+those APIs run from the Chio seller account.
 
-- `cloudformation/quick-launch.yaml`: customer account bootstrap template
-  for the Chio Bedrock integration role and endpoint wiring.
-- `IAM_POLICY.md`: minimum IAM policy for the customer-side integration
-  role.
-- `REGIONS.md`: region pin and trajectory-4 deferral.
-- `diagrams/`: data-flow, IAM principal trail, and AWS security-review
-  diagram sources.
-- `control-plane/`: Rust control-plane crate for Marketplace entitlement
-  and metering contract logic.
+## Listing artifacts
 
-## Operator flow
+- `cloudformation/quick-launch.yaml`: Quick Launch template for the
+  customer integration role and endpoint parameter.
+- `cloudformation/parameters.json`: review-time parameter example.
+- `IAM_POLICY.md` and `iam/customer-attach.json`: minimum customer-attach
+  permissions.
+- `pricing/dimensions.yaml` and `pricing/contract-template.md`: locked
+  per-tenant base contract plus receipt-overage dimension.
+- `SUPPORT.md`: support contact, SLA, and escalation terms.
+- `EULA.md` and `TERMS.md`: Standard Contract for AWS Marketplace posture
+  and Chio addenda.
+- `diagrams/`: data-flow, architecture, and security-review intake
+  evidence.
+- `control-plane/`: Marketplace entitlement and metering contract logic.
 
-1. Customer deploys the Quick Launch template in `us-east-1`.
-2. The template creates the Chio integration role and stores the Chio
-   control-plane endpoint parameter.
-3. Chio checks Marketplace entitlements for the tenant before onboarding.
-4. The Bedrock adapter mediates model calls and emits Chio receipts.
-5. Receipt overage is reported through Marketplace metering APIs.
+## Runtime boundary
 
-Fail-closed rule: if entitlement lookup, receipt issuance, or metering
-preparation fails, the control plane denies the tenant action before any
-unmetered Bedrock traffic is released.
+Every Bedrock request must cross Chio first. Chio validates the tenant's
+Marketplace entitlement, evaluates policy, runs guards, signs the receipt,
+and only then invokes Bedrock through the customer role. If entitlement
+lookup, IAM principal binding, guard evaluation, receipt issuance, or
+metering preparation fails, Chio denies the request before unmetered
+Bedrock traffic is released.
+
+Support: `support@chio.dev`. Security contact: `security@chio.dev`.

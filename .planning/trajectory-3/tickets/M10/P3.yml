@@ -21,7 +21,7 @@
   milestone: M10
   phase: 3
   title: Customer-facing README at integrations/aws-bedrock/README.md (freeze opener)
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - integrations/aws-bedrock/README.md
@@ -41,16 +41,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e08de6eaed541a47d46ff5262076b68f39a83dc5
+  merged_sha: e08de6eaed541a47d46ff5262076b68f39a83dc5
+  opened_ts: '2026-05-02T16:58:55Z'
+  merged_ts: '2026-05-02T16:58:55Z'
 
 - id: M10.P3.T2
   milestone: M10
   phase: 3
   title: Bundle CloudFormation Quick Launch template with the listing (SAM-validated)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - integrations/aws-bedrock/cloudformation/quick-launch.yaml
@@ -70,16 +70,16 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b2294655f70d7854f548764a6697b23bc74b650a
+  merged_sha: b2294655f70d7854f548764a6697b23bc74b650a
+  opened_ts: '2026-05-02T16:58:55Z'
+  merged_ts: '2026-05-02T16:58:55Z'
 
 - id: M10.P3.T3
   milestone: M10
   phase: 3
   title: Minimum IAM policy doc (least-privilege; customer-attach shape)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - integrations/aws-bedrock/IAM_POLICY.md
@@ -98,16 +98,16 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b3ef794db8b01b1d61dea3106ab3fbff20005c84
+  merged_sha: b3ef794db8b01b1d61dea3106ab3fbff20005c84
+  opened_ts: '2026-05-02T16:58:55Z'
+  merged_ts: '2026-05-02T16:58:55Z'
 
 - id: M10.P3.T4
   milestone: M10
   phase: 3
   title: Pricing model registration (per-tenant base plus receipt overage) uploaded to Partner Central
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - integrations/aws-bedrock/pricing/dimensions.yaml
@@ -127,16 +127,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 86db731ebfc7a634e06f1bdf6963bfb01dab012b
+  merged_sha: 86db731ebfc7a634e06f1bdf6963bfb01dab012b
+  opened_ts: '2026-05-02T16:58:55Z'
+  merged_ts: '2026-05-02T16:58:55Z'
 
 - id: M10.P3.T5
   milestone: M10
   phase: 3
   title: Support contact and SLA at integrations/aws-bedrock/SUPPORT.md plus Partner Central support page
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - integrations/aws-bedrock/SUPPORT.md
@@ -153,16 +153,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 933fa4e751d897c707d70e6c2ffffdf329e3aa3d
+  merged_sha: 933fa4e751d897c707d70e6c2ffffdf329e3aa3d
+  opened_ts: '2026-05-02T16:58:55Z'
+  merged_ts: '2026-05-02T16:58:55Z'
 
 - id: M10.P3.T6
   milestone: M10
   phase: 3
   title: Data-flow plus architecture diagrams revised for AWS security-review intake
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - integrations/aws-bedrock/diagrams/architecture.svg
@@ -184,16 +184,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 5f20856a3edbeff7d6bcafd0d1fa29cc60e43826
+  merged_sha: 5f20856a3edbeff7d6bcafd0d1fa29cc60e43826
+  opened_ts: '2026-05-02T16:58:55Z'
+  merged_ts: '2026-05-02T16:58:55Z'
 
 - id: M10.P3.T7
   milestone: M10
   phase: 3
   title: EULA plus terms (legal-reviewed) at integrations/aws-bedrock/EULA.md
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - integrations/aws-bedrock/EULA.md
@@ -211,7 +211,7 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 1af1e597ff7ba068af2b7dd4d71eb38a7154f51f
+  merged_sha: 1af1e597ff7ba068af2b7dd4d71eb38a7154f51f
+  opened_ts: '2026-05-02T16:58:55Z'
+  merged_ts: '2026-05-02T16:58:55Z'

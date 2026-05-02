@@ -15,7 +15,7 @@ control plane in `us-east-1`.
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "arn:aws:bedrock:us-east-1:${AWS::AccountId}:foundation-model/*"
+      "Resource": "arn:aws:bedrock:us-east-1::foundation-model/*"
     },
     {
       "Sid": "BindCallerIdentityForReceipts",
