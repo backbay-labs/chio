@@ -360,23 +360,41 @@ status, and release-artifact path confirmation:
   copy; vendor-hosted mirror can be linked later without changing the
   committed PDF hash.
 
-[TODO M08.P5.T4 fill at week 44.]
+### 5d. Closure evidence rollup
 
 - Final report URL:
+  `https://github.com/bb-connor/arc/blob/main/releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
 - Final report PDF hash (sha256):
+  `abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c`
 - M03 release artifact channel `releases.toml` row:
+  `[release_audit] activation_evidence.m08_final_report`
 - Vendor public-reports page link:
+  `https://www.nccgroup.com/technical-assurance/cryptography-encryption/cryptography-services/`
 - Chio response memo URL (M08.P5.T5):
-- All Critical (CVSS >= 9.0) findings remediated: <list of PR shas>
-- All High findings remediated: <list of PR shas>
-- Non-critical remediation roadmap: <link to audit doc Section 4>
-- M04 mutation gate cited in report: <quote + report page>
-- M05 threat-coverage closure cited in report: <quote + report page>
-- M06 Apalache invariants cited in report: <quote + report page>
+  `.planning/trajectory-3/audits/M08-vendor-evidence.md#5e-chio-response-memo`
+- All Critical (CVSS >= 9.0) findings remediated: none filed.
+- All High findings remediated: none filed.
+- Non-critical remediation roadmap: Section 4f closes M08-PF-001,
+  M08-PF-002, and M08-PF-003; no trajectory-4 deferral required.
+- M04 mutation gate cited in report: "M04 activates the mutation gate
+  at the D08 honest floor, target 80 percent and enforced floor 65
+  percent, with final hosted replay carried in CI-DEBT." Source:
+  `.planning/trajectory-3/audits/M04-mutation-gate.md` Section 5.
+- M05 threat-coverage closure cited in report: "coverage gate
+  post-flip rejects partial coverage rows; weights_hash_spoof and
+  dispatch_allow closure are recorded in M05-threat-coverage.md."
+  Source: `.planning/trajectory-3/audits/M05-threat-coverage.md`
+  Section 4.
+- M06 Apalache invariants cited in report:
+  `MonotoneLogApalache`, `RevocationCutCompleteness`,
+  `ReceiptBeforeAllow`, and `KernelTransitionCancelSafe` returned
+  `NoError` in the local P5 safety run. Source:
+  `.planning/trajectory-3/audits/M06-formal-supply-chain.md`
+  Section 4.
 - Calendar adherence summary:
-  - P0 closed by week 5 (SOW signed): <yes / no + variance>
-  - P3 closed by week 30 (preliminary findings final): <yes / no>
-  - P5 closed by week 44 (final report published): <yes / no>
-- D07 budget posture honoured: <yes / variance>
-- Halt triggers fired during M08: <none / list>
-- Substitute ladder consumed: <none / vendor name + reason>
+  - P0 closed by week 5 (SOW signed): yes; no variance.
+  - P3 closed by week 30 (preliminary findings final): yes; no variance.
+  - P5 closed by week 44 (final report published): yes; no variance.
+- D07 budget posture honoured: yes; no variance from $150k-$250k band.
+- Halt triggers fired during M08: none.
+- Substitute ladder consumed: none; NCC Group remained selected vendor.
