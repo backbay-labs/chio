@@ -59,14 +59,15 @@ freezes:
       - spec/security/chio-threat-model.v1.json
       - crates/chio-conformance/tests/threats/**
       - crates/chio-attest-verify/src/policy.rs
-      - crates/chio-attest-verify/src/dispatch_allow.rs
+      - crates/chio-kernel/benches/dispatch_allow.rs
+      - crates/chio-kernel/benches/dispatch_allow_dhat.rs
       - docs/security/threat-coverage.md
     start_trigger: M05.P1.T1
     end_trigger: M05.P4.T3
     trust_boundary: true
     guard_check: m05-freeze-guard
     bypass_lane: "hotfix/* + [trajectory-3]"
-    rationale: "weights_hash_spoof partial->passing + dispatch_allow placeholder eviction land as one trust-boundary closure."
+    rationale: "weights_hash_spoof partial->passing + dispatch_allow placeholder eviction land as one trust-boundary closure; P0 reconciled the live placeholders to chio-kernel benches."
 
   - id: m06-supply-chain-pivot
     milestone: M06

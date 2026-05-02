@@ -3,8 +3,8 @@
 **Trajectory:** trajectory-3
 **Milestone:** M05
 **Wave:** W1
-**Status:** TEMPLATE
-**Audit start:** <fill at P0 wave-opener merge>
+**Status:** P0 baseline pinned 2026-05-02; phases P1-P5 pending.
+**Audit start:** 2026-05-02 (P0 baseline merge target)
 **Audit close:** <fill at P5 final ticket merge>
 
 ## 1. Audit scope
@@ -38,6 +38,7 @@ Reproduce by running the named command in the worktree at
   the dispatch_allow benches and is not a JSON state)
 - `coverage_state: pending` row count: 11
   (`python3 -c "import json; d=json.load(open('spec/security/chio-threat-model.v1.json')); print(sum(1 for t in d['threats'] if t.get('coverage_state')=='pending'))"`)
+- coverage_state: pending. row count: 11 (literal P0 gate marker)
 - `coverage_state: covered` row count: 6
 - Per-threat stub files calling `unimplemented!()`: 11 of 17
   (`grep -l 'unimplemented!' crates/chio-conformance/tests/threats/*.rs | wc -l`)
@@ -46,6 +47,7 @@ Reproduce by running the named command in the worktree at
   target, not orphans)
 - `spec/security/coverage.yaml` rows: 3 (`passkey_credential_theft`,
   `audience_confusion`, `weights_hash_spoof`)
+- `spec/security/coverage.yaml` partial rows: 1 (`weights_hash_spoof`)
 - coverage.yaml-vs-JSON divergence: 3 rows (all three YAML rows
   disagree with the JSON state)
 - `crates/chio-kernel/benches/dispatch_allow*.rs`: 2 placeholder
@@ -71,13 +73,30 @@ Reproduce by running the named command in the worktree at
   and `crates/chio-kernel/benches/dispatch_allow_dhat.rs`.
 - Recommended: amend freeze path_globs to point at the chio-kernel
   benches.
-- Decision: <fill at P0.T1 merge>
+- Decision: amend the freeze to the live chio-kernel benches. The
+  path-of-record for M05 P2/P3 is
+  `crates/chio-kernel/benches/dispatch_allow.rs` and
+  `crates/chio-kernel/benches/dispatch_allow_dhat.rs`; no
+  `crates/chio-attest-verify/src/dispatch_allow.rs` file is created.
+  This keeps the implementation aligned with the existing M06
+  placeholder family and avoids inventing a new module boundary.
 
 ### 2.3 coverage.yaml downstream consumers (P0.T1 grep)
 
-<fill at P0.T1 merge with the list of files referencing
-`spec/security/coverage.yaml` across `.planning/trajectory-2/audits/`,
-`.planning/trajectory-3/audits/`, and `docs/security/`>
+P0 grep command:
+
+`rg -n "spec/security/coverage.yaml|coverage.yaml" .planning/trajectory-2/audits .planning/trajectory-3/audits docs/security`
+
+Consumers found:
+
+- `.planning/trajectory-2/audits/M03-AUDIT.md`: line 146 references
+  the `spec/security/coverage.yaml` file shape and requires the M10
+  threat IDs to be marked in that companion surface.
+- `.planning/trajectory-3/audits/M05-threat-coverage.md`: this audit
+  doc is the M05 source of record for the YAML-vs-JSON reconciliation.
+- No `docs/security/` consumer currently references
+  `spec/security/coverage.yaml`; `docs/security/threat-coverage.md`
+  is regenerated from the JSON source.
 
 ## 3. Closure log
 
@@ -102,8 +121,14 @@ the placeholder bracketed text is the cue to the IMPLEMENT agent.)
 
 ### 3.1 Freeze amendment record
 
-<fill at P0.T1 merge: SHA + diff URL of the
-`m05-threat-coverage-pivot.path_globs` amendment>
+P0.T1 amends `m05-threat-coverage-pivot.path_globs` in
+`.planning/trajectory-3/freezes.yml` by replacing the nonexistent
+`crates/chio-attest-verify/src/dispatch_allow.rs` path with:
+
+- `crates/chio-kernel/benches/dispatch_allow.rs`
+- `crates/chio-kernel/benches/dispatch_allow_dhat.rs`
+
+Commit SHA and PR URL are recorded in the M05.P0 ticket stamp.
 
 ### 3.2 dispatch_allow real-check measurements
 
