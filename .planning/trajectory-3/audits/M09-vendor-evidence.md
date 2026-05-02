@@ -45,6 +45,8 @@ Sources checked 2026-05-02:
   v11.6 submissions are disabled after 2026-06-30.
 - HITRUST i1 controls in scope: 182 controls in scope, per HITRUST i1
   data sheet.
+- P0 CSF version pin: CSF v11.7 with 182 controls in scope. Reconcile
+  against the assessor-exported MyCSF object before P1 opens.
 - HITRUST-authorized assessor shortlist (primary):
   - Coalfire
   - A-LIGN

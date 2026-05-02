@@ -32,6 +32,13 @@ scope memo says otherwise.
 - Evidence portal: MyCSF or assessor-designated equivalent.
 - Assessor: to be selected during M09.P0.
 
+## CSF version pin
+
+P0 pins CSF v11.7 as the active target for new i1 assessment creation
+on 2026-05-02. The assessment package treats 182 controls in scope as
+the P0 control count until the selected assessor creates the MyCSF
+object and returns the authoritative export.
+
 ## Boundary summary
 
 In scope:
