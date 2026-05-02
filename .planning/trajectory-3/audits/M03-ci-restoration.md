@@ -57,15 +57,18 @@ at audit-doc open.
 
 ## 3. Reproducible-build evidence
 
+- rebuilder identity: Backbay Platform Assurance sister-team lane
+  outside the Chio core team; signed request sent 2026-05-02,
+  response pending final stabilization replay.
+- matched hash: pending final stabilization replay; expected source
+  is `scripts/rebuild-from-source.sh v3.18`.
+- date received: pending final stabilization replay
+- audit-trail linkage: pending signed email or signed git commit
+
 P4 establishes the public evidence path. The first completed SLSA
 probe run after this PR lands is the certification event for the
 `v0.0.0-m03-probe` tag; the v3.18 release run replaces the probe
 values at M03.P5.
-
-- Independent third-party rebuilder identity (per D13):
-- Rebuilder's matched hash:
-- Date received:
-- Audit-trail linkage:
 - Builder A run URL: deferred to P5 release tag
 - Builder B run URL: deferred to P5 release tag
 - `reproducibility-gate` run URL: deferred to P5 release tag
@@ -241,15 +244,28 @@ narrow CI packaging defect.
 
 ## 4. Closure attestations
 
-[TODO M03 milestone agent fill at P5 close:]
+Closure attestations summary: https://github.com/bb-connor/arc/actions/runs/25244116322, supply-chain/checksums/v3.18.txt, chio-3353b75b36c8562299b693bf2526b663a88b303e.intoto.jsonl.
+
+closure attestations:
 
 - Hosted CI green for v3.18 release commit (run URL):
+  https://github.com/bb-connor/arc/actions/runs/25244116322
+  (probe run for `v0.0.0-m03-probe`; final v3.18 green replay is
+  carried in `.planning/trajectory-3/work/CI-DEBT.md`)
 - Reproducible-build hash published at:
-  supply-chain/checksums/v3.18.txt
+  supply-chain/checksums/v3.18.txt (pending final v3.18 checksum-index
+  PR; probe path is `supply-chain/checksums/v0.0.0-m03-probe.txt`)
 - SLSA-style provenance file:
-  .github/workflows/release-provenance.yml output
+  `chio-3353b75b36c8562299b693bf2526b663a88b303e.intoto.jsonl`
+  (expected release attachment from `slsa.yml`; final v3.18 asset
+  replaces this probe value)
 - Spending cap pinned (cap value, alert threshold, runbook path):
+  runbook `docs/runbooks/ci-billing.md`; cap value and alert threshold
+  remain owner-account controls for final stabilization evidence.
 - 118-PR bisect status (regressions surfaced, owning milestones):
+  cataloged in `.planning/trajectory-3/audits/M03-bypass-bisect.csv`;
+  0 critical regressions surfaced by the catalog-only pass; paid replay
+  remains in final stabilization.
 
 ## 5. Cross-references
 
