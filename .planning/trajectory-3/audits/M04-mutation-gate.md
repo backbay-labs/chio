@@ -172,6 +172,24 @@ Hosted observation capture for final stabilization:
 - verdict-matrix-nightly: verdict_matrix nightly run url 1: https://github.com/bb-connor/arc/actions/runs/25247640521 (PR #464 verdict-matrix run queued at capture; final hosted-green replay deferred to CI-DEBT).
 - verdict-matrix-nightly: verdict_matrix nightly run url 2: https://github.com/bb-connor/arc/actions/runs/25247650892 (post-merge verdict-matrix run queued at capture; final hosted-green replay deferred to CI-DEBT).
 
+## 3.2. P4 required driver flip evidence
+
+P4 makes the Python SDK and Go HTTP SDK verdict drivers load-bearing in
+`.github/workflows/verdict-matrix.yml`. The required job depends on the
+Rust kernel reference job, verifies both manifest driver sections are
+`status = "active"`, and runs the local driver gates below:
+
+| Ticket | Surface | Commit | Required gate |
+|--------|---------|--------|---------------|
+| M04.P4.T1 | `.github/workflows/verdict-matrix.yml` | `<fill at ticket closeout>` | `python -m pytest tests/test_verdict_matrix.py -q`; `go test -run VerdictMatrix ./...` |
+| M04.P4.T2 | `docs/conformance/verdict-matrix.md` | `<fill at ticket closeout>` | docs required-driver list includes `python-sdk` and `go-http-sdk` |
+
+Hosted CI completion remains deferred under the trajectory-3 steering
+update. P4 records the admin-merged PR and skipped hosted wait in
+`.planning/trajectory-3/work/CI-DEBT.md`; P5 and final stabilization
+must replay the verdict-matrix workflow to replace this queued evidence
+with hosted-green run URLs.
+
 ## 4. Honest-threshold contingency record (D08)
 
 P3.T1 flips the mutation gate to blocking semantics with the D08
