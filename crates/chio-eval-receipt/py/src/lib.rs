@@ -1,3 +1,5 @@
+#![allow(clippy::useless_conversion)]
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -8,6 +10,7 @@ fn verifier_ready() -> bool {
 }
 
 /// Verify a bundle JSON string and return a compact summary.
+#[allow(clippy::useless_conversion)]
 #[pyfunction]
 fn verify_bundle_json(bundle_json: &str) -> PyResult<String> {
     let verified = chio_eval_receipt::verify_bundle(bundle_json)
