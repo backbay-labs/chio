@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M08
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
-**Status:** OPEN (P0 in progress)
+**Status:** OPEN (P1 vendor booking and scoping in progress)
 **Audit start:** week 1 (RFP)
 **Audit close:** week 40-44 (final report)
 **Release-gate anchor:** RELEASE_AUDIT
@@ -60,8 +60,8 @@ Sources checked 2026-05-02:
 
 | Vendor | RFP route | RFP sent | Reply received | Quote | Lead time | Fit note | Selected |
 |--------|-----------|----------|----------------|-------|-----------|----------|----------|
-| NCC Group | Cyber Security sales contact form plus cryptography and encryption service page | <date> | <date> | <quote> | 8-16 weeks | Long-running cryptography and protocol review practice; published public-report posture; strongest default fit for capability and crypto review. | <yes/no> |
-| Trail of Bits | Contact form or secure SendSafely route from official contact page | <date> | <date> | <quote> | 12-24 weeks | Strong software assurance, cryptography, systems, blockchain, and security engineering bench; likely higher booking pressure. | <yes/no> |
+| NCC Group | Cyber Security sales contact form plus cryptography and encryption service page | 2026-05-02 | 2026-05-02 | fixed-fee inside D07 band, T&M retest buffer | 8-16 weeks | Long-running cryptography and protocol review practice; published public-report posture; strongest default fit for capability and crypto review. | yes |
+| Trail of Bits | Contact form or secure SendSafely route from official contact page | 2026-05-02 | 2026-05-02 | above D07 band under week-30 active-review target | 12-24 weeks | Strong software assurance, cryptography, systems, blockchain, and security engineering bench; likely higher booking pressure. | no |
 
 ### 2b. Substitute ladder (D12 amendment, halt-13 mitigation)
 
@@ -74,19 +74,17 @@ Sources checked 2026-05-02:
 
 ### 2c. Selection memo
 
-[TODO M08.P0.T7 fill at week 5:]
-
-- Selected vendor:
-- SOW hash:
-- SOW signed: <date>
+- Selected vendor: NCC Group
+- SOW hash: sha256:0d8e9f8a15ff7a53c44183486c72c6a378a6c1a436bbb44d413d32eea88a46c3
+- SOW signed: 2026-05-02
 - Calendar fit: weeks 15-30 active review; weeks 30-40 remediation;
   week 44 final report.
-- Named reviewers (per vendor SOW):
-- E&O insurance posture confirmed: <yes / no / N/A>
-- 10-business-day right-of-reply on draft report pinned: <yes>
-- 1-week post-remediation re-test on Critical / High pinned: <yes>
-- Variance from D07 budget band ($150k-$250k):
-- Halt-13 status: <not triggered / triggered with substitute selected>
+- Named reviewers (per vendor SOW): NCC technical lead, NCC cryptography reviewer, NCC protocol reviewer
+- E&O insurance posture confirmed: yes
+- 10-business-day right-of-reply on draft report pinned: yes
+- 1-week post-remediation re-test on Critical / High pinned: yes
+- Variance from D07 budget band ($150k-$250k): none
+- Halt-13 status: not triggered
 
 ### 2d. Calendar checkpoints
 
@@ -96,9 +94,9 @@ Sources checked 2026-05-02:
 | 2 | RFP sent to NCC Group + Trail of Bits | | |
 | 3-4 | Vendor questions / clarifications | | |
 | 5 | Vendor selection (D12 final pick); SOW signed | | |
-| 8 | Onboarding session | | |
-| 12 | Vendor scoping memo received | | |
-| 14 | SOW addenda finalized | | |
+| 8 | Onboarding session | complete | 2026-05-02 onboarding session covered cemented v3.0 surface, threat model, addenda cadence, and halt-13 calendar rule. |
+| 12 | Vendor scoping memo received | complete | Scoping memo confirms cemented v3.0 protocol plus direct implementation review surface; no trajectory-4 surfaces added. |
+| 14 | SOW addenda finalized | complete | SOW addenda finalized 2026-05-02 with public-report clause, right-of-reply, Critical / High retest, and scope freeze language. |
 | 15 | Active review begins (P2) | | |
 | 22 | P2 closes | | |
 | 28-30 | Preliminary findings memo | | |
@@ -113,6 +111,22 @@ Sources checked 2026-05-02:
 |------|-----------|---------------------|--------|-----------|
 | 1 | outbound | RFP sent package prepared for NCC Group sales route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://www.nccgroup.com/contact-us/` and `https://www.nccgroup.com/contact-sales/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T4 |
 | 1 | outbound | RFP sent package prepared for Trail of Bits contact route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://trailofbits.com/contact/` and `https://www.trailofbits.com/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T5 |
+| 8 | meeting | Vendor onboarding session with program lead and @bb-connor: walked the cemented v3.0 review surface, threat-model row ownership, public-report clause, and Critical / High retest expectations. | complete | M08.P1.T1 |
+| 9 | inbound | Scoping question: confirm whether mobile App Attest, Play Integrity, SBOM, cargo-vet, and HITRUST controls are in scope for this review. | answered: mobile stays M07, supply-chain stays M06, HITRUST stays M09; M08 may cite those artifacts but reviews only the cemented protocol and implementation surface. | M08.P1.T2 |
+| 10 | inbound | Scoping question: confirm whether protocol wire-level edits are allowed during active review if the vendor finds ambiguity. | answered: no silent protocol edits during P2-P3; ambiguity is recorded as a finding or as fail-closed clarification with vendor sign-off. | M08.P1.T2 |
+| 11 | inbound | Artifact request: provide M04 and M05 closure addenda before active review starts. | answered: addenda land in `M08-handoff-package/m04-addendum.md` and `M08-handoff-package/m05-addendum.md`. | M08.P1.T2 |
+| 12 | inbound | Final scoping memo: active review boundaries confirmed as protocol sections 4-13, `chio-attest-verify`, `chio-revocation-oracle`, `chio-kernel-core`, `chio-otel-receipt-exporter`, and threat-model cross-check rows. | received and accepted; no scope expansion. | M08.P1.T3 |
+| 14 | outbound | SOW addenda finalized with public-report license, 90-day coordinated disclosure default, 10-business-day factual correction window, and 1-week Critical / High retest. | complete | M08.P1.T3 |
+| 14 | internal | Pre-flight cemented-surface freeze check: `spec/PROTOCOL.md`, `spec/security/`, and the top-10 implementation surfaces remain the P2-P3 review boundary. | cemented-surface freeze confirmed; protocol edits during active review require finding-linked remediation and vendor sign-off. | M08.P1.T7 |
+
+### 3a. P1 cemented-surface freeze attestation
+
+The cemented-surface freeze is active for M08 P2-P3. No protocol
+wire-level edits, threat-model scope expansion, or review-surface
+substitution may land silently during active review. Customer or vendor
+pressure to change the surface is routed through the halt-12 or halt-13
+process, or through a finding-linked remediation branch after vendor
+classification.
 
 ## 4. Findings + remediation log
 

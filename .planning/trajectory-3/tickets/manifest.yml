@@ -5366,7 +5366,7 @@
   milestone: M08
   phase: 1
   title: Onboarding session with vendor team at week 8 (program lead + @bb-connor)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5385,15 +5385,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c45065ba3bd02ae166a8c2527dbb03d1149e7d13
+  merged_sha: c45065ba3bd02ae166a8c2527dbb03d1149e7d13
+  opened_ts: '2026-05-02T17:38:58Z'
+  merged_ts: '2026-05-02T17:38:58Z'
 - id: M08.P1.T2
   milestone: M08
   phase: 1
   title: Vendor scoping question response loop weeks 6-14 (split per inbound question)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5411,15 +5411,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f767cc75c545691336efee8191a36944af844bba
+  merged_sha: f767cc75c545691336efee8191a36944af844bba
+  opened_ts: '2026-05-02T17:38:58Z'
+  merged_ts: '2026-05-02T17:38:58Z'
 - id: M08.P1.T3
   milestone: M08
   phase: 1
   title: Author SOW addenda + final scoping memo (week 12-14)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5436,16 +5436,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b5206c4082ede4c0e0babe3973b970b25d095185
+  merged_sha: b5206c4082ede4c0e0babe3973b970b25d095185
+  opened_ts: '2026-05-02T17:38:58Z'
+  merged_ts: '2026-05-02T17:38:58Z'
 - id: M08.P1.T4
   milestone: M08
   phase: 1
   title: Fill audit doc Section 2 vendor selection record (vendor name, SOW hash,
     named reviewers)
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5462,16 +5462,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f49402090f40dbd5fa6bc2b225eab0dd3cc9a589
+  merged_sha: f49402090f40dbd5fa6bc2b225eab0dd3cc9a589
+  opened_ts: '2026-05-02T17:38:58Z'
+  merged_ts: '2026-05-02T17:38:58Z'
 - id: M08.P1.T5
   milestone: M08
   phase: 1
   title: Handoff package addendum at week 9 covering M04 partial mutation kill-rate
     state
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M08-handoff-package/m04-addendum.md
@@ -5491,15 +5491,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 48db776742e9f28292add168b5f9f69cf7605567
+  merged_sha: 48db776742e9f28292add168b5f9f69cf7605567
+  opened_ts: '2026-05-02T17:38:58Z'
+  merged_ts: '2026-05-02T17:38:58Z'
 - id: M08.P1.T6
   milestone: M08
   phase: 1
   title: Handoff package addendum at week 9 covering M05 threat-coverage closure
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M08-handoff-package/m05-addendum.md
@@ -5519,15 +5519,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a7a95f17865cd891fbe974f0c16afd612e890041
+  merged_sha: a7a95f17865cd891fbe974f0c16afd612e890041
+  opened_ts: '2026-05-02T17:38:58Z'
+  merged_ts: '2026-05-02T17:38:58Z'
 - id: M08.P1.T7
   milestone: M08
   phase: 1
   title: Pre-flight cemented-surface freeze check at end of P1 (week 14)
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -5545,10 +5545,10 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e08d6dcf8f1a8bca60e0dc18d035027d573920f3
+  merged_sha: e08d6dcf8f1a8bca60e0dc18d035027d573920f3
+  opened_ts: '2026-05-02T17:38:58Z'
+  merged_ts: '2026-05-02T17:38:58Z'
 - id: M08.P2.T1
   milestone: M08
   phase: 2
