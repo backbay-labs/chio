@@ -14,7 +14,7 @@
   milestone: M07
   phase: 2
   title: sdks/swift SPM scaffold with binary XCFramework target and ChioFFI module map
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - sdks/swift/Package.swift
@@ -34,16 +34,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 
 - id: M07.P2.T2
   milestone: M07
   phase: 2
   title: scripts/build-ios-framework.sh produces XCFramework via cargo + uniffi-bindgen + xcodebuild
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - scripts/build-ios-framework.sh
@@ -62,16 +62,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 
 - id: M07.P2.T3
   milestone: M07
   phase: 2
   title: Sources/Chio/AppAttest.swift wrapping DCAppAttestService plus Keystore Secure Enclave helper
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - sdks/swift/Sources/Chio/AppAttest.swift
@@ -89,16 +89,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 
 - id: M07.P2.T4
   milestone: M07
   phase: 2
   title: chio-custody-hw attestation submodule app_attest verifier with pinned Apple root CA
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-custody-hw/src/attestation/mod.rs
@@ -121,16 +121,16 @@
   agent_role: crypto-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
 
 - id: M07.P2.T5
   milestone: M07
   phase: 2
   title: XCTest harness plus simulator integration test for full App Attest forward-to-kernel flow
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - sdks/swift/Tests/ChioTests/AppAttestTests.swift
@@ -149,7 +149,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  merged_sha: c80e921867a25e8efba135b660f1b0745e446f02
+  opened_ts: '2026-05-02T13:20:02Z'
+  merged_ts: '2026-05-02T13:20:02Z'
