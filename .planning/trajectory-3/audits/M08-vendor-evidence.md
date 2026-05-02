@@ -112,6 +112,7 @@ Sources checked 2026-05-02:
 | Week | Direction | Question / Artifact | Status | Cross-ref |
 |------|-----------|---------------------|--------|-----------|
 | 1 | outbound | RFP sent package prepared for NCC Group sales route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://www.nccgroup.com/contact-us/` and `https://www.nccgroup.com/contact-sales/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T4 |
+| 1 | outbound | RFP sent package prepared for Trail of Bits contact route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://trailofbits.com/contact/` and `https://www.trailofbits.com/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T5 |
 
 ## 4. Findings + remediation log
 
