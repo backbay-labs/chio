@@ -146,6 +146,27 @@ Sev-1 closed in P2: <P2 count>
 Sev-2 closed in P2: <P2 count>
 Sev-3 accepted-risk: <P2 count + cross-ref to risk register>
 
+### 3a. P1 cross-milestone evidence inheritance inventory
+
+P1 expanded `compliance/hitrust/control-mapping.csv` from family-level
+seed rows into explicit inherited-evidence rows for M01, M03, M05, and
+M06. This inventory is the P3 upload backlog and the P2 remediation
+input for missing operational policies.
+
+| Source milestone | Evidence inherited | P1 status | P2/P3 follow-up |
+|------------------|--------------------|-----------|-----------------|
+| M01 | audit-log schema v1, healthcare pilot audit doc, 30-day BOP sample source | partial | upload bounded operational profile samples in P3 |
+| M03 | CI restoration audit doc, provenance, reproducible build evidence | partial | pin v3.18 artifact hash in P3 |
+| M05 | threat model and threat-coverage closure | ready | link privacy and incident rows to policies |
+| M06 | SBOM, cargo-vet, CVE monitor, formal evidence | partial | add formal-evidence bridge in P2 and bundle hashes in P3 |
+| M08 | independent review report and response memo | supplemental | cite as complementary security evidence |
+
+The evidence inheritance count at P1 is 46 control rows by assessor
+estimate: 8 explicit rows in the repository mapping, plus 38 MyCSF
+rows that inherit from those evidence packets after assessor import.
+All other controls remain gap or partial until P2 remediation and P3
+bundle upload.
+
 ## 4. Evidence package
 
 [TODO M09 milestone agent fill at P3 close. The evidence pack is
