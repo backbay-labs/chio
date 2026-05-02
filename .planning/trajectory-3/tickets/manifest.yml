@@ -3325,7 +3325,7 @@
   milestone: M06
   phase: 3
   title: Add .github/workflows/sbom.yml as standalone tag-triggered plus weekly-cron workflow emitting source-tree and per-target binary SBOMs at supply-chain/sbom/v{tag}/ with determinism probe
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - .github/workflows/sbom.yml
@@ -3344,15 +3344,15 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  merged_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  opened_ts: '2026-05-02T11:45:39Z'
+  merged_ts: '2026-05-02T11:45:39Z'
 - id: M06.P3.T2
   milestone: M06
   phase: 3
   title: Extend infra/sbom/syft.yaml to support source-tree dir scanning with same exclude paths as binary scanning (./target/, ./node_modules/, ./.git/, ./.worktrees/)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - infra/sbom/syft.yaml
@@ -3368,15 +3368,15 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  merged_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  opened_ts: '2026-05-02T11:45:39Z'
+  merged_ts: '2026-05-02T11:45:39Z'
 - id: M06.P3.T3
   milestone: M06
   phase: 3
   title: Pin SBOM publication path supply-chain/sbom/v{tag}/ in M06 audit doc and exempt path in .gitignore so release SBOMs commit to the tree
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .gitignore
@@ -3394,15 +3394,15 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  merged_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  opened_ts: '2026-05-02T11:45:39Z'
+  merged_ts: '2026-05-02T11:45:39Z'
 - id: M06.P3.T4
   milestone: M06
   phase: 3
   title: Cosign-sign each SBOM file using existing release-binaries keyless identity, wired inside the same release-binaries job to unify OIDC token provenance
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
   - .github/workflows/sbom.yml
@@ -3420,15 +3420,15 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  merged_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  opened_ts: '2026-05-02T11:45:39Z'
+  merged_ts: '2026-05-02T11:45:39Z'
 - id: M06.P3.T5
   milestone: M06
   phase: 3
   title: M09 HITRUST assessor handshake doc confirming SBOM is consumable in assessor portal; cross-ref to M09 P0 evidence row
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M06-formal-supply-chain.md
@@ -3446,10 +3446,10 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  merged_sha: bc99debf05b2773e2e5093aab785344342f774d1
+  opened_ts: '2026-05-02T11:45:39Z'
+  merged_ts: '2026-05-02T11:45:39Z'
 - id: M06.P4.T1
   milestone: M06
   phase: 4
