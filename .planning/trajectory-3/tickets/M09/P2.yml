@@ -123,7 +123,7 @@
   depends_on:
     - M09.P1.T9
   soft_deps:
-    - "AWS for Opus deployment; record SOC 2 / FedRAMP attestation pointers."
+    - "AWS for the M01 design-partner deployment; record SOC 2 / FedRAMP attestation pointers."
     - "Maps to HITRUST control family 8 (physical / environmental) and 10 (acquisition / development)."
   gate_check:
     cmd: test -f compliance/hitrust/evidence-bundles/encryption-at-rest.md && grep -qE 'AWS' compliance/hitrust/evidence-bundles/encryption-at-rest.md

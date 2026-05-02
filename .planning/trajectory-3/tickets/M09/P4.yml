@@ -35,7 +35,7 @@
 - id: M09.P4.T2
   milestone: M09
   phase: 4
-  title: Coordinate operator interviews with Opus ops review participation
+  title: Coordinate operator interviews with design-partner ops review participation
   status: pending
   effort_days: 0.5
   owner_glob:
@@ -44,9 +44,9 @@
   depends_on:
     - M09.P4.T1
   soft_deps:
-    - "Opus ops team is the operator interview subject; record interviewee names and topics."
+    - "The design-partner ops team is the operator interview subject; record interviewee names and topics."
   gate_check:
-    cmd: test -f compliance/hitrust/sample-testing/operator-interviews.md && grep -qE 'Opus' compliance/hitrust/sample-testing/operator-interviews.md
+    cmd: test -f compliance/hitrust/sample-testing/operator-interviews.md && grep -qiE 'design-partner|design partner' compliance/hitrust/sample-testing/operator-interviews.md
     timeout_seconds: 60
   worktree_branch: wave/Wv/m09/p4.t2-operator-interviews
   agent_role: vendor-coord

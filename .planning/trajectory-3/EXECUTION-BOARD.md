@@ -51,7 +51,7 @@ history of the 2026-04-30 synthesizer run) for the full verdict.
 
 | Milestone | Phases | Wave | TB | Effort weeks (low/real/high) |
 |-----------|--------|------|----|------------------------------|
-| M01 opus-design-partner-pilot         | P0..P5 | W1 | yes | 4/6/9 |
+| M01 healthcare-design-partner-pilot   | P0..P5 | W1 | yes | 4/6/9 |
 | M02 ai-lab-evaluation-beachhead       | P0..P5 | W1 | yes | 6/9/13 |
 | M03 hosted-ci-truth-and-reproducible-builds | P0..P5 | W1 | yes | 4/6/9 |
 | M04 mutation-and-verdict-matrix-promotion | P0..P5 | W1 | yes | 6/9/13 |
@@ -113,7 +113,7 @@ Five milestones run in parallel after Wave 0 closes.
 | Milestone | Phases | Notes |
 |-----------|--------|-------|
 | M03 hosted CI + reproducible builds | P0..P5 | First to reach P0 close; M01/M02/M04/M05 land their P0 wave-openers in parallel |
-| M01 Opus pilot | P0..P5 | Customer-anchored; 30-day production observation closes the milestone |
+| M01 healthcare design-partner pilot | P0..P5 | Customer-anchored; 30-day production observation closes the milestone |
 | M02 AI-lab evaluation beachhead | P0..P5 | Customer named in week 1 (Anthropic / METR / Apollo) |
 | M04 mutation + verdict-matrix promotion | P0..P5 | Honest-threshold gate (D08) at week 12 |
 | M05 threat-coverage closure | P0..P5 | weights_hash_spoof partial->passing, dispatch_allow placeholder replaced |
@@ -147,15 +147,15 @@ trajectory-close gate.
 
 | Artifact | Owner | Consumers |
 |----------|-------|-----------|
-| Opus tenant runbook + log-export schema | M01 | M09 (HITRUST scope), M07 (mobile patient-app) |
+| Design-partner tenant runbook + log-export schema | M01 | M09 (HITRUST scope), M07 (mobile patient-app) |
 | AI-lab eval-receipt format | M02 | M04 (verdict-driver parity) |
 | Hosted CI workflows + reproducible-build pipeline | M03 | every other milestone |
 | Mutation lane + verdict matrix gating | M04 | the M08 reviewer cites the gate |
 | Threat-coverage table | M05 | the M08 reviewer cross-checks |
 | Apalache focused invariants + SBOM/cargo-vet | M06 | M09 assessor consumes SBOM |
-| chio-kernel-mobile bindings | M07 | M01 mobile patient-app |
+| chio-kernel-mobile bindings | M07 | M01 design-partner mobile patient-app |
 | NCC Group or Trail of Bits report | M08 | trajectory close, release narrative |
-| HITRUST i1 certificate | M09 | Opus cluster procurement, release narrative |
+| HITRUST i1 certificate | M09 | Design-partner procurement, release narrative |
 | AWS Bedrock listing + MCP conformance entry | M10 | distribution narrative |
 
 ## 4. Freezes
@@ -198,7 +198,7 @@ Trajectory-3 adds two event classes:
 
 - `vendor_calendar_event`: M08 / HITRUST checkpoints with vendor
   attribution.
-- `customer_evidence_received`: Opus / AI-lab review receipts.
+- `customer_evidence_received`: M01 design-partner / M02 AI-lab review receipts.
 
 ## 9. Trajectory close
 
@@ -213,7 +213,7 @@ Done when:
     threshold)
   - threat-coverage table has zero `partial` or `placeholder` rows
   - verdict-matrix non-Rust drivers required-CI green
-  - hosted CI green on the v3.18-Opus release commit, reproducible-build
+  - hosted CI green on the v3.18 release commit, reproducible-build
     hash published and externally reproduced
 
 At close, archive `EXECUTION-STATE.json` to

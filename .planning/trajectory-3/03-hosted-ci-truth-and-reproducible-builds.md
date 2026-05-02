@@ -152,7 +152,7 @@ What M03 deliberately does not do:
   RunsOn). The cost-ground-truthing in the M03 research doc names
   these as a trajectory-3 follow-up if Actions billing turns out to
   be the bottleneck after restoration; M03 does not block on it.
-- Does not consolidate hosted-runner billing onto a Backbay org
+- Does not consolidate hosted-runner billing onto a workspace-org
   account. The repo lives at `github.com/bb-connor/arc` (personal).
   Org migration is a separate trajectory; M03 records the
   ownership question in the audit doc.
@@ -308,10 +308,10 @@ rebuilder so lead time does not bottleneck P4.
   is set above the rolling burn rate plus headroom.
 - M03.P0.T3 - Pre-name the third-party rebuilder per D13.
   Recommendation per research: a single named individual outside
-  the chio core team but inside Backbay (platform team that owns
-  `platform/CLAUDE.md` is the reasonable pick). Backup rebuilder
-  named in the audit doc. If M08 lands NCC Group / Trail of Bits,
-  fold the rebuild into their engagement scope.
+  the chio core team (a sister-team engineer is the reasonable
+  pick). Backup rebuilder named in the audit doc. If M08 lands
+  NCC Group / Trail of Bits, fold the rebuild into their
+  engagement scope.
 - M03.P0.T4 - Document the reproducibility scope carve-out
   explicitly in `.planning/trajectory-3/audits/M03-ci-restoration.md`:
   Linux x86_64 yes; macOS / Windows known non-deterministic and
@@ -486,16 +486,16 @@ Forward references (other trajectory-3 milestones consuming M03):
 - M08 (vendor evidence) cites M03 reproducible-build hash and the
   SLSA L3 attestation in the RELEASE_AUDIT memo. Needs P4 closed
   before vendor handoff.
-- M09 (HITRUST i1) assessor scope is v3.18 + Opus and expects CI
-  evidence. The SLSA provenance and reproducible-build hash from
-  M03 are the load-bearing artifacts.
+- M09 (HITRUST i1) assessor scope is v3.18 + the M01 design-partner
+  deployment and expects CI evidence. The SLSA provenance and
+  reproducible-build hash from M03 are the load-bearing artifacts.
 - M10 (Bedrock MCP marketplace) reviewer expects a green hosted
   CI signal on the release commit. P5 closure is the artifact.
 
 Customer-facing reference:
 
-- M01 (Opus production deployment) relies on hosted CI to be
-  green for any production-cut artifact. M01 production cut
+- M01 (design-partner production deployment) relies on hosted CI
+  to be green for any production-cut artifact. M01 production cut
   blocked on M03.P5.
 
 Cross-trajectory references (express in `soft_deps` as string

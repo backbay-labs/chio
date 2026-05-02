@@ -82,7 +82,7 @@
   depends_on:
     - M03.P0.T1
   soft_deps:
-    - "D13 names independent contributor or sister team; recommendation per RESEARCH.md is a Backbay platform-team individual outside the chio core team"
+    - "D13 names independent contributor or sister team; recommendation per RESEARCH.md is a sister-team engineer outside the chio core team"
     - "if M08 lands NCC Group / Trail of Bits, fold the rebuild into their engagement scope as higher-weight evidence; M03 records the optionality but does not block on M08"
   gate_check:
     cmd: "grep -A2 -E 'rebuilder identity' .planning/trajectory-3/audits/M03-ci-restoration.md | grep -qiE 'primary|backup'"

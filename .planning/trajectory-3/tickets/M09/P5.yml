@@ -148,9 +148,9 @@
   depends_on:
     - M09.P5.T3
   soft_deps:
-    - "Landing page lists scope statement (v3.18 + Opus per D09), expiration date, HITRUST directory entry URL."
+    - "Landing page lists scope statement (v3.18 + M01 design-partner deployment per D09), expiration date, HITRUST directory entry URL."
   gate_check:
-    cmd: test -f docs/external-attestation/hitrust-i1/index.md && grep -qE 'v3.18' docs/external-attestation/hitrust-i1/index.md && grep -qE 'Opus' docs/external-attestation/hitrust-i1/index.md
+    cmd: test -f docs/external-attestation/hitrust-i1/index.md && grep -qE 'v3.18' docs/external-attestation/hitrust-i1/index.md && grep -qE 'design-partner|design partner' docs/external-attestation/hitrust-i1/index.md
     timeout_seconds: 60
   worktree_branch: wave/Wv/m09/p5.t6-publish-certificate-landing-page
   agent_role: vendor-coord

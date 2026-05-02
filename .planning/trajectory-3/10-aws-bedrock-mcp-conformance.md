@@ -19,8 +19,9 @@ verdict).
 
 The trajectory-3 verdict names a cloud marketplace listing as one of
 the two distribution evidence forms (the other is the M02 partnership
-note). AWS Bedrock has the design-partner pull (Opus cluster runs on
-AWS) and the MCP project's emerging conformance bench is the easiest
+note). AWS Bedrock has the design-partner pull (the M01 healthcare
+design partner runs on AWS) and the MCP project's emerging
+conformance bench is the easiest
 third-party evidence to procure inside the trajectory window. Three
 clouds were rejected (D03 rationale); one credible AWS listing plus
 one MCP entry is the M10 scope.
@@ -62,10 +63,11 @@ What trajectory-3 milestones M10 hard-depends on:
 - **M06 supply-chain v2** (week 22 close): SBOM + cargo-vet artifacts
   feed the AWS security review at P3. M06 closes the same week M10
   opens; the M06 audit doc is the input.
-- **M01 Opus design-partner pilot** (week 30 close): P5.T3 customer-
-  outcome paragraph in the co-authored APN blog requires Opus evidence
-  inside the D15 7-day freshness window. Opus withdrawal fires halt
-  trigger 12; M10 P5.T3 then freezes.
+- **M01 healthcare design-partner pilot** (week 30 close): P5.T3
+  customer-outcome paragraph in the co-authored APN blog requires
+  M01 design-partner evidence inside the D15 7-day freshness
+  window. Design-partner withdrawal fires halt trigger 12; M10
+  P5.T3 then freezes.
 
 What is NOT a hard dependency:
 
@@ -277,7 +279,8 @@ STYLE.md so the workspace state captures them):
 - Pure container product on Bedrock AgentCore Runtime (rejected per
   RESEARCH "AWS marketplace listing type choice"; container forces
   the customer to operate the workload, while SaaS preserves Chio's
-  operational responsibility and matches the M01 Opus deployment).
+  operational responsibility and matches the M01 design-partner
+  deployment).
 - AWS marketing review final approval inside the trajectory-3 window
   (the AI Agents and Tools category may gate solution-page placement
   past week 30; closure attestation counts the listing as approved on
@@ -402,7 +405,7 @@ P3-P4 per the freezes.yml rule.
   architecture diagram (Chio control plane + Bedrock + customer VPC,
   receipt at boundary); one config snippet (Chio policy YAML); one
   Bedrock Converse request snippet with Chio governance overlay; one
-  Opus customer-outcome paragraph (gated on D15 7-day freshness
+  design-partner customer-outcome paragraph (gated on D15 7-day freshness
   window). Closure rule: "draft submitted + AWS SA reviewed", not
   "published". Co-authors: 1-2 AWS Bedrock SAs (the assigned partner
   SA from P0.T3) plus 1-2 Chio authors. Cross-link listing URL, MCP
@@ -427,10 +430,10 @@ Hard deps (other trajectory-3 milestones):
 - **M06 supply-chain v2**. SBOM + cargo-vet artifacts feed the AWS
   security review at P3. M06 closes ~week 22; M10 P3 starts week 27.
   Satisfied. Encoded as `soft_deps` string sentence on M10.P3.T6.
-- **M01 Opus design-partner pilot**. P5.T3 outcome paragraph requires
-  Opus evidence in D15 7-day window. Opus withdrawal fires halt
-  trigger 12; M10.P5.T3 then freezes. Encoded as `soft_deps` string
-  sentence on M10.P5.T3.
+- **M01 healthcare design-partner pilot**. P5.T3 outcome paragraph
+  requires design-partner evidence in D15 7-day window.
+  Design-partner withdrawal fires halt trigger 12; M10.P5.T3 then
+  freezes. Encoded as `soft_deps` string sentence on M10.P5.T3.
 
 Freezes M10 owns:
 
@@ -522,11 +525,12 @@ Soft deps (string sentences; cross-trajectory or non-blocking):
    the M10 audit doc records the inherited artifact set on the day
    P3 opens.
 
-10. **Opus design-partner withdrawal voids P5.T3 customer-outcome
+10. **Design-partner withdrawal voids P5.T3 customer-outcome
     paragraph**. Likelihood low; impact: blog draft must drop the
-    Opus paragraph or freeze. Mitigation: D15 7-day freshness window
-    governs the paragraph; halt trigger 12 fires on Opus withdrawal;
-    M10.P5.T3 freezes per the AUTONOMOUS-PROMPT trigger.
+    customer-outcome paragraph or freeze. Mitigation: D15 7-day
+    freshness window governs the paragraph; halt trigger 12 fires
+    on design-partner withdrawal; M10.P5.T3 freezes per the
+    AUTONOMOUS-PROMPT trigger.
 
 ## Success criteria
 

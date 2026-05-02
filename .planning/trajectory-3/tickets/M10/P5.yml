@@ -9,8 +9,9 @@
 # (M08 closes ~week 36).
 #
 # CROSS-MILESTONE NOTE: M10.P5.T3 customer-outcome paragraph requires
-# Opus evidence in D15 7-day freshness window. Opus withdrawal fires
-# halt trigger 12; M10.P5.T3 then freezes.
+# M01 design-partner evidence in D15 7-day freshness window.
+# Design-partner withdrawal fires halt trigger 12; M10.P5.T3 then
+# freezes.
 #
 # Regenerate the manifest after edits: cargo xtask trajectory regen-manifest.
 
@@ -88,9 +89,9 @@
     - M10.P5.T2
   soft_deps:
     - "Closure rule: 'draft submitted + AWS SA reviewed', NOT 'published'; publication slips into trajectory-4 (Kong precedent in RESEARCH)"
-    - "Shape: 8-10 paragraphs, ~1500-2000 words; one architecture diagram; one config snippet (Chio policy YAML); one Bedrock Converse request snippet with Chio governance overlay; one Opus customer-outcome paragraph"
+    - "Shape: 8-10 paragraphs, ~1500-2000 words; one architecture diagram; one config snippet (Chio policy YAML); one Bedrock Converse request snippet with Chio governance overlay; one design-partner customer-outcome paragraph"
     - "Co-authors: 1-2 AWS Bedrock SAs (assigned at P0.T3) plus 1-2 Chio authors; cross-link listing URL, MCP registry entry, M02 evaluation memo if M02 has closed by week 30"
-    - "Customer-outcome paragraph requires Opus evidence in D15 7-day freshness window; Opus withdrawal fires halt trigger 12 and freezes this ticket"
+    - "Customer-outcome paragraph requires design-partner evidence in D15 7-day freshness window; design-partner withdrawal fires halt trigger 12 and freezes this ticket"
     - "M08 vendor evidence (week 36) cannot be cited in this draft; trajectory-4 follow-up post owns the M08 citation"
   gate_check:
     cmd: >-

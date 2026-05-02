@@ -1,5 +1,5 @@
 # M01 Phase 1 - Operator runbook hardening + PagerDuty integration.
-# Source of truth: .planning/trajectory-3/01-opus-design-partner-pilot.md
+# Source of truth: .planning/trajectory-3/01-healthcare-design-partner-pilot.md
 # (section "Phases" P1) + .planning/trajectory-3/research/m01/RESEARCH.md.
 #
 # Six tickets land six docs under docs/operator-runbook/ plus a
@@ -47,7 +47,7 @@
   depends_on:
     - M01.P1.T1
   soft_deps:
-    - "M01.P0.T1 hard-count baseline names current Opus-side SLOs; this doc adds Chio-mediation-edge SLOs which are net-new"
+    - "M01.P0.T1 hard-count baseline names current design-partner-side SLOs; this doc adds Chio-mediation-edge SLOs which are net-new"
   gate_check:
     cmd: "test -f docs/operator-runbook/slo.md && grep -qE 'p50|p95|p99' docs/operator-runbook/slo.md && grep -qiE 'availability|error budget' docs/operator-runbook/slo.md && grep -qiE 'latency' docs/operator-runbook/slo.md"
     timeout_seconds: 300
@@ -94,7 +94,7 @@
   effort_days: 1.5
   owner_glob:
     - docs/operator-runbook/pagerduty.md
-    - deploy/opus/chio-siem-overrides.yaml
+    - deployments/healthcare-design-partner/chio-siem-overrides.yaml
   shared_paths: []
   depends_on:
     - M01.P0.T5
@@ -103,7 +103,7 @@
     - "crates/chio-siem/src/alerting.rs PagerDutyBackend (lines 195-274) is the read-only consumer; no source change required"
     - "RESEARCH.md mitigation 4 (ePHI in PagerDuty alerts): summary string carries no PHI; verify alerting.rs line 18 minimal-summary contract"
   gate_check:
-    cmd: "test -f docs/operator-runbook/pagerduty.md && test -f deploy/opus/chio-siem-overrides.yaml && grep -q 'chio-opus-pilot-prod' docs/operator-runbook/pagerduty.md && grep -qiE 'pii_phi_exposure' deploy/opus/chio-siem-overrides.yaml && grep -q 'Critical' deploy/opus/chio-siem-overrides.yaml"
+    cmd: "test -f docs/operator-runbook/pagerduty.md && test -f deployments/healthcare-design-partner/chio-siem-overrides.yaml && grep -q 'chio-healthcare-pilot-prod' docs/operator-runbook/pagerduty.md && grep -qiE 'pii_phi_exposure' deployments/healthcare-design-partner/chio-siem-overrides.yaml && grep -q 'Critical' deployments/healthcare-design-partner/chio-siem-overrides.yaml"
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p1.t4-pagerduty-integration-overrides
   agent_role: infra-yaml
@@ -142,11 +142,11 @@
 - id: M01.P1.T6
   milestone: M01
   phase: 1
-  title: Add weekly PagerDuty heartbeat workflow at .github/workflows/opus-pagerduty-heartbeat.yml
+  title: Add weekly PagerDuty heartbeat workflow at .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml
   status: pending
   effort_days: 1.0
   owner_glob:
-    - .github/workflows/opus-pagerduty-heartbeat.yml
+    - .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml
   shared_paths: []
   depends_on:
     - M01.P1.T4
@@ -154,7 +154,7 @@
     - "crates/chio-siem/src/alerting.rs PagerDutyBackend posts to https://events.pagerduty.com/v2/enqueue; the workflow exercises the same surface"
     - "M03 hosted CI is a soft prerequisite for the workflow runner; M01 can run on best-effort CI through P3 per RESEARCH.md cross-milestone notes"
   gate_check:
-    cmd: "test -f .github/workflows/opus-pagerduty-heartbeat.yml && grep -q 'cron' .github/workflows/opus-pagerduty-heartbeat.yml && grep -q 'events.pagerduty.com' .github/workflows/opus-pagerduty-heartbeat.yml && grep -qE 'workflow_dispatch|schedule' .github/workflows/opus-pagerduty-heartbeat.yml"
+    cmd: "test -f .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml && grep -q 'cron' .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml && grep -q 'events.pagerduty.com' .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml && grep -qE 'workflow_dispatch|schedule' .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml"
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p1.t6-pagerduty-heartbeat-workflow
   agent_role: infra-yaml

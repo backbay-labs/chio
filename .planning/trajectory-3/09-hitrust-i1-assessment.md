@@ -3,7 +3,7 @@
 ## Lens
 
 External-attestation. M09 procures a HITRUST i1 readiness + assessment
-scoped to the Opus design-partner deployment of Chio v3.18 (D02 picks
+scoped to the M01 design-partner deployment of Chio v3.18 (D02 picks
 HITRUST i1 over ISO 42001; D09 binds the scope). The lens is single
 (third-party compliance attestation) and the calendar is long-clock
 (12-36 weeks) running parallel to all code waves on the vendor lane Wv.
@@ -19,13 +19,14 @@ Trust-boundary: yes.
 **Release-gate anchor:** QUALIFICATION
 
 The trajectory-3 verdict names HITRUST i1 as the second of two
-third-party-evidence forms for trajectory close. The Opus design
-partner asked for HITRUST i1 first as a procurement gate (D02
-rationale); ISO 42001 was considered but the calendar (12-18 months)
-does not fit the trajectory window. A HITRUST-authorized assessor's
-certificate, scoped to v3.18 + Opus deployment, is the load-bearing
-artifact that turns the QUALIFICATION release-gate from
-self-attestation into externally-legible attestation.
+third-party-evidence forms for trajectory close. The healthcare
+design partner asked for HITRUST i1 first as a procurement gate
+(D02 rationale); ISO 42001 was considered but the calendar (12-18
+months) does not fit the trajectory window. A HITRUST-authorized
+assessor's certificate, scoped strictly to v3.18 + the M01
+design-partner deployment, is the load-bearing artifact that turns
+the QUALIFICATION release-gate from self-attestation into
+externally-legible attestation.
 
 The M09 deliverable consumes prior-art shipped by adjacent trajectory-3
 milestones: the M01 operator runbook + audit-log export schema v1
@@ -129,7 +130,9 @@ purposes.
 
 ### In
 
-- HITRUST i1 assessment scoped to v3.18 + Opus deployment per D09.
+- HITRUST i1 assessment scoped strictly to v3.18 + the M01
+  design-partner deployment per D09; non-design-partner scope
+  explicitly excluded.
 - Single-tenant, single-version, single-deployment-environment
   certificate scope (the boundary diagram in the SSP is the
   load-bearing scope artifact).
@@ -149,10 +152,11 @@ purposes.
   upload to the assessor's MyCSF portal.
 - Assessor portal coordination (vendor-side) tracked through the audit
   doc.
-- HIPAA pre-conditions confirmation: BAA chain (provider <-> Opus
-  tenant <-> Backbay), PHI-handling boundaries documented, breach
-  notification runbook authored, minimum-necessary policy documented,
-  de-identification posture confirmed for telemetry.
+- HIPAA pre-conditions confirmation: BAA chain (provider <-> the
+  design-partner tenant <-> Chio team), PHI-handling boundaries
+  documented, breach notification runbook authored, minimum-necessary
+  policy documented, de-identification posture confirmed for
+  telemetry.
 - Certificate issuance (one year validity) + audit-doc closure +
   renewal-trigger filing (1-year validity; trajectory-4 candidate).
 
@@ -161,20 +165,22 @@ purposes.
 - HITRUST r2 (risk-based, 2-year). Lead time 12-18 months minimum;
   out of trajectory window. (D02 rationale.)
 - HITRUST e1 (essentials, ~44 controls). Too narrow to satisfy the
-  Opus procurement ask; healthcare workload context demands i1 at
-  minimum. (Research findings.)
+  design-partner procurement ask; healthcare workload context
+  demands i1 at minimum. (Research findings.)
 - ISO 42001. Lead time 12-18 months; deferred to trajectory-4 per
   D02 alternatives_rejected.
-- SOC 2 Type 1. Opus cluster already accepts SOC 2 from peer vendors;
-  differentiation is low. (D02 alternatives_rejected.)
-- Non-Opus deployment scope (other Chio tenants and clusters). D09
-  binds scope; if the Opus cluster pulls out, M09 halts via halt
-  trigger 12 (D15: no substitute tenant available).
+- SOC 2 Type 1. The design partner already accepts SOC 2 from peer
+  vendors; differentiation is low. (D02 alternatives_rejected.)
+- Non-design-partner deployment scope (other Chio tenants). D09
+  binds scope; if the selected design partner withdraws, M09 halts
+  via halt trigger 12 (D15: no substitute tenant available without
+  user authorization).
 - Future versions (v3.19+, trajectory-4 surfaces). Re-certification or
   scope extension is a separate engagement.
-- Backbay platform layer outside Chio (other clusters, BackbayOS
-  desktop, bb-ui packages). The certificate names Chio v3.18 as the
-  product surface, not Backbay broadly.
+- Workspace surfaces outside the Chio product (sister projects, UI
+  packages, unrelated clusters in the workspace). The certificate
+  names Chio v3.18 as the product surface; broader workspace scope
+  is out of bounds.
 - Mobile patient-app extension (M07). The mobile MVP closes too late
   in the calendar (week 12+) to be inside the assessor's scope by
   default; P0 records the explicit decision.
@@ -206,12 +212,13 @@ authoring.
   pin v11.x minor version + control count in audit doc and SSP.
 - M09.P0.T4: Author RFP and send to two named firms (D12 pattern:
   two-vendor primary, one fallback). Deadline week 4.
-- M09.P0.T5: Pin scope statement against D09: v3.18 + Opus deployment;
-  freeze under audit-doc lane. Mobile (M07) and Bedrock (M10)
-  inclusion explicit-no per default; record the decision.
-- M09.P0.T6: Confirm BAA chain (provider <-> Opus tenant <-> Backbay).
-  Surface to user if any contract is unexecuted (HIPAA pre-condition;
-  halt-trigger candidate).
+- M09.P0.T5: Pin scope statement against D09: v3.18 + the M01
+  design-partner deployment; freeze under audit-doc lane. Mobile
+  (M07) and Bedrock (M10) inclusion explicit-no per default; record
+  the decision.
+- M09.P0.T6: Confirm BAA chain (provider <-> the design-partner
+  tenant <-> Chio team). Surface to user if any contract is
+  unexecuted (HIPAA pre-condition; halt-trigger candidate).
 - M09.P0.T7: Receive RFP responses; record quotes against D07 band
   ($80-150k); halt-trigger candidate if all quotes outside band.
 - M09.P0.T8: Contract assessor end of week 5; first kickoff week 6.
@@ -263,7 +270,8 @@ narrative authoring + 0.5-1 day ops-runbook items.
   (`compliance/hitrust/ir-runbook.md`); reference 45 CFR 164.400-414
   (HIPAA 60-day breach notification).
 - M09.P2.T5: Collect encryption-at-rest evidence from the cloud
-  provider (AWS for Opus); record provider-attestation pointers.
+  provider (AWS for the design-partner deployment); record
+  provider-attestation pointers.
 - M09.P2.T6: Seed `compliance/hitrust/build-evidence-pack.sh`:
   idempotent shell script that gathers M01 runbook + log-export
   schema, M03 provenance + workflows, M05 threat model + coverage
@@ -310,8 +318,8 @@ script supports <= 5-business-day turnaround on follow-ups.
 - M09.P4.T1: Sample testing support: assessor pulls receipt samples,
   audit-log samples, runbook excerpts, control-narrative spot checks.
   Vendor-wait + 0.5-day evidence-pull cadence.
-- M09.P4.T2: Operator interviews (Opus ops review participates).
-  Vendor-wait + scheduling coordination.
+- M09.P4.T2: Operator interviews (the design-partner ops team
+  participates). Vendor-wait + scheduling coordination.
 - M09.P4.T3 through M09.P4.T7: Five follow-up vendor-wait tickets
   (one per assessor evidence request, weekly cadence). Each runs
   the evidence-pack script with updated parameters and re-uploads.
@@ -349,8 +357,9 @@ the 1-year-validity expiration ahead of trajectory-4 planning.
 ## Cross-milestone interactions
 
 - M09 consumes `spec/audit-log/export-schema.v1.json` (M01.P3 freeze
-  end-trigger) plus the Opus operator runbook and 30-day BOP audit
-  samples (M01.P5 close). The `m01-m09-audit-handoff` freeze guards
+  end-trigger) plus the design-partner operator runbook and 30-day
+  BOP audit samples (M01.P5 close). The `m01-m09-audit-handoff`
+  freeze guards
   these paths from M01.P3.T1 open through M01.P5.T5 close;
   `m01-audit-handoff-guard` GitHub required-check enforces.
 - M09 consumes M03 hosted CI workflows (`.github/workflows/*`) and
@@ -385,9 +394,10 @@ the 1-year-validity expiration ahead of trajectory-4 planning.
    findings by remediation depth; user decides at week 14 whether to
    descope or remediate. Halt trigger 14 (HITRUST readiness rejection)
    fires if remediation is not feasible inside the calendar.
-3. **HIPAA pre-conditions not met by Opus** (BAA chain incomplete or
-   stale). Likelihood low-medium, impact high (P1 stalls until
-   contracts close). Mitigation: P0.T6 confirms the BAA chain before
+3. **HIPAA pre-conditions not met by the design partner** (BAA chain
+   incomplete or stale). Likelihood low-medium, impact high (P1
+   stalls until contracts close). Mitigation: P0.T6 confirms the
+   BAA chain before
    P1 starts. Surface to user as a halt-trigger candidate (not
    currently in the AUTONOMOUS-PROMPT trigger set; M09 author
    recommends absorbing under trigger 14 or adding as a new explicit
@@ -396,9 +406,10 @@ the 1-year-validity expiration ahead of trajectory-4 planning.
    impact medium (M09.P3 stalls). Mitigation: M06.P3 close is gating;
    tracked via cross-milestone wave coordination. Halt trigger 13
    fires only if the cumulative slip exceeds 25%.
-5. **Opus design partner withdraws** (D09 binding scope evaporates).
+5. **Design partner withdraws** (D09 binding scope evaporates).
    Likelihood low, impact high (M09 halts entirely; no substitute
-   tenant per D15). Halt trigger 12 (design-partner withdrawal) fires.
+   tenant per D15 without user authorization). Halt trigger 12
+   (design-partner withdrawal) fires.
 6. **All assessor quotes outside D07 band ($80-150k).** Likelihood
    low-medium, impact medium. Mitigation: three-firm RFP gives
    negotiating leverage; if all three quote out, surface to user as a
@@ -421,7 +432,7 @@ the 1-year-validity expiration ahead of trajectory-4 planning.
 ## Success criteria
 
 - HITRUST i1 certificate received from the authorized assessor.
-- Certificate scoped to v3.18 + Opus deployment per D09.
+- Certificate scoped to v3.18 + the M01 design-partner deployment per D09.
 - `compliance/hitrust/control-mapping.csv` complete: one row per i1
   control with status `evidenced` or `accepted-risk` (no `gap` rows
   at P5 close).

@@ -43,11 +43,11 @@ decisions:
     title: "HITRUST i1 replaces ISO 42001 for trajectory-3 external attestation"
     resolved_on: 2026-04-30
     resolved_by: "verdict synthesis (round 2)"
-    decision: "M09 ships a HITRUST i1 assessment scoped to the Opus design-partner deployment. ISO 42001 is deferred to a post-trajectory-3 cycle."
-    rationale: "Calendar lead-time for HITRUST i1 (12-36 weeks) fits the trajectory-3 window; ISO 42001 (12-18 months) does not. The Opus design partner asked for HITRUST i1 first as a procurement gate; that ask anchors the milestone."
+    decision: "M09 ships a HITRUST i1 assessment scoped to the M01 design-partner deployment. ISO 42001 is deferred to a post-trajectory-3 cycle."
+    rationale: "Calendar lead-time for HITRUST i1 (12-36 weeks) fits the trajectory-3 window; ISO 42001 (12-18 months) does not. The healthcare design partner asked for HITRUST i1 first as a procurement gate; that ask anchors the milestone."
     alternatives_rejected:
       - "ISO 42001 (lead time too long; not anchored to a specific design-partner ask)"
-      - "SOC 2 Type 1 (Opus cluster already accepts existing SOC 2 from peer vendors; lower differentiation)"
+      - "SOC 2 Type 1 (the design partner already accepts existing SOC 2 from peer vendors; lower differentiation)"
       - "No external attestation in trajectory-3 (leaves trajectory close without the third leg of the blend frame)"
     consequences:
       - "M09 narrative is HITRUST-i1-specific; assessor portal + control mapping are HITRUST-shaped, not ISO-shaped."
@@ -60,7 +60,7 @@ decisions:
     resolved_on: 2026-04-30
     resolved_by: "verdict synthesis (round 2)"
     decision: "M10 ships exactly one cloud marketplace listing (AWS Bedrock) with one MCP-conformance entry. GCP / Azure listings are deferred."
-    rationale: "Three half-listings beats one credible full listing on observable distribution metrics; AWS Bedrock has the design-partner pull (Opus cluster uses AWS) and the MCP project's conformance bench is the easiest third-party evidence to procure inside the trajectory window."
+    rationale: "Three half-listings beats one credible full listing on observable distribution metrics; AWS Bedrock has the design-partner pull (the healthcare design partner runs on AWS) and the MCP project's conformance bench is the easiest third-party evidence to procure inside the trajectory window."
     alternatives_rejected:
       - "Three clouds (AWS + GCP + Azure) at half-depth"
       - "AWS only without MCP conformance (loses one of the two third-party evidence forms)"
@@ -143,17 +143,21 @@ decisions:
 
   - id: D09
     milestone: M01
-    title: "Opus cluster is the M01 design partner; in-house but real workload"
+    title: "Healthcare design-partner naming policy; partner identity selected at M01.P1 scoping"
     resolved_on: 2026-04-30
     resolved_by: "verdict synthesis (round 2) + M01 authoring agent"
-    decision: "M01 design partner is the Opus cluster (Backbay healthcare; in-house, real workload). The 30-day bounded-operational-profile observation runs on the Opus tenant ops review."
-    rationale: "Opus cluster is real production workload run by a separate ops team; the in-house relationship makes onboarding tractable inside the trajectory window. External-customer relationships have lead times that do not fit Wave 1."
+    decision: "M01/M07/M09 anchor to a single healthcare design partner selected during M01.P1 scoping. Trajectory-3 docs do NOT bind the partner identity (preserves negotiation flexibility, BAA timing, and procurement scope at execution time). Candidate pool: regional payer, digital-health startup with existing BAA-ready posture, AI-driven underwriting platform, telehealth network. Selection criteria: BAA-ready in <=4 weeks, has a real production workload, willing to publish ops sign-off memo + 30-day incident report. The 30-day bounded-operational-profile observation runs on the selected design-partner tenant ops review."
+    rationale: "A healthcare design partner produces real production workload run by a separate ops team and satisfies the BOUNDED_OPERATIONAL_PROFILE release gate. Naming the partner at execution time (rather than binding it in trajectory-3 docs) preserves negotiation flexibility on BAA scope, procurement timelines, and contractual posture; the candidate-pool depth (>=3 healthcare candidates pre-scoped by week 0) is the up-front mitigation against early withdrawal."
     alternatives_rejected:
-      - "External healthcare customer (lead time too long)"
+      - "Bind a single named partner in trajectory-3 docs (loses negotiation flexibility; couples planning artifacts to procurement schedule)"
       - "Internal-only synthetic workload (would not satisfy BOUNDED_OPERATIONAL_PROFILE release gate)"
+      - "Active second-pilot fallback (the verdict accepts single-tenant; running two pilots in parallel doubles M01 cost without changing trajectory-close evidence shape)"
     consequences:
-      - "M09 HITRUST assessment is scoped to the Opus deployment."
-      - "M07 chio-kernel-mobile MVP design partner is the Opus mobile patient-app extension."
+      - "M01.P0/P1 includes a candidate-selection ticket; the selected partner is named in the audit doc evidence log, not in narrative or YAML scope docs."
+      - "M09 HITRUST assessment is scoped to the selected design-partner deployment (named in the audit doc, not in narrative scope)."
+      - "M07 chio-kernel-mobile MVP design-partner surface is the selected partner's mobile patient-app extension."
+      - "Path globs in OWNERS.toml / freezes.yml use the placeholder `deployments/healthcare-design-partner/` until the partner is selected; resolved at execution time."
+      - "Partner withdrawal after scoping fires halt trigger 12; substitution from the candidate pool requires user authorization, not silent re-scoping."
     superseded_by: null
 
   - id: D10
