@@ -26,5 +26,11 @@
     "suite_commit": "17f1f93cc070754cdd290ac13476dcfa13f39855",
     "pass_count": 31,
     "skip_count": 0
+  },
+  "registry_submission": {
+    "url": "https://registry.modelcontextprotocol.io/servers/dev.chio/chio-governed-tools",
+    "submitted_at": "2026-05-02",
+    "namespace_validation": "github",
+    "status": "submitted"
   }
 }

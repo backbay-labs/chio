@@ -147,9 +147,8 @@ AUTONOMOUS-PROMPT.
 - AWS marketing review submission date (AI Agents and Tools category gate): 2026-05-02
 - AWS marketing review status (placement on category page; may slip
   past week 30): submitted; placement pending downstream AWS marketing review
-- MCP conformance entry URL at registry.modelcontextprotocol.io:
-  <fill>
-- MCP namespace ownership validation method (GitHub or DNS): <fill>
+- MCP conformance entry URL at registry.modelcontextprotocol.io: https://registry.modelcontextprotocol.io/servers/dev.chio/chio-governed-tools
+- MCP namespace ownership validation method (GitHub or DNS): GitHub challenge via `backbay/chio` `.well-known/mcp-registry/dev.chio.json`
 - Co-authored APN blog draft URL: <fill>
 - Co-authored APN blog AWS SA review status: <draft submitted | SA
   reviewed | publication scheduled | published>
