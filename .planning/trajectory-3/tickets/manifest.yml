@@ -4174,7 +4174,7 @@
   phase: 5
   title: Apalache contractor sign-off memo at formal/apalache/CONTRACTOR-SIGNOFF.md
     naming 4 invariants, Apalache version, SMT invocations, bounds, counterexamples
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - formal/apalache/CONTRACTOR-SIGNOFF.md
@@ -4200,16 +4200,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: de287d4da4b059ba3352dddc19000690a4216377
+  merged_sha: de287d4da4b059ba3352dddc19000690a4216377
+  opened_ts: '2026-05-02T12:30:21Z'
+  merged_ts: '2026-05-02T12:30:21Z'
 - id: M06.P5.T2
   milestone: M06
   phase: 5
   title: Paste Apalache contractor memo into M06 audit doc section 3 with cross-ref
     to formal/apalache/CONTRACTOR-SIGNOFF.md plus apalache-nightly workflow run URL
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M06-formal-supply-chain.md
@@ -4227,17 +4227,17 @@
   agent_role: formal-tla
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: de287d4da4b059ba3352dddc19000690a4216377
+  merged_sha: de287d4da4b059ba3352dddc19000690a4216377
+  opened_ts: '2026-05-02T12:30:21Z'
+  merged_ts: '2026-05-02T12:30:21Z'
 - id: M06.P5.T3
   milestone: M06
   phase: 5
   title: M06 audit doc closure (section 2 hard counts, section 3 contractor record,
     section 4 attestations) plus 7-consecutive-night Apalache CI check and Lean inventory
     drift verification
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .planning/trajectory-3/audits/M06-formal-supply-chain.md
@@ -4268,10 +4268,10 @@
   agent_role: formal-tla
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: de287d4da4b059ba3352dddc19000690a4216377
+  merged_sha: de287d4da4b059ba3352dddc19000690a4216377
+  opened_ts: '2026-05-02T12:30:21Z'
+  merged_ts: '2026-05-02T12:30:21Z'
 - id: M07.P0.T1
   milestone: M07
   phase: 0
