@@ -1,0 +1,143 @@
+# conformance-matrix.yml - Nightly conformance and vector-freshness gates.
+#
+# Two nightly jobs:
+#   - vectors-byte-stable: re-runs `cargo xtask freeze-vectors --check`
+#     to catch vector drift introduced outside a PR.
+#   - external-consumer-smoke: simulates the published-crate consumer flow
+#     on a fresh runner (`cargo install chio-conformance`, fetch-peers --check,
+#     JSON-report scenario run against the python peer).
+#
+# Alarm policy: 1 failed nightly opens an issue tagged `alarm:conformance-matrix`;
+# 3 consecutive failures page the protocol owner.
+
+name: conformance-matrix
+
+on:
+  schedule:
+    # 07:00 UTC nightly. Off the cron-storm minute and separate from
+    # nightly.yml (04:23 UTC) and cflite_batch.yml (02:17 UTC) so the
+    # three nightly lanes do not contend for runners.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: conformance-matrix-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  LC_ALL: C
+
+jobs:
+  vectors-byte-stable:
+    name: vectors-byte-stable (freeze-vectors --check nightly)
+    # owner: M01
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Run freeze-vectors --check
+        run: cargo xtask freeze-vectors --check
+
+      - name: Assert no drift in MANIFEST.sha256 or vectors tree
+        run: |
+          set -euo pipefail
+          # `cargo xtask freeze-vectors --check` already exits non-zero
+          # on byte drift between the committed MANIFEST and a fresh
+          # regeneration. The git-diff guard catches any side-effect
+          # writes (e.g. trailing newline normalisation by an editor
+          # plugin if a developer re-commits the manifest after a
+          # local edit).
+          git diff --exit-code \
+            tests/bindings/vectors/MANIFEST.sha256 \
+            tests/bindings/vectors
+
+  external-consumer-smoke:
+    name: external-consumer-smoke (published-crate flow on fresh runner)
+    # owner: M01
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install chio-conformance (path install)
+        # Once chio-conformance is on crates.io, swap for:
+        #   cargo install chio-conformance --version <pin>
+        run: cargo install --path crates/chio-conformance --locked
+
+      - name: Install chio CLI (provides `chio conformance` subcommands)
+        # `chio conformance run` and `chio conformance fetch-peers` are
+        # owned by the chio-cli crate; the published consumer also
+        # installs both crates in sequence (see docs/conformance.md
+        # "Standalone consumer" section).
+        run: cargo install --path crates/chio-cli --locked
+
+      - name: Verify peers.lock.toml shape (fetch-peers --check)
+        run: chio conformance fetch-peers --check
+
+      - name: Fetch python peer adapter binary
+        run: chio conformance fetch-peers --language python --out ./.chio-peers
+
+      - name: Run conformance scenarios against python peer (json report)
+        run: chio conformance run --peer python --report json --output /tmp/report.json
+
+      - name: Upload conformance report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: external-consumer-smoke-report
+          path: /tmp/report.json
+          if-no-files-found: ignore
+
+  notify-on-failure:
+    name: notify-on-failure (alarm-policy issue opener)
+    # owner: M01
+    needs: [vectors-byte-stable, external-consumer-smoke]
+    if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open conformance-matrix alarm issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `conformance-matrix nightly failed (run ${context.runId})`;
+            const body = [
+              `Nightly \`conformance-matrix\` workflow failed.`,
+              ``,
+              `Run: ${runUrl}`,
+              `Triggered: ${context.payload.schedule || 'schedule'}`,
+              ``,
+              `Alarm policy: 1 failed nightly opens this issue; 3 consecutive failures`,
+              `page the protocol owner. Check prior alarm issues under`,
+              `label \`alarm:conformance-matrix\` to assess paging threshold.`,
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['alarm:conformance-matrix', 'ci-failure'],
+            });

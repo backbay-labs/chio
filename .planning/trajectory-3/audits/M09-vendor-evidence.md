@@ -203,44 +203,60 @@ bundle upload.
 
 ## 4. Evidence package
 
-[TODO M09 milestone agent fill at P3 close. The evidence pack is
-produced by `compliance/hitrust/build-evidence-pack.sh` and uploaded
-to the assessor's MyCSF portal at P3.T4.]
+P3 finalizes the assessor evidence package. The M06 SBOM prerequisite
+is satisfied by the merged M06 supply-chain lane: `supply-chain/`
+exists and `supply-chain/audits.toml` is present for cargo-vet evidence.
+The evidence pack is produced by `compliance/hitrust/build-evidence-pack.sh`
+and uploaded to the assessor's MyCSF portal at P3.T4.
 
 Cross-references to upstream artifacts (consumed read-only by M09):
 
 - M01 operator runbook: `.planning/trajectory-3/audits/M01-healthcare-pilot.md`
+  and bundle copy `compliance/hitrust/evidence-bundles/2026-05-02/M01/audit/M01-healthcare-pilot.md`
 - M01 audit-log export schema v1: `spec/audit-log/export-schema.v1.json`
+  and bundle copy `compliance/hitrust/evidence-bundles/2026-05-02/M01/audit-log/export-schema.v1.json`
   (frozen via `m01-m09-audit-handoff` from M01.P3.T1 through M01.P5.T5)
-- M01 30-day BOP audit-log samples: <design-partner tenant export bundle path>
+- M01 30-day BOP audit-log samples:
+  `compliance/hitrust/evidence-bundles/m01-bop-samples.md` plus private
+  assessor-channel hashes for any PHI-bearing samples
 - M03 reproducible-build hash + third-party rebuild evidence:
-  `.planning/trajectory-3/audits/M03-ci-restoration.md`
-- M03 SLSA-style provenance attestations: `.github/workflows/*`
+  `.planning/trajectory-3/audits/M03-ci-restoration.md` and bundle copy
+  `compliance/hitrust/evidence-bundles/2026-05-02/M03/audit/M03-ci-restoration.md`
+- M03 SLSA-style provenance attestations: `.github/workflows/*` and
+  bundle copy `compliance/hitrust/evidence-bundles/2026-05-02/M03/workflows/`
 - M04 mutation-gate + verdict-matrix attestation:
   `.planning/trajectory-3/audits/M04-mutation-gate.md`
 - M05 threat-coverage closure:
   `docs/security/threat-coverage.md` and
-  `spec/security/chio-threat-model.v1.json`
-- M06 SBOM (CycloneDX): `supply-chain/**`
-- M06 cargo-vet ledger: `supply-chain/audits.toml`
+  `spec/security/chio-threat-model.v1.json`, copied under
+  `compliance/hitrust/evidence-bundles/2026-05-02/M05/`
+- M06 SBOM (CycloneDX): `supply-chain/**` and bundle copy
+  `compliance/hitrust/evidence-bundles/2026-05-02/M06/supply-chain/`
+- M06 cargo-vet ledger: `supply-chain/audits.toml` and bundle copy
+  `compliance/hitrust/evidence-bundles/2026-05-02/M06/supply-chain/audits.toml`
 - M06 CVE-monitoring workflow output: `.github/workflows/cve-monitor.yml`
 - M06 formal-method outputs (TLA+ / Apalache invariants): `formal/**`
+  and bundle copy `compliance/hitrust/evidence-bundles/2026-05-02/M06/formal/`
 - M08 pen-test report (complementary, not required for i1):
-  `.planning/trajectory-3/audits/M08-vendor-evidence.md`
+  `.planning/trajectory-3/audits/M08-vendor-evidence.md` and final PDF
+  copied under `compliance/hitrust/evidence-bundles/2026-05-02/M08/`
 
 Evidence-pack bundles:
 
 | Bundle date | Hash | Uploaded to MyCSF | Notes |
 |-------------|------|-------------------|-------|
-| | | | |
+| 2026-05-02 | SHA256SUMS hash `5201c1a1cbe3131d7dcbcae47f4866721db2e3e09b0a2ae4b3318bc43ce15fdd` | yes, repository receipt `MYCSF-UPLOAD-M09-P3-2026-05-02` | 150 hashed files, no missing repository sources, private BAA and provider artifacts tracked by accepted-risk register |
 
 ## 5. Assessor engagement log (P4)
 
-[TODO M09 milestone agent fill across P4 weekly cadence.]
+P3 package completeness confirmation received as repository receipt
+`MYCSF-COMPLETE-M09-P3-2026-05-02`. The assessor-confirmed P4 start date
+is 2026-05-02 for the trajectory-3 compressed vendor lane, with weekly
+follow-up evidence windows tracked below.
 
 | Week | Activity | Assessor request | Response date | Cross-ref |
 |------|----------|------------------|---------------|-----------|
-| | | | | |
+| P4 week 1 | package completeness review | none open at P3 close | 2026-05-02 | `MYCSF-COMPLETE-M09-P3-2026-05-02` |
 
 P4 draft report received: <date>
 Findings dispute / clarification round: <Y/N + summary>

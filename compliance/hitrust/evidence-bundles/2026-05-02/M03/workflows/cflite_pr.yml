@@ -1,0 +1,217 @@
+# cflite_pr.yml - ClusterFuzzLite PR smoke.
+#
+# Default mode is changed-target sampling. Diffs the PR against its
+# merge base, looks up which fuzz targets each changed source-path glob in
+# fuzz/target-map.toml triggers, and runs only those targets at 60 seconds
+# each. Budget-capped against the 2,000 min/month free tier.
+#
+# Opt-in PR label `fuzz: full` switches the run to a full-corpus sweep at
+# 120 seconds per target. The label is honored only if the trailing-30d
+# budget check passes; the budget script is the hard halt.
+#
+# Required check name: cflite_pr / changed-target-sampling
+
+name: cflite_pr
+
+on:
+  pull_request:
+    # `labeled` is required so adding the `fuzz: full` label to an
+    # already-open PR triggers a fresh run; without it the opt-in
+    # full-corpus sweep would only fire on the next commit / manual
+    # rerun, which makes the escalation unreliable for the high-risk
+    # PRs it is meant to cover.
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - "fuzz/**"
+      - "spec/schemas/**"
+      - "tests/bindings/vectors/**"
+      - ".github/workflows/cflite_pr.yml"
+      - ".clusterfuzzlite/**"
+      - "scripts/check-fuzz-budget.sh"
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+  pull-requests: read
+
+concurrency:
+  group: cflite-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # Default per-target wall budget for changed-target sampling. The
+  # `fuzz: full` PR label promotes this to 120s via a step-level override.
+  CHIO_FUZZ_DURATION_SECONDS: "60"
+  CHIO_FUZZ_DURATION_SECONDS_FULL: "120"
+
+jobs:
+  budget-check:
+    name: fuzz-budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Verify 30-day fuzz budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+        run: |
+          set -euo pipefail
+          scripts/check-fuzz-budget.sh "${{ github.repository }}"
+
+  changed-target-sampling:
+    name: changed-target-sampling
+    needs: budget-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Install yq
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.local/bin"
+          curl -fsSL --retry 3 \
+            "https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64" \
+            -o "${HOME}/.local/bin/yq"
+          echo "a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7  ${HOME}/.local/bin/yq" | sha256sum -c -
+          chmod +x "${HOME}/.local/bin/yq"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Detect fuzz-full label
+        id: mode
+        env:
+          LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          if printf '%s' "${LABELS_JSON}" | grep -q '"fuzz: full"'; then
+            echo "fuzz: full label present; promoting to all-target sweep"
+            {
+              echo "full=true"
+              echo "fuzz_seconds=${CHIO_FUZZ_DURATION_SECONDS_FULL}"
+              echo "cflite_mode=batch"
+            } >> "${GITHUB_OUTPUT}"
+          else
+            echo "default mode: changed-target sampling at 60s per target"
+            {
+              echo "full=false"
+              echo "fuzz_seconds=${CHIO_FUZZ_DURATION_SECONDS}"
+              echo "cflite_mode=code-change"
+            } >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Compute changed targets
+        id: targets
+        if: steps.mode.outputs.full == 'false'
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          head_sha="${{ github.event.pull_request.head.sha }}"
+          merge_base="$(git merge-base "${base_sha}" "${head_sha}")"
+          echo "merge-base: ${merge_base}"
+          git diff --name-only "${merge_base}" "${head_sha}" > changed.txt
+          mapfile -t targets < <(yq -p=toml -r '.targets | keys | .[]' \
+            fuzz/target-map.toml)
+          fired=()
+          for tgt in "${targets[@]}"; do
+            mapfile -t triggers < <(yq -p=toml -r \
+              ".targets.${tgt}.triggers[]" fuzz/target-map.toml)
+            for trig in "${triggers[@]}"; do
+              regex="$(printf '%s' "${trig}" | sed -e 's|\.|\\.|g' \
+                -e 's|\*\*|__DSTAR__|g' -e 's|\*|[^/]*|g' \
+                -e 's|__DSTAR__|.*|g')"
+              if grep -qE "^${regex}$" changed.txt; then
+                fired+=("${tgt}")
+                break
+              fi
+            done
+          done
+          # Inventory fallback: builder, workflow, and target-map edits
+          # can break changed-target sampling without matching a source
+          # trigger. Run the full inventory for those control-plane edits.
+          if grep -qE '^(\.cargo/|\.clusterfuzzlite/|\.github/workflows/cflite_pr\.yml$|Cargo\.(toml|lock)$|fuzz/(Cargo\.toml|target-map\.toml)$)' changed.txt; then
+            echo "fuzz inventory edit detected; firing the full inventory"
+            fired=("${targets[@]}")
+          fi
+          if ((${#fired[@]} == 0)); then
+            : > fired.txt
+          else
+            printf '%s\n' "${fired[@]}" | sort -u > fired.txt
+          fi
+          fired_count="$(wc -l < fired.txt | tr -d ' ')"
+          printf 'fired targets: %s\n' "${fired_count}"
+          cat fired.txt
+          {
+            echo "count=${fired_count}"
+            printf 'targets<<EOF\n%s\nEOF\n' "$(cat fired.txt)"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Fail if no targets fired (changed-target mode)
+        if: steps.mode.outputs.full == 'false' && steps.targets.outputs.count == '0'
+        run: |
+          echo "changed-target sampling found no mapped fuzz target for this diff" >&2
+          echo "changed files:" >&2
+          sed 's/^/  /' changed.txt >&2
+          exit 1
+
+      - name: Build ClusterFuzzLite changed-target fuzzers
+        if: steps.mode.outputs.full == 'false' && steps.targets.outputs.count != '0'
+        uses: google/clusterfuzzlite/actions/build_fuzzers@82652fb49e77bc29c35da1167bb286e93c6bcc05
+        env:
+          CHIO_CFLITE_TARGETS: ${{ steps.targets.outputs.targets }}
+        with:
+          language: rust
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          keep-unaffected-fuzz-targets: true
+
+      - name: Run ClusterFuzzLite changed-target sampling without corpus storage
+        if: steps.mode.outputs.full == 'false' && steps.targets.outputs.count != '0'
+        uses: google/clusterfuzzlite/actions/run_fuzzers@82652fb49e77bc29c35da1167bb286e93c6bcc05
+        env:
+          CHIO_CFLITE_TARGETS: ${{ steps.targets.outputs.targets }}
+        with:
+          language: rust
+          fuzz-seconds: ${{ steps.mode.outputs.fuzz_seconds }}
+          mode: code-change
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          report-unreproducible-crashes: false
+
+      - name: Build ClusterFuzzLite full-corpus fuzzers
+        if: steps.mode.outputs.full == 'true'
+        uses: google/clusterfuzzlite/actions/build_fuzzers@82652fb49e77bc29c35da1167bb286e93c6bcc05
+        with:
+          language: rust
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Run ClusterFuzzLite full-corpus sweep without corpus storage (fuzz-full label)"
+        if: steps.mode.outputs.full == 'true'
+        uses: google/clusterfuzzlite/actions/run_fuzzers@82652fb49e77bc29c35da1167bb286e93c6bcc05
+        with:
+          language: rust
+          fuzz-seconds: ${{ steps.mode.outputs.fuzz_seconds }}
+          mode: batch
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          report-unreproducible-crashes: false
+
+      - name: Upload crash reports
+        if: failure() && (steps.mode.outputs.full == 'true' || steps.targets.outputs.count != '0')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cflite-pr-crashes-${{ github.event.pull_request.number }}
+          path: ./out/artifacts
+          if-no-files-found: ignore
+          retention-days: 14

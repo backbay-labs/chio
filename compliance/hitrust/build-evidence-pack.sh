@@ -16,6 +16,7 @@ copy_if_present() {
   fi
 }
 
+rm -rf "$OUT"
 mkdir -p "$OUT"
 : > "$OUT/MISSING.csv"
 

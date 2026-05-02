@@ -1,0 +1,205 @@
+name: verdict-matrix
+# Cross-language verdict-tuple equality across nine drivers: Rust kernel,
+# Python, TS node-http, WASM browser, Go, JVM, dotnet, Lambda, k8s. The
+# deployment-shape smoke job is required so any divergence fails the PR.
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-conformance/verdict_matrix/**"
+      - "crates/chio-core/**"
+      - "crates/chio-core-types/**"
+      - "crates/chio-kernel*/**"
+      - "sdks/python/chio-sdk-python/**"
+      - "sdks/typescript/packages/**"
+      - "sdks/go/**"
+      - "sdks/jvm/**"
+      - "sdks/dotnet/**"
+      - "sdks/lambda/**"
+      - "sdks/k8s/**"
+      - "spec/errors/registry.yaml"
+      - ".github/workflows/verdict-matrix.yml"
+      - "docs/conformance/verdict-matrix.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/chio-conformance/verdict_matrix/**"
+      - "crates/chio-core/**"
+      - "crates/chio-core-types/**"
+      - "crates/chio-kernel*/**"
+      - "sdks/python/chio-sdk-python/**"
+      - "sdks/typescript/packages/**"
+      - "sdks/go/**"
+      - "sdks/jvm/**"
+      - "sdks/dotnet/**"
+      - "sdks/lambda/**"
+      - "sdks/k8s/**"
+      - "spec/errors/registry.yaml"
+      - ".github/workflows/verdict-matrix.yml"
+      - "docs/conformance/verdict-matrix.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verdict-matrix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-kernel:
+    name: verdict_matrix rust-kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Verify scenario counts
+        run: |
+          set -euo pipefail
+          test -d crates/chio-conformance/verdict_matrix/scenarios/capability_subset
+          test -d crates/chio-conformance/verdict_matrix/scenarios/revocation_propagation
+          test -d crates/chio-conformance/verdict_matrix/scenarios/replay_verdict
+          test -d crates/chio-conformance/verdict_matrix/scenarios/redaction_determinism
+          test "$(find crates/chio-conformance/verdict_matrix/scenarios/capability_subset -name '*.json' | wc -l)" -ge 12
+          test "$(find crates/chio-conformance/verdict_matrix/scenarios/revocation_propagation -name '*.json' | wc -l)" -ge 12
+          test "$(find crates/chio-conformance/verdict_matrix/scenarios/replay_verdict -name '*.json' | wc -l)" -ge 12
+          test "$(find crates/chio-conformance/verdict_matrix/scenarios/redaction_determinism -name '*.json' | wc -l)" -ge 12
+
+      - name: Run Rust kernel verdict driver
+        run: cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet
+
+      - name: Run diff oracle self test
+        run: cargo test -p chio-conformance --test diff_oracle_self_test --quiet
+
+      - name: Run cross-language verdict matrix
+        run: cargo test -p chio-conformance --test verdict_matrix_cross_language --quiet
+
+      - name: Verify workflow and docs registration
+        run: |
+          set -euo pipefail
+          test -f .github/workflows/verdict-matrix.yml
+          test -f docs/conformance/verdict-matrix.md
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/verdict-matrix.yml").read_text()
+          docs = Path("docs/conformance/verdict-matrix.md").read_text()
+
+          cross_language = "verdict_matrix_" + "cross_language"
+          workflow_command = (
+              "run: cargo test -p chio-conformance --test "
+              + cross_language
+              + " --quiet"
+          )
+          docs_command = (
+              "cargo test -p chio-conformance --test "
+              + cross_language
+              + " --quiet"
+          )
+
+          if workflow_command not in workflow:
+              raise SystemExit("cross-language verdict-matrix workflow step is missing")
+          if docs_command not in docs:
+              raise SystemExit("cross-language verdict-matrix docs gate is missing")
+          PY
+
+  python-go-required:
+    # Runs the required Python and Go verdict drivers against the same
+    # 48-scenario corpus as the Rust kernel reference. The job is required so
+    # any unsupported tuple, failed tuple, or semantic divergence blocks the PR.
+    name: verdict_matrix python-sdk go-http-sdk (required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: rust-kernel
+    # required: true gates python-sdk and go-http-sdk in CI.
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: "1.23.0"
+
+      - name: Verify Python and Go driver activation
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path("crates/chio-conformance/verdict_matrix/manifest.toml").read_text()
+          required = {
+              "[drivers.python-sdk]": 'status = "active"',
+              "[drivers.go-http-sdk]": 'status = "active"',
+          }
+          for table, status in required.items():
+              start = manifest.find(table)
+              if start == -1:
+                  raise SystemExit(f"{table} missing from verdict-matrix manifest")
+              end = manifest.find("\n[", start + 1)
+              section = manifest[start:] if end == -1 else manifest[start:end]
+              if status not in section:
+                  raise SystemExit(f"{table} is not active")
+          PY
+
+      - name: Run Python SDK verdict driver
+        working-directory: sdks/python/chio-sdk-python
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          python -m pytest tests/test_verdict_matrix.py -q
+
+      - name: Run Go HTTP SDK verdict driver
+        working-directory: sdks/go/chio-go-http
+        run: |
+          set -euo pipefail
+          go test -run VerdictMatrix ./...
+
+  deployment-shape-smoke:
+    # Runs the cross-deployment integration smoke test that asserts
+    # identical (verdict, reason_code, scope_set) tuples across the four
+    # deployment-shape SDK drivers (JVM, dotnet, Lambda, k8s) vs the Rust
+    # kernel reference, plus the manifest-registration shape gate. The
+    # job is required so the matrix gate fails the PR on any divergence
+    # in the deployment-shape registration or smoke test.
+    name: verdict_matrix deployment-shape (required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: rust-kernel
+    # required: true gates the four deployment-shape SDK drivers in CI.
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Verify deployment-shape driver registration
+        run: |
+          set -euo pipefail
+          grep -q 'driver = "jvm"' crates/chio-conformance/verdict_matrix/manifest.toml
+          grep -q 'driver = "dotnet"' crates/chio-conformance/verdict_matrix/manifest.toml
+          grep -q 'driver = "lambda"' crates/chio-conformance/verdict_matrix/manifest.toml
+          grep -q 'driver = "k8s"' crates/chio-conformance/verdict_matrix/manifest.toml
+          grep -q 'required: true' .github/workflows/verdict-matrix.yml
+
+      - name: Run cross-deployment smoke gate
+        run: cargo test -p chio-conformance --test deployment_shape_smoke --quiet
+
+      - name: Verify D07 closure marker in audit doc
+        run: |
+          set -euo pipefail
+          grep -q 'D07 deferral closed' .planning/audits/M07-adoption-beachhead.md

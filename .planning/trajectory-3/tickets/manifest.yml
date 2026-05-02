@@ -6714,7 +6714,7 @@
   milestone: M09
   phase: 3
   title: Wait for M06 P3 SBOM publication before evidence-pack assembly
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -6734,15 +6734,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4509c158cf473eedb0b710066a1cdceb106a1135
+  merged_sha: 4509c158cf473eedb0b710066a1cdceb106a1135
+  opened_ts: '2026-05-02T19:06:16Z'
+  merged_ts: '2026-05-02T19:06:16Z'
 - id: M09.P3.T2
   milestone: M09
   phase: 3
   title: Wait for M01 P5 close and pull 30-day BOP audit-log samples via export pipeline
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - compliance/hitrust/evidence-bundles/m01-bop-samples.md
@@ -6761,15 +6761,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: ee4ad83c073ea7e0bb8505b9669af7e2eb7af1c8
+  merged_sha: ee4ad83c073ea7e0bb8505b9669af7e2eb7af1c8
+  opened_ts: '2026-05-02T19:06:16Z'
+  merged_ts: '2026-05-02T19:06:16Z'
 - id: M09.P3.T3
   milestone: M09
   phase: 3
   title: Run build-evidence-pack.sh to produce dated bundle and verify completeness
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - compliance/hitrust/evidence-bundles/
@@ -6787,15 +6787,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 46ad39dc260cbb9a29d9f917c79194a724a91e36
+  merged_sha: 46ad39dc260cbb9a29d9f917c79194a724a91e36
+  opened_ts: '2026-05-02T19:06:16Z'
+  merged_ts: '2026-05-02T19:06:16Z'
 - id: M09.P3.T4
   milestone: M09
   phase: 3
   title: Upload evidence bundle to MyCSF portal and record bundle hash in audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -6811,16 +6811,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 3d7a36d2778a6ea680b283779d9784c9182cb54e
+  merged_sha: 3d7a36d2778a6ea680b283779d9784c9182cb54e
+  opened_ts: '2026-05-02T19:06:16Z'
+  merged_ts: '2026-05-02T19:06:16Z'
 - id: M09.P3.T5
   milestone: M09
   phase: 3
   title: Receive assessor confirmation that evidence package is complete and pin P4
     start date
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -6836,15 +6836,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0e0de4a71179b823192c3fd43f501cd0048f6d23
+  merged_sha: 0e0de4a71179b823192c3fd43f501cd0048f6d23
+  opened_ts: '2026-05-02T19:06:16Z'
+  merged_ts: '2026-05-02T19:06:16Z'
 - id: M09.P3.T6
   milestone: M09
   phase: 3
   title: Audit-doc update with package upload date, bundle hash, evidence-source pointers
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -6861,10 +6861,10 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 464c2c3e9c8031edbacf7c4207c63cb85aca2e2e
+  merged_sha: 464c2c3e9c8031edbacf7c4207c63cb85aca2e2e
+  opened_ts: '2026-05-02T19:06:16Z'
+  merged_ts: '2026-05-02T19:06:16Z'
 - id: M09.P4.T1
   milestone: M09
   phase: 4

@@ -1,0 +1,115 @@
+# vectors-staleness.yml - Nightly staleness alarm for the bindings vector corpus.
+#
+# Uses the git-commit age of tests/bindings/vectors/MANIFEST.sha256 as the
+# "last blessed at" signal; `cargo xtask freeze-vectors` rewrites that file
+# every time the corpus is regenerated.
+#
+# Alarm policy: a single failure opens an issue tagged `alarm:vectors-staleness`.
+
+name: vectors-staleness
+
+on:
+  schedule:
+    # 07:30 UTC daily. Offset 30 minutes from conformance-matrix.yml
+    # (07:00 UTC) so the two nightly lanes do not contend for runners.
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vectors-staleness-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  LC_ALL: C
+  # Maximum allowed age (in days) of `tests/bindings/vectors/MANIFEST.sha256`
+  # before the staleness alarm fires. 90 days matches the M02 fuzz-corpus
+  # sunset-gate cadence (see fuzz_corpus_sync.yml + upstream_skips.toml).
+  STALENESS_DAYS: "90"
+
+jobs:
+  vectors-freshness:
+    name: vectors-freshness (manifest age <= STALENESS_DAYS days)
+    # owner: M01
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # Fetch full history so `git log -1` returns the true last
+          # commit timestamp for the manifest, not the shallow-clone
+          # truncation point.
+          fetch-depth: 0
+
+      - name: Assert MANIFEST.sha256 last-bless age within STALENESS_DAYS
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="tests/bindings/vectors/MANIFEST.sha256"
+          if [ ! -f "${manifest}" ]; then
+            echo "::error::${manifest} is missing; the bindings vector corpus has no committed manifest"
+            exit 1
+          fi
+          # Last commit that touched the manifest. We use the commit
+          # timestamp (not file mtime) because checkout sets mtimes to
+          # the runner's clock, which would always read as "fresh".
+          last_blessed_epoch="$(git log -1 --format=%ct -- "${manifest}")"
+          if [ -z "${last_blessed_epoch}" ]; then
+            echo "::error::no commit history found for ${manifest}; cannot compute staleness"
+            exit 1
+          fi
+          now_epoch="$(date -u +%s)"
+          age_seconds=$(( now_epoch - last_blessed_epoch ))
+          age_days=$(( age_seconds / 86400 ))
+          max_days="${STALENESS_DAYS}"
+          echo "manifest last blessed: $(date -u -d "@${last_blessed_epoch}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r "${last_blessed_epoch}" '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "current time:          $(date -u -d "@${now_epoch}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r "${now_epoch}" '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "age (days):            ${age_days}"
+          echo "threshold (days):      ${max_days}"
+          if [ "${age_days}" -gt "${max_days}" ]; then
+            echo "::error::vectors-staleness: ${manifest} is ${age_days} days old (threshold ${max_days} days). Re-bless via 'cargo xtask freeze-vectors' and commit the resulting manifest."
+            exit 1
+          fi
+          echo "vectors-staleness: ${manifest} is ${age_days} days old (within threshold ${max_days} days)"
+
+  notify-on-failure:
+    name: notify-on-failure (alarm-policy issue opener)
+    # owner: M01
+    needs: [vectors-freshness]
+    if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open vectors-staleness alarm issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `vectors-staleness alarm fired (run ${context.runId})`;
+            const body = [
+              `Nightly \`vectors-staleness\` workflow failed.`,
+              ``,
+              `Run: ${runUrl}`,
+              ``,
+              `The bindings vector manifest`,
+              `(\`tests/bindings/vectors/MANIFEST.sha256\`) has not been`,
+              `re-blessed within the configured staleness threshold.`,
+              `Re-bless the corpus via:`,
+              ``,
+              `    cargo xtask freeze-vectors`,
+              ``,
+              `then commit the regenerated manifest. If the staleness is`,
+              `intentional (e.g. the spec is intentionally frozen), bump`,
+              `\`STALENESS_DAYS\` in \`.github/workflows/vectors-staleness.yml\``,
+              `and document the exemption in this issue.`,
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['alarm:vectors-staleness', 'ci-failure'],
+            });

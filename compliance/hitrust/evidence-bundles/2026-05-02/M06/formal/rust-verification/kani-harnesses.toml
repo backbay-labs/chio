@@ -1,0 +1,26 @@
+schema = "chio.kani-harnesses.v1"
+status = "core_harnesses_required_for_strict_ci"
+owner = "formal-verification"
+strict_smoke_command = "./scripts/check-kani-smoke.sh"
+strict_core_command = "./scripts/check-kani-core.sh"
+
+harness_groups = [
+  "capability_time_window_edges|Kani verifies the time-window classifier used by verify_capability",
+  "scope_subset_state_space|Kani verifies subset cap and requirement helpers used by normalized scope checks",
+  "portable_evaluate_fail_closed|Kani verifies deny-dominant guard composition used by evaluate",
+  "budget_and_dpop_model|Kani verifies DPoP replay/freshness and budget commit monotonicity helpers",
+  "receipt_input_model|Kani verifies receipt coupling requires capability, request, verdict, policy hash, and evidence class matches",
+]
+
+covered_symbols = [
+  "chio_kernel_core::capability_verify::verify_capability",
+  "chio_kernel_core::scope::resolve_matching_grants",
+  "chio_kernel_core::evaluate::evaluate",
+  "chio_kernel_core::normalized::NormalizedScope::is_subset_of",
+  "chio_kernel_core::receipts::sign_receipt",
+  "chio_kernel_core::formal_core::classify_time_window",
+  "chio_kernel_core::formal_core::budget_commit",
+  "chio_kernel_core::formal_core::dpop_admits",
+  "chio_kernel_core::formal_core::guard_pipeline_allows",
+  "chio_kernel_core::formal_core::receipt_fields_coupled",
+]

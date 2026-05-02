@@ -1,0 +1,355 @@
+name: Release C++ SDKs
+
+# Tag-driven publish for the four Chio C++ SDKs to the private Conan remote
+# (Sonatype Nexus on the platform-dev OKE cluster) and the private vcpkg
+# overlay registry (backbay-labs/chio-vcpkg-registry).
+#
+# Tag format: cpp/v<X.Y.Z> publishes all four SDKs. The four SDK versions
+# stay coupled while the C ABI invariant boundary is pre-1.0; once any SDK
+# diverges, switch to slug-specific tags (cpp/<slug>-v<X.Y.Z>) following the
+# release-npm.yml precedent.
+#
+# Required GitHub Actions secrets (configured at repo level):
+#   - CHIO_NEXUS_PUBLISHER_TOKEN: bearer token for the chio-publisher Nexus
+#     account, sourced from OCI Vault secret chio-registry/chio-publisher
+#   - CHIO_VCPKG_REGISTRY_DEPLOY_KEY: SSH private key whose public half is
+#     a deploy key on backbay-labs/chio-vcpkg-registry with write access
+#
+# Network reachability: this workflow assumes nexus.dev.backbay.io is
+# publicly resolvable and accepts traffic from GitHub-hosted runners. If
+# the gateway is ACL'd to internal CIDRs, swap to a self-hosted runner
+# pinned to the OKE cluster network.
+
+on:
+  push:
+    tags:
+      - "cpp/v*.*.*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run gates and pack artifacts without uploading."
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-cpp-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CHIO_CPP_CBINDGEN_VERSION: "0.29.2"
+  CHIO_CPP_CONAN_VERSION: "2.28.0"
+  CHIO_CPP_VCPKG_REF: 7a9071743140154391b0e18b77d46cc66c5f3663
+  # No trailing slash. Some Conan/Nexus combos loop on redirects when the
+  # configured remote URL doesn't match the canonical form Nexus serves.
+  CHIO_NEXUS_REMOTE_URL: https://nexus.dev.backbay.io/repository/chio-conan
+  CHIO_VCPKG_REGISTRY_REPO: backbay-labs/chio-vcpkg-registry
+
+jobs:
+  qualify:
+    name: Release qualification
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      dry_run: ${{ steps.meta.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Resolve version + dry-run
+        id: meta
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "$REF_NAME" =~ ^cpp/v(${semver_re})$ ]]; then
+              version="${BASH_REMATCH[1]}"
+            else
+              echo "Tag $REF_NAME does not match cpp/v<semver>" >&2
+              exit 1
+            fi
+            dry_run="false"
+          else
+            version="$(grep -m1 'version =' packages/sdk/chio-cpp/conanfile.py | sed -E 's/.*"([^"]+)".*/\1/')"
+            dry_run="${INPUT_DRY_RUN:-true}"
+          fi
+          for sdk in chio-cpp chio-cpp-kernel chio-guard-cpp chio-drogon; do
+            recipe_version="$(grep -m1 'version =' "packages/sdk/${sdk}/conanfile.py" | sed -E 's/.*"([^"]+)".*/\1/')"
+            if [[ "$recipe_version" != "$version" ]]; then
+              echo "::error::${sdk}/conanfile.py declares version ${recipe_version} but tag is v${version}" >&2
+              exit 1
+            fi
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=$version dry_run=$dry_run"
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake curl git pkg-config python3 python3-pip zip unzip tar libcurl4-openssl-dev
+          cargo install cbindgen --locked --version "${CHIO_CPP_CBINDGEN_VERSION}"
+          python3 -m pip install --user "conan==${CHIO_CPP_CONAN_VERSION}"
+          git init "${RUNNER_TEMP}/vcpkg"
+          git -C "${RUNNER_TEMP}/vcpkg" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "${RUNNER_TEMP}/vcpkg" fetch --depth 1 origin "${CHIO_CPP_VCPKG_REF}"
+          git -C "${RUNNER_TEMP}/vcpkg" checkout --detach FETCH_HEAD
+          "${RUNNER_TEMP}/vcpkg/bootstrap-vcpkg.sh"
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
+          echo "${RUNNER_TEMP}/vcpkg" >> "$GITHUB_PATH"
+
+      - name: chio-cpp release gate
+        env:
+          CHIO_CPP_REQUIRE_CBINDGEN: "1"
+          CHIO_CPP_REQUIRE_PACKAGERS: "1"
+        run: ./scripts/check-chio-cpp-release.sh
+
+      - name: chio-cpp-kernel release gate
+        env:
+          CHIO_CPP_REQUIRE_PACKAGERS: "1"
+        run: ./scripts/check-chio-cpp-kernel-release.sh
+
+      - name: chio-guard-cpp release gate
+        env:
+          CHIO_CPP_REQUIRE_PACKAGERS: "1"
+        run: ./scripts/check-chio-guard-cpp-release.sh
+
+      - name: chio-drogon release gate
+        env:
+          CHIO_CPP_REQUIRE_PACKAGERS: "1"
+        run: ./scripts/check-chio-drogon-release.sh
+
+      - name: Snapshot Conan cache
+        # The release gates already populated the local cache via
+        # `conan create` for each SDK. Snapshot the cache so the publish
+        # job restores it without re-running cargo + cmake.
+        run: tar -C "$HOME/.conan2" -czf "${RUNNER_TEMP}/conan-cache.tar.gz" .
+
+      - name: Upload Conan cache snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: conan-cache-${{ steps.meta.outputs.version }}
+          path: ${{ runner.temp }}/conan-cache.tar.gz
+          retention-days: 7
+          if-no-files-found: error
+
+  publish-conan:
+    name: Upload to Nexus
+    needs: qualify
+    if: needs.qualify.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: chio-conan-private
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install conan
+        run: |
+          python3 -m pip install --user "conan==${CHIO_CPP_CONAN_VERSION}"
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
+
+      - name: Restore Conan cache snapshot
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: conan-cache-${{ needs.qualify.outputs.version }}
+          path: ${{ runner.temp }}/snapshot
+
+      - name: Hydrate local Conan cache
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.conan2"
+          tar -C "$HOME/.conan2" -xzf "${RUNNER_TEMP}/snapshot/conan-cache.tar.gz"
+
+      - name: Configure Nexus remote
+        run: |
+          set -euo pipefail
+          if ! conan profile path default >/dev/null 2>&1; then
+            conan profile detect --force
+          fi
+          conan remote add chio-private "${CHIO_NEXUS_REMOTE_URL}" || true
+
+      - name: Upload SDK packages
+        # Conan v2 `remote login` obtains a session token but the token
+        # storage doesn't reliably persist across separate `conan` invocations
+        # in CI; subsequent commands re-prompt for credentials and EOF on
+        # closed stdin. The supported non-interactive path is per-remote
+        # env vars, which Conan reads on every command. Per
+        # https://docs.conan.io/2/reference/environment.html the remote
+        # name is uppercased and hyphens are replaced with underscores in
+        # the variable name; "chio-private" -> "CHIO_PRIVATE".
+        env:
+          CONAN_LOGIN_USERNAME_CHIO_PRIVATE: chio-publisher
+          CONAN_PASSWORD_CHIO_PRIVATE: ${{ secrets.CHIO_NEXUS_PUBLISHER_TOKEN }}
+        run: |
+          set -euo pipefail
+          for sdk in chio-cpp chio-cpp-kernel chio-guard-cpp chio-drogon; do
+            conan upload "${sdk}/${{ needs.qualify.outputs.version }}" \
+              -r=chio-private --confirm
+          done
+
+  publish-vcpkg:
+    name: Sync vcpkg overlay
+    needs: qualify
+    if: needs.qualify.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: chio-vcpkg-registry
+    steps:
+      - name: Check out chio
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          path: chio
+
+      - name: Check out vcpkg overlay registry
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ env.CHIO_VCPKG_REGISTRY_REPO }}
+          ssh-key: ${{ secrets.CHIO_VCPKG_REGISTRY_DEPLOY_KEY }}
+          path: registry
+
+      - name: Compute source archive SHA512
+        id: archive
+        shell: bash
+        env:
+          VERSION: ${{ needs.qualify.outputs.version }}
+        run: |
+          set -euo pipefail
+          archive_url="https://github.com/${{ github.repository }}/archive/refs/tags/cpp/v${VERSION}.tar.gz"
+          archive_path="${RUNNER_TEMP}/source.tar.gz"
+          curl -fsSL "$archive_url" -o "$archive_path"
+          sha512="$(sha512sum "$archive_path" | awk '{print $1}')"
+          echo "sha512=$sha512" >> "$GITHUB_OUTPUT"
+          echo "Resolved SHA512=$sha512"
+
+      - name: Mirror port files into registry
+        shell: bash
+        env:
+          VERSION: ${{ needs.qualify.outputs.version }}
+          SHA512: ${{ steps.archive.outputs.sha512 }}
+        run: |
+          set -euo pipefail
+          for sdk in chio-cpp chio-cpp-kernel chio-guard-cpp chio-drogon; do
+            src="chio/tools/vcpkg-overlay/ports/${sdk}"
+            dst="registry/ports/${sdk}"
+            mkdir -p "$dst"
+            cp "${src}/vcpkg.json" "${dst}/vcpkg.json"
+            sed -e "s|SHA512 0|SHA512 ${SHA512}|" \
+                "${src}/portfile.cmake" > "${dst}/portfile.cmake"
+          done
+
+      - name: Stage port files and update versions index
+        shell: bash
+        working-directory: registry
+        env:
+          VERSION: ${{ needs.qualify.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "chio-release-bot"
+          git config user.email "chio-release-bot@users.noreply.github.com"
+          # Stage the new port files first so `git rev-parse :ports/<port>`
+          # below resolves to the post-update tree SHA. The versions index
+          # then references that SHA, and we commit both staged trees in
+          # a single commit at the end.
+          git add ports
+          mkdir -p versions
+          if [[ ! -f versions/baseline.json ]]; then
+            echo '{"default":{}}' > versions/baseline.json
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          ports = ["chio-cpp", "chio-cpp-kernel", "chio-guard-cpp", "chio-drogon"]
+
+          baseline_path = Path("versions/baseline.json")
+          baseline = json.loads(baseline_path.read_text())
+          baseline.setdefault("default", {})
+
+          # Materialize the staged index into a real tree object so we can
+          # walk it for per-port subtree SHAs. `git rev-parse :ports/<port>`
+          # works for blobs but not for synthesised directory entries; the
+          # index only stores blobs and computes tree objects on demand via
+          # `git write-tree`.
+          top_tree = subprocess.check_output(
+              ["git", "write-tree"],
+              text=True,
+          ).strip()
+
+          for port in ports:
+              entry = subprocess.check_output(
+                  ["git", "ls-tree", top_tree, f"ports/{port}"],
+                  text=True,
+              ).strip()
+              if not entry:
+                  raise SystemExit(f"ports/{port} missing from tree {top_tree}")
+              # ls-tree emits "<mode> <type> <sha>\t<path>"; split on whitespace
+              parts = entry.split()
+              if len(parts) < 3 or parts[1] != "tree":
+                  raise SystemExit(f"unexpected ls-tree row for {port}: {entry!r}")
+              git_tree = parts[2]
+
+              versions_dir = Path(f"versions/{port[0]}-")
+              versions_dir.mkdir(parents=True, exist_ok=True)
+              port_versions_path = versions_dir / f"{port}.json"
+              if port_versions_path.exists():
+                  data = json.loads(port_versions_path.read_text())
+              else:
+                  data = {"versions": []}
+              entry = {
+                  "version": version,
+                  "port-version": 0,
+                  "git-tree": git_tree,
+              }
+              # vcpkg expects each (version, port-version) tuple to appear
+              # at most once. Re-tagging the same release (e.g. after a
+              # publish-conan retry) can leave duplicate rows from earlier
+              # runs; the previous `next(...)` form found only the first
+              # match and left any additional duplicates untouched, so the
+              # file could remain invalid after this step (cleanup-c11d;
+              # PR #109 review thread r3144314472 - P1). Strip every
+              # matching tuple before re-inserting the canonical entry.
+              data["versions"] = [
+                  v
+                  for v in data["versions"]
+                  if not (
+                      v.get("version") == entry["version"]
+                      and v.get("port-version") == entry["port-version"]
+                  )
+              ]
+              data["versions"].insert(0, entry)
+              port_versions_path.write_text(json.dumps(data, indent=2) + "\n")
+
+              baseline["default"][port] = {
+                  "baseline": version,
+                  "port-version": 0,
+              }
+
+          baseline_path.write_text(json.dumps(baseline, indent=2) + "\n")
+          PY
+          git add versions
+
+      - name: Commit and push
+        working-directory: registry
+        env:
+          VERSION: ${{ needs.qualify.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo "No registry changes for v${VERSION}"
+            exit 0
+          fi
+          git commit -m "chore(release): chio C++ SDKs v${VERSION}"
+          git push origin HEAD:main

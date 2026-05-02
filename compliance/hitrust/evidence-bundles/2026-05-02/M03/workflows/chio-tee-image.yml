@@ -1,0 +1,53 @@
+name: chio-tee-image
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile.tee
+      - .github/workflows/chio-tee-image.yml
+      - crates/chio-tee/**
+      - crates/chio-tee-frame/**
+      - crates/chio-core-types/**
+      - crates/chio-store-sqlite/**
+      - Cargo.toml
+      - Cargo.lock
+      - examples/tee-sidecar/**
+  push:
+    branches:
+      - main
+      - 'project/**'
+    paths:
+      - Dockerfile.tee
+      - .github/workflows/chio-tee-image.yml
+      - crates/chio-tee/**
+      - crates/chio-tee-frame/**
+      - crates/chio-core-types/**
+      - crates/chio-store-sqlite/**
+      - Cargo.toml
+      - Cargo.lock
+      - examples/tee-sidecar/**
+  workflow_dispatch:
+
+concurrency:
+  group: chio-tee-image-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  image-smoke:
+    name: chio-tee image smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Build chio-tee image
+        run: docker build -f Dockerfile.tee -t chio-tee:ci .
+
+      - name: Smoke chio-tee entrypoint
+        run: docker run --rm chio-tee:ci --help
