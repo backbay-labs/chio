@@ -117,6 +117,16 @@ Sources checked 2026-05-02:
 | 11 | inbound | Artifact request: provide M04 and M05 closure addenda before active review starts. | answered: addenda land in `M08-handoff-package/m04-addendum.md` and `M08-handoff-package/m05-addendum.md`. | M08.P1.T2 |
 | 12 | inbound | Final scoping memo: active review boundaries confirmed as protocol sections 4-13, `chio-attest-verify`, `chio-revocation-oracle`, `chio-kernel-core`, `chio-otel-receipt-exporter`, and threat-model cross-check rows. | received and accepted; no scope expansion. | M08.P1.T3 |
 | 14 | outbound | SOW addenda finalized with public-report license, 90-day coordinated disclosure default, 10-business-day factual correction window, and 1-week Critical / High retest. | complete | M08.P1.T3 |
+| 14 | internal | Pre-flight cemented-surface freeze check: `spec/PROTOCOL.md`, `spec/security/`, and the top-10 implementation surfaces remain the P2-P3 review boundary. | cemented-surface freeze confirmed; protocol edits during active review require finding-linked remediation and vendor sign-off. | M08.P1.T7 |
+
+### 3a. P1 cemented-surface freeze attestation
+
+The cemented-surface freeze is active for M08 P2-P3. No protocol
+wire-level edits, threat-model scope expansion, or review-surface
+substitution may land silently during active review. Customer or vendor
+pressure to change the surface is routed through the halt-12 or halt-13
+process, or through a finding-linked remediation branch after vendor
+classification.
 
 ## 4. Findings + remediation log
 
