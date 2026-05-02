@@ -7,7 +7,7 @@ Coverage states:
 - `Partial` - a backing test exists but defends only part of the attack surface; the residual gap is documented in the milestone audit doc that owns the partial coverage.
 - `Pending` - no backing test yet; the threat-model-coverage CI gate accepts the entry because it is explicitly marked `pending` in the JSON, but a green test must land before the owning milestone closes.
 
-# Covered (6)
+# Covered (11)
 
 ## Threat: capability_token_theft
 
@@ -99,7 +99,47 @@ Coverage states:
   - `scope-superset-002` (class `scope_superset`, reason `scope_superset_wildcard`, path `cases/scope_superset/scope-superset-002.json`)
   - `scope-superset-004` (class `scope_superset`, reason `scope_superset_cross_protocol`, path `cases/scope_superset/scope-superset-004.json`)
 
-# Pending (11)
+## Threat: pq_signature_downgrade
+
+- **Name:** Post-quantum signature downgrade
+- **State:** Covered
+- **Surfaces:** trust_control, hosted_mcp, native_chio
+- **Test stub:** `crates/chio-conformance/tests/threats/pq_signature_downgrade.rs`
+- **Corpus cases:** (none cite this threat ID)
+
+## Threat: tee_quote_forgery
+
+- **Name:** TEE quote forgery or misbinding
+- **State:** Covered
+- **Surfaces:** hosted_mcp, native_chio
+- **Test stub:** `crates/chio-conformance/tests/threats/tee_quote_forgery.rs`
+- **Corpus cases:** (none cite this threat ID)
+
+## Threat: passkey_credential_theft
+
+- **Name:** Passkey credential theft
+- **State:** Covered
+- **Surfaces:** trust_control, native_chio, hosted_mcp
+- **Test stub:** `crates/chio-conformance/tests/threats/passkey_credential_theft.rs`
+- **Corpus cases:** (none cite this threat ID)
+
+## Threat: audience_confusion
+
+- **Name:** Audience confusion
+- **State:** Covered
+- **Surfaces:** trust_control, native_chio, hosted_mcp
+- **Test stub:** `crates/chio-conformance/tests/threats/audience_confusion.rs`
+- **Corpus cases:** (none cite this threat ID)
+
+## Threat: weights_hash_spoof
+
+- **Name:** Weights hash spoof
+- **State:** Covered
+- **Surfaces:** kernel_to_tool, native_chio
+- **Test stub:** `crates/chio-conformance/tests/threats/weights_hash_spoof.rs`
+- **Corpus cases:** (none cite this threat ID)
+
+# Pending (6)
 
 ## Threat: ssrf_via_http_substrate
 
@@ -148,45 +188,5 @@ Coverage states:
 - **Surfaces:** wasm_guard_runtime
 - **Test stub:** `crates/chio-conformance/tests/threats/wasm_guard_resource_exhaustion.rs`
 - **Escape harness:** `crates/chio-wasm-guards/tests/escape/`
-- **Corpus cases:** (none cite this threat ID)
-
-## Threat: pq_signature_downgrade
-
-- **Name:** Post-quantum signature downgrade
-- **State:** Pending
-- **Surfaces:** trust_control, hosted_mcp, native_chio
-- **Test stub:** `crates/chio-conformance/tests/threats/pq_signature_downgrade.rs`
-- **Corpus cases:** (none cite this threat ID)
-
-## Threat: tee_quote_forgery
-
-- **Name:** TEE quote forgery or misbinding
-- **State:** Pending
-- **Surfaces:** hosted_mcp, native_chio
-- **Test stub:** `crates/chio-conformance/tests/threats/tee_quote_forgery.rs`
-- **Corpus cases:** (none cite this threat ID)
-
-## Threat: passkey_credential_theft
-
-- **Name:** Passkey credential theft
-- **State:** Pending
-- **Surfaces:** trust_control, native_chio, hosted_mcp
-- **Test stub:** `crates/chio-conformance/tests/threats/passkey_credential_theft.rs`
-- **Corpus cases:** (none cite this threat ID)
-
-## Threat: audience_confusion
-
-- **Name:** Audience confusion
-- **State:** Pending
-- **Surfaces:** trust_control, native_chio, hosted_mcp
-- **Test stub:** `crates/chio-conformance/tests/threats/audience_confusion.rs`
-- **Corpus cases:** (none cite this threat ID)
-
-## Threat: weights_hash_spoof
-
-- **Name:** Weights hash spoof
-- **State:** Pending
-- **Surfaces:** kernel_to_tool, native_chio
-- **Test stub:** `crates/chio-conformance/tests/threats/weights_hash_spoof.rs`
 - **Corpus cases:** (none cite this threat ID)
 
