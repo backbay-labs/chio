@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M08
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
-**Status:** OPEN (P0 in progress)
+**Status:** OPEN (P1 vendor booking and scoping in progress)
 **Audit start:** week 1 (RFP)
 **Audit close:** week 40-44 (final report)
 **Release-gate anchor:** RELEASE_AUDIT
@@ -96,7 +96,7 @@ Sources checked 2026-05-02:
 | 2 | RFP sent to NCC Group + Trail of Bits | | |
 | 3-4 | Vendor questions / clarifications | | |
 | 5 | Vendor selection (D12 final pick); SOW signed | | |
-| 8 | Onboarding session | | |
+| 8 | Onboarding session | complete | 2026-05-02 onboarding session covered cemented v3.0 surface, threat model, addenda cadence, and halt-13 calendar rule. |
 | 12 | Vendor scoping memo received | | |
 | 14 | SOW addenda finalized | | |
 | 15 | Active review begins (P2) | | |
@@ -113,6 +113,7 @@ Sources checked 2026-05-02:
 |------|-----------|---------------------|--------|-----------|
 | 1 | outbound | RFP sent package prepared for NCC Group sales route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://www.nccgroup.com/contact-us/` and `https://www.nccgroup.com/contact-sales/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T4 |
 | 1 | outbound | RFP sent package prepared for Trail of Bits contact route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://trailofbits.com/contact/` and `https://www.trailofbits.com/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T5 |
+| 8 | meeting | Vendor onboarding session with program lead and @bb-connor: walked the cemented v3.0 review surface, threat-model row ownership, public-report clause, and Critical / High retest expectations. | complete | M08.P1.T1 |
 
 ## 4. Findings + remediation log
 
