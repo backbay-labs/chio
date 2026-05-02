@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chio-bedrock"
+version = "0.1.0"
+description = "Python wrapper for Chio-governed Amazon Bedrock calls"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [
+    { name = "Backbay Industries" },
+]
+keywords = ["chio", "bedrock", "aws", "receipts", "marketplace"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    "boto3>=1.40,<2",
+    "pytest>=8,<9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy-boto3-bedrock-runtime>=1.40,<2",
+    "mypy-boto3-marketplace-entitlement>=1.40,<2",
+    "mypy-boto3-marketplace-metering>=1.40,<2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chio_bedrock"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
