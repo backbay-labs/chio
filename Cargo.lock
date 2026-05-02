@@ -2876,14 +2876,19 @@ dependencies = [
  "chio-core-types",
  "chio-revocation-oracle",
  "chrono",
+ "coset",
+ "der 0.7.10",
+ "hex",
  "proptest",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
  "url",
  "webauthn-rs",
  "webauthn-rs-proto",
+ "x509-parser 0.16.0",
 ]
 
 [[package]]

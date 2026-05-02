@@ -36,8 +36,13 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 base64ct = { workspace = true, features = ["alloc"] }
+coset = { workspace = true }
+der = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
 webauthn-rs = { workspace = true }
 webauthn-rs-proto = { workspace = true }
+x509-parser = { workspace = true }
 url = { workspace = true }
 rusqlite = { workspace = true, optional = true }
 

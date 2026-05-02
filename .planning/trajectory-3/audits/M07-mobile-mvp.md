@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M07
 **Wave:** W2
-**Status:** P0 baseline open
+**Status:** P2 iOS App Attest lane in progress
 **Audit start:** 2026-05-02
 **Audit close:** <fill at P5 final ticket merge>
 
@@ -80,10 +80,11 @@ Measured on 2026-05-02 from the M07.P0 worktree.
 
 - `uniffi = "0.28"` in `crates/chio-kernel-mobile/Cargo.toml`, held on
   the UniFFI 0.28 line; no minor bumps in trajectory-3.
-- `x509-parser`: not yet a direct mobile pin at P0; P2/P3 add the verifier
-  path if the App Attest / Play Integrity certificate parser needs it.
-- `der`: not yet a direct mobile pin at P0; P2/P3 add it with the verifier
-  implementation if needed.
+- `x509-parser = "0.16"` in the workspace at P2, consumed by
+  `chio-custody-hw::attestation::apple_root` for the pinned Apple
+  App Attest root parse.
+- `der = "0.7"` in the workspace at P2, reserved for the shared
+  ASN.1 verifier path used by the mobile attestation submodule.
 - `jsonwebtoken`: not yet a direct mobile pin at P0; P3 adds it if the Play
   Integrity verifier consumes JWS in Rust.
 - `coset = "0.4.2"` in the workspace, reused from the existing attestation
@@ -125,23 +126,21 @@ attestation tests land.
 
 ## 5. C-ABI surface drift evidence
 
-[Fill at M07.P1.T4 close.]
-
 The cross-platform parity test
 (`crates/chio-kernel-mobile/tests/cross_ffi_parity.rs`) drives the
 same JSON fixture corpus through the mobile UniFFI surface AND
 `chio-cpp-kernel-ffi`'s `chio_kernel_evaluate_json`. Asserts byte-
 equal verdicts across the seven UDL functions.
 
-Record at P1.T4 close:
-
-- Fixture corpus size (count of canonical JSON inputs): <fill>.
-- Parity test result: <green / drift detected with diff>.
-- CI lane: <link to GitHub Actions run>.
+- Fixture corpus size (count of canonical JSON inputs): 3
+  (`allow_echo`, `deny_unknown_tool`, `deny_unknown_server`).
+- Parity test result: green locally under PR #484 with
+  `cargo test -p chio-kernel-mobile --test cross_ffi_parity --quiet`.
+- CI lane: hosted run replay deferred through
+  `.planning/trajectory-3/work/CI-DEBT.md` per the active CI-delay
+  steering policy.
 
 ## 6. App Attest attestation chain documentation
-
-[Fill at M07.P2.T5 close.]
 
 iOS App Attest issuance flow:
 
@@ -164,14 +163,27 @@ iOS App Attest issuance flow:
    the assertion to the issuer; the issuer verifies the signature
    against the previously-attested key.
 
-Apple App Attest root CA fingerprint pin: <record at P2.T4 close>.
+Apple App Attest root CA fingerprint pin:
+`1cb9823ba28ba6ad2d33a006941de2ae4f513ef1d4e831b9f7e0fa7b6242c932`.
+Source certificate: Apple App Attestation Root CA PEM from Apple's
+certificate authority endpoint. The verifier parses this PEM with
+`x509-parser` and fails closed if the subject or SHA-256 fingerprint
+drifts.
 
 Test attestation evidence:
 
-- TestFlight binary build identifier: <fill>.
+- TestFlight binary build identifier: pending P5 real-device closeout;
+  P2 records the simulator/static harness and synthetic CBOR verifier
+  path without committing private TestFlight device material.
 - CBOR attestation blob fixture path:
-  `crates/chio-custody-hw/tests/fixtures/app_attest/<fixture>.cbor`.
-- Verifier test result: <link to CI run>.
+  `crates/chio-custody-hw/tests/fixtures/app_attest/`; the P2 unit
+  test builds a synthetic CBOR map in
+  `crates/chio-custody-hw/tests/attestation_app_attest.rs`.
+- Verifier test result: green locally with
+  `cargo test -p chio-custody-hw --test attestation_app_attest --quiet`.
+- iOS App Attest issuance flow harness: green locally with
+  `bash scripts/build-ios-framework.sh --test-only`, which wrote
+  `target/release-qualification/mobile-kernel/ios/test-only-summary.json`.
 
 ## 7. Play Integrity attestation chain documentation
 

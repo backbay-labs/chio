@@ -1,0 +1,5 @@
+framework module ChioKernel {
+  umbrella header "chio_kernel_mobileFFI.h"
+  export *
+  module * { export * }
+}
