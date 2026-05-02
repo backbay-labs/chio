@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T11:45:39Z",
+  "last_checkpoint_at": "2026-05-02T12:16:24Z",
   "current_wave": "W2",
   "halt": {
     "halted": false,
@@ -43,7 +43,7 @@
     },
     "M06": {
       "status": "in_progress",
-      "phase": "P3_merged",
+      "phase": "P4_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
@@ -109,11 +109,12 @@
     "M06.P0 audit baseline opened 2026-05-02T11:06:35Z; formal counts, cargo-vet exemption rows, top-50 dependency centrality, contractor fallback record, and cargo-audit baseline recorded.",
     "M06.P1 Apalache subset merged 2026-05-02T11:21:06Z: Common.tla bounds, four invariant specs/configs, apalache-nightly workflow, and mapping rows recorded.",
     "M06.P2 cargo-vet expansion merged 2026-05-02T11:35:35Z: first-party cert rows 179, exemption blocks 836, standalone cargo-vet workflow added, and m06-revocation-oracle-pivot close trigger recorded.",
-    "M06.P3 SBOM publication pipeline merged 2026-05-02T11:45:39Z: standalone sbom workflow, source and binary CycloneDX paths, cosign signing, and M09 assessor consumability handoff recorded."
+    "M06.P3 SBOM publication pipeline merged 2026-05-02T11:45:39Z: standalone sbom workflow, source and binary CycloneDX paths, cosign signing, and M09 assessor consumability handoff recorded.",
+    "M06.P4 CVE monitor merged 2026-05-02T12:16:24Z: cargo-audit plus osv-scanner workflow, GitHub Issue routing, deny.toml advisory refresh, and m06-supply-chain-pivot close trigger recorded."
   ],
   "wave_heads": {
     "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
-    "W2": "bc99debf05b2773e2e5093aab785344342f774d1"
+    "W2": "55dc5dd0389c3fbcdd8e57c065c4213f0ef1a777"
   },
   "wave_status": {
     "W1": {

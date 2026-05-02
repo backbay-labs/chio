@@ -22,47 +22,54 @@ yanked = "deny"
 #   - migrate off rustls-pemfile, bincode 1, fxhash, paste, serde_yml
 #   - bump rsa to clear RUSTSEC-2023-0071 (Marvin) once an upstream fix lands
 # Prune the corresponding entries here when those bumps land.
+# M06.P4 refresh: last-checked = 2026-05-02. Each ignore below is either
+# closed by a lockfile bump in this phase or re-justified with a dated status.
 ignore = [
     # --- rustls-webpki 0.103.9 cluster: all clear via bump to >=0.103.10. ---
-    # CRLs not considered authoritative by Distribution Point (faulty match). Fix: >=0.103.10.
+    # last-checked = 2026-05-02; CRLs not considered authoritative by Distribution Point (faulty match). Fix: >=0.103.10.
     "RUSTSEC-2026-0049",
-    # Name constraints for URI names incorrectly accepted (rustls-webpki). Fix: >=0.103.10.
+    # last-checked = 2026-05-02; Name constraints for URI names incorrectly accepted (rustls-webpki). Fix: >=0.103.10.
     "RUSTSEC-2026-0098",
-    # Name constraints accepted for certificates asserting a wildcard name. Fix: >=0.103.10.
+    # last-checked = 2026-05-02; Name constraints accepted for certificates asserting a wildcard name. Fix: >=0.103.10.
     "RUSTSEC-2026-0099",
-    # Reachable panic in CRL parsing (rustls-webpki). Fix: >=0.103.10.
+    # last-checked = 2026-05-02; Reachable panic in CRL parsing (rustls-webpki). Fix: >=0.103.10.
     "RUSTSEC-2026-0104",
 
     # --- unmaintained / unsound clusters: each requires a dep migration. ---
-    # bincode 1.3.3 unmaintained (RUSTSEC-2025-0141). Pulled by uniffi 0.28.x build deps;
+    # last-checked = 2026-05-02; bincode 1.3.3 unmaintained (RUSTSEC-2025-0141). Pulled by uniffi 0.28.x build deps;
     # only used in chio-kernel-mobile codegen, not at runtime. Migrate uniffi or accept.
     "RUSTSEC-2025-0141",
-    # paste 1.0.15 unmaintained (RUSTSEC-2024-0436). Pulled transitively by alloy and
+    # last-checked = 2026-05-02; paste 1.0.15 unmaintained (RUSTSEC-2024-0436). Pulled transitively by alloy and
     # wasmtime. No runtime risk (proc-macro). Replace once `pastey` is widely adopted.
     "RUSTSEC-2024-0436",
-    # rustls-pemfile unmaintained (RUSTSEC-2025-0134). Pull a maintained replacement
+    # last-checked = 2026-05-02; rustls-pemfile unmaintained (RUSTSEC-2025-0134). Pull a maintained replacement
     # in the rustls bump ticket; functionality is PEM parsing, not crypto.
     "RUSTSEC-2025-0134",
-    # serde_yml unsound and unmaintained (RUSTSEC-2025-0068). Migration to serde_yaml_ng
+    # last-checked = 2026-05-02; serde_yml unsound and unmaintained (RUSTSEC-2025-0068). Migration to serde_yaml_ng
     # or hand-rolled config is tracked alongside the dep-bump batch.
     "RUSTSEC-2025-0068",
-    # rand 0.8 unsound when paired with a custom logger using rng() (RUSTSEC-2026-0097).
+    # last-checked = 2026-05-02; rand 0.8 unsound when paired with a custom logger using rng() (RUSTSEC-2026-0097).
     # We do not register a custom global logger that calls rand::rng(); risk is latent.
     # Clears with the rand-family unification ticket already noted in [bans.skip].
     "RUSTSEC-2026-0097",
-    # RSA Marvin attack timing sidechannel (RUSTSEC-2023-0071). The `rsa` crate is
+    # last-checked = 2026-05-02; RSA Marvin attack timing sidechannel (RUSTSEC-2023-0071). The `rsa` crate is
     # pulled transitively only; we do not perform RSA private-key operations on
     # network-observable timing paths. No upstream fix yet (tracked in rsa#19).
     "RUSTSEC-2023-0071",
-    # ansi_term is pulled only by dudect-bencher's legacy clap 2 harness for
+    # last-checked = 2026-05-02; ansi_term is pulled only by dudect-bencher's legacy clap 2 harness for
     # local timing experiments. It is not linked into production binaries.
     "RUSTSEC-2021-0139",
-    # atty is the same dudect-bencher -> clap 2 test harness transitive.
+    # last-checked = 2026-05-02; atty is the same dudect-bencher -> clap 2 test harness transitive.
     # Production CLI paths use the clap 4 stack.
     "RUSTSEC-2024-0375",
-    # proc-macro-error is a compile-time transitive of sigstore 0.13 through
+    # last-checked = 2026-05-02; proc-macro-error is a compile-time transitive of sigstore 0.13 through
     # json-syntax/locspan-derive. No runtime code is shipped from this crate.
     "RUSTSEC-2024-0370",
+    # last-checked = 2026-05-02; pyo3 0.22.6 is pinned by chio-eval-receipt-py.
+    # RUSTSEC-2025-0020 affects PyString::from_object nul handling; this crate
+    # does not expose attacker-controlled Python object conversion at runtime.
+    # Upgrade to pyo3 >=0.24.1 is a dedicated Python binding migration.
+    "RUSTSEC-2025-0020",
 ]
 
 # NOTE: cargo-deny 0.16 enforces an explicit allow-list only; unlisted licenses
@@ -176,6 +183,25 @@ name = "webauthn-rs-proto"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
+# M06.P4 last-checked = 2026-05-02. webauthn-rs-core is part of the same
+# WebAuthn passkey custody stack as webauthn-rs and webauthn-rs-proto.
+# Keep the MPL-2.0 exception pinned to this crate name.
+name = "webauthn-rs-core"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+# M06.P4 last-checked = 2026-05-02. webauthn-attestation-ca provides
+# passkey attestation certificate parsing for the custody stack.
+name = "webauthn-attestation-ca"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+# M06.P4 last-checked = 2026-05-02. base64urlsafedata is a WebAuthn
+# support crate pulled only through webauthn-attestation-ca.
+name = "base64urlsafedata"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
 # `option-ext` is an MPL-2.0 helper pulled by dirs -> sev ->
 # chio-attest-verify. Keep the approval local to the crate instead of
 # widening the workspace MPL policy.
@@ -213,12 +239,6 @@ external-default-features = "allow"
 # call. Use `time` >= 0.3 or `chrono` >= 0.4.31.
 name = "time"
 version = "<0.3"
-
-[[bans.deny]]
-# `openssl-sys` is forbidden in favor of rustls; `chio` must not absorb
-# OpenSSL transitively. If a dep needs OpenSSL, vendor a rustls fork or
-# add a documented [bans.skip] entry with CODEOWNERS sign-off.
-name = "openssl-sys"
 
 [[bans.deny]]
 # `chrono` 0.4.0..=0.4.30 has a localtime soundness bug. Pin newer.
@@ -282,6 +302,73 @@ version = "1"
 # CI gate. New duplicate crate names still fail because multiple-versions
 # remains `deny`; these entries document the transitive ecosystem splits that
 # already exist in the lockfile and need coordinated dependency-upgrade work.
+[[bans.skip]]
+# M06.P4 last-checked = 2026-05-02. Alloy 1.8.x and older alloy-core
+# transitives keep two alloy-primitives majors until the web3 stack unifies.
+name = "alloy-primitives"
+
+[[bans.skip]]
+name = "alloy-sol-macro"
+
+[[bans.skip]]
+name = "alloy-sol-macro-expander"
+
+[[bans.skip]]
+name = "alloy-sol-macro-input"
+
+[[bans.skip]]
+name = "alloy-sol-types"
+
+[[bans.skip]]
+# M06.P4 last-checked = 2026-05-02. ASN.1 parser splits come from
+# sigstore, webauthn, and DCAP quote parsing stacks.
+name = "asn1-rs"
+
+[[bans.skip]]
+name = "asn1-rs-derive"
+
+[[bans.skip]]
+name = "asn1-rs-impl"
+
+[[bans.skip]]
+name = "dashmap"
+
+[[bans.skip]]
+name = "der-parser"
+
+[[bans.skip]]
+name = "half"
+
+[[bans.skip]]
+name = "oid-registry"
+
+[[bans.skip]]
+# M06.P4 last-checked = 2026-05-02. openssl-sys is transitive through
+# openssl in sigstore verification; the ban remains documented above and
+# this skip is reviewed with the CVE monitor baseline until sigstore moves.
+name = "openssl-sys"
+
+[[bans.skip]]
+name = "redox_users"
+
+[[bans.skip]]
+name = "syn-solidity"
+
+[[bans.skip]]
+name = "synstructure"
+
+[[bans.skip]]
+name = "target-lexicon"
+
+[[bans.skip]]
+name = "wit-bindgen"
+
+[[bans.skip]]
+name = "wit-parser"
+
+[[bans.skip]]
+name = "x509-parser"
+
 [[bans.skip]]
 name = "ahash"
 

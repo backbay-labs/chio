@@ -203,6 +203,27 @@ M06.P3 pins SBOM publication to `supply-chain/sbom/v{tag}/`:
   `.planning/trajectory-3/audits/M09-vendor-evidence.md` for M06 SBOM
   artifacts.
 
+### At P4 CVE monitor sign-off (measured 2026-05-02)
+
+CVE-monitor end-of-freeze sign-off:
+
+- Standalone workflow: `.github/workflows/cve-monitor.yml`.
+- Rust lane: `cargo-audit` 0.22.1, running on pull requests and nightly cron
+  with block-on-new-advisory semantics after the current dated advisory
+  baseline in `deny.toml`.
+- Secondary ecosystem lane: `osv-scanner` 2.3.6 over the Python verdict
+  driver path and npm / TypeScript package manifests.
+- Issue routing: medium-and-above advisory hits file GitHub Issues assigned
+  to `@bb-connor`; lower severities roll into the weekly digest issue.
+- `deny.toml` refresh: Wasmtime was bumped from 43.0.1 to 43.0.2 in
+  `Cargo.lock` to close `RUSTSEC-2026-0114`; the remaining advisory ignores
+  have `last-checked = 2026-05-02` comments and dated justifications.
+- Synthetic advisory hit dry-run: workflow issue body includes owner routing,
+  artifact names, and `workflow run URL` field. Hosted synthetic run URL is
+  pending the post-merge workflow execution.
+- Freeze closure: `m06-supply-chain-pivot` closes at M06.P4.T5 after the
+  M06.P2.T5 cargo-vet sign-off and M06.P3.T5 SBOM assessor handoff.
+
 ### At P5 close (after-counts; M06.P5.T3 ticket fills)
 
 [TODO M06 milestone agent fill at P5 merge:]
