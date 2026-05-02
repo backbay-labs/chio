@@ -484,7 +484,7 @@
   phase: 3
   title: Open spec/audit-log/export-schema.v1.json (JSON Schema 2020-12) and trigger
     m01-m09-audit-handoff freeze
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - spec/audit-log/export-schema.v1.json
@@ -508,16 +508,16 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 773f03304ae19984b6e977e301ef58e8cfeeb7aa
+  merged_sha: 773f03304ae19984b6e977e301ef58e8cfeeb7aa
+  opened_ts: '2026-05-02T05:44:29Z'
+  merged_ts: '2026-05-02T05:44:29Z'
 - id: M01.P3.T2
   milestone: M01
   phase: 3
   title: Add CEF emitter at crates/chio-siem/src/exporters/cef.rs (or LEEF if design-partner
     SOC is QRadar-shaped)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-siem/src/exporters/cef.rs
@@ -545,16 +545,16 @@
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 3b4a97b0079934ee279ff135372d547d559cec7d
+  merged_sha: 3b4a97b0079934ee279ff135372d547d559cec7d
+  opened_ts: '2026-05-02T05:44:29Z'
+  merged_ts: '2026-05-02T05:44:29Z'
 - id: M01.P3.T3
   milestone: M01
   phase: 3
   title: Author PHI-redaction policy at docs/operator-runbook/phi-policy.md pinning
     ResponseSanitizationGuard config
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - docs/operator-runbook/phi-policy.md
@@ -577,16 +577,16 @@
   agent_role: dx-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: fe0e39474f5d02235633b77f6d18fe0bb00e5807
+  merged_sha: fe0e39474f5d02235633b77f6d18fe0bb00e5807
+  opened_ts: '2026-05-02T05:44:29Z'
+  merged_ts: '2026-05-02T05:44:29Z'
 - id: M01.P3.T4
   milestone: M01
   phase: 3
   title: Add schema-linter CI job at .github/workflows/audit-log-schema-lint.yml validating
     schema and CEF golden file
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .github/workflows/audit-log-schema-lint.yml
@@ -608,16 +608,16 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9ad11dd46d762228af79f8ef4871a29d2248cf72
+  merged_sha: 9ad11dd46d762228af79f8ef4871a29d2248cf72
+  opened_ts: '2026-05-02T05:44:29Z'
+  merged_ts: '2026-05-02T05:44:29Z'
 - id: M01.P3.T5
   milestone: M01
   phase: 3
   title: Record schema-negotiation receipt (design-partner team accepted v1) in audit
     doc evidence log
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -639,10 +639,10 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: af7f91aca1933b6ca24d7e8e246bc9ab269fd7bf
+  merged_sha: af7f91aca1933b6ca24d7e8e246bc9ab269fd7bf
+  opened_ts: '2026-05-02T05:44:29Z'
+  merged_ts: '2026-05-02T05:44:29Z'
 - id: M01.P4.T1
   milestone: M01
   phase: 4

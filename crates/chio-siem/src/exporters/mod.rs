@@ -3,6 +3,7 @@
 //! Each module implements the `Exporter` trait for a specific SIEM backend.
 
 pub mod datadog;
+pub mod cef;
 pub mod elastic;
 pub mod ocsf_exporter;
 pub mod splunk;
