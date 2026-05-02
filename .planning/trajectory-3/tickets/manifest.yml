@@ -6008,7 +6008,7 @@
   phase: 0
   title: Genesis compliance/hitrust directory with SSP outline, scope diagram, control-mapping
     skeleton
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - compliance/hitrust/ssp.md
@@ -6027,16 +6027,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 0eebb155a93421175b01005c03b29e3c9f1df2aa
+  merged_sha: 0eebb155a93421175b01005c03b29e3c9f1df2aa
+  opened_ts: '2026-05-02T03:33:17Z'
+  merged_ts: '2026-05-02T03:33:17Z'
 - id: M09.P0.T2
   milestone: M09
   phase: 0
   title: Seed M09 audit doc with assessor shortlist, RFP status, BAA status, HIPAA
     pre-conditions
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -6055,16 +6055,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 103f4744afa565f23d2883c08fe72bee5175e9ed
+  merged_sha: 103f4744afa565f23d2883c08fe72bee5175e9ed
+  opened_ts: '2026-05-02T03:33:17Z'
+  merged_ts: '2026-05-02T03:33:17Z'
 - id: M09.P0.T3
   milestone: M09
   phase: 0
   title: Confirm HITRUST CSF active version and pin control count in SSP and audit
     doc
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - compliance/hitrust/ssp.md
@@ -6083,15 +6083,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a6d7972a86c823a919be1866f0b79da4bef01fed
+  merged_sha: a6d7972a86c823a919be1866f0b79da4bef01fed
+  opened_ts: '2026-05-02T03:33:17Z'
+  merged_ts: '2026-05-02T03:33:17Z'
 - id: M09.P0.T4
   milestone: M09
   phase: 0
   title: Author RFP and send to two HITRUST-authorized assessor firms with named fallback
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - compliance/hitrust/rfp/rfp.md
@@ -6112,16 +6112,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 5c1914735d0a22d33c2e48948fb432931352bdb8
+  merged_sha: 5c1914735d0a22d33c2e48948fb432931352bdb8
+  opened_ts: '2026-05-02T03:33:17Z'
+  merged_ts: '2026-05-02T03:33:17Z'
 - id: M09.P0.T5
   milestone: M09
   phase: 0
   title: Pin scope statement to v3.18 plus M01 design-partner deployment and record
     explicit out-of-scope decisions
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - compliance/hitrust/scope-boundary.md
@@ -6141,16 +6141,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 00e0510492ee60f8d29c821ac6a724ebe1f115c4
+  merged_sha: 00e0510492ee60f8d29c821ac6a724ebe1f115c4
+  opened_ts: '2026-05-02T03:33:17Z'
+  merged_ts: '2026-05-02T03:33:17Z'
 - id: M09.P0.T6
   milestone: M09
   phase: 0
   title: Confirm HIPAA BAA chain (provider to design-partner tenant to Chio team)
     and surface gaps to user
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -6170,10 +6170,10 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 64d2da851a40bc71977f298647d8c4a42cf8562d
+  merged_sha: 64d2da851a40bc71977f298647d8c4a42cf8562d
+  opened_ts: '2026-05-02T03:33:17Z'
+  merged_ts: '2026-05-02T03:33:17Z'
 - id: M09.P0.T7
   milestone: M09
   phase: 0
