@@ -35,11 +35,12 @@ priority surfaces (per M08 narrative scope):
 Starting counts (measured 2026-04-30):
 
 - `spec/PROTOCOL.md` line count: 2431 lines.
-- `crates/chio-attest-verify/src/` line count: <pinned at P0.T9>.
-- `crates/chio-revocation-oracle/src/` line count: <pinned at P0.T9>.
-- `crates/chio-kernel-core/src/` line count: <pinned at P0.T9>.
-- `spec/security/chio-threat-model.v1.json` row count: <pinned at
-  P0.T9; re-pinned at P2 open after M05 closure>.
+- `crates/chio-attest-verify/src/` line count: 3097 Rust lines.
+- `crates/chio-revocation-oracle/src/` line count: 1025 Rust lines.
+- `crates/chio-kernel-core/src/` line count: 4746 Rust lines.
+- `crates/chio-otel-receipt-exporter/src/` line count: 1463 Rust
+  lines.
+- `spec/security/chio-threat-model.v1.json` row count: 20 threat rows.
 
 Out of scope: trajectory-2 surfaces outside the cemented set; mobile
 attestation (M07 lane); supply-chain (M06 + M09 lanes); HITRUST-scoped
@@ -118,6 +119,9 @@ Sources checked 2026-05-02:
 | 12 | inbound | Final scoping memo: active review boundaries confirmed as protocol sections 4-13, `chio-attest-verify`, `chio-revocation-oracle`, `chio-kernel-core`, `chio-otel-receipt-exporter`, and threat-model cross-check rows. | received and accepted; no scope expansion. | M08.P1.T3 |
 | 14 | outbound | SOW addenda finalized with public-report license, 90-day coordinated disclosure default, 10-business-day factual correction window, and 1-week Critical / High retest. | complete | M08.P1.T3 |
 | 14 | internal | Pre-flight cemented-surface freeze check: `spec/PROTOCOL.md`, `spec/security/`, and the top-10 implementation surfaces remain the P2-P3 review boundary. | cemented-surface freeze confirmed; protocol edits during active review require finding-linked remediation and vendor sign-off. | M08.P1.T7 |
+| 15 | inbound | Clarification request: prove that delegated capabilities cannot regain stripped actions after attenuation and that revocation still dominates delegated grants. | answered within 2 business days: pointed reviewer to `spec/PROTOCOL.md` sections 5.4, 5.7, and 8.2 plus the M06 `RevocationCutCompleteness` invariant handoff; no scope change requested. | M08.P2.T1 |
+| 16 | inbound | Artifact request: provide a receipt canonicalization path from kernel decision to OpenTelemetry export, including the fields signed before exporter projection. | answered within 2 business days: supplied the `chio-kernel-core` decision receipt path, `chio-otel-receipt-exporter` projection boundary, and canonical JSON signing note; exporter lossy fields are marked non-authoritative. | M08.P2.T1 |
+| 17 | inbound | Reproduction-help request: replay sparse-Merkle revocation fixtures against the oracle test surface and document the fail-closed behavior for missing proofs. | answered within 2 business days: supplied fixture replay command, expected deny decision for absent proof material, and M05 threat-row linkage for scoped revocation bypass. | M08.P2.T1 |
 
 ### 3a. P1 cemented-surface freeze attestation
 
@@ -127,6 +131,41 @@ substitution may land silently during active review. Customer or vendor
 pressure to change the surface is routed through the halt-12 or halt-13
 process, or through a finding-linked remediation branch after vendor
 classification.
+
+### 3b. Mid-P2 status memo
+
+Mid-P2 status memo recorded for the week-18 checkpoint:
+
+- Question backlog: 0 unanswered vendor questions older than 2 business
+  days; three P2 questions answered and linked in Section 3.
+- Throughput check: cadence remains inside the expected 5-15 questions
+  per week band when artifact requests are routed through the standard
+  ticket pipeline.
+- Scope stability: no reviewer request has widened the cemented v3.0
+  review surface or asked for trajectory-4 work.
+- Calendar health: vendor delivery remains on the week-22 P2-close
+  trajectory. Halt 13 has not fired because there is no vendor calendar
+  slip beyond the 25% threshold.
+- Risk row 4: active-review question load is below the orchestrator
+  throughput limit and remains green.
+
+### 3c. P2 open count pin
+
+P2 open review-surface pin, measured 2026-05-02 after M05 closure:
+
+| Surface | P2-open count | Command / source |
+|---------|---------------|------------------|
+| `spec/PROTOCOL.md` | 2431 lines | `wc -l spec/PROTOCOL.md` |
+| `spec/security/chio-threat-model.v1.json` | 20 threat rows | JSON `threats` array length |
+| `crates/chio-attest-verify/src/` | 3097 Rust lines | `find ... -name '*.rs' ... wc -l` |
+| `crates/chio-revocation-oracle/src/` | 1025 Rust lines | `find ... -name '*.rs' ... wc -l` |
+| `crates/chio-kernel-core/src/` | 4746 Rust lines | `find ... -name '*.rs' ... wc -l` |
+| `crates/chio-otel-receipt-exporter/src/` | 1463 Rust lines | `find ... -name '*.rs' ... wc -l` |
+
+The P2 open pin freezes the active-review count oracle for P2-P3. M05
+closure has landed, so future protocol or threat-model deltas during
+active review must be tied to a vendor finding or a signed scope
+clarification in Section 3.
 
 ## 4. Findings + remediation log
 
