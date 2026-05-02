@@ -82,6 +82,30 @@ namespace chio_kernel_mobile {
         string issuer_pub_hex,
         i64 now_secs
     );
+
+    // Produce an App Attest evidence envelope bound to a server challenge.
+    //
+    // P1 exposes the stable UDL entry with fail-closed validation. The
+    // platform verifier lands in M07 P2 and replaces the temporary
+    // ChioMobileError.AttestationUnavailable response.
+    [Throws=ChioMobileError]
+    string attest_app_attest(string key_id, string challenge_hex);
+
+    // Produce a Play Integrity evidence envelope bound to an issuer nonce.
+    //
+    // P1 exposes the stable UDL entry with fail-closed validation. The
+    // platform verifier lands in M07 P3 and replaces the temporary
+    // ChioMobileError.AttestationUnavailable response.
+    [Throws=ChioMobileError]
+    string attest_play_integrity(string nonce_hex);
+
+    // Verify a mobile receipt against App Attest or Play Integrity evidence.
+    //
+    // P1 validates the receipt and evidence envelopes as JSON before
+    // returning ChioMobileError.AttestationUnavailable. M07 P4 wires
+    // this entry to the shared receipt-chain verifier.
+    [Throws=ChioMobileError]
+    string verify_mobile_receipt(string receipt_json, string evidence_json);
 };
 
 // Verified capability snapshot returned by `verify_capability`.
@@ -126,6 +150,7 @@ interface ChioMobileError {
     InvalidHex(string message);
     InvalidCapability(string message);
     InvalidPassport(string message);
+    AttestationUnavailable(string message);
     KernelKeyMismatch(string message);
     SigningFailed(string message);
     EvaluationDenied(string message);

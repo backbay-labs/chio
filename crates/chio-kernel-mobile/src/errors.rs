@@ -26,6 +26,9 @@ pub enum ChioMobileError {
     InvalidCapability { message: String },
     /// Portable-passport envelope verification failed.
     InvalidPassport { message: String },
+    /// Mobile attestation verification has not been provisioned for
+    /// this platform lane yet.
+    AttestationUnavailable { message: String },
     /// The receipt body's `kernel_key` did not match the derived
     /// public key of the provided signing seed. Fail-fast so a
     /// receipt is never emitted whose embedded key cannot verify
@@ -49,6 +52,7 @@ impl ChioMobileError {
             | ChioMobileError::InvalidHex { message }
             | ChioMobileError::InvalidCapability { message }
             | ChioMobileError::InvalidPassport { message }
+            | ChioMobileError::AttestationUnavailable { message }
             | ChioMobileError::KernelKeyMismatch { message }
             | ChioMobileError::SigningFailed { message }
             | ChioMobileError::EvaluationDenied { message }
@@ -64,6 +68,7 @@ impl fmt::Display for ChioMobileError {
             ChioMobileError::InvalidHex { .. } => "invalid hex",
             ChioMobileError::InvalidCapability { .. } => "invalid capability",
             ChioMobileError::InvalidPassport { .. } => "invalid passport",
+            ChioMobileError::AttestationUnavailable { .. } => "attestation unavailable",
             ChioMobileError::KernelKeyMismatch { .. } => "kernel key mismatch",
             ChioMobileError::SigningFailed { .. } => "signing failed",
             ChioMobileError::EvaluationDenied { .. } => "evaluation denied",

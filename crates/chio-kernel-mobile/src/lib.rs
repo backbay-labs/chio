@@ -15,7 +15,7 @@
 //! app-side Chio SDK already knows how to serialize these types, and
 //! the kernel-core entry points accept the parsed Rust structs. We
 //! marshal once via serde at the boundary and keep the UDL interface
-//! small (four functions, two records, one error enum).
+//! small (seven functions, two records, one error enum).
 //!
 //! # Exposed entry points
 //!
@@ -24,11 +24,16 @@
 //! - [`verify_capability`] -- offline capability verification.
 //! - [`verify_passport`] -- offline portable-passport envelope
 //!   verification.
+//! - [`attest_app_attest`] -- App Attest evidence entry point shell.
+//! - [`attest_play_integrity`] -- Play Integrity evidence entry point
+//!   shell.
+//! - [`verify_mobile_receipt`] -- mobile attestation receipt verifier
+//!   shell.
 //!
 //! # Offline guarantees
 //!
 //! None of these entry points perform I/O. A mobile app can invoke
-//! all four while offline -- for example to gate a sensitive tool
+//! all seven while offline -- for example to gate a sensitive tool
 //! call with a cached capability and queue the resulting receipt for
 //! upload when connectivity returns.
 //!
@@ -154,6 +159,18 @@ struct EvaluateResponse {
 // ---------------------------------------------------------------------------
 // FFI entry points.
 // ---------------------------------------------------------------------------
+
+fn decode_hex_argument(label: &str, value: &str) -> Result<Vec<u8>, ChioMobileError> {
+    let trimmed = value.strip_prefix("0x").unwrap_or(value);
+    if trimmed.is_empty() {
+        return Err(ChioMobileError::InvalidHex {
+            message: format!("{label}: value must not be empty"),
+        });
+    }
+    hex::decode(trimmed).map_err(|error| ChioMobileError::InvalidHex {
+        message: format!("{label}: {error}"),
+    })
+}
 
 /// Evaluate a tool-call request against a capability token.
 ///
@@ -402,6 +419,65 @@ pub fn verify_passport(
         expires_at: verified.expires_at,
         evaluated_at: verified.evaluated_at,
         payload_canonical_hex: hex::encode(&verified.payload_canonical_bytes),
+    })
+}
+
+/// Produce an App Attest evidence envelope bound to `challenge_hex`.
+///
+/// M07 P1 exposes the stable UniFFI entry point and validates the
+/// boundary arguments. The platform verifier is wired in M07 P2; until
+/// then the call fails closed with a typed unavailable error.
+pub fn attest_app_attest(key_id: String, challenge_hex: String) -> Result<String, ChioMobileError> {
+    let challenge = decode_hex_argument("App Attest challenge", &challenge_hex)?;
+    if key_id.trim().is_empty() {
+        return Err(ChioMobileError::AttestationUnavailable {
+            message: "App Attest verifier pending M07.P2 platform wiring; key_id is empty"
+                .to_string(),
+        });
+    }
+
+    Err(ChioMobileError::AttestationUnavailable {
+        message: format!(
+            "App Attest verifier pending M07.P2 platform wiring; challenge_bytes={}",
+            challenge.len()
+        ),
+    })
+}
+
+/// Produce a Play Integrity evidence envelope bound to `nonce_hex`.
+///
+/// M07 P1 exposes the stable UniFFI entry point and validates the
+/// nonce encoding. The Android verifier is wired in M07 P3; until then
+/// the call fails closed with a typed unavailable error.
+pub fn attest_play_integrity(nonce_hex: String) -> Result<String, ChioMobileError> {
+    let nonce = decode_hex_argument("Play Integrity nonce", &nonce_hex)?;
+    Err(ChioMobileError::AttestationUnavailable {
+        message: format!(
+            "Play Integrity verifier pending M07.P3 platform wiring; nonce_bytes={}",
+            nonce.len()
+        ),
+    })
+}
+
+/// Verify a mobile receipt against App Attest or Play Integrity evidence.
+///
+/// M07 P1 validates both JSON envelopes and reserves the fail-closed
+/// entry point. M07 P4 wires the shared receipt-chain verifier.
+pub fn verify_mobile_receipt(
+    receipt_json: String,
+    evidence_json: String,
+) -> Result<String, ChioMobileError> {
+    let _: serde_json::Value =
+        serde_json::from_str(&receipt_json).map_err(|error| ChioMobileError::InvalidJson {
+            message: format!("mobile receipt: {error}"),
+        })?;
+    let _: serde_json::Value =
+        serde_json::from_str(&evidence_json).map_err(|error| ChioMobileError::InvalidJson {
+            message: format!("mobile attestation evidence: {error}"),
+        })?;
+
+    Err(ChioMobileError::AttestationUnavailable {
+        message: "mobile receipt verifier pending M07.P4 receipt-chain wiring".to_string(),
     })
 }
 

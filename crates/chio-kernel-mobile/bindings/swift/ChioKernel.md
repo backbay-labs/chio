@@ -99,8 +99,10 @@ Verifies a portable passport envelope (Phase 20.1 wire format). Pass
 public func attestAppAttest(keyId: String, challengeHex: String) throws -> String
 ```
 
-Reserved M07 entry point for producing an App Attest evidence envelope bound
-to a server-issued challenge.
+M07 P1 shell for producing an App Attest evidence envelope bound to a
+server-issued challenge. The shell validates `challengeHex` and returns
+`ChioMobileError.attestationUnavailable(message:)` until M07 P2 wires the
+platform verifier.
 
 ### `attestPlayIntegrity` (M07 P1)
 
@@ -108,10 +110,10 @@ to a server-issued challenge.
 public func attestPlayIntegrity(nonceHex: String) throws -> String
 ```
 
-Reserved M07 entry point for the Android-compatible Play Integrity evidence
-shape. The Swift surface keeps the name for cross-platform parity even though
-the implementation returns an unsupported error on iOS until the Android lane
-uses it.
+M07 P1 shell for the Android-compatible Play Integrity evidence shape. The
+Swift surface keeps the name for cross-platform parity; the shell validates
+`nonceHex` and returns `ChioMobileError.attestationUnavailable(message:)`
+until M07 P3 wires the platform verifier.
 
 ### `verifyMobileReceipt` (M07 P1)
 
@@ -119,8 +121,11 @@ uses it.
 public func verifyMobileReceipt(receiptJson: String, evidenceJson: String) throws -> String
 ```
 
-Reserved M07 entry point for verifying a mobile receipt against App Attest or
-Play Integrity evidence before forwarding it to the hosted oracle.
+M07 P1 shell for verifying a mobile receipt against App Attest or Play
+Integrity evidence before forwarding it to the hosted oracle. The shell
+validates both JSON envelopes and returns
+`ChioMobileError.attestationUnavailable(message:)` until M07 P4 wires the
+receipt-chain verifier.
 
 ## Records
 
@@ -165,6 +170,7 @@ public enum ChioMobileError: Error {
     case invalidHex(message: String)
     case invalidCapability(message: String)
     case invalidPassport(message: String)
+    case attestationUnavailable(message: String)
     case kernelKeyMismatch(message: String)
     case signingFailed(message: String)
     case evaluationDenied(message: String)

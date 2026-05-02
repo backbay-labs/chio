@@ -24,7 +24,8 @@ use chio_kernel_core::passport_verify::{
     PortablePassportBody, PortablePassportEnvelope, PORTABLE_PASSPORT_SCHEMA,
 };
 use chio_kernel_mobile::{
-    evaluate, sign_receipt, verify_capability, verify_passport, ChioMobileError,
+    attest_app_attest, attest_play_integrity, evaluate, sign_receipt, verify_capability,
+    verify_mobile_receipt, verify_passport, ChioMobileError,
 };
 
 const ISSUED_AT: u64 = 1_700_000_000;
@@ -408,5 +409,73 @@ fn verify_passport_rejects_bad_issuer_hex() {
     match err {
         ChioMobileError::InvalidHex { .. } => {}
         other => panic!("expected InvalidHex, got {other:?}"),
+    }
+}
+
+#[test]
+fn attest_app_attest_rejects_bad_challenge_hex() {
+    let err = attest_app_attest("app-key".to_string(), "not-hex".to_string()).unwrap_err();
+    match err {
+        ChioMobileError::InvalidHex { message } => {
+            assert!(message.contains("App Attest challenge"));
+        }
+        other => panic!("expected InvalidHex, got {other:?}"),
+    }
+}
+
+#[test]
+fn attest_app_attest_reports_unavailable_until_p2() {
+    let err = attest_app_attest("app-key".to_string(), "01020304".to_string()).unwrap_err();
+    match err {
+        ChioMobileError::AttestationUnavailable { message } => {
+            assert!(message.contains("M07.P2"));
+            assert!(message.contains("challenge_bytes=4"));
+        }
+        other => panic!("expected AttestationUnavailable, got {other:?}"),
+    }
+}
+
+#[test]
+fn attest_play_integrity_reports_unavailable_until_p3() {
+    let err = attest_play_integrity("0x0102030405".to_string()).unwrap_err();
+    match err {
+        ChioMobileError::AttestationUnavailable { message } => {
+            assert!(message.contains("M07.P3"));
+            assert!(message.contains("nonce_bytes=5"));
+        }
+        other => panic!("expected AttestationUnavailable, got {other:?}"),
+    }
+}
+
+#[test]
+fn verify_mobile_receipt_rejects_bad_json() {
+    let err = verify_mobile_receipt("not-json".to_string(), "{}".to_string()).unwrap_err();
+    match err {
+        ChioMobileError::InvalidJson { message } => {
+            assert!(message.contains("mobile receipt"));
+        }
+        other => panic!("expected InvalidJson, got {other:?}"),
+    }
+}
+
+#[test]
+fn verify_mobile_receipt_reports_unavailable_until_p4() {
+    let receipt_json = serde_json::json!({
+        "schema": "chio.mobile.receipt.v1",
+        "receipt_id": "mobile-receipt-1"
+    })
+    .to_string();
+    let evidence_json = serde_json::json!({
+        "schema": "chio.mobile.attestation-evidence.v1",
+        "platform": "app_attest"
+    })
+    .to_string();
+
+    let err = verify_mobile_receipt(receipt_json, evidence_json).unwrap_err();
+    match err {
+        ChioMobileError::AttestationUnavailable { message } => {
+            assert!(message.contains("M07.P4"));
+        }
+        other => panic!("expected AttestationUnavailable, got {other:?}"),
     }
 }
