@@ -11,15 +11,12 @@
 #      (a file that exists and does NOT contain `unimplemented!`),
 #      OR
 #
-#   2. carries an explicit `coverage_state` of `pending` or `partial`
-#      in the threat-model JSON. The CI gate treats `partial` as PASS
-#      and the M05.P5.T5 doc generator surfaces it under a separate
-#      Partial heading.
+#   2. carries `coverage_state: pending` plus a non-empty
+#      `deferred_to` reference in the threat-model JSON.
 #
-# Fails closed: any threat ID without a populated test body and
-# without an explicit pending / partial declaration causes the
-# script to exit non-zero with a clear hint. Auto-promoted
-# (pending) corpus seeds (D14) are excluded from coverage by
+# Fails closed: `partial` is never accepted, and `pending` without
+# `deferred_to` exits non-zero with a clear hint. Auto-promoted
+# pending corpus seeds (D14) are excluded from coverage by
 # construction since they live in the corpus, not the threat list.
 
 set -euo pipefail
@@ -28,8 +25,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-THREAT_MODEL="$REPO_ROOT/spec/security/chio-threat-model.v1.json"
-STUBS_DIR="$REPO_ROOT/crates/chio-conformance/tests/threats"
+THREAT_MODEL="${CHIO_THREAT_MODEL_PATH:-$REPO_ROOT/spec/security/chio-threat-model.v1.json}"
+STUBS_DIR="${CHIO_THREAT_STUBS_DIR:-$REPO_ROOT/crates/chio-conformance/tests/threats}"
 
 if [[ ! -f "$THREAT_MODEL" ]]; then
     echo "error: threat model not found at $THREAT_MODEL" >&2
@@ -51,10 +48,11 @@ with open(sys.argv[1]) as fh:
 for t in doc.get("threats", []):
     tid = t.get("id", "")
     state = t.get("coverage_state", "")
-    print(f"{tid}\t{state}")
+    deferred_to = t.get("deferred_to", "")
+    print(f"{tid}\t{state}\t{deferred_to}")
 PY
     elif command -v jq >/dev/null 2>&1; then
-        jq -r '.threats[] | "\(.id)\t\(.coverage_state // "")"' "$THREAT_MODEL"
+        jq -r '.threats[] | "\(.id)\t\(.coverage_state // "")\t\(.deferred_to // "")"' "$THREAT_MODEL"
     else
         echo "error: need python3 or jq to parse threat-model JSON" >&2
         exit 1
@@ -66,16 +64,21 @@ covered=()
 pending=()
 partial=()
 
-while IFS=$'\t' read -r id state; do
+while IFS=$'\t' read -r id state deferred_to; do
     [[ -z "$id" ]] && continue
 
     case "$state" in
         pending)
-            pending+=("$id")
+            if [[ -n "${deferred_to:-}" ]]; then
+                pending+=("$id -> $deferred_to")
+            else
+                uncovered+=("$id (coverage_state pending without deferred_to)")
+            fi
             continue
             ;;
         partial)
             partial+=("$id")
+            uncovered+=("$id (coverage_state partial is not allowed after M05.P4)")
             continue
             ;;
         ""|covered)
@@ -115,8 +118,8 @@ if [[ ${#uncovered[@]} -gt 0 ]]; then
     done
     echo "" >&2
     echo "hint: either populate the test body (replace unimplemented!() with a real assertion)" >&2
-    echo "       or mark the threat ID as coverage_state: pending in $THREAT_MODEL" >&2
+    echo "       or mark the threat ID as coverage_state: pending with a non-empty deferred_to in $THREAT_MODEL" >&2
     exit 1
 fi
 
-echo "PASS: every threat ID has a populated test stub or an explicit pending / partial declaration."
+echo "PASS: every threat ID is covered or explicitly pending with deferred_to."

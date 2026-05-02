@@ -7,15 +7,10 @@
 //! `boundary`, `threats`), the `boundary.surfaces` and `boundary.assets`
 //! enums, and the per-threat object shape (`id`, `name`, `surfaces`,
 //! `mitigations`, `residualRisk`, optional `coveredBy`,
-//! `covered_by_tests`, and
-//! `coverage_state`). The optional `coverage_state` field carries the
-//! enum `{covered, partial, pending}`. `partial` is reserved for IDs
-//! whose backing test exists but whose attack surface is only partially
-//! defended; the milestone audit doc for the partial owner documents
-//! the residual gap. The threat-model-coverage CI gate (M05.P5.T4)
-//! treats `partial` as PASS but the generated
-//! `docs/security/threat-coverage.md` report flags it under a separate
-//! Partial heading.
+//! `covered_by_tests`, `deferred_to`, and `coverage_state`). The
+//! optional `coverage_state` field carries the enum `{covered, partial,
+//! pending}`. The threat-model-coverage CI gate fails on `partial` and
+//! fails on `pending` unless `deferred_to` is populated.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -166,6 +161,43 @@ fn schema_accepts_covered_by_tests_alias() {
     assert!(
         validator.is_valid(&valid),
         "schema must accept the legacy covered_by_tests cross-link"
+    );
+}
+
+#[test]
+fn schema_accepts_pending_with_deferred_to() {
+    let root = repo_root();
+    let schema_path = root.join("spec/security/chio-threat-model.schema.json");
+    let schema_value = load_json(&schema_path);
+    let validator =
+        jsonschema::validator_for(&schema_value).expect("compile chio-threat-model.schema.json");
+
+    let valid = serde_json::json!({
+        "schema": "chio.threat-model.v1",
+        "updatedAt": "2026-04-30",
+        "boundary": {
+            "focus": "x",
+            "surfaces": ["native_chio"],
+            "assets": ["capability_tokens"]
+        },
+        "threats": [
+            {
+                "id": "pending_with_deferred_to",
+                "name": "Pending with deferred_to",
+                "surfaces": ["native_chio"],
+                "mitigations": [
+                    {"status": "existing", "control": "x"}
+                ],
+                "residualRisk": "x",
+                "coverage_state": "pending",
+                "deferred_to": "trajectory-4.follow-up"
+            }
+        ]
+    });
+
+    assert!(
+        validator.is_valid(&valid),
+        "schema must accept pending threats with a deferred_to carry-forward"
     );
 }
 

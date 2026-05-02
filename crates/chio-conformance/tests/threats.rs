@@ -12,7 +12,8 @@
 //! (M05.P5.T4) inspects the on-disk file set for `unimplemented!`
 //! markers to decide which threat IDs still need tests.
 //!
-//! The six initial threat IDs cited in the M05 success criteria:
+//! Covered threat IDs cited in the M05 success criteria and M05.P4
+//! advisory reclassification:
 //!
 //! - capability_token_theft
 //! - kernel_impersonation
@@ -21,6 +22,10 @@
 //! - resource_exhaustion_dos
 //! - delegation_chain_abuse
 //! - weights_hash_spoof
+//! - pq_signature_downgrade
+//! - tee_quote_forgery
+//! - passkey_credential_theft
+//! - audience_confusion
 
 #[path = "threats/common.rs"]
 mod common;
@@ -45,3 +50,15 @@ mod delegation_chain_abuse;
 
 #[path = "threats/weights_hash_spoof.rs"]
 mod weights_hash_spoof;
+
+#[path = "threats/pq_signature_downgrade.rs"]
+mod pq_signature_downgrade;
+
+#[path = "threats/tee_quote_forgery.rs"]
+mod tee_quote_forgery;
+
+#[path = "threats/passkey_credential_theft.rs"]
+mod passkey_credential_theft;
+
+#[path = "threats/audience_confusion.rs"]
+mod audience_confusion;

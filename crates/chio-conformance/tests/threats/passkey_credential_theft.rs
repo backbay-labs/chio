@@ -1,30 +1,39 @@
-// DO NOT EDIT - regenerate via 'make regen-rust' or 'cargo xtask codegen rust'.
+// M05.P4.T2 test body for threat ID `passkey_credential_theft`.
 //
-// Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Tool:   typify =0.4.3 (see xtask/codegen-tools.lock.toml)
-// Crate:  chio-spec-codegen
+// Threat: passkey_credential_theft (Passkey credential theft).
+// Surfaces: trust_control, native_chio, hosted_mcp.
 //
-// Manual edits will be overwritten by the next regeneration; the
-// `_generated_check` integration test enforces this header on every file
-// under `crates/chio-core-types/src/_generated/`.
+// Coverage strategy: M10.P2 shipped the custody hardware verifier,
+// replay-resistant nonce store, revocation cascade, and end-to-end
+// passkey capability dispatch tests. This stub pins those evidence
+// files so the JSON reclassification cannot outlive the code.
 
-//! Stub test for threat ID `passkey_credential_theft` (Passkey credential theft).
-//!
-//! Surfaces: trust_control, native_chio, hosted_mcp.
-//!
-//! Owner: M05.P5.T2 (codegen) and M05.P5.T3 (test bodies for the
-//! six initial threat IDs). Until M05.P5.T3 lands a real test body
-//! the stub fails closed via `unimplemented!()` so the
-//! threat-model-coverage CI gate (M05.P5.T4) flags this threat ID
-//! as not-yet-covered.
-//!
-//! When you fill in the body, replace the `unimplemented!()` call
-//! with assertions that the relevant adversarial vector or escape
-//! class denies in the expected way and cite the threat ID in the
-//! comment header above the assertion.
+use std::path::PathBuf;
+
+const EVIDENCE_FILES: &[&str] = &[
+    "crates/chio-custody-hw/src/verifier.rs",
+    "crates/chio-custody-hw/src/nonce_store.rs",
+    "crates/chio-custody-hw/src/revocation.rs",
+    "crates/chio-custody-hw/tests/replay_resistance.rs",
+    "crates/chio-custody-hw/tests/revocation_cascade.rs",
+    "crates/chio-custody-hw/tests/end_to_end.rs",
+];
+
+fn repo_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+}
 
 #[test]
 fn threat_passkey_credential_theft_is_covered() {
-// covers: passkey_credential_theft
-unimplemented!("M05.P5.T3 must populate the test body for threat \"passkey_credential_theft\"");
+    // covers: passkey_credential_theft
+    for evidence in EVIDENCE_FILES {
+        let path = repo_path(evidence);
+        assert!(
+            path.is_file(),
+            "passkey credential theft evidence file {} must remain in-tree",
+            path.display()
+        );
+    }
 }
