@@ -16,7 +16,7 @@
   milestone: M07
   phase: 1
   title: Add attest_app_attest UDL entry plus Rust impl shell delegating to chio-custody-hw attestation
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
@@ -36,16 +36,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 
 - id: M07.P1.T2
   milestone: M07
   phase: 1
   title: Add attest_play_integrity UDL entry plus Rust impl shell
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
@@ -62,16 +62,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 
 - id: M07.P1.T3
   milestone: M07
   phase: 1
   title: Add verify_mobile_receipt UDL entry delegating to chio-custody-hw attestation receipt_chain
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-kernel-mobile/src/chio_kernel_mobile.udl
@@ -88,16 +88,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 
 - id: M07.P1.T4
   milestone: M07
   phase: 1
   title: Cross-platform parity test (mobile UniFFI vs chio-cpp-kernel-ffi byte-equal verdicts)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - crates/chio-kernel-mobile/tests/cross_ffi_parity.rs
@@ -115,16 +115,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'
 
 - id: M07.P1.T5
   milestone: M07
   phase: 1
   title: Refresh bindings README + Swift / Kotlin reference docs to document the seven UDL entries
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - crates/chio-kernel-mobile/bindings/README.md
@@ -142,7 +142,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  merged_sha: e9ae15376c3368459f18b209c7f2dd7c723bb8c0
+  opened_ts: '2026-05-02T13:00:30Z'
+  merged_ts: '2026-05-02T13:00:30Z'

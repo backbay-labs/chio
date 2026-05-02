@@ -64,22 +64,24 @@ The overall qualification gate fails unless at least one target-backed iOS or
 Android lane runs and passes. The host FFI test is required coverage, but it
 does not by itself qualify the mobile target surface.
 
-## M07 P1 surface preview
+## Seven-entry mobile surface
 
-The current UDL exports four functions: `evaluate`, `sign_receipt`,
-`verify_capability`, and `verify_passport`. M07 P1 extends that surface to
-seven functions by adding:
+The UDL exports seven functions. The first four are the portable kernel
+surface: `evaluate`, `sign_receipt`, `verify_capability`, and
+`verify_passport`. M07 P1 adds three mobile-attestation entries:
 
 - `attest_app_attest(key_id, challenge_hex)`: produce an App Attest evidence
-  envelope bound to a server challenge.
+  envelope bound to a server challenge. Until the M07 P2 platform verifier
+  lands, this validates inputs and returns
+  `ChioMobileError.AttestationUnavailable`.
 - `attest_play_integrity(nonce_hex)`: produce a Play Integrity evidence
-  envelope bound to an issuer nonce.
+  envelope bound to an issuer nonce. Until the M07 P3 platform verifier
+  lands, this validates inputs and returns
+  `ChioMobileError.AttestationUnavailable`.
 - `verify_mobile_receipt(receipt_json, evidence_json)`: verify a mobile
   receipt against device-attestation evidence before it is handed to the
-  hosted oracle.
-
-These names are reserved here so Swift, Kotlin, and React Native wrapper work
-can target the same function names before the P1 UDL entries land.
+  hosted oracle. Until the M07 P4 receipt-chain verifier lands, this
+  validates JSON inputs and returns `ChioMobileError.AttestationUnavailable`.
 
 ## Generating the Swift bindings
 

@@ -1,0 +1,30 @@
+[
+  {
+    "name": "allow_echo",
+    "request_id": "req-cross-ffi-allow",
+    "tool_name": "echo",
+    "server_id": "srv-a",
+    "arguments": {
+      "msg": "hello from mobile"
+    },
+    "expected_verdict": "allow"
+  },
+  {
+    "name": "deny_unknown_tool",
+    "request_id": "req-cross-ffi-deny-tool",
+    "tool_name": "unknown-tool",
+    "server_id": "srv-a",
+    "arguments": {},
+    "expected_verdict": "deny"
+  },
+  {
+    "name": "deny_unknown_server",
+    "request_id": "req-cross-ffi-deny-server",
+    "tool_name": "echo",
+    "server_id": "srv-b",
+    "arguments": {
+      "msg": "wrong server"
+    },
+    "expected_verdict": "deny"
+  }
+]

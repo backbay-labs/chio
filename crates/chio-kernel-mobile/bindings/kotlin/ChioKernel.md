@@ -108,10 +108,10 @@ Verifies a portable passport envelope (Phase 20.1 wire format). Pass
 fun attestAppAttest(keyId: String, challengeHex: String): String
 ```
 
-Reserved M07 entry point for the iOS-compatible App Attest evidence shape.
-The Kotlin surface keeps the name for cross-platform parity even though the
-implementation returns an unsupported error on Android until the iOS lane uses
-it.
+M07 P1 shell for the iOS-compatible App Attest evidence shape. The Kotlin
+surface keeps the name for cross-platform parity; the shell validates
+`challengeHex` and returns `ChioMobileException.AttestationUnavailable` until
+M07 P2 wires the platform verifier.
 
 ### `attestPlayIntegrity` (M07 P1)
 
@@ -120,8 +120,10 @@ it.
 fun attestPlayIntegrity(nonceHex: String): String
 ```
 
-Reserved M07 entry point for producing a Play Integrity evidence envelope
-bound to an issuer nonce.
+M07 P1 shell for producing a Play Integrity evidence envelope bound to an
+issuer nonce. The shell validates `nonceHex` and returns
+`ChioMobileException.AttestationUnavailable` until M07 P3 wires the platform
+verifier.
 
 ### `verifyMobileReceipt` (M07 P1)
 
@@ -130,8 +132,11 @@ bound to an issuer nonce.
 fun verifyMobileReceipt(receiptJson: String, evidenceJson: String): String
 ```
 
-Reserved M07 entry point for verifying a mobile receipt against App Attest or
-Play Integrity evidence before forwarding it to the hosted oracle.
+M07 P1 shell for verifying a mobile receipt against App Attest or Play
+Integrity evidence before forwarding it to the hosted oracle. The shell
+validates both JSON envelopes and returns
+`ChioMobileException.AttestationUnavailable` until M07 P4 wires the
+receipt-chain verifier.
 
 ## Records
 
@@ -176,6 +181,7 @@ sealed class ChioMobileException(message: String) : kotlin.Exception(message) {
     class InvalidHex(message: String) : ChioMobileException(message)
     class InvalidCapability(message: String) : ChioMobileException(message)
     class InvalidPassport(message: String) : ChioMobileException(message)
+    class AttestationUnavailable(message: String) : ChioMobileException(message)
     class KernelKeyMismatch(message: String) : ChioMobileException(message)
     class SigningFailed(message: String) : ChioMobileException(message)
     class EvaluationDenied(message: String) : ChioMobileException(message)
