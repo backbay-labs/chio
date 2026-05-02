@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T11:06:35Z",
+  "last_checkpoint_at": "2026-05-02T11:21:06Z",
   "current_wave": "W2",
   "halt": {
     "halted": false,
@@ -43,7 +43,7 @@
     },
     "M06": {
       "status": "in_progress",
-      "phase": "P0_merged",
+      "phase": "P1_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
@@ -106,11 +106,12 @@
     "Customer evidence freshness window is 7 days per D15; design-partner withdrawal is halt trigger 12.",
     "W1 closeout checkpoint 2026-05-02T10:44:30Z: M01-M05 P5 merged, manifest regenerated, current_wave advanced to W2.",
     "M10.P0 APN pre-roll opened 2026-05-02T10:53:39Z; APN packet M10-APN-PRE-ROLL-2026-05-02 and MCP conformance pin recorded.",
-    "M06.P0 audit baseline opened 2026-05-02T11:06:35Z; formal counts, cargo-vet exemption rows, top-50 dependency centrality, contractor fallback record, and cargo-audit baseline recorded."
+    "M06.P0 audit baseline opened 2026-05-02T11:06:35Z; formal counts, cargo-vet exemption rows, top-50 dependency centrality, contractor fallback record, and cargo-audit baseline recorded.",
+    "M06.P1 Apalache subset merged 2026-05-02T11:21:06Z: Common.tla bounds, four invariant specs/configs, apalache-nightly workflow, and mapping rows recorded."
   ],
   "wave_heads": {
     "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
-    "W2": "f6a5e011ada2cb82c0e9ebe6eccc5fd8c8c3be23"
+    "W2": "40622002e48da733f348b65b1552d6dd3f17d018"
   },
   "wave_status": {
     "W1": {
