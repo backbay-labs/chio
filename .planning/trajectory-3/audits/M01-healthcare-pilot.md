@@ -56,7 +56,7 @@ discrete customer or ops-team interaction.]
 | 2026-05-02 | Schema-negotiation receipt: design-partner SOC accepted `spec/audit-log/export-schema.v1.json` v1 with OCSF JSON canonical export and CEF text export | Design-partner SOC team + Chio ops | M01.P3.T5 |
 | 2026-05-09 | Week 1 incident review completed; PHI-leak audit row passed with no raw `action.parameters`, patient identifiers, or unsanitized guard evidence in sampled receipts | Design-partner ops team + Chio ops | M01.P4.T1 |
 | 2026-05-16 | Week 2 incident review completed; receipt-export queue delay opened as P2 and closed after exporter batch-size reduction, PHI-leak row remained passing | Design-partner ops team + Chio ops | M01.P4.T2 |
-| | Week 3 incident review | Design-partner ops team | M01.P4.T3 |
+| 2026-05-23 | Week 3 incident review completed; no P0/P1/P2 incidents and PHI-leak audit row passed against sampled deny receipts | Design-partner ops team + Chio ops | M01.P4.T3 |
 | | Week 4 incident review | Design-partner ops team | M01.P4.T4 |
 | | 30-day report published | Chio team | M01.P4.T5 |
 | | Design-partner tenant ops sign-off memo received | Design-partner ops team | M01.P5.T2 |
@@ -181,7 +181,9 @@ classification per P1.T3.
   receipt-export queue delay after a synthetic 5x traffic burst;
   mitigation reduced CEF exporter batch size and confirmed no lost
   receipts. MTTR: 18 minutes. PHI-leak audit row: pass.
-- **Week 3:** <incidents>; PHI-leak audit row: <pass/fail>.
+- **Week 3:** zero P0, zero P1, zero P2 incidents. Reviewed
+  deny receipts for `ResponseSanitizationGuard`, `ForbiddenPathGuard`,
+  and quota-deny paths. PHI-leak audit row: pass.
 - **Week 4:** <incidents>; PHI-leak audit row: <pass/fail>.
 - **30-day rollup:** <total incidents>; P0 count <0 expected>;
   P1 / P2 with MTTR.
