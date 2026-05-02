@@ -171,6 +171,18 @@ closure has landed, so future protocol or threat-model deltas during
 active review must be tied to a vendor finding or a signed scope
 clarification in Section 3.
 
+### 3d. Cross-milestone notifications
+
+cross-milestone notification sent to M04, M05, and M06 authoring lanes
+at the start of P3 because their evidence is cited by the M08 final
+report package.
+
+| Milestone | Notification | Expected citation in M08 report | Status |
+|-----------|--------------|----------------------------------|--------|
+| M04 | Mutation and verdict-matrix owners notified that kill-score and verdict-matrix closure will be cited in the reviewer confidence section. | M04 mutation gate threshold, survivor sweep summary, and D08 honest-threshold rationale. | acknowledged |
+| M05 | Threat-coverage owners notified that `weights_hash_spoof`, `dispatch_allow`, and placeholder-eviction closure will be cited against the M08 finding register. | M05 threat-coverage closure and post-closure threat-row count. | acknowledged |
+| M06 | Formal and supply-chain owners notified that Apalache invariant names and SBOM / cargo-vet evidence are read-only inputs for the M08 final report. | `MonotoneLogApalache`, `RevocationCutCompleteness`, `ReceiptBeforeAllow`, and `KernelTransitionCancelSafe`. | acknowledged |
+
 ## 4. Findings + remediation log
 
 Preliminary findings memo received at week 28 and factual-correction
