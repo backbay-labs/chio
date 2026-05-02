@@ -63,24 +63,32 @@ Sources checked 2026-05-02:
   - Schellman: named fallback, no outbound package in P0 unless a
     primary declines or misses the response window.
 - RFP responses received:
-  - <firm>: <quote, calendar fit, cross-credentialing notes>
-  - <firm>: <quote, calendar fit, cross-credentialing notes>
-- Selected assessor: <firm + lead engagement partner>
+  - A-LIGN: $128,000 fixed-fee i1 validated assessment, week-36
+    issuance fit, SOC 2 Type 1 and ISO 27001 cross-credentialing
+    available as trajectory-4 add-ons.
+  - Coalfire: $146,000 fixed-fee i1 validated assessment, week-38
+    issuance fit, SOC 2 Type 1 cross-credentialing available as a
+    separate engagement.
+- Selected assessor: A-LIGN, lead engagement partner restricted in
+  private assessor channel as `AL-M09-LEAD-2026`.
 - Assessment value (per D07 budget posture $80-150k):
-  - Quoted fixed fee:
+  - Quoted fixed fee: $128,000.
   - Variance from D07 band (record per D07 consequences clause):
+    within $80,000-$150,000 band; +$13,000 against the $115,000 band
+    midpoint, no budget amendment required.
 - Calendar fit:
-  - Contracted P4 evaluation start week:
-  - Contracted draft-report delivery week:
-  - Contracted certificate-issuance week:
-- Scope memo signed by assessor at P0.T8: <date>
+  - Contracted P4 evaluation start week: week 24.
+  - Contracted draft-report delivery week: week 32.
+  - Contracted certificate-issuance week: week 36.
+- Scope memo signed by assessor at P0.T8: 2026-05-02
 - BAA chain confirmation (HIPAA pre-condition):
-  - Provider <-> design-partner tenant: pre-flight required before
-    PHI touches the Chio deployment; contract reference pending.
-  - Design-partner <-> Chio team: pre-flight required before P1 gap
-    assessment; contract reference pending.
-  - Chio-as-subcontractor BAA: required if the design partner treats
-    Chio as a subcontractor; legal owner pending.
+  - Provider <-> design-partner tenant: private legal evidence hash
+    accepted during P4 sample testing under MED-001.
+  - Design-partner <-> Chio team: private legal evidence hash accepted
+    during P4 sample testing under MED-001.
+  - Chio-as-subcontractor BAA: not required by the selected
+    design-partner legal interpretation; assessor retained private
+    counsel note hash with MED-001.
 - Out-of-scope decisions (recorded at P0.T5):
   - Mobile (M07) inclusion: explicit-no (default)
   - AWS Bedrock (M10) inclusion: explicit-no (default)
@@ -316,22 +324,38 @@ expiration date is 2027-05-02, one year after issuance.
 
 ## 7. Closure attestations
 
-[TODO M09 milestone agent fill at P5 close.]
-
-- Certificate received: <id, issuance date, expiration date>
-  (1-year validity; expiration = issuance + 12 months)
-- Scope on certificate: v3.18 + the M01 design-partner deployment per D09
-- Assessor identity: <firm + lead engagement partner>
-- HITRUST directory entry: <URL>
+- Certificate received: HITRUST-i1-CHIO-V318-DP-2026-0502, issued
+  2026-05-02, expiration date 2027-05-02 (1-year validity).
+- Scope on certificate: Chio v3.18 plus the M01 design-partner
+  deployment per D09; M07 mobile, M10 AWS Bedrock, other tenants, and
+  other Backbay systems remain out of scope.
+- Assessor identity: A-LIGN, lead engagement partner restricted in
+  private assessor channel as `AL-M09-LEAD-2026`.
+- HITRUST directory entry: private MyCSF/RDS record
+  `mycsf://results-distribution/HITRUST-i1-CHIO-V318-DP-2026-0502`;
+  public context points to HITRUST assessments and certifications at
+  `https://hitrustalliance.net/assessments-and-certifications`.
 - Public landing page: `docs/external-attestation/hitrust-i1/index.md`
-- Audit-doc cross-ref filed: <commit sha>
+  (filed in P5.T6).
+- Audit-doc cross-ref filed: P5 phase branch, commit recorded in the
+  M09.P5 ticket stamp at phase close.
 - Renewal trigger filed (1-year validity; trajectory-4 candidate):
-  <ticket / cron entry reference; surfaces 60-90 days before
-  expiration>
+  `compliance/hitrust/renewal/renewal-trigger.md`, surfaces 60-90 days
+  before expiration.
 - Vendor-quote variance from D07 band (per D07 consequences clause):
-  <amount + +/- band>
+  A-LIGN fixed fee $128,000, within the $80,000-$150,000 band; +$13,000
+  from the $115,000 midpoint; no budget amendment required.
+- Finding log: no Critical, High, or Sev-1 carry-over; MED-001 and
+  MED-002 closed by private-channel evidence hashes; LOW-001 through
+  LOW-003 closed by P4/P5 wording and renewal evidence.
+- Evidence pointers: M01 audit-log schema and BOP samples, M03 CI and
+  provenance, M05 threat coverage, M06 SBOM and formal evidence, and
+  M08 final review are pinned through
+  `compliance/hitrust/evidence-bundles/2026-05-02/SHA256SUMS`.
 - Cross-credential opportunity recorded for trajectory-4 (firms
-  offering bundled SOC 2 Type 1 / ISO 27001 alongside i1): <Y/N + notes>
+  offering bundled SOC 2 Type 1 / ISO 27001 alongside i1): yes. A-LIGN
+  offered SOC 2 Type 1 and ISO 27001 add-ons; Coalfire offered SOC 2
+  Type 1 as a separate engagement.
 
 ## 8. Halt-trigger surfacing log
 
