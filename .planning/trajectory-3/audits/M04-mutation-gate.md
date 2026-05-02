@@ -182,7 +182,7 @@ Rust kernel reference job, verifies both manifest driver sections are
 | Ticket | Surface | Commit | Required gate |
 |--------|---------|--------|---------------|
 | M04.P4.T1 | `.github/workflows/verdict-matrix.yml` | `353675065` | `python -m pytest tests/test_verdict_matrix.py -q`; `go test -run VerdictMatrix ./...` |
-| M04.P4.T2 | `docs/conformance/verdict-matrix.md` | `<fill at ticket closeout>` | docs required-driver list includes `python-sdk` and `go-http-sdk` |
+| M04.P4.T2 | `docs/conformance/verdict-matrix.md` | `4e887ae3f` | docs required-driver list includes `python-sdk` and `go-http-sdk` |
 
 Hosted CI completion remains deferred under the trajectory-3 steering
 update. P4 records the admin-merged PR and skipped hosted wait in
