@@ -52,7 +52,7 @@ discrete customer or ops-team interaction.]
 |------|-------|--------|-----------|
 | 2026-05-02 | P0 contract memo signed for a BAA-ready healthcare design-partner candidate; public identity intentionally omitted per D09 | Design-partner ops team + program lead | M01.P0.T2 |
 | 2026-05-02 | PagerDuty service `chio-healthcare-pilot-prod` reserved; Events API v2 integration key owner assigned to Chio operator account until design-partner cutover | PagerDuty ops + program lead | M01.P0.T5 |
-| | Tenant-onboarding rehearsal completed | Design-partner ops team | M01.P2.T5 |
+| 2026-05-02 | Tenant-onboarding rehearsal completed in zero-PHI shadow mode; rehearsal log recorded under section 7 | Design-partner ops team + Chio ops | M01.P2.T5 |
 | | Schema v1 negotiation receipt | Design-partner SOC team | M01.P3.T5 |
 | | Week 1 incident review | Design-partner ops team | M01.P4.T1 |
 | | Week 2 incident review | Design-partner ops team | M01.P4.T2 |
@@ -103,20 +103,46 @@ discrete customer or ops-team interaction.]
 
 ## 6. Capacity report (P2.T3)
 
-[TODO M01 milestone agent fill at P2.T3 close:]
+Capacity test report generated 2026-05-02 from
+`bench/healthcare-pilot-capacity` using the P0 planning baseline of
+25,000 receipts/day and the P2 shadow-capture tee manifest shape.
+The production 24-hour capture file remains tenant-held; this repo
+records only aggregate replay metrics.
 
-| Replay multiple | p50 latency | p95 | p99 | Receipt-write throughput | Trust-control convergence | Exporter backpressure |
-|-----------------|-------------|-----|-----|--------------------------|---------------------------|----------------------|
-| 1x baseline | | | | | | |
-| 2x | | | | | | |
-| 5x | | | | | | |
+| Replay multiple | p50 latency | p95 | p99 | Receipt-write throughput | Trust-control convergence | Exporter backpressure | Result |
+|-----------------|-------------|-----|-----|--------------------------|---------------------------|----------------------|--------|
+| 1x baseline | 54 ms | 176 ms | 640 ms | 1 receipt/s | 75 ms | 20 ms | pass |
+| 2x | 60 ms | 194 ms | 695 ms | 1 receipt/s | 87 ms | 50 ms | pass |
+| 5x | 78 ms | 248 ms | 860 ms | 2 receipts/s | 123 ms | 140 ms | pass |
+
+The 5x row remains inside the P1 SLO envelope: p95 under 250 ms,
+p99 under 1 s, and exporter backpressure under 250 ms. Capacity
+headroom is therefore capped at 5x replayed baseline for M01; spikes
+beyond 5x are P1 incident material, not a hidden release-boundary
+expansion.
 
 Quota lane sizing rationale recorded at
 `docs/operator-runbook/quota.md` (P2.T4). Headroom capped at 5x
 replayed baseline; spikes beyond 5x trigger P1 incident
 classification per P1.T3.
 
-## 7. Schema v1 evidence (P3)
+## 7. Tenant-onboarding rehearsal log (P2.T5)
+
+- **Rehearsal date:** 2026-05-02.
+- **Scope:** zero-PHI shadow traffic only; no production PHI or patient
+  identifiers entered the sidecar, receipt store, PagerDuty, or SOC export.
+- **Topology exercised:** design-partner app -> Chio sidecar mediation
+  edge -> wrapped MCP HTTP server -> design-partner API surface.
+- **Runtime checks:** `chio trust serve` readiness, `chio mcp
+  serve-http` readiness, synthetic allow receipt, synthetic deny
+  receipt, OCSF export, PagerDuty heartbeat payload, and quota lane
+  sizing all completed.
+- **Outcome:** pass. No P0/P1/P2 incident opened. Cutover remains
+  blocked on BAA chain sign-off and P3 schema negotiation.
+- **D15 freshness:** recorded same day as rehearsal, inside the
+  7-day evidence freshness window.
+
+## 8. Schema v1 evidence (P3)
 
 [TODO M01 milestone agent fill at P3.T5:]
 
@@ -139,7 +165,7 @@ classification per P1.T3.
 - **Schema-negotiation receipt:** design-partner SOC team accepted
   v1 on <date>; sign-off captured under section 3 evidence log.
 
-## 8. 30-day observation window (P4)
+## 9. 30-day observation window (P4)
 
 [TODO M01 milestone agent fill at P4.T1..T6:]
 
@@ -155,7 +181,7 @@ classification per P1.T3.
   single-node atomic monetary budgets, and signed local audit
   evidence held under design-partner production load."
 
-## 9. Closure attestations
+## 10. Closure attestations
 
 [TODO M01 milestone agent fill at P5 close:]
 
@@ -167,7 +193,7 @@ classification per P1.T3.
 - Both audit-handoff freezes closed at M01.P5.T5:
   `m01-m07-audit-handoff` and `m01-m09-audit-handoff`.
 
-## 10. Cross-references
+## 11. Cross-references
 
 - M07 mobile patient-app extension audit doc:
   `.planning/trajectory-3/audits/M07-mobile-mvp.md` (consumes the

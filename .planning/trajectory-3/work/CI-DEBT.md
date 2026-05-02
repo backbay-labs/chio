@@ -14,3 +14,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #450 (`22a2853ddbbcce8e775b4af1e8703c0fb12461ba`): M03.P0 audit baseline catch-up; skipped hosted CI wait for audit hard-count confirmation, billing runbook stamp, rebuilder lane stamp, reproducibility carve-out, and ticket stamps.
 - PR #451 (`a2ac8e3d6baa1e17664af82d53445302c6484443`): M01.P0 healthcare pilot baseline; skipped hosted CI wait for audit hard counts, contract memo and BAA posture, onboarding plan, topology pin, PagerDuty contract memo, and ticket stamps.
 - PR #452 (`e2fe51843f5b36149df18fe0ab0abe68236b959b`): M01.P1 operator runbook and PagerDuty wiring; skipped hosted CI wait for bounded profile, SLO, incident, PagerDuty override, rotation, heartbeat workflow, and ticket stamps.
+- PR #453 (`24c3b87f93d75b455de37c4ef1da2c5c2143077d`): M01.P2 capacity and onboarding rehearsal; skipped hosted CI wait for capacity harness, shadow-capture script, capacity report, quota lane sizing, rehearsal log, and ticket stamps.
