@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M09
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
-**Status:** OPEN (P5 HITRUST QA in progress)
+**Status:** COMPLETE
 **Audit start:** week 1 (audit doc seed at P0.T2)
 **Audit close:** weeks 32-36 (certificate issuance at P5.T3; final
 audit-doc pass at P5.T4)
@@ -309,6 +309,7 @@ scope statement, and landing-page evidence.
 | HITRUST QA round | 2026-05-02 | passed with no revision request | `HITRUST-QA-PASS-M09-P5-2026-05-02` |
 | Certificate received | 2026-05-02 | issued | `compliance/hitrust/certificate/certificate.md` |
 | Renewal trigger filed | 2026-05-02 | filed | `compliance/hitrust/renewal/renewal-trigger.md` |
+| Public landing page published | 2026-05-02 | published | `docs/external-attestation/hitrust-i1/index.md` |
 
 Final report submitted to HITRUST: 2026-05-02 by the selected external
 assessor after P4 draft-report clarifications closed with no Critical,
@@ -326,6 +327,12 @@ expiration date is 2027-05-02, one year after issuance.
 Renewal trigger filed: the renewal window opens 2027-02-01 and the
 latest kickoff date is 2027-03-03, giving trajectory-4 a 60-90 day
 planning window before certificate expiration.
+
+Public landing page published:
+`docs/external-attestation/hitrust-i1/index.md` records the v3.18
+design-partner scope, expiration date, certificate record, private
+Results Distribution System reference, and HITRUST public reference
+URLs.
 
 ## 7. Closure attestations
 

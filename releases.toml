@@ -110,4 +110,16 @@ m08_final_report:
   response_memo: .planning/trajectory-3/audits/M08-vendor-evidence.md#5e-chio-response-memo
   response_memo_status: published
   vendor_public_reports_page: https://www.nccgroup.com/technical-assurance/cryptography-encryption/cryptography-services/
+m09_hitrust_i1_certificate:
+  release_gate: QUALIFICATION
+  certificate_id: HITRUST-i1-CHIO-V318-DP-2026-0502
+  certificate_path: compliance/hitrust/certificate/certificate.md
+  certificate_sha256: e0a6adc2e3a8f3f7b6ff324f0db62ccce82d6a4defba22eb58e7cbb0a0f926be
+  issued_at: 2026-05-02
+  expires_at: 2027-05-02
+  scope: Chio v3.18 plus M01 healthcare design-partner deployment
+  assessor: A-LIGN
+  audit_doc: .planning/trajectory-3/audits/M09-vendor-evidence.md
+  public_landing_page: docs/external-attestation/hitrust-i1/index.md
+  results_distribution_record: mycsf://results-distribution/HITRUST-i1-CHIO-V318-DP-2026-0502
 """
