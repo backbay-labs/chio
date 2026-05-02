@@ -17,7 +17,7 @@
   milestone: M02
   phase: 2
   title: Write evidence-export contract markdown mapping scenario output to bundle envelope
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - crates/chio-eval-receipt/EXPORT-CONTRACT.md
@@ -34,16 +34,16 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 7b5412245e0907cc1f36723e80b384187c7fab90
+  merged_sha: 7b5412245e0907cc1f36723e80b384187c7fab90
+  opened_ts: "2026-05-02T06:31:58Z"
+  merged_ts: "2026-05-02T06:31:58Z"
 
 - id: M02.P2.T2
   milestone: M02
   phase: 2
   title: Implement export.rs producing unsigned bundle from scenario receipts
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - crates/chio-eval-receipt/src/export.rs
@@ -61,16 +61,16 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 43349d645546db163e831b8cb0d2475411add9ed
+  merged_sha: 43349d645546db163e831b8cb0d2475411add9ed
+  opened_ts: "2026-05-02T06:31:58Z"
+  merged_ts: "2026-05-02T06:31:58Z"
 
 - id: M02.P2.T3
   milestone: M02
   phase: 2
   title: Unit-test export against three trajectory-2 sample scenarios
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - crates/chio-eval-receipt/tests/export_roundtrip.rs
@@ -87,16 +87,16 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e8f1490d8f9bd110eb175fe5156ffd02616388f6
+  merged_sha: e8f1490d8f9bd110eb175fe5156ffd02616388f6
+  opened_ts: "2026-05-02T06:31:58Z"
+  merged_ts: "2026-05-02T06:31:58Z"
 
 - id: M02.P2.T4
   milestone: M02
   phase: 2
   title: Document partner-side mapping (pipeline output to EvalRunMeta) and link from audit doc
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
     - crates/chio-eval-receipt/EXPORT-CONTRACT.md
@@ -113,7 +113,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 70bf3a12fdfeae9b6a4c65616e780c4e36beadb0
+  merged_sha: 70bf3a12fdfeae9b6a4c65616e780c4e36beadb0
+  opened_ts: "2026-05-02T06:31:58Z"
+  merged_ts: "2026-05-02T06:31:58Z"

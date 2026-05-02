@@ -1,0 +1,9 @@
+{
+  "receipt_id": "receipt-revocation-propagation-001-active-read",
+  "scenario_id": "revocation-propagation-001-active-read",
+  "category": "revocation_propagation",
+  "verdict": "allow",
+  "reason_code": "urn:chio:error:none",
+  "kernel_key": "p2-fixture-kernel",
+  "signature": "p2-fixture-signature"
+}

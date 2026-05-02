@@ -1,0 +1,9 @@
+{
+  "receipt_id": "receipt-replay-verdict-001-fresh-read",
+  "scenario_id": "replay-verdict-001-fresh-read",
+  "category": "replay_verdict",
+  "verdict": "allow",
+  "reason_code": "urn:chio:error:none",
+  "kernel_key": "p2-fixture-kernel",
+  "signature": "p2-fixture-signature"
+}

@@ -160,6 +160,7 @@ older than the merge timestamp of the ticket that adds the row.
 | 2026-05-02 | Partner outreach: Apollo Research thread opened with Python verifier import review and reproducibility memo ask. | Chio program lead | M02.P0.T3 |
 | 2026-05-02 | Partner contract signed (week-1 deadline; D10). Partner identity: METR. Acceptance criteria: single eval-report bundle ingest, reference verifier review, partner technical reviewer for P2/P3, and P5 conformance memo. | Chio program lead + METR technical contact | M02.P0.T4 |
 | 2026-05-02 | Partner Q&A recorded: signature scheme defaults to cosign + GitHub OIDC, ingest pipeline language is Python, and eval-card citation commitment is memo review within the D15 7-day window. | `.planning/trajectory-3/research/m02/PARTNER-QA.md` | M02.P1.T2 |
+| 2026-05-02 | Evidence-export contract linked for partner review; `EXPORT-CONTRACT.md` maps verdict_matrix scenario output, `eval_run`, `corpus_sha256`, and partner-side mapping fields for the METR Python ingest sample. | `crates/chio-eval-receipt/EXPORT-CONTRACT.md` | M02.P2.T4 |
 | | Eval-report receipt format spec v1 published at `spec/eval/receipt-format.v1.json`. | <P3.T1 ticket SHA> | |
 | | `crates/chio-eval-receipt/` reference verifier merged. | <P3.T2 ticket SHA> | |
 | | Partner integration spike scheduled / executed. | <P4 ticket SHA> | |
@@ -203,6 +204,8 @@ Filled by the M02 milestone agent at P5 wave-closer merge.
   - Schema id: `chio.eval-report.bundle.v1`
   - Linter command: `cargo test -p chio-eval-receipt --test schema_lint`
   - Golden vector: `tests/bindings/vectors/eval/v1.json` (sha256 _<P3.T4>_)
+  - Evidence-export contract:
+    `crates/chio-eval-receipt/EXPORT-CONTRACT.md`
 
 - Reference verifier:
   - Crate: `crates/chio-eval-receipt/` (Rust)
