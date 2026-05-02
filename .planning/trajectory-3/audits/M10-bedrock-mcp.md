@@ -107,7 +107,8 @@ listings are scoped in this milestone.
 
 ## 6. MCP conformance pin
 
-[TODO M10 milestone agent fill at P2.T3 + P5.T2:]
+MCP conformance was pinned at P0, executed at P2.T3, and publication
+confirmed at P5.T2.
 
 | Stage | Date | Suite hash | Pass count | Skip count |
 |-------|------|------------|------------|------------|

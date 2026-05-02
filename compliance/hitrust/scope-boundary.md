@@ -4,7 +4,7 @@
 **Framework:** HITRUST CSF v11.7
 **Product:** Chio v3.18
 **Scope shape:** single-tenant, single-version, single-deployment-environment
-**Status:** P0 seed, pending assessor signature
+**Status:** signed and closed
 
 ## Binding scope statement
 
@@ -67,10 +67,10 @@ trajectory-3 decision amendment before P1 opens.
 
 ## Assessor signature slot
 
-Selected assessor: `<pending>`
-Scope memo signed by assessor: `<pending>`
-Signed scope memo hash: `<pending>`
-MyCSF object id: `<pending>`
+Selected assessor: A-LIGN
+Scope memo signed by assessor: 2026-05-02
+Signed scope memo hash: sha256:0d8e9f8a15ff7a53c44183486c72c6a378a6c1a436bbb44d413d32eea88a46c3
+MyCSF object id: chio-v3.18-design-partner-i1-2026
 
 ## Fail-closed scoping rule
 
