@@ -113,6 +113,7 @@ members = [
     "crates/chio-conformance",
     "crates/chio-conformance/verdict_matrix/drivers/lambda",
     "crates/chio-eval-receipt",
+    "crates/chio-eval-receipt/py",
     "crates/chio-spec-codegen",
     "crates/chio-spec-validate",
     #
