@@ -2702,6 +2702,8 @@ dependencies = [
  "chio-core-types",
  "chio-kernel",
  "chio-kernel-browser",
+ "chio-weights",
+ "chrono",
  "reqwest 0.13.2",
  "serde",
  "serde_json",

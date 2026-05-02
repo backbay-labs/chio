@@ -8,6 +8,7 @@
 
 pub mod adapter;
 pub mod iam_principals;
+pub mod loaded_weights;
 pub mod native;
 pub mod transport;
 

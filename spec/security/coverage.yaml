@@ -53,31 +53,24 @@ threats:
       - crates/chio-custody-hw/src/capability.rs
       - crates/chio-custody-hw/tests/audience_confusion.rs
 
-  # M10 P4.T5 closes the cosign-bundle half of weights_hash_spoof.
-  # The kernel binding refusal verifies (weights_hash, scope subset,
-  # banned-tools intersection) against a signed model card before
-  # provider bind succeeds. The residual gap is loaded-weight
-  # recomputation: until chio-providers exposes a recomputable
-  # loaded-weight digest, the provider-supplied hash is treated as
-  # attested-by-cosign-bundle. The gap is documented under
-  # docs/security/threat-coverage.md (Partial heading) and in the
-  # M10 audit doc.
+  # M05 P1 closes weights_hash_spoof by adding a loaded-weight digest
+  # surface to the provider conformance contract. Local providers can
+  # recompute the digest from loaded bytes; hosted APIs and protocol
+  # bridges return LoadedWeightsUnavailable, which the kernel binding
+  # helper rejects fail-closed before provider bind succeeds.
   - id: weights_hash_spoof
-    coverage_state: partial
-    owned_by: M10
-    closed_by: M10.P4.T5
-    partial_reason: |
-      The kernel binding refusal verifies the cosign-attested
-      weights_hash, allowed_capability_set, and banned_tools tuple,
-      but loaded-weight recomputation depends on chio-providers
-      exposing a recomputable digest. Until that lands, the
-      provider-supplied hash is the attested input. Flips to
-      `covered` once chio-providers hash-recompute lands.
+    coverage_state: covered
+    owned_by: M05
+    closed_by: M05.P1.T3
     backing_evidence:
+      - crates/chio-core-types/src/loaded_weights.rs
+      - crates/chio-provider-conformance/src/loaded_weights.rs
       - crates/chio-weights/src/card.rs
       - crates/chio-weights/src/bundle.rs
       - crates/chio-kernel/src/weights_binding.rs
+      - crates/chio-kernel/tests/weights_binding.rs
       - crates/chio-policy/src/weights.rs
       - crates/chio-cli/src/commands/bind.rs
+      - crates/chio-conformance/tests/threats/weights_hash_spoof.rs
       - crates/chio-weights/tests/lineage_anchor.rs
       - crates/chio-weights/tests/equivalence.rs

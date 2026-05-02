@@ -8,6 +8,7 @@
 
 pub mod assertions;
 pub mod capture;
+pub mod loaded_weights;
 pub mod replay;
 
 pub use assertions::{
@@ -16,6 +17,9 @@ pub use assertions::{
 pub use capture::{
     fixture_root, provider_fixture_dir, provider_fixture_path, CaptureDirection, CaptureRecord,
     CapturedVerdictKind, CAPTURE_SCHEMA,
+};
+pub use loaded_weights::{
+    loaded_weights_hash_of, loaded_weights_hash_of_chunks, LoadedWeights, LoadedWeightsUnavailable,
 };
 pub use replay::{
     anthropic_fixture_dir, anthropic_fixture_paths, bedrock_fixture_dir, bedrock_fixture_paths,

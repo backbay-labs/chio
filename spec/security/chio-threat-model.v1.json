@@ -495,20 +495,24 @@
       ],
       "mitigations": [
         {
-          "status": "planned",
+          "status": "implemented",
           "control": "Provider binding requires a signed model card that binds the weights hash to allowed capabilities, banned tools, issuer, and validity window."
         },
         {
-          "status": "planned",
+          "status": "implemented",
           "control": "The kernel refuses provider bind when the requested capability set is not a subset of the model card or when a banned tool is requested."
         },
         {
-          "status": "planned",
+          "status": "implemented",
           "control": "Model-card verification reuses the existing attestation verifier path instead of introducing a parallel signature root."
+        },
+        {
+          "status": "implemented",
+          "control": "Provider adapters expose a loaded-weight digest surface; local providers recompute the digest from loaded bytes and hosted providers return a typed unavailable error that kernel binding rejects fail-closed."
         }
       ],
-      "residualRisk": "Until providers expose independently recomputable loaded-weight hashes, a malicious provider can still lie about the loaded artifact before model-card verification receives trustworthy input.",
-      "coverage_state": "pending"
+      "residualRisk": "Hosted providers that do not expose loaded model bytes cannot bind under this check; deployments must use local recomputation or a signed model-card bundle with a provider surface that can produce a recomputed loaded-weight digest.",
+      "coverage_state": "covered"
     }
   ],
   "transportRequirements": {

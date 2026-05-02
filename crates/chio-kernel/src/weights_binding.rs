@@ -30,6 +30,8 @@
 //! [`evaluate_weights_binding`] is a free function over `&ModelCard` so
 //! it composes cleanly with the async kernel without locking.
 
+use std::fmt;
+
 use chio_weights::card::{ModelCard, StringSet};
 use chio_weights::error::WeightsError;
 
@@ -105,6 +107,33 @@ pub fn evaluate_weights_binding(
     }
 
     Ok(())
+}
+
+/// Evaluate binding after the provider-side loaded-weight digest has been
+/// recomputed.
+///
+/// Hosted or protocol adapters that cannot expose loaded model bytes pass an
+/// error here. The kernel maps that unavailable state to a schema-level
+/// refusal and never falls back to caller-supplied hashes.
+pub fn evaluate_weights_binding_with_loaded_hash<H, E>(
+    card: &ModelCard,
+    loaded_weights_hash: Result<H, E>,
+    requested_scopes: &StringSet,
+    requested_tools: &StringSet,
+) -> Result<(), WeightsBindingError>
+where
+    H: AsRef<str>,
+    E: fmt::Display,
+{
+    let loaded_weights_hash = loaded_weights_hash.map_err(|error| {
+        WeightsError::SchemaRejected(format!("loaded weights unavailable: {error}"))
+    })?;
+    let request = WeightsBindingRequest {
+        loaded_weights_hash: loaded_weights_hash.as_ref(),
+        requested_scopes,
+        requested_tools,
+    };
+    evaluate_weights_binding(card, &request)
 }
 
 #[cfg(test)]
