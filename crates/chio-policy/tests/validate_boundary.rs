@@ -23,7 +23,10 @@ fn assert_error_contains(result: &ValidationResult, needle: &str) {
 
 fn assert_warning_contains(result: &ValidationResult, needle: &str) {
     assert!(
-        result.warnings.iter().any(|warning| warning.contains(needle)),
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains(needle)),
         "expected validation warning containing {needle:?}, got {:?}",
         result.warnings
     );

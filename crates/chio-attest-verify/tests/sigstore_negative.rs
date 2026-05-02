@@ -33,7 +33,10 @@ fn assert_verify_bytes_rejects(certificate: &[u8], context: &str) -> AttestError
 #[test]
 fn cert_time_fixture_bytes_fail_closed_before_signature_acceptance() {
     for (name, certificate) in [
-        ("not-yet-valid synthetic pem", cert_time::not_yet_valid_leaf_pem()),
+        (
+            "not-yet-valid synthetic pem",
+            cert_time::not_yet_valid_leaf_pem(),
+        ),
         ("expired synthetic der", cert_time::expired_leaf_der()),
     ] {
         let error = assert_verify_bytes_rejects(certificate, name);

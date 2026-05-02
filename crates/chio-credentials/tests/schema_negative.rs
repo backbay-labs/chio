@@ -181,7 +181,11 @@ fn unsupported_signed_verifier_policy_schema_variants_fail_closed() {
     )
     .test_ok("create signed policy");
 
-    for schema in ["", "chio.passport-verifier-policy", "chio.passport-verifier-policy.v2"] {
+    for schema in [
+        "",
+        "chio.passport-verifier-policy",
+        "chio.passport-verifier-policy.v2",
+    ] {
         let mut tampered = document.clone();
         tampered.body.schema = schema.to_string();
         let error = verify_signed_passport_verifier_policy(&tampered)
@@ -221,13 +225,9 @@ fn unsupported_challenge_and_response_schema_variants_fail_closed() {
         );
     }
 
-    let response = respond_to_passport_presentation_challenge(
-        &holder,
-        &passport,
-        &challenge,
-        VERIFY_NOW,
-    )
-    .test_ok("respond to challenge");
+    let response =
+        respond_to_passport_presentation_challenge(&holder, &passport, &challenge, VERIFY_NOW)
+            .test_ok("respond to challenge");
     for schema in [
         "",
         "chio.agent-passport-presentation-response",

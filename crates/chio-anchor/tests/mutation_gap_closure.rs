@@ -53,14 +53,21 @@ fn emergency_modes_allow_only_their_bounded_operation_sets() {
         AnchorOperationKind::ImportSecondaryProof,
     )
     .is_ok());
-    assert!(ensure_anchor_operation_allowed(import_only, AnchorOperationKind::PublishRoot).is_err());
+    assert!(
+        ensure_anchor_operation_allowed(import_only, AnchorOperationKind::PublishRoot).is_err()
+    );
 }
 
 #[test]
 fn lane_classification_prioritizes_failed_paused_and_recovery_states() {
     let normal = AnchorEmergencyControls::normal(10);
     assert_eq!(
-        classify_anchor_lane(AnchorLaneKind::EvmPrimary, AnchorIndexerStatus::Failed, normal, 0),
+        classify_anchor_lane(
+            AnchorLaneKind::EvmPrimary,
+            AnchorIndexerStatus::Failed,
+            normal,
+            0
+        ),
         AnchorLaneHealthStatus::Failed
     );
 
@@ -70,7 +77,12 @@ fn lane_classification_prioritizes_failed_paused_and_recovery_states() {
         reason: None,
     };
     assert_eq!(
-        classify_anchor_lane(AnchorLaneKind::BitcoinOts, AnchorIndexerStatus::Healthy, halted, 0),
+        classify_anchor_lane(
+            AnchorLaneKind::BitcoinOts,
+            AnchorIndexerStatus::Healthy,
+            halted,
+            0
+        ),
         AnchorLaneHealthStatus::Paused
     );
 
@@ -120,7 +132,10 @@ fn solana_publication_requires_identity_fields_and_canonical_memo() {
         prepare_solana_memo_publication(&checkpoint, "solana:devnet", "operator"),
         "prepare solana memo",
     );
-    assert_eq!(prepared.anchored_checkpoint_seq, checkpoint.body.checkpoint_seq);
+    assert_eq!(
+        prepared.anchored_checkpoint_seq,
+        checkpoint.body.checkpoint_seq
+    );
     assert_eq!(prepared.anchored_merkle_root, checkpoint.body.merkle_root);
     assert!(prepared
         .memo_data

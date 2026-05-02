@@ -1,10 +1,10 @@
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::expect_used)]
 
-use chio_guards::{EgressAllowlistGuard, ForbiddenPathGuard, PathAllowlistGuard, SecretLeakGuard};
 use chio_guards::path_allowlist::PathAllowlistConfig;
-use chio_guards::secret_leak::SecretLeakConfig;
 use chio_guards::secret_leak::CustomSecretPattern;
+use chio_guards::secret_leak::SecretLeakConfig;
+use chio_guards::{EgressAllowlistGuard, ForbiddenPathGuard, PathAllowlistGuard, SecretLeakGuard};
 
 fn test_ok<T, E>(result: Result<T, E>, context: &str) -> T
 where
