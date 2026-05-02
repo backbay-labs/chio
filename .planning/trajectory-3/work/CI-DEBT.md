@@ -31,3 +31,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #467 (`d4e89385aeaaaf24e04238faa7e0864a0c07083d`): M04.P4 verdict-matrix Python and Go required driver flip; skipped hosted CI wait for required workflow job, docs required-driver list, audit evidence, and ticket stamps.
 - PR #468 (`98a23dcff8db4a7d3de87750275af4106975f12e`): M04.P5 mutation gate audit closeout; skipped hosted CI wait for audit closure, post-flip mutants baseline, committed run-capture JSON evidence, and ticket stamps.
 - PR #469 (`6f7bc8b63189fa7065f9b03a80c8d6918fe0dd6f`): M05.P0 threat coverage baseline and freeze path reconciliation; skipped hosted CI wait for audit baseline, coverage.yaml/JSON reconciliation, freeze amendment, and ticket stamps.
+- PR #470 (`bb942d5bedf91591a02c68b268c72bdc529b2716`): M05.P1 weights_hash_spoof coverage closure; skipped hosted CI wait for loaded-weight digest contract, adapter availability surfaces, threat conformance body, coverage flips, and ticket stamps.
