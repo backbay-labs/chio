@@ -9,7 +9,7 @@
   milestone: M05
   phase: 3
   title: Replace dispatch_allow_dhat 0_u64 probe and 0/0 budgets with measured allocation-count baseline
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
     - crates/chio-kernel/benches/dispatch_allow_dhat.rs
@@ -26,7 +26,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 64d0012ec388e6893ead2cb0c465177839eb12e9
+  merged_sha: 64d0012ec388e6893ead2cb0c465177839eb12e9
+  opened_ts: "2026-05-02T10:14:27Z"
+  merged_ts: "2026-05-02T10:14:27Z"
