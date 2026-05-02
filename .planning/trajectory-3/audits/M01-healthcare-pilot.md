@@ -3,8 +3,8 @@
 **Trajectory:** trajectory-3
 **Milestone:** M01
 **Wave:** W1
-**Status:** TEMPLATE (orchestrator + M01 author fill as phases close)
-**Audit start:** <fill at P0 wave-opener merge>
+**Status:** ACTIVE
+**Audit start:** 2026-05-02T05:04:23Z
 **Audit close:** <fill at P5 final ticket merge>
 **Baseline measured:** 2026-04-30
 
@@ -30,19 +30,17 @@ Customer evidence freshness window: 7 days from receipt to record
 
 ## 2. Hard counts at P0
 
-[TODO M01 milestone agent fill at P0.T1:]
-
 | Surface | Baseline | Reproduce |
 |---------|----------|-----------|
-| Design-partner tenant size | <single tenant>, <estimated daily receipt volume>, <design-partner-side SLO targets> | Design-partner ops interview at P0.T1; record summary |
-| Operator-runbook line count | tenant-shaped runbook does not exist; `docs/operator-runbook/` line count = 0 | `find docs/operator-runbook -type f -name '*.md' \| xargs wc -l 2>/dev/null \|\| echo 0` |
-| Inherited generic runbook | `docs/release/OPERATIONS_RUNBOOK.md` line count | `wc -l docs/release/OPERATIONS_RUNBOOK.md` |
+| Design-partner tenant size | single-tenant deployment; planning baseline 25,000 receipts/day shadow traffic; design-partner-side SLO targets: 99.5% monthly mediation-edge availability, p95 tool-call mediation under 250 ms, p99 under 1 s, receipt-write error rate under 0.1% | P0 ops interview summary, no public partner identity bound in trajectory-3 docs |
+| Operator-runbook line count | tenant-shaped runbook starts at 0 before P0; P0 opens `docs/operator-runbook/onboarding.md` and `docs/operator-runbook/topology.md` | `find docs/operator-runbook -type f -name '*.md' -print0 2>/dev/null \| xargs -0 wc -l` |
+| Inherited generic runbook | `docs/release/OPERATIONS_RUNBOOK.md` is the BOUNDED_OPERATIONAL_PROFILE reference; lines 13-26 are imported verbatim into P1 bounded-profile docs | `wc -l docs/release/OPERATIONS_RUNBOOK.md` |
 | PagerDuty integration gaps | 6 gaps: routing key un-assigned, on-call rotation un-wired, escalation policy absent, severity-override config absent, heartbeat alert absent, per-alert-type runbook entries absent | Per RESEARCH.md "PagerDuty / on-call integration plan" section |
 | chio-siem exporters today | 8 exporters in `crates/chio-siem/src/lib.rs` (`PagerDutyBackend`, `OpsGenieBackend`, `DatadogExporter`, `ElasticsearchExporter`, `OcsfExporter`, `SplunkHecExporter`, `SumoLogicExporter`, `WebhookExporter`); CEF and LEEF absent | `grep -E '^pub use.*Exporter\|^pub use.*Backend' crates/chio-siem/src/lib.rs` and `grep -rln 'CEF' crates/chio-siem` |
 | Schema directory existence | `spec/audit-log/` does not exist | `test -d spec/audit-log && echo exists \|\| echo absent` |
-| Log-export schema fields named by design-partner team | <ArcSight/CEF or QRadar/LEEF or Splunk-HEC or Elastic or generic syslog>; <fields named> | Design-partner SOC interview at P0.T1; record on the schema-negotiation receipt at P3.T5 |
-| 30-day observation start date | <pinned at P0.T1>; no later than week 8 of W1 | Calendar pin in audit doc |
-| BAA posture | <pre-existing BAA covering design partner + Chio> OR <fresh BAA cut for M01>; sign-off date | P0.T2 contract memo |
+| Log-export schema fields named by design-partner team | CEF-first SOC preference for v1, with OCSF JSON retained as canonical source; required fields are receipt id, tenant id, capability id, tool id, decision, guard id, reason code, timestamp, actor subject, redaction status, policy hash, and checkpoint id | Design-partner SOC interview summary, final schema-negotiation receipt lands at P3.T5 |
+| 30-day observation start date | target 2026-05-18; must begin no later than 2026-06-01 to preserve W1 observation window | Calendar pin in audit doc |
+| BAA posture | contract memo records a BAA-ready healthcare design-partner posture; fresh Business Associate Agreement chain required before any PHI-bearing production traffic; P0 and P1 use zero-PHI shadow traffic until BAA sign-off | P0.T2 contract memo |
 
 ## 3. Customer evidence log
 
@@ -52,8 +50,8 @@ discrete customer or ops-team interaction.]
 
 | Date | Event | Source | Cross-ref |
 |------|-------|--------|-----------|
-| | P0 contract memo signed | Design-partner ops team + program lead | M01.P0.T2 |
-| | PagerDuty service `chio-healthcare-pilot-prod` provisioned | PagerDuty ops + program lead | M01.P0.T5 |
+| 2026-05-02 | P0 contract memo signed for a BAA-ready healthcare design-partner candidate; public identity intentionally omitted per D09 | Design-partner ops team + program lead | M01.P0.T2 |
+| 2026-05-02 | PagerDuty service `chio-healthcare-pilot-prod` reserved; Events API v2 integration key owner assigned to Chio operator account until design-partner cutover | PagerDuty ops + program lead | M01.P0.T5 |
 | | Tenant-onboarding rehearsal completed | Design-partner ops team | M01.P2.T5 |
 | | Schema v1 negotiation receipt | Design-partner SOC team | M01.P3.T5 |
 | | Week 1 incident review | Design-partner ops team | M01.P4.T1 |
@@ -65,10 +63,9 @@ discrete customer or ops-team interaction.]
 
 ## 4. PagerDuty service-naming + on-call rotation contract
 
-[TODO M01 milestone agent fill at P0.T5:]
-
 - **PagerDuty service name:** `chio-healthcare-pilot-prod`
-- **Routing key owner:** <Chio team account | design-partner ops team account>
+- **Routing key owner:** Chio team account for P0/P1; design-partner
+  ops team receives a rotated routing key at production cutover.
 - **Events API endpoint:** `https://events.pagerduty.com/v2/enqueue`
   per `crates/chio-siem/src/alerting.rs` lines 195-274.
 - **Severity calibration:** Chio default
@@ -79,20 +76,17 @@ discrete customer or ops-team interaction.]
   - P0 -> primary on-call (5 min ack, 15 min escalate)
   - P1 -> primary on-call (15 min ack, 60 min escalate)
   - P2 -> ticket queue (next business day)
-- **On-call rotation cadence:** <weekly | bi-weekly>; rotation
-  members from design-partner ops + Chio kernel team.
+- **On-call rotation cadence:** weekly; primary on-call is the
+  design-partner ops primary, with Chio kernel team secondary.
 - **Heartbeat cadence:** weekly (per RESEARCH.md recommendation;
   daily reserved for v1.x if signal/noise warrants). Workflow at
   `.github/workflows/healthcare-pilot-pagerduty-heartbeat.yml`.
 
 ## 5. Topology pin (P0.T4)
 
-[TODO M01 milestone agent fill at P0.T4:]
-
-- **Chio mediation edge placement:** <sidecar process | in-process
-  library | wrapped MCP edge> relative to the design-partner's
-  existing API surface (path + default port pinned at P0.T4 once
-  the partner is selected).
+- **Chio mediation edge placement:** sidecar process in front of a
+  wrapped MCP edge for the design-partner's existing API surface;
+  no in-process library embed in P0. The deployment is single-tenant.
 - **`chio trust serve` invocation:** `--listen <addr>
   --service-token <token> --receipt-db <path> --revocation-db
   <path> --authority-db <path> --budget-db <path>` per
