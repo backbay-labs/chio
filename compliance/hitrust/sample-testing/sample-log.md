@@ -21,6 +21,8 @@
 | P4-FOLLOWUP-028-002 | week 28 | key-rotation cutover evidence | provided redacted key-id cutover receipt hash | private channel plus `key-rotation.md` |
 | P4-FOLLOWUP-030-001 | week 30 | audit-log export schema evidence | provided schema hash and BOP sample manifest | `spec/audit-log/export-schema.v1.json` |
 | P4-FOLLOWUP-030-002 | week 30 | threat coverage evidence | provided M05 coverage and threat model bundle pointers | `docs/security/threat-coverage.md` |
+| P4-FOLLOWUP-031-001 | week 31 | final evidence completeness review | provided bundle hash and accepted-risk register | M09 audit doc |
+| P4-FOLLOWUP-031-002 | week 31 | no-scope-expansion attestation | confirmed M07 and M10 remain out of scope | scope boundary |
 
 ## Handling rule
 
