@@ -346,6 +346,20 @@ status, and release-artifact path confirmation:
 - Text extraction check: `pypdf` reported 3 pages and extracted the
   report title from page 1.
 
+### 5c. Release publication
+
+- Final report URL:
+  `https://github.com/bb-connor/arc/blob/main/releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+- Release artifact path:
+  `releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+- M03 release artifact channel: `releases.toml [release_audit]`.
+- releases.toml row: `release_audit.activation_evidence`.
+- Vendor public-reports page link:
+  `https://www.nccgroup.com/technical-assurance/cryptography-encryption/cryptography-services/`
+- Vendor mirror status: repository artifact is the release-authoritative
+  copy; vendor-hosted mirror can be linked later without changing the
+  committed PDF hash.
+
 [TODO M08.P5.T4 fill at week 44.]
 
 - Final report URL:
