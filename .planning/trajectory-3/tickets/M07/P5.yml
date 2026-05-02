@@ -13,7 +13,7 @@
   milestone: M07
   phase: 5
   title: RN bridge stub at sdks/typescript/packages/mobile shipped as Expo Module with seven-method TurboModule
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - sdks/typescript/packages/mobile/package.json
@@ -37,16 +37,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  merged_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  opened_ts: "2026-05-02T14:05:49Z"
+  merged_ts: "2026-05-02T14:05:49Z"
 
 - id: M07.P5.T2
   milestone: M07
   phase: 5
   title: Expo config plugin withChio.ts adding XCFramework and AAR to Expo prebuild output
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - sdks/typescript/packages/mobile/expo-plugin/withChio.ts
@@ -65,16 +65,16 @@
   agent_role: framework-ts
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  merged_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  opened_ts: "2026-05-02T14:05:49Z"
+  merged_ts: "2026-05-02T14:05:49Z"
 
 - id: M07.P5.T3
   milestone: M07
   phase: 5
   title: Patient-app demo integration in design-partner deployment repo (cross-repo PR; reference only)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - .planning/trajectory-3/audits/M07-mobile-mvp.md
@@ -92,16 +92,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  merged_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  opened_ts: "2026-05-02T14:05:49Z"
+  merged_ts: "2026-05-02T14:05:49Z"
 
 - id: M07.P5.T4
   milestone: M07
   phase: 5
   title: Demo recording plus closure attestations plus threat-coverage flip
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .planning/trajectory-3/audits/M07-mobile-mvp.md
@@ -121,7 +121,7 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  merged_sha: d74e2dbd4ea74a021272a520d85e98ce208b9362
+  opened_ts: "2026-05-02T14:05:49Z"
+  merged_ts: "2026-05-02T14:05:49Z"
