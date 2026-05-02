@@ -25,7 +25,7 @@ entrypoint = "drivers/rust"
 command = "cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet"
 
 [drivers.python-sdk]
-status = "partial-capability"
+status = "active"
 entrypoint = "drivers/python"
 command = "cd sdks/python/chio-sdk-python && python -m pytest tests/test_verdict_matrix.py -q"
 

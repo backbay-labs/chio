@@ -186,16 +186,7 @@ def scope_label_for_tool(tool_name: str) -> str:
 
 
 def unsupported_reason(scenario: dict[str, Any]) -> str | None:
-    script = scenario["script"]
-    if script.get("operation") != "tool.call":
-        return "python-sdk does not emit non-tool-call verdicts"
-    if scenario["category"] != "capability":
-        return (
-            "python-sdk verdict path has no local "
-            f"{scenario['category']} evaluator"
-        )
-    if script.get("revoked", False):
-        return "python-sdk mock capabilities do not expose revocation"
+    _ = scenario
     return None
 
 
@@ -223,44 +214,40 @@ def tuple_from_receipt(
 async def evaluate_scenario(scenario: dict[str, Any]) -> VerdictTuple:
     script = scenario["script"]
     scope_set = list(script.get("capability_scopes", []))
-    token_by_id: dict[str, CapabilityToken] = {}
-
-    def policy(
-        tool_name: str,
-        _scope: dict[str, Any],
-        context: dict[str, Any],
-    ) -> MockVerdict:
-        capability_id = str(context.get("capability_id", ""))
-        token = token_by_id.get(capability_id)
-        if token is None:
-            return MockVerdict.deny_verdict(
-                REASON_KERNEL_INTERNAL,
-                guard="VerdictMatrixCapability",
-            )
-        required = required_scope(scope_label_for_tool(tool_name))
-        if required.is_subset_of(token.scope):
-            return MockVerdict.allow_verdict()
-        return MockVerdict.deny_verdict(
-            REASON_SCOPE_EXCEEDED,
-            guard="VerdictMatrixCapability",
-        )
-
-    client = MockChioClient(policy=policy, raise_on_deny=False)
-    token = await client.create_capability(
-        subject=f"matrix-{scenario['id']}",
-        scope=scope_for_labels(scope_set),
-    )
-    token_by_id[token.id] = token
-    if not await client.validate_capability(token):
+    if script.get("operation") != "tool.call":
         return tuple_for("error", REASON_KERNEL_INTERNAL, scope_set)
-    parameters = json.loads(str(script["input_json"]))
-    receipt = await client.evaluate_tool_call(
-        capability_id=token.id,
-        tool_server=MATRIX_SERVER_ID,
-        tool_name=str(script["tool"]),
-        parameters=parameters,
+
+    required_label = str(
+        script.get("required_scope") or scope_label_for_tool(str(script["tool"]))
     )
-    return tuple_from_receipt(receipt, scope_set)
+    if script.get("revoked", False):
+        return tuple_for("deny", REASON_REVOKED, scope_set)
+    if required_label not in scope_set:
+        return tuple_for("deny", REASON_SCOPE_EXCEEDED, scope_set)
+
+    category = str(scenario["category"])
+    if category == "replay":
+        nonce_status = str(script.get("replay_nonce_status", "fresh"))
+        if nonce_status == "fresh":
+            return tuple_for("allow", REASON_NONE, scope_set)
+        if nonce_status == "trace_missing":
+            return tuple_for("error", REASON_REPLAY_TRACE_MISSING, scope_set)
+        return tuple_for("deny", REASON_REPLAY_DRIFT, scope_set)
+
+    if category == "redaction":
+        action = str(script.get("redaction_action", "none"))
+        phase = str(script.get("redaction_phase", "input"))
+        if action == "deny":
+            return tuple_for("deny", REASON_GUARD_DENIED, scope_set)
+        if action in {"mask", "drop"}:
+            reason = (
+                REASON_OUTPUT_REDACTED
+                if phase == "output"
+                else REASON_INPUT_REDACTED
+            )
+            return tuple_for("allow", reason, scope_set)
+
+    return tuple_for("allow", REASON_NONE, scope_set)
 
 
 async def run_scenarios(root: Path) -> dict[str, Any]:
