@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T10:53:39Z",
+  "last_checkpoint_at": "2026-05-02T11:06:35Z",
   "current_wave": "W2",
   "halt": {
     "halted": false,
@@ -42,8 +42,8 @@
       "trust_boundary": true
     },
     "M06": {
-      "status": "ready",
-      "phase": "ready_for_p0",
+      "status": "in_progress",
+      "phase": "P0_merged",
       "owner_branch": null,
       "trust_boundary": true
     },
@@ -105,10 +105,12 @@
     "M08 + M09 vendor calendars open week 1, parallel to all code waves.",
     "Customer evidence freshness window is 7 days per D15; design-partner withdrawal is halt trigger 12.",
     "W1 closeout checkpoint 2026-05-02T10:44:30Z: M01-M05 P5 merged, manifest regenerated, current_wave advanced to W2.",
-    "M10.P0 APN pre-roll opened 2026-05-02T10:53:39Z; APN packet M10-APN-PRE-ROLL-2026-05-02 and MCP conformance pin recorded."
+    "M10.P0 APN pre-roll opened 2026-05-02T10:53:39Z; APN packet M10-APN-PRE-ROLL-2026-05-02 and MCP conformance pin recorded.",
+    "M06.P0 audit baseline opened 2026-05-02T11:06:35Z; formal counts, cargo-vet exemption rows, top-50 dependency centrality, contractor fallback record, and cargo-audit baseline recorded."
   ],
   "wave_heads": {
-    "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35"
+    "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
+    "W2": "f6a5e011ada2cb82c0e9ebe6eccc5fd8c8c3be23"
   },
   "wave_status": {
     "W1": {
