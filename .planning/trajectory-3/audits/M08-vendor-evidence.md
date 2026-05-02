@@ -398,3 +398,23 @@ status, and release-artifact path confirmation:
 - D07 budget posture honoured: yes; no variance from $150k-$250k band.
 - Halt triggers fired during M08: none.
 - Substitute ladder consumed: none; NCC Group remained selected vendor.
+
+### 5e. Chio response memo
+
+Chio response memo published alongside the final report:
+
+1. Chio accepts the independent review result and keeps M08-PF-001 as
+   the sole Medium finding. The remediation is the Section 6.3 protocol
+   wording that preserves signed receipt authority and forces consumers
+   to fail closed on missing or mismatched source artifacts.
+2. Chio records no Critical or High findings, no halt-15 event, and no
+   trajectory-4 deferral from the M08 finding register.
+3. Chio keeps the vendor mirror as a follow-up publication channel, but
+   the repository PDF and SHA-256 hash are the trajectory-3 release
+   evidence.
+4. Chio carries hosted CI replay debt in `CI-DEBT.md` under the steering
+   override. The release audit result does not waive the final
+   stabilization requirement.
+5. Chio will cite this report from trajectory-4 launch materials only
+   as a completed independent crypto and protocol review for the
+   cemented Chio v3.0 surface.

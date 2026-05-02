@@ -108,5 +108,6 @@ m08_final_report:
   final_report_sha256: abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c
   audit_doc: .planning/trajectory-3/audits/M08-vendor-evidence.md
   response_memo: .planning/trajectory-3/audits/M08-vendor-evidence.md#5e-chio-response-memo
+  response_memo_status: published
   vendor_public_reports_page: https://www.nccgroup.com/technical-assurance/cryptography-encryption/cryptography-services/
 """
