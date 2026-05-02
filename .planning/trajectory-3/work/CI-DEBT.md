@@ -37,3 +37,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #473 (`58dc936f61715026e85079dfcf13b0c324047f8b`): M05.P4 coverage gate flip; skipped hosted CI wait for fail-closed threat coverage script, state-matrix shell test, threat model schema update, advisory deferrals, and conformance threat bodies.
 - PR #474 (`8e2c515621ade9286b0ddda7c4a9039cc72089ec`): M05.P5 closeout and M08 handoff; skipped hosted CI wait for regenerated threat coverage docs, zero-partial audit closeout, post-flip workflow URL capture, and ticket stamps.
 - PR #475 (`53c0fca5471778c769a8eec59185e624b68b0e19`): W1 closeout checkpoint; skipped hosted CI wait for regenerated trajectory-3 manifest, execution-state W2 advancement, and M02.P4 stamp correction.
+- PR #476 (`f6a9786129ded9c89fa9576930ec16984210f4b3`): M10.P0 APN pre-roll; skipped hosted CI wait for Bedrock MCP audit opening, APN packet record, MCP conformance pin, execution-state update, manifest regeneration, and ticket stamps.
