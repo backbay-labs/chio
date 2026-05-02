@@ -114,6 +114,9 @@ Sources checked 2026-05-02:
 | 1 | outbound | RFP sent package prepared for NCC Group sales route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://www.nccgroup.com/contact-us/` and `https://www.nccgroup.com/contact-sales/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T4 |
 | 1 | outbound | RFP sent package prepared for Trail of Bits contact route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://trailofbits.com/contact/` and `https://www.trailofbits.com/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T5 |
 | 8 | meeting | Vendor onboarding session with program lead and @bb-connor: walked the cemented v3.0 review surface, threat-model row ownership, public-report clause, and Critical / High retest expectations. | complete | M08.P1.T1 |
+| 9 | inbound | Scoping question: confirm whether mobile App Attest, Play Integrity, SBOM, cargo-vet, and HITRUST controls are in scope for this review. | answered: mobile stays M07, supply-chain stays M06, HITRUST stays M09; M08 may cite those artifacts but reviews only the cemented protocol and implementation surface. | M08.P1.T2 |
+| 10 | inbound | Scoping question: confirm whether protocol wire-level edits are allowed during active review if the vendor finds ambiguity. | answered: no silent protocol edits during P2-P3; ambiguity is recorded as a finding or as fail-closed clarification with vendor sign-off. | M08.P1.T2 |
+| 11 | inbound | Artifact request: provide M04 and M05 closure addenda before active review starts. | answered: addenda land in `M08-handoff-package/m04-addendum.md` and `M08-handoff-package/m05-addendum.md`. | M08.P1.T2 |
 
 ## 4. Findings + remediation log
 
