@@ -84,6 +84,9 @@ Sources checked 2026-05-02:
 - Out-of-scope decisions (recorded at P0.T5):
   - Mobile (M07) inclusion: explicit-no (default)
   - AWS Bedrock (M10) inclusion: explicit-no (default)
+  - Other Chio tenants: explicit-no.
+  - Non-v3.18 Chio versions: explicit-no.
+  - Other Backbay platform systems: explicit-no.
 
 ### 2a. HIPAA pre-conditions checklist
 

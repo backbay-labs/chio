@@ -38,6 +38,24 @@ workspace projects.
 - SOC 2 Type II: explicit-no, deferred to trajectory-4.
 - HITRUST r2: explicit-no, outside trajectory-3 calendar.
 
+## Scope memo preimage
+
+The assessor-signed P0 scope memo should use this preimage:
+
+| Scope element | Decision |
+|---------------|----------|
+| Tenant count | One design-partner tenant |
+| Product version | Chio v3.18 |
+| Deployment environment | One production deployment environment |
+| Mobile M07 | Excluded |
+| AWS Bedrock M10 | Excluded |
+| Other Backbay systems | Excluded |
+| Other Chio tenants | Excluded |
+| Future versions | Excluded |
+
+Any assessor redline that widens this table requires an explicit
+trajectory-3 decision amendment before P1 opens.
+
 ## Evidence handoff dependencies
 
 - M01.P3 opens the audit-log schema freeze.
