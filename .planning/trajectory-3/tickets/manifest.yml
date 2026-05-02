@@ -1566,7 +1566,7 @@
   milestone: M02
   phase: 5
   title: Draft 1-page partner-facing memo per RESEARCH.md template and hand to partner
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .planning/trajectory-3/research/m02/M02-MEMO-DRAFT.md
@@ -1587,15 +1587,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c700e26863db78d51cd080d81030d4c410deb05b
+  merged_sha: c700e26863db78d51cd080d81030d4c410deb05b
+  opened_ts: '2026-05-02T07:32:35Z'
+  merged_ts: '2026-05-02T07:32:35Z'
 - id: M02.P5.T2
   milestone: M02
   phase: 5
   title: Receive signed memo and signature; verify locally; commit to audits
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .planning/trajectory-3/audits/M02-memo.md
@@ -1617,15 +1617,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 8d6eef299c79cb118100ffdd5d009c15a0a22c33
+  merged_sha: 8d6eef299c79cb118100ffdd5d009c15a0a22c33
+  opened_ts: '2026-05-02T07:32:35Z'
+  merged_ts: '2026-05-02T07:32:35Z'
 - id: M02.P5.T3
   milestone: M02
   phase: 5
   title: Fill audit doc closure attestations and flip M02 status to closed
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M02-ai-lab.md
@@ -1644,15 +1644,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: cd66f50db38eee5fca7fae5654dd579d8f2af06d
+  merged_sha: cd66f50db38eee5fca7fae5654dd579d8f2af06d
+  opened_ts: '2026-05-02T07:32:35Z'
+  merged_ts: '2026-05-02T07:32:35Z'
 - id: M02.P5.T4
   milestone: M02
   phase: 5
   title: Wave-closer publish partnership-note PR and record URL in audit doc
-  status: pending
+  status: merged
   effort_days: 0.75
   owner_glob:
   - README.md
@@ -1672,10 +1672,10 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 092d14cfaed12feb1eadfcb8fbbb38ea4193049d
+  merged_sha: 092d14cfaed12feb1eadfcb8fbbb38ea4193049d
+  opened_ts: '2026-05-02T07:32:35Z'
+  merged_ts: '2026-05-02T07:32:35Z'
 - id: M03.P0.T1
   milestone: M03
   phase: 0
