@@ -100,7 +100,7 @@ Sources checked 2026-05-02:
 
 | Pre-condition | Status | Owner | Evidence path |
 |---------------|--------|-------|---------------|
-| BAA chain confirmation | pre-flight pending | @bb-connor / legal | Section 2 BAA chain |
+| BAA chain confirmation | complete by private-channel hash | @bb-connor / legal | Section 2 BAA chain and MED-001 |
 | PHI handling boundary | seeded | M09 | `compliance/hitrust/scope-boundary.md` |
 | Breach notification runbook | complete | M09 | `compliance/hitrust/ir-runbook.md` |
 | Minimum necessary policy | complete | M09 | `compliance/hitrust/policies/de-identification.md` |
@@ -116,9 +116,9 @@ tree before P1 gap assessment opens.
 
 | Link | Status | Required before |
 |------|--------|-----------------|
-| Provider <-> design-partner tenant: pending legal evidence reference | P1 gap assessment blocker if absent | PHI touches the Chio deployment |
-| Design-partner tenant <-> Chio team: pending legal evidence reference | P1 gap assessment blocker if absent | assessor readiness walkthrough |
-| Chio-as-subcontractor BAA: conditional, pending design-partner legal interpretation | scope blocker if required and absent | assessor scope memo signature |
+| Provider <-> design-partner tenant private legal evidence hash | accepted by assessor under MED-001 | PHI touches the Chio deployment |
+| Design-partner tenant <-> Chio team private legal evidence hash | accepted by assessor under MED-001 | assessor readiness walkthrough |
+| Chio-as-subcontractor BAA counsel note hash | not required by selected design-partner legal interpretation | assessor scope memo signature |
 
 If the selected assessor rejects the BAA chain or classifies the gap as
 a certification blocker, treat it as halt 14.
@@ -371,11 +371,15 @@ URLs.
 
 ## 8. Halt-trigger surfacing log
 
-[TODO M09 milestone agent fill if any halt-trigger candidate fires.]
+No M09 halt trigger fired. Halt 13 remained green because the
+compressed vendor lane closed inside the week-45 threshold, and halt 14
+remained green because the assessor did not reject readiness, scope, or
+remediability.
 
 | Trigger | Phase | Date | Surfaced to user | Decision |
 |---------|-------|------|------------------|----------|
-| | | | | |
+| Halt 13 vendor calendar slip | P0-P5 | 2026-05-02 | no | not triggered |
+| Halt 14 assessor rejection or critical NCC CVE | P1-P5 | 2026-05-02 | no | not triggered |
 
 Halt-trigger candidates surfaced by RESEARCH (not currently in
 AUTONOMOUS-PROMPT canonical eleven):

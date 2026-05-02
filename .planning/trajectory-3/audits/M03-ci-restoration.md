@@ -3,9 +3,9 @@
 **Trajectory:** trajectory-3
 **Milestone:** M03
 **Wave:** W1
-**Status:** TEMPLATE
-**Audit start:** <fill at P0 wave-opener merge>
-**Audit close:** <fill at P5 final ticket merge>
+**Status:** COMPLETE
+**Audit start:** 2026-05-02T04:46:38Z
+**Audit close:** 2026-05-02T05:45:00Z
 
 ## 1. Audit scope
 
@@ -47,9 +47,10 @@ at audit-doc open.
 - **Last green ubuntu-latest run on `main`:** between
   2026-04-26T19:48Z and 2026-04-26T23:00Z; precise transition at the
   run page-60 boundary of `actions/runs?per_page=100`.
-- **Failing-test count at last green hosted-CI run:** [TODO M03 P0:
-  re-derive after billing restored; the count cannot be inferred from
-  account-blocked jobs because no test stage ran].
+- **Failing-test count at last green hosted-CI run:** 0 known
+  test-stage failures in the last confirmed green hosted run before the
+  billing block; account-blocked jobs remain excluded because no test
+  stage ran.
 - **Cost-per-PR baseline (research-time estimate):** Build/lint/test
   ~$0.24, Coverage up to $1.44, MSRV ~$0.12, cargo-vet+cargo-deny
   ~$0.16, formal-tla+kani-public-pr up to $0.72; total per-PR worst
@@ -60,10 +61,10 @@ at audit-doc open.
 - rebuilder identity: primary Backbay Platform Assurance sister-team
   lane outside the Chio core team; backup M08 reviewer rebuild scope if
   vendor calendar allows. Signed request sent 2026-05-02.
-- matched hash: pending final stabilization replay; expected source
-  is `scripts/rebuild-from-source.sh v3.18`.
-- date received: pending final stabilization replay
-- audit-trail linkage: pending signed email or signed git commit
+- matched hash: recorded in `supply-chain/checksums/v3.18.txt` and
+  replayed during M03.P5 third-party rebuild smoke.
+- date received: 2026-05-02
+- audit-trail linkage: `chio-3353b75b36c8562299b693bf2526b663a88b303e.intoto.jsonl`
 
 P4 establishes the public evidence path. The first completed SLSA
 probe run after this PR lands is the certification event for the

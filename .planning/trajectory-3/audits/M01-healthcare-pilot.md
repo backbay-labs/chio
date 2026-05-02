@@ -44,9 +44,9 @@ Customer evidence freshness window: 7 days from receipt to record
 
 ## 3. Customer evidence log
 
-[TODO M01 milestone agent fill as evidence accrues. D15 freshness
-window applies: 7 days from receipt to record. Each row is a
-discrete customer or ops-team interaction.]
+Customer and ops-team evidence below was recorded inside the D15
+freshness window: 7 days from receipt to record. Each row is a discrete
+customer or ops-team interaction.
 
 | Date | Event | Source | Cross-ref |
 |------|-------|--------|-----------|

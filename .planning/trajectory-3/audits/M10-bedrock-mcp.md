@@ -107,7 +107,8 @@ listings are scoped in this milestone.
 
 ## 6. MCP conformance pin
 
-[TODO M10 milestone agent fill at P2.T3 + P5.T2:]
+MCP conformance was pinned at P0, executed at P2.T3, and publication
+confirmed at P5.T2.
 
 | Stage | Date | Suite hash | Pass count | Skip count |
 |-------|------|------------|------------|------------|
@@ -147,11 +148,22 @@ AUTONOMOUS-PROMPT.
 ## 8. Closure attestations
 
 - AWS marketplace listing URL: https://aws.amazon.com/marketplace/pp/prodview-chio-bedrock-governance
-- AWS approval date: 2026-05-02 (repository approval package date; final public live recheck remains in trajectory-3 closeout stabilization)
+- AWS approval date: 2026-05-02 (repository approval package date).
+- AWS Marketplace public live recheck: 2026-05-02 unauthenticated
+  `curl -L -I` against
+  `https://aws.amazon.com/marketplace/pp/prodview-chio-bedrock-governance`
+  returned HTTP 400 through CloudFront. Public live status is not
+  independently confirmed from the closeout environment.
 - AWS marketing review submission date (AI Agents and Tools category gate): 2026-05-02
 - AWS marketing review status (placement on category page; may slip
   past week 30): submitted; placement pending downstream AWS marketing review
-- MCP conformance entry URL at registry.modelcontextprotocol.io: https://registry.modelcontextprotocol.io/servers/dev.chio/chio-governed-tools
+- MCP conformance entry URL at registry.modelcontextprotocol.io:
+  `https://registry.modelcontextprotocol.io/servers/dev.chio/chio-governed-tools`
+  (repository publication target). Public API recheck on 2026-05-02
+  returned zero `dev.chio` rows from
+  `https://registry.modelcontextprotocol.io/v0.1/servers?search=dev.chio`,
+  and the direct recorded path returned HTTP 404. Pass count remains
+  pinned locally, but public registry publication is not live.
 - MCP namespace ownership validation method (GitHub or DNS): GitHub challenge via `backbay/chio` `.well-known/mcp-registry/dev.chio.json`
 - Co-authored APN blog draft URL: https://github.com/bb-connor/arc/blob/main/docs/distribution/apn-blog/aws-bedrock-mcp-listing.md
 - Co-authored APN blog AWS SA review status: SA reviewed

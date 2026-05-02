@@ -2,8 +2,8 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T19:35:41Z",
-  "current_wave": "closeout_stabilization",
+  "last_checkpoint_at": "2026-05-02T19:47:30Z",
+  "current_wave": "closeout_blocked",
   "halt": {
     "halted": false,
     "reason": null,
@@ -120,7 +120,8 @@
     "M09.P2 remediation merged 2026-05-02T18:56:37Z: control mapping cleaned, policies authored, IR runbook landed, evidence-pack script seeded, formal bridge authored, and accepted-risk register recorded.",
     "M09.P3 evidence package merged 2026-05-02T19:06:16Z: M06 SBOM prerequisite verified, M01 BOP sample manifest recorded, dated evidence bundle generated, MyCSF upload receipt recorded, P4 start confirmed, and evidence pointers updated.",
     "M09.P4 assessor engagement merged 2026-05-02T19:18:18Z: sample testing, operator interviews, week 25-31 follow-ups, draft report intake, clarification log, and P4 audit closeout recorded.",
-    "M09.P5 HITRUST certificate closeout merged 2026-05-02T19:35:41Z: final report submitted, QA pass recorded, certificate record and public landing page published, renewal trigger filed, releases.toml activation evidence updated, and vendor lanes marked complete."
+    "M09.P5 HITRUST certificate closeout merged 2026-05-02T19:35:41Z: final report submitted, QA pass recorded, certificate record and public landing page published, renewal trigger filed, releases.toml activation evidence updated, and vendor lanes marked complete.",
+    "Trajectory-3 closeout blocked 2026-05-02T19:47:30Z: M10 public live recheck failed. AWS Marketplace URL returned HTTP 400 from unauthenticated closeout environment; MCP Registry target returned HTTP 404 and API search returned zero dev.chio rows. TRAJECTORY-FINAL.md not written because stop condition 7 is not true."
   ],
   "wave_heads": {
     "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
