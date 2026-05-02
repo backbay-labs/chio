@@ -39,6 +39,7 @@ base64ct = { workspace = true, features = ["alloc"] }
 coset = { workspace = true }
 der = { workspace = true }
 hex = { workspace = true }
+jsonwebtoken = { workspace = true }
 sha2 = { workspace = true }
 webauthn-rs = { workspace = true }
 webauthn-rs-proto = { workspace = true }

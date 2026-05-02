@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M07
 **Wave:** W2
-**Status:** P2 iOS App Attest lane in progress
+**Status:** P3 Android Play Integrity lane in progress
 **Audit start:** 2026-05-02
 **Audit close:** <fill at P5 final ticket merge>
 
@@ -85,8 +85,9 @@ Measured on 2026-05-02 from the M07.P0 worktree.
   App Attest root parse.
 - `der = "0.7"` in the workspace at P2, reserved for the shared
   ASN.1 verifier path used by the mobile attestation submodule.
-- `jsonwebtoken`: not yet a direct mobile pin at P0; P3 adds it if the Play
-  Integrity verifier consumes JWS in Rust.
+- `jsonwebtoken = "9"` in the workspace at P3, consumed by
+  `chio-custody-hw::attestation::play_integrity` for signed JWS
+  fixture verification.
 - `coset = "0.4.2"` in the workspace, reused from the existing attestation
   verifier stack.
 - `base64ct = "1.8.3"` in the workspace, reused by `chio-custody-hw`.
@@ -187,8 +188,6 @@ Test attestation evidence:
 
 ## 7. Play Integrity attestation chain documentation
 
-[Fill at M07.P3.T5 close.]
-
 Android Play Integrity + Keystore issuance flow:
 
 1. App calls `IntegrityManager.requestIntegrityToken(
@@ -212,14 +211,29 @@ Android Play Integrity + Keystore issuance flow:
    chain (authentication-of-key) in a single mint request. The
    issued capability is audience-pinned to the StrongBox key id.
 
-Google attestation root fingerprint pin: <record at P3.T4 close>.
+Google attestation root fingerprint pin:
+`chio-play-integrity-fixture-root` with fixture verifier SHA-256
+recorded by `play_integrity_root_sha256_hex()`. Production Play
+Integrity validation resolves Google's signing keys from the Play
+Integrity service metadata; P3 pins deterministic local verifier
+material so the Rust path validates a signed JWS instead of accepting
+unsigned tokens.
 
 Test verdict evidence:
 
-- Internal-track APK build identifier: <fill>.
+- Internal-track APK build identifier: pending P5 real-device closeout;
+  P3 records the Android scaffold, instrumentation harness, and
+  deterministic signed JWS verifier path without committing private
+  Play Console material.
 - JWS payload fixture path:
-  `crates/chio-custody-hw/tests/fixtures/play_integrity/<fixture>.jws`.
-- Verifier test result: <link to CI run>.
+  `crates/chio-custody-hw/tests/fixtures/play_integrity/`; the P3 unit
+  test signs deterministic JWS fixtures in
+  `crates/chio-custody-hw/tests/attestation_play_integrity.rs`.
+- Verifier test result: green locally with
+  `cargo test -p chio-custody-hw --test attestation_play_integrity --quiet`.
+- Android Play Integrity + Keystore issuance flow harness: green locally
+  with `bash scripts/build-android-aar.sh --test-only`, which wrote
+  `sdks/jvm/chio-kernel-mobile/build/outputs/aar/test-only-summary.json`.
 
 ## 8. Mobile receipt round-trip evidence
 
