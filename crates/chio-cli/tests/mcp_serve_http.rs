@@ -4856,25 +4856,30 @@ fn mcp_serve_http_dedicated_jwt_sessions_require_exact_bearer_continuity_and_sep
 fn mcp_serve_http_shared_owner_jwt_sessions_keep_weak_compatibility_continuity() {
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
-    let listen = reserve_listen_addr();
     let issuer = "https://issuer.example";
     let audience = "chio-mcp";
     let admin_token = "admin-secret";
     let jwt_signing_key = Keypair::generate();
-    let _server = spawn_http_server_with_shared_owner_and_jwt_auth(
-        &dir,
-        listen,
-        &jwt_signing_key.public_key().to_hex(),
-        issuer,
-        audience,
-        admin_token,
-    );
     let client = Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
         .expect("build reqwest client");
+    let (listen, _server) = spawn_with_bind_retry(
+        &client,
+        "shared-owner jwt MCP server",
+        |candidate| {
+            spawn_http_server_with_shared_owner_and_jwt_auth(
+                &dir,
+                candidate,
+                &jwt_signing_key.public_key().to_hex(),
+                issuer,
+                audience,
+                admin_token,
+            )
+        },
+        wait_for_server_result,
+    );
     let base_url = format!("http://{listen}");
-    wait_for_server(&client, &base_url);
 
     let token_a = sign_jwt(
         &jwt_signing_key,
