@@ -2494,7 +2494,7 @@
   phase: 0
   title: Open M04 audit doc with full-sweep per-crate baseline and pin trajectory-3
     mutants-baseline.toml
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - .planning/trajectory-3/audits/M04-mutation-gate.md
@@ -2517,10 +2517,10 @@
   agent_role: quality-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 27b04a202a5d5d27b987ea6847113c705d966091
+  merged_sha: 27b04a202a5d5d27b987ea6847113c705d966091
+  opened_ts: '2026-05-02T07:42:28Z'
+  merged_ts: '2026-05-02T07:42:28Z'
 - id: M04.P1.T1
   milestone: M04
   phase: 1
