@@ -151,6 +151,27 @@ Corpus hash (must match
 self-test `manifest_hash_pins_current_scenario_index`):
 `sha256:47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f`.
 
+## 3.1. P2 driver activation evidence
+
+P2 consumed the M02-owned verdict-matrix driver surface and corrected
+the stale activation state that still reported Python as partial and
+Go as unsupported. Both local driver entry points now emit all 48
+scenario tuples with zero unsupported and zero failed outcomes. Hosted
+CI completion is deferred under the trajectory-3 steering update; the
+run URLs below are queued hosted verdict-matrix runs captured for the
+final CI-debt replay, not completed hosted-green evidence.
+
+| Ticket | Driver | Commit | Local evidence | Unsupported | Divergence |
+|--------|--------|--------|----------------|-------------|------------|
+| M04.P2.T1 | python-sdk | `c28a87226` | `python -m pytest tests/test_verdict_matrix.py -q`; `python crates/chio-conformance/verdict_matrix/drivers/python/run_scenarios.py` reported 48 passed, 0 failed, 0 unsupported, 48 tuples | 0 | 0 vs scenario expected tuples |
+| M04.P2.T2 | go-http-sdk | `8a148c21f` | `go test -run VerdictMatrix ./...`; `go run crates/chio-conformance/verdict_matrix/drivers/go/run_scenarios.go` reported 48 passed, 0 failed, 0 unsupported, 48 tuples | 0 | 0 vs scenario expected tuples |
+| M04.P2.T3 | verdict-matrix observation | `<stamp in ticket closeout>` | `cargo test -p chio-conformance --test verdict_matrix_cross_language --quiet` passed 12 Rust oracle tests; hosted completion deferred to CI-debt replay | n/a | 0 local oracle divergences |
+
+Hosted observation capture for final stabilization:
+
+- verdict-matrix-nightly: verdict_matrix nightly run url 1: https://github.com/bb-connor/arc/actions/runs/25247640521 (PR #464 verdict-matrix run queued at capture; final hosted-green replay deferred to CI-DEBT).
+- verdict-matrix-nightly: verdict_matrix nightly run url 2: https://github.com/bb-connor/arc/actions/runs/25247650892 (post-merge verdict-matrix run queued at capture; final hosted-green replay deferred to CI-DEBT).
+
 ## 4. Honest-threshold contingency record (D08)
 
 [TODO P3.T1: fill at gate-flip merge.]
