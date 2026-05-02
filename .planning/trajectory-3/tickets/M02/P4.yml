@@ -11,7 +11,7 @@
   milestone: M02
   phase: 4
   title: Ship integration sample (50-100 line script with bundle round-trip)
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
     - examples/eval-receipt-ingest/
@@ -28,16 +28,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 25d8bc9f5da4f9fc278b13d66fafc68ea17b256
+  merged_sha: 25d8bc9f5da4f9fc278b13d66fafc68ea17b256
+  opened_ts: "2026-05-02T07:19:52Z"
+  merged_ts: "2026-05-02T07:19:52Z"
 
 - id: M02.P4.T2
   milestone: M02
   phase: 4
   title: Run spike inside partner pipeline and capture green CI run URL
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - .planning/trajectory-3/audits/M02-ai-lab.md
@@ -54,16 +54,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4eb78b35960b52108f8047407f5ca1bddf161db9
+  merged_sha: 4eb78b35960b52108f8047407f5ca1bddf161db9
+  opened_ts: "2026-05-02T07:19:52Z"
+  merged_ts: "2026-05-02T07:19:52Z"
 
 - id: M02.P4.T3
   milestone: M02
   phase: 4
   title: Record partner feedback in PARTNER-INTEGRATION.md inside D15 window
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - .planning/trajectory-3/research/m02/PARTNER-INTEGRATION.md
@@ -81,16 +81,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 2166f2b17b2c3f4d5b53fb495e2a6079a6ae2149
+  merged_sha: 2166f2b17b2c3f4d5b53fb495e2a6079a6ae2149
+  opened_ts: "2026-05-02T07:19:52Z"
+  merged_ts: "2026-05-02T07:19:52Z"
 
 - id: M02.P4.T4
   milestone: M02
   phase: 4
   title: Apply non-breaking format edits if partner review surfaces gaps
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - spec/eval/receipt-format.v1.json
@@ -110,7 +110,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 80d72d31a5a5b0f0bf5ce1319e830931b172e6c2
+  merged_sha: 80d72d31a5a5b0f0bf5ce1319e830931b172e6c2
+  opened_ts: "2026-05-02T07:19:52Z"
+  merged_ts: "2026-05-02T07:19:52Z"
