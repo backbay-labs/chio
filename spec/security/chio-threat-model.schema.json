@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://chio.dev/spec/security/chio-threat-model.schema.json",
   "title": "Chio Threat Model v1",
-  "description": "Schema for spec/security/chio-threat-model.v1.json. Asserts the four top-level keys, the boundary.surfaces and boundary.assets enums, and the per-threat object shape (id, name, surfaces, mitigations, residualRisk, optional coveredBy, covered_by_tests, and coverage_state).",
+  "description": "Schema for spec/security/chio-threat-model.v1.json. Asserts the four top-level keys, the boundary.surfaces and boundary.assets enums, and the per-threat object shape (id, name, surfaces, mitigations, residualRisk, optional coveredBy, covered_by_tests, deferred_to, and coverage_state).",
   "type": "object",
   "required": ["schema", "updatedAt", "boundary", "threats"],
   "additionalProperties": true,
@@ -121,7 +121,12 @@
         "coverage_state": {
           "type": "string",
           "enum": ["covered", "partial", "pending"],
-          "description": "Coverage status of the threat ID. covered = a green test exists; partial = test exists but defends only part of the attack surface (residual gap documented in the milestone audit doc for the partial owner); pending = no test mapping yet. The threat-model-coverage CI gate (M05.P5.T4) treats partial as PASS but flags it under a separate Partial heading in docs/security/threat-coverage.md."
+          "description": "Coverage status of the threat ID. covered = a green test exists; partial = test exists but defends only part of the attack surface; pending = no test mapping yet. The threat-model-coverage CI gate fails on partial and fails on pending unless deferred_to is populated."
+        },
+        "deferred_to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Milestone, ticket, or trajectory carry-forward reference for pending threats that are intentionally deferred instead of counted as covered."
         }
       }
     },
@@ -132,7 +137,7 @@
       "properties": {
         "status": {
           "type": "string",
-          "enum": ["existing", "planned"]
+          "enum": ["existing", "planned", "implemented"]
         },
         "control": {
           "type": "string",

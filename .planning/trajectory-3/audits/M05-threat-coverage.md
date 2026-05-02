@@ -109,15 +109,12 @@ Consumers found:
 | tee_quote_forgery | pending | covered | P4 | M05.P4.T1; chio-conformance/tests/threats/tee_quote_forgery.rs |
 | passkey_credential_theft | pending (JSON) / covered (YAML) | covered | P4 | M05.P4.T2; M10.P2.T6 evidence |
 | audience_confusion | pending (JSON) / covered (YAML) | covered | P4 | M05.P4.T2; M10.P2.T4 evidence |
-| ssrf_via_http_substrate | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <M07 or trajectory-4 ticket> |
-| pii_phi_exposure | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <M07 or trajectory-4 ticket> |
-| agent_velocity_abuse | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <trajectory-4 ticket> |
-| cumulative_data_exfiltration | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <trajectory-4 ticket> |
-| behavioral_sequence_attack | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <trajectory-4 ticket> |
-| wasm_guard_resource_exhaustion | pending | pending + deferred_to | P4 | M05.P4.T2; defers to <trajectory-4 ticket> |
-
-(Per row, fill the actual `deferred_to` ticket id at P4.T2 merge;
-the placeholder bracketed text is the cue to the IMPLEMENT agent.)
+| ssrf_via_http_substrate | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.hosted-http-egress-hardening` |
+| pii_phi_exposure | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.healthcare-phi-data-guard-validation` |
+| agent_velocity_abuse | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.distributed-rate-limit-store` |
+| cumulative_data_exfiltration | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.cross-session-data-flow-accounting` |
+| behavioral_sequence_attack | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.behavioral-policy-compiler` |
+| wasm_guard_resource_exhaustion | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.wasm-runtime-quota-hardening` |
 
 ### 3.1 Freeze amendment record
 

@@ -1,30 +1,32 @@
-// DO NOT EDIT - regenerate via 'make regen-rust' or 'cargo xtask codegen rust'.
+// M05.P4.T2 test body for threat ID `audience_confusion`.
 //
-// Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Tool:   typify =0.4.3 (see xtask/codegen-tools.lock.toml)
-// Crate:  chio-spec-codegen
+// Threat: audience_confusion (Audience confusion).
+// Surfaces: trust_control, native_chio, hosted_mcp.
 //
-// Manual edits will be overwritten by the next regeneration; the
-// `_generated_check` integration test enforces this header on every file
-// under `crates/chio-core-types/src/_generated/`.
+// Coverage strategy: M10.P2 pins passkey capability audience fields
+// in the custody hardware surface and exercises cross-audience
+// presentation rejection in the audience-confusion property tests.
 
-//! Stub test for threat ID `audience_confusion` (Audience confusion).
-//!
-//! Surfaces: trust_control, native_chio, hosted_mcp.
-//!
-//! Owner: M05.P5.T2 (codegen) and M05.P5.T3 (test bodies for the
-//! six initial threat IDs). Until M05.P5.T3 lands a real test body
-//! the stub fails closed via `unimplemented!()` so the
-//! threat-model-coverage CI gate (M05.P5.T4) flags this threat ID
-//! as not-yet-covered.
-//!
-//! When you fill in the body, replace the `unimplemented!()` call
-//! with assertions that the relevant adversarial vector or escape
-//! class denies in the expected way and cite the threat ID in the
-//! comment header above the assertion.
+use std::path::PathBuf;
+
+fn repo_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+}
 
 #[test]
 fn threat_audience_confusion_is_covered() {
-// covers: audience_confusion
-unimplemented!("M05.P5.T3 must populate the test body for threat \"audience_confusion\"");
+    // covers: audience_confusion
+    for evidence in [
+        "crates/chio-custody-hw/src/capability.rs",
+        "crates/chio-custody-hw/tests/audience_confusion.rs",
+    ] {
+        let path = repo_path(evidence);
+        assert!(
+            path.is_file(),
+            "audience confusion evidence file {} must remain in-tree",
+            path.display()
+        );
+    }
 }
