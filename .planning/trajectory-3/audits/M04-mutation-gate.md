@@ -110,6 +110,17 @@ classes per crate):
 - `chio-guards` and `chio-anchor` bounded shards too small to
   inventory; full sweeps run at P0.T1.
 
+## 2.1. P1 survivor sweep evidence
+
+P1 records targeted survivor-closure tests before the post-P3 gate
+flip. These rows are test evidence, not final cargo-mutants replacement
+metrics; section 4 records the measured full-sweep percentages used for
+activation.
+
+| Ticket | Crate | Evidence | Targeted survivor cluster |
+|--------|-------|----------|---------------------------|
+| M04.P1.T1 | chio-credentials | `crates/chio-credentials/tests/schema_negative.rs` | Negative schema variants for passport, signed verifier policy, presentation challenge, and presentation response fail closed before signature or window checks. |
+
 ## 3. Verdict-matrix advisory baseline
 
 P0 advisory driver inventory is read from
