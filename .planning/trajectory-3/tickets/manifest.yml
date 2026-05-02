@@ -7127,7 +7127,7 @@
   milestone: M09
   phase: 5
   title: Assessor submits final report to HITRUST Inc for QA review
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -7143,15 +7143,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 8c18702384b6025ca77894564c4b04f984b69fdb
+  merged_sha: 8c18702384b6025ca77894564c4b04f984b69fdb
+  opened_ts: '2026-05-02T19:35:41Z'
+  merged_ts: '2026-05-02T19:35:41Z'
 - id: M09.P5.T2
   milestone: M09
   phase: 5
   title: HITRUST QA round vendor-wait with revision turnaround if requested
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -7168,16 +7168,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4b19c3bd762d25c87c658c25d305f54379c1a44b
+  merged_sha: 4b19c3bd762d25c87c658c25d305f54379c1a44b
+  opened_ts: '2026-05-02T19:35:41Z'
+  merged_ts: '2026-05-02T19:35:41Z'
 - id: M09.P5.T3
   milestone: M09
   phase: 5
   title: Receive HITRUST i1 certificate and record id, issuance, expiration in audit
     doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - compliance/hitrust/certificate/certificate.md
@@ -7197,16 +7197,16 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: ffc5e228ca2f09b97e4fac65271ac670c6f1426c
+  merged_sha: ffc5e228ca2f09b97e4fac65271ac670c6f1426c
+  opened_ts: '2026-05-02T19:35:41Z'
+  merged_ts: '2026-05-02T19:35:41Z'
 - id: M09.P5.T4
   milestone: M09
   phase: 5
   title: Final audit-doc pass with assessor identity, scope, finding log, evidence
     pointers, quote variance
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -7226,15 +7226,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: bc51cbb9b9166fa5572c782fc0948f574bfd7b75
+  merged_sha: bc51cbb9b9166fa5572c782fc0948f574bfd7b75
+  opened_ts: '2026-05-02T19:35:41Z'
+  merged_ts: '2026-05-02T19:35:41Z'
 - id: M09.P5.T5
   milestone: M09
   phase: 5
   title: File renewal cadence trigger 60 to 90 days before certificate expiration
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - compliance/hitrust/renewal/renewal-trigger.md
@@ -7253,15 +7253,15 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 3e2fbd48884b31213f2bc36ab4e1be2f805b6416
+  merged_sha: 3e2fbd48884b31213f2bc36ab4e1be2f805b6416
+  opened_ts: '2026-05-02T19:35:41Z'
+  merged_ts: '2026-05-02T19:35:41Z'
 - id: M09.P5.T6
   milestone: M09
   phase: 5
   title: Publish public certificate landing page under docs/external-attestation/hitrust-i1
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - docs/external-attestation/hitrust-i1/index.md
@@ -7280,10 +7280,10 @@
   agent_role: vendor-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 5e6739f92151333daff5c81a499ba67485eaa793
+  merged_sha: 5e6739f92151333daff5c81a499ba67485eaa793
+  opened_ts: '2026-05-02T19:35:41Z'
+  merged_ts: '2026-05-02T19:35:41Z'
 - id: M10.P0.T1
   milestone: M10
   phase: 0
