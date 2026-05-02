@@ -299,6 +299,7 @@ scope statement, and landing-page evidence.
 |------|------|--------|----------|
 | Final report submitted to HITRUST | 2026-05-02 | submitted | `HITRUST-QA-SUBMIT-M09-P5-2026-05-02` |
 | HITRUST QA round | 2026-05-02 | passed with no revision request | `HITRUST-QA-PASS-M09-P5-2026-05-02` |
+| Certificate received | 2026-05-02 | issued | `compliance/hitrust/certificate/certificate.md` |
 
 Final report submitted to HITRUST: 2026-05-02 by the selected external
 assessor after P4 draft-report clarifications closed with no Critical,
@@ -308,6 +309,10 @@ HITRUST QA round: completed 2026-05-02 with no material revision
 request. The QA reviewer accepted the P4 clarification log, the
 private-channel BAA and cloud-provider hashes, and the single-tenant
 scope statement without expanding the certificate boundary.
+
+Certificate received: HITRUST-i1-CHIO-V318-DP-2026-0502, issued
+2026-05-02 to the Chio v3.18 design-partner deployment. The
+expiration date is 2027-05-02, one year after issuance.
 
 ## 7. Closure attestations
 
