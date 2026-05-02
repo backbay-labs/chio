@@ -29,6 +29,9 @@ domains:
   - id: transport
     class: core
     description: "Wire protocol, HTTP, JSON-RPC, auth, and DPoP transport failures."
+  - id: mobile
+    class: core
+    description: "Mobile SDK offline queue, hosted oracle posting, and receipt round-trip failures."
   - id: cli
     class: core
     description: "Command-line parsing, local I/O, config, and rendering failures."
@@ -717,6 +720,39 @@ codes:
     stability: unstable
     consumed_by:
       - chio-custody-hw
+      - chio-control-plane
+  - urn: "urn:chio:error:mobile:receipt-post-rejected"
+    domain: mobile
+    severity: error
+    summary: "Hosted oracle rejected a mobile receipt after a successful network POST."
+    help: "Preserve the queued receipt, surface the oracle response, and do not retry until the tenant, signature, or capability binding is repaired."
+    legacy_string_code: "CHIO-MOBILE-RECEIPT-POST-REJECTED"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel-mobile
+      - chio-custody-hw
+  - urn: "urn:chio:error:mobile:receipt-schema-invalid"
+    domain: mobile
+    severity: error
+    summary: "Mobile receipt export did not validate against the M01 audit-log export schema."
+    help: "Keep the receipt in the offline queue and regenerate the export envelope against spec/audit-log/export-schema.v1.json before retrying."
+    legacy_string_code: "CHIO-MOBILE-RECEIPT-SCHEMA-INVALID"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel-mobile
+      - chio-siem
+  - urn: "urn:chio:error:mobile:oracle-unreachable"
+    domain: mobile
+    severity: warning
+    summary: "Mobile SDK could not reach the hosted receipt oracle within the retry budget."
+    help: "Keep the receipt in the encrypted offline queue and retry with bounded backoff after connectivity returns."
+    legacy_string_code: "CHIO-MOBILE-ORACLE-UNREACHABLE"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel-mobile
       - chio-control-plane
   - urn: "urn:chio:error:custody:audience-mismatch"
     domain: custody

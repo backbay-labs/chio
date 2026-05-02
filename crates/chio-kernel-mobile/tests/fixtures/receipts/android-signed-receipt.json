@@ -1,0 +1,17 @@
+{
+  "platform": "android",
+  "receipt_id": "m07-android-round-trip-001",
+  "tenant_id": "m01-design-partner-tenant",
+  "capability_id": "cap-mobile-android-001",
+  "tool_server": "m01-hosted-oracle-fixture",
+  "tool_name": "patient-record-read",
+  "actor_subject": "did:chio:mobile:android-fixture",
+  "timestamp_unix": 1700000302,
+  "timestamp_iso": "2023-11-14T22:18:22Z",
+  "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "policy_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "guard_id": "mobile-attestation-oracle",
+  "reason_code": "allow.mobile-attested",
+  "checkpoint_id": "m07-p4-android-oracle-checkpoint",
+  "kernel_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222"
+}

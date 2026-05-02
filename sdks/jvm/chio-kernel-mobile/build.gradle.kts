@@ -23,6 +23,7 @@ android {
 
 dependencies {
     implementation("com.google.android.play:integrity:1.3.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("net.java.dev.jna:jna:5.14.0@aar")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
