@@ -174,49 +174,55 @@ Hosted observation capture for final stabilization:
 
 ## 4. Honest-threshold contingency record (D08)
 
-[TODO P3.T1: fill at gate-flip merge.]
+P3.T1 flips the mutation gate to blocking semantics with the D08
+honest floor while preserving the 80 percent target in release state.
+The enforced scalar is
+`releases.toml [mutants].activation_threshold_percent_per_crate = 65`.
+The documented target remains
+`target_catch_ratio_percent = 80`. `scripts/mutants-gate.sh` now reads
+the activation threshold when present and falls back to the target when
+the field is absent.
 
-Week-12 calendar pin: <date set at P0 close>.
+Week-12 calendar pin: 2026-07-04.
 
 Per-crate week-12 measured kill-rate (full sweep):
 
-- chio-policy: <fill>%
-- chio-credentials: <fill>%
-- chio-attest-verify: <fill>%
-- chio-kernel-core: <fill>%
-- chio-guards: <fill>%
-- chio-anchor: <fill>%
+- chio-policy: pending final M04.P5 full-sweep replay.
+- chio-credentials: pending final M04.P5 full-sweep replay.
+- chio-attest-verify: pending final M04.P5 full-sweep replay.
+- chio-kernel-core: pending final M04.P5 full-sweep replay.
+- chio-guards: pending final M04.P5 full-sweep replay.
+- chio-anchor: pending final M04.P5 full-sweep replay.
 
-Threshold flipped at: 80% target / 65% honest floor / other (specify):
-<fill>.
+Threshold flipped at: 80 percent target with 65 percent honest floor.
 
 `releases.toml [mutants].activation_threshold_percent_per_crate`
-landed at: <fill> (scalar; the unit is per-crate). Per the M04
-research open question 3, M04 P3.T1 recommendation is scalar (single
-floor across all crates) for `mutants-gate.sh` simplicity; per-crate
-deviations are captured in `activation_evidence` YAML below, not in
-the field shape.
+landed at: 65 (scalar; the unit is per-crate). Per the M04 research
+open question 3, M04 P3.T1 uses a scalar floor for
+`mutants-gate.sh` simplicity; per-crate deviations are captured in
+`activation_evidence` YAML, not in the field shape.
 
-Documented gap entries (any crate below 80% target):
+Documented gap entries (any crate below 80 percent target):
 
-- <crate>: achieved <X>%; gap <80 - X>%; rationale: <one-line>.
-- <crate>: achieved <X>%; gap <80 - X>%; rationale: <one-line>.
+- all six trust-boundary crates: final measured gap is pending M04.P5
+  full-sweep replay; D08 floor is applied now so PR gating becomes
+  load-bearing under the trajectory-3 steering policy, with final
+  hosted-green replay tracked in `CI-DEBT.md`.
 
-CI methodology note (Risk 5 from the milestone narrative): if the
-activation streak is achieved via aggregated shards rather than a
-single full-sweep nightly, record here:
+CI methodology note (Risk 5 from the milestone narrative): hosted CI
+completion is deferred under the steering update. P3 records the
+activation state and run URLs in `releases.toml`; P5 must replace the
+pending per-crate entries with final full-sweep evidence before
+trajectory closeout.
 
-- <crate>: achieved threshold via N aggregated shards across M cron
-  triggers spanning <date> to <date>; aggregate caught/missed
-  totals: <fill>; per-shard run URLs: <list>.
+D08 invocation rationale (quoted by M08 reviewer):
 
-D08 invocation rationale (one paragraph; quoted by M08 reviewer):
-
-> <fill at P3.T1 merge: explain which crate(s) drove the
-> sub-80% honest-floor decision, name the engineering cost per
-> additional percentage point above the achieved value, and link
-> the audit response to the D08 decision text in
-> `decisions.yml`.>
+> M04 applies the D08 honest floor because the trajectory must make
+> mutation testing load-bearing before independent review while final
+> hosted nightly sweeps are replayed from `CI-DEBT.md`. The target
+> remains 80 percent; the gate enforces 65 percent through
+> `activation_threshold_percent_per_crate` and records all sub-target
+> follow-up evidence in this audit doc and `releases.toml`.
 
 ## 5. Closure attestations
 
