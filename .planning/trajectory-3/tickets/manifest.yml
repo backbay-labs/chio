@@ -1301,7 +1301,7 @@
   milestone: M02
   phase: 3
   title: Draft spec/eval/receipt-format.v1.json schema (chio.eval-report.bundle.v1)
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - spec/eval/receipt-format.v1.json
@@ -1323,15 +1323,15 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f54f1a0413564d45279b2fbbd6da66f3a65d1a70
+  merged_sha: f54f1a0413564d45279b2fbbd6da66f3a65d1a70
+  opened_ts: '2026-05-02T07:03:02Z'
+  merged_ts: '2026-05-02T07:03:02Z'
 - id: M02.P3.T2
   milestone: M02
   phase: 3
   title: Implement verify_bundle and chio eval-receipt verify CLI
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - crates/chio-eval-receipt/src/lib.rs
@@ -1355,15 +1355,15 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4d1dbd86d1cd50f27b9be2f04248c3c8c81c7cec
+  merged_sha: 4d1dbd86d1cd50f27b9be2f04248c3c8c81c7cec
+  opened_ts: '2026-05-02T07:03:02Z'
+  merged_ts: '2026-05-02T07:03:02Z'
 - id: M02.P3.T3
   milestone: M02
   phase: 3
   title: Ship Python binding chio-eval-receipt-py with smoke test
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - crates/chio-eval-receipt/py/Cargo.toml
@@ -1385,15 +1385,15 @@
   agent_role: spec-python
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: ea578f08437aded0f715e5dd05d9654345e17c00
+  merged_sha: ea578f08437aded0f715e5dd05d9654345e17c00
+  opened_ts: '2026-05-02T07:03:02Z'
+  merged_ts: '2026-05-02T07:03:02Z'
 - id: M02.P3.T4
   milestone: M02
   phase: 3
   title: Generate and check in golden bundle fixture and regen xtask
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - tests/bindings/vectors/eval/v1.json
@@ -1415,15 +1415,15 @@
   agent_role: spec-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 03ca17ad8de91463d9112b9094d1c504d6fa9c2c
+  merged_sha: 03ca17ad8de91463d9112b9094d1c504d6fa9c2c
+  opened_ts: '2026-05-02T07:03:02Z'
+  merged_ts: '2026-05-02T07:03:02Z'
 - id: M02.P3.T5
   milestone: M02
   phase: 3
   title: Wire schema linter into CI as required check on spec/eval and crates/chio-eval-receipt
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .github/workflows/eval-receipt-bundle.yml
@@ -1445,10 +1445,10 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b90af1efcff52922bbd618fe3ec944cccf78fee8
+  merged_sha: b90af1efcff52922bbd618fe3ec944cccf78fee8
+  opened_ts: '2026-05-02T07:03:02Z'
+  merged_ts: '2026-05-02T07:03:02Z'
 - id: M02.P4.T1
   milestone: M02
   phase: 4
