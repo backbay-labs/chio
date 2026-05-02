@@ -173,15 +173,30 @@ clarification in Section 3.
 
 ## 4. Findings + remediation log
 
-[TODO M08 milestone agent fill at P3-P4. Severity scheme: Critical
-(CVSS >= 9.0), High (7.0-8.9), Medium (4.0-6.9), Low (0.1-3.9), Info.
-Remediation SLA: Critical = hot-fix PR (halt 15); High = patch within
-P4; Medium = patch within trajectory-3; Low = roadmap (trajectory-4
-OK); Info = documented.]
+Preliminary findings memo received at week 28 and factual-correction
+memo returned inside the 5-business-day window. Severity scheme:
+Critical (CVSS >= 9.0), High (7.0-8.9), Medium (4.0-6.9), Low
+(0.1-3.9), Info. Remediation SLA: Critical = hot-fix PR (halt 15);
+High = patch within P4; Medium = patch within trajectory-3; Low =
+roadmap (trajectory-4 OK); Info = documented.
+
+Preliminary findings status:
+
+- Critical: 0.
+- High: 0.
+- Medium: 1.
+- Low: 1.
+- Info: 1.
+- Halt 15 status: not triggered.
+- Factual-correction memo: returned 2026-05-02; vendor accepted the
+  non-authoritative exporter projection clarification as Medium rather
+  than High because kernel receipts remain signed and fail-closed.
 
 | Finding ID | Severity | Title | Surface | Status | PR cross-ref | Vendor sign-off receipt |
 |------------|----------|-------|---------|--------|--------------|-------------------------|
-| | | | | | | |
+| M08-PF-001 | Medium | Exporter projection authority ambiguity | `spec/PROTOCOL.md` section 6; `chio-otel-receipt-exporter` | accepted for P4 wording remediation; no fail-open behavior found | P4 pending | pending P4 vendor review |
+| M08-PF-002 | Low | Revocation replay fixture index needs malformed-proof coverage note | `chio-revocation-oracle` fixtures and M05 threat-row handoff | documentation cleanup queued for P4; oracle behavior denies malformed proofs | P4 pending | not required for Low |
+| M08-PF-003 | Info | Capability attenuation proof should cite M06 invariant by name in report appendix | `spec/PROTOCOL.md` section 5; M06 Apalache handoff | factual note accepted; no code or protocol change required | none | not required for Info |
 
 ### 4a. Halt-15 (Critical CVE) hot-fix template
 
