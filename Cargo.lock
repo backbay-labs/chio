@@ -2962,6 +2962,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-eval-receipt"
+version = "0.1.0"
+
+[[package]]
 name = "chio-example-enriched-inspector"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,18 @@
+[package]
+name = "chio-eval-receipt"
+description = "Reference verifier surface for Chio eval-report receipt bundles."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_eval_receipt"
+path = "src/lib.rs"
+
+[dependencies]
+
+[lints]
+workspace = true
