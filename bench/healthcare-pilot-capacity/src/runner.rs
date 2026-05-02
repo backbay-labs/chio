@@ -55,7 +55,7 @@ impl ReplayInput {
         Self {
             baseline_receipts_per_day: DEFAULT_BASELINE_RECEIPTS_PER_DAY,
             base_latency_p50_ms: 54,
-            base_latency_p95_ms: 182,
+            base_latency_p95_ms: 176,
             base_latency_p99_ms: 640,
             base_trust_convergence_ms: 75,
             base_exporter_backpressure_ms: 20,
