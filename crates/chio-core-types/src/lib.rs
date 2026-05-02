@@ -23,6 +23,7 @@ pub mod crypto;
 pub mod delegation_receipt;
 pub mod error;
 pub mod hashing;
+pub mod loaded_weights;
 pub mod manifest;
 pub mod merkle;
 pub mod message;
@@ -62,6 +63,9 @@ pub use crypto::{P256Backend, P384Backend};
 pub use delegation_receipt::{DelegationReceipt, ScopeAttenuation};
 pub use error::{Error, Result};
 pub use hashing::{sha256, Hash};
+pub use loaded_weights::{
+    loaded_weights_hash_of, loaded_weights_hash_of_chunks, LoadedWeights, LoadedWeightsUnavailable,
+};
 pub use manifest::{
     PricingModel, ToolAnnotations, ToolDefinition, ToolManifest, ToolManifestBody, ToolPricing,
 };
