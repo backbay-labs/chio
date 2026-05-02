@@ -18,7 +18,7 @@
   milestone: M01
   phase: 0
   title: Open M01 audit doc and fill the four hard-count rows from RESEARCH.md
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -34,16 +34,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: fdbe88c68310f5b2db66c6776aab85a8705b0b45
+  merged_sha: fdbe88c68310f5b2db66c6776aab85a8705b0b45
+  opened_ts: "2026-05-02T05:09:18Z"
+  merged_ts: "2026-05-02T05:09:18Z"
 
 - id: M01.P0.T2
   milestone: M01
   phase: 0
   title: Record healthcare design-partner contract memo and BAA posture in audit doc evidence log
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -60,16 +60,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: fdbe88c68310f5b2db66c6776aab85a8705b0b45
+  merged_sha: fdbe88c68310f5b2db66c6776aab85a8705b0b45
+  opened_ts: "2026-05-02T05:09:18Z"
+  merged_ts: "2026-05-02T05:09:18Z"
 
 - id: M01.P0.T3
   milestone: M01
   phase: 0
   title: Author tenant onboarding plan at docs/operator-runbook/onboarding.md
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - docs/operator-runbook/onboarding.md
@@ -86,16 +86,16 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 909877826a88f7f9fa12810fa89ff51a25f51d9e
+  merged_sha: 909877826a88f7f9fa12810fa89ff51a25f51d9e
+  opened_ts: "2026-05-02T05:09:18Z"
+  merged_ts: "2026-05-02T05:09:18Z"
 
 - id: M01.P0.T4
   milestone: M01
   phase: 0
   title: Author production deployment topology diagram pinning Chio mediation edge placement
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - docs/operator-runbook/topology.md
@@ -112,16 +112,16 @@
   agent_role: kernel-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 17983aeba2b4c1a4d2d5649b5cab3cff832923ce
+  merged_sha: 17983aeba2b4c1a4d2d5649b5cab3cff832923ce
+  opened_ts: "2026-05-02T05:09:18Z"
+  merged_ts: "2026-05-02T05:09:18Z"
 
 - id: M01.P0.T5
   milestone: M01
   phase: 0
   title: Record PagerDuty service-naming and on-call rotation contract memo in audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -138,7 +138,7 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: fdbe88c68310f5b2db66c6776aab85a8705b0b45
+  merged_sha: fdbe88c68310f5b2db66c6776aab85a8705b0b45
+  opened_ts: "2026-05-02T05:09:18Z"
+  merged_ts: "2026-05-02T05:09:18Z"
