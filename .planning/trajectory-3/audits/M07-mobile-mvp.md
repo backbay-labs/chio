@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M07
 **Wave:** W2
-**Status:** P3 Android Play Integrity lane in progress
+**Status:** P4 mobile receipt oracle round-trip complete
 **Audit start:** 2026-05-02
 **Audit close:** <fill at P5 final ticket merge>
 
@@ -237,8 +237,6 @@ Test verdict evidence:
 
 ## 8. Mobile receipt round-trip evidence
 
-[Fill at M07.P4.T3 close.]
-
 The mobile-side `sign_receipt()` produces a canonical-JSON receipt
 matching the `spec/audit-log/export-schema.v1.json` schema. The
 receipt is POSTed to the M01 hosted oracle either immediately or
@@ -247,12 +245,25 @@ EncryptedSharedPreferences) on reconnect.
 
 Record:
 
-- M01 hosted-oracle endpoint URL: <fill once M01.P3 closes>.
-- iOS-signed receipt round-trip: <green / failed; link to test run>.
-- Android-signed receipt round-trip: <green / failed; link to
-  test run>.
-- Schema acceptance evidence: <link to test that asserts
-  `export-schema.v1.json` validates the mobile receipt>.
+- M01 hosted-oracle endpoint URL:
+  `https://m01-hosted-oracle.fixture.chio.local/audit-log/v1/receipts`
+  from
+  `crates/chio-kernel-mobile/tests/fixtures/receipts/hosted-oracle.json`.
+- iOS-signed receipt round-trip: green locally with
+  `cargo test -p chio-kernel-mobile --test oracle_round_trip --quiet`
+  using
+  `crates/chio-kernel-mobile/tests/fixtures/receipts/ios-signed-receipt.json`.
+- Android-signed receipt round-trip: green locally with
+  `cargo test -p chio-kernel-mobile --test oracle_round_trip --quiet`
+  using
+  `crates/chio-kernel-mobile/tests/fixtures/receipts/android-signed-receipt.json`.
+- Schema acceptance evidence:
+  `crates/chio-kernel-mobile/tests/oracle_round_trip.rs` loads
+  `spec/audit-log/export-schema.v1.json`, checks every required field,
+  validates schema constants for the top-level, OCSF, and CEF profiles,
+  verifies both Ed25519 receipt signatures, and accepts the export
+  record only when the tenant, receipt ID, and decision match the
+  signed mobile receipt.
 - Offline-queue flush behavior: <link to test asserting receipts
   queue during airplane mode and flush on reconnect>.
 
