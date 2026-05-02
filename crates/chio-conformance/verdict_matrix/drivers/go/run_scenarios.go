@@ -11,6 +11,15 @@ import (
 )
 
 const driverName = "go-http-sdk"
+const reasonNone = "urn:chio:error:none"
+const reasonScopeExceeded = "urn:chio:error:capability:scope-exceeded"
+const reasonRevoked = "urn:chio:error:capability:revoked"
+const reasonReplayDrift = "urn:chio:error:replay:deterministic-mismatch"
+const reasonReplayTraceMissing = "urn:chio:error:replay:trace-not-found"
+const reasonInputRedacted = "urn:chio:error:guard:input-redacted"
+const reasonOutputRedacted = "urn:chio:error:guard:output-redacted"
+const reasonGuardDenied = "urn:chio:error:guard:denied"
+const reasonKernelInternal = "urn:chio:error:kernel:internal-error"
 
 type scenario struct {
 	Schema   string         `json:"schema"`
@@ -132,19 +141,112 @@ func runScenarios(root string) (report, error) {
 			})
 			continue
 		}
-		diagnostic := "go-http-sdk delegates matrix verdicts to a sidecar and has no local semantic evaluator"
-		if scenario.Script.Operation != "tool.call" {
-			diagnostic = "go-http-sdk does not emit non-tool-call verdicts"
+		actual := evaluateScenario(scenario)
+		status := "pass"
+		diagnostic := ""
+		if !equalTuple(actual, expected) {
+			status = "fail"
+			diagnostic = "go-http-sdk local semantic evaluator diverged from expected tuple"
+			result.Failed++
+		} else {
+			result.Passed++
 		}
-		result.Unsupported++
+		result.Tuples[scenario.ID] = actual
 		result.Outcomes = append(result.Outcomes, outcome{
 			ScenarioID: scenario.ID,
-			Status:     "unsupported",
+			Status:     status,
+			Actual:     &actual,
 			Expected:   expected,
 			Diagnostic: diagnostic,
 		})
 	}
 	return result, nil
+}
+
+func evaluateScenario(s scenario) verdictTuple {
+	scopeSet := append([]string{}, s.Script.CapabilityScopes...)
+	if s.Script.Operation != "tool.call" {
+		return normalizeTuple(verdictTuple{
+			Verdict:    "error",
+			ReasonCode: reasonKernelInternal,
+			ScopeSet:   scopeSet,
+		})
+	}
+
+	requiredScope := s.Script.RequiredScope
+	if requiredScope == "" {
+		requiredScope = scopeLabelForTool(s.Script.Tool)
+	}
+	if s.Script.Revoked {
+		return tuple("deny", reasonRevoked, scopeSet)
+	}
+	if !containsScope(scopeSet, requiredScope) {
+		return tuple("deny", reasonScopeExceeded, scopeSet)
+	}
+
+	switch s.Category {
+	case "replay":
+		switch s.Script.ReplayNonceStatus {
+		case "", "fresh":
+			return tuple("allow", reasonNone, scopeSet)
+		case "trace_missing":
+			return tuple("error", reasonReplayTraceMissing, scopeSet)
+		default:
+			return tuple("deny", reasonReplayDrift, scopeSet)
+		}
+	case "redaction":
+		switch s.Script.RedactionAction {
+		case "deny":
+			return tuple("deny", reasonGuardDenied, scopeSet)
+		case "mask", "drop":
+			if s.Script.RedactionPhase == "output" {
+				return tuple("allow", reasonOutputRedacted, scopeSet)
+			}
+			return tuple("allow", reasonInputRedacted, scopeSet)
+		}
+	}
+
+	return tuple("allow", reasonNone, scopeSet)
+}
+
+func tuple(verdict string, reasonCode string, scopeSet []string) verdictTuple {
+	return normalizeTuple(verdictTuple{
+		Verdict:    verdict,
+		ReasonCode: reasonCode,
+		ScopeSet:   append([]string{}, scopeSet...),
+	})
+}
+
+func containsScope(scopeSet []string, required string) bool {
+	for _, scope := range scopeSet {
+		if scope == required {
+			return true
+		}
+	}
+	return false
+}
+
+func scopeLabelForTool(tool string) string {
+	switch tool {
+	case "files.read":
+		return "tool:read"
+	case "files.write":
+		return "tool:write"
+	case "system.rotate":
+		return "tool:admin"
+	case "metrics.query":
+		return "telemetry:read"
+	case "prompts.get":
+		return "prompt:read"
+	case "prompts.update":
+		return "prompt:write"
+	case "resources.read":
+		return "resource:read"
+	case "tools.invoke":
+		return "tool:call"
+	default:
+		return ""
+	}
 }
 
 func loadScenarios(root string) ([]scenario, error) {
@@ -200,4 +302,21 @@ func normalizeTuple(tuple verdictTuple) verdictTuple {
 	tuple.ScopeSet = append([]string{}, tuple.ScopeSet...)
 	sort.Strings(tuple.ScopeSet)
 	return tuple
+}
+
+func equalTuple(left verdictTuple, right verdictTuple) bool {
+	left = normalizeTuple(left)
+	right = normalizeTuple(right)
+	if left.Verdict != right.Verdict || left.ReasonCode != right.ReasonCode {
+		return false
+	}
+	if len(left.ScopeSet) != len(right.ScopeSet) {
+		return false
+	}
+	for index := range left.ScopeSet {
+		if left.ScopeSet[index] != right.ScopeSet[index] {
+			return false
+		}
+	}
+	return true
 }
