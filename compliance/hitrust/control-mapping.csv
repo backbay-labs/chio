@@ -1,0 +1,15 @@
+control_id,family,narrative_path,evidence_sources,status,owner,notes
+i1-seed-ism,Information Security Management Program,compliance/hitrust/narratives/i1-seed-ism.md,.planning/trajectory-3/README.md; .planning/trajectory-3/freezes.yml,seeded,M09,Expand after assessor confirms MyCSF control list.
+i1-seed-access,Access Control,compliance/hitrust/narratives/i1-seed-access.md,spec/PROTOCOL.md; crates/chio-kernel-core/; spec/security/chio-threat-model.v1.json,seeded,M09,Capability algebra and revocation evidence.
+i1-seed-hr,Human Resources Security,compliance/hitrust/narratives/i1-seed-hr.md,Backbay HR policy corpus,gap,Backbay,Out-of-tree HR evidence required.
+i1-seed-risk,Risk Management,compliance/hitrust/narratives/i1-seed-risk.md,spec/security/chio-threat-model.v1.json; docs/security/threat-coverage.md,seeded,M05,M05 closure required before ready.
+i1-seed-policy,Security Policy,compliance/hitrust/narratives/i1-seed-policy.md,spec/SECURITY.md; docs/security/,seeded,M09,Inherited policy evidence.
+i1-seed-org,Organization of Information Security,compliance/hitrust/narratives/i1-seed-org.md,.planning/trajectory-3/freezes.yml; OWNERS.toml,seeded,M09,Trust-boundary ownership evidence.
+i1-seed-compliance,Compliance,compliance/hitrust/narratives/i1-seed-compliance.md,compliance/hitrust/ssp.md; .planning/trajectory-3/audits/M09-vendor-evidence.md,seeded,M09,Net-new M09 evidence.
+i1-seed-assets,Asset Management,compliance/hitrust/narratives/i1-seed-assets.md,supply-chain/**; supply-chain/audits.toml,gap,M06,Pending M06 SBOM and cargo-vet close.
+i1-seed-physical,Physical and Environmental Security,compliance/hitrust/narratives/i1-seed-physical.md,cloud-provider inheritance,gap,Backbay,Out-of-tree cloud-provider evidence.
+i1-seed-ops,Communications and Operations Management,compliance/hitrust/narratives/i1-seed-ops.md,.planning/trajectory-3/audits/M01-healthcare-pilot.md; .github/workflows/**; receipts pipeline,gap,M01/M03,Pending M01 and M03 closure.
+i1-seed-dev,Systems Acquisition Development and Maintenance,compliance/hitrust/narratives/i1-seed-dev.md,.planning/trajectory-3/audits/M03-ci-restoration.md; supply-chain/**; formal/**,gap,M03/M06,Pending reproducible build and supply-chain evidence.
+i1-seed-ir,Incident Management,compliance/hitrust/narratives/i1-seed-ir.md,compliance/hitrust/ir-runbook.md,gap,M09,Net-new P2 runbook.
+i1-seed-bcm,Business Continuity Management,compliance/hitrust/narratives/i1-seed-bcm.md,design-partner DR posture; revocation oracle,gap,M01/M09,Out-of-tree DR evidence required.
+i1-seed-privacy,Privacy Practices,compliance/hitrust/narratives/i1-seed-privacy.md,PHI boundary; telemetry de-identification; receipt redaction,gap,M09,Net-new P2 privacy narrative.
