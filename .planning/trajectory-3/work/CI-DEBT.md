@@ -21,3 +21,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #457 (`b1e519ca1d92be40fc6dd74eaf2734227dfad1ea`): M02.P0 AI-lab partner baseline; skipped hosted CI wait for audit baseline, partner scoping, outreach receipts, METR contract, eval-receipt placeholder crate, and ticket stamps.
 - PR #458 (`6320d07faa72f3fbd06135a93e2ed6d11a6f9485`): M02.P1 partner commitment package; skipped hosted CI wait for partner identity docs, METR Q&A, bundle sketch, partnership-note draft, and ticket stamps.
 - PR #459 (`10f5064e55ba0fc74b6b40bd665299da5f5200d4`): M02.P2 evidence-export contract; skipped hosted CI wait for export contract docs, unsigned bundle helper, export roundtrip fixtures, audit mapping link, and ticket stamps.
+- PR #460 (`b0bc369667625998b03a5022f6b44cc472978c3d`): M02.P3 eval-report bundle implementation; skipped hosted CI wait for schema, verifier CLI, PyO3 binding, golden vector regen, schema-lint workflow, and ticket stamps.
