@@ -123,6 +123,7 @@ activation.
 | M04.P1.T2 | chio-kernel-core | `crates/chio-kernel-core/tests/normalized_proptest.rs` | Property tests cover wildcard/exact grant subset, operation preservation, required parent constraints, monetary cap narrowing, and resource/prompt parent coverage. |
 | M04.P1.T3 | chio-kernel-core | `crates/chio-kernel-core/tests/scope_proptest.rs` | Property tests exercise path-prefix normalization, exact and glob domain constraints, inclusive length/argument-size boundaries, and exact-grant specificity sorting. |
 | M04.P1.T4 | chio-attest-verify | `crates/chio-attest-verify/tests/sigstore_negative.rs` plus fixture modules under `tests/fixtures/` | Sigstore verifier rejects synthetic cert-time, malformed-chain, wrong-root, issuer-mismatch, and malformed-bundle inputs through the public fail-closed verifier surface. |
+| M04.P1.T5 | chio-policy | `crates/chio-policy/tests/{validate_boundary.rs,conditions_match_arms.rs,compiler_overlap.rs}` | Boundary tests cover validation limits, weekday/timezone condition arms, midnight wrapping, confirmation-glob overlap, human approval fallback thresholds, and default-allow fail-closed scope compilation. |
 
 ## 3. Verdict-matrix advisory baseline
 
