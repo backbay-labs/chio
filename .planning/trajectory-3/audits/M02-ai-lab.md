@@ -219,9 +219,11 @@ Filled at the M02 P5 wave-closer merge.
   - CLI: `chio eval-receipt verify <bundle-path>`
   - Round-trip self-test: `cargo test -p chio-eval-receipt --quiet`
 
-- Public partnership note URL: _<P5.T4 fills>_
-- Partner-side eval-card commitment (D15 freshness): _<P5.T4 fills,
-  if a published reference is part of the partner contract>_
+- Public partnership note URL:
+  https://github.com/bb-connor/arc#external-evidence
+- Partner-side eval-card commitment (D15 freshness): METR memo commits
+  to cite Chio receipts in a published eval card or research note
+  within 90 days of 2026-05-02, subject to ordinary publication review.
 
 ## 5. Cross-references
 
