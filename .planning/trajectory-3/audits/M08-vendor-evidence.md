@@ -109,12 +109,9 @@ Sources checked 2026-05-02:
 
 ## 3. Active-review log
 
-[TODO M08 vendor-coord agent fill weekly during P0-P5. Status verbs:
-`awaiting`, `received`, `redlined`, `signed`, `answered`, `deferred`.]
-
 | Week | Direction | Question / Artifact | Status | Cross-ref |
 |------|-----------|---------------------|--------|-----------|
-| | | | | |
+| 1 | outbound | RFP sent package prepared for NCC Group sales route: `M08-RFP.md` plus handoff-package manifest; official routes checked at `https://www.nccgroup.com/contact-us/` and `https://www.nccgroup.com/contact-sales/`. | awaiting @bb-connor signature / vendor acknowledgement | M08.P0.T4 |
 
 ## 4. Findings + remediation log
 
