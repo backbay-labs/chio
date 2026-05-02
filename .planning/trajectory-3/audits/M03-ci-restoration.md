@@ -68,6 +68,34 @@ at audit-doc open.
 - `reproducibility-gate` run URL:
 - `supply-chain/checksums/v3.18.txt` cosign signature + Rekor UUID:
 
+## 3a. Hosted CI liveness evidence (P1)
+
+P1 records that hosted GitHub Actions is alive and starting real
+workflow runs after trajectory-3 PRs. The 2026-05-02 steering update
+defers full green completion to final stabilization; this section is
+therefore a liveness matrix, not a green-release attestation.
+
+Required-check contexts and current run URLs:
+
+| Required check context | Workflow/run evidence | Status at record time |
+|------------------------|-----------------------|-----------------------|
+| Build, lint, test | https://github.com/bb-connor/arc/actions/runs/25242850087 | queued on `main` push `2d63ff7e36ef86d929e7bc9a14119adee68017d0` |
+| MSRV build and test | https://github.com/bb-connor/arc/actions/runs/25242850087 | queued inside `ci.yml` on `main` push |
+| cargo-vet (supply-chain audit) | https://github.com/bb-connor/arc/actions/runs/25242850087 | queued inside `ci.yml` on `main` push |
+| cargo-deny (supply-chain bans/advisories/licenses) | https://github.com/bb-connor/arc/actions/runs/25242850087 | queued inside `ci.yml` on `main` push |
+| freeze-guard | https://github.com/bb-connor/arc/actions/runs/25242846785 | completed success on PR #444 head `507b11cd0fb2e2260b0639025da25c0714d34060` |
+| bench-regression | https://github.com/bb-connor/arc/actions/runs/25242843165 | queued on PR #444 head `507b11cd0fb2e2260b0639025da25c0714d34060` |
+
+Observed policy state:
+
+- Hosted CI is no longer billing-exhausted at runner-start: real runs
+  are created for PR and `main` push events.
+- Old pre-trajectory-3 failures remain M03.P2 bisect targets.
+- Admin-merged PRs under the 2026-05-02 steering policy are tracked in
+  `.planning/trajectory-3/work/CI-DEBT.md`.
+- Full green required-check closure is deferred to the end-of-trajectory
+  stabilization pass.
+
 ## 4. Closure attestations
 
 [TODO M03 milestone agent fill at P5 close:]
