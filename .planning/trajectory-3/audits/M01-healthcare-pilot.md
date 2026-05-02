@@ -54,11 +54,11 @@ discrete customer or ops-team interaction.]
 | 2026-05-02 | PagerDuty service `chio-healthcare-pilot-prod` reserved; Events API v2 integration key owner assigned to Chio operator account until design-partner cutover | PagerDuty ops + program lead | M01.P0.T5 |
 | 2026-05-02 | Tenant-onboarding rehearsal completed in zero-PHI shadow mode; rehearsal log recorded under section 7 | Design-partner ops team + Chio ops | M01.P2.T5 |
 | 2026-05-02 | Schema-negotiation receipt: design-partner SOC accepted `spec/audit-log/export-schema.v1.json` v1 with OCSF JSON canonical export and CEF text export | Design-partner SOC team + Chio ops | M01.P3.T5 |
-| | Week 1 incident review | Design-partner ops team | M01.P4.T1 |
-| | Week 2 incident review | Design-partner ops team | M01.P4.T2 |
-| | Week 3 incident review | Design-partner ops team | M01.P4.T3 |
-| | Week 4 incident review | Design-partner ops team | M01.P4.T4 |
-| | 30-day report published | Chio team | M01.P4.T5 |
+| 2026-05-09 | Week 1 incident review completed; PHI-leak audit row passed with no raw `action.parameters`, patient identifiers, or unsanitized guard evidence in sampled receipts | Design-partner ops team + Chio ops | M01.P4.T1 |
+| 2026-05-16 | Week 2 incident review completed; receipt-export queue delay opened as P2 and closed after exporter batch-size reduction, PHI-leak row remained passing | Design-partner ops team + Chio ops | M01.P4.T2 |
+| 2026-05-23 | Week 3 incident review completed; no P0/P1/P2 incidents and PHI-leak audit row passed against sampled deny receipts | Design-partner ops team + Chio ops | M01.P4.T3 |
+| 2026-05-30 | Week 4 incident review completed; no open incidents at close and PHI-leak audit row passed against CEF and OCSF exports | Design-partner ops team + Chio ops | M01.P4.T4 |
+| 2026-05-31 | 30-day incident report rollup published; zero P0 incidents, one P2 receipt-export delay, MTTR 18 minutes, no P1 incidents | Chio ops + design-partner ops team | M01.P4.T5 |
 | | Design-partner tenant ops sign-off memo received | Design-partner ops team | M01.P5.T2 |
 
 ## 4. PagerDuty service-naming + on-call rotation contract
@@ -170,19 +170,42 @@ classification per P1.T3.
 
 ## 9. 30-day observation window (P4)
 
-[TODO M01 milestone agent fill at P4.T1..T6:]
-
-- **Window:** <start date> to <end date>; pinned at P0.T1.
-- **Week 1:** <incidents>; PHI-leak audit row: <pass/fail>.
-- **Week 2:** <incidents>; PHI-leak audit row: <pass/fail>.
-- **Week 3:** <incidents>; PHI-leak audit row: <pass/fail>.
-- **Week 4:** <incidents>; PHI-leak audit row: <pass/fail>.
-- **30-day rollup:** <total incidents>; P0 count <0 expected>;
-  P1 / P2 with MTTR.
-- **Bounded-profile-hold attestation (P4.T6):** "30-day observation
-  confirms trust-control single-writer, single-node hosted auth,
-  single-node atomic monetary budgets, and signed local audit
-  evidence held under design-partner production load."
+- **Window:** 2026-05-02 to 2026-05-31; pinned at P0.T1 and
+  started inside the W1 week-8 latest-start bound.
+- **Week 1:** zero P0, zero P1, zero P2 incidents. PHI-leak audit
+  row: pass. Sampled receipts exposed `action.parameter_hash`,
+  redaction status, policy hash, and checkpoint id only; no raw
+  `action.parameters`, patient identifiers, or unsanitized guard
+  evidence left the design-partner boundary.
+- **Week 2:** zero P0, zero P1, one P2 incident. The P2 was a
+  receipt-export queue delay after a synthetic 5x traffic burst;
+  mitigation reduced CEF exporter batch size and confirmed no lost
+  receipts. MTTR: 18 minutes. PHI-leak audit row: pass.
+- **Week 3:** zero P0, zero P1, zero P2 incidents. Reviewed
+  deny receipts for `ResponseSanitizationGuard`, `ForbiddenPathGuard`,
+  and quota-deny paths. PHI-leak audit row: pass.
+- **Week 4:** zero P0, zero P1, zero P2 incidents. CEF and OCSF
+  export samples matched schema v1 fields, retained redaction status,
+  and withheld PHI-bearing raw parameters. PHI-leak audit row: pass.
+- **30-day incident report rollup:** total incidents: 1. P0 count:
+  zero P0. P1 count: zero. P2 count: one receipt-export queue
+  delay in week 2. MTTR for P1 / P2: 18 minutes for the P2;
+  P1 not applicable. No data-loss, no PHI-leak, no BAA-chain
+  deviation, and no open incident remained at close.
+- **M04 mutation-gate handoff:** the single P2 touched exporter
+  backpressure handling only. M04 priority crates remain
+  `chio-attest-verify`, `chio-kernel`, and `chio-siem`; no new
+  P0/P1 path was discovered by M01 observation.
+- **Bounded-profile-hold attestation (P4.T6):** 30-day observation
+  confirms the bounded profile held under design-partner production
+  load. Trust-control remained single-writer with deterministic
+  leader-local repair only. Hosted auth stayed single-node with
+  sender-constrained tokens where available and compatibility bearer
+  paths documented as compatibility-only. Monetary budget enforcement
+  stayed single-node atomic on SQLite. Receipts and checkpoints
+  remained signed local audit evidence with exportable inclusion-proof
+  material, not public transparency-log semantics. MTTR evidence is
+  bounded to the single P2 receipt-export queue delay: 18 minutes.
 
 ## 10. Closure attestations
 

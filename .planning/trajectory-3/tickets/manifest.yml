@@ -647,7 +647,7 @@
   milestone: M01
   phase: 4
   title: Record week 1 incident-review entry in audit doc with PHI-leak audit row
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -666,15 +666,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4223b6d2d6f393e58af555ddad4651a0d1bafe7c
+  merged_sha: 4223b6d2d6f393e58af555ddad4651a0d1bafe7c
+  opened_ts: '2026-05-02T05:55:12Z'
+  merged_ts: '2026-05-02T05:55:12Z'
 - id: M01.P4.T2
   milestone: M01
   phase: 4
   title: Record week 2 incident-review entry in audit doc with PHI-leak audit row
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -690,15 +690,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 83349f6dafb516fd352aad85f3e6402cffb36f87
+  merged_sha: 83349f6dafb516fd352aad85f3e6402cffb36f87
+  opened_ts: '2026-05-02T05:55:12Z'
+  merged_ts: '2026-05-02T05:55:12Z'
 - id: M01.P4.T3
   milestone: M01
   phase: 4
   title: Record week 3 incident-review entry in audit doc with PHI-leak audit row
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -714,15 +714,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 08cd4efe0b3cc98b3a23582d21d411c46c3a2f3f
+  merged_sha: 08cd4efe0b3cc98b3a23582d21d411c46c3a2f3f
+  opened_ts: '2026-05-02T05:55:12Z'
+  merged_ts: '2026-05-02T05:55:12Z'
 - id: M01.P4.T4
   milestone: M01
   phase: 4
   title: Record week 4 incident-review entry in audit doc with PHI-leak audit row
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -738,15 +738,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 191fc5832caad8006cdd052761f8deb7650fbc66
+  merged_sha: 191fc5832caad8006cdd052761f8deb7650fbc66
+  opened_ts: '2026-05-02T05:55:12Z'
+  merged_ts: '2026-05-02T05:55:12Z'
 - id: M01.P4.T5
   milestone: M01
   phase: 4
   title: Compile and commit 30-day incident report rollup to audit doc
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
   - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -770,15 +770,15 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 7d7b89031c1c346286ca80c7fdf666a0bcbcc945
+  merged_sha: 7d7b89031c1c346286ca80c7fdf666a0bcbcc945
+  opened_ts: '2026-05-02T05:55:12Z'
+  merged_ts: '2026-05-02T05:55:12Z'
 - id: M01.P4.T6
   milestone: M01
   phase: 4
   title: Record MTTR + bounded-profile-hold attestation in audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -798,10 +798,10 @@
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 60629584e8990830561ee97e73a1a9f7a3d07d8c
+  merged_sha: 60629584e8990830561ee97e73a1a9f7a3d07d8c
+  opened_ts: '2026-05-02T05:55:12Z'
+  merged_ts: '2026-05-02T05:55:12Z'
 - id: M01.P5.T1
   milestone: M01
   phase: 5
