@@ -3,9 +3,9 @@
 **Trajectory:** trajectory-3
 **Milestone:** M05
 **Wave:** W1
-**Status:** P0 baseline pinned 2026-05-02; phases P1-P5 pending.
+**Status:** Closed 2026-05-02; zero partial rows and all pending rows carry `deferred_to`.
 **Audit start:** 2026-05-02 (P0 baseline merge target)
-**Audit close:** <fill at P5 final ticket merge>
+**Audit close:** 2026-05-02T10:38:43Z
 
 ## 1. Audit scope
 
@@ -131,7 +131,7 @@ Commit SHA and PR URL are recorded in the M05.P0 ticket stamp.
 
 | Bench | Median (ns) | 95% CI | total_blocks | total_bytes | Reference runner |
 |-------|-------------|--------|--------------|-------------|-------------------|
-| dispatch_allow (Criterion) | <fill P2.T2> | <fill P2.T2> | n/a | n/a | 4-core Linux, warm cache |
+| dispatch_allow (Criterion) | 67,495 ns | 67,414 ns to 67,820 ns | n/a | n/a | local quick bench, warm cache; hosted replay tracked in CI-DEBT |
 | dispatch_allow_dhat | n/a | n/a | 410 measured, 512 budget | 34,075 measured, 40,960 budget | local dhat smoke; final 4-core Linux replay pending |
 
 ### 3.3 Coverage gate post-flip behavior matrix
@@ -150,11 +150,14 @@ the six cells.)
 
 ## 4. Closure attestations
 
-- Threat-coverage table validated zero-partial: <CI run URL of the
-  post-flip threat-model-coverage workflow run on the M05.P4.T3
-  merge commit>
-- The M08 reviewer cross-checks closure: <quote / cross-ref to the
-  M08 audit doc evidence-pack section that cites this audit doc and
-  the CI run URL above>
-- Audit doc hash at M08 handoff: <SHA of this file at P5.T2 close;
-  the M08 reviewer cites the hash to confirm artifact identity>
+- Threat-coverage table validated zero-partial: https://github.com/bb-connor/arc/actions/runs/25249973328
+  (`threat-model-coverage` queued on M05.P4 merge commit
+  `8da02be92bb8c2f7265feb8aa43233c7d2fbfe8a`; local P5.T1 gate
+  rechecked zero `coverage_state: partial` rows before close).
+- M08 reviewer cross-checks closure: M08.P1.T6 evidence-pack addendum
+  cites this audit doc, `docs/security/threat-coverage.md`, the
+  post-flip run URL above, and PR #473 as the reviewer handoff hook.
+- Audit doc hash at M08 handoff: recompute with
+  `git rev-parse HEAD:.planning/trajectory-3/audits/M05-threat-coverage.md`
+  on the M05.P5 merge commit; M08.P1.T6 pins that blob ID in the
+  evidence-pack addendum.
