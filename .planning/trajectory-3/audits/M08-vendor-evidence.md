@@ -35,11 +35,12 @@ priority surfaces (per M08 narrative scope):
 Starting counts (measured 2026-04-30):
 
 - `spec/PROTOCOL.md` line count: 2431 lines.
-- `crates/chio-attest-verify/src/` line count: <pinned at P0.T9>.
-- `crates/chio-revocation-oracle/src/` line count: <pinned at P0.T9>.
-- `crates/chio-kernel-core/src/` line count: <pinned at P0.T9>.
-- `spec/security/chio-threat-model.v1.json` row count: <pinned at
-  P0.T9; re-pinned at P2 open after M05 closure>.
+- `crates/chio-attest-verify/src/` line count: 3097 Rust lines.
+- `crates/chio-revocation-oracle/src/` line count: 1025 Rust lines.
+- `crates/chio-kernel-core/src/` line count: 4746 Rust lines.
+- `crates/chio-otel-receipt-exporter/src/` line count: 1463 Rust
+  lines.
+- `spec/security/chio-threat-model.v1.json` row count: 20 threat rows.
 
 Out of scope: trajectory-2 surfaces outside the cemented set; mobile
 attestation (M07 lane); supply-chain (M06 + M09 lanes); HITRUST-scoped
@@ -147,6 +148,24 @@ Mid-P2 status memo recorded for the week-18 checkpoint:
   slip beyond the 25% threshold.
 - Risk row 4: active-review question load is below the orchestrator
   throughput limit and remains green.
+
+### 3c. P2 open count pin
+
+P2 open review-surface pin, measured 2026-05-02 after M05 closure:
+
+| Surface | P2-open count | Command / source |
+|---------|---------------|------------------|
+| `spec/PROTOCOL.md` | 2431 lines | `wc -l spec/PROTOCOL.md` |
+| `spec/security/chio-threat-model.v1.json` | 20 threat rows | JSON `threats` array length |
+| `crates/chio-attest-verify/src/` | 3097 Rust lines | `find ... -name '*.rs' ... wc -l` |
+| `crates/chio-revocation-oracle/src/` | 1025 Rust lines | `find ... -name '*.rs' ... wc -l` |
+| `crates/chio-kernel-core/src/` | 4746 Rust lines | `find ... -name '*.rs' ... wc -l` |
+| `crates/chio-otel-receipt-exporter/src/` | 1463 Rust lines | `find ... -name '*.rs' ... wc -l` |
+
+The P2 open pin freezes the active-review count oracle for P2-P3. M05
+closure has landed, so future protocol or threat-model deltas during
+active review must be tied to a vendor finding or a signed scope
+clarification in Section 3.
 
 ## 4. Findings + remediation log
 
