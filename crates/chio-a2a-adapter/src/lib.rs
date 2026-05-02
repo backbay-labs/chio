@@ -28,6 +28,8 @@ const SSE_CONTENT_TYPE: &str = "text/event-stream";
 const OAUTH_CACHE_SKEW_SECS: u64 = 30;
 const TASK_REGISTRY_VERSION: &str = "chio.a2a-task-registry.v1";
 
+pub mod loaded_weights;
+
 include!("config.rs");
 include!("partner_policy.rs");
 include!("invoke.rs");

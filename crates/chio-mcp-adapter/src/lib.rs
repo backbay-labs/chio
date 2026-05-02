@@ -33,6 +33,7 @@ use tracing::warn;
 pub mod edge {
     pub use chio_mcp_edge::{ChioMcpEdge, McpEdgeConfig, McpExposedTool};
 }
+pub mod loaded_weights;
 pub mod native;
 pub mod transport;
 

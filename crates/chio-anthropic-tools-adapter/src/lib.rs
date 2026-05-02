@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod adapter;
+pub mod loaded_weights;
 pub mod manifest;
 pub mod native;
 pub mod transport;

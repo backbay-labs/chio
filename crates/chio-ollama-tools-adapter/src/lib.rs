@@ -12,6 +12,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod loaded_weights;
 pub mod native;
 pub mod streaming;
 pub mod transport;
