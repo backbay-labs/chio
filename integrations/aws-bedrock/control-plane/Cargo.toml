@@ -11,6 +11,10 @@ publish = false
 [lib]
 name = "chio_bedrock_control_plane"
 
+[[test]]
+name = "post_listing_smoke"
+path = "../tests/post_listing_smoke.rs"
+
 [dependencies]
 aws-sdk-marketplaceentitlement = { workspace = true }
 aws-sdk-marketplacemetering = { workspace = true }

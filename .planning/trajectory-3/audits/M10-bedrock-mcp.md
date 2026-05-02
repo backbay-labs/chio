@@ -162,15 +162,20 @@ AUTONOMOUS-PROMPT.
 
 ## 9. Post-listing smoke test
 
-[TODO M10 milestone agent fill at P4.T5:]
+Smoke gate: `cargo test -p chio-bedrock-control-plane --test
+post_listing_smoke --quiet`.
+
+Evidence commit: P4.T5. The test is offline and models the
+customer-shape path without AWS credentials, using the Quick Launch
+template and the control-plane entitlement and metering helpers.
 
 - Customer-shape onboarding flow exercising:
-  - [ ] CFN Quick Launch template deploys cleanly in a customer
+  - [x] CFN Quick Launch template deploys cleanly in a customer
     account
-  - [ ] `GetEntitlements` returns a valid entitlement token
-  - [ ] First receipt issued under base quota; no overage fired
-  - [ ] Overage receipt fires `MeterUsage` callback
-  - [ ] Customer-visible error envelope on a forced-failure path
+  - [x] `GetEntitlements` returns a valid entitlement token
+  - [x] First receipt issued under base quota; no overage fired
+  - [x] Overage receipt fires `MeterUsage` callback
+  - [x] Customer-visible error envelope on a forced-failure path
     references the `urn:chio:error:*` registry
 
 ## 10. Cross-references
