@@ -36,3 +36,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #472 (`82b3472c9ace0fee90e4d0dc4f72ffd599a3fd5f`): M05.P3 dispatch_allow_dhat placeholder eviction; skipped hosted CI wait for real allow dispatch allocation probe, nonzero dhat budgets, audit measurement table, ticket stamp, and local smoke evidence.
 - PR #473 (`58dc936f61715026e85079dfcf13b0c324047f8b`): M05.P4 coverage gate flip; skipped hosted CI wait for fail-closed threat coverage script, state-matrix shell test, threat model schema update, advisory deferrals, and conformance threat bodies.
 - PR #474 (`8e2c515621ade9286b0ddda7c4a9039cc72089ec`): M05.P5 closeout and M08 handoff; skipped hosted CI wait for regenerated threat coverage docs, zero-partial audit closeout, post-flip workflow URL capture, and ticket stamps.
+- PR #475 (`53c0fca5471778c769a8eec59185e624b68b0e19`): W1 closeout checkpoint; skipped hosted CI wait for regenerated trajectory-3 manifest, execution-state W2 advancement, and M02.P4 stamp correction.
