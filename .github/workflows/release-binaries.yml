@@ -2,7 +2,7 @@ name: Release Binaries
 
 # A successful run of this workflow triggers .github/workflows/slsa.yml
 # (workflow_run), which downloads the chio-<target> archive artifacts
-# and emits a SLSA L2 provenance attestation per release.
+# and emits a SLSA L3 provenance attestation per release.
 
 on:
   push:
@@ -704,6 +704,175 @@ jobs:
             release/*.pem
             release/SHA256SUMS
             release/chio.rb
+
+  checksum-index:
+    # Publishes an in-repo checksum index for external reviewers after
+    # release artifacts are attached. The index mirrors SHA256SUMS, adds
+    # source and SLSA provenance headers, signs the text file with the
+    # same keyless cosign identity used for release archives, and opens
+    # a PR against main so the evidence path is reviewed before it
+    # becomes part of the repository.
+    name: Publish checksum index PR
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - name: Download release build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Resolve release metadata
+        id: checksum_release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t metadata_files < <(find artifacts -type f -name release-metadata.json | sort)
+          if [[ "${#metadata_files[@]}" -eq 0 ]]; then
+            echo "::error::release-binaries artifacts did not include release-metadata.json" >&2
+            exit 1
+          fi
+          release_tag=""
+          source_ref=""
+          source_sha=""
+          for metadata_file in "${metadata_files[@]}"; do
+            current_tag="$(jq -r '.release_tag // empty' "${metadata_file}")"
+            current_ref="$(jq -r '.source_ref // empty' "${metadata_file}")"
+            current_sha="$(jq -r '.source_sha // empty' "${metadata_file}")"
+            if [[ -z "${current_tag}" || -z "${current_ref}" || -z "${current_sha}" ]]; then
+              echo "::error::${metadata_file} is missing release_tag, source_ref, or source_sha" >&2
+              exit 1
+            fi
+            if [[ "${current_sha}" != "${WORKFLOW_SHA}" ]]; then
+              echo "::error::${metadata_file} source_sha ${current_sha} does not match workflow SHA ${WORKFLOW_SHA}" >&2
+              exit 1
+            fi
+            if [[ -z "${release_tag}" ]]; then
+              release_tag="${current_tag}"
+              source_ref="${current_ref}"
+              source_sha="${current_sha}"
+            elif [[ "${release_tag}" != "${current_tag}" || "${source_ref}" != "${current_ref}" || "${source_sha}" != "${current_sha}" ]]; then
+              echo "::error::release metadata differs across matrix artifacts" >&2
+              exit 1
+            fi
+          done
+          if [[ "${{ github.event_name }}" = "workflow_dispatch" && "${release_tag}" != "${INPUT_TAG}" ]]; then
+            echo "::error::metadata tag ${release_tag} does not match dispatch input ${INPUT_TAG}" >&2
+            exit 1
+          fi
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?'
+          if ! [[ "${release_tag}" =~ ^v${semver_re}$ ]]; then
+            echo "::error::release tag '${release_tag}' does not match v<semver>" >&2
+            exit 1
+          fi
+          if [[ "${source_ref}" != "refs/tags/${release_tag}" ]]; then
+            echo "::error::release metadata source_ref '${source_ref}' is not refs/tags/${release_tag}" >&2
+            exit 1
+          fi
+          if ! [[ "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::release metadata source_sha '${source_sha}' is not a 40-character git SHA" >&2
+            exit 1
+          fi
+          {
+            echo "tag=${release_tag}"
+            echo "version=${release_tag#v}"
+            echo "source_sha=${source_sha}"
+            echo "source_ref=${source_ref}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Render checksum index
+        shell: bash
+        env:
+          CHIO_RELEASE_TAG: ${{ steps.checksum_release.outputs.tag }}
+          CHIO_VERSION: ${{ steps.checksum_release.outputs.version }}
+          CHIO_SOURCE_REF: ${{ steps.checksum_release.outputs.source_ref }}
+          CHIO_SOURCE_SHA: ${{ steps.checksum_release.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p supply-chain/checksums
+          mapfile -t checksum_files < <(find artifacts -type f -name "*.sha256" | sort)
+          if [[ "${#checksum_files[@]}" -eq 0 ]]; then
+            echo "::error::no release archive checksum files found in artifacts" >&2
+            exit 1
+          fi
+          # cat writes supply-chain/checksums/v<tag>.txt for reviewers.
+          cat > "supply-chain/checksums/v${CHIO_VERSION}.txt" <<INDEX
+          # chio checksum index ${CHIO_RELEASE_TAG}
+          # source_ref ${CHIO_SOURCE_REF}
+          # source_sha ${CHIO_SOURCE_SHA}
+          # slsa_provenance chio-${CHIO_SOURCE_SHA}.intoto.jsonl
+          # rekor_witness search https://search.sigstore.dev for the SLSA intoto payload after slsa.yml publishes provenance
+          # rekor_tlog_scope SLSA provenance plus checksum-index cosign signature
+          # reproducible_scope linux x86_64 only for trajectory-3 M03
+          # format: sha256 two-space filename
+          INDEX
+          for checksum_file in "${checksum_files[@]}"; do
+            awk 'NF >= 2 { print $1 "  " $2 }' "${checksum_file}" | while read -r digest filename; do
+              if ! [[ "${digest}" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "::error::invalid digest '${digest}' in ${checksum_file}" >&2
+                exit 1
+              fi
+              printf '%s  %s\n' "${digest}" "$(basename "${filename}")"
+            done
+          done | sort -u >> "supply-chain/checksums/v${CHIO_VERSION}.txt"
+          test -s "supply-chain/checksums/v${CHIO_VERSION}.txt"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409
+        with:
+          cosign-release: v2.4.1
+
+      - name: Cosign sign-blob checksum index
+        shell: bash
+        env:
+          CHIO_VERSION: ${{ steps.checksum_release.outputs.version }}
+        run: |
+          set -euo pipefail
+          index="supply-chain/checksums/v${CHIO_VERSION}.txt"
+          sig="supply-chain/checksums/v${CHIO_VERSION}.txt.sig"
+          pem="supply-chain/checksums/v${CHIO_VERSION}.txt.pem"
+          cosign sign-blob --yes \
+            --output-signature "${sig}" \
+            --output-certificate "${pem}" \
+            "${index}"
+          if [ ! -s "${sig}" ] || [ ! -s "${pem}" ]; then
+            echo "::error::cosign sign-blob did not produce non-empty ${sig} and ${pem}" >&2
+            exit 1
+          fi
+
+      - name: Open checksum index PR
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c
+        with:
+          base: main
+          branch: chore/checksum-index-${{ steps.checksum_release.outputs.tag }}
+          title: "chore(release): publish ${{ steps.checksum_release.outputs.tag }} checksum index"
+          body: |
+            Auto-opened by `release-binaries.yml::checksum-index` after release ${{ steps.checksum_release.outputs.tag }}.
+
+            This PR publishes the public checksum index under
+            `supply-chain/checksums/`, including the cosign
+            `verify-blob` signature pair. The text file cites the
+            SLSA provenance asset name and the Rekor witness lookup
+            path so M08 and M09 reviewers can cross-check the release
+            bytes without a privileged GitHub session.
+
+            Security review requested (M03 trust-boundary).
+          commit-message: "chore(release): publish ${{ steps.checksum_release.outputs.tag }} checksum index"
 
   mutants-gate-flip:
     # Auto-flip the cargo-mutants gate from advisory to blocking on the first
