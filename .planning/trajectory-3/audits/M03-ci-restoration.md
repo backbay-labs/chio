@@ -57,16 +57,55 @@ at audit-doc open.
 
 ## 3. Reproducible-build evidence
 
-[TODO M03 milestone agent fill at P4 close:]
+P4 establishes the public evidence path. The first completed SLSA
+probe run after this PR lands is the certification event for the
+`v0.0.0-m03-probe` tag; the v3.18 release run replaces the probe
+values at M03.P5.
 
 - Independent third-party rebuilder identity (per D13):
 - Rebuilder's matched hash:
 - Date received:
 - Audit-trail linkage:
-- Builder A run URL:
-- Builder B run URL:
-- `reproducibility-gate` run URL:
+- Builder A run URL: deferred to P5 release tag
+- Builder B run URL: deferred to P5 release tag
+- `reproducibility-gate` run URL: deferred to P5 release tag
 - `supply-chain/checksums/v3.18.txt` cosign signature + Rekor UUID:
+  deferred to P5 release tag
+
+## 3c. SLSA L3 probe and checksum-index evidence (P4)
+
+P4 probe target:
+
+- Probe tag: `v0.0.0-m03-probe`
+- Source workflow: `.github/workflows/release-binaries.yml`
+- SLSA workflow: `.github/workflows/slsa.yml`
+- Expected provenance asset:
+  `chio-<source_sha>.intoto.jsonl`
+- Rekor witness path:
+  `https://search.sigstore.dev` lookup for the SLSA intoto payload
+  after `slsa.yml` publishes provenance, plus the checksum-index
+  `cosign sign-blob` tlog entry for `supply-chain/checksums/v<tag>.txt`.
+
+Existing baseline before P4:
+
+| Evidence item | Observation |
+|---------------|-------------|
+| Last successful `release-binaries.yml` run | `https://github.com/bb-connor/arc/actions/runs/24805546785` for `v0.1.0` |
+| `v0.1.0` release assets | Archives, per-archive `.sha256`, `SHA256SUMS`, and `chio.rb`; no `intoto.jsonl` asset |
+| `slsa.yml` historical runs | none reported by `gh run list --workflow slsa.yml --limit 10` |
+| Gap closed by P4 | release lane now creates an in-repo checksum index PR and signs `v<tag>.txt`; SLSA probe tag supplies the first end-to-end generator exercise |
+
+Public checksum index contract:
+
+- Path: `supply-chain/checksums/v<tag>.txt`
+- Format: comment header followed by `<sha256>  <filename>` rows
+- Signature: `supply-chain/checksums/v<tag>.txt.sig`
+- Certificate: `supply-chain/checksums/v<tag>.txt.pem`
+- Reviewer commands: `sha256sum --check v<tag>.txt` and
+  `cosign verify-blob --certificate v<tag>.txt.pem --signature
+  v<tag>.txt.sig v<tag>.txt`
+- Documentation: `docs/release-evidence.md` and
+  `supply-chain/checksums/README.md`
 
 ## 3a. Hosted CI liveness evidence (P1)
 
