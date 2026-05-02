@@ -131,6 +131,23 @@ pressure to change the surface is routed through the halt-12 or halt-13
 process, or through a finding-linked remediation branch after vendor
 classification.
 
+### 3b. Mid-P2 status memo
+
+Mid-P2 status memo recorded for the week-18 checkpoint:
+
+- Question backlog: 0 unanswered vendor questions older than 2 business
+  days; three P2 questions answered and linked in Section 3.
+- Throughput check: cadence remains inside the expected 5-15 questions
+  per week band when artifact requests are routed through the standard
+  ticket pipeline.
+- Scope stability: no reviewer request has widened the cemented v3.0
+  review surface or asked for trajectory-4 work.
+- Calendar health: vendor delivery remains on the week-22 P2-close
+  trajectory. Halt 13 has not fired because there is no vendor calendar
+  slip beyond the 25% threshold.
+- Risk row 4: active-review question load is below the orchestrator
+  throughput limit and remains green.
+
 ## 4. Findings + remediation log
 
 [TODO M08 milestone agent fill at P3-P4. Severity scheme: Critical
