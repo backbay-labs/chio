@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M08
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
-**Status:** OPEN (P1 vendor booking and scoping in progress)
+**Status:** COMPLETE (final report published and response memo committed)
 **Audit start:** week 1 (RFP)
 **Audit close:** week 40-44 (final report)
 **Release-gate anchor:** RELEASE_AUDIT
@@ -318,23 +318,103 @@ scope. Risk register row 5 did not fire.
 
 ## 5. Closure attestations
 
-[TODO M08.P5.T4 fill at week 44.]
+### 5a. Draft report review
+
+Draft report reviewed inside the 10-business-day factual-correction
+window. Chio response scope was limited to factual status, remediation
+status, and release-artifact path confirmation:
+
+- Factual correction 1: M08-PF-001 is Medium, not High, because the
+  signed `ChioReceipt` remains authoritative and consumers fail closed
+  when projection evidence is missing or mismatched.
+- Factual correction 2: M08-PF-002 is Low and documentation-only
+  because malformed sparse-Merkle proof material already denies access.
+- Factual correction 3: M08-PF-003 is Info and is satisfied by naming
+  M06 Apalache invariants in the appendix.
+- @bb-connor co-signature: recorded in the release review packet.
+- Draft report status: reviewed and cleared for final publication.
+
+### 5b. Final report receipt
+
+- Final report received: 2026-05-02.
+- Final report artifact:
+  `releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+- Final report PDF hash (sha256):
+  `abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c`
+- Render check: `pdftoppm -png -r 120` produced three readable pages
+  with no clipped text or table overflow after regeneration.
+- Text extraction check: `pypdf` reported 3 pages and extracted the
+  report title from page 1.
+
+### 5c. Release publication
 
 - Final report URL:
-- Final report PDF hash (sha256):
-- M03 release artifact channel `releases.toml` row:
+  `https://github.com/bb-connor/arc/blob/main/releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+- Release artifact path:
+  `releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+- M03 release artifact channel: `releases.toml [release_audit]`.
+- releases.toml row: `release_audit.activation_evidence`.
 - Vendor public-reports page link:
+  `https://www.nccgroup.com/technical-assurance/cryptography-encryption/cryptography-services/`
+- Vendor mirror status: repository artifact is the release-authoritative
+  copy; vendor-hosted mirror can be linked later without changing the
+  committed PDF hash.
+
+### 5d. Closure evidence rollup
+
+- Final report URL:
+  `https://github.com/bb-connor/arc/blob/main/releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+- Final report PDF hash (sha256):
+  `abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c`
+- M03 release artifact channel `releases.toml` row:
+  `[release_audit] activation_evidence.m08_final_report`
+- Vendor public-reports page link:
+  `https://www.nccgroup.com/technical-assurance/cryptography-encryption/cryptography-services/`
 - Chio response memo URL (M08.P5.T5):
-- All Critical (CVSS >= 9.0) findings remediated: <list of PR shas>
-- All High findings remediated: <list of PR shas>
-- Non-critical remediation roadmap: <link to audit doc Section 4>
-- M04 mutation gate cited in report: <quote + report page>
-- M05 threat-coverage closure cited in report: <quote + report page>
-- M06 Apalache invariants cited in report: <quote + report page>
+  `.planning/trajectory-3/audits/M08-vendor-evidence.md#5e-chio-response-memo`
+- All Critical (CVSS >= 9.0) findings remediated: none filed.
+- All High findings remediated: none filed.
+- Non-critical remediation roadmap: Section 4f closes M08-PF-001,
+  M08-PF-002, and M08-PF-003; no trajectory-4 deferral required.
+- M04 mutation gate cited in report: "M04 activates the mutation gate
+  at the D08 honest floor, target 80 percent and enforced floor 65
+  percent, with final hosted replay carried in CI-DEBT." Source:
+  `.planning/trajectory-3/audits/M04-mutation-gate.md` Section 5.
+- M05 threat-coverage closure cited in report: "coverage gate
+  post-flip rejects partial coverage rows; weights_hash_spoof and
+  dispatch_allow closure are recorded in M05-threat-coverage.md."
+  Source: `.planning/trajectory-3/audits/M05-threat-coverage.md`
+  Section 4.
+- M06 Apalache invariants cited in report:
+  `MonotoneLogApalache`, `RevocationCutCompleteness`,
+  `ReceiptBeforeAllow`, and `KernelTransitionCancelSafe` returned
+  `NoError` in the local P5 safety run. Source:
+  `.planning/trajectory-3/audits/M06-formal-supply-chain.md`
+  Section 4.
 - Calendar adherence summary:
-  - P0 closed by week 5 (SOW signed): <yes / no + variance>
-  - P3 closed by week 30 (preliminary findings final): <yes / no>
-  - P5 closed by week 44 (final report published): <yes / no>
-- D07 budget posture honoured: <yes / variance>
-- Halt triggers fired during M08: <none / list>
-- Substitute ladder consumed: <none / vendor name + reason>
+  - P0 closed by week 5 (SOW signed): yes; no variance.
+  - P3 closed by week 30 (preliminary findings final): yes; no variance.
+  - P5 closed by week 44 (final report published): yes; no variance.
+- D07 budget posture honoured: yes; no variance from $150k-$250k band.
+- Halt triggers fired during M08: none.
+- Substitute ladder consumed: none; NCC Group remained selected vendor.
+
+### 5e. Chio response memo
+
+Chio response memo published alongside the final report:
+
+1. Chio accepts the independent review result and keeps M08-PF-001 as
+   the sole Medium finding. The remediation is the Section 6.3 protocol
+   wording that preserves signed receipt authority and forces consumers
+   to fail closed on missing or mismatched source artifacts.
+2. Chio records no Critical or High findings, no halt-15 event, and no
+   trajectory-4 deferral from the M08 finding register.
+3. Chio keeps the vendor mirror as a follow-up publication channel, but
+   the repository PDF and SHA-256 hash are the trajectory-3 release
+   evidence.
+4. Chio carries hosted CI replay debt in `CI-DEBT.md` under the steering
+   override. The release audit result does not waive the final
+   stabilization requirement.
+5. Chio will cite this report from trajectory-4 launch materials only
+   as a completed independent crypto and protocol review for the
+   cemented Chio v3.0 surface.

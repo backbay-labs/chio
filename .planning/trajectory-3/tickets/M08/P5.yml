@@ -9,7 +9,7 @@
   milestone: M08
   phase: 5
   title: Draft report review (10-business-day factual-correction window)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -27,16 +27,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 20175e039ba4782804257638f61f0cbcf6dd1464
+  merged_sha: 20175e039ba4782804257638f61f0cbcf6dd1464
+  opened_ts: '2026-05-02T18:28:36Z'
+  merged_ts: '2026-05-02T18:28:36Z'
 
 - id: M08.P5.T2
   milestone: M08
   phase: 5
   title: Final report receipt + sha256 hash committed to audit doc Section 5
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -52,16 +52,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 69951488e096e08160cb21810cc19060f39e4c3f
+  merged_sha: 69951488e096e08160cb21810cc19060f39e4c3f
+  opened_ts: '2026-05-02T18:28:36Z'
+  merged_ts: '2026-05-02T18:28:36Z'
 
 - id: M08.P5.T3
   milestone: M08
   phase: 5
   title: Publish final report via M03 release artifact channel (releases.toml row + PDF)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - releases.toml
@@ -81,16 +81,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: fcdc95adc4cff5e88a7392205685c28af4c75ddb
+  merged_sha: fcdc95adc4cff5e88a7392205685c28af4c75ddb
+  opened_ts: '2026-05-02T18:28:36Z'
+  merged_ts: '2026-05-02T18:28:36Z'
 
 - id: M08.P5.T4
   milestone: M08
   phase: 5
   title: Commit remediation log + populate audit doc Section 5 closure attestations
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -106,16 +106,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: fc542a47c96b7439d8624811cda605dd6d09f431
+  merged_sha: fc542a47c96b7439d8624811cda605dd6d09f431
+  opened_ts: '2026-05-02T18:28:36Z'
+  merged_ts: '2026-05-02T18:28:36Z'
 
 - id: M08.P5.T5
   milestone: M08
   phase: 5
   title: Author Chio response memo published alongside vendor report (~2-day; M08 close memo)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -135,7 +135,7 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 91df9c8656b98f43b212210fcfcd2c63ee90276d
+  merged_sha: 91df9c8656b98f43b212210fcfcd2c63ee90276d
+  opened_ts: '2026-05-02T18:28:36Z'
+  merged_ts: '2026-05-02T18:28:36Z'

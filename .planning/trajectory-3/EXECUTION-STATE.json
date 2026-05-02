@@ -54,8 +54,8 @@
       "trust_boundary": true
     },
     "M08": {
-      "status": "vendor_wait",
-      "phase": "P0_merged",
+      "status": "complete",
+      "phase": "P5_merged",
       "owner_branch": null,
       "trust_boundary": true,
       "lane": "vendor"
