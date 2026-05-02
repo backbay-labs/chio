@@ -591,6 +591,16 @@ adapter identity, evidence record identity, observed units, billed amount, and
 operator reconciliation state. That sidecar is queryable and exportable, but
 it is not merged back into the signed receipt JSON.
 
+Exporter, report, and OpenTelemetry projections are not authoritative receipt
+truth unless they embed and verify the full signed `ChioReceipt` envelope.
+Projection rows may carry `receipt_id`, derived status, reconciliation state,
+or selected metadata for operators, but those fields are telemetry views over
+signed receipt truth, not replacement receipts. A consumer that needs
+authorization, billing, lineage, or audit authority must verify the signed
+receipt or a signed receipt-lineage statement. If the signed source artifact is
+missing, stale, malformed, or mismatched with the projection, the consumer must
+fail closed and treat the projection as non-authoritative.
+
 ### 6.3.1 Provenance Graph Artifacts
 
 The receipt plane now defines one provenance graph substrate even when different

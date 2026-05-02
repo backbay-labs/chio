@@ -206,9 +206,28 @@ Preliminary findings status:
 
 | Finding ID | Severity | Title | Surface | Status | PR cross-ref | Vendor sign-off receipt |
 |------------|----------|-------|---------|--------|--------------|-------------------------|
-| M08-PF-001 | Medium | Exporter projection authority ambiguity | `spec/PROTOCOL.md` section 6; `chio-otel-receipt-exporter` | accepted for P4 wording remediation; no fail-open behavior found | P4 pending | pending P4 vendor review |
-| M08-PF-002 | Low | Revocation replay fixture index needs malformed-proof coverage note | `chio-revocation-oracle` fixtures and M05 threat-row handoff | documentation cleanup queued for P4; oracle behavior denies malformed proofs | P4 pending | not required for Low |
+| M08-PF-001 | Medium | Exporter projection authority ambiguity | `spec/PROTOCOL.md` section 6; `chio-otel-receipt-exporter` | remediated in P4 by declaring exporter, report, and OpenTelemetry projections non-authoritative unless they embed and verify the signed receipt | M08.P4.T1 | pending P4 vendor review |
+| M08-PF-002 | Low | Revocation replay fixture index needs malformed-proof coverage note | `chio-revocation-oracle` fixtures and M05 threat-row handoff | documented in P4 remediation fan-out; oracle behavior denies malformed proofs | M08.P4.T1 | not required for Low |
 | M08-PF-003 | Info | Capability attenuation proof should cite M06 invariant by name in report appendix | `spec/PROTOCOL.md` section 5; M06 Apalache handoff | factual note accepted; no code or protocol change required | none | not required for Info |
+
+### 4c. P4 remediation fan-out
+
+M08.P4.T1 fan-out result:
+
+- Findings above Medium: none. No Critical or High remediation branch
+  was required, and halt 15 remained inactive.
+- Medium remediation shipped for M08-PF-001 in `spec/PROTOCOL.md`
+  section 6.3 by marking exporter, report, and OpenTelemetry
+  projections as non-authoritative unless they embed and verify the
+  full signed receipt.
+- Low remediation for M08-PF-002 is documentation-only because the
+  revocation oracle already denies malformed sparse-Merkle proof
+  material. The final report appendix will cite the malformed-proof
+  behavior and the M05 threat-row handoff.
+- Info finding M08-PF-003 requires no remediation PR; the final report
+  appendix will cite the M06 invariant by name.
+- Cemented-surface freeze relaxation: limited to the finding-linked
+  wording patch above; no protocol semantics or wire fields changed.
 
 ### 4a. Halt-15 (Critical CVE) hot-fix template
 
