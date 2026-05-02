@@ -262,7 +262,9 @@ P4 draft report received: 2026-05-02
 P4 draft report hash:
 `6834849e9e4d13d58073a0737e9c630f2ac8d0cf4cfc0eae7c82a3e8fe557907`
 Draft report path: `compliance/hitrust/draft-report/draft-report.md`
-Findings dispute / clarification round: <Y/N + summary>
+Findings dispute / clarification round: no formal dispute required;
+clarification round completed at
+`compliance/hitrust/draft-report/dispute-log.md`.
 
 ## 6. Closure attestations
 
