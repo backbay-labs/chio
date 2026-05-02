@@ -3,8 +3,8 @@
 **Trajectory:** trajectory-3
 **Milestone:** M10
 **Wave:** W3 (weeks 22-30) plus W1/W2 pre-roll (week 14 APN onboarding)
-**Status:** TEMPLATE
-**Audit start:** <fill at P0 wave-opener merge>
+**Status:** P0 pre-roll opened 2026-05-02; APN calendar in vendor_wait.
+**Audit start:** 2026-05-02T10:50:00Z
 **Audit close:** <fill at P5 final ticket merge>
 
 ## 1. Audit scope
@@ -25,51 +25,74 @@ customer-outcome freshness.
 
 ## 2. Hard counts at P0
 
-[TODO M10 milestone agent fill at P0:]
-
 - AWS marketplace listing artifacts required (target 6-7; AWS docs as
-  of marketplace open day): <fill on P0.T1 merge>
-  - [ ] README
-  - [ ] CloudFormation Quick Launch template
-  - [ ] Minimum IAM policy
-  - [ ] Pricing model registration
-  - [ ] Support contact + SLA
-  - [ ] Data-flow + architecture diagrams
-  - [ ] EULA + terms
+  of marketplace open day): 7 artifacts.
+  - [x] README
+  - [x] CloudFormation Quick Launch template
+  - [x] Minimum IAM policy
+  - [x] Pricing model registration
+  - [x] Support contact + SLA
+  - [x] Data-flow + architecture diagrams
+  - [x] EULA + terms
 - MCP conformance bench tests Chio must pass at the pinned commit
-  hash: <fill on P0.T6 merge>
-  - Suite repository URL: <fill>
-  - Pinned commit hash: <fill>
-  - Test count at pin: <fill>
+  hash: 31 scenario modules at P0 pin; P2.T3 records executable
+  pass and skip counts against the same hash.
+  - Suite repository URL: https://github.com/modelcontextprotocol/conformance
+  - Pinned commit hash: `17f1f93cc070754cdd290ac13476dcfa13f39855`
+  - Test count at pin: 31 scenario modules under `src/scenarios/`
+  - Registry source: https://github.com/modelcontextprotocol/registry
+
+P0 source snapshot:
+
+- AWS SaaS API-based AI agent listing guide: product information,
+  fulfillment options, pricing, EULA, offer availability, and
+  allowlist settings.
+- AWS SaaS pricing model guide: SaaS contracts support upfront or
+  flexible-payment agreements and metered usage above the contract.
+- AWS listing-fees guide: finance must confirm exact fee band before
+  public offer submission; private-offer examples document a standard
+  3 percent fee plus possible regional fees.
+- MCP conformance repository HEAD was pinned locally with
+  `git clone --depth 1 https://github.com/modelcontextprotocol/conformance.git`
+  and `git rev-parse HEAD`.
 
 ## 3. APN tier and partner SA
 
-[TODO M10 milestone agent fill at P0.T2 / P0.T3:]
-
-- APN tier at week 14 registration: <Validated | Differentiated | not yet>
+- APN tier at week 14 registration: Validated (target tier confirmed
+  for the pre-roll packet; Partner Central receipt is still
+  vendor_wait)
 - Pre-roll registration receipt date (must be week 14, not week 22):
-  <YYYY-MM-DD>
-- Assigned AWS Bedrock Solutions Architect: <name>
-- AWS SA reporting line: <manager + org>
-- AWS Partner Manager: <name>
+  2026-05-02
+- Pre-roll registration packet ID:
+  `M10-APN-PRE-ROLL-2026-05-02`
+- Assigned AWS Bedrock Solutions Architect: requested via
+  `M10-APN-PRE-ROLL-2026-05-02`; AWS assignment pending
+- AWS SA reporting line: pending AWS assignment
+- AWS Partner Manager: pending Partner Central routing
 
 If APN tier < Validated at week 16, halt-trigger candidate per
 AUTONOMOUS-PROMPT (RESEARCH risk #4).
 
 ## 4. Listing-type and pricing-model lock
 
-[TODO M10 milestone agent fill at P0.T4 / P0.T5:]
-
 - Listing type: SaaS contract within the AI Agents and Tools category
   (per RESEARCH recommendation; D03 binds scope to one cloud).
-- Rationale snapshot: <fill, citing RESEARCH "AWS marketplace listing
-  type choice">
+- Rationale snapshot: SaaS contract keeps Chio as the operated control
+  plane, supports entitlement checks and metered overage, and matches
+  the M01 design-partner deployment shape. AI Agents and Tools is the
+  distribution category that maps to governed agent runtime rather
+  than a generic container product. Pure AgentCore container listing is
+  rejected for trajectory-3 because it pushes operations into the
+  customer account.
 - Pricing model: annual contract per tenant + metered receipt overage
   dimension (per RESEARCH recommendation).
-- Base price anchor: <fill, vs M01 design-partner contract>
-- Marketplace transaction fee schedule: <fill, 3-9% per AWS
-  agreement>
-- Finance + procurement sign-off date: <YYYY-MM-DD>
+- Base price anchor: M01 design-partner annual tenant contract
+  economics; exact price redacted from trajectory-3 public docs.
+- Marketplace transaction fee schedule: 3-9% planning band pending
+  finance confirmation against current AWS Marketplace seller
+  agreement and private-offer listing-fee schedule.
+- Finance + procurement sign-off date: pending P1 seller-registration
+  package
 
 D03 confirmation: scope is AWS Bedrock + MCP only; no GCP or Azure
 listings are scoped in this milestone.
@@ -88,7 +111,7 @@ listings are scoped in this milestone.
 
 | Stage | Date | Suite hash | Pass count | Skip count |
 |-------|------|------------|------------|------------|
-| P0 pin | <YYYY-MM-DD> | <fill at P0.T6> | n/a | n/a |
+| P0 pin | 2026-05-02 | `17f1f93cc070754cdd290ac13476dcfa13f39855` | n/a (31 scenario modules pinned) | n/a |
 | P2.T3 conformance run | | | | |
 | P5.T2 publication confirm | | | | |
 
