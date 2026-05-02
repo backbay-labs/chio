@@ -11,7 +11,7 @@
   milestone: M09
   phase: 4
   title: Sample testing support - assessor pulls receipts, audit-log, runbook, narrative spot checks
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/sample-testing/sample-log.md
@@ -27,16 +27,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9df64f24d55572c60ceb9a82c0f714f4d233d58f
+  merged_sha: 9df64f24d55572c60ceb9a82c0f714f4d233d58f
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T2
   milestone: M09
   phase: 4
   title: Coordinate operator interviews with design-partner ops review participation
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/sample-testing/operator-interviews.md
@@ -52,16 +52,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b194a0a09ed1d0a92505370153671587bf4e4be0
+  merged_sha: b194a0a09ed1d0a92505370153671587bf4e4be0
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T3
   milestone: M09
   phase: 4
   title: Follow-up evidence request week 25 and re-run evidence-pack with updated parameters
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/evidence-bundles/
@@ -78,16 +78,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b72c10ac737642ca1d62847f5a783bd129db0550
+  merged_sha: b72c10ac737642ca1d62847f5a783bd129db0550
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T4
   milestone: M09
   phase: 4
   title: Follow-up evidence request week 27 and re-run evidence-pack
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/evidence-bundles/
@@ -103,16 +103,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a7ed859f77fccf2bfa525fd9fee8db12a2e2f018
+  merged_sha: a7ed859f77fccf2bfa525fd9fee8db12a2e2f018
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T5
   milestone: M09
   phase: 4
   title: Follow-up evidence request week 28 and re-run evidence-pack
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/evidence-bundles/
@@ -128,16 +128,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b6d35c6c347bbf999d77d8b3430d5a4ceaa89a62
+  merged_sha: b6d35c6c347bbf999d77d8b3430d5a4ceaa89a62
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T6
   milestone: M09
   phase: 4
   title: Follow-up evidence request week 30 and re-run evidence-pack
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/evidence-bundles/
@@ -153,16 +153,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 68114c0a78be3248274752745015b4c9b1f13cce
+  merged_sha: 68114c0a78be3248274752745015b4c9b1f13cce
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T7
   milestone: M09
   phase: 4
   title: Follow-up evidence request week 31 and re-run evidence-pack
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/evidence-bundles/
@@ -178,16 +178,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 39bbb682471dbd445ee9e68b1a4da8e892f34277
+  merged_sha: 39bbb682471dbd445ee9e68b1a4da8e892f34277
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T8
   milestone: M09
   phase: 4
   title: Receive assessor draft report end of week 32 and record findings hash
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/draft-report/draft-report.md
@@ -204,16 +204,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a144568abfe272945eedd774dacb3bf80e08f24f
+  merged_sha: a144568abfe272945eedd774dacb3bf80e08f24f
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T9
   milestone: M09
   phase: 4
   title: Findings dispute and clarification round if any Sev-1 carry-over
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - compliance/hitrust/draft-report/dispute-log.md
@@ -230,16 +230,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e759b0020907f51b23f4db2363c8caa8dbf852d6
+  merged_sha: e759b0020907f51b23f4db2363c8caa8dbf852d6
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
 
 - id: M09.P4.T10
   milestone: M09
   phase: 4
   title: Audit-doc update with draft report hash, finding log, remediation cross-references
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -254,7 +254,7 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 19ebdf3fe3a0d86f56853820e86cf802ffdb4e68
+  merged_sha: 19ebdf3fe3a0d86f56853820e86cf802ffdb4e68
+  opened_ts: "2026-05-02T19:18:18Z"
+  merged_ts: "2026-05-02T19:18:18Z"
