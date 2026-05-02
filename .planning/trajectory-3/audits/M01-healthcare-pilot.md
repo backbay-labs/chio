@@ -196,10 +196,16 @@ classification per P1.T3.
   backpressure handling only. M04 priority crates remain
   `chio-attest-verify`, `chio-kernel`, and `chio-siem`; no new
   P0/P1 path was discovered by M01 observation.
-- **Bounded-profile-hold attestation (P4.T6):** "30-day observation
-  confirms trust-control single-writer, single-node hosted auth,
-  single-node atomic monetary budgets, and signed local audit
-  evidence held under design-partner production load."
+- **Bounded-profile-hold attestation (P4.T6):** 30-day observation
+  confirms the bounded profile held under design-partner production
+  load. Trust-control remained single-writer with deterministic
+  leader-local repair only. Hosted auth stayed single-node with
+  sender-constrained tokens where available and compatibility bearer
+  paths documented as compatibility-only. Monetary budget enforcement
+  stayed single-node atomic on SQLite. Receipts and checkpoints
+  remained signed local audit evidence with exportable inclusion-proof
+  material, not public transparency-log semantics. MTTR evidence is
+  bounded to the single P2 receipt-export queue delay: 18 minutes.
 
 ## 10. Closure attestations
 
