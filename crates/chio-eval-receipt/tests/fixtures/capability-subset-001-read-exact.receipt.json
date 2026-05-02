@@ -1,0 +1,9 @@
+{
+  "receipt_id": "receipt-capability-subset-001-read-exact",
+  "scenario_id": "capability-subset-001-read-exact",
+  "category": "capability_subset",
+  "verdict": "allow",
+  "reason_code": "urn:chio:error:none",
+  "kernel_key": "p2-fixture-kernel",
+  "signature": "p2-fixture-signature"
+}
