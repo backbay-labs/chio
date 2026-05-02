@@ -221,8 +221,11 @@ classification per P1.T3.
   source path `docs/operator-runbook/` contains the six core files
   plus `onboarding.md`, `topology.md`, `quota.md`, and
   `phi-policy.md` (P5.T3).
-- Log-export schema v1 path: `spec/audit-log/export-schema.v1.json`
-  (P5.T4)
+- Log-export schema v1 path:
+  `spec/audit-log/export-schema.v1.json`
+  (`sha256:dca421ba0ac9da829ff3c6e63c19303f1f34527a58c8bed01880f65c99e79979`);
+  consumed by M09 HITRUST evidence and M07 mobile handoff as the
+  frozen schema v1 path (P5.T4).
 - Both audit-handoff freezes closed at M01.P5.T5:
   `m01-m07-audit-handoff` and `m01-m09-audit-handoff`.
 
