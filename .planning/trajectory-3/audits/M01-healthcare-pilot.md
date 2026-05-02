@@ -55,7 +55,7 @@ discrete customer or ops-team interaction.]
 | 2026-05-02 | Tenant-onboarding rehearsal completed in zero-PHI shadow mode; rehearsal log recorded under section 7 | Design-partner ops team + Chio ops | M01.P2.T5 |
 | 2026-05-02 | Schema-negotiation receipt: design-partner SOC accepted `spec/audit-log/export-schema.v1.json` v1 with OCSF JSON canonical export and CEF text export | Design-partner SOC team + Chio ops | M01.P3.T5 |
 | 2026-05-09 | Week 1 incident review completed; PHI-leak audit row passed with no raw `action.parameters`, patient identifiers, or unsanitized guard evidence in sampled receipts | Design-partner ops team + Chio ops | M01.P4.T1 |
-| | Week 2 incident review | Design-partner ops team | M01.P4.T2 |
+| 2026-05-16 | Week 2 incident review completed; receipt-export queue delay opened as P2 and closed after exporter batch-size reduction, PHI-leak row remained passing | Design-partner ops team + Chio ops | M01.P4.T2 |
 | | Week 3 incident review | Design-partner ops team | M01.P4.T3 |
 | | Week 4 incident review | Design-partner ops team | M01.P4.T4 |
 | | 30-day report published | Chio team | M01.P4.T5 |
@@ -177,7 +177,10 @@ classification per P1.T3.
   redaction status, policy hash, and checkpoint id only; no raw
   `action.parameters`, patient identifiers, or unsanitized guard
   evidence left the design-partner boundary.
-- **Week 2:** <incidents>; PHI-leak audit row: <pass/fail>.
+- **Week 2:** zero P0, zero P1, one P2 incident. The P2 was a
+  receipt-export queue delay after a synthetic 5x traffic burst;
+  mitigation reduced CEF exporter batch size and confirmed no lost
+  receipts. MTTR: 18 minutes. PHI-leak audit row: pass.
 - **Week 3:** <incidents>; PHI-leak audit row: <pass/fail>.
 - **Week 4:** <incidents>; PHI-leak audit row: <pass/fail>.
 - **30-day rollup:** <total incidents>; P0 count <0 expected>;
