@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T17:28:35Z",
+  "last_checkpoint_at": "2026-05-02T18:45:20Z",
   "current_wave": "vendor_lanes",
   "halt": {
     "halted": false,
@@ -62,7 +62,7 @@
     },
     "M09": {
       "status": "vendor_wait",
-      "phase": "P0_merged",
+      "phase": "P1_merged",
       "owner_branch": null,
       "trust_boundary": true,
       "lane": "vendor"
@@ -115,7 +115,8 @@
     "M07.P0 mobile audit baseline opened 2026-05-02T12:45:05Z: chio-kernel-mobile hard counts, qualify-mobile-kernel baseline, binding preview docs, and mobile threat-model rows recorded.",
     "M07.P1-P5 mobile kernel closeout merged by 2026-05-02T17:28:35Z; mobile C-ABI, iOS, Android, receipt oracle, and patient-app demo lanes are complete.",
     "M10.P1-P5 Bedrock and MCP distribution closeout merged by 2026-05-02T17:28:35Z; listing artifacts, MCP registry entry, conformance pin, APN blog draft, and AWS SA review status are recorded.",
-    "Current execution focus moved to vendor lanes M08 and M09 after W2 and W3 completion."
+    "Current execution focus moved to vendor lanes M08 and M09 after W2 and W3 completion.",
+    "M09.P1 gap assessment merged 2026-05-02T18:45:20Z: MyCSF portal provisioning, readiness questionnaire, five assessor walkthroughs, inherited evidence inventory, and gap report intake recorded."
   ],
   "wave_heads": {
     "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",

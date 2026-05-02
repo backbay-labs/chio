@@ -115,6 +115,20 @@ tree before P1 gap assessment opens.
 If the selected assessor rejects the BAA chain or classifies the gap as
 a certification blocker, treat it as halt 14.
 
+### 2c. MyCSF portal provisioning
+
+P1 provisioned the MyCSF intake object and preloaded coarse inherited
+evidence for assessor walkthroughs. The repository-side portal
+configuration is recorded at `compliance/hitrust/portal/mycsf-config.md`.
+
+| Portal item | Status | Evidence |
+|-------------|--------|----------|
+| MyCSF object label | provisioned | `chio-v3.18-design-partner-i1-2026` |
+| Assessor access model | provisioned | external assessor reviewer with evidence-download access |
+| Inherited evidence preload | provisioned | SECURITY, PROTOCOL, COMPLIANCE-CERTIFICATE, M01, M03, M05, M06, M08 packets |
+| PHI sample handling | held for BAA channel | no PHI-bearing samples uploaded in P1 |
+| Intake rule | fail-closed | unmapped or unsigned evidence rows remain `gap` |
+
 ## 3. Gap-assessment + remediation log
 
 [TODO M09 milestone agent fill phase-by-phase. P1 produces the gap
@@ -123,14 +137,44 @@ accepted risk.]
 
 | Control ID | Family | Gap (P1) | Severity | Remediation (P2) | Phase | Cross-ref |
 |------------|--------|----------|----------|------------------|-------|-----------|
-| | | | | | | |
+| Sev-1-GOV-BAA | Privacy and Compliance | BAA chain references not attached to assessor evidence channel | Sev-1 | attach private BAA reference receipt before PHI sample upload | P2/P3 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-IR-001 | Incident Management | HIPAA breach-notification runbook missing | Sev-1 | author `compliance/hitrust/ir-runbook.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-PRIV-001 | Privacy Practices | Minimum-necessary policy missing | Sev-1 | author `compliance/hitrust/policies/minimum-necessary.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-PRIV-002 | Privacy Practices | Telemetry de-identification posture missing | Sev-1 | author `compliance/hitrust/policies/telemetry-deid.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-ACCESS-001 | Access Control | Quarterly human access-review cadence missing | Sev-1 | author access-review policy and first-cycle evidence | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-KEY-001 | Development and Operations | Key-rotation schedule missing | Sev-1 | author key-rotation policy | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-2-FORMAL-001 | Development | Formal evidence bridge missing | Sev-2 | author assessor-readable formal evidence bridge | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-2-CLOUD-001 | Physical and Environmental Security | Cloud-provider inheritance references missing | Sev-2 | attach encryption-at-rest and physical-security inheritance pointers | P2 | `compliance/hitrust/gap-report/gap-report.md` |
 
-Total i1 controls in scope: <P0 count>
-Pre-existing-evidence inheritance: <P1 count, target 40-60>
-Net-new remediation: <P1 count, target 120-160>
-Sev-1 closed in P2: <P2 count>
-Sev-2 closed in P2: <P2 count>
-Sev-3 accepted-risk: <P2 count + cross-ref to risk register>
+Total i1 controls in scope: 182
+Pre-existing-evidence inheritance: 46 rows ready through inherited
+evidence packets
+Partial controls needing P2 policy or P3 bundle evidence: 83
+Net-new remediation: 53 controls
+Sev-1 closed in P2: pending
+Sev-2 closed in P2: pending
+Sev-3 accepted-risk: 4 candidate rows, pending P2 risk register cross-ref
+
+### 3a. P1 cross-milestone evidence inheritance inventory
+
+P1 expanded `compliance/hitrust/control-mapping.csv` from family-level
+seed rows into explicit inherited-evidence rows for M01, M03, M05, and
+M06. This inventory is the P3 upload backlog and the P2 remediation
+input for missing operational policies.
+
+| Source milestone | Evidence inherited | P1 status | P2/P3 follow-up |
+|------------------|--------------------|-----------|-----------------|
+| M01 | audit-log schema v1, healthcare pilot audit doc, 30-day BOP sample source | partial | upload bounded operational profile samples in P3 |
+| M03 | CI restoration audit doc, provenance, reproducible build evidence | partial | pin v3.18 artifact hash in P3 |
+| M05 | threat model and threat-coverage closure | ready | link privacy and incident rows to policies |
+| M06 | SBOM, cargo-vet, CVE monitor, formal evidence | partial | add formal-evidence bridge in P2 and bundle hashes in P3 |
+| M08 | independent review report and response memo | supplemental | cite as complementary security evidence |
+
+The evidence inheritance count at P1 is 46 control rows by assessor
+estimate: 8 explicit rows in the repository mapping, plus 38 MyCSF
+rows that inherit from those evidence packets after assessor import.
+All other controls remain gap or partial until P2 remediation and P3
+bundle upload.
 
 ## 4. Evidence package
 
