@@ -2,6 +2,10 @@
 /target/
 **/*.rs.bk
 
+# Release SBOM evidence is committed under supply-chain/sbom/v{tag}/.
+!supply-chain/sbom/
+!supply-chain/sbom/**
+
 # Orchestrator runtime state
 .worktrees/
 .planning/trajectory/*.bak
