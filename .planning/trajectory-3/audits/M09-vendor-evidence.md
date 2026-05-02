@@ -258,7 +258,10 @@ follow-up evidence windows tracked below.
 |------|----------|------------------|---------------|-----------|
 | P4 week 1 | package completeness review | none open at P3 close | 2026-05-02 | `MYCSF-COMPLETE-M09-P3-2026-05-02` |
 
-P4 draft report received: <date>
+P4 draft report received: 2026-05-02
+P4 draft report hash:
+`6834849e9e4d13d58073a0737e9c630f2ac8d0cf4cfc0eae7c82a3e8fe557907`
+Draft report path: `compliance/hitrust/draft-report/draft-report.md`
 Findings dispute / clarification round: <Y/N + summary>
 
 ## 6. Closure attestations
