@@ -200,20 +200,35 @@ Preliminary findings status:
 
 ### 4a. Halt-15 (Critical CVE) hot-fix template
 
-[Pre-staged at M08.P3.T-halt15-template; lives here as appendix.]
+Pre-staged at M08.P3.T3 and ready for immediate use if a Critical
+finding arrives.
 
 - Trigger: Critical finding (CVSS >= 9.0) lands in preliminary findings
   memo or in any reviewer-question response.
 - Immediate steps:
-  1. @bb-connor confirmation of halt 15 in `EXECUTION-STATE.json`.
-  2. Hot-fix branch `hotfix/m08-cve-<id>` opened from `main`.
-  3. Trust-boundary security x2 review on the remediation PR
-     (two LLM reviewer instances + @bb-connor).
-  4. Vendor sign-off receipt logged in Section 4 row before merge.
-  5. CVE detail redacted from the public report until the
+  1. @bb-connor confirms halt 15 in writing and records the halt in
+     `EXECUTION-STATE.json`.
+  2. Hot-fix branch `hotfix/m08-cve-<id>` opens from `main`.
+  3. Remediation PR title format:
+     `M08 halt-15 - remediate <finding-id>`.
+  4. PR body cites the finding row, affected files, local gates,
+     vendor reproduction notes, and rollback plan.
+  5. Trust-boundary security x2 review is requested on the remediation
+     PR before merge.
+  6. Vendor sign-off receipt is logged in Section 4 before merge.
+  7. CVE detail is redacted from the public report until the
      90-day embargo lifts.
 - Disclosure window: 90 days coordinated by default; SOW redline
   rejects any vendor request to publish before remediation merges.
+- Branch naming: `hotfix/m08-cve-<id>`.
+- Required gates: affected crate build, affected crate tests, affected
+  crate clippy with `-D warnings`, the finding-specific reproduction
+  command, and `git diff --check`.
+- Merge policy: do not admin-bypass a Critical remediation unless the
+  hosted failure is unrelated CI infrastructure already attempted and
+  documented.
+- Current P3 state: no Critical or High preliminary finding has been
+  filed; halt 15 has not triggered.
 
 ### 4b. Trajectory-4 candidate findings
 
