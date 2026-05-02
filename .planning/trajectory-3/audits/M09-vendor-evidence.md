@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M09
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
-**Status:** OPEN (P2 remediation complete)
+**Status:** OPEN (P5 HITRUST QA in progress)
 **Audit start:** week 1 (audit doc seed at P0.T2)
 **Audit close:** weeks 32-36 (certificate issuance at P5.T3; final
 audit-doc pass at P5.T4)
@@ -287,7 +287,23 @@ does not fire because the compressed vendor lane did not exceed the
 week-45 slip threshold. Halt 14 does not fire because the assessor did
 not reject readiness, scope, or remediability.
 
-## 6. Closure attestations
+## 6. Certificate issuance and QA log (P5)
+
+P5 tracks the assessor handoff into HITRUST Inc QA, revision
+turnaround, certificate receipt, and public evidence publication. The
+signed certificate artwork remains in the private assessor evidence
+channel; this repository stores the public certificate record, hashes,
+scope statement, and landing-page evidence.
+
+| Step | Date | Status | Evidence |
+|------|------|--------|----------|
+| Final report submitted to HITRUST | 2026-05-02 | submitted | `HITRUST-QA-SUBMIT-M09-P5-2026-05-02` |
+
+Final report submitted to HITRUST: 2026-05-02 by the selected external
+assessor after P4 draft-report clarifications closed with no Critical,
+High, or Sev-1 carry-over findings.
+
+## 7. Closure attestations
 
 [TODO M09 milestone agent fill at P5 close.]
 
@@ -306,7 +322,7 @@ not reject readiness, scope, or remediability.
 - Cross-credential opportunity recorded for trajectory-4 (firms
   offering bundled SOC 2 Type 1 / ISO 27001 alongside i1): <Y/N + notes>
 
-## 7. Halt-trigger surfacing log
+## 8. Halt-trigger surfacing log
 
 [TODO M09 milestone agent fill if any halt-trigger candidate fires.]
 
