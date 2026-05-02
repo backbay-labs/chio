@@ -3,9 +3,9 @@
 **Trajectory:** trajectory-3
 **Milestone:** M06
 **Wave:** W2
-**Status:** P0 baseline open
+**Status:** audit close
 **Audit start:** 2026-05-02
-**Audit close:** <fill at P5 final ticket merge>
+**Audit close:** 2026-05-02
 
 ## 1. Audit scope
 
@@ -224,23 +224,28 @@ CVE-monitor end-of-freeze sign-off:
 - Freeze closure: `m06-supply-chain-pivot` closes at M06.P4.T5 after the
   M06.P2.T5 cargo-vet sign-off and M06.P3.T5 SBOM assessor handoff.
 
-### At P5 close (after-counts; M06.P5.T3 ticket fills)
-
-[TODO M06 milestone agent fill at P5 merge:]
+### At P5 close (measured 2026-05-02)
 
 - Apalache invariants checked: 4 (`MonotoneLogApalache`,
   `RevocationCutCompleteness`, `ReceiptBeforeAllow`,
   `KernelTransitionCancelSafe`).
 - `formal/MAPPING.md` rows added: 4.
-- cargo-vet first-party certifications: 26 + N (N from M06.P2.T1).
-- cargo-vet exemption rows after M06.P2.T4 chase-down: 791-841 target.
-- deny.toml advisory-ignore rows after M06.P4.T4 refresh: <closed-by-bump
-  count>, <re-justified count>; total <= 10.
-- Source SBOM published: `supply-chain/sbom/v{tag}/source.cdx.json`
-  byte-size and content-hash.
-- Binary SBOM published per target:
-  `supply-chain/sbom/v{tag}/{target}.binary.cdx.json`.
-- Lean theorem inventory drift: 0 expected (sealed by D04).
+- cargo-vet first-party certifications: 179, up from the P0 baseline of 26.
+- cargo-vet exemption rows after M06.P2.T4 chase-down: 836, inside the
+  791-841 target band.
+- deny.toml advisory-ignore rows after M06.P4.T4 refresh: 14 current rows.
+  `RUSTSEC-2026-0114` was closed by the Wasmtime 43.0.2 bump; the remaining
+  advisories are dated with `last-checked = 2026-05-02` rationale comments.
+  The row count is higher than the seed count because P0 recorded live drift
+  from 10 seed rows to 13 current rows and P4 added the PyO3 advisory row.
+- Source SBOM publication path: `supply-chain/sbom/v{tag}/source.cdx.json`
+  produced by `.github/workflows/sbom.yml` on release tags.
+- Binary SBOM publication path:
+  `supply-chain/sbom/v{tag}/{target}.binary.cdx.json` produced by
+  `.github/workflows/sbom.yml` on release tags.
+- Lean theorem inventory drift: 0 file drift from M06.P0 merge
+  `42d74f6115147ac1c4ba32d9c82cdcbb6d383403` through P5 for
+  `formal/proof-manifest.toml` and `formal/theorem-inventory.json`.
 
 ## 3. Apalache contractor record
 
@@ -262,41 +267,57 @@ CVE-monitor end-of-freeze sign-off:
 
 ### P5 sign-off (M06.P5.T1)
 
-[Pasted from `formal/apalache/CONTRACTOR-SIGNOFF.md`.]
+Pasted from `formal/apalache/CONTRACTOR-SIGNOFF.md`.
 
-- Apalache version used: <fill>.
-- SMT solver: <fill, default Z3>.
-- Per-invariant SMT solver invocation parameters: <fill>.
+- Packet: M06-APALACHE-SIGNOFF-2026-05-02.
+- Contractor lane: Informal Systems primary, Runtime Verification fallback.
+  External countersignature remains pending vendor calendar response; this
+  packet is the local sign-off record the contractor is asked to countersign.
+- Apalache version used: `apalache-mc 0.50.1`, build `cd35919`.
+- SMT solver: default Apalache Z3 backend.
+- Per-invariant SMT solver invocation parameters:
+  `apalache-mc check --length=6 --config=<MC*.cfg> <Spec>.tla`.
 - Bounded model sizes attempted vs final:
-  - Authorities: attempted <fill>, final <fill>.
-  - CapSet: attempted <fill>, final <fill>.
-  - EpochMax: attempted <fill>, final <fill>.
-- Counterexamples surfaced: <fill, with per-counterexample resolution>.
-- Sign-off date: <fill>.
+  - Authorities: attempted `{1, 2, 3}`, final `{1, 2, 3}`.
+  - CapSet: attempted `{1, 2, 3, 4, 5, 6}`, final
+    `{1, 2, 3, 4, 5, 6}`.
+  - EpochMax: attempted `4`, final `4`.
+  - Length: attempted `6`, final `6`.
+- Counterexamples surfaced: none in the local P5 safety run.
+- Workflow run URL: `https://github.com/bb-connor/arc/actions/runs/25251783773`
+  queued from `workflow_dispatch` against main for hosted replay.
+- Sign-off date: 2026-05-02.
 
 ## 4. Closure attestations
 
-[TODO M06 milestone agent fill at P5 close:]
-
-- Apalache spec validates: <`apalache-mc check` output URLs per invariant
-  from `.github/workflows/apalache-nightly.yml`>.
-- 7-consecutive-night-green check: <run-count from CI>.
-- cargo-vet enforced in CI: <`.github/workflows/cargo-vet.yml` workflow run
-  URL>.
+- Apalache spec validates: all four local P5 runs returned `NoError` to
+  computation length 6 with Apalache 0.50.1. Hosted replay run:
+  `https://github.com/bb-connor/arc/actions/runs/25251783773`.
+- 7-consecutive-night-green check: queued as a CI-debt replay item under the
+  trajectory-3 steering override. The workflow has been dispatched once from
+  main; the remaining 7 consecutive nightly runs are required before
+  TRAJECTORY-FINAL.md, not before this admin-merged phase PR.
+- cargo-vet enforced in CI: `.github/workflows/cargo-vet.yml` exists and runs
+  `cargo vet --locked`; P2 local evidence recorded `Vetting Succeeded`.
 - SBOM published per release at:
   `supply-chain/sbom/v{tag}/source.cdx.json` and
   `supply-chain/sbom/v{tag}/{target}.binary.cdx.json`.
-- SBOM cosign signing identity verified: <cosign verify-blob output>.
-- CVE-alert workflow live: <`.github/workflows/cve-monitor.yml` workflow run
-  URL>.
+- SBOM cosign signing identity verified: `.github/workflows/sbom.yml` uses
+  `cosign sign-blob` for each `*.cdx.json`; release-tag verify-blob evidence
+  is deferred to the release closeout run.
+- CVE-alert workflow live: `.github/workflows/cve-monitor.yml` exists and was
+  merged at M06.P4; hosted workflow completion is tracked in CI debt.
 - Synthetic advisory-db hit produced GitHub Issue routed to `@bb-connor`:
-  <issue URL>.
-- M09 HITRUST assessor receipt of SBOM: <cross-ref to M09 P0/P1 evidence row
-  in `.planning/trajectory-3/audits/M09-vendor-evidence.md`>.
-- Lean theorem inventory drift check: <byte-diff against P0 baseline; expected
-  0>.
-- m06-supply-chain-pivot freeze closed: <date>.
-- m06-revocation-oracle-pivot freeze closed: <date>.
+  issue creation logic and owner routing are present in
+  `.github/workflows/cve-monitor.yml`; hosted synthetic issue URL is deferred
+  to the CI-debt replay pass.
+- M09 HITRUST assessor receipt of SBOM: cross-ref remains the M09 P0/P1
+  evidence row in `.planning/trajectory-3/audits/M09-vendor-evidence.md`.
+- Lean theorem inventory drift check: no file drift for
+  `formal/proof-manifest.toml` or `formal/theorem-inventory.json` from M06.P0
+  merge `42d74f6115147ac1c4ba32d9c82cdcbb6d383403` through P5.
+- m06-supply-chain-pivot freeze closed: 2026-05-02 at M06.P4.T5.
+- m06-revocation-oracle-pivot freeze closed: 2026-05-02 at M06.P2.T5.
 
 ## 5. Risk register update
 
@@ -305,9 +326,14 @@ Initial risk register lives in
 mitigations" section. M06 milestone agent fills any risk realisations here at
 P5:
 
-[TODO M06 milestone agent fill at P5 close.]
-
-- Risks realised: <list any risks from R1..R9 that fired>.
-- Mitigation actions taken: <list>.
-- Halt triggers fired: <list, expected empty>.
-- Outstanding follow-ups deferred to trajectory-4: <list>.
+- Risks realised: hosted CI evidence is queued rather than complete because
+  the active trajectory-3 steering override defers hosted CI green to the
+  final stabilization pass. No formal counterexample surfaced locally.
+- Mitigation actions taken: triggered `apalache-nightly` workflow dispatch
+  `25251783773`, recorded the replay requirement in the closure attestations,
+  and kept local Apalache safety checks as the phase merge gate.
+- Halt triggers fired: none.
+- Outstanding follow-ups deferred to trajectory-4: full delegation FSM
+  Apalache model, larger Apalache bounds beyond the D04 focused subset, crate
+  consolidation, release-tag SBOM verify-blob evidence, and external
+  contractor countersignature if it arrives after M06 close.
