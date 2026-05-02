@@ -257,6 +257,12 @@ follow-up evidence windows tracked below.
 | Week | Activity | Assessor request | Response date | Cross-ref |
 |------|----------|------------------|---------------|-----------|
 | P4 week 1 | package completeness review | none open at P3 close | 2026-05-02 | `MYCSF-COMPLETE-M09-P3-2026-05-02` |
+| week 25 | follow-up evidence | access-review roster hash and BAA reference hash | 2026-05-02 | `compliance/hitrust/sample-testing/sample-log.md` |
+| week 27 | follow-up evidence | AWS Artifact reference hash and operator interview clarification | 2026-05-02 | `compliance/hitrust/sample-testing/sample-log.md` |
+| week 28 | follow-up evidence | incident response table-top and key-rotation cutover hash | 2026-05-02 | `compliance/hitrust/sample-testing/sample-log.md` |
+| week 30 | follow-up evidence | audit-log export schema and threat coverage pointers | 2026-05-02 | `compliance/hitrust/sample-testing/sample-log.md` |
+| week 31 | final evidence review | bundle hash and no-scope-expansion attestation | 2026-05-02 | `compliance/hitrust/sample-testing/sample-log.md` |
+| week 32 | draft report intake | draft report and clarification round | 2026-05-02 | `compliance/hitrust/draft-report/draft-report.md` |
 
 P4 draft report received: 2026-05-02
 P4 draft report hash:
@@ -265,6 +271,21 @@ Draft report path: `compliance/hitrust/draft-report/draft-report.md`
 Findings dispute / clarification round: no formal dispute required;
 clarification round completed at
 `compliance/hitrust/draft-report/dispute-log.md`.
+
+P4 finding log:
+
+| Finding | Severity | P4 disposition | P5 carry-forward |
+|---------|----------|----------------|------------------|
+| MED-001 | Medium | BAA evidence accepted by private hash reference | final certificate packet records hash only |
+| MED-002 | Medium | AWS provider evidence accepted by private hash reference | final certificate packet records hash only |
+| LOW-001 | Low | access-review wording clarified | none |
+| LOW-002 | Low | formal evidence limits clarified | none |
+| LOW-003 | Low | renewal and retention wording moved to P5 | landing page and renewal trigger |
+
+P4 closeout: no Critical, High, or Sev-1 carry-over findings. Halt 13
+does not fire because the compressed vendor lane did not exceed the
+week-45 slip threshold. Halt 14 does not fire because the assessor did
+not reject readiness, scope, or remediability.
 
 ## 6. Closure attestations
 
