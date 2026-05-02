@@ -128,14 +128,12 @@ receipt-emission surfaces. Result: 31 pass, 0 skipped at
 
 ## 7. Reviewer round-trip log
 
-[TODO M10 milestone agent fill at P4.T1 / P4.T2:]
+Log opened 2026-05-02 for AWS Marketplace technical and operations
+review loops. The table records only concrete reviewer loops; unused
+slots are not prefilled so the halt threshold remains countable.
 
 | Round-trip # | Date opened | Date resolved | Reviewer comment | Resolution | Effort (days) |
 |--------------|-------------|---------------|------------------|------------|---------------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
 
 Halt rule per RESEARCH risk #1: round-trips > 4 OR slip past week 30
 fires the m10-bedrock-listing-pivot freeze halt and escalates per
