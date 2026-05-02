@@ -115,6 +115,20 @@ tree before P1 gap assessment opens.
 If the selected assessor rejects the BAA chain or classifies the gap as
 a certification blocker, treat it as halt 14.
 
+### 2c. MyCSF portal provisioning
+
+P1 provisioned the MyCSF intake object and preloaded coarse inherited
+evidence for assessor walkthroughs. The repository-side portal
+configuration is recorded at `compliance/hitrust/portal/mycsf-config.md`.
+
+| Portal item | Status | Evidence |
+|-------------|--------|----------|
+| MyCSF object label | provisioned | `chio-v3.18-design-partner-i1-2026` |
+| Assessor access model | provisioned | external assessor reviewer with evidence-download access |
+| Inherited evidence preload | provisioned | SECURITY, PROTOCOL, COMPLIANCE-CERTIFICATE, M01, M03, M05, M06, M08 packets |
+| PHI sample handling | held for BAA channel | no PHI-bearing samples uploaded in P1 |
+| Intake rule | fail-closed | unmapped or unsigned evidence rows remain `gap` |
+
 ## 3. Gap-assessment + remediation log
 
 [TODO M09 milestone agent fill phase-by-phase. P1 produces the gap
