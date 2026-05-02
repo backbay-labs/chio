@@ -30,3 +30,4 @@ before `TRAJECTORY-FINAL.md`.
 - PR #466 (`58b6fd9872d08c9d3c5775c762f5756025b4a44f`): M04.P3 mutation lane honest-floor gate flip; skipped hosted CI wait for release-state activation, mutants gate threshold enforcement, rollback override dry-run, audit evidence, and ticket stamps.
 - PR #467 (`d4e89385aeaaaf24e04238faa7e0864a0c07083d`): M04.P4 verdict-matrix Python and Go required driver flip; skipped hosted CI wait for required workflow job, docs required-driver list, audit evidence, and ticket stamps.
 - PR #468 (`98a23dcff8db4a7d3de87750275af4106975f12e`): M04.P5 mutation gate audit closeout; skipped hosted CI wait for audit closure, post-flip mutants baseline, committed run-capture JSON evidence, and ticket stamps.
+- PR #469 (`6f7bc8b63189fa7065f9b03a80c8d6918fe0dd6f`): M05.P0 threat coverage baseline and freeze path reconciliation; skipped hosted CI wait for audit baseline, coverage.yaml/JSON reconciliation, freeze amendment, and ticket stamps.

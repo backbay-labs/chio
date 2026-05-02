@@ -8,7 +8,7 @@
   milestone: M05
   phase: 0
   title: Open M05 audit doc + fill hard counts + reconcile coverage.yaml/JSON divergence + emit freeze amendment
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - .planning/trajectory-3/audits/M05-threat-coverage.md
@@ -26,7 +26,7 @@
   agent_role: spec-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: fed5b63e08018f2e463c82e6d47017635efb49c0
+  merged_sha: fed5b63e08018f2e463c82e6d47017635efb49c0
+  opened_ts: "2026-05-02T09:09:37Z"
+  merged_ts: "2026-05-02T09:09:37Z"
