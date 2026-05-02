@@ -13,7 +13,7 @@
   milestone: M09
   phase: 2
   title: Author missing control narratives across HITRUST i1 control families
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
     - compliance/hitrust/narratives/
@@ -31,16 +31,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b027c06c71e9de363da9e4a4c9eec7481993f487
+  merged_sha: b027c06c71e9de363da9e4a4c9eec7481993f487
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"
 
 - id: M09.P2.T2
   milestone: M09
   phase: 2
   title: Operationalize quarterly access-review cadence and document policy
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - compliance/hitrust/policies/access-review.md
@@ -56,16 +56,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 5cdaffd00a56049e08dc9cba47f742f95882acec
+  merged_sha: 5cdaffd00a56049e08dc9cba47f742f95882acec
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"
 
 - id: M09.P2.T3
   milestone: M09
   phase: 2
   title: Document key-rotation schedule for capability signing keys, TLS, audit-log export keys
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - compliance/hitrust/policies/key-rotation.md
@@ -81,16 +81,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 6c4212db4847f301c0da5d614c92083520c51722
+  merged_sha: 6c4212db4847f301c0da5d614c92083520c51722
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"
 
 - id: M09.P2.T4
   milestone: M09
   phase: 2
   title: Author incident-response runbook with HIPAA breach-notification cross-references
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - compliance/hitrust/ir-runbook.md
@@ -106,16 +106,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 05b8cc259ddba209b012eafe648a4d765aecfd5a
+  merged_sha: 05b8cc259ddba209b012eafe648a4d765aecfd5a
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"
 
 - id: M09.P2.T5
   milestone: M09
   phase: 2
   title: Collect encryption-at-rest evidence from cloud provider and record attestation pointers
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/evidence-bundles/encryption-at-rest.md
@@ -132,16 +132,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 110f8f3450bc02bb4ad7aea0c0dcee70e046f55d
+  merged_sha: 110f8f3450bc02bb4ad7aea0c0dcee70e046f55d
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"
 
 - id: M09.P2.T6
   milestone: M09
   phase: 2
   title: Seed build-evidence-pack.sh idempotent script that gathers cross-milestone evidence
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - compliance/hitrust/build-evidence-pack.sh
@@ -158,16 +158,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a09fde4d00b628744dbd07924171eb33bb6c36a6
+  merged_sha: a09fde4d00b628744dbd07924171eb33bb6c36a6
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"
 
 - id: M09.P2.T7
   milestone: M09
   phase: 2
   title: Author plain-English bridge for M06 formal evidence (Apalache invariants)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - compliance/hitrust/narratives/formal-evidence-bridge.md
@@ -184,16 +184,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b88f23c5a2d5546e8d6e32629672195e4bbfc4ea
+  merged_sha: b88f23c5a2d5546e8d6e32629672195e4bbfc4ea
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"
 
 - id: M09.P2.T8
   milestone: M09
   phase: 2
   title: Document de-identification posture for kernel telemetry per 45 CFR 164.514
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/policies/de-identification.md
@@ -209,16 +209,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: b9a136891460d0949f9898f9e75be412c184d98f
+  merged_sha: b9a136891460d0949f9898f9e75be412c184d98f
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"
 
 - id: M09.P2.T9
   milestone: M09
   phase: 2
   title: Audit-doc update with remediation log per gap and accepted-risk register
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M09-vendor-evidence.md
@@ -241,7 +241,7 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9181fd0d90906f1fb9dc9756adb29079063dd392
+  merged_sha: 9181fd0d90906f1fb9dc9756adb29079063dd392
+  opened_ts: "2026-05-02T18:56:37Z"
+  merged_ts: "2026-05-02T18:56:37Z"

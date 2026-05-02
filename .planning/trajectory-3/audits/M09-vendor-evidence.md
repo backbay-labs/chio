@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M09
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
-**Status:** OPEN (P0 in progress)
+**Status:** OPEN (P2 remediation complete)
 **Audit start:** week 1 (audit doc seed at P0.T2)
 **Audit close:** weeks 32-36 (certificate issuance at P5.T3; final
 audit-doc pass at P5.T4)
@@ -94,9 +94,9 @@ Sources checked 2026-05-02:
 |---------------|--------|-------|---------------|
 | BAA chain confirmation | pre-flight pending | @bb-connor / legal | Section 2 BAA chain |
 | PHI handling boundary | seeded | M09 | `compliance/hitrust/scope-boundary.md` |
-| Breach notification runbook | pending P2 | M09 | `compliance/hitrust/ir-runbook.md` |
-| Minimum necessary policy | pending P2 | M09 | `compliance/hitrust/policies/minimum-necessary.md` |
-| Telemetry de-identification posture | pending P2 | M09 | `compliance/hitrust/policies/telemetry-deid.md` |
+| Breach notification runbook | complete | M09 | `compliance/hitrust/ir-runbook.md` |
+| Minimum necessary policy | complete | M09 | `compliance/hitrust/policies/de-identification.md` |
+| Telemetry de-identification posture | complete | M09 | `compliance/hitrust/policies/de-identification.md` |
 | Workforce training evidence | out-of-tree pending | Backbay HR | HR evidence bundle |
 
 ### 2b. BAA chain pre-flight
@@ -131,29 +131,32 @@ configuration is recorded at `compliance/hitrust/portal/mycsf-config.md`.
 
 ## 3. Gap-assessment + remediation log
 
-[TODO M09 milestone agent fill phase-by-phase. P1 produces the gap
-report (week 14); P2 closes Sev-1 / Sev-2; Sev-3 documented as
-accepted risk.]
+P1 produced the gap report at `compliance/hitrust/gap-report/gap-report.md`.
+P2 closed repository-owned Sev-1 and Sev-2 gaps through policies,
+narratives, the incident runbook, cloud-provider evidence pointers,
+formal evidence framing, and the evidence-pack script. Private legal,
+HR, design-partner DR, and cloud-provider records remain accepted-risk
+until uploaded through the assessor evidence channel.
 
 | Control ID | Family | Gap (P1) | Severity | Remediation (P2) | Phase | Cross-ref |
 |------------|--------|----------|----------|------------------|-------|-----------|
-| Sev-1-GOV-BAA | Privacy and Compliance | BAA chain references not attached to assessor evidence channel | Sev-1 | attach private BAA reference receipt before PHI sample upload | P2/P3 | `compliance/hitrust/gap-report/gap-report.md` |
-| Sev-1-IR-001 | Incident Management | HIPAA breach-notification runbook missing | Sev-1 | author `compliance/hitrust/ir-runbook.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
-| Sev-1-PRIV-001 | Privacy Practices | Minimum-necessary policy missing | Sev-1 | author `compliance/hitrust/policies/minimum-necessary.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
-| Sev-1-PRIV-002 | Privacy Practices | Telemetry de-identification posture missing | Sev-1 | author `compliance/hitrust/policies/telemetry-deid.md` | P2 | `compliance/hitrust/gap-report/gap-report.md` |
-| Sev-1-ACCESS-001 | Access Control | Quarterly human access-review cadence missing | Sev-1 | author access-review policy and first-cycle evidence | P2 | `compliance/hitrust/gap-report/gap-report.md` |
-| Sev-1-KEY-001 | Development and Operations | Key-rotation schedule missing | Sev-1 | author key-rotation policy | P2 | `compliance/hitrust/gap-report/gap-report.md` |
-| Sev-2-FORMAL-001 | Development | Formal evidence bridge missing | Sev-2 | author assessor-readable formal evidence bridge | P2 | `compliance/hitrust/gap-report/gap-report.md` |
-| Sev-2-CLOUD-001 | Physical and Environmental Security | Cloud-provider inheritance references missing | Sev-2 | attach encryption-at-rest and physical-security inheritance pointers | P2 | `compliance/hitrust/gap-report/gap-report.md` |
+| Sev-1-GOV-BAA | Privacy and Compliance | BAA chain references not attached to assessor evidence channel | Sev-1 | private-channel upload required before PHI sample upload | P2/P3 | accepted-risk until P3 private receipt |
+| Sev-1-IR-001 | Incident Management | HIPAA breach-notification runbook missing | Sev-1 | `compliance/hitrust/ir-runbook.md` | P2 | closed |
+| Sev-1-PRIV-001 | Privacy Practices | Minimum-necessary policy missing | Sev-1 | `compliance/hitrust/policies/de-identification.md` | P2 | closed |
+| Sev-1-PRIV-002 | Privacy Practices | Telemetry de-identification posture missing | Sev-1 | `compliance/hitrust/policies/de-identification.md` | P2 | closed |
+| Sev-1-ACCESS-001 | Access Control | Quarterly human access-review cadence missing | Sev-1 | `compliance/hitrust/policies/access-review.md` | P2 | closed |
+| Sev-1-KEY-001 | Development and Operations | Key-rotation schedule missing | Sev-1 | `compliance/hitrust/policies/key-rotation.md` | P2 | closed |
+| Sev-2-FORMAL-001 | Development | Formal evidence bridge missing | Sev-2 | `compliance/hitrust/narratives/formal-evidence-bridge.md` | P2 | closed |
+| Sev-2-CLOUD-001 | Physical and Environmental Security | Cloud-provider inheritance references missing | Sev-2 | `compliance/hitrust/evidence-bundles/encryption-at-rest.md` | P2/P3 | accepted-risk until provider receipt upload |
 
 Total i1 controls in scope: 182
 Pre-existing-evidence inheritance: 46 rows ready through inherited
 evidence packets
 Partial controls needing P2 policy or P3 bundle evidence: 83
 Net-new remediation: 53 controls
-Sev-1 closed in P2: pending
-Sev-2 closed in P2: pending
-Sev-3 accepted-risk: 4 candidate rows, pending P2 risk register cross-ref
+Sev-1 closed in P2: 5 repository-owned rows closed, 1 BAA row accepted-risk until private evidence upload
+Sev-2 closed in P2: 18 repository-owned rows closed, 1 cloud-provider row accepted-risk until provider receipt upload
+Sev-3 accepted-risk: 4 rows carried to P3 accepted-risk register
 
 ### 3a. P1 cross-milestone evidence inheritance inventory
 
@@ -175,6 +178,28 @@ estimate: 8 explicit rows in the repository mapping, plus 38 MyCSF
 rows that inherit from those evidence packets after assessor import.
 All other controls remain gap or partial until P2 remediation and P3
 bundle upload.
+
+### 3b. P2 remediation log
+
+| Remediation artifact | Gap closed | Status |
+|----------------------|------------|--------|
+| `compliance/hitrust/narratives/control-remediation-summary.md` | control narrative coverage and mapping cleanup | complete |
+| `compliance/hitrust/policies/access-review.md` | quarterly access review cadence | complete |
+| `compliance/hitrust/policies/key-rotation.md` | capability signing, TLS, and audit-export key rotation | complete |
+| `compliance/hitrust/ir-runbook.md` | HIPAA incident response and 45 CFR 164.400-414 notification clock | complete |
+| `compliance/hitrust/evidence-bundles/encryption-at-rest.md` | AWS cloud-provider inheritance pointer | accepted-risk until private provider receipt |
+| `compliance/hitrust/build-evidence-pack.sh` | P3 bundle automation | complete |
+| `compliance/hitrust/narratives/formal-evidence-bridge.md` | assessor-readable TLA+ and Apalache framing | complete |
+| `compliance/hitrust/policies/de-identification.md` | telemetry de-identification and minimum-necessary posture under 45 CFR 164.514 | complete |
+
+### 3c. Accepted-risk register
+
+| Accepted-risk row | Reason | P3/P4 handling |
+|-------------------|--------|----------------|
+| BAA chain reference | contract text and signatures cannot be committed to the public repository | private assessor evidence upload, hash only in bundle |
+| HR training evidence | workforce records are out of tree and private | private assessor evidence upload |
+| Cloud physical security | provider reports are inherited and may be access-controlled | AWS Artifact evidence pointer and private upload |
+| Design-partner DR posture | tenant DR details are private operational evidence | private assessor evidence upload |
 
 ## 4. Evidence package
 
