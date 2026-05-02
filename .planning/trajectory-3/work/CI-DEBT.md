@@ -1,0 +1,7 @@
+# Trajectory-3 CI Debt
+
+Hosted CI completion is deferred under the 2026-05-02 steering update.
+Each admin-merged PR here must be replayed during final stabilization
+before `TRAJECTORY-FINAL.md`.
+
+- PR #443 (`f0e777310446c67e238b4bac29b4bb35f418ceaf`): M08.P0 vendor-coordinate docs; skipped hosted CI wait for docs-only RFP, vendor dossier, handoff manifest, and outbound package log.
