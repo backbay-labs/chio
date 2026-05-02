@@ -19,7 +19,7 @@
   milestone: M04
   phase: 4
   title: Add required matrix entries for python-sdk and go-http-sdk to verdict-matrix.yml
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .github/workflows/verdict-matrix.yml
@@ -39,16 +39,16 @@
   agent_role: infra-yaml
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 353675065d66bc6f871258e511e8a6f548679b89
+  merged_sha: 353675065d66bc6f871258e511e8a6f548679b89
+  opened_ts: "2026-05-02T08:46:19Z"
+  merged_ts: "2026-05-02T08:46:19Z"
 
 - id: M04.P4.T2
   milestone: M04
   phase: 4
   title: Update docs/conformance/verdict-matrix.md required-driver list
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - docs/conformance/verdict-matrix.md
@@ -64,7 +64,7 @@
   agent_role: dx-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4e887ae3fec8043b1417b02c81afc26b0b9b1f5a
+  merged_sha: 4e887ae3fec8043b1417b02c81afc26b0b9b1f5a
+  opened_ts: "2026-05-02T08:46:19Z"
+  merged_ts: "2026-05-02T08:46:19Z"
