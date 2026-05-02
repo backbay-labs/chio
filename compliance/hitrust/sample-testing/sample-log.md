@@ -13,6 +13,8 @@
 | P4-SAMPLE-003 | P4 week 1 | access-review policy check | provided policy pointer | `compliance/hitrust/policies/access-review.md` |
 | P4-SAMPLE-004 | P4 week 1 | key-rotation policy check | provided policy pointer | `compliance/hitrust/policies/key-rotation.md` |
 | P4-SAMPLE-005 | P4 week 1 | formal evidence spot check | provided bridge plus Apalache bundle paths | `compliance/hitrust/narratives/formal-evidence-bridge.md` |
+| P4-FOLLOWUP-025-001 | week 25 | access-review first-cycle evidence pointer | provided private roster hash and public policy path | private channel plus `access-review.md` |
+| P4-FOLLOWUP-025-002 | week 25 | BAA evidence channel confirmation | provided private legal reference hash | private assessor channel |
 
 ## Handling rule
 

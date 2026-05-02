@@ -245,7 +245,7 @@ Evidence-pack bundles:
 
 | Bundle date | Hash | Uploaded to MyCSF | Notes |
 |-------------|------|-------------------|-------|
-| 2026-05-02 | SHA256SUMS hash `5201c1a1cbe3131d7dcbcae47f4866721db2e3e09b0a2ae4b3318bc43ce15fdd` | yes, repository receipt `MYCSF-UPLOAD-M09-P3-2026-05-02` | 150 hashed files, no missing repository sources, private BAA and provider artifacts tracked by accepted-risk register |
+| 2026-05-02 | SHA256SUMS hash `7fae26e126f92850e1cbf8360e9c33f8d2940f5abbade64b542ed6606cbdc23d` | yes, repository receipt `MYCSF-UPLOAD-M09-P3-2026-05-02` | 150 hashed files, path-stable manifest, no missing repository sources, private BAA and provider artifacts tracked by accepted-risk register |
 
 ## 5. Assessor engagement log (P4)
 

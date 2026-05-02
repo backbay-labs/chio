@@ -37,7 +37,12 @@ copy_if_present "compliance/hitrust/narratives" "M09/narratives"
 copy_if_present "compliance/hitrust/ir-runbook.md" "M09/ir-runbook.md"
 copy_if_present "compliance/hitrust/evidence-bundles/encryption-at-rest.md" "M09/encryption-at-rest.md"
 
-find "$OUT" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$OUT/SHA256SUMS"
+(
+  cd "$OUT"
+  find . -type f ! -name SHA256SUMS ! -name README.md -print0 \
+    | sort -z \
+    | xargs -0 shasum -a 256
+) > "$OUT/SHA256SUMS"
 
 cat > "$OUT/README.md" <<EOF_README
 # Chio HITRUST Evidence Bundle
