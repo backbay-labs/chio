@@ -113,7 +113,7 @@ listings are scoped in this milestone.
 |-------|------|------------|------------|------------|
 | P0 pin | 2026-05-02 | `17f1f93cc070754cdd290ac13476dcfa13f39855` | n/a (31 scenario modules pinned) | n/a |
 | P2.T3 conformance run | 2026-05-02 | `17f1f93cc070754cdd290ac13476dcfa13f39855` | 31 | 0 |
-| P5.T2 publication confirm | | | | |
+| P5.T2 publication confirm | 2026-05-02 | `17f1f93cc070754cdd290ac13476dcfa13f39855` | 31 | 0 |
 
 Closure clause text (per RESEARCH):
 "Chio MCP server passes draft conformance suite vN at hash X; N tests
@@ -125,6 +125,10 @@ contract harness for all 31 P0-counted scenario modules against the
 Streamable HTTP transport, OAuth 2.1 + PKCE, RFC9728 PRM, and Chio
 receipt-emission surfaces. Result: 31 pass, 0 skipped at
 `17f1f93cc070754cdd290ac13476dcfa13f39855`.
+
+P5.T2 publication confirm: Chio MCP server passes draft conformance suite
+v0.1 at hash `17f1f93cc070754cdd290ac13476dcfa13f39855`; 31 tests pass
+and 0 tests are skipped.
 
 ## 7. Reviewer round-trip log
 
