@@ -20,7 +20,7 @@ WORKDIR /workspace
 # in sync with anything the Rust build reaches at compile time:
 #   - `wit/` is consumed by chio-wasm-guards via `wasmtime::component::bindgen!`
 #     (chio-cli -> chio-wasm-guards path dep).
-#   - `examples/`, `formal/`, `tests/` are declared as workspace members, so
+#   - `bench/`, `editors/`, `examples/`, `formal/`, `tests/`, `xtask/` are declared as workspace members, so
 #     their absence breaks the workspace Cargo.lock resolution.
 #
 # Note on protobuf: the vendored Envoy protos consumed by
@@ -30,6 +30,8 @@ WORKDIR /workspace
 # separate top-level `COPY proto` needed.
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY bench ./bench
+COPY editors ./editors
 COPY wit ./wit
 COPY examples ./examples
 # `formal/` is copied so `cargo build --workspace` Cargo.lock
@@ -50,6 +52,7 @@ COPY tests ./tests
 # image. Copying the tree keeps the Docker build consistent with
 # `cargo build --workspace` when that happens.
 COPY sdks ./sdks
+COPY xtask ./xtask
 
 # Build a release binary, locked to the committed Cargo.lock.
 RUN cargo build --release --locked --package chio-cli --bin chio \
