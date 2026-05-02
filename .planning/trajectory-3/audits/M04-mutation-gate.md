@@ -224,6 +224,15 @@ D08 invocation rationale (quoted by M08 reviewer):
 > `activation_threshold_percent_per_crate` and records all sub-target
 > follow-up evidence in this audit doc and `releases.toml`.
 
+P3 rollback dry-run evidence:
+
+- Command:
+  `MUTANTS_PACKAGE=chio-kernel-core MUTANTS_EXIT=1 MUTANTS_GATE_OVERRIDE_REASON='M04.P3 rollback dry-run; followup PR #465' bash scripts/mutants-gate.sh`
+- Result: exit 0 with `posture=blocking verdict=override` after two
+  blocking-fail diagnostic lines.
+- Audit log row:
+  `2026-05-02T08:35:06Z | package=chio-kernel-core | exit=1 | cycle_end_tag=v0.0.0-m04-mutation-gate | actor=connor | reason=M04.P3 rollback dry-run; followup PR #465`
+
 ## 5. Closure attestations
 
 [TODO P5.T1: fill at milestone close.]

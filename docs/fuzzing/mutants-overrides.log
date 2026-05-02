@@ -22,3 +22,4 @@
 # under docs/fuzzing/archive/ if it grows past a release cycle.
 #
 # --- begin entries ---
+2026-05-02T08:35:06Z | package=chio-kernel-core | exit=1 | cycle_end_tag=v0.0.0-m04-mutation-gate | actor=connor | reason=M04.P3 rollback dry-run; followup PR #465
