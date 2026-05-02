@@ -155,20 +155,20 @@ freezes:
     milestone: M01
     phases: [P5]
     path_globs:
-      - .planning/trajectory-3/audits/M01-opus-pilot.md
+      - .planning/trajectory-3/audits/M01-healthcare-pilot.md
     start_trigger: M01.P5.T1
     end_trigger: M01.P5.T5
     trust_boundary: true
     guard_check: m01-audit-handoff-guard
     bypass_lane: "hotfix/* + [trajectory-3]"
-    rationale: "M07 mobile patient-app extension consumes the M01 Opus tenant runbook + log-export schema as load-bearing inputs (per README invariants table). M01 P5 closure freezes the audit doc so M07 has a stable reference point during its own design-partner work."
+    rationale: "M07 mobile patient-app extension consumes the M01 design-partner tenant runbook + log-export schema as load-bearing inputs (per README invariants table). M01 P5 closure freezes the audit doc so M07 has a stable reference point during its own design-partner work."
 
   - id: m01-m09-audit-handoff
     milestone: M01
     phases: [P3, P4, P5]
     path_globs:
       - spec/audit-log/export-schema.v1.json
-      - .planning/trajectory-3/audits/M01-opus-pilot.md
+      - .planning/trajectory-3/audits/M01-healthcare-pilot.md
     start_trigger: M01.P3.T1
     end_trigger: M01.P5.T5
     trust_boundary: true

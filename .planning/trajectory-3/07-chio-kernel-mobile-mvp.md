@@ -8,7 +8,7 @@ Android Play Integrity (D11) plus the device-resident hardware
 keystore. The lens is single (mobile platform expansion) and the work
 spans Rust kernel C-ABI, Swift framework, Kotlin AAR, the
 `chio-custody-hw/src/attestation/` submodule, and a thin RN / Expo
-bridge for the Opus mobile patient-app demo.
+bridge for the M01 design-partner mobile patient-app demo.
 
 This is also the first milestone in the trajectory shaped like the
 Chiodome thesis: credentials live in citizen hardware (Secure Enclave
@@ -29,7 +29,7 @@ trajectory-2 closed with `crates/chio-kernel-browser/` (the WASM
 browser kernel) plus `@chio-protocol/browser` (the JS receipt verifier
 helper) and the `chio-custody-hw` WebAuthn passkey-capability surface,
 but no mobile kernel binding. The verdict makes mobile load-bearing
-for the M01 Opus design partner: the Opus mobile patient-app
+for the M01 design partner: the design-partner mobile patient-app
 extension is named explicitly as the M01 P5 hand-off consumer (D09).
 Without M07 there is no path for that hand-off to land inside the
 trajectory window.
@@ -140,12 +140,14 @@ What M07 changes (deliberately, with discipline):
   `play_integrity.rs`, `google_root.rs`, `receipt_chain.rs`,
   `errors.rs`.
 - Creates `sdks/typescript/packages/mobile/` as an Expo Module
-  bridge for the Opus patient-app demo.
+  bridge for the design-partner patient-app demo.
 - Adds `scripts/build-ios-framework.sh` and
   `scripts/build-android-aar.sh` plus their CI hookup.
 
-Customer named explicitly: Opus mobile patient-app (M01 design
-partner extension; D09).
+Design-partner surface explicitly: the M01 design-partner mobile
+patient-app extension (per D09). Trajectory-3 docs do not bind the
+partner identity; the selected partner is recorded in the M01 audit
+doc evidence log only.
 
 What this milestone deliberately does NOT do:
 
@@ -156,8 +158,8 @@ What this milestone deliberately does NOT do:
   Attest + Play Integrity as the only two mobile attestation
   surfaces in trajectory-3.
 - Does not ship cross-platform UI. M07 is binding-and-attestation,
-  not UX. The Opus patient-app demo (M07.P5) is a thin integration,
-  not a polished consumer product.
+  not UX. The design-partner patient-app demo (M07.P5) is a thin
+  integration, not a polished consumer product.
 - Does not ship App Store / Play Store production listings. TestFlight
   / internal-track only.
 - Does not edit `chio-kernel-browser/` or `chio-kernel-core/`.
@@ -290,13 +292,14 @@ new direct Rust dependencies; they consume what P0 + P1 pin.
   (P4) including offline-queue path: receipts queue locally during
   airplane mode and flush on reconnect.
 - RN bridge stub at `sdks/typescript/packages/mobile/` shipped as an
-  Expo Module (config plugin `withChio.ts`) consumed by the Opus
-  patient-app demo.
-- Opus mobile patient-app demo (P5): mints a capability via App
-  Attest (iOS) or Play Integrity (Android), gates a sample tool
-  call through `evaluate()`, signs a receipt, POSTs to the hosted
-  oracle. Demo recording lives outside the Chio repo (in the Opus
-  cluster repo); M07 ships the SDK consumption surface.
+  Expo Module (config plugin `withChio.ts`) consumed by the
+  design-partner patient-app demo.
+- Design-partner mobile patient-app demo (P5): mints a capability
+  via App Attest (iOS) or Play Integrity (Android), gates a sample
+  tool call through `evaluate()`, signs a receipt, POSTs to the
+  hosted oracle. Demo recording lives outside the Chio repo (in the
+  design-partner deployment repo); M07 ships the SDK consumption
+  surface.
 
 ### Out (and why)
 
@@ -305,7 +308,7 @@ new direct Rust dependencies; they consume what P0 + P1 pin.
   trajectory-3.
 - Cross-platform UI / production-quality patient-app. M07 is
   binding-and-attestation, not UX. Polished consumer product is
-  Opus-cluster scope.
+  the design-partner deployment's scope.
 - App Store / Play Store production listings. TestFlight + internal-
   track only; production-store listing is out of scope.
 - iOS-only or Android-only ship. **D11** binds both.
@@ -313,8 +316,8 @@ new direct Rust dependencies; they consume what P0 + P1 pin.
   App Attest + Play Integrity for trajectory-3.
 - Public Swift Package Index publication. Default for M07 is private
   GitHub-hosted SPM (Open Question Q1). Same for Maven Central; M07
-  publishes to GitHub Packages Maven (private) for the internal Opus
-  consumer.
+  publishes to GitHub Packages Maven (private) for the M01
+  design-partner consumer.
 - React Native versions of the App Attest / Play Integrity flows.
   The patient-app demo calls the native flows directly through the
   Expo bridge; the bridge passes through native attestation results
@@ -436,7 +439,7 @@ hard counts.
   Integrity issuance flow, and the hosted-oracle verification path
   with concrete fixture references.
 
-### P5: Opus mobile patient-app extension demo
+### P5: Design-partner mobile patient-app extension demo
 
 - M07.P5.T1 -- RN bridge stub at `sdks/typescript/packages/mobile/`
   shipped as an Expo Module: `package.json`, `expo-module.config.json`,
@@ -446,8 +449,8 @@ hard counts.
 - M07.P5.T2 -- Expo config plugin (`expo-plugin/withChio.ts`) that
   adds the iOS XCFramework and Android AAR to the Expo prebuild
   output.
-- M07.P5.T3 -- Patient-app demo integration in the Opus cluster
-  repo (cross-repo PR; reference only). The demo mints a capability
+- M07.P5.T3 -- Patient-app demo integration in the design-partner
+  deployment repo (cross-repo PR; reference only). The demo mints a capability
   via App Attest (iOS) or Play Integrity (Android), gates a sample
   "fetch lab result" tool call through `evaluate()`, signs a
   receipt, POSTs to the M01 hosted oracle, and asserts a green
@@ -464,7 +467,7 @@ hard counts.
   M07.P4.T3 is **soft-blocked** on M01.P3.T1 close; the freeze
   `m01-m09-audit-handoff` (P3-P5) keeps the schema stable while
   M07 P4 builds against it.
-- **M01 P5 (Opus operator runbook).** The freeze
+- **M01 P5 (design-partner operator runbook).** The freeze
   `m01-m07-audit-handoff` (P5) keeps the M01 audit doc stable while
   M07 P5 builds the patient-app demo. M07.P5 starts only after
   M01.P5.T5 merges.
@@ -569,7 +572,7 @@ hard counts.
 - Mobile receipt round-trip green against the M01 fixture endpoint;
   the hosted oracle schema-validates the receipt and records it in
   the audit-log export.
-- Opus mobile patient-app demo green: recorded video / log bundle
+- Design-partner mobile patient-app demo green: recorded video / log bundle
   under `.planning/trajectory-3/audits/M07-mobile-mvp.md` shows the
   full flow (App Attest mint -> kernel `evaluate` -> signed receipt
   -> oracle POST) with a green outcome.

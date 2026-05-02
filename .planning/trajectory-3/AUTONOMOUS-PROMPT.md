@@ -200,11 +200,12 @@ The eleven canonical orchestrator triggers carry over verbatim:
 
 trajectory-3-specific halt triggers:
 
-12. **Design-partner withdrawal**: the named M01 customer (Opus
-    cluster) or the named M02 customer (AI lab) issues a withdrawal
-    notice. The orchestrator halts the affected milestone and the
-    M09 HITRUST-scope tickets that depend on it; the user
-    authorizes a substitute partner before resume.
+12. **Design-partner withdrawal**: the M01 healthcare design partner
+    (selected at M01.P0/P1 scoping per D09) or the named M02
+    customer (AI lab) issues a withdrawal notice. The orchestrator
+    halts the affected milestone and the M09 HITRUST-scope tickets
+    that depend on it; the user authorizes a substitute partner
+    from the candidate pool before resume.
 13. **Vendor calendar slip > 25%**: M08 or M09 reports a slip
     exceeding 25% of the per-milestone calendar bands pinned in
     M08/M09 narratives (vendor budget posture per D07; M08 vendor
@@ -272,7 +273,7 @@ NDJSON append-only `EXECUTION-LOG.ndjson` with rotation at 100 MB.
 Trajectory-3 adds two top-level state fields:
 
 - `vendor_calendars: { "M08": { ...status }, "M09": { ...status } }`
-- `customer_evidence: { "M01": { ...latest receipt }, "M02": { ...latest receipt } }`
+- `customer_evidence: { "M01": { ...latest receipt }, "M02": { ...latest receipt } }` (M01 records the selected design-partner identity in the audit doc evidence log only; trajectory-3 narrative/YAML docs stay vendor-agnostic)
 
 ## 13. Reporting
 

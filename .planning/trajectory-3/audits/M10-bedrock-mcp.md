@@ -20,8 +20,8 @@ publication; (e) AWS reviewer round-trip log; (f) closure attestation
 with listing URL, approval date, MCP registry URL; (g) co-authored
 APN blog status (draft + AWS SA review, not published); (h) D03
 single-cloud confirmation; (i) cross-references to M02 partnership
-note, M03 hosted CI provenance, M06 SBOM, M01 Opus customer-outcome
-freshness.
+note, M03 hosted CI provenance, M06 SBOM, M01 design-partner
+customer-outcome freshness.
 
 ## 2. Hard counts at P0
 
@@ -66,7 +66,7 @@ AUTONOMOUS-PROMPT (RESEARCH risk #4).
   type choice">
 - Pricing model: annual contract per tenant + metered receipt overage
   dimension (per RESEARCH recommendation).
-- Base price anchor: <fill, vs M01 Opus contract>
+- Base price anchor: <fill, vs M01 design-partner contract>
 - Marketplace transaction fee schedule: <fill, 3-9% per AWS
   agreement>
 - Finance + procurement sign-off date: <YYYY-MM-DD>
@@ -153,8 +153,8 @@ AUTONOMOUS-PROMPT.
   review: `.planning/trajectory-3/audits/M03-ci-restoration.md`
 - M06 SBOM + cargo-vet artifacts for AWS security review:
   `.planning/trajectory-3/audits/M06-formal-supply-chain.md`
-- M01 Opus customer-outcome paragraph (D15 7-day freshness window):
-  `.planning/trajectory-3/audits/M01-opus-pilot.md`
+- M01 design-partner customer-outcome paragraph (D15 7-day freshness window):
+  `.planning/trajectory-3/audits/M01-healthcare-pilot.md`
 - M08 deferral note (vendor evidence closes ~week 36; co-authored
   blog cannot cite M08; trajectory-4 follow-up post owns the
   citation): `.planning/trajectory-3/audits/M08-vendor-evidence.md`

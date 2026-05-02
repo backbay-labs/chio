@@ -104,9 +104,9 @@
     - M09.P0.T2
   soft_deps:
     - "D12 pattern: two-vendor primary RFP plus one named fallback."
-    - "RFP includes scope (v3.18 + Opus per D09), calendar band (12-36 weeks), budget posture (D07 $80-150k), MyCSF portal expectations."
+    - "RFP includes scope (v3.18 + M01 design-partner deployment per D09), calendar band (12-36 weeks), budget posture (D07 $80-150k), MyCSF portal expectations."
   gate_check:
-    cmd: test -f compliance/hitrust/rfp/rfp.md && grep -q 'v3.18' compliance/hitrust/rfp/rfp.md && grep -q 'Opus' compliance/hitrust/rfp/rfp.md && grep -q 'RFP send dates' .planning/trajectory-3/audits/M09-vendor-evidence.md
+    cmd: test -f compliance/hitrust/rfp/rfp.md && grep -q 'v3.18' compliance/hitrust/rfp/rfp.md && grep -qE 'design-partner|design partner' compliance/hitrust/rfp/rfp.md && grep -q 'RFP send dates' .planning/trajectory-3/audits/M09-vendor-evidence.md
     timeout_seconds: 60
   worktree_branch: wave/Wv/m09/p0.t4-author-and-send-rfp
   agent_role: vendor-coord
@@ -120,7 +120,7 @@
 - id: M09.P0.T5
   milestone: M09
   phase: 0
-  title: Pin scope statement to v3.18 plus Opus deployment and record explicit out-of-scope decisions
+  title: Pin scope statement to v3.18 plus M01 design-partner deployment and record explicit out-of-scope decisions
   status: pending
   effort_days: 0.5
   owner_glob:
@@ -147,7 +147,7 @@
 - id: M09.P0.T6
   milestone: M09
   phase: 0
-  title: Confirm HIPAA BAA chain (provider to Opus to Backbay) and surface gaps to user
+  title: Confirm HIPAA BAA chain (provider to design-partner tenant to Chio team) and surface gaps to user
   status: pending
   effort_days: 0.5
   owner_glob:
@@ -157,9 +157,9 @@
     - M09.P0.T2
   soft_deps:
     - "HIPAA pre-condition; halt-trigger candidate not currently in AUTONOMOUS-PROMPT canonical eleven."
-    - "If Chio is treated as a subcontractor of Opus, a Backbay-Opus BAA is required."
+    - "If Chio is treated as a subcontractor of the design partner, an upstream BAA is required."
   gate_check:
-    cmd: grep -q 'BAA chain confirmation' .planning/trajectory-3/audits/M09-vendor-evidence.md && grep -E 'Provider <-> Opus:.*[a-z]' .planning/trajectory-3/audits/M09-vendor-evidence.md
+    cmd: grep -q 'BAA chain confirmation' .planning/trajectory-3/audits/M09-vendor-evidence.md && grep -E 'Provider <-> design-partner tenant:.*[a-z]' .planning/trajectory-3/audits/M09-vendor-evidence.md
     timeout_seconds: 60
   worktree_branch: wave/Wv/m09/p0.t6-confirm-baa-chain
   agent_role: vendor-coord

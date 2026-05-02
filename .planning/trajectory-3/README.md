@@ -3,8 +3,9 @@
 Post-trajectory-2 planning artifacts. trajectory-2 closed M01-M10 across 113
 PRs; trajectory-3 is the customer-anchored legibility cycle. The frame is
 50/30/20 customer-anchored / deepen-the-substrate / external-attestation:
-half the calendar is real-customer pilot work + AI-lab evaluation
-beachhead, three tenths is paying down the load-bearing debt
+half the calendar is healthcare design-partner pilot work + AI-lab
+evaluation beachhead, three tenths is paying down the load-bearing
+debt
 trajectory-2 papered over (mutation thresholds, threat-coverage, formal
 invariants), and the remaining fifth is the long-clock vendor calendars
 (crypto/protocol review, HITRUST i1) that turn the customer-anchored
@@ -26,8 +27,8 @@ ship a pilot on an unsupported substrate. A pure halt-to-stabilize would
 leave Chio without a single external user reference. A pure audit-led
 trajectory would burn 10-12 months on vendor calendars while the
 codebase stayed unanchored. The verdict that closed the debate is the
-50/30/20 blend: customer (M01 Opus pilot, M02 AI-lab beachhead, M07
-mobile MVP, M10 Bedrock listing) is the load-bearing axis; deepen
+50/30/20 blend: customer (M01 healthcare pilot, M02 AI-lab beachhead,
+M07 mobile MVP, M10 Bedrock listing) is the load-bearing axis; deepen
 (M03 hosted CI, M04 mutation gate, M05 threat closure, M06 formal +
 supply-chain) is the debt cycle that makes the pilot referenceable; and
 external attestation (M08 NCC Group or Trail of Bits, M09 HITRUST i1) runs as
@@ -45,7 +46,7 @@ slip beyond 25%, HITRUST assessor rejection, M08 reviewer critical CVE.
 
 | # | Title | One-liner | Lens | TB |
 |---|-------|-----------|------|----|
-| 01 | [Opus Cluster Design-Partner Production Pilot](01-opus-design-partner-pilot.md) | Ship v3.18 to a real production tenant (Opus cluster, Backbay healthcare) and observe under real workload for 30 days. | adoption / operational | yes |
+| 01 | [Healthcare Design-Partner Production Pilot](01-healthcare-design-partner-pilot.md) | Ship v3.18 to a single healthcare design partner (selected at M01.P0/P1 scoping) and observe under real workload for 30 days. | adoption / operational | yes |
 | 02 | [AI-Lab Evaluation Infrastructure Beachhead](02-ai-lab-evaluation-beachhead.md) | Make Chio the verdict-evidence substrate for an AI lab (Anthropic / METR / Apollo) tool-use evaluation pipeline. | adoption / protocol | yes |
 | 03 | [Hosted CI Truth + Reproducible Builds](03-hosted-ci-truth-and-reproducible-builds.md) | End the admin-merge bypass; restore hosted CI; publish reproducible-build hashes. | quality / release | yes |
 | 04 | [Mutation Gate + Verdict Matrix Promotion](04-mutation-and-verdict-matrix-promotion.md) | Promote the mutation lane and verdict matrix from advisory to gating at honest thresholds. | quality | yes |
@@ -53,7 +54,7 @@ slip beyond 25%, HITRUST assessor rejection, M08 reviewer critical CVE.
 | 06 | [Focused Formal Invariants + Supply-Chain Hygiene v2](06-focused-formal-and-supply-chain.md) | 3-4 highest-leverage TLA+/Apalache invariants; cargo-vet; SBOM publication; CVE alerting. | formal / supply-chain | yes |
 | 07 | [chio-kernel-mobile MVP + Device Attestation](07-chio-kernel-mobile-mvp.md) | Real iOS + Android kernel binding with Apple App Attest + Android Play Integrity. | platform-expansion | yes |
 | 08 | [Independent Crypto + Protocol Review](08-independent-crypto-protocol-review.md) | NCC Group or Trail of Bits review of cemented v3.0 surface (long-clock vendor lane). | external-attestation | yes |
-| 09 | [HITRUST i1 Assessment](09-hitrust-i1-assessment.md) | HITRUST i1 readiness + assessment scoped to the Opus design-partner deployment. | external-attestation | yes |
+| 09 | [HITRUST i1 Assessment](09-hitrust-i1-assessment.md) | HITRUST i1 readiness + assessment scoped to the M01 design-partner deployment. | external-attestation | yes |
 | 10 | [AWS Bedrock + MCP Conformance Listing](10-aws-bedrock-mcp-conformance.md) | One cloud marketplace listing with MCP-conformant Chio integration. | distribution | yes |
 
 All ten milestones are trust-boundary; trajectory-3 has no non-trust-boundary
@@ -81,15 +82,15 @@ W1/W2/W3 transitions; their evidence lands at trajectory close.
 
 | Artifact | Owner | Consumers | Notes |
 |----------|-------|-----------|-------|
-| Opus tenant runbook + log-export schema | M01 | M09 (HITRUST scope), M07 (mobile patient-app extension) | Real PagerDuty hookup; 30-day incident report. |
+| Design-partner tenant runbook + log-export schema | M01 | M09 (HITRUST scope), M07 (mobile patient-app extension) | Real PagerDuty hookup; 30-day incident report. |
 | AI-lab eval-receipt format | M02 | M04 (verdict-driver parity), partner-signed conformance assertion | Python + Go drivers `unsupported -> passing`. |
 | Hosted CI workflows + reproducible-build pipeline | M03 | every other milestone (CI is load-bearing again) | SLSA-style provenance, public checksum index, third-party reproduction. |
 | Mutation lane + verdict matrix | M04 | M08 (the M08 reviewer cites the gate) | Honest threshold (target 80%, accept 65%); CI gates flip from advisory to required. |
 | Threat-coverage table | M05 | M08 reviewer cross-checks closure | Zero `partial` or `placeholder` rows. |
 | Apalache focused-invariants + SBOM/cargo-vet | M06 | M09 assessor consumes SBOM | 3-4 highest-leverage invariants; full FSM deferred to trajectory-4 (D04). |
-| chio-kernel-mobile bindings + attestation | M07 | M01 mobile patient-app | iOS framework + Android AAR; App Attest + Play Integrity. |
+| chio-kernel-mobile bindings + attestation | M07 | M01 design-partner mobile patient-app | iOS framework + Android AAR; App Attest + Play Integrity. |
 | NCC Group or Trail of Bits report | M08 | release narrative; M03 / M04 / M05 cited | Public report with remediation log. |
-| HITRUST i1 certificate | M09 | Opus cluster procurement; release narrative | Scoped to v3.18 + Opus deployment. |
+| HITRUST i1 certificate | M09 | Design-partner procurement; release narrative | Scoped to v3.18 + design-partner deployment. |
 | AWS Bedrock listing + MCP conformance entry | M10 | distribution narrative | AWS approval is the third-party evidence. |
 
 ## House rules
@@ -140,7 +141,7 @@ The verdict debate produced fifteen decisions D01..D15 (full text in
   OWNERS.toml               (path -> reviewer mapping)
   freezes.yml               (collision detector seed)
   decisions.yml             (locked design decisions)
-  01-opus-design-partner-pilot.md
+  01-healthcare-design-partner-pilot.md
   02-ai-lab-evaluation-beachhead.md
   03-hosted-ci-truth-and-reproducible-builds.md
   04-mutation-and-verdict-matrix-promotion.md

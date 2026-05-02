@@ -10,8 +10,9 @@ audit-doc pass at P5.T4)
 
 ## 1. Audit scope
 
-M09 procures HITRUST i1 assessment scoped to v3.18 + Opus deployment
-(D02, D09). Release gate: QUALIFICATION; load-bearing artifact is the
+M09 procures HITRUST i1 assessment scoped strictly to v3.18 + the
+M01 design-partner deployment (D02, D09). Release gate:
+QUALIFICATION; load-bearing artifact is the
 HITRUST i1 certificate issued by an authorized external assessor.
 
 Single-tenant, single-version, single-deployment-environment
@@ -50,9 +51,9 @@ weeks. Halt trigger 13 (vendor calendar slip > 25%) fires at week 45.
   - Contracted certificate-issuance week:
 - Scope memo signed by assessor at P0.T8: <date>
 - BAA chain confirmation (HIPAA pre-condition):
-  - Provider <-> Opus: <status, contract reference>
-  - Opus <-> Backbay: <status, contract reference>
-  - Backbay-as-subcontractor BAA: <status>
+  - Provider <-> design-partner tenant: <status, contract reference>
+  - Design-partner <-> Chio team: <status, contract reference>
+  - Chio-as-subcontractor BAA: <status>
 - Out-of-scope decisions (recorded at P0.T5):
   - Mobile (M07) inclusion: explicit-no (default)
   - AWS Bedrock (M10) inclusion: explicit-no (default)
@@ -82,10 +83,10 @@ to the assessor's MyCSF portal at P3.T4.]
 
 Cross-references to upstream artifacts (consumed read-only by M09):
 
-- M01 operator runbook: `.planning/trajectory-3/audits/M01-opus-pilot.md`
+- M01 operator runbook: `.planning/trajectory-3/audits/M01-healthcare-pilot.md`
 - M01 audit-log export schema v1: `spec/audit-log/export-schema.v1.json`
   (frozen via `m01-m09-audit-handoff` from M01.P3.T1 through M01.P5.T5)
-- M01 30-day BOP audit-log samples: <Opus tenant export bundle path>
+- M01 30-day BOP audit-log samples: <design-partner tenant export bundle path>
 - M03 reproducible-build hash + third-party rebuild evidence:
   `.planning/trajectory-3/audits/M03-ci-restoration.md`
 - M03 SLSA-style provenance attestations: `.github/workflows/*`
@@ -124,7 +125,7 @@ Findings dispute / clarification round: <Y/N + summary>
 
 - Certificate received: <id, issuance date, expiration date>
   (1-year validity; expiration = issuance + 12 months)
-- Scope on certificate: v3.18 + Opus deployment per D09
+- Scope on certificate: v3.18 + the M01 design-partner deployment per D09
 - Assessor identity: <firm + lead engagement partner>
 - HITRUST directory entry: <URL>
 - Public landing page: `docs/external-attestation/hitrust-i1/index.md`

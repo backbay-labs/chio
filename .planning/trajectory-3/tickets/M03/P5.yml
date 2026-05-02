@@ -15,7 +15,7 @@
 # provenance file URL, third-party rebuilder identity, matched hash,
 # date). Once filled, the M08 vendor-evidence reviewer and M09 HITRUST
 # i1 assessor can cite these artifacts directly. M01 production cut for
-# the Opus pilot is unblocked.
+# the M01 design-partner pilot is unblocked.
 #
 # T2.a is a 0.25-day vendor-evidence-shaped ticket per the trajectory-3
 # style guide: low-effort paperwork capturing the calendar dependency on

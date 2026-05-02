@@ -106,7 +106,7 @@
   depends_on:
     - M10.P0.T1
   soft_deps:
-    - "RESEARCH 'AWS marketplace listing type choice' rejects pure container on AgentCore Runtime; SaaS preserves Chio's operational responsibility and matches M01 Opus deployment shape"
+    - "RESEARCH 'AWS marketplace listing type choice' rejects pure container on AgentCore Runtime; SaaS preserves Chio's operational responsibility and matches the M01 design-partner deployment shape"
     - "AI Agents and Tools category aligns with $25k 2026 + $50k MDF co-investment for qualifying partners, creating the natural co-authored APN blog opportunity at P5"
   gate_check:
     cmd: >-

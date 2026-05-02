@@ -4,10 +4,12 @@
 
 ## In one paragraph
 
-M09 procures a HITRUST i1 readiness + assessment scoped to the Opus
-design-partner deployment (D02 picks HITRUST i1 over ISO 42001).
-Release gate is QUALIFICATION: HITRUST i1 certificate issued, scoped
-to v3.18 + Opus deployment per D09. Implementation is dominated by
+M09 procures a HITRUST i1 readiness + assessment scoped strictly to
+the M01 design-partner deployment (D02 picks HITRUST i1 over ISO
+42001; D09 binds the partner identity at execution time, not in
+trajectory-3 docs). Release gate is QUALIFICATION: HITRUST i1
+certificate issued, scoped to v3.18 + the M01 design-partner
+deployment per D09. Implementation is dominated by
 vendor-coord work (RFP, scoping, walkthroughs, follow-up evidence
 requests) plus a smaller engineering surface (control-mapping CSV,
 narrative authoring, evidence-pack automation script consuming M01 /
@@ -28,13 +30,13 @@ M03 / M05 / M06 outputs).
 
 - D02 HITRUST i1 over ISO 42001
 - D07 vendor budget posture ~$80-150k for this milestone
-- D09 scope is the Opus design-partner deployment
+- D09 scope is the M01 design-partner deployment
 
 ## Active freezes
 
 - `m01-m09-audit-handoff` (M01.P3 through M01.P5; covers
   `spec/audit-log/export-schema.v1.json` and
-  `.planning/trajectory-3/audits/M01-opus-pilot.md`). M09.P3.T2
+  `.planning/trajectory-3/audits/M01-healthcare-pilot.md`). M09.P3.T2
   cannot leave pending until the freeze closes (M01.P5.T5 merge).
 - M09 freezes the assessor evidence document under
   `.planning/trajectory-3/audits/M09-vendor-evidence.md` from P0.T2
@@ -56,7 +58,7 @@ M03 / M05 / M06 outputs).
 ## When this milestone is done
 
 - HITRUST i1 certificate received from the authorized assessor.
-- Certificate scoped to v3.18 + Opus deployment per D09.
+- Certificate scoped to v3.18 + the M01 design-partner deployment per D09.
 - `compliance/hitrust/control-mapping.csv` complete (every i1 control
   marked `evidenced` or `accepted-risk`).
 - `compliance/hitrust/build-evidence-pack.sh` idempotent and exercised

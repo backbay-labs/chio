@@ -5,7 +5,7 @@
   status: pending
   effort_days: 1.0
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on: []
   soft_deps:
@@ -14,10 +14,11 @@
   - RESEARCH.md PagerDuty / on-call integration plan section names the six gaps tallied
     in the audit doc baseline
   gate_check:
-    cmd: test -f .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'BOUNDED_OPERATIONAL_PROFILE'
-      .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'tenant size' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -q 'PagerDuty' .planning/trajectory-3/audits/M01-opus-pilot.md && grep
-      -q 'spec/audit-log' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: test -f .planning/trajectory-3/audits/M01-healthcare-pilot.md && grep -q
+      'BOUNDED_OPERATIONAL_PROFILE' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'tenant size' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'PagerDuty' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'spec/audit-log' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p0.t1-open-audit-doc-hard-counts
   agent_role: customer-coord
@@ -30,26 +31,27 @@
 - id: M01.P0.T2
   milestone: M01
   phase: 0
-  title: Record Opus design-partner contract memo and BAA posture in audit doc evidence
-    log
+  title: Record healthcare design-partner contract memo and BAA posture in audit doc
+    evidence log
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P0.T1
   soft_deps:
-  - decisions.yml D09 ratifies Opus as the M01 design partner; the contract memo is
-    the engineering-side artifact for that decision
+  - decisions.yml D09 ratifies the healthcare design-partner naming policy; the contract
+    memo records the selected partner from the candidate pool as the engineering-side
+    artifact for that decision
   - decisions.yml D15 names the 7-day freshness window the audit doc evidence log
     enforces
   gate_check:
-    cmd: grep -q 'D09' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qiE
-      'BAA|Business Associate' .planning/trajectory-3/audits/M01-opus-pilot.md &&
-      grep -q 'contract memo' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -q 'D09' .planning/trajectory-3/audits/M01-healthcare-pilot.md && grep
+      -qiE 'BAA|Business Associate' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'contract memo' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
-  worktree_branch: wave/W1/m01/p0.t2-opus-contract-memo
+  worktree_branch: wave/W1/m01/p0.t2-design-partner-contract-memo
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
@@ -71,8 +73,8 @@
   soft_deps:
   - docs/release/OPERATIONS_RUNBOOK.md lines 28-78 enumerate the chio trust serve
     / chio mcp serve-http required runtime inputs the onboarding plan imports
-  - clusters/opus/CLAUDE.md names the opus_api service surface the onboarding plan
-    integrates against
+  - the design-partner's existing API surface (selected at P0.T2) is what the onboarding
+    plan integrates against; topology pin lands at P0.T4
   gate_check:
     cmd: test -f docs/operator-runbook/onboarding.md && [ $(wc -l < docs/operator-runbook/onboarding.md)
       -ge 50 ] && grep -q 'chio trust serve' docs/operator-runbook/onboarding.md &&
@@ -99,14 +101,15 @@
   depends_on:
   - M01.P0.T1
   soft_deps:
-  - decisions.yml D09 names Opus cluster (Backbay healthcare) as the deployment target;
-    clusters/opus/apps/opus/services/api/ runs at port 8103
+  - decisions.yml D09 names a healthcare design partner selected at M01.P0/P1 scoping
+    as the deployment target; the partner's existing API service surface and port
+    are pinned at this ticket once selection is recorded in the audit doc
   - RESEARCH.md open question 1 (sidecar / in-process / wrapped MCP edge) is answered
     in this ticket
   gate_check:
-    cmd: test -f docs/operator-runbook/topology.md && grep -q 'opus_api' docs/operator-runbook/topology.md
-      && grep -qE 'sidecar|in-process|wrapped' docs/operator-runbook/topology.md &&
-      grep -q 'single-tenant' docs/operator-runbook/topology.md
+    cmd: test -f docs/operator-runbook/topology.md && grep -qE 'design-partner|design
+      partner' docs/operator-runbook/topology.md && grep -qE 'sidecar|in-process|wrapped'
+      docs/operator-runbook/topology.md && grep -q 'single-tenant' docs/operator-runbook/topology.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p0.t4-topology-diagram
   agent_role: kernel-rust
@@ -124,7 +127,7 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P0.T2
@@ -134,9 +137,9 @@
   - RESEARCH.md PagerDuty / on-call integration plan section enumerates the five-step
     minimal integration scope this memo formalizes
   gate_check:
-    cmd: grep -q 'chio-opus-pilot-prod' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -q 'events.pagerduty.com/v2/enqueue' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qE 'P0.+5 min|primary on-call' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -q 'chio-healthcare-pilot-prod' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'events.pagerduty.com/v2/enqueue' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qE 'P0.+5 min|primary on-call' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p0.t5-pagerduty-contract-memo
   agent_role: customer-coord
@@ -191,8 +194,8 @@
   depends_on:
   - M01.P1.T1
   soft_deps:
-  - M01.P0.T1 hard-count baseline names current Opus-side SLOs; this doc adds Chio-mediation-edge
-    SLOs which are net-new
+  - M01.P0.T1 hard-count baseline names current design-partner-side SLOs; this doc
+    adds Chio-mediation-edge SLOs which are net-new
   gate_check:
     cmd: test -f docs/operator-runbook/slo.md && grep -qE 'p50|p95|p99' docs/operator-runbook/slo.md
       && grep -qiE 'availability|error budget' docs/operator-runbook/slo.md && grep
@@ -245,7 +248,7 @@
   effort_days: 1.5
   owner_glob:
   - docs/operator-runbook/pagerduty.md
-  - deploy/opus/chio-siem-overrides.yaml
+  - deployments/healthcare-design-partner/chio-siem-overrides.yaml
   shared_paths: []
   depends_on:
   - M01.P0.T5
@@ -256,10 +259,10 @@
   - 'RESEARCH.md mitigation 4 (ePHI in PagerDuty alerts): summary string carries no
     PHI; verify alerting.rs line 18 minimal-summary contract'
   gate_check:
-    cmd: test -f docs/operator-runbook/pagerduty.md && test -f deploy/opus/chio-siem-overrides.yaml
-      && grep -q 'chio-opus-pilot-prod' docs/operator-runbook/pagerduty.md && grep
-      -qiE 'pii_phi_exposure' deploy/opus/chio-siem-overrides.yaml && grep -q 'Critical'
-      deploy/opus/chio-siem-overrides.yaml
+    cmd: test -f docs/operator-runbook/pagerduty.md && test -f deployments/healthcare-design-partner/chio-siem-overrides.yaml
+      && grep -q 'chio-healthcare-pilot-prod' docs/operator-runbook/pagerduty.md &&
+      grep -qiE 'pii_phi_exposure' deployments/healthcare-design-partner/chio-siem-overrides.yaml
+      && grep -q 'Critical' deployments/healthcare-design-partner/chio-siem-overrides.yaml
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p1.t4-pagerduty-integration-overrides
   agent_role: infra-yaml
@@ -299,11 +302,11 @@
 - id: M01.P1.T6
   milestone: M01
   phase: 1
-  title: Add weekly PagerDuty heartbeat workflow at .github/workflows/opus-pagerduty-heartbeat.yml
+  title: Add weekly PagerDuty heartbeat workflow at .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml
   status: pending
   effort_days: 1.0
   owner_glob:
-  - .github/workflows/opus-pagerduty-heartbeat.yml
+  - .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml
   shared_paths: []
   depends_on:
   - M01.P1.T4
@@ -313,10 +316,10 @@
   - M03 hosted CI is a soft prerequisite for the workflow runner; M01 can run on best-effort
     CI through P3 per RESEARCH.md cross-milestone notes
   gate_check:
-    cmd: test -f .github/workflows/opus-pagerduty-heartbeat.yml && grep -q 'cron'
-      .github/workflows/opus-pagerduty-heartbeat.yml && grep -q 'events.pagerduty.com'
-      .github/workflows/opus-pagerduty-heartbeat.yml && grep -qE 'workflow_dispatch|schedule'
-      .github/workflows/opus-pagerduty-heartbeat.yml
+    cmd: test -f .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml && grep
+      -q 'cron' .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml && grep
+      -q 'events.pagerduty.com' .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml
+      && grep -qE 'workflow_dispatch|schedule' .github/workflows/healthcare-pilot-pagerduty-heartbeat.yml
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p1.t6-pagerduty-heartbeat-workflow
   agent_role: infra-yaml
@@ -329,14 +332,14 @@
 - id: M01.P2.T1
   milestone: M01
   phase: 2
-  title: Scaffold sustained-load runner crate at bench/opus-capacity/
+  title: Scaffold sustained-load runner crate at bench/healthcare-pilot-capacity/
   status: pending
   effort_days: 2.0
   owner_glob:
-  - bench/opus-capacity/Cargo.toml
-  - bench/opus-capacity/src/lib.rs
-  - bench/opus-capacity/src/runner.rs
-  - bench/opus-capacity/README.md
+  - bench/healthcare-pilot-capacity/Cargo.toml
+  - bench/healthcare-pilot-capacity/src/lib.rs
+  - bench/healthcare-pilot-capacity/src/runner.rs
+  - bench/healthcare-pilot-capacity/README.md
   shared_paths:
   - Cargo.toml
   - Cargo.lock
@@ -344,15 +347,15 @@
   - M01.P0.T4
   soft_deps:
   - trajectory-2 bench/ttfrh/ (cloudflare_worker.rs, fastapi_langchain.rs, network_sentinel.rs
-    runners) is the microbench reference shape; opus-capacity is the sustained-load
+    runners) is the microbench reference shape; healthcare-pilot-capacity is the sustained-load
     sibling
   - RESEARCH.md capacity / load profile section recommends 24-hour shadow capture
     then 1x/2x/5x replay
   gate_check:
-    cmd: cargo build -p opus-capacity --quiet && cargo clippy -p opus-capacity --
-      -D warnings && test -f bench/opus-capacity/README.md
+    cmd: cargo build -p healthcare-pilot-capacity --quiet && cargo clippy -p healthcare-pilot-capacity
+      -- -D warnings && test -f bench/healthcare-pilot-capacity/README.md
     timeout_seconds: 900
-  worktree_branch: wave/W1/m01/p2.t1-opus-capacity-runner-crate
+  worktree_branch: wave/W1/m01/p2.t1-capacity-runner-crate
   agent_role: kernel-rust
   review_required:
   - '@bb-connor'
@@ -363,23 +366,23 @@
 - id: M01.P2.T2
   milestone: M01
   phase: 2
-  title: Add shadow-traffic capture script at bench/opus-capacity/scripts/shadow-capture.sh
+  title: Add shadow-traffic capture script at bench/healthcare-pilot-capacity/scripts/shadow-capture.sh
   status: pending
   effort_days: 1.0
   owner_glob:
-  - bench/opus-capacity/scripts/shadow-capture.sh
+  - bench/healthcare-pilot-capacity/scripts/shadow-capture.sh
   shared_paths: []
   depends_on:
   - M01.P2.T1
   soft_deps:
-  - 'RESEARCH.md capacity profile step 1: 24-hour shadow-traffic capture from opus_api
-    against a Chio mediation edge (read-only, tee''d traffic)'
+  - 'RESEARCH.md capacity profile step 1: 24-hour shadow-traffic capture from the
+    design-partner API surface against a Chio mediation edge (read-only, tee''d traffic)'
   - M01.P0.T4 topology diagram pins which mediation edge to tee; the script reads
     that pin
   gate_check:
-    cmd: test -f bench/opus-capacity/scripts/shadow-capture.sh && test -x bench/opus-capacity/scripts/shadow-capture.sh
-      && bash -n bench/opus-capacity/scripts/shadow-capture.sh && grep -qiE 'opus_api|tee'
-      bench/opus-capacity/scripts/shadow-capture.sh
+    cmd: test -f bench/healthcare-pilot-capacity/scripts/shadow-capture.sh && test
+      -x bench/healthcare-pilot-capacity/scripts/shadow-capture.sh && bash -n bench/healthcare-pilot-capacity/scripts/shadow-capture.sh
+      && grep -qiE 'design-partner|tee' bench/healthcare-pilot-capacity/scripts/shadow-capture.sh
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p2.t2-shadow-traffic-capture
   agent_role: infra-yaml
@@ -397,7 +400,7 @@
   status: pending
   effort_days: 1.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P2.T1
@@ -407,10 +410,10 @@
     throughput, trust-control state-machine convergence time, and chio-siem exporter
     backpressure
   gate_check:
-    cmd: grep -qE 'Capacity report|capacity test report' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qE '1x|2x|5x' .planning/trajectory-3/audits/M01-opus-pilot.md && grep
-      -qE 'p95|p99' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qiE 'throughput'
-      .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qE 'Capacity report|capacity test report' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qE '1x|2x|5x' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qE 'p95|p99' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'throughput' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p2.t3-capacity-test-report
   agent_role: kernel-rust
@@ -455,7 +458,7 @@
   status: pending
   effort_days: 1.0
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P0.T3
@@ -465,8 +468,8 @@
   - decisions.yml D15 7-day freshness window applies; rehearsal date and outcome recorded
     within 7 days
   gate_check:
-    cmd: grep -qiE 'tenant-onboarding rehearsal|onboarding rehearsal' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'rehearsal date|rehearsal log' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'tenant-onboarding rehearsal|onboarding rehearsal' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'rehearsal date|rehearsal log' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p2.t5-tenant-onboarding-rehearsal
   agent_role: customer-coord
@@ -512,7 +515,7 @@
 - id: M01.P3.T2
   milestone: M01
   phase: 3
-  title: Add CEF emitter at crates/chio-siem/src/exporters/cef.rs (or LEEF if Opus
+  title: Add CEF emitter at crates/chio-siem/src/exporters/cef.rs (or LEEF if design-partner
     SOC is QRadar-shaped)
   status: pending
   effort_days: 1.5
@@ -612,12 +615,12 @@
 - id: M01.P3.T5
   milestone: M01
   phase: 3
-  title: Record schema-negotiation receipt (Opus team accepted v1) in audit doc evidence
-    log
+  title: Record schema-negotiation receipt (design-partner team accepted v1) in audit
+    doc evidence log
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P3.T1
@@ -626,11 +629,11 @@
   - M01.P3.T4
   soft_deps:
   - decisions.yml D15 7-day freshness window applies; receipt date recorded within
-    7 days of Opus SOC sign-off
+    7 days of design-partner SOC sign-off
   gate_check:
-    cmd: grep -qiE 'schema.+negotiation|schema-negotiation' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -q 'export-schema.v1.json' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'accepted|sign-off|sign off' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'schema.+negotiation|schema-negotiation' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'export-schema.v1.json' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'accepted|sign-off|sign off' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p3.t5-schema-negotiation-receipt
   agent_role: customer-coord
@@ -647,7 +650,7 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P3.T5
@@ -656,8 +659,8 @@
   - RESEARCH.md healthcare risk register row 1 (PHI exposure in receipts) drives the
     per-week PHI audit row
   gate_check:
-    cmd: grep -qiE 'Week 1|week-1' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'PHI-leak|PHI leak' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'Week 1|week-1' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'PHI-leak|PHI leak' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p4.t1-week-1-incident-review
   agent_role: customer-coord
@@ -674,14 +677,14 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P4.T1
   soft_deps:
   - decisions.yml D15 7-day freshness window applies
   gate_check:
-    cmd: grep -qiE 'Week 2|week-2' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'Week 2|week-2' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p4.t2-week-2-incident-review
   agent_role: customer-coord
@@ -698,14 +701,14 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P4.T2
   soft_deps:
   - decisions.yml D15 7-day freshness window applies
   gate_check:
-    cmd: grep -qiE 'Week 3|week-3' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'Week 3|week-3' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p4.t3-week-3-incident-review
   agent_role: customer-coord
@@ -722,14 +725,14 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P4.T3
   soft_deps:
   - decisions.yml D15 7-day freshness window applies
   gate_check:
-    cmd: grep -qiE 'Week 4|week-4' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'Week 4|week-4' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p4.t4-week-4-incident-review
   agent_role: customer-coord
@@ -746,7 +749,7 @@
   status: pending
   effort_days: 1.0
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P4.T1
@@ -758,10 +761,10 @@
   - 'RESEARCH.md cross-milestone: M01 incident reports inform M04 mutation-gate priority
     crates'
   gate_check:
-    cmd: grep -qiE '30-day|30 day' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'rollup|incident report' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'P0 count|zero P0' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'MTTR' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE '30-day|30 day' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'rollup|incident report' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'P0 count|zero P0' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'MTTR' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p4.t5-30-day-incident-report
   agent_role: customer-coord
@@ -778,7 +781,7 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P4.T5
@@ -786,10 +789,10 @@
   - docs/release/OPERATIONS_RUNBOOK.md lines 13-26 enumerate the four bounds; attestation
     must touch all four
   gate_check:
-    cmd: grep -qiE 'bounded-profile-hold|bounded profile.+held' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -q 'single-writer' .planning/trajectory-3/audits/M01-opus-pilot.md &&
-      grep -qE 'sender-constrained|hosted auth' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qE 'SQLite|monetary budget' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'bounded-profile-hold|bounded profile.+held' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'single-writer' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qE 'sender-constrained|hosted auth' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qE 'SQLite|monetary budget' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p4.t6-bounded-profile-hold-attestation
   agent_role: customer-coord
@@ -806,17 +809,17 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P4.T6
   soft_deps:
   - freezes.yml m01-m07-audit-handoff opens at this ticket merge; closes at M01.P5.T5
-  - M07 mobile patient-app extension consumes the M01 Opus tenant runbook + log-export
-    schema as load-bearing inputs
+  - M07 mobile patient-app extension consumes the M01 design-partner tenant runbook
+    + log-export schema as load-bearing inputs
   gate_check:
-    cmd: grep -qiE 'm01-m07-audit-handoff|M07 mobile' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'freeze open|freeze opened' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'm01-m07-audit-handoff|M07 mobile' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'freeze open|freeze opened' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p5.t1-open-m07-audit-handoff
   agent_role: customer-coord
@@ -829,26 +832,26 @@
 - id: M01.P5.T2
   milestone: M01
   phase: 5
-  title: Record Opus ops sign-off memo in audit doc closure attestations within 7-day
-    window
+  title: Record design-partner ops sign-off memo in audit doc closure attestations
+    within 7-day window
   status: pending
   effort_days: 1.0
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P5.T1
   soft_deps:
   - 'decisions.yml D15 7-day freshness window: sign-off memo recorded within 7 days
     of receipt'
-  - 'narrative success criterion: Opus cluster ops sign-off memo committed within
+  - 'narrative success criterion: design-partner ops sign-off memo committed within
     7 days of P5 close'
   gate_check:
-    cmd: grep -qiE 'sign-off memo|sign off memo' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'closure attestation' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'Opus tenant ops|Opus ops' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'sign-off memo|sign off memo' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'closure attestation' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'design-partner tenant ops|design-partner ops' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
-  worktree_branch: wave/W1/m01/p5.t2-opus-ops-sign-off-memo
+  worktree_branch: wave/W1/m01/p5.t2-design-partner-ops-sign-off-memo
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
@@ -863,7 +866,7 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P5.T1
@@ -871,8 +874,8 @@
   - docs/operator-runbook/ contains six core files plus onboarding.md, topology.md,
     quota.md, phi-policy.md from P0-P3
   gate_check:
-    cmd: grep -qiE 'runbook live URL|operator runbook live' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -q 'docs/operator-runbook' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'runbook live URL|operator runbook live' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'docs/operator-runbook' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p5.t3-runbook-live-url
   agent_role: customer-coord
@@ -889,7 +892,7 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P5.T1
@@ -897,8 +900,8 @@
   - M09 HITRUST i1 assessor consumes spec/audit-log/export-schema.v1.json from this
     row per m01-m09-audit-handoff
   gate_check:
-    cmd: grep -q 'spec/audit-log/export-schema.v1.json' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'schema v1 path|Log-export schema v1' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -q 'spec/audit-log/export-schema.v1.json' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'schema v1 path|Log-export schema v1' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p5.t4-schema-v1-path-recorded
   agent_role: customer-coord
@@ -916,7 +919,7 @@
   status: pending
   effort_days: 0.5
   owner_glob:
-  - .planning/trajectory-3/audits/M01-opus-pilot.md
+  - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
   - M01.P5.T2
@@ -926,10 +929,10 @@
   - 'freezes.yml: this ticket merge closes both m01-m07-audit-handoff and m01-m09-audit-handoff'
   - 'narrative success criteria block: all four rows green at close'
   gate_check:
-    cmd: grep -qiE 'm01-m07-audit-handoff.+closed|closed.+m01-m07-audit-handoff' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'm01-m09-audit-handoff.+closed|closed.+m01-m09-audit-handoff' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -qiE 'success criteria|success-criteria' .planning/trajectory-3/audits/M01-opus-pilot.md
-      && grep -q 'Audit close' .planning/trajectory-3/audits/M01-opus-pilot.md
+    cmd: grep -qiE 'm01-m07-audit-handoff.+closed|closed.+m01-m07-audit-handoff' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'm01-m09-audit-handoff.+closed|closed.+m01-m09-audit-handoff' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -qiE 'success criteria|success-criteria' .planning/trajectory-3/audits/M01-healthcare-pilot.md
+      && grep -q 'Audit close' .planning/trajectory-3/audits/M01-healthcare-pilot.md
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p5.t5-milestone-closure
   agent_role: customer-coord
@@ -1011,7 +1014,7 @@
     outreach receipt
   gate_check:
     cmd: awk '/Partner outreach/{c++} END{ exit (c>=3)?0:1 }' .planning/trajectory-3/audits/M02-ai-lab.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p0.t3-open-outreach-threads
   agent_role: customer-coord
   review_required:
@@ -1038,7 +1041,7 @@
   gate_check:
     cmd: grep -q 'Partner contract signed' .planning/trajectory-3/audits/M02-ai-lab.md
       && grep -q 'Partner identity' .planning/trajectory-3/audits/M02-ai-lab.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p0.t4-contract-partner-week1
   agent_role: customer-coord
   review_required:
@@ -1095,7 +1098,7 @@
     cmd: grep -q 'Partner identity' .planning/trajectory-3/audits/M02-ai-lab.md &&
       grep -q 'partner-slug' .planning/trajectory-3/tickets/M02/README.md || grep
       -q 'Partner contracted' .planning/trajectory-3/tickets/M02/README.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p1.t1-commit-partner-identity
   agent_role: customer-coord
   review_required:
@@ -1124,7 +1127,7 @@
     cmd: test -f .planning/trajectory-3/research/m02/PARTNER-QA.md && grep -q 'signature'
       .planning/trajectory-3/research/m02/PARTNER-QA.md && grep -q 'pipeline' .planning/trajectory-3/research/m02/PARTNER-QA.md
       && grep -q 'citation' .planning/trajectory-3/research/m02/PARTNER-QA.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p1.t2-partner-qa-draft
   agent_role: customer-coord
   review_required:
@@ -1151,7 +1154,7 @@
   gate_check:
     cmd: test -f .planning/trajectory-3/research/m02/BUNDLE-SKETCH.md && grep -q 'chio.eval-report.bundle.v1'
       .planning/trajectory-3/research/m02/BUNDLE-SKETCH.md && grep -q 'rfc8785' .planning/trajectory-3/research/m02/BUNDLE-SKETCH.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p1.t3-freeze-bundle-sketch
   agent_role: spec-rust
   review_required:
@@ -1176,7 +1179,7 @@
   gate_check:
     cmd: test -f .planning/trajectory-3/research/m02/PARTNERSHIP-NOTE-DRAFT.md &&
       grep -q 'TODO' .planning/trajectory-3/research/m02/PARTNERSHIP-NOTE-DRAFT.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p1.t4-partnership-note-draft
   agent_role: customer-coord
   review_required:
@@ -1205,7 +1208,7 @@
     cmd: test -f crates/chio-eval-receipt/EXPORT-CONTRACT.md && grep -q 'verdict_matrix'
       crates/chio-eval-receipt/EXPORT-CONTRACT.md && grep -q 'eval_run' crates/chio-eval-receipt/EXPORT-CONTRACT.md
       && grep -q 'corpus_sha256' crates/chio-eval-receipt/EXPORT-CONTRACT.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p2.t1-evidence-export-contract
   agent_role: spec-rust
   review_required:
@@ -1285,7 +1288,7 @@
   gate_check:
     cmd: grep -q 'partner-side mapping' crates/chio-eval-receipt/EXPORT-CONTRACT.md
       && grep -q 'EXPORT-CONTRACT.md' .planning/trajectory-3/audits/M02-ai-lab.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p2.t4-partner-mapping-doc
   agent_role: spec-rust
   review_required:
@@ -1315,7 +1318,7 @@
   gate_check:
     cmd: test -f spec/eval/receipt-format.v1.json && grep -q 'chio.eval-report.bundle.v1'
       spec/eval/receipt-format.v1.json && grep -q 'rfc8785' spec/eval/receipt-format.v1.json
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p3.t1-bundle-schema-v1
   agent_role: spec-rust
   review_required:
@@ -1464,7 +1467,7 @@
   gate_check:
     cmd: ls examples/eval-receipt-ingest/ | grep -v '^README' | head -1 | xargs -I
       {} test -d examples/eval-receipt-ingest/{}
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p4.t1-integration-sample
   agent_role: customer-coord
   review_required:
@@ -1491,7 +1494,7 @@
   gate_check:
     cmd: grep -q 'Run URL exercising' .planning/trajectory-3/audits/M02-ai-lab.md
       && grep -q 'github.com/.*/actions/runs/' .planning/trajectory-3/audits/M02-ai-lab.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p4.t2-spike-green-run
   agent_role: customer-coord
   review_required:
@@ -1519,7 +1522,7 @@
   gate_check:
     cmd: test -f .planning/trajectory-3/research/m02/PARTNER-INTEGRATION.md && grep
       -q '^## ' .planning/trajectory-3/research/m02/PARTNER-INTEGRATION.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p4.t3-partner-feedback-log
   agent_role: customer-coord
   review_required:
@@ -1579,7 +1582,7 @@
     cmd: test -f .planning/trajectory-3/research/m02/M02-MEMO-DRAFT.md && grep -q
       'Chio Receipt Conformance Memo' .planning/trajectory-3/research/m02/M02-MEMO-DRAFT.md
       && grep -q 'chio.eval-report.bundle.v1' .planning/trajectory-3/research/m02/M02-MEMO-DRAFT.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p5.t1-memo-draft
   agent_role: customer-coord
   review_required:
@@ -1636,7 +1639,7 @@
     cmd: grep -q 'Status:.*closed' .planning/trajectory-3/audits/M02-ai-lab.md &&
       grep -q 'M02-memo.md' .planning/trajectory-3/audits/M02-ai-lab.md && grep -q
       'Cosign signer identity' .planning/trajectory-3/audits/M02-ai-lab.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p5.t3-fill-closure-attestations
   agent_role: customer-coord
   review_required:
@@ -1664,7 +1667,7 @@
   gate_check:
     cmd: grep -q 'Public partnership note URL' .planning/trajectory-3/audits/M02-ai-lab.md
       && grep -qE '(eval-report|AI lab|partner)' README.md
-    timeout_seconds: 30
+    timeout_seconds: 60
   worktree_branch: wave/W1/m02/p5.t4-publish-partnership-note
   agent_role: customer-coord
   review_required:
@@ -1752,7 +1755,7 @@
   - M03.P0.T1
   soft_deps:
   - D13 names independent contributor or sister team; recommendation per RESEARCH.md
-    is a Backbay platform-team individual outside the chio core team
+    is a sister-team engineer outside the chio core team
   - if M08 lands NCC Group / Trail of Bits, fold the rebuild into their engagement
     scope as higher-weight evidence; M03 records the optionality but does not block
     on M08
@@ -2509,7 +2512,7 @@
     cmd: test -f .planning/trajectory-3/audits/M04-mutation-gate.md && test -f .planning/trajectory-3/mutants-baseline.toml
       && grep -q 'trajectory-2 M02 closeout 30.7% aggregate' .planning/trajectory-3/audits/M04-mutation-gate.md
       && grep -q '^\[crate\.chio-attest-verify\]' .planning/trajectory-3/mutants-baseline.toml
-    timeout_seconds: 21600
+    timeout_seconds: 600
   worktree_branch: wave/W1/m04/p0.t1-audit-baseline-and-mutants-baseline-toml
   agent_role: quality-rust
   review_required:
@@ -4985,8 +4988,8 @@
   depends_on:
   - M07.P4.T4
   soft_deps:
-  - 'Q6 (RN module vs Expo module): Expo Module because Opus patient-app is on Expo
-    SDK; cross-compatibility with vanilla RN via Expo Modules autolinking.'
+  - 'Q6 (RN module vs Expo module): Expo Module because the design-partner patient-app
+    is on Expo SDK; cross-compatibility with vanilla RN via Expo Modules autolinking.'
   - 'Surface: evaluate, signReceipt, verifyCapability, verifyPassport, attestAppAttest,
     attestPlayIntegrity, verifyMobileReceipt.'
   - Expo Go is NOT supported (custom native code requires a dev-client build).
@@ -5037,8 +5040,8 @@
 - id: M07.P5.T3
   milestone: M07
   phase: 5
-  title: Patient-app demo integration in Opus cluster repo (cross-repo PR; reference
-    only)
+  title: Patient-app demo integration in design-partner deployment repo (cross-repo
+    PR; reference only)
   status: pending
   effort_days: 1.5
   owner_glob:
@@ -5047,17 +5050,17 @@
   depends_on:
   - M07.P5.T2
   soft_deps:
-  - 'Cross-repo: the demo lives in clusters/opus/ in the backbay workspace, not in
-    standalone/arc/.'
+  - 'Cross-repo: the demo lives in the design-partner deployment repo, not in this
+    Chio repo.'
   - 'Demo flow: App Attest (iOS) or Play Integrity (Android) mint -> evaluate fetch-lab-result
     -> sign receipt -> POST to M01 hosted oracle.'
   - Records the cross-repo PR URL plus the patient-app dev-client build identifier
     in audit-doc section 9.
   gate_check:
-    cmd: grep -q 'Opus cluster repo PR' .planning/trajectory-3/audits/M07-mobile-mvp.md
+    cmd: grep -q 'Design-partner deployment repo PR' .planning/trajectory-3/audits/M07-mobile-mvp.md
       && grep -q 'Patient-app dev-client build identifier' .planning/trajectory-3/audits/M07-mobile-mvp.md
     timeout_seconds: 60
-  worktree_branch: wave/W2/m07/p5.t3-opus-patient-app-demo
+  worktree_branch: wave/W2/m07/p5.t3-design-partner-app-demo
   agent_role: customer-coord
   review_required:
   - '@bb-connor'
@@ -6098,12 +6101,12 @@
   - M09.P0.T2
   soft_deps:
   - 'D12 pattern: two-vendor primary RFP plus one named fallback.'
-  - RFP includes scope (v3.18 + Opus per D09), calendar band (12-36 weeks), budget
-    posture (D07 $80-150k), MyCSF portal expectations.
+  - RFP includes scope (v3.18 + M01 design-partner deployment per D09), calendar band
+    (12-36 weeks), budget posture (D07 $80-150k), MyCSF portal expectations.
   gate_check:
     cmd: test -f compliance/hitrust/rfp/rfp.md && grep -q 'v3.18' compliance/hitrust/rfp/rfp.md
-      && grep -q 'Opus' compliance/hitrust/rfp/rfp.md && grep -q 'RFP send dates'
-      .planning/trajectory-3/audits/M09-vendor-evidence.md
+      && grep -qE 'design-partner|design partner' compliance/hitrust/rfp/rfp.md &&
+      grep -q 'RFP send dates' .planning/trajectory-3/audits/M09-vendor-evidence.md
     timeout_seconds: 60
   worktree_branch: wave/Wv/m09/p0.t4-author-and-send-rfp
   agent_role: vendor-coord
@@ -6116,8 +6119,8 @@
 - id: M09.P0.T5
   milestone: M09
   phase: 0
-  title: Pin scope statement to v3.18 plus Opus deployment and record explicit out-of-scope
-    decisions
+  title: Pin scope statement to v3.18 plus M01 design-partner deployment and record
+    explicit out-of-scope decisions
   status: pending
   effort_days: 0.5
   owner_glob:
@@ -6145,8 +6148,8 @@
 - id: M09.P0.T6
   milestone: M09
   phase: 0
-  title: Confirm HIPAA BAA chain (provider to Opus to Backbay) and surface gaps to
-    user
+  title: Confirm HIPAA BAA chain (provider to design-partner tenant to Chio team)
+    and surface gaps to user
   status: pending
   effort_days: 0.5
   owner_glob:
@@ -6157,10 +6160,11 @@
   soft_deps:
   - HIPAA pre-condition; halt-trigger candidate not currently in AUTONOMOUS-PROMPT
     canonical eleven.
-  - If Chio is treated as a subcontractor of Opus, a Backbay-Opus BAA is required.
+  - If Chio is treated as a subcontractor of the design partner, an upstream BAA is
+    required.
   gate_check:
     cmd: grep -q 'BAA chain confirmation' .planning/trajectory-3/audits/M09-vendor-evidence.md
-      && grep -E 'Provider <-> Opus:.*[a-z]' .planning/trajectory-3/audits/M09-vendor-evidence.md
+      && grep -E 'Provider <-> design-partner tenant:.*[a-z]' .planning/trajectory-3/audits/M09-vendor-evidence.md
     timeout_seconds: 60
   worktree_branch: wave/Wv/m09/p0.t6-confirm-baa-chain
   agent_role: vendor-coord
@@ -6576,7 +6580,8 @@
   depends_on:
   - M09.P1.T9
   soft_deps:
-  - AWS for Opus deployment; record SOC 2 / FedRAMP attestation pointers.
+  - AWS for the M01 design-partner deployment; record SOC 2 / FedRAMP attestation
+    pointers.
   - Maps to HITRUST control family 8 (physical / environmental) and 10 (acquisition
     / development).
   gate_check:
@@ -6914,7 +6919,7 @@
 - id: M09.P4.T2
   milestone: M09
   phase: 4
-  title: Coordinate operator interviews with Opus ops review participation
+  title: Coordinate operator interviews with design-partner ops review participation
   status: pending
   effort_days: 0.5
   owner_glob:
@@ -6923,11 +6928,11 @@
   depends_on:
   - M09.P4.T1
   soft_deps:
-  - Opus ops team is the operator interview subject; record interviewee names and
-    topics.
+  - The design-partner ops team is the operator interview subject; record interviewee
+    names and topics.
   gate_check:
     cmd: test -f compliance/hitrust/sample-testing/operator-interviews.md && grep
-      -qE 'Opus' compliance/hitrust/sample-testing/operator-interviews.md
+      -qiE 'design-partner|design partner' compliance/hitrust/sample-testing/operator-interviews.md
     timeout_seconds: 60
   worktree_branch: wave/Wv/m09/p4.t2-operator-interviews
   agent_role: vendor-coord
@@ -7264,11 +7269,12 @@
   depends_on:
   - M09.P5.T3
   soft_deps:
-  - Landing page lists scope statement (v3.18 + Opus per D09), expiration date, HITRUST
-    directory entry URL.
+  - Landing page lists scope statement (v3.18 + M01 design-partner deployment per
+    D09), expiration date, HITRUST directory entry URL.
   gate_check:
     cmd: test -f docs/external-attestation/hitrust-i1/index.md && grep -qE 'v3.18'
-      docs/external-attestation/hitrust-i1/index.md && grep -qE 'Opus' docs/external-attestation/hitrust-i1/index.md
+      docs/external-attestation/hitrust-i1/index.md && grep -qE 'design-partner|design
+      partner' docs/external-attestation/hitrust-i1/index.md
     timeout_seconds: 60
   worktree_branch: wave/Wv/m09/p5.t6-publish-certificate-landing-page
   agent_role: vendor-coord
@@ -7375,8 +7381,8 @@
   - M10.P0.T1
   soft_deps:
   - RESEARCH 'AWS marketplace listing type choice' rejects pure container on AgentCore
-    Runtime; SaaS preserves Chio's operational responsibility and matches M01 Opus
-    deployment shape
+    Runtime; SaaS preserves Chio's operational responsibility and matches the M01
+    design-partner deployment shape
   - AI Agents and Tools category aligns with $25k 2026 + $50k MDF co-investment for
     qualifying partners, creating the natural co-authored APN blog opportunity at
     P5
@@ -8237,12 +8243,12 @@
     slips into trajectory-4 (Kong precedent in RESEARCH)'
   - 'Shape: 8-10 paragraphs, ~1500-2000 words; one architecture diagram; one config
     snippet (Chio policy YAML); one Bedrock Converse request snippet with Chio governance
-    overlay; one Opus customer-outcome paragraph'
+    overlay; one design-partner customer-outcome paragraph'
   - 'Co-authors: 1-2 AWS Bedrock SAs (assigned at P0.T3) plus 1-2 Chio authors; cross-link
     listing URL, MCP registry entry, M02 evaluation memo if M02 has closed by week
     30'
-  - Customer-outcome paragraph requires Opus evidence in D15 7-day freshness window;
-    Opus withdrawal fires halt trigger 12 and freezes this ticket
+  - Customer-outcome paragraph requires design-partner evidence in D15 7-day freshness
+    window; design-partner withdrawal fires halt trigger 12 and freezes this ticket
   - M08 vendor evidence (week 36) cannot be cited in this draft; trajectory-4 follow-up
     post owns the M08 citation
   gate_check:

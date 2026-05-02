@@ -20,8 +20,9 @@ threat-coverage rows still flagged `partial`.
 ## The verdict, one paragraph
 
 The verdict-debate output is a 50/30/20 blend: half the calendar is
-real-customer pilot work (M01 Opus cluster pilot, M02 AI-lab
-evaluation beachhead, M07 mobile MVP, M10 AWS Bedrock listing); 30%
+real-customer pilot work (M01 healthcare design-partner pilot, M02
+AI-lab evaluation beachhead, M07 mobile MVP, M10 AWS Bedrock
+listing); 30%
 is paying down the trajectory-2 debt that makes the customer work
 referenceable (M03 hosted CI + reproducible builds, M04 mutation +
 verdict matrix, M05 threat-coverage closure, M06 focused formal +
@@ -36,7 +37,7 @@ Ten milestones, all trust-boundary, ~44-48 calendar weeks at
 
 | # | Slug | Title | Effort weeks |
 |---|------|-------|--------------|
-| 01 | opus-design-partner-pilot | Opus Cluster Design-Partner Production Pilot | 4/6/9 |
+| 01 | healthcare-design-partner-pilot | Healthcare Design-Partner Production Pilot | 4/6/9 |
 | 02 | ai-lab-evaluation-beachhead | AI-Lab Evaluation Infrastructure Beachhead | 6/9/13 |
 | 03 | hosted-ci-truth-and-reproducible-builds | Hosted CI Truth + Reproducible Builds | 4/6/9 |
 | 04 | mutation-and-verdict-matrix-promotion | Mutation Gate + Verdict Matrix Promotion | 6/9/13 |
@@ -59,7 +60,7 @@ Ten milestones, all trust-boundary, ~44-48 calendar weeks at
 The eleven canonical orchestrator halt triggers carry over from
 trajectory-1 and trajectory-2. trajectory-3 adds four:
 
-12. Design-partner withdrawal (M01 Opus cluster or M02 AI lab).
+12. Design-partner withdrawal (M01 healthcare design partner or M02 AI lab).
 13. Vendor calendar slip > 25% (M08 or M09).
 14. HITRUST assessor rejection (M09).
 15. M08 reviewer critical CVE (CVSS >= 9.0).
@@ -67,10 +68,13 @@ trajectory-1 and trajectory-2. trajectory-3 adds four:
 ## What is load-bearing in trajectory-3 that was not in trajectory-2
 
 - **External customer**: trajectory-3 is the first cycle with a named,
-  contracted design partner. Opus cluster is in-house but real
-  workload; the M02 AI-lab evaluation partner is external (Anthropic
-  evaluations team OR METR OR Apollo Research, pick one in week 1 per
-  D10).
+  contracted design partner. The M01 healthcare design partner is
+  selected at M01.P0/P1 from a candidate pool (regional payer,
+  digital-health startup with BAA-ready posture, AI-driven
+  underwriting platform, telehealth network); trajectory-3 docs do
+  not bind the partner identity (D09). The M02 AI-lab evaluation
+  partner is external (Anthropic evaluations team OR METR OR Apollo
+  Research, pick one in week 1 per D10).
 - **Vendor calendars**: M08 and M09 are calendar-driven, not
   implementation-driven. Their tickets often look like 0.25-day
   "vendor wait" / "evidence received" markers. This is intentional;
@@ -101,6 +105,11 @@ trajectory-1 and trajectory-2. trajectory-3 adds four:
   owning milestone are halt-and-ping.
 - Vendor evidence freshness: M08 / M09 audit docs must record vendor
   dates within 7 days of receipt.
+- Customer naming hygiene: trajectory-3 docs do NOT name the M01
+  healthcare design partner. Use "the design partner",
+  "design-partner deployment", or "the M01 design partner" in
+  narratives, audits, and tickets. The selected partner is named in
+  the audit doc evidence log only.
 
 ## Where the verdict lives
 

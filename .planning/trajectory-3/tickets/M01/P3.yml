@@ -1,5 +1,5 @@
-# M01 Phase 3 - Audit-log export schema v1 negotiated with Opus team.
-# Source of truth: .planning/trajectory-3/01-opus-design-partner-pilot.md
+# M01 Phase 3 - Audit-log export schema v1 negotiated with design-partner team.
+# Source of truth: .planning/trajectory-3/01-healthcare-design-partner-pilot.md
 # (section "Phases" P3) + .planning/trajectory-3/research/m01/RESEARCH.md.
 #
 # Five tickets ship spec/audit-log/export-schema.v1.json with field
@@ -10,7 +10,7 @@
 #
 # FREEZE TRIGGER: M01.P3.T1 merge opens m01-m09-audit-handoff on
 # spec/audit-log/export-schema.v1.json + .planning/trajectory-3/audits/
-# M01-opus-pilot.md. While active, only M01 may write to those paths.
+# M01-healthcare-pilot.md. While active, only M01 may write to those paths.
 
 - id: M01.P3.T1
   milestone: M01
@@ -42,7 +42,7 @@
 - id: M01.P3.T2
   milestone: M01
   phase: 3
-  title: Add CEF emitter at crates/chio-siem/src/exporters/cef.rs (or LEEF if Opus SOC is QRadar-shaped)
+  title: Add CEF emitter at crates/chio-siem/src/exporters/cef.rs (or LEEF if design-partner SOC is QRadar-shaped)
   status: pending
   effort_days: 1.5
   owner_glob:
@@ -126,11 +126,11 @@
 - id: M01.P3.T5
   milestone: M01
   phase: 3
-  title: Record schema-negotiation receipt (Opus team accepted v1) in audit doc evidence log
+  title: Record schema-negotiation receipt (design-partner team accepted v1) in audit doc evidence log
   status: pending
   effort_days: 0.5
   owner_glob:
-    - .planning/trajectory-3/audits/M01-opus-pilot.md
+    - .planning/trajectory-3/audits/M01-healthcare-pilot.md
   shared_paths: []
   depends_on:
     - M01.P3.T1
@@ -138,9 +138,9 @@
     - M01.P3.T3
     - M01.P3.T4
   soft_deps:
-    - "decisions.yml D15 7-day freshness window applies; receipt date recorded within 7 days of Opus SOC sign-off"
+    - "decisions.yml D15 7-day freshness window applies; receipt date recorded within 7 days of design-partner SOC sign-off"
   gate_check:
-    cmd: "grep -qiE 'schema.+negotiation|schema-negotiation' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -q 'export-schema.v1.json' .planning/trajectory-3/audits/M01-opus-pilot.md && grep -qiE 'accepted|sign-off|sign off' .planning/trajectory-3/audits/M01-opus-pilot.md"
+    cmd: "grep -qiE 'schema.+negotiation|schema-negotiation' .planning/trajectory-3/audits/M01-healthcare-pilot.md && grep -q 'export-schema.v1.json' .planning/trajectory-3/audits/M01-healthcare-pilot.md && grep -qiE 'accepted|sign-off|sign off' .planning/trajectory-3/audits/M01-healthcare-pilot.md"
     timeout_seconds: 300
   worktree_branch: wave/W1/m01/p3.t5-schema-negotiation-receipt
   agent_role: customer-coord

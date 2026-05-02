@@ -12,16 +12,16 @@ single_owner = "@bb-connor"
 # ---- Per-milestone records ----
 
 [milestones.M01]
-slug = "opus-design-partner-pilot"
+slug = "healthcare-design-partner-pilot"
 trust_boundary = true
 wave = "W1"
 primary_role = "kernel-rust"
 secondary_roles = ["dx-rust", "infra-yaml"]
 owner_globs = [
-  "deploy/opus/**",
+  "deployments/healthcare-design-partner/**",
   "docs/operator-runbook/**",
   "spec/audit-log/export-schema.v1.json",
-  ".planning/trajectory-3/audits/M01-opus-pilot.md",
+  ".planning/trajectory-3/audits/M01-healthcare-pilot.md",
 ]
 reviewer = "@bb-connor"
 review_x2 = true

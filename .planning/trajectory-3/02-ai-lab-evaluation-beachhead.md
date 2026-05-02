@@ -3,7 +3,7 @@
 ## Lens
 
 Adoption / protocol. M02 is the second customer-anchor milestone of
-trajectory-3. The dominant lens is adoption (first non-Backbay
+trajectory-3. The dominant lens is adoption (an external AI-lab
 customer that consumes Chio receipts) crossed with protocol (the
 receipt format must be admissible in the partner's published eval
 cards). The work is partner-grade infrastructure: an eval-report

@@ -25,8 +25,8 @@ Concretely the milestone delivers:
   App Attest + Play Integrity verifiers + pinned Apple / Google
   attestation roots + cross-platform receipt-chain validation.
 - A thin React Native / Expo Module bridge at
-  `sdks/typescript/packages/mobile/` for the Opus mobile patient-app
-  demo.
+  `sdks/typescript/packages/mobile/` for the M01 design-partner
+  mobile patient-app demo.
 - An extended `chio-kernel-mobile` C-ABI surface (4 -> 7 entries).
 
 The trajectory-2 `chio-custody-hw` WebAuthn passkey path is
@@ -212,14 +212,15 @@ Record:
 - Offline-queue flush behavior: <link to test asserting receipts
   queue during airplane mode and flush on reconnect>.
 
-## 9. Opus mobile patient-app demo evidence
+## 9. Design-partner mobile patient-app demo evidence
 
 [Fill at M07.P5.T4 close.]
 
 Demo flow:
 
-1. Patient opens the Opus mobile patient-app dev-client build (Expo
-   SDK pinned per `sdks/typescript/packages/mobile/package.json`).
+1. Patient opens the design-partner mobile patient-app dev-client
+   build (Expo SDK pinned per
+   `sdks/typescript/packages/mobile/package.json`).
 2. App requests an App Attest key (iOS) or Play Integrity verdict +
    StrongBox key (Android) and forwards the evidence to the Chio
    issuer.
@@ -234,7 +235,7 @@ Demo flow:
 Record:
 
 - Demo recording (video + log bundle): <link / committed path>.
-- Opus cluster repo PR (cross-repo reference): <fill>.
+- Design-partner deployment repo PR (cross-repo reference): <fill>.
 - Patient-app dev-client build identifier: <fill>.
 - Round-trip latency envelope (mint -> evaluate -> receipt POST):
   <fill from instrumentation>.
@@ -249,7 +250,7 @@ Record:
   APK: <fill>.
 - Cross-platform parity test green: <link>.
 - Mobile receipt round-trip green: <link>.
-- Opus mobile patient-app demo green: <link / video>.
+- Design-partner mobile patient-app demo green: <link / video>.
 - Threat-model coverage flipped to `covered` for the three new
   IDs: <link to M05 P5.T1 coverage record>.
 
