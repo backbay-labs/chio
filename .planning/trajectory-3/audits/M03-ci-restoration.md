@@ -146,6 +146,54 @@ M03.P2 owns failures found by bisect.
 | `.github/workflows/verdict-matrix.yml` | PR capable, deferred to M02/M04 verdict work |
 | `.github/workflows/web-sdk.yml` | PR capable, deferred to web SDK touched-path trigger |
 
+## 3b. Admin-merge bypass catalog and triage (P2)
+
+P2 cataloged the 118 admin-merged PRs in #306-#425 using
+`scripts/bisect-bypass.sh --catalog-only`. The generated matrix lives at
+`.planning/trajectory-3/audits/M03-bypass-bisect.csv` and includes PR
+number, merge SHA, merge timestamp, title, inferred milestone, dispatch
+mode, dispatch run id, conclusion, and source PR URL.
+
+The script supports the full `workflow_dispatch` replay path by pushing a
+temporary `m03-bisect/pr-<number>` branch at each merge SHA and launching
+the selected workflow against that ref. The 2026-05-02 steering update
+changed the merge policy to avoid waiting on slow hosted CI during phase
+execution, so this PR ran the catalog pass and left the paid replay queue
+for final CI-DEBT stabilization.
+
+Actual spend: $0.00 in this P2 PR. No paid per-PR replay runs were
+dispatched by this phase; the cost-bearing workflow_dispatch mode remains
+available for closeout replay.
+
+Catalog summary:
+
+| Bucket | Count | P2 disposition |
+|--------|-------|----------------|
+| Total PRs in #306-#425 | 118 | Cataloged |
+| Main milestone-coded titles | 56 | Routed by title to M01-M10 rows in the CSV |
+| Unassigned or narrative-only titles | 62 | Source PR URL retained for manual closeout replay routing |
+| Full workflow replay conclusions | 0 | Deferred to CI-DEBT final stabilization per steering update |
+| Surfaced critical regressions | 0 | None surfaced by the catalog pass |
+
+Known pre-trajectory-3 workflow targets observed during P2:
+
+| Workflow | Latest observed P2 state | P2 action |
+|----------|--------------------------|-----------|
+| `m05-freeze-guard` | queued or cancelled superseded PR runs | No new failure found; keep in stabilization watch list |
+| `Sidecar Image` | repeated failure on main push, active failure at run `25242850094` | Fixed Dockerfile workspace copy list by adding `bench/`, `editors/`, and `xtask/` |
+| `spec-drift` | queued on latest main, prior recent success seen on PR #444 | Keep in stabilization watch list |
+| `chio-replay-gate` | queued on latest main, recent success on main push `2d63ff7e36ef86d929e7bc9a14119adee68017d0` | Keep in stabilization watch list |
+| `threat-model-coverage` | success on main push `2754cf28aa3fb702d26172c6a0bebc9aa9adb414` | No P2 fix required |
+
+### escalation routing
+
+M03 owns CI-infrastructure fixups found during the replay surface; M04 owns mutation and verdict-matrix regressions, M05 owns threat-coverage and attest-verify regressions, M06 owns supply-chain regressions, M07 owns mobile regressions, and M08-M10 own vendor or listing evidence regressions.
+
+No catalog-pass result exceeded the escalation cap of five surfaced
+failures. The only active fix made in P2 was the Sidecar Image
+`Dockerfile.sidecar` workspace-member copy repair, because it was a
+narrow CI packaging defect.
+
 ## 4. Closure attestations
 
 [TODO M03 milestone agent fill at P5 close:]

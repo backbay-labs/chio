@@ -1928,7 +1928,7 @@
   phase: 2
   title: Author scripts/bisect-bypass.sh that dispatches CI workflow_dispatch against
     each of the 118 PR SHAs in
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - scripts/bisect-bypass.sh
@@ -1949,16 +1949,16 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 69495c84d1426de726cdcc066b939f0623abf87e
+  merged_sha: 69495c84d1426de726cdcc066b939f0623abf87e
+  opened_ts: '2026-05-02T03:51:15Z'
+  merged_ts: '2026-05-02T03:51:15Z'
 - id: M03.P2.T2
   milestone: M03
   phase: 2
   title: Run bisect-bypass.sh; record per-PR pass/fail triage matrix and actual cost
     in audit doc (cap is roughly several hundred dollars in the worst case)
-  status: pending
+  status: merged
   effort_days: 2
   owner_glob:
   - .planning/trajectory-3/audits/M03-bypass-bisect.csv
@@ -1982,16 +1982,16 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 5a0a314380d4d62b43d9af0a1ee7a98b71a24d73
+  merged_sha: 5a0a314380d4d62b43d9af0a1ee7a98b71a24d73
+  opened_ts: '2026-05-02T03:51:15Z'
+  merged_ts: '2026-05-02T03:51:15Z'
 - id: M03.P2.T3
   milestone: M03
   phase: 2
   title: Open per-failure escalation tickets on owning milestones (M03 triages, does
     not fix); halt-trigger fires if surfaced count exceeds 5
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
   - .planning/trajectory-3/audits/M03-ci-restoration.md
@@ -2012,16 +2012,16 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: eb150458e7e8afd750a703866e0280671da77b95
+  merged_sha: eb150458e7e8afd750a703866e0280671da77b95
+  opened_ts: '2026-05-02T03:51:15Z'
+  merged_ts: '2026-05-02T03:51:15Z'
 - id: M03.P2.T4
   milestone: M03
   phase: 2
   title: Land first-flight admin-override audit hook so future bypass merges surface
     in CI logs (does not block; just logs)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .github/workflows/admin-override-audit.yml
@@ -2041,10 +2041,10 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 8dc7a039dc5fd7be5918c4c433453a07544d3d01
+  merged_sha: 8dc7a039dc5fd7be5918c4c433453a07544d3d01
+  opened_ts: '2026-05-02T03:51:15Z'
+  merged_ts: '2026-05-02T03:51:15Z'
 - id: M03.P3.T1
   milestone: M03
   phase: 3
