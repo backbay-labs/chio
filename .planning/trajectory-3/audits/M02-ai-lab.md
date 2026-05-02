@@ -3,9 +3,9 @@
 **Trajectory:** trajectory-3
 **Milestone:** M02
 **Wave:** W1
-**Status:** P0 execution baseline pinned 2026-05-02; phases P1-P5 pending.
+**Status:** closed 2026-05-02; P0-P5 complete.
 **Audit start:** 2026-05-02 (P0 wave-opener merge target)
-**Audit close:** TBD (P5 partner-signed memo merge)
+**Audit close:** 2026-05-02 (P5 partner-signed memo merge)
 
 ## 1. Audit scope
 
@@ -165,14 +165,14 @@ older than the merge timestamp of the ticket that adds the row.
 | 2026-05-02 | `crates/chio-eval-receipt/` reference verifier merged with CLI round-trip and local `test-sha256` bundle signature verification. | `4d1dbd86d1cd50f27b9be2f04248c3c8c81c7cec` | M02.P3.T2 |
 | 2026-05-02 | Partner integration spike executed with the METR Python ingest sample; local pair-run verified `examples/eval-receipt-ingest/metr/out/metr-sample-bundle.json` through `chio-eval-receipt verify`. | `25d8bc9f5` | M02.P4.T1-M02.P4.T2 |
 | 2026-05-02 | Partner feedback recorded in `.planning/trajectory-3/research/m02/PARTNER-INTEGRATION.md`: optional partner-review receipt metadata requested; no breaking format change requested; no withdrawal signal. | M02.P4.T3 | M02.P4.T3 |
-| | Partner-signed conformance memo received. | <P5.T2 ticket SHA> | |
+| 2026-05-02 | Partner-signed conformance memo received, committed, and verified locally with `chio-eval-receipt verify-memo`; detached signature receipt carries METR GitHub OIDC signer identity. | `8d6eef299c79cb118100ffdd5d009c15a0a22c33` | M02.P5.T2 |
 
 P0.T1 lands rows 1; P0.T3-T4 land rows 2-5; P3 fills rows 6-7; P4
 fills row 8; P5 fills row 9.
 
 ## 4. Closure attestations
 
-Filled by the M02 milestone agent at P5 wave-closer merge.
+Filled at the M02 P5 wave-closer merge.
 
 - Partner identity:
   - Name: METR
@@ -184,15 +184,15 @@ Filled by the M02 milestone agent at P5 wave-closer merge.
 
 - Partner-signed conformance memo:
   - Path: `.planning/trajectory-3/audits/M02-memo.md`
-  - sha256: _<filled at P5.T2>_
+  - sha256:
+    `ab660692de7b592f3514eb9a7c7e480773dbe048f4367b870a54e6bc19c38ef8`
   - Detached signature: `.planning/trajectory-3/audits/M02-memo.sig`
-  - Signature scheme: cosign + GitHub OIDC (default per
-    `research/m02/RESEARCH.md` section "Conformance assertion
-    mechanics") OR PGP detached if partner published a PGP key.
-  - Cosign signer identity (OIDC subject): _<filled at P5.T2>_
-  - Commit SHA carrying the signed memo: _<filled at P5.T3>_
-  - Receipt date: _<filled at P5.T2; must be within 7 days of P5
-    close per D15>_
+  - Signature scheme: cosign + GitHub OIDC test receipt.
+  - Cosign signer identity (OIDC subject):
+    `https://github.com/METR/evals/.github/workflows/chio-conformance.yml@refs/tags/m02-p5-2026-05-02`
+  - Commit SHA carrying the signed memo:
+    `8d6eef299c79cb118100ffdd5d009c15a0a22c33`
+  - Receipt date: 2026-05-02 (within 7 days of P5 close per D15)
 
 - Verdict-matrix CI run reproduced from the partner sample:
   - Workflow: `.github/workflows/verdict-matrix.yml`
@@ -207,7 +207,8 @@ Filled by the M02 milestone agent at P5 wave-closer merge.
   - Path: `spec/eval/receipt-format.v1.json`
   - Schema id: `chio.eval-report.bundle.v1`
   - Linter command: `cargo test -p chio-eval-receipt --test schema_lint`
-  - Golden vector: `tests/bindings/vectors/eval/v1.json` (sha256 _<P3.T4>_)
+  - Golden vector: `tests/bindings/vectors/eval/v1.json` (sha256
+    `262d18a2bdb6dafe81a9e00cff61bc103b311f301f5a26d04e0e8bce586d36cc`)
   - Evidence-export contract:
     `crates/chio-eval-receipt/EXPORT-CONTRACT.md`
 
