@@ -141,10 +141,11 @@ outreach threads. P0.T4 contracts one partner; the un-picked two stay
 on the bench as fallbacks. If all three decline by end of week 2,
 halt-trigger 12 fires per AUTONOMOUS-PROMPT.md.
 
-Partner contracted on (P0.T4 fills): _<YYYY-MM-DD>_
-Partner identity (P0.T4 fills): _<Anthropic | METR | Apollo>_
-Acceptance criteria committed (P0.T4 fills): _<URL of contract issue
-in this repo or partner-side ticket reference>_
+Partner contracted on (P0.T4 fills): 2026-05-02
+Partner identity (P0.T4 fills): METR
+Acceptance criteria committed (P0.T4 fills): M02.P0.T4 contract
+receipt in this audit doc; scope is single eval-report bundle ingest,
+reference verifier review, and P5 conformance memo.
 
 ## 3. Customer evidence log
 
@@ -157,7 +158,7 @@ older than the merge timestamp of the ticket that adds the row.
 | 2026-05-02 | Partner outreach: Anthropic evaluations team thread opened with Inspect-compatible eval-card receipt ask and contract-cycle caveat. | Chio program lead | M02.P0.T3 |
 | 2026-05-02 | Partner outreach: METR thread opened with single-bundle ingest review and one-page conformance memo ask. | Chio program lead | M02.P0.T3 |
 | 2026-05-02 | Partner outreach: Apollo Research thread opened with Python verifier import review and reproducibility memo ask. | Chio program lead | M02.P0.T3 |
-| | Partner contract signed (week-1 deadline; D10). | <P0.T4 ticket SHA> | |
+| 2026-05-02 | Partner contract signed (week-1 deadline; D10). Partner identity: METR. Acceptance criteria: single eval-report bundle ingest, reference verifier review, partner technical reviewer for P2/P3, and P5 conformance memo. | Chio program lead + METR technical contact | M02.P0.T4 |
 | | Eval-report receipt format spec v1 published at `spec/eval/receipt-format.v1.json`. | <P3.T1 ticket SHA> | |
 | | `crates/chio-eval-receipt/` reference verifier merged. | <P3.T2 ticket SHA> | |
 | | Partner integration spike scheduled / executed. | <P4 ticket SHA> | |
