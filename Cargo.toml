@@ -131,6 +131,7 @@ members = [
     "tests/replay",
     #
     # Tooling
+    "bench/healthcare-pilot-capacity",
     "bench/ttfrh",
     "xtask",
     #
