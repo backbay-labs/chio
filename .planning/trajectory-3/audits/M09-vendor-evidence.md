@@ -99,6 +99,22 @@ Sources checked 2026-05-02:
 | Telemetry de-identification posture | pending P2 | M09 | `compliance/hitrust/policies/telemetry-deid.md` |
 | Workforce training evidence | out-of-tree pending | Backbay HR | HR evidence bundle |
 
+### 2b. BAA chain pre-flight
+
+BAA chain confirmation is a P0 pre-condition. The records below are
+not public contract details; they are repository placeholders for
+legal evidence references that must be attached outside the public
+tree before P1 gap assessment opens.
+
+| Link | Status | Required before |
+|------|--------|-----------------|
+| Provider <-> design-partner tenant: pending legal evidence reference | P1 gap assessment blocker if absent | PHI touches the Chio deployment |
+| Design-partner tenant <-> Chio team: pending legal evidence reference | P1 gap assessment blocker if absent | assessor readiness walkthrough |
+| Chio-as-subcontractor BAA: conditional, pending design-partner legal interpretation | scope blocker if required and absent | assessor scope memo signature |
+
+If the selected assessor rejects the BAA chain or classifies the gap as
+a certification blocker, treat it as halt 14.
+
 ## 3. Gap-assessment + remediation log
 
 [TODO M09 milestone agent fill phase-by-phase. P1 produces the gap
