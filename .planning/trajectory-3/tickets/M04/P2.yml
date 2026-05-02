@@ -7,8 +7,9 @@
 # only. The freeze m02-m04-verdict-matrix-coupling
 # (.planning/trajectory-3/freezes.yml lines 142-153) gives M02 P2-P3
 # corpus ownership and guarantees the source authorship lands before
-# this phase opens. Tickets in this phase do NOT modify
-# crates/chio-conformance/verdict_matrix/drivers/{python,go}/ source.
+# this phase opens. Execution note: the soft-dep source state was still
+# stale on main at P2 open, so this phase repaired the Python and Go
+# local semantic emitters before recording verification evidence.
 #
 # CROSS-MILESTONE NOTE: T1 / T2 depend on M02 ticket landings expressed
 # as soft_deps string sentences (cross-trajectory references go in
@@ -18,7 +19,7 @@
   milestone: M04
   phase: 2
   title: Verify M02 Python verdict driver landed at status=active with zero unsupported and zero divergence
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M04-mutation-gate.md
@@ -36,16 +37,16 @@
   agent_role: spec-python
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: c28a872263e68bc6e728021aa9b944308f936910
+  merged_sha: c28a872263e68bc6e728021aa9b944308f936910
+  opened_ts: "2026-05-02T08:21:56Z"
+  merged_ts: "2026-05-02T08:21:56Z"
 
 - id: M04.P2.T2
   milestone: M04
   phase: 2
   title: Verify M02 Go verdict driver landed at status=active with zero unsupported and zero divergence
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M04-mutation-gate.md
@@ -64,16 +65,16 @@
   agent_role: spec-go
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 8a148c21fe28d472012df0e6c989c58ba2418cd6
+  merged_sha: 8a148c21fe28d472012df0e6c989c58ba2418cd6
+  opened_ts: "2026-05-02T08:21:56Z"
+  merged_ts: "2026-05-02T08:21:56Z"
 
 - id: M04.P2.T3
   milestone: M04
   phase: 2
   title: Capture two-consecutive-green nightly observation for verdict-matrix in audit doc
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M04-mutation-gate.md
@@ -91,7 +92,7 @@
   agent_role: quality-rust
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 57aae9a1f084cd75fefa6c0355ffda898e2d55a8
+  merged_sha: 57aae9a1f084cd75fefa6c0355ffda898e2d55a8
+  opened_ts: "2026-05-02T08:21:56Z"
+  merged_ts: "2026-05-02T08:21:56Z"
