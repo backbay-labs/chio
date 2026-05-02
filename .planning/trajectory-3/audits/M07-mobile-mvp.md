@@ -3,8 +3,8 @@
 **Trajectory:** trajectory-3
 **Milestone:** M07
 **Wave:** W2
-**Status:** OPEN (P0 fill pending)
-**Audit start:** <fill at P0 wave-opener merge>
+**Status:** P0 baseline open
+**Audit start:** 2026-05-02
 **Audit close:** <fill at P5 final ticket merge>
 
 ## 1. Audit scope
@@ -35,15 +35,17 @@ authn surface, not a replacement.
 
 ## 2. Hard counts at P0
 
-[Fill at M07.P0.T1 close.]
+Measured on 2026-05-02 from the M07.P0 worktree.
 
 - Existing `crates/chio-kernel-mobile/src/` modules:
   - `lib.rs`: 416 LOC
   - `errors.rs`: 76 LOC
   - `clock.rs`: 53 LOC
   - `rng.rs`: 68 LOC
-  - Total: ~1226 LOC including UDL + tests + build.rs (verify with
-    `find crates/chio-kernel-mobile -name '*.rs' | xargs wc -l`).
+  - Rust module subtotal: 613 LOC.
+  - Total counted mobile artifact surface: 1718 LOC across the Rust
+    modules, UDL, build script, FFI roundtrip test, and hand-authored
+    Swift / Kotlin binding references.
 - C-ABI surface entries pre-merge: 4 (`evaluate`, `sign_receipt`,
   `verify_capability`, `verify_passport`). Post-merge target: **7**
   (the existing four plus `attest_app_attest`,
@@ -53,8 +55,10 @@ authn surface, not a replacement.
   hardware-backed StrongBox Keystore soft-required at API 28+
   (devices on API 26-27 fall back to TEE-backed Keystore with a
   `trust_level: software` capability marker).
-- Apple Developer account: <record account id; managed by `@bb-connor`>.
-- Google Play Console account: <record account id; managed by `@bb-connor`>.
+- Apple Developer account: managed by `@bb-connor`; private Team ID withheld
+  from the public repo and tracked in the vendor credential vault.
+- Google Play Console account: managed by `@bb-connor`; private account id
+  withheld from the public repo and tracked in the vendor credential vault.
 - Existing `crates/chio-custody-hw/src/` files: 8
   (`capability.rs`, `error.rs`, `issuer.rs`, `lib.rs`, `mint.rs`,
   `nonce_store.rs`, `revocation.rs`, `verifier.rs`).
@@ -62,18 +66,29 @@ authn surface, not a replacement.
   create it.
 - `qualify-mobile-kernel.sh` lanes (4): `host_ffi`, `ios_device`,
   `ios_sim`, `android_arm64`. Baseline status at P0.T2 close:
-  <record per-lane outcome>.
+  - `host_ffi`: pass (`ffi_roundtrip` passed).
+  - `ios_device`: pass (`aarch64-apple-ios` release build passed).
+  - `ios_sim`: pass (`aarch64-apple-ios-sim` release build passed).
+  - `android_arm64`: environment-dependent (`aarch64-linux-android` target
+    not installed on the P0 host).
+  - `target_mobile_gate`: pass (2 target-backed mobile lanes passed).
+  - Baseline artifact paths:
+    `target/release-qualification/mobile-kernel/report.md` and
+    `target/release-qualification/mobile-kernel/summary.json`.
 
 ## 3. Workspace pin baseline
 
-[Fill at M07.P0.T1 close.]
-
-- `uniffi = "0.28.3"` (held; no minor bumps in trajectory-3).
-- `x509-parser = "0.16"` (new pin).
-- `der = "0.7"` (new pin).
-- `jsonwebtoken = "9"` (new pin).
-- `coset = "0.3"` (reused from trajectory-2 M03).
-- `base64ct = "1"` (reused from trajectory-2 M10).
+- `uniffi = "0.28"` in `crates/chio-kernel-mobile/Cargo.toml`, held on
+  the UniFFI 0.28 line; no minor bumps in trajectory-3.
+- `x509-parser`: not yet a direct mobile pin at P0; P2/P3 add the verifier
+  path if the App Attest / Play Integrity certificate parser needs it.
+- `der`: not yet a direct mobile pin at P0; P2/P3 add it with the verifier
+  implementation if needed.
+- `jsonwebtoken`: not yet a direct mobile pin at P0; P3 adds it if the Play
+  Integrity verifier consumes JWS in Rust.
+- `coset = "0.4.2"` in the workspace, reused from the existing attestation
+  verifier stack.
+- `base64ct = "1.8.3"` in the workspace, reused by `chio-custody-hw`.
 - iOS deps: Swift 5.7+, Xcode 15+; Apple frameworks only
   (DeviceCheck, CryptoKit, Security). Zero third-party Swift deps.
 - Android deps: Kotlin 1.9+, Gradle 8.4+, AGP 8.2+,
@@ -82,8 +97,6 @@ authn surface, not a replacement.
   `sdks/typescript/packages/mobile/package.json`.
 
 ## 4. Threat-model row introductions
-
-[Fill at M07.P0.T4 close.]
 
 Three new threat IDs land in `spec/security/chio-threat-model.v1.json`
 under M07:
@@ -104,6 +117,11 @@ under M07:
 
 Per **D14**, M07 owns these rows; M05 consumes them as coverage-gate
 inputs but does not author them.
+
+P0.T4 status: all three IDs are present in
+`spec/security/chio-threat-model.v1.json` and summarized in
+`spec/SECURITY.md` with `coverage_state: pending` until the P2/P3/P5 mobile
+attestation tests land.
 
 ## 5. C-ABI surface drift evidence
 

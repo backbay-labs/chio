@@ -93,6 +93,35 @@ public func verifyPassport(
 Verifies a portable passport envelope (Phase 20.1 wire format). Pass
 `nowSecs <= 0` to fall back to the device wall-clock.
 
+### `attestAppAttest` (M07 P1)
+
+```swift
+public func attestAppAttest(keyId: String, challengeHex: String) throws -> String
+```
+
+Reserved M07 entry point for producing an App Attest evidence envelope bound
+to a server-issued challenge.
+
+### `attestPlayIntegrity` (M07 P1)
+
+```swift
+public func attestPlayIntegrity(nonceHex: String) throws -> String
+```
+
+Reserved M07 entry point for the Android-compatible Play Integrity evidence
+shape. The Swift surface keeps the name for cross-platform parity even though
+the implementation returns an unsupported error on iOS until the Android lane
+uses it.
+
+### `verifyMobileReceipt` (M07 P1)
+
+```swift
+public func verifyMobileReceipt(receiptJson: String, evidenceJson: String) throws -> String
+```
+
+Reserved M07 entry point for verifying a mobile receipt against App Attest or
+Play Integrity evidence before forwarding it to the hosted oracle.
+
 ## Records
 
 ### `VerifiedCapability`

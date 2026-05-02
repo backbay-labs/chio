@@ -1,6 +1,6 @@
 {
   "schema": "chio.threat-model.v1",
-  "updatedAt": "2026-04-30",
+  "updatedAt": "2026-05-02",
   "boundary": {
     "focus": "agent-kernel-tool trust boundary",
     "surfaces": [
@@ -533,6 +533,83 @@
       ],
       "residualRisk": "Hosted providers that do not expose loaded model bytes cannot bind under this check; deployments must use local recomputation or a signed model-card bundle with a provider surface that can produce a recomputed loaded-weight digest.",
       "coverage_state": "covered"
+    },
+    {
+      "id": "mobile_attestation_replay",
+      "name": "Mobile attestation replay",
+      "surfaces": [
+        "mobile_ios",
+        "mobile_android",
+        "capability_issuance"
+      ],
+      "mitigations": [
+        {
+          "status": "planned",
+          "control": "App Attest assertions and Play Integrity tokens must bind to a fresh issuer challenge or nonce before a mobile capability is minted."
+        },
+        {
+          "status": "planned",
+          "control": "The mobile issuer must reject stale, reused, or audience-mismatched attestation evidence fail-closed."
+        },
+        {
+          "status": "planned",
+          "control": "M07 P2/P3 verifier fixtures exercise replayed App Attest assertions and Play Integrity tokens before coverage can flip to covered."
+        }
+      ],
+      "residualRisk": "Platform attestation services do not protect flows that reuse server challenges or accept broad audiences; deployments must keep nonce state durable enough for their mobile issuance window.",
+      "coverage_state": "pending",
+      "coveredBy": []
+    },
+    {
+      "id": "device_key_extraction",
+      "name": "Device key extraction",
+      "surfaces": [
+        "mobile_ios",
+        "mobile_android",
+        "capability_issuance"
+      ],
+      "mitigations": [
+        {
+          "status": "planned",
+          "control": "iOS signing keys must remain in Secure Enclave or App Attest managed storage and Android signing keys must prefer StrongBox with TEE fallback explicitly marked."
+        },
+        {
+          "status": "planned",
+          "control": "Mobile receipts must use per-call signing assertions or hardware-bound key references rather than exportable long-lived signing seeds."
+        },
+        {
+          "status": "planned",
+          "control": "The issued capability must carry a trust-level marker so downgraded Android API 26-27 devices cannot claim StrongBox-backed custody."
+        }
+      ],
+      "residualRisk": "A fully compromised mobile OS can still interfere with UI and request timing; M07 only prevents export of the device-bound signing key from being treated as normal custody.",
+      "coverage_state": "pending",
+      "coveredBy": []
+    },
+    {
+      "id": "play_integrity_token_replay",
+      "name": "Play Integrity token replay",
+      "surfaces": [
+        "mobile_android",
+        "capability_issuance"
+      ],
+      "mitigations": [
+        {
+          "status": "planned",
+          "control": "The Play Integrity verifier must assert nonce equality against issuer-generated nonce state before minting any capability."
+        },
+        {
+          "status": "planned",
+          "control": "The issuer nonce store must consume accepted Play Integrity nonces once and reject duplicate presentations."
+        },
+        {
+          "status": "planned",
+          "control": "M07 P3 verifier fixtures include stale JWS and wrong-nonce JWS cases before coverage can flip to covered."
+        }
+      ],
+      "residualRisk": "Google-signed verdict freshness still depends on issuer nonce storage and clock policy; a weak deployment can make a valid token replayable by accepting stale nonce state.",
+      "coverage_state": "pending",
+      "coveredBy": []
     }
   ],
   "transportRequirements": {
