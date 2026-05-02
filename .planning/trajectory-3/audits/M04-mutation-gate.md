@@ -3,8 +3,8 @@
 **Trajectory:** trajectory-3
 **Milestone:** M04
 **Wave:** W1
-**Status:** TEMPLATE (open at P0.T1; close at P5.T1)
-**Audit start:** <fill at P0 wave-opener merge>
+**Status:** P0 baseline pinned 2026-05-02; phases P1-P5 pending.
+**Audit start:** 2026-05-02 (P0 baseline merge target)
 **Audit close:** <fill at P5 final ticket merge>
 
 ## 1. Audit scope
@@ -47,27 +47,24 @@ the perimeter):
   trajectory-4.
 - TypeScript-node-http and WASM-browser drivers stay advisory.
 
-## 2. Hard counts at P0 (full sweep, dated YYYY-MM-DD)
+## 2. Hard counts at P0 (baseline snapshot, dated 2026-05-02)
 
-[TODO P0.T1: replace cell values with full-sweep numbers from
-`cargo mutants --json -p <crate> | jq` or
-`scripts/mutants-baseline-kernel.sh`. Bounded shards on
-`chio-guards` (1298 listed) and `chio-policy` (418 listed) may run
-sharded, in which case mark coverage column accordingly and run
-the full sweep across multiple cron triggers per the methodology
-note in section 4. Pre-fill values shown below come from the
-trajectory-2 closeout
-`.planning/audits/M02-mutation-and-verdict-matrix.md`.]
+P0 pins the trajectory-3 mutation baseline file at
+`.planning/trajectory-3/mutants-baseline.toml`. The snapshot replaces
+the single headline metric with per-crate rows, while preserving the
+coverage method for each row so P1-P3 can distinguish true full sweeps
+from bounded shards. The six-crate set is bound by
+`releases.toml: trust_boundary_crates`; M04 does not widen it.
 
 | Crate | Listed mutants | Coverage | Caught | Missed | Unviable | Timeout | Kill rate (excl. unviable) |
 |-------|----------------|----------|--------|--------|----------|---------|----------------------------|
-| chio-policy        | 418  | <fill> | <fill> | <fill> | <fill> | <fill> | <fill> |
-| chio-credentials   | 28   | <fill> | <fill> | <fill> | <fill> | <fill> | <fill> |
-| chio-attest-verify | 72   | <fill> | <fill> | <fill> | <fill> | <fill> | <fill> |
-| chio-kernel-core   | 304  | <fill> | <fill> | <fill> | <fill> | <fill> | <fill> |
-| chio-guards        | 1298 | <fill> | <fill> | <fill> | <fill> | <fill> | <fill> |
-| chio-anchor        | 249  | <fill> | <fill> | <fill> | <fill> | <fill> | <fill> |
-| Aggregate          | 2369 |  --    | <fill> | <fill> | <fill> | <fill> | <fill> |
+| chio-policy        | 418  | bounded shard 1/16 | 14  | 11  | 2  | 0 | 56.0% |
+| chio-credentials   | 28   | full sweep         | 11  | 16  | 1  | 0 | 40.7% |
+| chio-attest-verify | 72   | full sweep         | 0   | 57  | 15 | 0 | 0.0% |
+| chio-kernel-core   | 304  | full sweep         | 87  | 175 | 41 | 1 | 33.1% |
+| chio-guards        | 1298 | bounded shard 1/32 | 1   | 0   | 4  | 0 | 100.0% (5 evaluated) |
+| chio-anchor        | 249  | bounded shard 1/32 | 2   | 0   | 4  | 0 | 100.0% (6 evaluated) |
+| Aggregate          | 2369 | mixed              | 115 | 259 | 67 | 1 | 30.7% (442 evaluated) |
 
 Reference baseline (trajectory-2 M02 closeout, mixed full sweeps and
 bounded shards; quoted here because the prompt requires the literal
@@ -78,6 +75,12 @@ grep):
 > across mixed full sweeps and bounded shards; per-crate spread 0%
 > on chio-attest-verify to 100% on tiny chio-guards / chio-anchor
 > shards).
+
+Full-sweep replacement requirement for gate flip: `chio-policy`,
+`chio-guards`, and `chio-anchor` retain bounded-shard coverage in the
+P0 snapshot and therefore cannot be used as final flip evidence until
+P1-P3 either complete full sweeps or record an audited aggregate-shard
+methodology in section 4.
 
 Missed-mutant inventory by crate (P0.T1 captures the surviving
 classes per crate):
@@ -109,15 +112,17 @@ classes per crate):
 
 ## 3. Verdict-matrix advisory baseline
 
-[TODO P0.T1: capture per-driver divergence count and unsupported
-count from a single nightly run; pin run URL.]
+P0 advisory driver inventory is read from
+`crates/chio-conformance/verdict_matrix/manifest.toml` at commit
+`a957ce3ffaef719533c98c2050e77dc9732b646f`. P2/P3 replace this
+advisory inventory with two consecutive required-lane green run URLs.
 
 | Driver | Manifest status | Tuples emitted (of 48) | Unsupported (of 48) | Divergences vs rust-kernel |
 |--------|-----------------|------------------------|---------------------|----------------------------|
 | rust-kernel        | active                                | 48 | 0  | 0 (reference) |
 | python-sdk         | partial-capability                    | 12 | 36 | 0 (on emitted tuples) |
 | go-http-sdk        | unsupported-no-local-verdict-emitter  | 0  | 48 | n/a (no tuples) |
-| typescript-node-http | transport-client                    | <fill> | <fill> | <fill> |
+| typescript-node-http | transport-client                    | sidecar-required | sidecar-required | advisory (requires sidecar env) |
 | wasm-browser       | partial                               | 12 | 36 | 0 (on emitted tuples) |
 
 M04 P2 verifies that the post-M02 manifest reads
