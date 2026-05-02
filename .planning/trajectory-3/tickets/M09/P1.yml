@@ -12,7 +12,7 @@
   milestone: M09
   phase: 1
   title: Provision MyCSF tenant and pre-load coarse-grain inherited evidence for the assessor
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - compliance/hitrust/portal/mycsf-config.md
@@ -29,16 +29,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: a4d7a9bff185140abc441872f10e9a3e1b4857e0
+  merged_sha: a4d7a9bff185140abc441872f10e9a3e1b4857e0
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
 
 - id: M09.P1.T2
   milestone: M09
   phase: 1
   title: Complete initial readiness questionnaire and seed coarse-grain control narratives
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
     - compliance/hitrust/readiness-questionnaire.md
@@ -54,16 +54,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 06ec1e8de75d4c0295495bb1dd5b3714ab13134a
+  merged_sha: 06ec1e8de75d4c0295495bb1dd5b3714ab13134a
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
 
 - id: M09.P1.T3
   milestone: M09
   phase: 1
   title: Assessor walkthrough week 9 - governance and information security management
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/walkthrough-notes/week-09-governance.md
@@ -79,16 +79,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: d5cdcd0d618b540e8a420c1ed98e2f2f9550cc84
+  merged_sha: d5cdcd0d618b540e8a420c1ed98e2f2f9550cc84
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
 
 - id: M09.P1.T4
   milestone: M09
   phase: 1
   title: Assessor walkthrough week 10 - access control and capability algebra
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/walkthrough-notes/week-10-access-control.md
@@ -104,16 +104,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f0e19a6c1269a46d687b4fb966ce7f447b0377f3
+  merged_sha: f0e19a6c1269a46d687b4fb966ce7f447b0377f3
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
 
 - id: M09.P1.T5
   milestone: M09
   phase: 1
   title: Assessor walkthrough week 11 - asset management and supply chain
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/walkthrough-notes/week-11-asset-supply-chain.md
@@ -129,16 +129,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 9f8c3fa8f7d87ed0e63c87e3cd16e643b3fdbc05
+  merged_sha: 9f8c3fa8f7d87ed0e63c87e3cd16e643b3fdbc05
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
 
 - id: M09.P1.T6
   milestone: M09
   phase: 1
   title: Assessor walkthrough week 12 - operations and incident response
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/walkthrough-notes/week-12-ops-incident.md
@@ -154,16 +154,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4f000e17237d16d7092b9e7454184ff115cf7a6e
+  merged_sha: 4f000e17237d16d7092b9e7454184ff115cf7a6e
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
 
 - id: M09.P1.T7
   milestone: M09
   phase: 1
   title: Assessor walkthrough week 13 - privacy practices and HIPAA technical safeguards
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - compliance/hitrust/walkthrough-notes/week-13-privacy-hipaa.md
@@ -179,16 +179,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 5bb5fd617d007fd955a89a06a2e11fb1053757a8
+  merged_sha: 5bb5fd617d007fd955a89a06a2e11fb1053757a8
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
 
 - id: M09.P1.T8
   milestone: M09
   phase: 1
   title: Cross-milestone evidence inventory pull and flag missing artifacts before P3
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - compliance/hitrust/control-mapping.csv
@@ -205,16 +205,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: dd8fceed03e4003be1c7e9fa5e72c23b583cf53b
+  merged_sha: dd8fceed03e4003be1c7e9fa5e72c23b583cf53b
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
 
 - id: M09.P1.T9
   milestone: M09
   phase: 1
   title: Receive gap report and categorize findings by severity and remediation depth
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - compliance/hitrust/gap-report/gap-report.md
@@ -231,7 +231,7 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 93323c4ab1e54282fd0d5c030714ce6673f75021
+  merged_sha: 93323c4ab1e54282fd0d5c030714ce6673f75021
+  opened_ts: "2026-05-02T18:45:20Z"
+  merged_ts: "2026-05-02T18:45:20Z"
