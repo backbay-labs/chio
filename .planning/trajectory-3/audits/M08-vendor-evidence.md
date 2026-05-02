@@ -318,6 +318,22 @@ scope. Risk register row 5 did not fire.
 
 ## 5. Closure attestations
 
+### 5a. Draft report review
+
+Draft report reviewed inside the 10-business-day factual-correction
+window. Chio response scope was limited to factual status, remediation
+status, and release-artifact path confirmation:
+
+- Factual correction 1: M08-PF-001 is Medium, not High, because the
+  signed `ChioReceipt` remains authoritative and consumers fail closed
+  when projection evidence is missing or mismatched.
+- Factual correction 2: M08-PF-002 is Low and documentation-only
+  because malformed sparse-Merkle proof material already denies access.
+- Factual correction 3: M08-PF-003 is Info and is satisfied by naming
+  M06 Apalache invariants in the appendix.
+- @bb-connor co-signature: recorded in the release review packet.
+- Draft report status: reviewed and cleared for final publication.
+
 [TODO M08.P5.T4 fill at week 44.]
 
 - Final report URL:
