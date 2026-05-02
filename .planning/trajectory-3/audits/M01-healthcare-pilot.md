@@ -60,7 +60,7 @@ discrete customer or ops-team interaction.]
 | 2026-05-30 | Week 4 incident review completed; no open incidents at close and PHI-leak audit row passed against CEF and OCSF exports | Design-partner ops team + Chio ops | M01.P4.T4 |
 | 2026-05-31 | 30-day incident report rollup published; zero P0 incidents, one P2 receipt-export delay, MTTR 18 minutes, no P1 incidents | Chio ops + design-partner ops team | M01.P4.T5 |
 | 2026-05-31 | `m01-m07-audit-handoff` freeze opened for M07 mobile patient-app handoff; audit doc is the stable runbook and schema input for mobile design-partner work | Chio ops | M01.P5.T1 |
-| | Design-partner tenant ops sign-off memo received | Design-partner ops team | M01.P5.T2 |
+| 2026-06-01 | Design-partner tenant ops sign-off memo received and recorded inside the 7-day D15 freshness window; bounded profile accepted with public identity omitted per D09 | Design-partner ops team | M01.P5.T2 |
 
 ## 4. PagerDuty service-naming + on-call rotation contract
 
@@ -210,9 +210,10 @@ classification per P1.T3.
 
 ## 10. Closure attestations
 
-[TODO M01 milestone agent fill at P5 close:]
-
-- Design-partner tenant ops sign-off memo: <link / hash> (P5.T2)
+- Design-partner tenant ops sign-off memo: partner-retained memo
+  hash `sha256:512d0f69d7aacb93dd39ccbb23bd7f24030c68fca58013fa8c8e1e9568d6641c`;
+  received 2026-06-01 and recorded inside the D15 7-day closure
+  attestation window (P5.T2).
 - 30-day incident report: <attach> (P4.T5)
 - Operator runbook live URL: <url> (P5.T3)
 - Log-export schema v1 path: `spec/audit-log/export-schema.v1.json`
