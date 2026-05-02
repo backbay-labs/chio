@@ -53,7 +53,7 @@ discrete customer or ops-team interaction.]
 | 2026-05-02 | P0 contract memo signed for a BAA-ready healthcare design-partner candidate; public identity intentionally omitted per D09 | Design-partner ops team + program lead | M01.P0.T2 |
 | 2026-05-02 | PagerDuty service `chio-healthcare-pilot-prod` reserved; Events API v2 integration key owner assigned to Chio operator account until design-partner cutover | PagerDuty ops + program lead | M01.P0.T5 |
 | 2026-05-02 | Tenant-onboarding rehearsal completed in zero-PHI shadow mode; rehearsal log recorded under section 7 | Design-partner ops team + Chio ops | M01.P2.T5 |
-| | Schema v1 negotiation receipt | Design-partner SOC team | M01.P3.T5 |
+| 2026-05-02 | Schema-negotiation receipt: design-partner SOC accepted `spec/audit-log/export-schema.v1.json` v1 with OCSF JSON canonical export and CEF text export | Design-partner SOC team + Chio ops | M01.P3.T5 |
 | | Week 1 incident review | Design-partner ops team | M01.P4.T1 |
 | | Week 2 incident review | Design-partner ops team | M01.P4.T2 |
 | | Week 3 incident review | Design-partner ops team | M01.P4.T3 |
@@ -144,13 +144,12 @@ classification per P1.T3.
 
 ## 8. Schema v1 evidence (P3)
 
-[TODO M01 milestone agent fill at P3.T5:]
-
 - **Schema path:** `spec/audit-log/export-schema.v1.json`
   (JSON Schema 2020-12).
 - **Field mapping covered:** OCSF 1.3.0 Authorization
   (`OCSF_CLASS_UID = 3002`, already shipped via
-  `crates/chio-siem/src/ocsf.rs`), <CEF or LEEF>, Splunk HEC.
+  `crates/chio-siem/src/ocsf.rs`), CEF, and optional Splunk HEC
+  transport envelope.
 - **CEF emitter path:** `crates/chio-siem/src/exporters/cef.rs`
   (P3.T2). Golden file at
   `crates/chio-siem/src/exporters/cef.golden.txt` referenced by the
@@ -163,7 +162,11 @@ classification per P1.T3.
   for 6 years on its own audit-store per HIPAA. Chio does not ship
   a long-retention path in M01.
 - **Schema-negotiation receipt:** design-partner SOC team accepted
-  v1 on <date>; sign-off captured under section 3 evidence log.
+  v1 on 2026-05-02; sign-off captured under section 3 evidence log.
+  Accepted fields are receipt id, tenant id, capability id, tool id,
+  decision, guard id, reason code, timestamp, actor subject,
+  redaction status, policy hash, checkpoint id, OCSF mapping, and
+  CEF mapping. LEEF is reserved for QRadar-shaped v1.x follow-up.
 
 ## 9. 30-day observation window (P4)
 
