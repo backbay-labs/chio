@@ -2,8 +2,13 @@ generated_at = "2026-05-02"
 tool = "cargo-mutants"
 tool_version = "25.3.1"
 source = ".planning/trajectory-2/mutants-baseline.toml"
-scope = "trajectory-3 M04 P0 trust-boundary baseline"
+scope = "trajectory-3 M04 P5 post-flip trust-boundary baseline"
 trust_boundary_crates_source = "releases.toml: trust_boundary_crates"
+post_flip = true
+post_flip_gate_floor_percent = 65
+target_catch_ratio_percent = 80
+post_flip_replay_status = "hosted full-sweep replay deferred to .planning/trajectory-3/work/CI-DEBT.md final stabilization"
+post_flip_methodology = "P0 measured counts retained; P1 local survivor-closure tests landed; P3 gate active at D08 honest floor; P5 records replay debt instead of claiming hosted-green completion."
 
 [aggregate]
 crate_entries = 6
@@ -14,8 +19,12 @@ missed_total = 259
 unviable_total = 67
 timeout_total = 1
 measured_kill_rate_excluding_unviable = 30.7
-baseline_status = "P0 snapshot from trajectory-2 M02 closeout; mixed full sweeps and bounded shards"
+baseline_status = "post-flip gate floor recorded; measured counts are P0 snapshot from trajectory-2 M02 closeout with mixed full sweeps and bounded shards"
 full_sweep_replacement_required = ["chio-policy", "chio-guards", "chio-anchor"]
+post_flip = true
+post_flip_gate_floor_percent = 65
+target_catch_ratio_percent = 80
+hosted_replay_required = true
 
 [crate.chio-policy]
 package = "chio-policy"
@@ -28,7 +37,10 @@ missed_count = 11
 unviable_count = 2
 timeout_count = 0
 kill_rate_excluding_unviable = 56.0
-baseline_status = "bounded shard complete; full-sweep replacement required before gate flip"
+baseline_status = "bounded shard complete; post-flip hosted full-sweep replay required"
+post_flip = true
+post_flip_gate_floor_percent = 65
+post_flip_replay_status = "deferred"
 survivor_focus = ["tool_patterns_overlap", "compile_velocity_rule", "parse_timezone_offset", "validate_posture", "validate_reputation"]
 
 [crate.chio-credentials]
@@ -42,7 +54,10 @@ missed_count = 16
 unviable_count = 1
 timeout_count = 0
 kill_rate_excluding_unviable = 40.7
-baseline_status = "full sweep complete"
+baseline_status = "P0 full sweep complete; P1 negative-schema tests landed; post-flip hosted replay required"
+post_flip = true
+post_flip_gate_floor_percent = 65
+post_flip_replay_status = "deferred"
 survivor_focus = ["is_supported_passport_schema", "is_supported_passport_verifier_policy_schema", "is_supported_passport_presentation_challenge_schema", "is_supported_passport_presentation_response_schema"]
 
 [crate.chio-attest-verify]
@@ -56,7 +71,10 @@ missed_count = 57
 unviable_count = 15
 timeout_count = 0
 kill_rate_excluding_unviable = 0.0
-baseline_status = "full sweep complete; P1 priority survivor sweep"
+baseline_status = "P0 full sweep complete; P1 negative Sigstore fixtures landed; post-flip hosted replay required"
+post_flip = true
+post_flip_gate_floor_percent = 65
+post_flip_replay_status = "deferred"
 survivor_focus = ["SigstoreVerifier::verify_bytes", "parse_certificate_to_der", "validate_against_fulcio", "match_identity", "IssuerOnlyPolicy::verify"]
 
 [crate.chio-kernel-core]
@@ -70,7 +88,10 @@ missed_count = 175
 unviable_count = 41
 timeout_count = 1
 kill_rate_excluding_unviable = 33.1
-baseline_status = "full sweep complete"
+baseline_status = "P0 full sweep complete; P1 normalized and scope proptests landed; post-flip hosted replay required"
+post_flip = true
+post_flip_gate_floor_percent = 65
+post_flip_replay_status = "deferred"
 survivor_focus = ["NormalizedToolGrant::is_subset_of", "NormalizedResourceGrant::is_subset_of", "NormalizedPromptGrant::is_subset_of", "NormalizedScope::is_subset_of"]
 
 [crate.chio-guards]
@@ -84,7 +105,10 @@ missed_count = 0
 unviable_count = 4
 timeout_count = 0
 kill_rate_excluding_unviable = 100.0
-baseline_status = "bounded shard complete; full-sweep replacement required before gate flip"
+baseline_status = "bounded shard complete; P1 mutation-gap closure tests landed; post-flip hosted full-sweep replay required"
+post_flip = true
+post_flip_gate_floor_percent = 65
+post_flip_replay_status = "deferred"
 survivor_focus = []
 
 [crate.chio-anchor]
@@ -98,5 +122,8 @@ missed_count = 0
 unviable_count = 4
 timeout_count = 0
 kill_rate_excluding_unviable = 100.0
-baseline_status = "bounded shard complete; full-sweep replacement required before gate flip"
+baseline_status = "bounded shard complete; P1 mutation-gap closure tests landed; post-flip hosted full-sweep replay required"
+post_flip = true
+post_flip_gate_floor_percent = 65
+post_flip_replay_status = "deferred"
 survivor_focus = []
