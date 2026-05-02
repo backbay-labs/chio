@@ -11,7 +11,7 @@
   milestone: M01
   phase: 5
   title: Open m01-m07-audit-handoff freeze with audit doc evidence log entry
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -28,16 +28,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 7463e63d5fbbf0ad89e6b9bbe05624d29bf304f2
+  merged_sha: 7463e63d5fbbf0ad89e6b9bbe05624d29bf304f2
+  opened_ts: "2026-05-02T06:03:44Z"
+  merged_ts: "2026-05-02T06:03:44Z"
 
 - id: M01.P5.T2
   milestone: M01
   phase: 5
   title: Record design-partner ops sign-off memo in audit doc closure attestations within 7-day window
-  status: pending
+  status: merged
   effort_days: 1.0
   owner_glob:
     - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -54,16 +54,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 112663fd572cd330529c964f1a43774502aa57f3
+  merged_sha: 112663fd572cd330529c964f1a43774502aa57f3
+  opened_ts: "2026-05-02T06:03:44Z"
+  merged_ts: "2026-05-02T06:03:44Z"
 
 - id: M01.P5.T3
   milestone: M01
   phase: 5
   title: Record operator runbook live URL in audit doc closure attestations
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -79,16 +79,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 1bcdf36400f3cf936e946a512e89221b0220eb54
+  merged_sha: 1bcdf36400f3cf936e946a512e89221b0220eb54
+  opened_ts: "2026-05-02T06:03:44Z"
+  merged_ts: "2026-05-02T06:03:44Z"
 
 - id: M01.P5.T4
   milestone: M01
   phase: 5
   title: Record schema v1 path in audit doc closure attestations
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -104,16 +104,16 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 3bad629b8285e69aa00a5bb18cdbfa6b4ee8dbfc
+  merged_sha: 3bad629b8285e69aa00a5bb18cdbfa6b4ee8dbfc
+  opened_ts: "2026-05-02T06:03:44Z"
+  merged_ts: "2026-05-02T06:03:44Z"
 
 - id: M01.P5.T5
   milestone: M01
   phase: 5
   title: Close M01 with success-criteria rows green and both audit-handoff freezes closed
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M01-healthcare-pilot.md
@@ -132,7 +132,7 @@
   agent_role: customer-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 25e800b3838622a417a6c572ee60e5a99473c93f
+  merged_sha: 25e800b3838622a417a6c572ee60e5a99473c93f
+  opened_ts: "2026-05-02T06:03:44Z"
+  merged_ts: "2026-05-02T06:03:44Z"

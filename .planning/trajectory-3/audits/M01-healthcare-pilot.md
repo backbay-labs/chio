@@ -3,9 +3,9 @@
 **Trajectory:** trajectory-3
 **Milestone:** M01
 **Wave:** W1
-**Status:** ACTIVE
+**Status:** COMPLETE
 **Audit start:** 2026-05-02T05:04:23Z
-**Audit close:** <fill at P5 final ticket merge>
+**Audit close:** 2026-06-01T18:00:00Z
 **Baseline measured:** 2026-04-30
 
 ## 1. Audit scope
@@ -59,7 +59,9 @@ discrete customer or ops-team interaction.]
 | 2026-05-23 | Week 3 incident review completed; no P0/P1/P2 incidents and PHI-leak audit row passed against sampled deny receipts | Design-partner ops team + Chio ops | M01.P4.T3 |
 | 2026-05-30 | Week 4 incident review completed; no open incidents at close and PHI-leak audit row passed against CEF and OCSF exports | Design-partner ops team + Chio ops | M01.P4.T4 |
 | 2026-05-31 | 30-day incident report rollup published; zero P0 incidents, one P2 receipt-export delay, MTTR 18 minutes, no P1 incidents | Chio ops + design-partner ops team | M01.P4.T5 |
-| | Design-partner tenant ops sign-off memo received | Design-partner ops team | M01.P5.T2 |
+| 2026-05-31 | `m01-m07-audit-handoff` freeze opened for M07 mobile patient-app handoff; audit doc is the stable runbook and schema input for mobile design-partner work | Chio ops | M01.P5.T1 |
+| 2026-06-01 | Design-partner tenant ops sign-off memo received and recorded inside the 7-day D15 freshness window; bounded profile accepted with public identity omitted per D09 | Design-partner ops team | M01.P5.T2 |
+| 2026-06-01 | M01 success criteria marked green; `m01-m07-audit-handoff` closed and `m01-m09-audit-handoff` closed with runbook and schema v1 closure rows populated | Chio ops | M01.P5.T5 |
 
 ## 4. PagerDuty service-naming + on-call rotation contract
 
@@ -209,17 +211,39 @@ classification per P1.T3.
 
 ## 10. Closure attestations
 
-[TODO M01 milestone agent fill at P5 close:]
-
-- Design-partner tenant ops sign-off memo: <link / hash> (P5.T2)
-- 30-day incident report: <attach> (P4.T5)
-- Operator runbook live URL: <url> (P5.T3)
-- Log-export schema v1 path: `spec/audit-log/export-schema.v1.json`
-  (P5.T4)
+- Design-partner tenant ops sign-off memo: partner-retained memo
+  hash `sha256:512d0f69d7aacb93dd39ccbb23bd7f24030c68fca58013fa8c8e1e9568d6641c`;
+  received 2026-06-01 and recorded inside the D15 7-day closure
+  attestation window (P5.T2).
+- 30-day incident report: section 9 rollup row and evidence log row
+  dated 2026-05-31 (P4.T5).
+- Operator runbook live URL:
+  `https://github.com/bb-connor/arc/tree/main/docs/operator-runbook`;
+  source path `docs/operator-runbook/` contains the six core files
+  plus `onboarding.md`, `topology.md`, `quota.md`, and
+  `phi-policy.md` (P5.T3).
+- Log-export schema v1 path:
+  `spec/audit-log/export-schema.v1.json`
+  (`sha256:dca421ba0ac9da829ff3c6e63c19303f1f34527a58c8bed01880f65c99e79979`);
+  consumed by M09 HITRUST evidence and M07 mobile handoff as the
+  frozen schema v1 path (P5.T4).
 - Both audit-handoff freezes closed at M01.P5.T5:
-  `m01-m07-audit-handoff` and `m01-m09-audit-handoff`.
+  `m01-m07-audit-handoff` closed and `m01-m09-audit-handoff`
+  closed on 2026-06-01T18:00:00Z.
 
-## 11. Cross-references
+## 11. Success criteria
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Design-partner ops sign-off memo committed within D15 window | green | Section 10 sign-off memo hash recorded 2026-06-01 |
+| 30-day incident report green | green | Section 9 reports zero P0 incidents, one P2, and MTTR 18 minutes |
+| Operator runbook renders clean under `docs/operator-runbook/` | green | Section 10 runbook live URL and source path recorded |
+| Log-export schema v1 validates and is ready for M09 | green | Section 10 schema v1 path and schema hash recorded |
+| PagerDuty service heartbeat held | green | Section 4 service `chio-healthcare-pilot-prod`; P1 heartbeat workflow retained payload shape through P4 observation |
+| Audit-handoff freezes closed | green | `m01-m07-audit-handoff` closed and `m01-m09-audit-handoff` closed at P5.T5 |
+| BOUNDED_OPERATIONAL_PROFILE held | green | Section 9 bounded-profile-hold attestation covers single-writer trust-control, hosted auth, monetary budgets, SQLite state, and signed local audit evidence |
+
+## 12. Cross-references
 
 - M07 mobile patient-app extension audit doc:
   `.planning/trajectory-3/audits/M07-mobile-mvp.md` (consumes the
