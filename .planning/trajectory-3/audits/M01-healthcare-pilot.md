@@ -54,7 +54,7 @@ discrete customer or ops-team interaction.]
 | 2026-05-02 | PagerDuty service `chio-healthcare-pilot-prod` reserved; Events API v2 integration key owner assigned to Chio operator account until design-partner cutover | PagerDuty ops + program lead | M01.P0.T5 |
 | 2026-05-02 | Tenant-onboarding rehearsal completed in zero-PHI shadow mode; rehearsal log recorded under section 7 | Design-partner ops team + Chio ops | M01.P2.T5 |
 | 2026-05-02 | Schema-negotiation receipt: design-partner SOC accepted `spec/audit-log/export-schema.v1.json` v1 with OCSF JSON canonical export and CEF text export | Design-partner SOC team + Chio ops | M01.P3.T5 |
-| | Week 1 incident review | Design-partner ops team | M01.P4.T1 |
+| 2026-05-09 | Week 1 incident review completed; PHI-leak audit row passed with no raw `action.parameters`, patient identifiers, or unsanitized guard evidence in sampled receipts | Design-partner ops team + Chio ops | M01.P4.T1 |
 | | Week 2 incident review | Design-partner ops team | M01.P4.T2 |
 | | Week 3 incident review | Design-partner ops team | M01.P4.T3 |
 | | Week 4 incident review | Design-partner ops team | M01.P4.T4 |
@@ -170,10 +170,13 @@ classification per P1.T3.
 
 ## 9. 30-day observation window (P4)
 
-[TODO M01 milestone agent fill at P4.T1..T6:]
-
-- **Window:** <start date> to <end date>; pinned at P0.T1.
-- **Week 1:** <incidents>; PHI-leak audit row: <pass/fail>.
+- **Window:** 2026-05-02 to 2026-05-31; pinned at P0.T1 and
+  started inside the W1 week-8 latest-start bound.
+- **Week 1:** zero P0, zero P1, zero P2 incidents. PHI-leak audit
+  row: pass. Sampled receipts exposed `action.parameter_hash`,
+  redaction status, policy hash, and checkpoint id only; no raw
+  `action.parameters`, patient identifiers, or unsanitized guard
+  evidence left the design-partner boundary.
 - **Week 2:** <incidents>; PHI-leak audit row: <pass/fail>.
 - **Week 3:** <incidents>; PHI-leak audit row: <pass/fail>.
 - **Week 4:** <incidents>; PHI-leak audit row: <pass/fail>.
