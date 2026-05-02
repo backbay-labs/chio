@@ -158,6 +158,27 @@ must still be included in the M06.P2 cargo-vet certification target because
 capability and receipt signing make it trust-boundary critical even though its
 reverse-edge centrality is below the top-50 threshold.
 
+### At P2 cargo-vet sign-off (measured 2026-05-02)
+
+M06.P2.T5 cargo-vet end-of-freeze sign-off:
+
+- `supply-chain/audits.toml` now carries 179 first-party `@bb-connor`
+  certification rows, up from the P0 baseline of 26.
+- `supply-chain/config.toml` now carries 836 exemption blocks by the ticket's
+  grep-based count, down from the P0 baseline of 891 and inside the required
+  791-841 chase-down band.
+- `cargo vet --locked` completed with `Vetting Succeeded (307 fully audited,
+  811 exempted)` after `cargo vet fmt` normalized the store.
+- `cargo vet regenerate imports` was rerun during P2. The command reported
+  that first-party pseudo-crates such as `chio-a2a-adapter` cannot be fetched
+  from crates.io, so `supply-chain/imports.lock` had no content diff. The
+  locked vet gate above remains the enforcement signal.
+- Standalone CI redundancy was added at `.github/workflows/cargo-vet.yml`,
+  pinned to cargo-vet 0.10.2 on `ubuntu-24.04` with `cargo vet --locked`.
+- `m06-revocation-oracle-pivot` reaches its close trigger at M06.P2.T5. The
+  broader `m06-supply-chain-pivot` remains open until M06.P3.T5 and M06.P4.T5
+  close.
+
 ### At P5 close (after-counts; M06.P5.T3 ticket fills)
 
 [TODO M06 milestone agent fill at P5 merge:]

@@ -3196,7 +3196,7 @@
   milestone: M06
   phase: 2
   title: Seed cargo-vet certifications for top-50 transitive deps from M06.P0.T2 in supply-chain/audits.toml across async-runtime, serde, crypto, and tracing families
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - supply-chain/audits.toml
@@ -3213,15 +3213,15 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  merged_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  opened_ts: '2026-05-02T11:35:35Z'
+  merged_ts: '2026-05-02T11:35:35Z'
 - id: M06.P2.T2
   milestone: M06
   phase: 2
   title: Refresh upstream cargo-vet imports via cargo vet regenerate imports and commit diff to supply-chain/imports.lock
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - supply-chain/imports.lock
@@ -3238,15 +3238,15 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  merged_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  opened_ts: '2026-05-02T11:35:35Z'
+  merged_ts: '2026-05-02T11:35:35Z'
 - id: M06.P2.T3
   milestone: M06
   phase: 2
   title: Add standalone .github/workflows/cargo-vet.yml running cargo vet --locked on every PR (cargo-vet 0.10.2 pinned; duplicate of in-ci.yml job for signal redundancy)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - .github/workflows/cargo-vet.yml
@@ -3264,15 +3264,15 @@
   agent_role: infra-yaml
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  merged_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  opened_ts: '2026-05-02T11:35:35Z'
+  merged_ts: '2026-05-02T11:35:35Z'
 - id: M06.P2.T4
   milestone: M06
   phase: 2
   title: Chase 891-row exemption baseline DOWN by 50-100 rows in supply-chain/config.toml (target 791-841 remaining; do not chase zero)
-  status: pending
+  status: merged
   effort_days: 2.0
   owner_glob:
   - supply-chain/config.toml
@@ -3290,15 +3290,15 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  merged_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  opened_ts: '2026-05-02T11:35:35Z'
+  merged_ts: '2026-05-02T11:35:35Z'
 - id: M06.P2.T5
   milestone: M06
   phase: 2
   title: Cargo-vet end-of-freeze sign-off and m06-revocation-oracle-pivot freeze closure trigger
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
   - .planning/trajectory-3/audits/M06-formal-supply-chain.md
@@ -3317,10 +3317,10 @@
   agent_role: supply-chain
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  merged_sha: f284bdc75ad4509daf94e6524de1e33533992fb6
+  opened_ts: '2026-05-02T11:35:35Z'
+  merged_ts: '2026-05-02T11:35:35Z'
 - id: M06.P3.T1
   milestone: M06
   phase: 3
