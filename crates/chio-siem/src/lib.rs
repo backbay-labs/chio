@@ -30,6 +30,7 @@ pub use alerting::{
 pub use dlq::{DeadLetterQueue, FailedEvent};
 pub use event::SiemEvent;
 pub use exporter::{ExportError, ExportFuture, Exporter};
+pub use exporters::cef::{CefExporter, CefExporterConfig};
 pub use exporters::datadog::{DatadogConfig, DatadogExporter};
 pub use exporters::elastic::{ElasticAuthConfig, ElasticConfig, ElasticsearchExporter};
 pub use exporters::ocsf_exporter::{OcsfExporter, OcsfExporterConfig, OcsfPayloadFormat};
