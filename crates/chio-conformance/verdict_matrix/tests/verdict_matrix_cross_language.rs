@@ -16,15 +16,11 @@
 //! per-driver entry points). Their absence from this test does not
 //! weaken the cross-language equality claim because:
 //!
-//! - The Python driver's only tuple-emitting class today is the
-//!   `capability_subset` corpus; the WASM browser driver covers the
-//!   same scenarios in-process here, so any cross-language divergence
-//!   that would appear between Python and Rust would also appear
-//!   between the WASM browser kernel and Rust.
-//! - The TS node-http driver and the Go HTTP SDK driver have no local
-//!   semantic emitter; they delegate to a sidecar (in TS) or report
-//!   unsupported (in Go). Their non-tuple-emitting status is enforced
-//!   by their own gates and the `drivers.required` check.
+//! - The Python and Go drivers run their local semantic evaluators in
+//!   their package-level tests and assert 48 passed, 0 failed, 0
+//!   unsupported.
+//! - The TS node-http driver remains a transport-client sidecar lane
+//!   and is enforced by its own gate.
 //!
 //! The diff oracle in `cross_language.rs` is exercised directly by the
 //! unit tests under `cross_language::tests`; this file is the

@@ -83,6 +83,9 @@ const DOMAIN_SCHEMA_MAP: &[(&str, Option<&str>)] = &[
         "capability",
         Some("chio-wire/v1/capability/token.schema.json"),
     ),
+    // The eval-report schema lives under `spec/eval` because it is a
+    // partner-evidence format rather than a wire transport schema.
+    ("eval", Some("../eval/receipt-format.v1.json")),
 ];
 
 #[test]

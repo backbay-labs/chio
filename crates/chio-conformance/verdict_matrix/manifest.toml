@@ -25,12 +25,12 @@ entrypoint = "drivers/rust"
 command = "cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet"
 
 [drivers.python-sdk]
-status = "partial-capability"
+status = "active"
 entrypoint = "drivers/python"
 command = "cd sdks/python/chio-sdk-python && python -m pytest tests/test_verdict_matrix.py -q"
 
 [drivers.go-http-sdk]
-status = "unsupported-no-local-verdict-emitter"
+status = "active"
 entrypoint = "drivers/go"
 command = "cd sdks/go/chio-go-http && go test -run VerdictMatrix ./..."
 
