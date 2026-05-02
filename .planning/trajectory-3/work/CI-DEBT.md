@@ -5,3 +5,4 @@ Each admin-merged PR here must be replayed during final stabilization
 before `TRAJECTORY-FINAL.md`.
 
 - PR #443 (`f0e777310446c67e238b4bac29b4bb35f418ceaf`): M08.P0 vendor-coordinate docs; skipped hosted CI wait for docs-only RFP, vendor dossier, handoff manifest, and outbound package log.
+- PR #444 (`9c8f34aa7e5b532c755e43f5f493e89e58514482`): M09.P0 vendor-coordinate docs; skipped hosted CI wait for docs-only SSP, HITRUST scope boundary, assessor RFP, BAA pre-flight, and ticket stamps.
