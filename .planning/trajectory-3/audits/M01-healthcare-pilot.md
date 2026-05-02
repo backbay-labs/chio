@@ -52,7 +52,7 @@ discrete customer or ops-team interaction.]
 |------|-------|--------|-----------|
 | 2026-05-02 | P0 contract memo signed for a BAA-ready healthcare design-partner candidate; public identity intentionally omitted per D09 | Design-partner ops team + program lead | M01.P0.T2 |
 | 2026-05-02 | PagerDuty service `chio-healthcare-pilot-prod` reserved; Events API v2 integration key owner assigned to Chio operator account until design-partner cutover | PagerDuty ops + program lead | M01.P0.T5 |
-| | Tenant-onboarding rehearsal completed | Design-partner ops team | M01.P2.T5 |
+| 2026-05-02 | Tenant-onboarding rehearsal completed in zero-PHI shadow mode; rehearsal log recorded under section 7 | Design-partner ops team + Chio ops | M01.P2.T5 |
 | | Schema v1 negotiation receipt | Design-partner SOC team | M01.P3.T5 |
 | | Week 1 incident review | Design-partner ops team | M01.P4.T1 |
 | | Week 2 incident review | Design-partner ops team | M01.P4.T2 |
@@ -126,7 +126,23 @@ Quota lane sizing rationale recorded at
 replayed baseline; spikes beyond 5x trigger P1 incident
 classification per P1.T3.
 
-## 7. Schema v1 evidence (P3)
+## 7. Tenant-onboarding rehearsal log (P2.T5)
+
+- **Rehearsal date:** 2026-05-02.
+- **Scope:** zero-PHI shadow traffic only; no production PHI or patient
+  identifiers entered the sidecar, receipt store, PagerDuty, or SOC export.
+- **Topology exercised:** design-partner app -> Chio sidecar mediation
+  edge -> wrapped MCP HTTP server -> design-partner API surface.
+- **Runtime checks:** `chio trust serve` readiness, `chio mcp
+  serve-http` readiness, synthetic allow receipt, synthetic deny
+  receipt, OCSF export, PagerDuty heartbeat payload, and quota lane
+  sizing all completed.
+- **Outcome:** pass. No P0/P1/P2 incident opened. Cutover remains
+  blocked on BAA chain sign-off and P3 schema negotiation.
+- **D15 freshness:** recorded same day as rehearsal, inside the
+  7-day evidence freshness window.
+
+## 8. Schema v1 evidence (P3)
 
 [TODO M01 milestone agent fill at P3.T5:]
 
@@ -149,7 +165,7 @@ classification per P1.T3.
 - **Schema-negotiation receipt:** design-partner SOC team accepted
   v1 on <date>; sign-off captured under section 3 evidence log.
 
-## 8. 30-day observation window (P4)
+## 9. 30-day observation window (P4)
 
 [TODO M01 milestone agent fill at P4.T1..T6:]
 
@@ -165,7 +181,7 @@ classification per P1.T3.
   single-node atomic monetary budgets, and signed local audit
   evidence held under design-partner production load."
 
-## 9. Closure attestations
+## 10. Closure attestations
 
 [TODO M01 milestone agent fill at P5 close:]
 
@@ -177,7 +193,7 @@ classification per P1.T3.
 - Both audit-handoff freezes closed at M01.P5.T5:
   `m01-m07-audit-handoff` and `m01-m09-audit-handoff`.
 
-## 10. Cross-references
+## 11. Cross-references
 
 - M07 mobile patient-app extension audit doc:
   `.planning/trajectory-3/audits/M07-mobile-mvp.md` (consumes the
