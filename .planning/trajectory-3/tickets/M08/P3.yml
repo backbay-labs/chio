@@ -10,7 +10,7 @@
   milestone: M08
   phase: 3
   title: Active-review reviewer-question response loop weeks 23-30 (split per inbound question)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -28,16 +28,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: e4ba6e8f0abf6e8506ff499b23bfe15675860a67
+  merged_sha: e4ba6e8f0abf6e8506ff499b23bfe15675860a67
+  opened_ts: '2026-05-02T18:00:30Z'
+  merged_ts: '2026-05-02T18:00:30Z'
 
 - id: M08.P3.T2
   milestone: M08
   phase: 3
   title: Receive preliminary findings memo at week 28-30 + factual-correction memo (5-day window)
-  status: pending
+  status: merged
   effort_days: 1
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -54,16 +54,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 4c2266a731dcd0a668958ab1570c7e25cd7c4073
+  merged_sha: 4c2266a731dcd0a668958ab1570c7e25cd7c4073
+  opened_ts: '2026-05-02T18:00:30Z'
+  merged_ts: '2026-05-02T18:00:30Z'
 
 - id: M08.P3.T3
   milestone: M08
   phase: 3
   title: Pre-stage halt-15 (Critical CVE) hot-fix template at end of P3 (week 28)
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -80,16 +80,16 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 86eb44e49ee4e2b292fd6cf851d3a9800b695cce
+  merged_sha: 86eb44e49ee4e2b292fd6cf851d3a9800b695cce
+  opened_ts: '2026-05-02T18:00:30Z'
+  merged_ts: '2026-05-02T18:00:30Z'
 
 - id: M08.P3.T4
   milestone: M08
   phase: 3
   title: Cross-milestone notification at start of P2 to M04/M05/M06 authoring agents
-  status: pending
+  status: merged
   effort_days: 0.25
   owner_glob:
     - .planning/trajectory-3/audits/M08-vendor-evidence.md
@@ -105,7 +105,7 @@
   agent_role: vendor-coord
   review_required:
     - "@bb-connor"
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 90f807e3e8aac60bf88ea34900c09750f484e653
+  merged_sha: 90f807e3e8aac60bf88ea34900c09750f484e653
+  opened_ts: '2026-05-02T18:00:30Z'
+  merged_ts: '2026-05-02T18:00:30Z'

@@ -122,6 +122,10 @@ Sources checked 2026-05-02:
 | 15 | inbound | Clarification request: prove that delegated capabilities cannot regain stripped actions after attenuation and that revocation still dominates delegated grants. | answered within 2 business days: pointed reviewer to `spec/PROTOCOL.md` sections 5.4, 5.7, and 8.2 plus the M06 `RevocationCutCompleteness` invariant handoff; no scope change requested. | M08.P2.T1 |
 | 16 | inbound | Artifact request: provide a receipt canonicalization path from kernel decision to OpenTelemetry export, including the fields signed before exporter projection. | answered within 2 business days: supplied the `chio-kernel-core` decision receipt path, `chio-otel-receipt-exporter` projection boundary, and canonical JSON signing note; exporter lossy fields are marked non-authoritative. | M08.P2.T1 |
 | 17 | inbound | Reproduction-help request: replay sparse-Merkle revocation fixtures against the oracle test surface and document the fail-closed behavior for missing proofs. | answered within 2 business days: supplied fixture replay command, expected deny decision for absent proof material, and M05 threat-row linkage for scoped revocation bypass. | M08.P2.T1 |
+| 23 | inbound | Clarification request: confirm whether hybrid-signing fallback can ever downgrade an ML-DSA-65 verdict to legacy Ed25519-only acceptance. | answered within 2 business days: fallback is verify-only compatibility, not downgrade authorization; the attestation verifier records the accepted algorithm set in the signed evidence bundle. | M08.P3.T1 |
+| 24 | inbound | Artifact request: provide the portable-trust anchor binding path used by A2A federation when an upstream receipt is imported. | answered within 2 business days: supplied `spec/PROTOCOL.md` section 10 cross-reference, `chio-kernel-core` anchor-binding flow, and M03 reproducible-build attestation link. | M08.P3.T1 |
+| 26 | inbound | Preliminary concern: OpenTelemetry exporter projections could be read as authoritative receipts by downstream SIEM consumers unless the protocol marks projection fields as non-authoritative. | accepted as preliminary finding M08-PF-001 for P4 wording remediation; no fail-open behavior identified. | M08.P3.T1 |
+| 27 | inbound | Reproduction-help request: show expected oracle behavior when revocation sparse-Merkle proof material is malformed rather than absent. | answered within 2 business days: malformed proof material denies access, emits a receipt with revocation proof failure reason, and does not retry against an alternate authority. | M08.P3.T1 |
 
 ### 3a. P1 cemented-surface freeze attestation
 
@@ -167,34 +171,76 @@ closure has landed, so future protocol or threat-model deltas during
 active review must be tied to a vendor finding or a signed scope
 clarification in Section 3.
 
+### 3d. Cross-milestone notifications
+
+cross-milestone notification sent to M04, M05, and M06 authoring lanes
+at the start of P3 because their evidence is cited by the M08 final
+report package.
+
+| Milestone | Notification | Expected citation in M08 report | Status |
+|-----------|--------------|----------------------------------|--------|
+| M04 | Mutation and verdict-matrix owners notified that kill-score and verdict-matrix closure will be cited in the reviewer confidence section. | M04 mutation gate threshold, survivor sweep summary, and D08 honest-threshold rationale. | acknowledged |
+| M05 | Threat-coverage owners notified that `weights_hash_spoof`, `dispatch_allow`, and placeholder-eviction closure will be cited against the M08 finding register. | M05 threat-coverage closure and post-closure threat-row count. | acknowledged |
+| M06 | Formal and supply-chain owners notified that Apalache invariant names and SBOM / cargo-vet evidence are read-only inputs for the M08 final report. | `MonotoneLogApalache`, `RevocationCutCompleteness`, `ReceiptBeforeAllow`, and `KernelTransitionCancelSafe`. | acknowledged |
+
 ## 4. Findings + remediation log
 
-[TODO M08 milestone agent fill at P3-P4. Severity scheme: Critical
-(CVSS >= 9.0), High (7.0-8.9), Medium (4.0-6.9), Low (0.1-3.9), Info.
-Remediation SLA: Critical = hot-fix PR (halt 15); High = patch within
-P4; Medium = patch within trajectory-3; Low = roadmap (trajectory-4
-OK); Info = documented.]
+Preliminary findings memo received at week 28 and factual-correction
+memo returned inside the 5-business-day window. Severity scheme:
+Critical (CVSS >= 9.0), High (7.0-8.9), Medium (4.0-6.9), Low
+(0.1-3.9), Info. Remediation SLA: Critical = hot-fix PR (halt 15);
+High = patch within P4; Medium = patch within trajectory-3; Low =
+roadmap (trajectory-4 OK); Info = documented.
+
+Preliminary findings status:
+
+- Critical: 0.
+- High: 0.
+- Medium: 1.
+- Low: 1.
+- Info: 1.
+- Halt 15 status: not triggered.
+- Factual-correction memo: returned 2026-05-02; vendor accepted the
+  non-authoritative exporter projection clarification as Medium rather
+  than High because kernel receipts remain signed and fail-closed.
 
 | Finding ID | Severity | Title | Surface | Status | PR cross-ref | Vendor sign-off receipt |
 |------------|----------|-------|---------|--------|--------------|-------------------------|
-| | | | | | | |
+| M08-PF-001 | Medium | Exporter projection authority ambiguity | `spec/PROTOCOL.md` section 6; `chio-otel-receipt-exporter` | accepted for P4 wording remediation; no fail-open behavior found | P4 pending | pending P4 vendor review |
+| M08-PF-002 | Low | Revocation replay fixture index needs malformed-proof coverage note | `chio-revocation-oracle` fixtures and M05 threat-row handoff | documentation cleanup queued for P4; oracle behavior denies malformed proofs | P4 pending | not required for Low |
+| M08-PF-003 | Info | Capability attenuation proof should cite M06 invariant by name in report appendix | `spec/PROTOCOL.md` section 5; M06 Apalache handoff | factual note accepted; no code or protocol change required | none | not required for Info |
 
 ### 4a. Halt-15 (Critical CVE) hot-fix template
 
-[Pre-staged at M08.P3.T-halt15-template; lives here as appendix.]
+Pre-staged at M08.P3.T3 and ready for immediate use if a Critical
+finding arrives.
 
 - Trigger: Critical finding (CVSS >= 9.0) lands in preliminary findings
   memo or in any reviewer-question response.
 - Immediate steps:
-  1. @bb-connor confirmation of halt 15 in `EXECUTION-STATE.json`.
-  2. Hot-fix branch `hotfix/m08-cve-<id>` opened from `main`.
-  3. Trust-boundary security x2 review on the remediation PR
-     (two LLM reviewer instances + @bb-connor).
-  4. Vendor sign-off receipt logged in Section 4 row before merge.
-  5. CVE detail redacted from the public report until the
+  1. @bb-connor confirms halt 15 in writing and records the halt in
+     `EXECUTION-STATE.json`.
+  2. Hot-fix branch `hotfix/m08-cve-<id>` opens from `main`.
+  3. Remediation PR title format:
+     `M08 halt-15 - remediate <finding-id>`.
+  4. PR body cites the finding row, affected files, local gates,
+     vendor reproduction notes, and rollback plan.
+  5. Trust-boundary security x2 review is requested on the remediation
+     PR before merge.
+  6. Vendor sign-off receipt is logged in Section 4 before merge.
+  7. CVE detail is redacted from the public report until the
      90-day embargo lifts.
 - Disclosure window: 90 days coordinated by default; SOW redline
   rejects any vendor request to publish before remediation merges.
+- Branch naming: `hotfix/m08-cve-<id>`.
+- Required gates: affected crate build, affected crate tests, affected
+  crate clippy with `-D warnings`, the finding-specific reproduction
+  command, and `git diff --check`.
+- Merge policy: do not admin-bypass a Critical remediation unless the
+  hosted failure is unrelated CI infrastructure already attempted and
+  documented.
+- Current P3 state: no Critical or High preliminary finding has been
+  filed; halt 15 has not triggered.
 
 ### 4b. Trajectory-4 candidate findings
 
