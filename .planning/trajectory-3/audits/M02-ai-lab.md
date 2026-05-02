@@ -154,9 +154,9 @@ older than the merge timestamp of the ticket that adds the row.
 | Date | Event | Source | Cross-ref |
 |------|-------|--------|-----------|
 | 2026-05-02 | M02 audit baseline pinned for execution; corpus sha `47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f`, Scenario count 48, and driver inventory recorded read-only. | This audit doc + verdict-matrix manifest | M02.P0.T1 |
-| | Partner outreach: Anthropic evaluations team thread opened. | <P0.T3 ticket SHA> | |
-| | Partner outreach: METR thread opened. | <P0.T3 ticket SHA> | |
-| | Partner outreach: Apollo Research thread opened. | <P0.T3 ticket SHA> | |
+| 2026-05-02 | Partner outreach: Anthropic evaluations team thread opened with Inspect-compatible eval-card receipt ask and contract-cycle caveat. | Chio program lead | M02.P0.T3 |
+| 2026-05-02 | Partner outreach: METR thread opened with single-bundle ingest review and one-page conformance memo ask. | Chio program lead | M02.P0.T3 |
+| 2026-05-02 | Partner outreach: Apollo Research thread opened with Python verifier import review and reproducibility memo ask. | Chio program lead | M02.P0.T3 |
 | | Partner contract signed (week-1 deadline; D10). | <P0.T4 ticket SHA> | |
 | | Eval-report receipt format spec v1 published at `spec/eval/receipt-format.v1.json`. | <P3.T1 ticket SHA> | |
 | | `crates/chio-eval-receipt/` reference verifier merged. | <P3.T2 ticket SHA> | |
