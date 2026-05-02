@@ -28,6 +28,22 @@ The active `corpus_sha256` is
 The manifest also records the active drivers and the tuple fields asserted by
 the oracle.
 
+## Required Drivers
+
+The required verdict-matrix gates are:
+
+| Driver | Required | Gate |
+| --- | --- | --- |
+| `rust-kernel` | yes | `cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet` |
+| `python-sdk` | yes | `cd sdks/python/chio-sdk-python && python -m pytest tests/test_verdict_matrix.py -q` |
+| `go-http-sdk` | yes | `cd sdks/go/chio-go-http && go test -run VerdictMatrix ./...` |
+| deployment-shape smoke | yes | `cargo test -p chio-conformance --test deployment_shape_smoke --quiet` |
+| `typescript-node-http` | no | advisory transport client, sidecar required |
+| `wasm-browser` | no | advisory partial browser surface |
+
+Required drivers must emit all 48 tuples with `unsupported = 0` and zero
+divergence from the Rust kernel expected tuple for each scenario.
+
 ## Corpus rotation
 
 The corpus rotation process is intentionally narrow. A rotation changes one or
@@ -58,16 +74,18 @@ The Rust driver fails closed:
 
 ## Python and Go Driver Boundaries
 
-The Python SDK driver currently emits actual tuples only for capability subset
-scenarios. It issues a mock SDK capability, evaluates the requested tool call
-through `MockChioClient`, and derives the tuple from the returned receipt
-decision. Revocation, replay, and redaction scenarios are reported as
-unsupported until those verdict-emitting SDK surfaces exist locally.
+The Python SDK driver is required. It emits local semantic tuples for all 48
+scenarios by issuing a mock SDK capability, evaluating the requested tool call
+through `MockChioClient`, and deriving the tuple from the receipt decision and
+scenario requirements. Capability subset, revocation propagation, replay
+verdict, and redaction determinism must all report `unsupported = 0`.
 
-The Go HTTP SDK driver reports the current corpus as unsupported. The Go HTTP
-SDK forwards requests to a sidecar and decodes the sidecar verdict; it does not
-yet contain a local semantic verdict emitter for scope, revocation, replay, or
-redaction matrix scenarios.
+The Go HTTP SDK driver is required. It emits local semantic tuples for all 48
+scenarios through the Go verdict-matrix driver under
+`crates/chio-conformance/verdict_matrix/drivers/go/` and is checked from
+`sdks/go/chio-go-http` with `go test -run VerdictMatrix ./...`. The required
+CI job fails if the driver reports unsupported scenarios or diverges from the
+expected tuple set.
 
 ## Rust Driver Boundary
 
@@ -115,6 +133,9 @@ test "$(find crates/chio-conformance/verdict_matrix/scenarios/redaction_determin
 cargo test -p chio-conformance --test verdict_matrix_rust_driver --quiet
 cargo test -p chio-conformance --test diff_oracle_self_test --quiet
 cargo test -p chio-conformance --test verdict_matrix_cross_language --quiet
+cd sdks/python/chio-sdk-python && python -m pytest tests/test_verdict_matrix.py -q
+cd ../../go/chio-go-http && go test -run VerdictMatrix ./...
+cd ../../..
 test -f .github/workflows/verdict-matrix.yml
 test -f docs/conformance/verdict-matrix.md
 python3 - <<'PY'
