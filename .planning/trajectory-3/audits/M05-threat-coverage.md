@@ -135,7 +135,7 @@ Commit SHA and PR URL are recorded in the M05.P0 ticket stamp.
 | Bench | Median (ns) | 95% CI | total_blocks | total_bytes | Reference runner |
 |-------|-------------|--------|--------------|-------------|-------------------|
 | dispatch_allow (Criterion) | <fill P2.T2> | <fill P2.T2> | n/a | n/a | 4-core Linux, warm cache |
-| dispatch_allow_dhat | n/a | n/a | <fill P3.T1> | <fill P3.T1> | 4-core Linux, warm cache |
+| dispatch_allow_dhat | n/a | n/a | 410 measured, 512 budget | 34,075 measured, 40,960 budget | local dhat smoke; final 4-core Linux replay pending |
 
 ### 3.3 Coverage gate post-flip behavior matrix
 
