@@ -56,8 +56,10 @@ Sources checked 2026-05-02:
   - 360 Advanced
   - RSM US
 - RFP send dates (P0.T4):
-  - Coalfire: package prepared for assessor intake, signer @bb-connor.
-  - A-LIGN: package prepared for assessor intake, signer @bb-connor.
+  - Coalfire: RFP send dates entry opened 2026-05-02; package prepared
+    for assessor intake, signer @bb-connor.
+  - A-LIGN: RFP send dates entry opened 2026-05-02; package prepared
+    for assessor intake, signer @bb-connor.
   - Schellman: named fallback, no outbound package in P0 unless a
     primary declines or misses the response window.
 - RFP responses received:
