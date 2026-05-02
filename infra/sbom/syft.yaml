@@ -3,9 +3,11 @@
 # Pinned tool: anchore/syft v1.18.1 (see release-binaries.yml).
 # Output: CycloneDX JSON, schema version 1.6.
 # Consumed by the "Emit CycloneDX SBOM" step in
-# .github/workflows/release-binaries.yml; the per-target chio binary
-# path is supplied as a positional argument so this file stays
-# matrix-agnostic.
+# .github/workflows/release-binaries.yml and by
+# .github/workflows/sbom.yml. Binary paths and source-tree scans are
+# supplied as positional arguments so this file stays matrix-agnostic.
+# Source-tree SBOMs pass `dir:.` to syft and reuse the same excludes
+# as binary archive scans.
 
 # CycloneDX 1.6 JSON. Syft accepts the schema version as a suffix on
 # the format identifier; without it, syft picks its current default
@@ -15,12 +17,13 @@ output:
 
 # Skip vendored build outputs and language-package caches that should
 # never be treated as first-party components when scanning the
-# release binary.
+# release binary or source tree.
 exclude:
   - "./target/**"
   - "./node_modules/**"
   - "./.git/**"
   - "./.worktrees/**"
+  - "./supply-chain/sbom/**"
 
 # Surface every package syft can identify; do not silently drop
 # components below an arbitrary confidence threshold.

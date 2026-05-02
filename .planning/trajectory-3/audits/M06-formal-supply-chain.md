@@ -179,6 +179,30 @@ M06.P2.T5 cargo-vet end-of-freeze sign-off:
   broader `m06-supply-chain-pivot` remains open until M06.P3.T5 and M06.P4.T5
   close.
 
+### At P3 SBOM publication handoff (measured 2026-05-02)
+
+M06.P3 pins SBOM publication to `supply-chain/sbom/v{tag}/`:
+
+- Source SBOM: `supply-chain/sbom/v{tag}/source.cdx.json`.
+- Binary SBOMs: `supply-chain/sbom/v{tag}/{target}.binary.cdx.json`.
+- Standalone workflow: `.github/workflows/sbom.yml`, triggered by release
+  tags, weekly cron, manual dispatch, and successful `Release Binaries`
+  workflow completion.
+- Syft pin: 1.18.1, emitting CycloneDX 1.6 JSON with the same
+  `infra/sbom/syft.yaml` excludes for `target`, `node_modules`, `.git`, and
+  `.worktrees`.
+- Determinism probe: source-tree SBOM generation runs twice against `dir:.`
+  and fails if the two CycloneDX outputs differ byte-for-byte.
+- Signing: each `*.cdx.json` SBOM is signed with `cosign sign-blob` using
+  the same GitHub OIDC keyless identity pattern as `release-binaries.yml`.
+- Git evidence path: `.gitignore` explicitly leaves `supply-chain/sbom/**`
+  committable for release closeout.
+- HITRUST assessor handshake: M06 confirms CycloneDX 1.6 SBOMs are
+  consumable in the M09 assessor portal evidence package; the cross-reference
+  remains the M09 P0 evidence row in
+  `.planning/trajectory-3/audits/M09-vendor-evidence.md` for M06 SBOM
+  artifacts.
+
 ### At P5 close (after-counts; M06.P5.T3 ticket fills)
 
 [TODO M06 milestone agent fill at P5 merge:]
