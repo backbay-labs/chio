@@ -15,6 +15,8 @@
 | P4-SAMPLE-005 | P4 week 1 | formal evidence spot check | provided bridge plus Apalache bundle paths | `compliance/hitrust/narratives/formal-evidence-bridge.md` |
 | P4-FOLLOWUP-025-001 | week 25 | access-review first-cycle evidence pointer | provided private roster hash and public policy path | private channel plus `access-review.md` |
 | P4-FOLLOWUP-025-002 | week 25 | BAA evidence channel confirmation | provided private legal reference hash | private assessor channel |
+| P4-FOLLOWUP-027-001 | week 27 | Cloud-provider inheritance evidence pointer | provided AWS Artifact reference hash | private provider evidence channel |
+| P4-FOLLOWUP-027-002 | week 27 | operator interview clarification | provided role-only public summary and private attendee roster hash | `operator-interviews.md` |
 
 ## Handling rule
 
