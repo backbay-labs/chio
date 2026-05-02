@@ -161,9 +161,10 @@ older than the merge timestamp of the ticket that adds the row.
 | 2026-05-02 | Partner contract signed (week-1 deadline; D10). Partner identity: METR. Acceptance criteria: single eval-report bundle ingest, reference verifier review, partner technical reviewer for P2/P3, and P5 conformance memo. | Chio program lead + METR technical contact | M02.P0.T4 |
 | 2026-05-02 | Partner Q&A recorded: signature scheme defaults to cosign + GitHub OIDC, ingest pipeline language is Python, and eval-card citation commitment is memo review within the D15 7-day window. | `.planning/trajectory-3/research/m02/PARTNER-QA.md` | M02.P1.T2 |
 | 2026-05-02 | Evidence-export contract linked for partner review; `EXPORT-CONTRACT.md` maps verdict_matrix scenario output, `eval_run`, `corpus_sha256`, and partner-side mapping fields for the METR Python ingest sample. | `crates/chio-eval-receipt/EXPORT-CONTRACT.md` | M02.P2.T4 |
-| | Eval-report receipt format spec v1 published at `spec/eval/receipt-format.v1.json`. | <P3.T1 ticket SHA> | |
-| | `crates/chio-eval-receipt/` reference verifier merged. | <P3.T2 ticket SHA> | |
-| | Partner integration spike scheduled / executed. | <P4 ticket SHA> | |
+| 2026-05-02 | Eval-report receipt format spec v1 published at `spec/eval/receipt-format.v1.json`; schema id `chio.eval-report.bundle.v1`, RFC 8785 signing payload, and schema lint lane are live. | `f54f1a0413564d45279b2fbbd6da66f3a65d1a70` | M02.P3.T1 |
+| 2026-05-02 | `crates/chio-eval-receipt/` reference verifier merged with CLI round-trip and local `test-sha256` bundle signature verification. | `4d1dbd86d1cd50f27b9be2f04248c3c8c81c7cec` | M02.P3.T2 |
+| 2026-05-02 | Partner integration spike executed with the METR Python ingest sample; local pair-run verified `examples/eval-receipt-ingest/metr/out/metr-sample-bundle.json` through `chio-eval-receipt verify`. | `25d8bc9f5` | M02.P4.T1-M02.P4.T2 |
+| 2026-05-02 | Partner feedback recorded in `.planning/trajectory-3/research/m02/PARTNER-INTEGRATION.md`: optional partner-review receipt metadata requested; no breaking format change requested; no withdrawal signal. | M02.P4.T3 | M02.P4.T3 |
 | | Partner-signed conformance memo received. | <P5.T2 ticket SHA> | |
 
 P0.T1 lands rows 1; P0.T3-T4 land rows 2-5; P3 fills rows 6-7; P4
@@ -195,9 +196,12 @@ Filled by the M02 milestone agent at P5 wave-closer merge.
 
 - Verdict-matrix CI run reproduced from the partner sample:
   - Workflow: `.github/workflows/verdict-matrix.yml`
-  - Run URL exercising the partner's bundle ingest path: _<filled at
-    P4.T2>_
-  - Status: green (M02) / red (will not close otherwise)
+  - Run URL exercising the partner's bundle ingest path:
+    https://github.com/bb-connor/arc/actions/runs/25246581763
+  - Local pair-run evidence: `python3 examples/eval-receipt-ingest/metr/ingest.py`
+    wrote and verified `examples/eval-receipt-ingest/metr/out/metr-sample-bundle.json`.
+  - Status: local green; hosted Actions run captured under the
+    trajectory-3 CI-debt policy while the queue drains.
 
 - Eval-report receipt format spec v1:
   - Path: `spec/eval/receipt-format.v1.json`
