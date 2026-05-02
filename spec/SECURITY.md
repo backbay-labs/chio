@@ -66,6 +66,9 @@ The required threats for the shipped Chio boundary are:
 | `passkey_credential_theft` | an attacker steals or abuses a passkey-backed credential path to obtain fresh capabilities | passkey issuer, capability issuance |
 | `audience_confusion` | a capability minted for one audience is presented to another runtime or tool boundary | passkey issuer, kernel admission |
 | `weights_hash_spoof` | a provider lies about loaded model weights to satisfy a signed model-card check | provider binding, model-card verification |
+| `mobile_attestation_replay` | a replayed App Attest assertion or Play Integrity token bypasses issuer freshness checks | mobile capability issuance |
+| `device_key_extraction` | mobile signing material is exported or misclassified outside Secure Enclave, StrongBox, or TEE custody | mobile device custody |
+| `play_integrity_token_replay` | a stale Play Integrity JWS is reused to mint a fresh mobile capability | Android capability issuance |
 
 ### 2.1 Capability Token Theft
 
@@ -584,6 +587,90 @@ Residual risk:
 - until providers expose independently recomputable loaded-weight hashes, a
   malicious provider can lie about the loaded artifact before model-card
   verification receives trustworthy input
+
+### 2.18 Mobile Attestation Replay
+
+Attack:
+an attacker replays a valid App Attest assertion or Play Integrity token
+against a later capability-mint request, bypassing issuer freshness checks.
+
+Existing controls:
+
+- mobile capability issuance is modeled as an issuer-mediated flow rather than
+  a local-only bearer token grant
+- Chio already treats missing attestation freshness as a deny-or-downgrade
+  condition under the transport rules
+
+Required mitigations:
+
+- App Attest assertions and Play Integrity tokens **MUST** bind to a fresh
+  issuer challenge or nonce
+- the mobile issuer **MUST** reject stale, reused, or audience-mismatched
+  attestation evidence fail-closed
+- verifier fixtures **SHOULD** include replayed assertion and wrong-audience
+  cases before coverage flips to covered
+
+Residual risk:
+
+- platform attestation services cannot compensate for deployments that reuse
+  broad audiences or keep replay nonce state only in a volatile local process
+
+### 2.19 Device Key Extraction
+
+Attack:
+a compromised mobile process exports or misclassifies signing material that
+should remain bound to Secure Enclave, StrongBox, or TEE custody.
+
+Existing controls:
+
+- Chio mobile receipts are signed artifacts and capability issuance can bind
+  the audience to a device-attested key id
+- the mobile kernel adapter keeps the JSON-in / JSON-out boundary separate
+  from platform keystore implementation details
+
+Required mitigations:
+
+- iOS signing keys **MUST** remain in Secure Enclave or App Attest managed
+  storage
+- Android signing keys **SHOULD** use StrongBox on API 28+ and **MUST** mark
+  TEE fallback explicitly on API 26-27
+- mobile receipts **MUST NOT** rely on exportable long-lived signing seeds
+  when a hardware-backed key is available
+
+Residual risk:
+
+- a fully compromised mobile OS can still manipulate UI, timing, and network
+  behavior; M07's custody claim is scoped to non-exportability and evidence
+  binding, not total device compromise prevention
+
+### 2.20 Play Integrity Token Replay
+
+Attack:
+an attacker reuses a stale Google Play Integrity JWS to mint a fresh mobile
+capability after the original issuer nonce should have expired or been
+consumed.
+
+Existing controls:
+
+- Play Integrity is only an input to issuer-side minting and does not
+  authorize tool calls by itself
+- Chio's custody nonce store already has replay-resistant patterns from the
+  passkey issuer surface
+
+Required mitigations:
+
+- the Play Integrity verifier **MUST** assert nonce equality against
+  issuer-generated nonce state
+- accepted Play Integrity nonces **MUST** be consumed once and rejected on
+  duplicate presentation
+- stale, wrong-nonce, and wrong-package JWS fixtures **SHOULD** be part of the
+  M07 verifier corpus before coverage flips to covered
+
+Residual risk:
+
+- Google-signed verdict freshness still depends on issuer nonce durability and
+  clock policy; weak deployments can make valid tokens replayable by accepting
+  stale nonce state
 
 ## 3. Transport Security Requirements
 

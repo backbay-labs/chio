@@ -101,6 +101,38 @@ fun verifyPassport(
 Verifies a portable passport envelope (Phase 20.1 wire format). Pass
 `nowSecs <= 0` to fall back to the device wall-clock.
 
+### `attestAppAttest` (M07 P1)
+
+```kotlin
+@Throws(ChioMobileException::class)
+fun attestAppAttest(keyId: String, challengeHex: String): String
+```
+
+Reserved M07 entry point for the iOS-compatible App Attest evidence shape.
+The Kotlin surface keeps the name for cross-platform parity even though the
+implementation returns an unsupported error on Android until the iOS lane uses
+it.
+
+### `attestPlayIntegrity` (M07 P1)
+
+```kotlin
+@Throws(ChioMobileException::class)
+fun attestPlayIntegrity(nonceHex: String): String
+```
+
+Reserved M07 entry point for producing a Play Integrity evidence envelope
+bound to an issuer nonce.
+
+### `verifyMobileReceipt` (M07 P1)
+
+```kotlin
+@Throws(ChioMobileException::class)
+fun verifyMobileReceipt(receiptJson: String, evidenceJson: String): String
+```
+
+Reserved M07 entry point for verifying a mobile receipt against App Attest or
+Play Integrity evidence before forwarding it to the hosted oracle.
+
 ## Records
 
 ### `VerifiedCapability`

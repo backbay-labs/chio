@@ -64,6 +64,23 @@ The overall qualification gate fails unless at least one target-backed iOS or
 Android lane runs and passes. The host FFI test is required coverage, but it
 does not by itself qualify the mobile target surface.
 
+## M07 P1 surface preview
+
+The current UDL exports four functions: `evaluate`, `sign_receipt`,
+`verify_capability`, and `verify_passport`. M07 P1 extends that surface to
+seven functions by adding:
+
+- `attest_app_attest(key_id, challenge_hex)`: produce an App Attest evidence
+  envelope bound to a server challenge.
+- `attest_play_integrity(nonce_hex)`: produce a Play Integrity evidence
+  envelope bound to an issuer nonce.
+- `verify_mobile_receipt(receipt_json, evidence_json)`: verify a mobile
+  receipt against device-attestation evidence before it is handed to the
+  hosted oracle.
+
+These names are reserved here so Swift, Kotlin, and React Native wrapper work
+can target the same function names before the P1 UDL entries land.
+
 ## Generating the Swift bindings
 
 ```bash
@@ -97,7 +114,10 @@ static libraries (`libchio_kernel_mobile.a`) from step 1.
 4. Call the entry points directly -- `try evaluate(requestJson:)`,
    `try signReceipt(bodyJson:signingSeedHex:)`,
    `try verifyCapability(tokenJson:authorityPubHex:)`,
-   `try verifyPassport(envelopeJson:issuerPubHex:nowSecs:)`.
+   `try verifyPassport(envelopeJson:issuerPubHex:nowSecs:)`. M07 P1 adds
+   `try attestAppAttest(keyId:challengeHex:)`,
+   `try attestPlayIntegrity(nonceHex:)`, and
+   `try verifyMobileReceipt(receiptJson:evidenceJson:)`.
 
 ## Generating the Kotlin bindings
 
@@ -132,7 +152,10 @@ into `src/main/jniLibs/<abi>/` alongside the module's resources.
 4. Call the entry points directly -- `evaluate(requestJson)`,
    `signReceipt(bodyJson, signingSeedHex)`,
    `verifyCapability(tokenJson, authorityPubHex)`,
-   `verifyPassport(envelopeJson, issuerPubHex, nowSecs)`.
+   `verifyPassport(envelopeJson, issuerPubHex, nowSecs)`. M07 P1 adds
+   `attestAppAttest(keyId, challengeHex)`,
+   `attestPlayIntegrity(nonceHex)`, and
+   `verifyMobileReceipt(receiptJson, evidenceJson)`.
 
 ## Offline receipt sync pattern
 
