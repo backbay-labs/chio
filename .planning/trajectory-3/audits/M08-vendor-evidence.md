@@ -206,9 +206,9 @@ Preliminary findings status:
 
 | Finding ID | Severity | Title | Surface | Status | PR cross-ref | Vendor sign-off receipt |
 |------------|----------|-------|---------|--------|--------------|-------------------------|
-| M08-PF-001 | Medium | Exporter projection authority ambiguity | `spec/PROTOCOL.md` section 6; `chio-otel-receipt-exporter` | remediated in P4 by declaring exporter, report, and OpenTelemetry projections non-authoritative unless they embed and verify the signed receipt | M08.P4.T1 | Vendor sign-off receipt M08-P4-SIGNOFF-001 |
-| M08-PF-002 | Low | Revocation replay fixture index needs malformed-proof coverage note | `chio-revocation-oracle` fixtures and M05 threat-row handoff | documented in P4 remediation fan-out; oracle behavior denies malformed proofs | M08.P4.T1 | not required for Low |
-| M08-PF-003 | Info | Capability attenuation proof should cite M06 invariant by name in report appendix | `spec/PROTOCOL.md` section 5; M06 Apalache handoff | factual note accepted; no code or protocol change required | none | not required for Info |
+| M08-PF-001 | Medium | Exporter projection authority ambiguity | `spec/PROTOCOL.md` section 6; `chio-otel-receipt-exporter` | closed in P4 by declaring exporter, report, and OpenTelemetry projections non-authoritative unless they embed and verify the signed receipt | M08.P4.T1 | Vendor sign-off receipt M08-P4-SIGNOFF-001 |
+| M08-PF-002 | Low | Revocation replay fixture index needs malformed-proof coverage note | `chio-revocation-oracle` fixtures and M05 threat-row handoff | closed as documentation-only; oracle behavior denies malformed proofs | M08.P4.T1 | not required for Low |
+| M08-PF-003 | Info | Capability attenuation proof should cite M06 invariant by name in report appendix | `spec/PROTOCOL.md` section 5; M06 Apalache handoff | closed as report-appendix citation; no code or protocol change required | none | not required for Info |
 
 ### 4c. P4 remediation fan-out
 
@@ -258,6 +258,23 @@ Mid-remediation checkpoint recorded at week 35:
 - Release evidence: Section 4 carries PR cross-reference placeholders
   that will be pinned to the phase PR during P4 closeout.
 
+### 4f. Remediation log compile
+
+Week-39 remediation log compile:
+
+| Severity | Count | Closure state |
+|----------|-------|---------------|
+| Critical | 0 | none filed |
+| High | 0 | none filed |
+| Medium | 1 | M08-PF-001 closed by protocol wording remediation and vendor sign-off receipt M08-P4-SIGNOFF-001 |
+| Low | 1 | M08-PF-002 closed as documentation-only final-report appendix item |
+| Info | 1 | M08-PF-003 closed as final-report appendix citation |
+
+All Critical / High remediation requirements are complete because no
+Critical or High findings were filed. The non-critical remediation
+roadmap for P5 is limited to final-report appendix citations for
+M08-PF-002 and M08-PF-003.
+
 ### 4a. Halt-15 (Critical CVE) hot-fix template
 
 Pre-staged at M08.P3.T3 and ready for immediate use if a Critical
@@ -292,12 +309,12 @@ finding arrives.
 
 ### 4b. Trajectory-4 candidate findings
 
-[TODO M08 P5 fill: any Critical / High finding requiring engineering
-outside trajectory-3 scope per Risk register row 5.]
+No Critical or High finding required engineering outside trajectory-3
+scope. Risk register row 5 did not fire.
 
 | Finding ID | Severity | Reason for deferral | trajectory-4 row |
 |------------|----------|---------------------|------------------|
-| | | | |
+| none | none | no trajectory-4 deferral required from M08 P4 | none |
 
 ## 5. Closure attestations
 
