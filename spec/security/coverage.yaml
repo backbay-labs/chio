@@ -99,6 +99,42 @@ threats:
       - crates/chio-kernel/tests/pq_key_load_after_self_quote.rs
       - crates/chio-conformance/tests/threats/tee_quote_forgery.rs
 
+  - id: mobile_attestation_replay
+    coverage_state: covered
+    owned_by: M07
+    closed_by: M07.P5.T4
+    backing_evidence:
+      - crates/chio-custody-hw/src/attestation/app_attest.rs
+      - crates/chio-custody-hw/src/attestation/play_integrity.rs
+      - crates/chio-custody-hw/tests/attestation_app_attest.rs
+      - crates/chio-custody-hw/tests/attestation_play_integrity.rs
+      - crates/chio-kernel-mobile/tests/oracle_round_trip.rs
+      - sdks/swift/Sources/Chio/ReceiptPoster.swift
+      - sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/ReceiptPoster.kt
+
+  - id: device_key_extraction
+    coverage_state: covered
+    owned_by: M07
+    closed_by: M07.P5.T4
+    backing_evidence:
+      - sdks/swift/Sources/Chio/AppAttest.swift
+      - sdks/swift/Sources/Chio/Keystore.swift
+      - sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/Keystore.kt
+      - crates/chio-custody-hw/src/attestation/app_attest.rs
+      - crates/chio-custody-hw/src/attestation/receipt_chain.rs
+      - sdks/typescript/packages/mobile/src/index.ts
+
+  - id: play_integrity_token_replay
+    coverage_state: covered
+    owned_by: M07
+    closed_by: M07.P5.T4
+    backing_evidence:
+      - sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/PlayIntegrity.kt
+      - crates/chio-custody-hw/src/attestation/play_integrity.rs
+      - crates/chio-custody-hw/tests/attestation_play_integrity.rs
+      - crates/chio-kernel-mobile/tests/fixtures/receipts/android-signed-receipt.json
+      - crates/chio-kernel-mobile/tests/oracle_round_trip.rs
+
   - id: ssrf_via_http_substrate
     coverage_state: pending
     deferred_to: trajectory-4.hosted-http-egress-hardening

@@ -10,6 +10,7 @@
     "packages/chio-ai-sdk-middleware",
     "packages/chio-next",
     "packages/browser",
+    "packages/mobile",
     "packages/passkey",
     "packages/workers",
     "packages/edge",
