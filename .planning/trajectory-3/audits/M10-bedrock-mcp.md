@@ -134,6 +134,7 @@ slots are not prefilled so the halt threshold remains countable.
 
 | Round-trip # | Date opened | Date resolved | Reviewer comment | Resolution | Effort (days) |
 |--------------|-------------|---------------|------------------|------------|---------------|
+| 1 | 2026-05-02 | 2026-05-02 | Need one customer-shape evidence trail covering Quick Launch, IAM attach, entitlement, base receipt, overage metering, and forced-failure envelope. | Recorded in `integrations/aws-bedrock/review/round-trip-1.md`; P4.T5 smoke gate exercises the path. | 0.5 |
 
 Halt rule per RESEARCH risk #1: round-trips > 4 OR slip past week 30
 fires the m10-bedrock-listing-pivot freeze halt and escalates per
