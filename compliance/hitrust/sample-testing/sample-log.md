@@ -19,6 +19,8 @@
 | P4-FOLLOWUP-027-002 | week 27 | operator interview clarification | provided role-only public summary and private attendee roster hash | `operator-interviews.md` |
 | P4-FOLLOWUP-028-001 | week 28 | incident-response table-top evidence | provided IR runbook mapping and closure receipt | `compliance/hitrust/ir-runbook.md` |
 | P4-FOLLOWUP-028-002 | week 28 | key-rotation cutover evidence | provided redacted key-id cutover receipt hash | private channel plus `key-rotation.md` |
+| P4-FOLLOWUP-030-001 | week 30 | audit-log export schema evidence | provided schema hash and BOP sample manifest | `spec/audit-log/export-schema.v1.json` |
+| P4-FOLLOWUP-030-002 | week 30 | threat coverage evidence | provided M05 coverage and threat model bundle pointers | `docs/security/threat-coverage.md` |
 
 ## Handling rule
 
