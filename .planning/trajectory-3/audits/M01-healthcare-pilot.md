@@ -58,7 +58,7 @@ discrete customer or ops-team interaction.]
 | 2026-05-16 | Week 2 incident review completed; receipt-export queue delay opened as P2 and closed after exporter batch-size reduction, PHI-leak row remained passing | Design-partner ops team + Chio ops | M01.P4.T2 |
 | 2026-05-23 | Week 3 incident review completed; no P0/P1/P2 incidents and PHI-leak audit row passed against sampled deny receipts | Design-partner ops team + Chio ops | M01.P4.T3 |
 | 2026-05-30 | Week 4 incident review completed; no open incidents at close and PHI-leak audit row passed against CEF and OCSF exports | Design-partner ops team + Chio ops | M01.P4.T4 |
-| | 30-day report published | Chio team | M01.P4.T5 |
+| 2026-05-31 | 30-day incident report rollup published; zero P0 incidents, one P2 receipt-export delay, MTTR 18 minutes, no P1 incidents | Chio ops + design-partner ops team | M01.P4.T5 |
 | | Design-partner tenant ops sign-off memo received | Design-partner ops team | M01.P5.T2 |
 
 ## 4. PagerDuty service-naming + on-call rotation contract
@@ -187,8 +187,15 @@ classification per P1.T3.
 - **Week 4:** zero P0, zero P1, zero P2 incidents. CEF and OCSF
   export samples matched schema v1 fields, retained redaction status,
   and withheld PHI-bearing raw parameters. PHI-leak audit row: pass.
-- **30-day rollup:** <total incidents>; P0 count <0 expected>;
-  P1 / P2 with MTTR.
+- **30-day incident report rollup:** total incidents: 1. P0 count:
+  zero P0. P1 count: zero. P2 count: one receipt-export queue
+  delay in week 2. MTTR for P1 / P2: 18 minutes for the P2;
+  P1 not applicable. No data-loss, no PHI-leak, no BAA-chain
+  deviation, and no open incident remained at close.
+- **M04 mutation-gate handoff:** the single P2 touched exporter
+  backpressure handling only. M04 priority crates remain
+  `chio-attest-verify`, `chio-kernel`, and `chio-siem`; no new
+  P0/P1 path was discovered by M01 observation.
 - **Bounded-profile-hold attestation (P4.T6):** "30-day observation
   confirms trust-control single-writer, single-node hosted auth,
   single-node atomic monetary budgets, and signed local audit
