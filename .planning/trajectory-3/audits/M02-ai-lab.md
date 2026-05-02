@@ -171,6 +171,14 @@ fills row 8; P5 fills row 9.
 
 Filled by the M02 milestone agent at P5 wave-closer merge.
 
+- Partner identity:
+  - Name: METR
+  - partner-slug: `metr`
+  - Contract date: 2026-05-02
+  - Contracted acceptance surface: single eval-report bundle ingest,
+    reference verifier review, partner technical reviewer through
+    P2/P3, and P5 conformance memo.
+
 - Partner-signed conformance memo:
   - Path: `.planning/trajectory-3/audits/M02-memo.md`
   - sha256: _<filled at P5.T2>_

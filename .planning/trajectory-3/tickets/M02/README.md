@@ -44,6 +44,18 @@ is M02.P0.T5; wave-closer is M02.P5.T4.
   evidence log row's date stamp must be no more than 7 days behind
   the merging ticket; CI enforces.
 
+## Partner Contract
+
+- Partner contracted: METR
+- partner-slug: `metr`
+- Contract date: 2026-05-02
+- Acceptance surface: single eval-report bundle ingest, reference
+  verifier review, partner technical reviewer through P2/P3, and P5
+  conformance memo.
+- Bench fallbacks: Apollo Research first fallback, Anthropic
+  evaluations team second fallback if Halt 12 conditions require a
+  substitution.
+
 ## Locked freezes
 
 - `m02-m04-verdict-matrix-coupling`
