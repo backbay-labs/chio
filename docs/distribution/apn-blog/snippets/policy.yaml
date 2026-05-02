@@ -1,0 +1,42 @@
+version: chio.policy.v1
+name: aws-bedrock-marketplace-default
+default_effect: deny
+subjects:
+  - id: tenant:marketplace:customer-post-listing
+    capabilities:
+      - cap:bedrock:converse
+      - cap:mcp:tools.call
+conditions:
+  - id: marketplace_entitlement_required
+    all:
+      - claim: aws_marketplace.product_code
+        equals: prod-chio-bedrock
+      - claim: aws_marketplace.entitlement_status
+        equals: active
+      - claim: aws_region
+        equals: us-east-1
+rules:
+  - id: allow_bedrock_converse_with_receipt
+    effect: allow
+    action: bedrock:Converse
+    resource: arn:aws:bedrock:us-east-1::foundation-model/*
+    when:
+      capability: cap:bedrock:converse
+      condition: marketplace_entitlement_required
+    receipt:
+      required: true
+      meter_dimension: bedrock_receipt_overage
+  - id: allow_governed_mcp_tools
+    effect: allow
+    action: mcp:tools.call
+    resource: dev.chio/chio-governed-tools/*
+    when:
+      capability: cap:mcp:tools.call
+      condition: marketplace_entitlement_required
+    receipt:
+      required: true
+  - id: deny_unknown_tools
+    effect: deny
+    action: "*"
+    resource: "*"
+    reason: urn:chio:error:aws-bedrock:unknown-tool

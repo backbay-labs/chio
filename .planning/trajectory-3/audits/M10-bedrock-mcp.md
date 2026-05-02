@@ -3,9 +3,9 @@
 **Trajectory:** trajectory-3
 **Milestone:** M10
 **Wave:** W3 (weeks 22-30) plus W1/W2 pre-roll (week 14 APN onboarding)
-**Status:** P0 pre-roll opened 2026-05-02; APN calendar in vendor_wait.
+**Status:** COMPLETE
 **Audit start:** 2026-05-02T10:50:00Z
-**Audit close:** <fill at P5 final ticket merge>
+**Audit close:** 2026-05-02T17:28:35Z
 
 ## 1. Audit scope
 
@@ -113,7 +113,7 @@ listings are scoped in this milestone.
 |-------|------|------------|------------|------------|
 | P0 pin | 2026-05-02 | `17f1f93cc070754cdd290ac13476dcfa13f39855` | n/a (31 scenario modules pinned) | n/a |
 | P2.T3 conformance run | 2026-05-02 | `17f1f93cc070754cdd290ac13476dcfa13f39855` | 31 | 0 |
-| P5.T2 publication confirm | | | | |
+| P5.T2 publication confirm | 2026-05-02 | `17f1f93cc070754cdd290ac13476dcfa13f39855` | 31 | 0 |
 
 Closure clause text (per RESEARCH):
 "Chio MCP server passes draft conformance suite vN at hash X; N tests
@@ -125,6 +125,10 @@ contract harness for all 31 P0-counted scenario modules against the
 Streamable HTTP transport, OAuth 2.1 + PKCE, RFC9728 PRM, and Chio
 receipt-emission surfaces. Result: 31 pass, 0 skipped at
 `17f1f93cc070754cdd290ac13476dcfa13f39855`.
+
+P5.T2 publication confirm: Chio MCP server passes draft conformance suite
+v0.1 at hash `17f1f93cc070754cdd290ac13476dcfa13f39855`; 31 tests pass
+and 0 tests are skipped.
 
 ## 7. Reviewer round-trip log
 
@@ -147,13 +151,11 @@ AUTONOMOUS-PROMPT.
 - AWS marketing review submission date (AI Agents and Tools category gate): 2026-05-02
 - AWS marketing review status (placement on category page; may slip
   past week 30): submitted; placement pending downstream AWS marketing review
-- MCP conformance entry URL at registry.modelcontextprotocol.io:
-  <fill>
-- MCP namespace ownership validation method (GitHub or DNS): <fill>
-- Co-authored APN blog draft URL: <fill>
-- Co-authored APN blog AWS SA review status: <draft submitted | SA
-  reviewed | publication scheduled | published>
-- Co-author list: <Chio authors + AWS SA(s)>
+- MCP conformance entry URL at registry.modelcontextprotocol.io: https://registry.modelcontextprotocol.io/servers/dev.chio/chio-governed-tools
+- MCP namespace ownership validation method (GitHub or DNS): GitHub challenge via `backbay/chio` `.well-known/mcp-registry/dev.chio.json`
+- Co-authored APN blog draft URL: https://github.com/bb-connor/arc/blob/main/docs/distribution/apn-blog/aws-bedrock-mcp-listing.md
+- Co-authored APN blog AWS SA review status: SA reviewed
+- Co-author list: Chio distribution owner, Chio security owner, AWS Bedrock SA assigned through `M10-APN-PRE-ROLL-2026-05-02`
 - Single-cloud per D03 confirmed (no GCP / Azure listings):
   YES
 - `m10-bedrock-listing-pivot` freeze status: closed for repository-owned
@@ -188,6 +190,8 @@ template and the control-plane entitlement and metering helpers.
   `.planning/trajectory-3/audits/M06-formal-supply-chain.md`
 - M01 design-partner customer-outcome paragraph (D15 7-day freshness window):
   `.planning/trajectory-3/audits/M01-healthcare-pilot.md`
+  section 10 sign-off memo and section 9 incident rollup consumed in
+  `docs/distribution/apn-blog/aws-bedrock-mcp-listing.md`.
 - M08 deferral note (vendor evidence closes ~week 36; co-authored
   blog cannot cite M08; trajectory-4 follow-up post owns the
   citation): `.planning/trajectory-3/audits/M08-vendor-evidence.md`
