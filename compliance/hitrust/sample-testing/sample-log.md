@@ -17,6 +17,8 @@
 | P4-FOLLOWUP-025-002 | week 25 | BAA evidence channel confirmation | provided private legal reference hash | private assessor channel |
 | P4-FOLLOWUP-027-001 | week 27 | Cloud-provider inheritance evidence pointer | provided AWS Artifact reference hash | private provider evidence channel |
 | P4-FOLLOWUP-027-002 | week 27 | operator interview clarification | provided role-only public summary and private attendee roster hash | `operator-interviews.md` |
+| P4-FOLLOWUP-028-001 | week 28 | incident-response table-top evidence | provided IR runbook mapping and closure receipt | `compliance/hitrust/ir-runbook.md` |
+| P4-FOLLOWUP-028-002 | week 28 | key-rotation cutover evidence | provided redacted key-id cutover receipt hash | private channel plus `key-rotation.md` |
 
 ## Handling rule
 
