@@ -2,7 +2,7 @@
   "schema_version": "1",
   "trajectory": "trajectory-3",
   "started_at": "2026-05-02T02:19:05Z",
-  "last_checkpoint_at": "2026-05-02T19:06:16Z",
+  "last_checkpoint_at": "2026-05-02T19:18:18Z",
   "current_wave": "vendor_lanes",
   "halt": {
     "halted": false,
@@ -62,7 +62,7 @@
     },
     "M09": {
       "status": "vendor_wait",
-      "phase": "P3_merged",
+      "phase": "P4_merged",
       "owner_branch": null,
       "trust_boundary": true,
       "lane": "vendor"
@@ -118,7 +118,8 @@
     "Current execution focus moved to vendor lanes M08 and M09 after W2 and W3 completion.",
     "M09.P1 gap assessment merged 2026-05-02T18:45:20Z: MyCSF portal provisioning, readiness questionnaire, five assessor walkthroughs, inherited evidence inventory, and gap report intake recorded.",
     "M09.P2 remediation merged 2026-05-02T18:56:37Z: control mapping cleaned, policies authored, IR runbook landed, evidence-pack script seeded, formal bridge authored, and accepted-risk register recorded.",
-    "M09.P3 evidence package merged 2026-05-02T19:06:16Z: M06 SBOM prerequisite verified, M01 BOP sample manifest recorded, dated evidence bundle generated, MyCSF upload receipt recorded, P4 start confirmed, and evidence pointers updated."
+    "M09.P3 evidence package merged 2026-05-02T19:06:16Z: M06 SBOM prerequisite verified, M01 BOP sample manifest recorded, dated evidence bundle generated, MyCSF upload receipt recorded, P4 start confirmed, and evidence pointers updated.",
+    "M09.P4 assessor engagement merged 2026-05-02T19:18:18Z: sample testing, operator interviews, week 25-31 follow-ups, draft report intake, clarification log, and P4 audit closeout recorded."
   ],
   "wave_heads": {
     "W1": "0bd9eb91f995fdb824919fa28482bb63364ffe35",
