@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "ChioControlPlaneEndpoint",
+    "ParameterValue": "https://control.chio.example/tenants/tenant-a"
+  },
+  {
+    "ParameterKey": "ChioTenantId",
+    "ParameterValue": "tenant-a"
+  },
+  {
+    "ParameterKey": "ExternalId",
+    "ParameterValue": "replace-with-tenant-external-id"
+  },
+  {
+    "ParameterKey": "ChioSellerAccountPrincipalArn",
+    "ParameterValue": "arn:aws:iam::111122223333:role/chio-control-plane"
+  }
+]
