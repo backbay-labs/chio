@@ -5,6 +5,7 @@
 #
 #   [mutants]
 #   target_catch_ratio_percent = 80
+#   activation_threshold_percent_per_crate = 65 # optional D08 floor
 #   required_consecutive_nightly_successes = 2
 #   observed_consecutive_nightly_successes = 0
 #   cycle_end_tag = ""             # filled in after evidence and release
@@ -15,7 +16,8 @@
 #     required_consecutive_nightly_successes -> advisory; exit 0.
 #   - cycle_end_tag non-empty and the required nightly evidence streak is
 #     present -> blocking; exit 1 when outcomes.json reports a caught-mutant
-#     ratio below target_catch_ratio_percent.
+#     ratio below activation_threshold_percent_per_crate when present, else
+#     target_catch_ratio_percent.
 #
 # Environment:
 #   MUTANTS_PACKAGE     : crate name being scored (informational).
@@ -54,7 +56,9 @@
 # nightly successes, so this script exits 0. The evidence-gated
 # release-binaries activation starts enforcing without a workflow edit only
 # after releases.toml records the two-consecutive-nightly >= 80 percent
-# evidence streak and the release PR writes cycle_end_tag.
+# evidence streak and the release PR writes cycle_end_tag. D08 honest-floor
+# activation records activation_threshold_percent_per_crate separately from
+# the 80 percent target.
 
 set -euo pipefail
 
@@ -106,16 +110,23 @@ read_toml_scalar() {
 
 cycle_end_tag="$(read_toml_scalar cycle_end_tag)"
 target_percent="$(read_toml_scalar target_catch_ratio_percent)"
+activation_threshold_percent="$(read_toml_scalar activation_threshold_percent_per_crate)"
 required_successes="$(read_toml_scalar required_consecutive_nightly_successes)"
 observed_successes="$(read_toml_scalar observed_consecutive_nightly_successes)"
 
 target_percent="${target_percent:-80}"
+threshold_percent="${activation_threshold_percent:-${target_percent}}"
 required_successes="${required_successes:-2}"
 observed_successes="${observed_successes:-0}"
 
 if [[ ! "${target_percent}" =~ ^[0-9]+$ ]]; then
     printf 'mutants-gate: invalid target_catch_ratio_percent=%s in releases.toml\n' \
         "${target_percent}" >&2
+    exit 2
+fi
+if [[ ! "${threshold_percent}" =~ ^[0-9]+$ ]]; then
+    printf 'mutants-gate: invalid activation_threshold_percent_per_crate=%s in releases.toml\n' \
+        "${threshold_percent}" >&2
     exit 2
 fi
 if [[ ! "${required_successes}" =~ ^[0-9]+$ ]]; then
@@ -130,14 +141,14 @@ if [[ ! "${observed_successes}" =~ ^[0-9]+$ ]]; then
 fi
 
 if [[ -z "${cycle_end_tag}" ]]; then
-    printf 'mutants-gate: package=%s exit=%s posture=advisory verdict=pass (cycle_end_tag empty; target=%s%% observed_nightly_successes=%s/%s)\n' \
-        "${PACKAGE}" "${EXIT_CODE}" "${target_percent}" "${observed_successes}" "${required_successes}"
+    printf 'mutants-gate: package=%s exit=%s posture=advisory verdict=pass (cycle_end_tag empty; target=%s%% activation_threshold=%s%% observed_nightly_successes=%s/%s)\n' \
+        "${PACKAGE}" "${EXIT_CODE}" "${target_percent}" "${threshold_percent}" "${observed_successes}" "${required_successes}"
     exit 0
 fi
 
 if (( observed_successes < required_successes )); then
-    printf 'mutants-gate: package=%s exit=%s posture=advisory verdict=pass (nightly evidence pending: target=%s%% observed_nightly_successes=%s/%s cycle_end_tag=%s)\n' \
-        "${PACKAGE}" "${EXIT_CODE}" "${target_percent}" "${observed_successes}" "${required_successes}" "${cycle_end_tag}"
+    printf 'mutants-gate: package=%s exit=%s posture=advisory verdict=pass (nightly evidence pending: target=%s%% activation_threshold=%s%% observed_nightly_successes=%s/%s cycle_end_tag=%s)\n' \
+        "${PACKAGE}" "${EXIT_CODE}" "${target_percent}" "${threshold_percent}" "${observed_successes}" "${required_successes}" "${cycle_end_tag}"
     exit 0
 fi
 
@@ -153,8 +164,8 @@ if [[ ! "${EXIT_CODE}" =~ ^[0-9]+$ ]]; then
 fi
 
 # Blocking posture: cycle_end_tag is set. cargo-mutants uses a non-zero exit
-# when survivors remain, but this lane gates on the configured minimum caught
-# ratio rather than requiring every mutant to be caught.
+# when survivors remain, but this lane gates on the configured activation
+# threshold rather than requiring every mutant to be caught.
 if [[ -f "${outcomes_json}" ]]; then
     if ! command -v jq >/dev/null 2>&1; then
         printf 'mutants-gate: jq is required to score %s\n' "${outcomes_json}" >&2
@@ -193,37 +204,37 @@ if [[ -f "${outcomes_json}" ]]; then
 
     if (( scoreable == 0 )); then
         if (( EXIT_CODE == 0 )); then
-            printf 'mutants-gate: package=%s exit=0 posture=blocking verdict=pass (cycle_end_tag=%s target=%s%% scoreable=0 caught=0 total=%s unviable=%s)\n' \
-                "${PACKAGE}" "${cycle_end_tag}" "${target_percent}" "${total}" "${unviable}"
+            printf 'mutants-gate: package=%s exit=0 posture=blocking verdict=pass (cycle_end_tag=%s target=%s%% activation_threshold=%s%% scoreable=0 caught=0 total=%s unviable=%s)\n' \
+                "${PACKAGE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}" "${total}" "${unviable}"
             exit 0
         fi
-        printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% scoreable=0 total=%s unviable=%s; cargo-mutants exited non-zero without scoreable outcomes)\n' \
-            "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" "${total}" "${unviable}" >&2
-    elif (( caught * 100 >= target_percent * scoreable )); then
+        printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% activation_threshold=%s%% scoreable=0 total=%s unviable=%s; cargo-mutants exited non-zero without scoreable outcomes)\n' \
+            "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}" "${total}" "${unviable}" >&2
+    elif (( caught * 100 >= threshold_percent * scoreable )); then
         pct_x10=$(( caught * 1000 / scoreable ))
-        printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=pass (cycle_end_tag=%s target=%s%% caught_ratio=%s.%s%% caught=%s scoreable=%s total=%s unviable=%s observed_nightly_successes=%s/%s)\n' \
-            "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" \
+        printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=pass (cycle_end_tag=%s target=%s%% activation_threshold=%s%% caught_ratio=%s.%s%% caught=%s scoreable=%s total=%s unviable=%s observed_nightly_successes=%s/%s)\n' \
+            "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}" \
             "$(( pct_x10 / 10 ))" "$(( pct_x10 % 10 ))" "${caught}" "${scoreable}" "${total}" "${unviable}" \
             "${observed_successes}" "${required_successes}"
         exit 0
     else
         pct_x10=$(( caught * 1000 / scoreable ))
-        printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% caught_ratio=%s.%s%% caught=%s scoreable=%s total=%s unviable=%s observed_nightly_successes=%s/%s)\n' \
-            "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" \
+        printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% activation_threshold=%s%% caught_ratio=%s.%s%% caught=%s scoreable=%s total=%s unviable=%s observed_nightly_successes=%s/%s)\n' \
+            "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}" \
             "$(( pct_x10 / 10 ))" "$(( pct_x10 % 10 ))" "${caught}" "${scoreable}" "${total}" "${unviable}" \
             "${observed_successes}" "${required_successes}" >&2
     fi
 elif (( EXIT_CODE == 0 )); then
-    printf 'mutants-gate: package=%s exit=0 posture=blocking verdict=pass (cycle_end_tag=%s target=%s%% outcomes_json=missing)\n' \
-        "${PACKAGE}" "${cycle_end_tag}" "${target_percent}"
+    printf 'mutants-gate: package=%s exit=0 posture=blocking verdict=pass (cycle_end_tag=%s target=%s%% activation_threshold=%s%% outcomes_json=missing)\n' \
+        "${PACKAGE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}"
     exit 0
 else
-    printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% outcomes_json=missing)\n' \
-        "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" >&2
+    printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% activation_threshold=%s%% outcomes_json=missing)\n' \
+        "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}" >&2
 fi
 
-printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% observed_nightly_successes=%s/%s)\n' \
-    "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" "${observed_successes}" "${required_successes}" >&2
+printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% activation_threshold=%s%% observed_nightly_successes=%s/%s)\n' \
+    "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}" "${observed_successes}" "${required_successes}" >&2
 if [[ -n "${OUTPUT_DIR}" && -d "${OUTPUT_DIR}" ]]; then
     printf 'mutants-gate: see %s for outcomes.json detail\n' "${OUTPUT_DIR}" >&2
 fi

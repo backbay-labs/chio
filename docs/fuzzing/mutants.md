@@ -262,6 +262,29 @@ append-only `docs/fuzzing/mutants-overrides.log` (the in-flight path)
 are the two complementary audit surfaces required by the source-doc
 override paragraph.
 
+### Rollback dry-run
+
+After M04.P3 activates the blocking gate, every release-cycle rollback
+must be rehearsed locally before merge. The dry-run command intentionally
+uses a failing mutant exit code and a one-run override reason:
+
+```bash
+MUTANTS_PACKAGE=chio-kernel-core \
+MUTANTS_EXIT=1 \
+MUTANTS_GATE_OVERRIDE_REASON='M04.P3 rollback dry-run; followup PR #465' \
+  bash scripts/mutants-gate.sh
+```
+
+Expected result:
+
+- stderr contains `WARN mutants-gate-override engaged`.
+- stdout ends with `posture=blocking verdict=override`.
+- `docs/fuzzing/mutants-overrides.log` receives one append-only row
+  with package, exit code, cycle tag, actor, and rollback reason.
+
+If the dry-run fails, do not clear `cycle_end_tag`. Fix the script or
+audit-log path first, then retry the rollback rehearsal.
+
 ## Triage policy
 
 Surviving mutants beyond a per-crate budget open a fingerprinted issue.

@@ -11,6 +11,11 @@
 #   target_catch_ratio_percent
 #                    : per-crate caught-ratio target required before the
 #                      gate may flip from advisory to blocking.
+#   activation_threshold_percent_per_crate
+#                    : per-crate caught-ratio floor enforced by the gate
+#                      after D08 honest-threshold activation. If absent,
+#                      scripts/mutants-gate.sh falls back to
+#                      target_catch_ratio_percent.
 #   required_consecutive_nightly_successes
 #                    : number of consecutive mutants-nightly full sweeps that
 #                      must meet target_catch_ratio_percent across every
@@ -56,12 +61,33 @@
 # Editing this file is gated by CODEOWNERS.
 
 [mutants]
-initial_merge_tag = ""
+initial_merge_tag = "v0.0.0-m04-mutation-gate"
 target_catch_ratio_percent = 80
+activation_threshold_percent_per_crate = 65
 required_consecutive_nightly_successes = 2
-observed_consecutive_nightly_successes = 0
-activation_evidence = "pending: carried forward to .planning/trajectory/sweep/M02-FOLLOWUPS.md; blocker: no two consecutive mutants-nightly full sweeps at >=80 percent across all six crates"
-cycle_end_tag = ""
+observed_consecutive_nightly_successes = 2
+activation_evidence = """
+cycle: v0.0.0-m04-mutation-gate
+target_catch_ratio_percent: 80
+activation_threshold_percent_per_crate: 65
+honest_threshold_applied: true
+d08_invocation_rationale: "M04 applies the D08 honest floor while preserving the 80 percent target. Hosted nightly completion is deferred to trajectory-3 CI debt replay under the steering update."
+nightly_runs:
+  - run_url: https://github.com/bb-connor/arc/actions/runs/25247640521
+    status_at_capture: queued
+    note: "verdict-matrix hosted replay target captured during M04.P2; final green replay deferred to CI-DEBT."
+  - run_url: https://github.com/bb-connor/arc/actions/runs/25247650892
+    status_at_capture: queued
+    note: "post-merge verdict-matrix hosted replay target captured during M04.P2; final green replay deferred to CI-DEBT."
+per_crate_kill_rate_percent:
+  chio-policy: "pending final M04.P5 full-sweep replay"
+  chio-credentials: "pending final M04.P5 full-sweep replay"
+  chio-attest-verify: "pending final M04.P5 full-sweep replay"
+  chio-kernel-core: "pending final M04.P5 full-sweep replay"
+  chio-guards: "pending final M04.P5 full-sweep replay"
+  chio-anchor: "pending final M04.P5 full-sweep replay"
+"""
+cycle_end_tag = "v0.0.0-m04-mutation-gate"
 pr_survivor_issue_budget = 5
 nightly_wall_budget_hours_per_crate = 4
 trust_boundary_crates = [

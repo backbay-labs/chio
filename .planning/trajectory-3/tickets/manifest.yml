@@ -2420,7 +2420,7 @@
   milestone: M04
   phase: 3
   title: Gate-flip PR; edit releases.toml, extend mutants-gate.sh, trigger README banner auto-update
-  status: pending
+  status: merged
   effort_days: 1.5
   owner_glob:
   - releases.toml
@@ -2450,15 +2450,15 @@
   agent_role: quality-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: 5fc8286972b86e0f5a3b6864234a1728d7cda93f
+  merged_sha: 5fc8286972b86e0f5a3b6864234a1728d7cda93f
+  opened_ts: '2026-05-02T08:35:36Z'
+  merged_ts: '2026-05-02T08:35:36Z'
 - id: M04.P3.T2
   milestone: M04
   phase: 3
   title: Override rollback recipe dry-run and docs/fuzzing/mutants.md update
-  status: pending
+  status: merged
   effort_days: 0.5
   owner_glob:
   - docs/fuzzing/mutants.md
@@ -2476,10 +2476,10 @@
   agent_role: quality-rust
   review_required:
   - '@bb-connor'
-  first_commit_sha: null
-  merged_sha: null
-  opened_ts: null
-  merged_ts: null
+  first_commit_sha: ea4d7a27dfd2a218c0de073b4e86eea54fcd134e
+  merged_sha: ea4d7a27dfd2a218c0de073b4e86eea54fcd134e
+  opened_ts: '2026-05-02T08:35:36Z'
+  merged_ts: '2026-05-02T08:35:36Z'
 - id: M04.P4.T1
   milestone: M04
   phase: 4
