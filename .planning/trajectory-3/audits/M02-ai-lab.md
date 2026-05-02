@@ -3,8 +3,8 @@
 **Trajectory:** trajectory-3
 **Milestone:** M02
 **Wave:** W1
-**Status:** P0 baseline pinned 2026-04-30; phases P1-P5 pending.
-**Audit start:** 2026-04-30 (P0 wave-opener merge target)
+**Status:** P0 execution baseline pinned 2026-05-02; phases P1-P5 pending.
+**Audit start:** 2026-05-02 (P0 wave-opener merge target)
 **Audit close:** TBD (P5 partner-signed memo merge)
 
 ## 1. Audit scope
@@ -153,7 +153,7 @@ older than the merge timestamp of the ticket that adds the row.
 
 | Date | Event | Source | Cross-ref |
 |------|-------|--------|-----------|
-| 2026-04-30 | M02 audit baseline pinned (this row); corpus sha + driver inventory recorded. | This audit doc | [research/m02/RESEARCH.md] |
+| 2026-05-02 | M02 audit baseline pinned for execution; corpus sha `47e8d5394c807196d9567d97515e786cb1abfb0c7676e54db269ca82c735422f`, Scenario count 48, and driver inventory recorded read-only. | This audit doc + verdict-matrix manifest | M02.P0.T1 |
 | | Partner outreach: Anthropic evaluations team thread opened. | <P0.T3 ticket SHA> | |
 | | Partner outreach: METR thread opened. | <P0.T3 ticket SHA> | |
 | | Partner outreach: Apollo Research thread opened. | <P0.T3 ticket SHA> | |
