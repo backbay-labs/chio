@@ -3,7 +3,7 @@
 **Trajectory:** trajectory-3
 **Milestone:** M08
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
-**Status:** OPEN (P1 vendor booking and scoping in progress)
+**Status:** COMPLETE (final report published and response memo committed)
 **Audit start:** week 1 (RFP)
 **Audit close:** week 40-44 (final report)
 **Release-gate anchor:** RELEASE_AUDIT
