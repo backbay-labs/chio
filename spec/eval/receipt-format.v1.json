@@ -43,6 +43,9 @@
         "$ref": "#/$defs/receipt_entry"
       }
     },
+    "partner_review": {
+      "$ref": "#/$defs/partner_review"
+    },
     "signatures": {
       "type": "array",
       "minItems": 1,
@@ -215,6 +218,39 @@
         "sample_id": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "partner_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feedback_ref",
+        "review_window_days",
+        "reviewer_role",
+        "disposition"
+      ],
+      "properties": {
+        "feedback_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_window_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "reviewer_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "accepted-with-notes",
+            "no-format-change"
+          ]
         }
       }
     },

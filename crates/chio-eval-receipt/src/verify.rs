@@ -32,6 +32,7 @@ pub enum BundleError {
     UnsupportedSignatureKind(String),
     InvalidSignature(String),
     ReceiptHashMismatch(String),
+    InvalidPartnerReview(String),
     Canonicalization(String),
 }
 
@@ -51,6 +52,9 @@ impl std::fmt::Display for BundleError {
             Self::InvalidSignature(key_id) => write!(formatter, "invalid signature for {key_id}"),
             Self::ReceiptHashMismatch(scenario_id) => {
                 write!(formatter, "receipt hash mismatch for {scenario_id}")
+            }
+            Self::InvalidPartnerReview(detail) => {
+                write!(formatter, "invalid partner review: {detail}")
             }
             Self::Canonicalization(err) => write!(formatter, "canonicalization failed: {err}"),
         }
@@ -75,6 +79,7 @@ pub fn verify_bundle(bundle_json: &str) -> Result<VerifiedBundle, BundleError> {
     let bundle_id = str_field(object, "bundle_id")?.to_owned();
     verify_corpus(object)?;
     verify_receipts(object)?;
+    verify_partner_review(object)?;
     verify_signatures(&value)?;
 
     let receipt_count = array_field(object, "receipts")?.len();
@@ -125,6 +130,29 @@ fn verify_receipts(object: &Map<String, Value>) -> Result<(), BundleError> {
         }
     }
     Ok(())
+}
+
+fn verify_partner_review(object: &Map<String, Value>) -> Result<(), BundleError> {
+    let Some(value) = object.get("partner_review") else {
+        return Ok(());
+    };
+    let review = value
+        .as_object()
+        .ok_or(BundleError::WrongType("partner_review"))?;
+    str_field(review, "feedback_ref")?;
+    str_field(review, "reviewer_role")?;
+    let review_window_days = number_field(review, "review_window_days")?;
+    if !(1..=7).contains(&review_window_days) {
+        return Err(BundleError::InvalidPartnerReview(format!(
+            "review_window_days must be 1-7, got {review_window_days}"
+        )));
+    }
+    match str_field(review, "disposition")? {
+        "accepted" | "accepted-with-notes" | "no-format-change" => Ok(()),
+        other => Err(BundleError::InvalidPartnerReview(format!(
+            "unsupported disposition {other}"
+        ))),
+    }
 }
 
 fn verify_signatures(value: &Value) -> Result<(), BundleError> {
@@ -306,6 +334,24 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn rejects_partner_review_outside_d15_window() -> Result<(), BundleError> {
+        let unsigned = unsigned_bundle_json()?;
+        let signature = test_signature_for_bundle_json(&unsigned)?;
+        let signed = unsigned
+            .replace("\"SIGNATURE_PLACEHOLDER\"", &format!("\"{signature}\""))
+            .replace("\"review_window_days\": 7", "\"review_window_days\": 30");
+
+        let err = verify_bundle(&signed).err();
+
+        assert!(matches!(
+            err,
+            Some(BundleError::InvalidPartnerReview(detail))
+                if detail.contains("review_window_days")
+        ));
+        Ok(())
+    }
+
     fn unsigned_bundle_json() -> Result<String, BundleError> {
         let receipt = Receipt::from_parts(ReceiptParts {
             scenario_id: "capability-subset-001-read-exact",
@@ -373,6 +419,12 @@ mod tests {
       }}
     }}
   ],
+  "partner_review": {{
+    "feedback_ref": "M02.P4 METR pair-run 2026-05-02",
+    "review_window_days": 7,
+    "reviewer_role": "partner technical reviewer",
+    "disposition": "accepted-with-notes"
+  }},
   "signatures": [
     {{
       "kind": "test-sha256",
