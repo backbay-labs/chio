@@ -100,6 +100,15 @@ Consumers found:
 
 ## 3. Closure log
 
+M05 baseline (P0) of the JSON threat list: 17 threat rows total
+(6 covered, 11 pending). M05 closes 5 pending rows to covered
+(`weights_hash_spoof`, `pq_signature_downgrade`, `tee_quote_forgery`,
+`passkey_credential_theft`, `audience_confusion`) and stamps
+`deferred_to` on the remaining 6 pending rows. Net post-M05 state on
+the M05.P5 close commit: 11 covered + 6 pending, every pending row
+carrying `deferred_to`. M05 deferred zero rows that were previously
+covered (no covered -> deferred regressions).
+
 | Threat ID | Before | After | Phase | Cross-ref |
 |-----------|--------|-------|-------|-----------|
 | weights_hash_spoof | pending (JSON) / partial (YAML) | covered | P1 | M05.P1.T1, T2, T3; chio-provider-conformance LoadedWeights trait |
@@ -115,6 +124,28 @@ Consumers found:
 | cumulative_data_exfiltration | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.cross-session-data-flow-accounting` |
 | behavioral_sequence_attack | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.behavioral-policy-compiler` |
 | wasm_guard_resource_exhaustion | pending | pending + deferred_to | P4 | M05.P4.T2; deferred_to `trajectory-4.wasm-runtime-quota-hardening` |
+
+### 3.1.bis Post-M05 JSON drift (M07 mobile baseline addition)
+
+After M05 closed, M07 (mobile patient-app extension, audit-baseline
+commit `f9d87742`) added three mobile-surface threat rows to
+`spec/security/chio-threat-model.v1.json`:
+
+- `mobile_attestation_replay`
+- `device_key_extraction`
+- `play_integrity_token_replay`
+
+These three rows are M07-scope (mobile_ios / mobile_android surfaces);
+they are not part of M05's 11-row pending baseline and they are not
+M05-scope flips. Today's JSON therefore reads `11 covered + 9 pending`
+rather than the `11 covered + 6 pending` that M05 left at close. The
+3-row delta is M07 drift, not an M05 accounting error.
+
+Trajectory-3.1 Phase 5.1 (PR #510, commit `664f94be`) stamped
+`deferred_to: trajectory-4.M07.real-attestation` on each of the three
+M07 mobile rows so the threat-coverage gate passes; that reconciliation
+is owned by the M07 audit doc, not by this M05 audit. Trajectory-4
+will pick up the 3 mobile rows alongside the 6 M05-deferred rows.
 
 ### 3.1 Freeze amendment record
 

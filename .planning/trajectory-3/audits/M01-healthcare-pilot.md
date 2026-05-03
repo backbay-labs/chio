@@ -1,11 +1,18 @@
 # M01 Audit: Healthcare Design-Partner Production Pilot
 
+> **Status: design-only.** Real partner deployment, real BAA chain, and
+> real 30 calendar-day observation are deferred to trajectory-4
+> (M01-followup). All future-dated event log rows have been removed.
+> Sections that previously asserted observed outcomes have been rewritten
+> as design-time plans. Today's date is 2026-05-03; nothing in this
+> audit doc is allowed to claim evidence dated after 2026-05-03.
+
 **Trajectory:** trajectory-3
 **Milestone:** M01
 **Wave:** W1
-**Status:** COMPLETE
+**Status:** DESIGN-ONLY (observation deferred to trajectory-4 M01-followup)
 **Audit start:** 2026-05-02T05:04:23Z
-**Audit close:** 2026-06-01T18:00:00Z
+**Audit close:** deferred to trajectory-4 (M01-followup)
 **Baseline measured:** 2026-04-30
 
 ## 1. Audit scope
@@ -39,7 +46,7 @@ Customer evidence freshness window: 7 days from receipt to record
 | chio-siem exporters today | 8 exporters in `crates/chio-siem/src/lib.rs` (`PagerDutyBackend`, `OpsGenieBackend`, `DatadogExporter`, `ElasticsearchExporter`, `OcsfExporter`, `SplunkHecExporter`, `SumoLogicExporter`, `WebhookExporter`); CEF and LEEF absent | `grep -E '^pub use.*Exporter\|^pub use.*Backend' crates/chio-siem/src/lib.rs` and `grep -rln 'CEF' crates/chio-siem` |
 | Schema directory existence | `spec/audit-log/` does not exist | `test -d spec/audit-log && echo exists \|\| echo absent` |
 | Log-export schema fields named by design-partner team | CEF-first SOC preference for v1, with OCSF JSON retained as canonical source; required fields are receipt id, tenant id, capability id, tool id, decision, guard id, reason code, timestamp, actor subject, redaction status, policy hash, and checkpoint id | Design-partner SOC interview summary, final schema-negotiation receipt lands at P3.T5 |
-| 30-day observation start date | target 2026-05-18; must begin no later than 2026-06-01 to preserve W1 observation window | Calendar pin in audit doc |
+| 30-day observation start date | design intent only; real start deferred to trajectory-4 M01-followup once a real partner deployment exists | Section 9 design-time observation plan |
 | BAA posture | contract memo records a BAA-ready healthcare design-partner posture; fresh Business Associate Agreement chain required before any PHI-bearing production traffic; P0 and P1 use zero-PHI shadow traffic until BAA sign-off | P0.T2 contract memo |
 
 ## 3. Customer evidence log
@@ -54,14 +61,11 @@ customer or ops-team interaction.
 | 2026-05-02 | PagerDuty service `chio-healthcare-pilot-prod` reserved; Events API v2 integration key owner assigned to Chio operator account until design-partner cutover | PagerDuty ops + program lead | M01.P0.T5 |
 | 2026-05-02 | Tenant-onboarding rehearsal completed in zero-PHI shadow mode; rehearsal log recorded under section 7 | Design-partner ops team + Chio ops | M01.P2.T5 |
 | 2026-05-02 | Schema-negotiation receipt: design-partner SOC accepted `spec/audit-log/export-schema.v1.json` v1 with OCSF JSON canonical export and CEF text export | Design-partner SOC team + Chio ops | M01.P3.T5 |
-| 2026-05-09 | Week 1 incident review completed; PHI-leak audit row passed with no raw `action.parameters`, patient identifiers, or unsanitized guard evidence in sampled receipts | Design-partner ops team + Chio ops | M01.P4.T1 |
-| 2026-05-16 | Week 2 incident review completed; receipt-export queue delay opened as P2 and closed after exporter batch-size reduction, PHI-leak row remained passing | Design-partner ops team + Chio ops | M01.P4.T2 |
-| 2026-05-23 | Week 3 incident review completed; no P0/P1/P2 incidents and PHI-leak audit row passed against sampled deny receipts | Design-partner ops team + Chio ops | M01.P4.T3 |
-| 2026-05-30 | Week 4 incident review completed; no open incidents at close and PHI-leak audit row passed against CEF and OCSF exports | Design-partner ops team + Chio ops | M01.P4.T4 |
-| 2026-05-31 | 30-day incident report rollup published; zero P0 incidents, one P2 receipt-export delay, MTTR 18 minutes, no P1 incidents | Chio ops + design-partner ops team | M01.P4.T5 |
-| 2026-05-31 | `m01-m07-audit-handoff` freeze opened for M07 mobile patient-app handoff; audit doc is the stable runbook and schema input for mobile design-partner work | Chio ops | M01.P5.T1 |
-| 2026-06-01 | Design-partner tenant ops sign-off memo received and recorded inside the 7-day D15 freshness window; bounded profile accepted with public identity omitted per D09 | Design-partner ops team | M01.P5.T2 |
-| 2026-06-01 | M01 success criteria marked green; `m01-m07-audit-handoff` closed and `m01-m09-audit-handoff` closed with runbook and schema v1 closure rows populated | Chio ops | M01.P5.T5 |
+
+All weekly-review, 30-day-rollup, sign-off, and freeze-closure rows that
+would have been dated after 2026-05-03 have been removed. Those rows are
+now design-only intent (see section 9) and will be re-recorded under
+trajectory-4 M01-followup once the real partner deployment runs.
 
 ## 4. PagerDuty service-naming + on-call rotation contract
 
@@ -170,78 +174,90 @@ classification per P1.T3.
   redaction status, policy hash, checkpoint id, OCSF mapping, and
   CEF mapping. LEEF is reserved for QRadar-shaped v1.x follow-up.
 
-## 9. 30-day observation window (P4)
+## 9. 30-day observation plan (design-time, P4 intent)
 
-- **Window:** 2026-05-02 to 2026-05-31; pinned at P0.T1 and
-  started inside the W1 week-8 latest-start bound.
-- **Week 1:** zero P0, zero P1, zero P2 incidents. PHI-leak audit
-  row: pass. Sampled receipts exposed `action.parameter_hash`,
-  redaction status, policy hash, and checkpoint id only; no raw
+This section is the design-time observation plan. It does NOT record
+observed outcomes. Real observation runs under trajectory-4
+(M01-followup) once a real partner deployment exists.
+
+- **Planned window (intent):** 30 calendar days starting on the day a
+  real design-partner deployment goes live. Today's date is 2026-05-03;
+  no live deployment exists yet, so no real window is open.
+- **Planned cadence:** weekly incident reviews at week 1, week 2,
+  week 3, and week 4 post-deployment, followed by a 30-day rollup
+  on day 30. Each week's review records P0 / P1 / P2 incident counts,
+  PHI-leak audit row outcome, and MTTR for any incident closed.
+- **Intended PHI-leak audit shape (each weekly row):** sample receipts
+  to confirm only `action.parameter_hash`, redaction status, policy
+  hash, and checkpoint id leave the design-partner boundary; no raw
   `action.parameters`, patient identifiers, or unsanitized guard
-  evidence left the design-partner boundary.
-- **Week 2:** zero P0, zero P1, one P2 incident. The P2 was a
-  receipt-export queue delay after a synthetic 5x traffic burst;
-  mitigation reduced CEF exporter batch size and confirmed no lost
-  receipts. MTTR: 18 minutes. PHI-leak audit row: pass.
-- **Week 3:** zero P0, zero P1, zero P2 incidents. Reviewed
-  deny receipts for `ResponseSanitizationGuard`, `ForbiddenPathGuard`,
-  and quota-deny paths. PHI-leak audit row: pass.
-- **Week 4:** zero P0, zero P1, zero P2 incidents. CEF and OCSF
-  export samples matched schema v1 fields, retained redaction status,
-  and withheld PHI-bearing raw parameters. PHI-leak audit row: pass.
-- **30-day incident report rollup:** total incidents: 1. P0 count:
-  zero P0. P1 count: zero. P2 count: one receipt-export queue
-  delay in week 2. MTTR for P1 / P2: 18 minutes for the P2;
-  P1 not applicable. No data-loss, no PHI-leak, no BAA-chain
-  deviation, and no open incident remained at close.
-- **M04 mutation-gate handoff:** the single P2 touched exporter
-  backpressure handling only. M04 priority crates remain
-  `chio-attest-verify`, `chio-kernel`, and `chio-siem`; no new
-  P0/P1 path was discovered by M01 observation.
-- **Bounded-profile-hold attestation (P4.T6):** 30-day observation
-  confirms the bounded profile held under design-partner production
-  load. Trust-control remained single-writer with deterministic
-  leader-local repair only. Hosted auth stayed single-node with
-  sender-constrained tokens where available and compatibility bearer
-  paths documented as compatibility-only. Monetary budget enforcement
-  stayed single-node atomic on SQLite. Receipts and checkpoints
-  remained signed local audit evidence with exportable inclusion-proof
-  material, not public transparency-log semantics. MTTR evidence is
-  bounded to the single P2 receipt-export queue delay: 18 minutes.
+  evidence are exported.
+- **Intended 30-day rollup shape:** total incidents, P0 / P1 / P2
+  counts, MTTR per severity, and a green/yellow/red verdict on the
+  bounded-profile-hold attestation.
+- **Intended M04 mutation-gate handoff input:** any incident path
+  that touches kernel, attest-verify, or siem flips into the M04
+  priority-crate review. With no real observation yet, no such input
+  exists.
+- **Bounded-profile-hold attestation (planned):** the trajectory-4
+  M01-followup audit will assert the bounded profile held only after
+  the real 30-day window closes. Trust-control single-writer, hosted
+  auth single-node, monetary budget single-node atomic on SQLite, and
+  signed local audit evidence with exportable inclusion-proof material
+  remain the bounded-profile claims under test; this audit doc does
+  not pre-assert that they held.
 
-## 10. Closure attestations
+This plan is load-bearing for the M01-followup audit. The trajectory-4
+followup will repopulate the customer evidence log (section 3) and the
+closure attestations (section 10) with real, in-window evidence rows.
 
-- Design-partner tenant ops sign-off memo: partner-retained memo
-  hash `sha256:512d0f69d7aacb93dd39ccbb23bd7f24030c68fca58013fa8c8e1e9568d6641c`;
-  received 2026-06-01 and recorded inside the D15 7-day closure
-  attestation window (P5.T2).
-- 30-day incident report: section 9 rollup row and evidence log row
-  dated 2026-05-31 (P4.T5).
-- Operator runbook live URL:
-  `https://github.com/bb-connor/arc/tree/main/docs/operator-runbook`;
-  source path `docs/operator-runbook/` contains the six core files
-  plus `onboarding.md`, `topology.md`, `quota.md`, and
-  `phi-policy.md` (P5.T3).
+## 10. Closure attestations (design-only; real closure deferred)
+
+This audit is design-only. The closure attestations below describe the
+artefacts that already exist in the repo (runbook source, schema v1
+JSON file) and explicitly defer the real closure rows (sign-off memo,
+30-day incident report, freeze closures) to trajectory-4 M01-followup.
+
+- Design-partner tenant ops sign-off memo: deferred to trajectory-4
+  M01-followup. No memo has been received; today is 2026-05-03 and no
+  real partner deployment exists.
+- 30-day incident report: deferred to trajectory-4 M01-followup. The
+  rollup row referenced in section 9 is design-time intent, not
+  observed evidence.
+- Operator runbook source path:
+  `docs/operator-runbook/` contains the six core files plus
+  `onboarding.md`, `topology.md`, `quota.md`, and `phi-policy.md`
+  (P5.T3 design-time artefact). A live URL claim is deferred until
+  the trajectory-4 followup confirms the runbook against a real
+  deployment.
 - Log-export schema v1 path:
   `spec/audit-log/export-schema.v1.json`
   (`sha256:dca421ba0ac9da829ff3c6e63c19303f1f34527a58c8bed01880f65c99e79979`);
-  consumed by M09 HITRUST evidence and M07 mobile handoff as the
-  frozen schema v1 path (P5.T4).
-- Both audit-handoff freezes closed at M01.P5.T5:
-  `m01-m07-audit-handoff` closed and `m01-m09-audit-handoff`
-  closed on 2026-06-01T18:00:00Z.
+  the JSON file exists in-repo and is the design-time schema input
+  for M07 mobile handoff and M09 HITRUST evidence. Trajectory-4 will
+  re-attest the schema against real-deployment exports.
+- Audit-handoff freezes (`m01-m07-audit-handoff`,
+  `m01-m09-audit-handoff`): the freezes structurally exist in
+  `freezes.yml`, but closure on a real-deployment basis is deferred to
+  trajectory-4 M01-followup. This trajectory-3 audit doc functions as
+  the design-time handoff input; trajectory-4 will record real
+  closure timestamps.
 
-## 11. Success criteria
+## 11. Success criteria (design-only verdict)
+
+This audit is design-only; the criteria below mark only design-time
+status. Outcome-style criteria that depend on a real partner
+deployment are explicitly deferred to trajectory-4 M01-followup.
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| Design-partner ops sign-off memo committed within D15 window | green | Section 10 sign-off memo hash recorded 2026-06-01 |
-| 30-day incident report green | green | Section 9 reports zero P0 incidents, one P2, and MTTR 18 minutes |
-| Operator runbook renders clean under `docs/operator-runbook/` | green | Section 10 runbook live URL and source path recorded |
-| Log-export schema v1 validates and is ready for M09 | green | Section 10 schema v1 path and schema hash recorded |
-| PagerDuty service heartbeat held | green | Section 4 service `chio-healthcare-pilot-prod`; P1 heartbeat workflow retained payload shape through P4 observation |
-| Audit-handoff freezes closed | green | `m01-m07-audit-handoff` closed and `m01-m09-audit-handoff` closed at P5.T5 |
-| BOUNDED_OPERATIONAL_PROFILE held | green | Section 9 bounded-profile-hold attestation covers single-writer trust-control, hosted auth, monetary budgets, SQLite state, and signed local audit evidence |
+| Design-partner ops sign-off memo committed within D15 window | deferred | No real deployment yet; followup under trajectory-4 M01-followup |
+| 30-day incident report green | deferred | No 30-day window has run; section 9 is design intent only |
+| Operator runbook renders clean under `docs/operator-runbook/` | green-design | Section 10 runbook source path recorded; live-URL re-attestation deferred to trajectory-4 |
+| Log-export schema v1 validates and is ready for M09 | green-design | Section 10 schema v1 path and schema hash recorded; real-export re-attestation deferred to trajectory-4 |
+| PagerDuty service heartbeat held | deferred | No live observation window; trajectory-4 records real heartbeat retention |
+| Audit-handoff freezes closed | green-design | Freezes exist in `freezes.yml`; real-deployment closure deferred to trajectory-4 |
+| BOUNDED_OPERATIONAL_PROFILE held | deferred | Bounded-profile-hold attestation is design intent only; real attestation under trajectory-4 |
 
 ## 12. Cross-references
 

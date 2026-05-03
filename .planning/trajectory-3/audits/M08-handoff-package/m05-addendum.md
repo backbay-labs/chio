@@ -43,14 +43,34 @@ issue.
 
 ## Gate status
 
-The M05 closeout records:
+The M05 closeout records (post-M05.P5 snapshot of the 17-row M05-scope
+threat list):
 
 - zero partial rows
 - zero placeholder JSON states
-- 11 pending rows, each with `deferred_to`
-- 6 covered rows in the P5 closeout snapshot
+- 6 pending rows, each with `deferred_to`
+- 11 covered rows
 - `weights_hash_spoof` covered
 - `dispatch_allow` real wall-clock check recorded
 - `dispatch_allow_dhat` allocation budget recorded
+
+The M05.P0 baseline of the same 17-row scope was 6 covered + 11 pending;
+M05 flipped 5 pending rows to covered and stamped `deferred_to` on the
+remaining 6 pending rows.
+
+After M05 closed, M07 (mobile patient-app extension audit baseline)
+added three mobile-surface rows to
+`spec/security/chio-threat-model.v1.json`
+(`mobile_attestation_replay`, `device_key_extraction`,
+`play_integrity_token_replay`). Those three rows are M07-scope, not
+M05-scope, and are tracked in
+`.planning/trajectory-3/audits/M05-threat-coverage.md` section 3.1.bis
+as post-M05 JSON drift. The total threat row count today is 20 rather
+than the 17 referenced under "Closure points" above, and the current
+JSON breakdown is 11 covered + 9 pending. Trajectory-3.1 Phase 5.1
+(PR #510) stamped `deferred_to: trajectory-4.M07.real-attestation` on
+each mobile row so the threat-coverage gate passes; the
+trajectory-4-handover roster therefore includes 9 deferred rows total
+(the 6 M05 deferrals plus the 3 M07 mobile rows).
 
 This addendum is append-only and does not reopen M05.
