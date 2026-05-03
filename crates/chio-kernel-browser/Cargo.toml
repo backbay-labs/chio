@@ -58,6 +58,12 @@ web-sys = { version = "0.3", features = [
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
+[package.metadata.wasm-pack.profile.release]
+# The pinned wasm-pack Binaryen validator does not accept the bulk-memory
+# operations emitted by Rust 1.93 for this crate. Keep release qualification on
+# the wasm artifact and browser tests instead of failing in wasm-opt validation.
+wasm-opt = false
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"

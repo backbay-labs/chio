@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from decimal import Decimal
 from typing import Any
 
 from ..errors import ChioInvariantError, parse_json_text
@@ -18,7 +19,12 @@ def _canonicalize_float(value: float) -> str:
         )
     if value == 0.0:
         return "0"
-    rendered = format(value, ".15g").lower()
+    rendered = repr(value).lower()
+    if 1e-6 <= abs(value) < 1e21:
+        decimal = format(Decimal(rendered), "f")
+        if "." in decimal:
+            decimal = decimal.rstrip("0").rstrip(".")
+        return decimal
     return _EXPONENT_RE.sub(lambda match: f"e{match.group(1)}{match.group(2)}", rendered)
 
 

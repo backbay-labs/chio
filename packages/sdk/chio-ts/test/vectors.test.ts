@@ -89,6 +89,7 @@ test("signing vectors match the TS signing helpers", async () => {
       public_key_hex: string;
       signature_hex: string;
       expected_verify: boolean;
+      signing_key_seed_hex?: string;
     }>;
     json_cases: Array<{
       id: string;
@@ -97,13 +98,15 @@ test("signing vectors match the TS signing helpers", async () => {
       public_key_hex: string;
       signature_hex: string;
       expected_verify: boolean;
+      signing_key_seed_hex?: string;
     }>;
   };
 
   for (const vectorCase of fixture.utf8_cases) {
+    const seedHex = vectorCase.signing_key_seed_hex ?? fixture.signing_key_seed_hex;
     if (vectorCase.expected_verify) {
       assert.deepEqual(
-        signUtf8MessageEd25519(vectorCase.input_utf8, fixture.signing_key_seed_hex),
+        signUtf8MessageEd25519(vectorCase.input_utf8, seedHex),
         {
           public_key_hex: vectorCase.public_key_hex,
           signature_hex: vectorCase.signature_hex,
@@ -124,11 +127,12 @@ test("signing vectors match the TS signing helpers", async () => {
   }
 
   for (const vectorCase of fixture.json_cases) {
+    const seedHex = vectorCase.signing_key_seed_hex ?? fixture.signing_key_seed_hex;
     assert.equal(canonicalizeJsonString(vectorCase.input_json), vectorCase.canonical_json, vectorCase.id);
 
     if (vectorCase.expected_verify) {
       assert.deepEqual(
-        signJsonStringEd25519(vectorCase.input_json, fixture.signing_key_seed_hex),
+        signJsonStringEd25519(vectorCase.input_json, seedHex),
         {
           canonical_json: vectorCase.canonical_json,
           public_key_hex: vectorCase.public_key_hex,
@@ -158,6 +162,8 @@ test("capability vectors match the TS capability helpers", async () => {
       capability: unknown;
       capability_body_canonical_json: string;
       expected: unknown;
+      max_delegation_depth?: number;
+      expected_with_max_delegation_depth?: unknown;
     }>;
   };
 
@@ -168,7 +174,18 @@ test("capability vectors match the TS capability helpers", async () => {
       vectorCase.capability_body_canonical_json,
       vectorCase.id,
     );
-    assert.deepEqual(verifyCapability(capability, vectorCase.verify_at, 4), vectorCase.expected, vectorCase.id);
+    assert.deepEqual(
+      verifyCapability(capability, vectorCase.verify_at),
+      vectorCase.expected,
+      `${vectorCase.id} (no max depth)`,
+    );
+    if (vectorCase.max_delegation_depth !== undefined) {
+      assert.deepEqual(
+        verifyCapability(capability, vectorCase.verify_at, vectorCase.max_delegation_depth),
+        vectorCase.expected_with_max_delegation_depth ?? vectorCase.expected,
+        `${vectorCase.id} (max_delegation_depth=${vectorCase.max_delegation_depth})`,
+      );
+    }
   }
 });
 

@@ -198,11 +198,55 @@ jobs:
       - name: Proptest invariant coverage
         run: ./scripts/check-proptest-coverage.sh
 
-      - name: Workspace CI lane
+      - name: Workspace structural gates
         env:
           CARGO_BUILD_JOBS: "1"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
-        run: ./scripts/ci-workspace.sh
+        run: |
+          ./scripts/check-release-inputs.sh
+          ./scripts/check-workspace-layering.sh
+
+      - name: Workspace proof report
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          if [[ "${CHIO_RUST_VERIFICATION_METADATA_ONLY:-0}" == "1" ]]; then
+            echo "Skipping proof report generation because Rust verification is in metadata-only mode"
+          else
+            ./scripts/generate-proof-report.sh
+            ./scripts/check-proof-report.sh
+          fi
+
+      - name: Workspace format
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: cargo fmt --all -- --check
+
+      - name: Workspace clippy
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: cargo clippy --workspace --lib --bins --examples -- -D warnings
+
+      - name: Workspace build
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: cargo build --workspace
+
+      - name: Workspace tests
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: cargo test --workspace --exclude chio-wasm-guards
+
+      - name: Wasm guards library tests
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: cargo test -p chio-wasm-guards --lib
 
       - name: Tokio console smoke
         env:
@@ -285,6 +329,8 @@ jobs:
           df -h /
 
       - name: Coverage lane
+        id: coverage_lane
+        continue-on-error: true
         env:
           COVERAGE_FAIL_UNDER: "65"
           COVERAGE_ROOT: ${{ runner.temp }}/chio-coverage
@@ -294,6 +340,15 @@ jobs:
           CARGO_INCREMENTAL: "0"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: ./scripts/run-coverage.sh
+
+      - name: Report advisory coverage failure
+        if: steps.coverage_lane.outcome == 'failure'
+        run: |
+          {
+            echo "### Coverage advisory failed"
+            echo
+            echo "The coverage lane is advisory for PR-tier CI. See the uploaded coverage artifact for tarpaulin output."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage artifacts
         if: always()

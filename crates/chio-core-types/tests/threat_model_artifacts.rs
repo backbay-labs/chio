@@ -70,10 +70,13 @@ fn threat_model_register_lists_required_threats_with_mitigations() {
         "behavioral_sequence_attack".to_string(),
         "cumulative_data_exfiltration".to_string(),
         "delegation_chain_abuse".to_string(),
+        "device_key_extraction".to_string(),
         "kernel_impersonation".to_string(),
+        "mobile_attestation_replay".to_string(),
         "native_channel_replay".to_string(),
         "passkey_credential_theft".to_string(),
         "pii_phi_exposure".to_string(),
+        "play_integrity_token_replay".to_string(),
         "pq_signature_downgrade".to_string(),
         "resource_exhaustion_dos".to_string(),
         "ssrf_via_http_substrate".to_string(),
@@ -102,7 +105,10 @@ fn threat_model_register_lists_required_threats_with_mitigations() {
         );
         for mitigation in threat.mitigations {
             assert!(
-                matches!(mitigation.status.as_str(), "existing" | "planned"),
+                matches!(
+                    mitigation.status.as_str(),
+                    "existing" | "planned" | "implemented"
+                ),
                 "unexpected mitigation status {}",
                 mitigation.status
             );

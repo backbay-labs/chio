@@ -10,9 +10,7 @@ fn exports_three_verdict_matrix_sample_receipts() -> Result<(), ExportError> {
             scenario_id: "capability-subset-001-read-exact",
             category: "capability_subset",
             verdict: "allow",
-            receipt_payload: include_str!(
-                "fixtures/capability-subset-001-read-exact.receipt.json"
-            ),
+            receipt_payload: include_str!("fixtures/capability-subset-001-read-exact.receipt.json"),
             trace_id: "trace-capability-001",
             sample_id: "sample-capability-001",
         })?,

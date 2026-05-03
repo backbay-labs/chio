@@ -115,7 +115,6 @@ members = [
     "crates/chio-conformance",
     "crates/chio-conformance/verdict_matrix/drivers/lambda",
     "crates/chio-eval-receipt",
-    "crates/chio-eval-receipt/py",
     "crates/chio-spec-codegen",
     "crates/chio-spec-validate",
     #
@@ -141,6 +140,11 @@ members = [
     #
     # Editor extensions
     "editors/zed-chio",
+]
+exclude = [
+    # PyO3 extension package: built through maturin with an explicit Python
+    # sysconfig, not by the default Rust workspace gate.
+    "crates/chio-eval-receipt/py",
 ]
 
 [workspace.package]

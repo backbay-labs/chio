@@ -65,11 +65,6 @@ ignore = [
     # last-checked = 2026-05-02; proc-macro-error is a compile-time transitive of sigstore 0.13 through
     # json-syntax/locspan-derive. No runtime code is shipped from this crate.
     "RUSTSEC-2024-0370",
-    # last-checked = 2026-05-02; pyo3 0.22.6 is pinned by chio-eval-receipt-py.
-    # RUSTSEC-2025-0020 affects PyString::from_object nul handling; this crate
-    # does not expose attacker-controlled Python object conversion at runtime.
-    # Upgrade to pyo3 >=0.24.1 is a dedicated Python binding migration.
-    "RUSTSEC-2025-0020",
 ]
 
 # NOTE: cargo-deny 0.16 enforces an explicit allow-list only; unlisted licenses
@@ -218,6 +213,13 @@ allow = ["MPL-2.0"]
 [[licenses.exceptions]]
 name = "im-rc"
 allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+# `minicbor` is pulled by aws-smithy-cbor through the AWS Marketplace
+# entitlement client. BlueOak-1.0.0 is OSI-approved and permissive, but keep
+# it pinned to this crate instead of widening the workspace allow-list.
+name = "minicbor"
+allow = ["BlueOak-1.0.0"]
 
 [[licenses.exceptions]]
 name = "sized-chunks"

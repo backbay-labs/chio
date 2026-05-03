@@ -38,7 +38,10 @@ impl CefExporter {
     }
 
     pub fn format_events(&self, events: &[SiemEvent]) -> Result<Vec<String>, ExportError> {
-        events.iter().map(|event| self.format_event(event)).collect()
+        events
+            .iter()
+            .map(|event| self.format_event(event))
+            .collect()
     }
 
     pub fn format_event(&self, event: &SiemEvent) -> Result<String, ExportError> {
@@ -57,8 +60,8 @@ impl CefExporter {
             metadata_str(receipt.metadata.as_ref(), "actor_subject").unwrap_or("chio-agent");
         let redaction_status =
             metadata_str(receipt.metadata.as_ref(), "redaction_status").unwrap_or("unknown");
-        let checkpoint_id =
-            metadata_str(receipt.metadata.as_ref(), "checkpoint_id").unwrap_or("checkpoint-pending");
+        let checkpoint_id = metadata_str(receipt.metadata.as_ref(), "checkpoint_id")
+            .unwrap_or("checkpoint-pending");
         let rt_ms = receipt.timestamp.saturating_mul(1_000);
 
         let header = format!(
@@ -116,7 +119,9 @@ impl Exporter for CefExporter {
 }
 
 fn metadata_str<'a>(metadata: Option<&'a serde_json::Value>, key: &str) -> Option<&'a str> {
-    metadata.and_then(|value| value.get(key)).and_then(|value| value.as_str())
+    metadata
+        .and_then(|value| value.get(key))
+        .and_then(|value| value.as_str())
 }
 
 fn decision_label(decision: &Decision) -> &'static str {
