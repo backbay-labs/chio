@@ -48,6 +48,12 @@ impl DispatchAllowFixture {
     }
 }
 
+impl Default for DispatchAllowFixture {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn make_config() -> KernelConfig {
     KernelConfig {
         keypair: Keypair::generate(),
