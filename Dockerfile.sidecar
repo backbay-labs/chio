@@ -20,8 +20,10 @@ WORKDIR /workspace
 # in sync with anything the Rust build reaches at compile time:
 #   - `wit/` is consumed by chio-wasm-guards via `wasmtime::component::bindgen!`
 #     (chio-cli -> chio-wasm-guards path dep).
-#   - `bench/`, `editors/`, `examples/`, `formal/`, `tests/`, `xtask/` are declared as workspace members, so
-#     their absence breaks the workspace Cargo.lock resolution.
+#   - `bench/`, `editors/`, `examples/`, `formal/`, `tests/`, `xtask/`,
+#     `integrations/` are declared as workspace members (or contain
+#     them), so their absence breaks the workspace Cargo.lock
+#     resolution.
 #
 # Note on protobuf: the vendored Envoy protos consumed by
 # chio-envoy-ext-authz's tonic-build live under
@@ -53,6 +55,15 @@ COPY tests ./tests
 # `cargo build --workspace` when that happens.
 COPY sdks ./sdks
 COPY xtask ./xtask
+# `integrations/aws-bedrock/control-plane` and `integrations/mcp-adapter`
+# are workspace members. Their absence breaks Cargo workspace
+# resolution even though chio-cli does not link them. The
+# `chio-bedrock-control-plane` member also references
+# `integrations/aws-bedrock/tests/post_listing_smoke.rs` via a
+# `[[test]] path = "../tests/..."`, so copy the whole `integrations/`
+# subtree to keep manifest loading consistent with `cargo build
+# --workspace` in CI.
+COPY integrations ./integrations
 
 # Build a release binary, locked to the committed Cargo.lock.
 RUN cargo build --release --locked --package chio-cli --bin chio \
