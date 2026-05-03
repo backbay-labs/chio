@@ -5,7 +5,23 @@
 **Wave:** W2
 **Status:** P4 mobile receipt oracle round-trip complete
 **Audit start:** 2026-05-02
-**Audit close:** <fill at P5 final ticket merge>
+**Audit close:** TRAJECTORY-3.1 - milestone reclassified as design-only; real-device attestation deferred to trajectory-4 with M07-followup ticket pool.
+
+**Reclassification (TRAJECTORY-3.1):** The narrative below documents the
+M07 design and intent as authored under trajectory-3. In trajectory-3.1
+honesty cleanup, the milestone is reclassified as **design-only**: the
+three C-ABI mobile attestation entry points in
+`crates/chio-kernel-mobile/src/lib.rs` (`attest_app_attest` at L430,
+`attest_play_integrity` at L452, `verify_mobile_receipt` at L466) all
+return `ChioMobileError::AttestationUnavailable` with `pending M07.P2 /
+P3 / P4 platform wiring` messages (see L433, L439, L454, L479).
+Real-device attestation, App Attest verifier wiring, Play Integrity
+verifier wiring, and receipt-chain validation are deferred to
+trajectory-4 under the `M07-followup` ticket pool. The threat rows
+`mobile_attestation_replay`, `device_key_extraction`, and
+`play_integrity_token_replay` are flipped from `covered` back to
+`pending` with `deferred_to: trajectory-4.M07.real-attestation` in both
+`spec/security/coverage.yaml` and `spec/security/chio-threat-model.v1.json`.
 
 ## 1. Audit scope
 
@@ -333,6 +349,15 @@ Record:
 - Threat-model coverage flipped to `covered` for
   `mobile_attestation_replay`, `device_key_extraction`, and
   `play_integrity_token_replay` in `spec/security/coverage.yaml`.
+  **TRAJECTORY-3.1 reclassification:** these three rows are flipped back
+  to `coverage_state: pending` with
+  `deferred_to: trajectory-4.M07.real-attestation` in both
+  `spec/security/coverage.yaml` and
+  `spec/security/chio-threat-model.v1.json`. The C-ABI mobile
+  attestation entry points
+  (`crates/chio-kernel-mobile/src/lib.rs` L430, L452, L466) currently
+  return `AttestationUnavailable`, so the original `covered` claim was
+  incorrect.
 
 ## 11. Open questions resolved at close
 

@@ -1,5 +1,24 @@
 # Milestone 07: chio-kernel-mobile MVP + Device Attestation
 
+> **TRAJECTORY-3.1 reclassification:** M07 is reclassified as
+> **design-only**. The three C-ABI mobile attestation entry points in
+> `crates/chio-kernel-mobile/src/lib.rs` (`attest_app_attest` at L430,
+> `attest_play_integrity` at L452, `verify_mobile_receipt` at L466) all
+> currently return `ChioMobileError::AttestationUnavailable` with
+> `pending M07.P2 / P3 / P4 platform wiring` messages (returns at L433,
+> L439, L454, L479). Real-device attestation, Apple App Attest verifier
+> wiring, Google Play Integrity verifier wiring, and shared
+> receipt-chain validation are deferred to **trajectory-4** under the
+> `M07-followup` ticket pool. The threat rows
+> `mobile_attestation_replay`, `device_key_extraction`, and
+> `play_integrity_token_replay` are flipped from `covered` back to
+> `pending` with `deferred_to: trajectory-4.M07.real-attestation` in
+> both `spec/security/coverage.yaml` and
+> `spec/security/chio-threat-model.v1.json`. Any narrative below that
+> claims `covered` coverage state, real-device attestation evidence, or
+> a wired verifier reflects original trajectory-3 design intent and is
+> superseded by this reclassification.
+
 ## Lens
 
 Platform-expansion. M07 lifts the Chio kernel onto iOS and Android with

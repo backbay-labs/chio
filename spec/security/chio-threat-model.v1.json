@@ -558,6 +558,7 @@
       ],
       "residualRisk": "Platform attestation services do not protect flows that reuse server challenges or accept broad audiences; deployments must keep nonce state durable enough for their mobile issuance window.",
       "coverage_state": "pending",
+      "deferred_to": "trajectory-4.M07.real-attestation",
       "coveredBy": []
     },
     {
@@ -584,6 +585,7 @@
       ],
       "residualRisk": "A fully compromised mobile OS can still interfere with UI and request timing; M07 only prevents export of the device-bound signing key from being treated as normal custody.",
       "coverage_state": "pending",
+      "deferred_to": "trajectory-4.M07.real-attestation",
       "coveredBy": []
     },
     {
@@ -609,6 +611,7 @@
       ],
       "residualRisk": "Google-signed verdict freshness still depends on issuer nonce storage and clock policy; a weak deployment can make a valid token replayable by accepting stale nonce state.",
       "coverage_state": "pending",
+      "deferred_to": "trajectory-4.M07.real-attestation",
       "coveredBy": []
     }
   ],

@@ -100,40 +100,22 @@ threats:
       - crates/chio-conformance/tests/threats/tee_quote_forgery.rs
 
   - id: mobile_attestation_replay
-    coverage_state: covered
-    owned_by: M07
-    closed_by: M07.P5.T4
-    backing_evidence:
-      - crates/chio-custody-hw/src/attestation/app_attest.rs
-      - crates/chio-custody-hw/src/attestation/play_integrity.rs
-      - crates/chio-custody-hw/tests/attestation_app_attest.rs
-      - crates/chio-custody-hw/tests/attestation_play_integrity.rs
-      - crates/chio-kernel-mobile/tests/oracle_round_trip.rs
-      - sdks/swift/Sources/Chio/ReceiptPoster.swift
-      - sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/ReceiptPoster.kt
+    coverage_state: pending
+    deferred_to: trajectory-4.M07.real-attestation
+    owned_by: trajectory-4
+    deferred_reason: "No conformance threat test exists for replayed App Attest assertions or Play Integrity tokens; mobile C-ABI entry points still return AttestationUnavailable."
 
   - id: device_key_extraction
-    coverage_state: covered
-    owned_by: M07
-    closed_by: M07.P5.T4
-    backing_evidence:
-      - sdks/swift/Sources/Chio/AppAttest.swift
-      - sdks/swift/Sources/Chio/Keystore.swift
-      - sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/Keystore.kt
-      - crates/chio-custody-hw/src/attestation/app_attest.rs
-      - crates/chio-custody-hw/src/attestation/receipt_chain.rs
-      - sdks/typescript/packages/mobile/src/index.ts
+    coverage_state: pending
+    deferred_to: trajectory-4.M07.real-attestation
+    owned_by: trajectory-4
+    deferred_reason: "No conformance threat test proves hardware-bound mobile key custody; real-device attestation and receipt validation are deferred."
 
   - id: play_integrity_token_replay
-    coverage_state: covered
-    owned_by: M07
-    closed_by: M07.P5.T4
-    backing_evidence:
-      - sdks/jvm/chio-kernel-mobile/src/main/kotlin/dev/chio/kernel/PlayIntegrity.kt
-      - crates/chio-custody-hw/src/attestation/play_integrity.rs
-      - crates/chio-custody-hw/tests/attestation_play_integrity.rs
-      - crates/chio-kernel-mobile/tests/fixtures/receipts/android-signed-receipt.json
-      - crates/chio-kernel-mobile/tests/oracle_round_trip.rs
+    coverage_state: pending
+    deferred_to: trajectory-4.M07.real-attestation
+    owned_by: trajectory-4
+    deferred_reason: "No conformance threat test proves Play Integrity nonce consumption or stale-token rejection; Google JWKS validation is deferred."
 
   - id: ssrf_via_http_substrate
     coverage_state: pending
