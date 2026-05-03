@@ -1,5 +1,14 @@
 # Chio Receipt Conformance Memo
 
+> **Disclaimer (trajectory-3.1, 2026-05-03):** No real partner cryptographic
+> attestation has been received. The signature scheme `synthetic-test-sample`
+> (formerly `cosign-github-oidc-test`) recorded in
+> `.planning/trajectory-3/audits/M02-memo.sig` is a self-generated test
+> sample, not a vendor-issued cosign or OIDC signature. The memo body below
+> reflects the trajectory-3 narrative as committed; collecting a real
+> partner-issued cryptographic attestation is deferred to trajectory-4
+> (M02-followup).
+
 **Issuer:** METR
 **Issuer representative:** METR technical reviewer
 **Issue date:** 2026-05-02

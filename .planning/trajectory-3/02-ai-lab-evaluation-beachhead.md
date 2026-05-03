@@ -1,5 +1,13 @@
 # Milestone 02: AI-Lab Evaluation Infrastructure Beachhead
 
+> **Trajectory-3.1 disclaimer (2026-05-03):** No real partner cryptographic
+> attestation has been received. The signature scheme `synthetic-test-sample`
+> (formerly `cosign-github-oidc-test`) used by the M02 conformance memo is a
+> self-generated SHA-256 test sample, not a vendor-issued cosign or
+> GitHub-OIDC signature. Real partner-issued cryptographic attestation is
+> deferred to trajectory-4 (M02-followup). Sigstore / cosign / OIDC
+> references in the body below describe the original M02 trajectory-3 plan.
+
 ## Lens
 
 Adoption / protocol. M02 is the second customer-anchor milestone of

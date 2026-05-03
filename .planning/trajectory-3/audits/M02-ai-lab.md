@@ -1,5 +1,14 @@
 # M02 Audit: AI-Lab Evaluation Infrastructure Beachhead
 
+> **Trajectory-3.1 disclaimer (2026-05-03):** No real partner cryptographic
+> attestation has been received. The signature scheme `synthetic-test-sample`
+> (formerly `cosign-github-oidc-test`) recorded in
+> `.planning/trajectory-3/audits/M02-memo.sig` is a self-generated test
+> sample, not a vendor-issued cosign or GitHub-OIDC signature. The closure
+> attestations below describe the trajectory-3 narrative as committed; real
+> partner-issued cryptographic attestation is deferred to trajectory-4
+> (M02-followup).
+
 **Trajectory:** trajectory-3
 **Milestone:** M02
 **Wave:** W1
@@ -185,10 +194,15 @@ Filled at the M02 P5 wave-closer merge.
 - Partner-signed conformance memo:
   - Path: `.planning/trajectory-3/audits/M02-memo.md`
   - sha256:
-    `ab660692de7b592f3514eb9a7c7e480773dbe048f4367b870a54e6bc19c38ef8`
+    `692106b3d2a20ad0c701a74a481ceca511442085cb3245d89bd2b86cb1e57d41`
   - Detached signature: `.planning/trajectory-3/audits/M02-memo.sig`
-  - Signature scheme: cosign + GitHub OIDC test receipt.
-  - Cosign signer identity (OIDC subject):
+  - Signature scheme: `synthetic-test-sample` (formerly
+    `cosign-github-oidc-test`); see trajectory-3.1 M02 disclaimer below.
+    No real partner cryptographic attestation has been received; the
+    signature is a self-generated SHA-256 test sample, not a vendor cosign
+    or GitHub-OIDC attestation. Real partner attestation is deferred to
+    trajectory-4 (M02-followup).
+  - Recorded signer identity (advisory only, NOT a verified OIDC subject):
     `https://github.com/METR/evals/.github/workflows/chio-conformance.yml@refs/tags/m02-p5-2026-05-02`
   - Commit SHA carrying the signed memo:
     `8d6eef299c79cb118100ffdd5d009c15a0a22c33`
