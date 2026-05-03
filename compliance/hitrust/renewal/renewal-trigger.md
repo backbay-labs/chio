@@ -18,8 +18,8 @@ explicitly amends the scope.
 
 ## Required Inputs
 
-- Current certificate record:
-  `compliance/hitrust/certificate/certificate.md`
+- Current readiness-package record:
+  `compliance/hitrust/readiness-package/readiness-package.md`
 - M09 audit doc:
   `.planning/trajectory-3/audits/M09-vendor-evidence.md`
 - Evidence bundle manifest:

@@ -118,7 +118,7 @@ a968407c21a22870102c7c1331388138921f91359c946d509984a9c0eb52306a  ./M06/formal/t
 d5685f96f879973c19aeeb193b61cb5bc7a3110fae23c1f704ff470b064cfca7  ./M06/supply-chain/audits.toml
 f4089b1e59725d80258c0411faee0aa32d940c968d94de0c6059c43d06d209b6  ./M06/supply-chain/config.toml
 e81222abfbcb3e4c21581e8f1236ec0b46fa2c444b34e1d661c78f63a41d6c30  ./M06/supply-chain/imports.lock
-abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c  ./M08/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf
+abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c  ./M08/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf
 92c8b0f66c4176b614c0aeb3c319a713625affc3a59ddb917c63fafca48441f8  ./M08/audit/M08-vendor-evidence.md
 0c1ebf7c35f929019437494b7e9e5b97f0c043f013bfed497a764115059adefa  ./M09/control-mapping.csv
 24492e92f98bda35cf9aee31345b4e5c59ad24a4725c74c433ac1c94fde47f7b  ./M09/encryption-at-rest.md

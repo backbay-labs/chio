@@ -1,6 +1,8 @@
-# Chio HITRUST i1 Certificate
+# Chio HITRUST i1 Readiness Package
 
-**Status:** issued
+> **Disclaimer:** This is a HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an audit. Real HITRUST i1 certification is a trajectory-4 deliverable (M09-followup).
+
+**Status:** readiness-draft
 **Certificate id:** HITRUST-i1-CHIO-V318-DP-2026-0502
 **Assessment type:** HITRUST Implemented, 1-year (i1) Validated Assessment
 **Framework:** HITRUST CSF v11.7 i1
@@ -19,7 +21,7 @@ Backbay systems, or Chio versions before or after v3.18.
 
 | Item | Reference |
 |------|-----------|
-| Repository certificate record | `compliance/hitrust/certificate/certificate.md` |
+| Repository readiness-package record | `compliance/hitrust/readiness-package/readiness-package.md` |
 | HITRUST MyCSF object | `chio-v3.18-design-partner-i1-2026` |
 | Results distribution record | `mycsf://results-distribution/HITRUST-i1-CHIO-V318-DP-2026-0502` |
 | M09 audit doc | `.planning/trajectory-3/audits/M09-vendor-evidence.md` |

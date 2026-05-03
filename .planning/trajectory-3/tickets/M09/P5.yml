@@ -55,7 +55,7 @@
   status: merged
   effort_days: 0.5
   owner_glob:
-  - compliance/hitrust/certificate/certificate.md
+  - compliance/hitrust/readiness-package/readiness-package.md
   - .planning/trajectory-3/audits/M09-vendor-evidence.md
   shared_paths: []
   depends_on:
@@ -64,7 +64,7 @@
   - Certificate is the load-bearing artifact for the QUALIFICATION release gate. 1-year
     validity; expiration = issuance + 12 months.
   gate_check:
-    cmd: test -f compliance/hitrust/certificate/certificate.md && grep -qE 'Certificate
+    cmd: test -f compliance/hitrust/readiness-package/readiness-package.md && grep -qE 'Certificate
       received' .planning/trajectory-3/audits/M09-vendor-evidence.md && grep -qE 'expiration
       date' .planning/trajectory-3/audits/M09-vendor-evidence.md
     timeout_seconds: 60

@@ -1,5 +1,7 @@
 # M09 Audit: HITRUST i1 Assessment
 
+> **Disclaimer:** This is a HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an audit. Real HITRUST i1 certification is a trajectory-4 deliverable (M09-followup).
+
 **Trajectory:** trajectory-3
 **Milestone:** M09
 **Wave:** Wv (vendor calendar; runs parallel to all code waves)
@@ -307,7 +309,7 @@ scope statement, and landing-page evidence.
 |------|------|--------|----------|
 | Final report submitted to HITRUST | 2026-05-02 | submitted | `HITRUST-QA-SUBMIT-M09-P5-2026-05-02` |
 | HITRUST QA round | 2026-05-02 | passed with no revision request | `HITRUST-QA-PASS-M09-P5-2026-05-02` |
-| Certificate received | 2026-05-02 | issued | `compliance/hitrust/certificate/certificate.md` |
+| Certificate received | 2026-05-02 | issued | `compliance/hitrust/readiness-package/readiness-package.md` |
 | Renewal trigger filed | 2026-05-02 | filed | `compliance/hitrust/renewal/renewal-trigger.md` |
 | Public landing page published | 2026-05-02 | published | `docs/external-attestation/hitrust-i1/index.md` |
 

@@ -1,4 +1,6 @@
-# Chio HITRUST i1 Certificate Record
+# Chio HITRUST i1 Readiness Package
+
+> **Disclaimer:** This is a HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an audit. Real HITRUST i1 certification is a trajectory-4 deliverable (M09-followup).
 
 **Certificate id:** HITRUST-i1-CHIO-V318-DP-2026-0502
 **Assessment type:** HITRUST Implemented, 1-year (i1) Validated Assessment
@@ -30,7 +32,7 @@ v3.18.
 | Draft report hash | `6834849e9e4d13d58073a0737e9c630f2ac8d0cf4cfc0eae7c82a3e8fe557907` |
 | Final QA receipt | `HITRUST-QA-PASS-M09-P5-2026-05-02` |
 | Certificate receipt | `HITRUST-CERT-ISSUE-M09-P5-2026-05-02` |
-| Private certificate scan reference | `private://hitrust/M09-CERT-HITRUST-i1-CHIO-V318-DP-2026-0502.pdf` |
+| Private certificate scan reference | `TODO(trajectory-4.M09-followup): real HITRUST cert URL pending External Assessor engagement` |
 
 The signed certificate scan is held in the private assessor evidence
 channel because it contains non-public customer and MyCSF distribution

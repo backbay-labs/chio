@@ -191,7 +191,7 @@
       "issued_at": "2026-05-02",
       "expires_at": "2027-05-02",
       "public_landing_page": "docs/external-attestation/hitrust-i1/index.md",
-      "certificate_record": "compliance/hitrust/certificate/certificate.md"
+      "certificate_record": "compliance/hitrust/readiness-package/readiness-package.md"
     }
   }
 }

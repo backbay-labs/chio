@@ -338,7 +338,7 @@ status, and release-artifact path confirmation:
 
 - Final report received: 2026-05-02.
 - Final report artifact:
-  `releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+  `releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf`
 - Final report PDF hash (sha256):
   `abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c`
 - Render check: `pdftoppm -png -r 120` produced three readable pages
@@ -349,9 +349,9 @@ status, and release-artifact path confirmation:
 ### 5c. Release publication
 
 - Final report URL:
-  `https://github.com/bb-connor/arc/blob/main/releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+  `https://github.com/bb-connor/arc/blob/main/releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf`
 - Release artifact path:
-  `releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+  `releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf`
 - M03 release artifact channel: `releases.toml [release_audit]`.
 - releases.toml row: `release_audit.activation_evidence`.
 - Vendor public-reports page link:
@@ -363,7 +363,7 @@ status, and release-artifact path confirmation:
 ### 5d. Closure evidence rollup
 
 - Final report URL:
-  `https://github.com/bb-connor/arc/blob/main/releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf`
+  `https://github.com/bb-connor/arc/blob/main/releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf`
 - Final report PDF hash (sha256):
   `abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c`
 - M03 release artifact channel `releases.toml` row:

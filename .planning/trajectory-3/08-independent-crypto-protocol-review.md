@@ -1,5 +1,7 @@
 # Milestone 08: Independent Crypto + Protocol Review (NCC Group or Trail of Bits)
 
+> **Disclaimer:** The artifact at releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf is a self-authored internal readiness draft, not an external vendor crypto-protocol review. No vendor (e.g., NCC Group, Trail of Bits) has been engaged to produce a vendor-letterhead report. Real external review is a trajectory-4 deliverable (M08-followup).
+
 ## Lens
 
 External-attestation. M08 contracts a third-party crypto and protocol

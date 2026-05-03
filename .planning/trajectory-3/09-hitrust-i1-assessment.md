@@ -1,5 +1,7 @@
 # Milestone 09: HITRUST i1 Assessment
 
+> **Disclaimer:** This is a HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an audit. Real HITRUST i1 certification is a trajectory-4 deliverable (M09-followup).
+
 ## Lens
 
 External-attestation. M09 procures a HITRUST i1 readiness + assessment
