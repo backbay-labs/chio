@@ -25,6 +25,7 @@
 #   scripts/check-fuzz-budget.sh OWNER/REPO
 #   GH_FUZZ_BUDGET_MINUTES=900 scripts/check-fuzz-budget.sh    # override cap
 #   GH_FUZZ_BUDGET_RATE_LIMIT_MODE=warn scripts/check-fuzz-budget.sh
+#   GH_FUZZ_BUDGET_CAP_MODE=warn scripts/check-fuzz-budget.sh
 #
 # Exit codes:
 #   0  budget OK
@@ -63,6 +64,7 @@ esac
 total_seconds=0
 
 rate_limit_mode="${GH_FUZZ_BUDGET_RATE_LIMIT_MODE:-fail}"
+cap_mode="${GH_FUZZ_BUDGET_CAP_MODE:-fail}"
 
 for wf in "${WORKFLOWS[@]}"; do
     runs_path="repos/${REPO}/actions/workflows/${wf}/runs"
@@ -118,6 +120,10 @@ printf 'fuzz-budget: window=%s days, used=%d min, cap=%d min, remaining=%d min\n
 
 if (( total_minutes >= CAP_MINUTES )); then
     err "fuzz-budget: HALT - used ${total_minutes} min >= cap ${CAP_MINUTES} min in last ${WINDOW_DAYS} days"
+    if [[ "${cap_mode}" == "warn" ]]; then
+        err "fuzz-budget: continuing because GH_FUZZ_BUDGET_CAP_MODE=warn"
+        exit 0
+    fi
     exit 1
 fi
 exit 0

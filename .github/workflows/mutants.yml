@@ -145,11 +145,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+          GH_FUZZ_BUDGET_CAP_MODE: warn
         run: |
           set -euo pipefail
           # Mutation runs share the 1,800 min/30d envelope with fuzz.
-          # Budget failures stop this job even though mutation findings
-          # remain advisory.
+          # PR runs use --in-diff scoping, so over-cap usage is surfaced as
+          # a warning rather than making every scoped mutation check red.
+          # Full nightly sweeps keep the hard halt.
           if [[ -x scripts/check-fuzz-budget.sh ]]; then
             scripts/check-fuzz-budget.sh "${{ github.repository }}"
           else
