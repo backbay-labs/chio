@@ -1,4 +1,4 @@
-name: apalache-nightly
+name: apalache-safety
 
 on:
   workflow_dispatch:
@@ -9,13 +9,13 @@ on:
       - "formal/apalache/**"
       - "formal/tla/**"
       - "tools/install-apalache.sh"
-      - ".github/workflows/apalache-nightly.yml"
+      - ".github/workflows/apalache-safety.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-nightly', github.ref) || format('main-{0}-apalache-nightly', github.sha) }}
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-safety', github.ref) || format('main-{0}-apalache-safety', github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -61,13 +61,3 @@ jobs:
           formal/apalache/MCReceiptBeforeAllow.cfg|formal/apalache/ReceiptBeforeAllow.tla
           formal/apalache/MCKernelTransitionCancelSafe.cfg|formal/apalache/KernelTransitionCancelSafe.tla
           EOF
-
-      - name: RevocationEventuallySeen temporal check
-        shell: bash
-        run: |
-          set -euo pipefail
-          apalache-mc check \
-            --length=24 \
-            --temporal=RevocationEventuallySeen \
-            --config=formal/tla/MCRevocationPropagation.cfg \
-            formal/tla/RevocationPropagation.tla

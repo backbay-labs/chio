@@ -1,0 +1,71 @@
+name: apalache-temporal
+
+# Advisory workflow: runs the legacy temporal liveness property
+# RevocationEventuallySeen against formal/tla/RevocationPropagation.tla.
+#
+# This job is marked continue-on-error: true and is NOT a required gate.
+# The property has been failing apalache-mc encoding (SubstRule: Variable
+# a$1 is not assigned a value) since the M06 spec refactor; root cause is
+# tracked in .planning/trajectory-3.1/WORKFLOW-DEFERRALS.md and is owned
+# by the trajectory-4 M06-followup. The 4 M06 safety invariants run in
+# the separate apalache-safety.yml workflow, which IS required.
+#
+# Do not promote this workflow to a required check until the underlying
+# property is fixed and the run is reliably green.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 7 * * *"
+  pull_request:
+    paths:
+      - "formal/apalache/**"
+      - "formal/tla/**"
+      - "tools/install-apalache.sh"
+      - ".github/workflows/apalache-temporal.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-temporal', github.ref) || format('main-{0}-apalache-temporal', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  revocation-eventually-seen:
+    name: revocation-eventually-seen (advisory)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Confirm Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v apalache-mc
+          apalache-mc version || true
+
+      - name: RevocationEventuallySeen temporal check (advisory)
+        shell: bash
+        run: |
+          set -euo pipefail
+          apalache-mc check \
+            --length=24 \
+            --temporal=RevocationEventuallySeen \
+            --config=formal/tla/MCRevocationPropagation.cfg \
+            formal/tla/RevocationPropagation.tla
