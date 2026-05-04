@@ -53,12 +53,17 @@ impl InMemoryRevocationOracle {
     }
 
     pub fn verify_inclusion(proof: &InclusionProof) -> Result<()> {
+        let leaf_hash = Self::leaf_hash(&proof.key)?;
+        if leaf_hash != proof.leaf_hash {
+            return Err(RevocationOracleError::InvalidProof);
+        }
+
         let parsed = MerkleProof::<Sha256>::from_bytes(&proof.proof_bytes)
             .map_err(|_| RevocationOracleError::InvalidProof)?;
         let ok = parsed.verify(
             proof.epoch_root.root_hash,
             &[proof.leaf_index],
-            &[proof.leaf_hash],
+            &[leaf_hash],
             proof.epoch_root.leaf_count,
         );
         if ok {
@@ -226,6 +231,22 @@ mod tests {
         let proof = oracle.inclusion_proof(&key)?;
 
         InMemoryRevocationOracle::verify_inclusion(&proof)
+    }
+
+    #[test]
+    fn inclusion_proof_rejects_tampered_key() -> Result<()> {
+        let mut oracle = InMemoryRevocationOracle::new();
+        let key = RevocationKey::new(SubjectId::from("subject-a"), EpochNonce::new(7));
+
+        oracle.insert(key.clone(), 10)?;
+        let mut proof = oracle.inclusion_proof(&key)?;
+        proof.key = RevocationKey::new(SubjectId::from("subject-b"), EpochNonce::new(7));
+
+        assert_eq!(
+            InMemoryRevocationOracle::verify_inclusion(&proof),
+            Err(RevocationOracleError::InvalidProof)
+        );
+        Ok(())
     }
 
     #[test]
