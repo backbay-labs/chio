@@ -36,6 +36,7 @@ TARGETS=(
     fuzz_policy_parse_compile
     fuzz_sql_parser
     fuzz_merkle_checkpoint
+    revocation_oracle_merkle
     fuzz_tool_action
 )
 

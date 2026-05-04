@@ -46,6 +46,7 @@ chio-mcp-adapter = { path = "../crates/chio-mcp-adapter", features = ["fuzz"] }
 chio-mcp-edge = { path = "../crates/chio-mcp-edge", features = ["fuzz"] }
 chio-openapi-mcp-bridge = { path = "../crates/chio-openapi-mcp-bridge", features = ["fuzz"] }
 chio-policy = { path = "../crates/chio-policy" }
+chio-revocation-oracle = { path = "../crates/chio-revocation-oracle" }
 chio-wasm-guards = { path = "../crates/chio-wasm-guards", features = ["fuzz"] }
 libfuzzer-sys = "0.4"
 # `derive` feature lets per-target structs use `#[derive(Arbitrary)]`.
@@ -200,6 +201,13 @@ bench = false
 [[bin]]
 name = "fuzz_merkle_checkpoint"
 path = "fuzz_targets/merkle_checkpoint.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "revocation_oracle_merkle"
+path = "fuzz_targets/revocation_oracle_merkle.rs"
 test = false
 doc = false
 bench = false
