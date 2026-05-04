@@ -1060,7 +1060,7 @@ enum TrustCommands {
         ///
         /// Prefer `CHIO_TRUST_SERVICE_TOKEN` over `--service-token` so the
         /// secret is not visible to other users via `ps`/`/proc`.
-        #[arg(long, env = "CHIO_TRUST_SERVICE_TOKEN")]
+        #[arg(long, env = "CHIO_TRUST_SERVICE_TOKEN", hide_env_values = true)]
         service_token: String,
 
         /// Public base URL this trust-control node advertises to peers and clients.
