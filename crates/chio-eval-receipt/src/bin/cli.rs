@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::process::ExitCode;
 
-use chio_eval_receipt::verify_bundle;
+use chio_eval_receipt::{verify_bundle, verify_fixture_bundle, BundleError, VerifiedBundle};
 use sha2::{Digest, Sha256};
 
 /// Recognized scheme literal for the self-generated test sample memo signature.
@@ -48,21 +48,34 @@ fn run() -> Result<String, String> {
     let args: Vec<String> = env::args().skip(1).collect();
     match args.as_slice() {
         [command, bundle_path] if command == "verify" => verify_bundle_path(bundle_path),
+        [command, bundle_path] if command == "verify-fixture" => {
+            verify_fixture_bundle_path(bundle_path)
+        }
         [command, memo_path, sig_path] if command == "verify-memo" => {
             verify_memo_path(memo_path, sig_path)
         }
         _ => Err(
-            "usage: chio-eval-receipt verify <bundle-path> | verify-memo <memo-path> <sig-path>"
-                .to_owned(),
+            "usage: chio-eval-receipt verify <bundle-path> | verify-fixture <bundle-path> | verify-memo <memo-path> <sig-path>".to_owned(),
         ),
     }
 }
 
 fn verify_bundle_path(bundle_path: &str) -> Result<String, String> {
+    verify_bundle_path_with(bundle_path, verify_bundle)
+}
+
+fn verify_fixture_bundle_path(bundle_path: &str) -> Result<String, String> {
+    verify_bundle_path_with(bundle_path, verify_fixture_bundle)
+}
+
+fn verify_bundle_path_with(
+    bundle_path: &str,
+    verifier: fn(&str) -> Result<VerifiedBundle, BundleError>,
+) -> Result<String, String> {
     let bundle_json = fs::read_to_string(bundle_path)
         .map_err(|err| format!("failed to read {bundle_path}: {err}"))?;
-    let verified = verify_bundle(&bundle_json)
-        .map_err(|err| format!("failed to verify {bundle_path}: {err}"))?;
+    let verified =
+        verifier(&bundle_json).map_err(|err| format!("failed to verify {bundle_path}: {err}"))?;
     Ok(format!(
         "verified {} receipts={} signatures={} corpus_sha256={}",
         verified.bundle_id,

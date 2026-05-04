@@ -81,7 +81,7 @@ def build_bundle():
 
 def verify_bundle(path):
     subprocess.run(
-        ["cargo", "run", "-p", "chio-eval-receipt", "--bin", "chio-eval-receipt", "--", "verify", str(path)],
+        ["cargo", "run", "-p", "chio-eval-receipt", "--bin", "chio-eval-receipt", "--", "verify-fixture", str(path)],
         cwd=ROOT,
         check=True,
     )

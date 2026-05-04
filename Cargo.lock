@@ -3041,6 +3041,7 @@ dependencies = [
 name = "chio-eval-receipt"
 version = "0.1.0"
 dependencies = [
+ "chio-core-types",
  "serde_json",
  "sha2 0.10.9",
 ]

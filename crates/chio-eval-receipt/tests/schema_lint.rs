@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use chio_eval_receipt::verify_bundle;
+use chio_eval_receipt::verify_fixture_bundle;
 use serde_json::Value;
 
 #[test]
@@ -32,7 +32,7 @@ fn eval_receipt_schema_is_pinned() -> Result<(), Box<dyn Error>> {
 fn golden_eval_vector_verifies() -> Result<(), Box<dyn Error>> {
     let bundle_json =
         fs::read_to_string(workspace_root().join("tests/bindings/vectors/eval/v1.json"))?;
-    let verified = verify_bundle(&bundle_json)?;
+    let verified = verify_fixture_bundle(&bundle_json)?;
 
     assert_eq!(verified.bundle_id, "urn:chio:eval-bundle:metr:golden-v1");
     assert_eq!(verified.receipt_count, 3);
