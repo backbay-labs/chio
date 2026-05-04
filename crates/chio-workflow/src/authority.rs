@@ -4,6 +4,8 @@
 //! beginning, step validation, step recording, and finalization into a
 //! signed `WorkflowReceipt`.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use chio_core::capability::MonetaryAmount;
 use chio_core::crypto::Keypair;
 use tracing::debug;
@@ -114,6 +116,11 @@ pub struct WorkflowAuthority {
     signing_key: Keypair,
     /// Number of executions completed (for limit tracking).
     execution_count: u32,
+    /// Monotonic counter incremented on every `begin()` call. Used to
+    /// disambiguate execution ids when multiple `begin()` invocations land
+    /// in the same wall-clock second on the same authority. Stored as an
+    /// atomic so `begin()` can keep its `&self` receiver.
+    begin_counter: AtomicU64,
 }
 
 impl WorkflowAuthority {
@@ -122,6 +129,7 @@ impl WorkflowAuthority {
         Self {
             signing_key,
             execution_count: 0,
+            begin_counter: AtomicU64::new(0),
         }
     }
 
@@ -174,11 +182,15 @@ impl WorkflowAuthority {
             "beginning workflow execution"
         );
 
-        // Mix the execution counter and the agent id into the id so that
-        // multiple `begin()` calls within the same wall-clock second on the
-        // same authority do not collide. Receipts are downstream-keyed off
-        // this id; collisions would let one execution shadow another.
-        let id = format!("wf-{}-{}-{}", now, self.execution_count, agent_id);
+        // Mix a monotonic per-call counter and the agent id into the id so
+        // that multiple `begin()` calls within the same wall-clock second
+        // on the same authority do not collide. Receipts are downstream-
+        // keyed off this id; collisions would let one execution shadow
+        // another. We use an atomic so `begin()` can keep `&self`, and
+        // increment per call (not per finalize) so back-to-back `begin()`
+        // calls before any `finalize()` still produce distinct ids.
+        let seq = self.begin_counter.fetch_add(1, Ordering::Relaxed);
+        let id = format!("wf-{now}-{seq}-{agent_id}");
         Ok(WorkflowExecution {
             id,
             skill_id: manifest.skill_id.clone(),
@@ -967,5 +979,51 @@ mod tests {
             exec_b.id, exec_c.id,
             "executions started in the same second must not share an id"
         );
+    }
+
+    #[test]
+    fn rapid_begin_calls_produce_distinct_ids_for_same_agent() {
+        // Regression: with the previous fix, the id mixed in `execution_count`
+        // (only incremented in `finalize()`) plus the agent id. Two back-to-
+        // back `begin()` calls for the same agent within one second, with no
+        // intervening `finalize()`, would still collide because both `now`
+        // and `execution_count` were unchanged. The atomic per-call counter
+        // ensures every `begin()` produces a fresh id regardless of finalize
+        // ordering.
+        let manifest = make_manifest();
+        let grant = make_grant();
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let exec_a = authority
+            .begin(
+                &manifest,
+                &grant,
+                "same-agent".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+        let exec_b = authority
+            .begin(
+                &manifest,
+                &grant,
+                "same-agent".to_string(),
+                "cap-2".to_string(),
+                None,
+            )
+            .unwrap();
+        let exec_c = authority
+            .begin(
+                &manifest,
+                &grant,
+                "same-agent".to_string(),
+                "cap-3".to_string(),
+                None,
+            )
+            .unwrap();
+
+        assert_ne!(exec_a.id, exec_b.id);
+        assert_ne!(exec_b.id, exec_c.id);
+        assert_ne!(exec_a.id, exec_c.id);
     }
 }
