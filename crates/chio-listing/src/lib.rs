@@ -1344,6 +1344,12 @@ fn validate_generic_listing_report(report: &GenericListingReport) -> Result<(), 
                 listing.body.listing_id
             ));
         }
+        if listing.signer_key != listing.body.namespace_ownership.signer_public_key {
+            return Err(format!(
+                "listing `{}` signer does not match the declared namespace ownership signer",
+                listing.body.listing_id
+            ));
+        }
         if normalize_namespace(&listing.body.namespace)
             != normalize_namespace(&report.namespace.namespace)
         {

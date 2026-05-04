@@ -339,6 +339,83 @@ fn compare_empty_input_produces_empty_comparison() {
 }
 
 #[test]
+fn search_rejects_listing_signed_by_attacker_when_namespace_owner_key_is_pinned() {
+    // Regression: an attacker mirror cannot republish a listing for a
+    // namespace whose declared `signer_public_key` belongs to a different
+    // owner. The aggregator must verify that the envelope's `signer_key`
+    // matches the namespace ownership signer.
+    let owner_keypair = Keypair::generate();
+    let attacker_keypair = Keypair::generate();
+    assert_ne!(owner_keypair.public_key(), attacker_keypair.public_key());
+
+    // Build a listing whose body declares the legitimate owner key but
+    // whose envelope is signed by an attacker key.
+    let body = chio_listing::GenericListingArtifact {
+        schema: chio_listing::GENERIC_LISTING_ARTIFACT_SCHEMA.to_string(),
+        listing_id: "listing-spoof".to_string(),
+        namespace: "https://registry.chio.example".to_string(),
+        published_at: 10,
+        expires_at: Some(5_000),
+        status: GenericListingStatus::Active,
+        namespace_ownership: chio_listing::GenericNamespaceOwnership {
+            namespace: "https://registry.chio.example".to_string(),
+            owner_id: "operator-a".to_string(),
+            owner_name: Some("Operator A".to_string()),
+            registry_url: "https://registry.chio.example".to_string(),
+            signer_public_key: owner_keypair.public_key(),
+            registered_at: 1,
+            transferred_from_owner_id: None,
+        },
+        subject: chio_listing::GenericListingSubject {
+            actor_kind: GenericListingActorKind::ToolServer,
+            actor_id: "server-spoof".to_string(),
+            display_name: None,
+            metadata_url: None,
+            resolution_url: None,
+            homepage_url: None,
+        },
+        compatibility: chio_listing::GenericListingCompatibilityReference {
+            source_schema: "chio.certify.check.v1".to_string(),
+            source_artifact_id: "artifact-spoof".to_string(),
+            source_artifact_sha256: "sha-spoof".to_string(),
+        },
+        boundary: chio_listing::GenericListingBoundary::default(),
+    };
+    // Sign with attacker key; envelope.signer_key will not match
+    // namespace_ownership.signer_public_key.
+    let spoofed = require_ok(
+        SignedGenericListing::sign(body, &attacker_keypair),
+        "sign spoofed listing",
+    );
+    let rep = report(&owner_keypair, "operator-a", 100, vec![spoofed]);
+
+    let operator_keypair = Keypair::generate();
+    let hint = pricing_hint(
+        &operator_keypair,
+        "operator-a",
+        "listing-spoof",
+        "tools:search",
+        50,
+        110,
+        600,
+    );
+
+    let response = search(&[rep], &[hint], &ListingQuery::default(), 120);
+    assert_eq!(
+        response.result_count, 0,
+        "spoofed listing must not appear in search results"
+    );
+    assert!(
+        response
+            .errors
+            .iter()
+            .any(|err| err.error.contains("signer does not match")),
+        "expected a namespace-ownership signer pinning error, got: {:?}",
+        response.errors,
+    );
+}
+
+#[test]
 fn search_honors_require_fresh_equals_false_allows_passthrough() {
     // The aggregator drops stale reports before search ever sees them, so
     // this test documents the require_fresh=false path on fresh reports.

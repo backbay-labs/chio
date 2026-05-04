@@ -174,8 +174,13 @@ impl WorkflowAuthority {
             "beginning workflow execution"
         );
 
+        // Mix the execution counter and the agent id into the id so that
+        // multiple `begin()` calls within the same wall-clock second on the
+        // same authority do not collide. Receipts are downstream-keyed off
+        // this id; collisions would let one execution shadow another.
+        let id = format!("wf-{}-{}-{}", now, self.execution_count, agent_id);
         Ok(WorkflowExecution {
-            id: format!("wf-{}", now),
+            id,
             skill_id: manifest.skill_id.clone(),
             skill_version: manifest.version.clone(),
             agent_id,
@@ -915,5 +920,52 @@ mod tests {
             .unwrap();
 
         assert!(!execution.active);
+    }
+
+    #[test]
+    fn execution_ids_do_not_collide_within_a_single_second() {
+        // Regression: `begin()` previously formatted the id as `wf-<now>`
+        // with second resolution. Two `begin()` calls in the same second on
+        // the same authority would collide and produce shadowed receipts.
+        let manifest = make_manifest();
+        let grant = make_grant();
+        let mut authority = WorkflowAuthority::new(Keypair::generate());
+
+        let exec_a = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+        // Finalize to bump the execution counter without invoking the
+        // sleep that would otherwise change `now`.
+        let _ = authority.finalize(exec_a).unwrap();
+
+        let exec_b = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-2".to_string(),
+                None,
+            )
+            .unwrap();
+        let exec_c = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-2".to_string(),
+                "cap-3".to_string(),
+                None,
+            )
+            .unwrap();
+
+        assert_ne!(
+            exec_b.id, exec_c.id,
+            "executions started in the same second must not share an id"
+        );
     }
 }
