@@ -19,6 +19,7 @@
 // threat ID is renamed without a coordinated update.
 
 use super::common::{assert_threat_covered_by_corpus, corpus_cases_for};
+use chio_adversarial_suite::AttackClass;
 
 #[test]
 fn threat_capability_token_theft_is_covered() {
@@ -29,11 +30,26 @@ fn threat_capability_token_theft_is_covered() {
 #[test]
 fn threat_capability_token_theft_cites_expected_classes() {
     // covers: capability_token_theft
+    //
+    // Pin both ScopeSuperset (a stolen token presented with a wider scope
+    // than the parent grant authorized) and PartialSignature (a token
+    // whose detached signature has been re-targeted) as required attack
+    // classes. If either disappears from the threat ID's case set the
+    // corpus binding has lost a vector that the M05 audit doc claims and
+    // the trajectory-3 advisory reclassification must be re-pinned.
     let cases = corpus_cases_for("capability_token_theft");
     let classes: std::collections::BTreeSet<_> =
         cases.iter().map(|c| format!("{:?}", c.class)).collect();
     assert!(
-        !classes.is_empty(),
-        "capability_token_theft must be backed by at least one attack class"
+        cases
+            .iter()
+            .any(|c| c.class == AttackClass::ScopeSuperset),
+        "capability_token_theft must be backed by at least one scope_superset case; got {classes:?}"
+    );
+    assert!(
+        cases
+            .iter()
+            .any(|c| c.class == AttackClass::PartialSignature),
+        "capability_token_theft must be backed by at least one partial_signature case; got {classes:?}"
     );
 }
