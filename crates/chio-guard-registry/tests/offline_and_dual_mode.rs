@@ -19,6 +19,7 @@ enum BundleMode {
     Ok {
         digest: [u8; 32],
         identity: &'static str,
+        rekor_inclusion_verified: bool,
     },
     SignatureMismatch,
 }
@@ -31,7 +32,22 @@ struct StaticBundleVerifier {
 impl StaticBundleVerifier {
     fn ok(digest: [u8; 32], identity: &'static str) -> Self {
         Self {
-            mode: BundleMode::Ok { digest, identity },
+            mode: BundleMode::Ok {
+                digest,
+                identity,
+                rekor_inclusion_verified: true,
+            },
+            bundle_calls: AtomicUsize::new(0),
+        }
+    }
+
+    fn ok_without_rekor_inclusion(digest: [u8; 32], identity: &'static str) -> Self {
+        Self {
+            mode: BundleMode::Ok {
+                digest,
+                identity,
+                rekor_inclusion_verified: false,
+            },
             bundle_calls: AtomicUsize::new(0),
         }
     }
@@ -80,12 +96,16 @@ impl AttestVerifier for StaticBundleVerifier {
         assert_eq!(bundle_json, BUNDLE_BYTES);
 
         match self.mode {
-            BundleMode::Ok { digest, identity } => Ok(VerifiedAttestation {
+            BundleMode::Ok {
+                digest,
+                identity,
+                rekor_inclusion_verified,
+            } => Ok(VerifiedAttestation {
                 subject_digest_sha256: digest,
                 certificate_identity: identity.to_owned(),
                 certificate_oidc_issuer: "https://token.actions.githubusercontent.com".to_owned(),
                 rekor_log_index: 7,
-                rekor_inclusion_verified: true,
+                rekor_inclusion_verified,
                 signed_at: SystemTime::UNIX_EPOCH,
             }),
             BundleMode::SignatureMismatch => Err(AttestError::SignatureMismatch),
@@ -124,7 +144,40 @@ fn offline_cached_and_verified_allows_load() {
     assert_eq!(load.event.verification.as_str(), "sigstore-only");
     assert_eq!(load.event.source, GuardLoadSource::OfflineCache);
     assert_eq!(load.event.source.as_str(), "offline-cache");
+    assert_eq!(load.event.rekor_inclusion_verified, Some(true));
+    assert_eq!(load.verification.rekor_inclusion_verified, Some(true));
     assert_eq!(load.event.reason, None);
+    assert_eq!(verifier.bundle_call_count(), 1);
+}
+
+#[test]
+fn offline_sigstore_load_preserves_unverified_rekor_inclusion_bit() {
+    let temp = tempdir();
+    let digest = digest();
+    let cache = GuardCache::from_cache_home(temp.path());
+    write_cache(&cache, &digest);
+
+    let verifier =
+        StaticBundleVerifier::ok_without_rekor_inclusion(digest_bytes(7), "sigstore-subject");
+    let expected = expected_identity();
+    let sigstore = GuardSigstoreVerifier::new(&verifier, &expected);
+    let request = GuardOfflineLoadRequest {
+        cache: &cache,
+        digest: &digest,
+        network: GuardNetworkState::Offline,
+        verification: GuardVerificationKind::SigstoreOnly,
+    };
+
+    let load = match load_guard_with_policy(request, |layout| {
+        sigstore.verify_cached_layout_report(layout)
+    }) {
+        Ok(load) => load,
+        Err(error) => panic!("offline cached Sigstore load should allow: {error}"),
+    };
+
+    assert_eq!(load.event.result, GuardLoadEventResult::Allow);
+    assert_eq!(load.event.rekor_inclusion_verified, Some(false));
+    assert_eq!(load.verification.rekor_inclusion_verified, Some(false));
     assert_eq!(verifier.bundle_call_count(), 1);
 }
 

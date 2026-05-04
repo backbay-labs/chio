@@ -168,7 +168,7 @@ where
 
     match verify_cached(&layout) {
         Ok(report) => {
-            let event = GuardLoadEvent::allow(report.kind, source, digest, &report.assertion);
+            let event = GuardLoadEvent::allow_report(source, digest, &report);
             Ok(GuardOfflineLoad {
                 digest: request.digest.clone(),
                 layout,
@@ -219,6 +219,7 @@ fn missing_cache_files(
                         digest: request.digest.as_str().to_owned(),
                         subject_digest_sha256: None,
                         identity: None,
+                        rekor_inclusion_verified: None,
                         reason: Some("cache-stat-failed".to_owned()),
                     }),
                 });
