@@ -3,7 +3,10 @@
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_openai::adapter::OpenAiAdapter;
-use chio_tool_call_fabric::{DenyReason, ProviderError, ProviderId, ReceiptId, VerdictResult};
+use chio_tool_call_fabric::{
+    DenyReason, ProviderError, ProviderId, ReceiptId, VerdictResult,
+    DEFAULT_MAX_BUFFERED_RAW_FRAMES,
+};
 use serde_json::json;
 
 fn allow_verdict() -> VerdictResult {
@@ -348,6 +351,45 @@ fn zero_length_argument_deltas_count_toward_buffered_frame_limit() {
 
     assert!(matches!(err, ProviderError::Malformed(_)));
     assert!(err.to_string().contains("raw frame count"));
+}
+
+#[test]
+fn output_item_done_is_forwarded_when_pre_verdict_frames_reach_limit() {
+    let adapter = OpenAiAdapter::new("org_chio_demo");
+    let mut raw = String::from(concat!(
+        "event: response.output_item.added\n",
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_limit\",\"call_id\":\"call_limit\",\"name\":\"create_calendar_event\",\"arguments\":\"\"}}\n\n",
+    ));
+    for _ in 0..(DEFAULT_MAX_BUFFERED_RAW_FRAMES - 2) {
+        raw.push_str(concat!(
+            "event: response.function_call_arguments.delta\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"call_id\":\"call_limit\",\"delta\":\"\"}\n\n",
+        ));
+    }
+    raw.push_str(concat!(
+        "event: response.function_call_arguments.done\n",
+        "data: {\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"item_id\":\"fc_limit\",\"arguments\":\"{}\"}\n\n",
+        "event: response.output_item.done\n",
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_limit\",\"call_id\":\"call_limit\",\"name\":\"create_calendar_event\",\"arguments\":\"{}\"}}\n\n",
+        "event: response.completed\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_limit\"}}\n\n",
+    ));
+
+    let mut calls = 0;
+    let gated = adapter
+        .gate_sse_stream(raw.as_bytes(), |invocation| {
+            calls += 1;
+            assert_eq!(invocation.provenance.request_id, "call_limit");
+            Ok(allow_verdict())
+        })
+        .unwrap();
+
+    assert_eq!(calls, 1);
+    assert_eq!(gated.invocations.len(), 1);
+    assert_eq!(gated.verdicts, vec![allow_verdict()]);
+    let forwarded = String::from_utf8(gated.bytes).unwrap();
+    assert!(forwarded.contains("response.output_item.done"));
+    assert!(forwarded.contains("response.completed"));
 }
 
 #[test]

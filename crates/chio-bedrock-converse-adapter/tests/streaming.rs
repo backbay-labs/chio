@@ -7,7 +7,7 @@ use chio_bedrock_converse_adapter::{
 };
 use chio_tool_call_fabric::{
     DenyReason, ProviderError, ProviderId, ProviderRequest, ReceiptId, Redaction, ToolResult,
-    VerdictResult,
+    VerdictResult, DEFAULT_MAX_BUFFERED_RAW_FRAMES,
 };
 use serde_json::{json, Value};
 
@@ -466,6 +466,50 @@ fn zero_length_tool_use_deltas_count_toward_buffered_frame_limit() {
 
     assert!(matches!(err, ProviderError::Malformed(_)));
     assert!(err.to_string().contains("raw frame count"));
+}
+
+#[test]
+fn content_block_stop_is_forwarded_when_pre_verdict_frames_reach_limit() {
+    let adapter = adapter();
+    let mut events = vec![json!({
+        "contentBlockStart": {
+            "contentBlockIndex": 0,
+            "start": {
+                "toolUse": {
+                    "toolUseId": "tooluse_limit",
+                    "name": "get_weather"
+                }
+            }
+        }
+    })];
+    for _ in 0..(DEFAULT_MAX_BUFFERED_RAW_FRAMES - 1) {
+        events.push(json!({
+            "contentBlockDelta": {
+                "contentBlockIndex": 0,
+                "delta": {
+                    "toolUse": {
+                        "input": ""
+                    }
+                }
+            }
+        }));
+    }
+    events.push(json!({"contentBlockStop": {"contentBlockIndex": 0}}));
+    events.push(json!({"messageStop": {"stopReason": "tool_use"}}));
+
+    let mut calls = 0;
+    let gated = adapter
+        .gate_converse_stream(&stream_bytes(Value::Array(events.clone())), |invocation| {
+            calls += 1;
+            assert_eq!(invocation.provenance.request_id, "tooluse_limit");
+            Ok(allow_verdict())
+        })
+        .unwrap();
+
+    assert_eq!(calls, 1);
+    assert_eq!(gated.invocations.len(), 1);
+    assert_eq!(gated.verdicts, vec![allow_verdict()]);
+    assert_eq!(gated.events, events);
 }
 
 #[test]

@@ -213,12 +213,14 @@ where
     use chio_http_core::TransportDenyInput;
 
     let status = http::StatusCode::PAYLOAD_TOO_LARGE;
-    let parsed_method = crate::evaluator::parse_method(method).ok();
     let caller_identity_hash = caller.identity_hash().ok();
-    let route_pattern = (evaluator.route_resolver())(method, path);
 
-    let receipt = match (parsed_method, caller_identity_hash.as_deref()) {
-        (Some(http_method), Some(caller_hash)) => {
+    let receipt = match (
+        crate::evaluator::parse_method(method),
+        caller_identity_hash.as_deref(),
+    ) {
+        (Ok(http_method), Some(caller_hash)) => {
+            let route_pattern = (evaluator.route_resolver())(method, path);
             let verdict = chio_http_core::Verdict::deny_with_status(
                 format!("request body exceeds {max_body_bytes}-byte limit for chio_tower"),
                 TRANSPORT_BODY_SIZE_GUARD,
@@ -793,6 +795,46 @@ mod tests {
             .unwrap_or_else(|e| panic!("collect failed: {e}"))
             .to_bytes();
         assert!(body_bytes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn service_413_unsupported_method_rejects_before_route_resolver() {
+        fn route_resolver(_method: &str, _path: &str) -> String {
+            panic!("route resolver must not run for unsupported HTTP methods");
+        }
+
+        let (_kp, evaluator) = make_service();
+        let evaluator = evaluator.with_route_resolver(route_resolver);
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("BREW")
+            .uri("/pets")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(resp.extensions().get::<HttpReceipt>().is_none());
+        assert!(resp.headers().get(http::header::CONTENT_TYPE).is_none());
+        assert!(resp.headers().get("x-chio-receipt-id").is_none());
     }
 
     #[tokio::test]

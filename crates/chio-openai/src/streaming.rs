@@ -206,7 +206,7 @@ impl<'a> StreamGate<'a> {
         let data = frame.required_data("response.output_item.done")?;
         let item = data.get("item");
 
-        let Some(mut active) = self.active.take() else {
+        let Some(active) = self.active.take() else {
             if item.is_some_and(is_tool_call_item) {
                 return Err(ProviderError::Malformed(
                     "OpenAI output_item.done tool call arrived without an active tool call"
@@ -251,10 +251,10 @@ impl<'a> StreamGate<'a> {
         self.invocations.push(invocation);
         self.verdicts.push(verdict);
         self.buffered_blocks.push(buffered);
-        active.push_frame(frame)?;
         for frame in active.frames {
             self.output.extend_from_slice(&frame.raw);
         }
+        self.output.extend_from_slice(&frame.raw);
         Ok(())
     }
 

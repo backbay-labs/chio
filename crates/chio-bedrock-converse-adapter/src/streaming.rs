@@ -177,7 +177,7 @@ impl<'a> StreamGate<'a> {
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
         let index = content_block_index(&event.payload, "contentBlockStop")?;
-        let Some(mut active) = self.active.take() else {
+        let Some(active) = self.active.take() else {
             self.forward(event);
             return Ok(());
         };
@@ -190,8 +190,8 @@ impl<'a> StreamGate<'a> {
         self.phase = transition(&self.phase, StreamEvent::FinishBlock)?;
         self.invocations.push(invocation);
         self.verdicts.push(verdict);
-        active.push_frame(event.raw)?;
         self.output.extend(active.frames);
+        self.output.push(event.raw);
         Ok(())
     }
 

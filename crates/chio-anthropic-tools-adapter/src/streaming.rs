@@ -163,7 +163,7 @@ impl<'a> StreamGate<'a> {
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
         let index = frame_index(&frame, "content_block_stop")?;
-        let mut active = self.active.take().ok_or_else(|| {
+        let active = self.active.take().ok_or_else(|| {
             ProviderError::Malformed(
                 "Anthropic content_block_stop arrived without an active content block".to_string(),
             )
@@ -182,10 +182,10 @@ impl<'a> StreamGate<'a> {
         self.phase = transition(&self.phase, StreamEvent::FinishBlock)?;
         self.invocations.push(invocation);
         self.verdicts.push(verdict);
-        active.push_frame(frame)?;
         for frame in active.frames {
             self.output.extend_from_slice(&frame.raw);
         }
+        self.output.extend_from_slice(&frame.raw);
         Ok(())
     }
 
