@@ -5,10 +5,10 @@
 # in-process Rust path runs on every PR; the container lane runs on a
 # self-hosted reference 4-core Linux runner once the path filter
 # matches. The grep gate command in the P5.T5 ticket asserts the
-# `required: true` marker below stays in tree.
+# `required: true` marker on the line below stays in tree.
+# required: true
 
 name: ttfrh
-required: true
 
 on:
   pull_request:

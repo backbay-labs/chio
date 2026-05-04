@@ -348,6 +348,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+          # Hosted nightly sweeps share the 1,800 min/30d envelope with the
+          # fuzz lanes. When the cap is hit the sweep must still run so that
+          # measurement keeps flowing into the dashboard (continue-on-error
+          # is already true at job level). Treat the cap as advisory here.
+          GH_FUZZ_BUDGET_CAP_MODE: warn
         run: |
           set -euo pipefail
           if [[ -x scripts/check-fuzz-budget.sh ]]; then
