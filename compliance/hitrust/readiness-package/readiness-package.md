@@ -29,7 +29,7 @@ engagement begins under trajectory-4.M09-followup.
 | Evidence | Path or reference |
 |----------|-------------------|
 | Assessor evidence bundle | `compliance/hitrust/evidence-bundles/2026-05-02/` |
-| Evidence bundle manifest hash | `7fae26e126f92850e1cbf8360e9c33f8d2940f5abbade64b542ed6606cbdc23d` |
+| Evidence bundle manifest hash | `f2cb0757ada4d1192918b68cc85f35d06d7c9d58c16113eacc43b39bdf22c949` |
 | Draft report hash | `6834849e9e4d13d58073a0737e9c630f2ac8d0cf4cfc0eae7c82a3e8fe557907` |
 | Internal QA receipt (self-authored) | `M09-P5-readiness-pass-2026-05-02` |
 | Internal readiness receipt (self-authored) | `M09-P5-readiness-record-2026-05-02` |
