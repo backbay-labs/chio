@@ -110,6 +110,86 @@ fn record_outcome_distinguishes_fresh_and_replay() {
 }
 
 #[test]
+fn stale_entry_before_gc_is_still_treated_as_replay() {
+    // The trust contract says the record path NEVER prunes; only an
+    // explicit `gc_expired` sweep drops entries. That keeps a slow GC
+    // from being observed as an accepted replay. This test pins the
+    // behaviour: an entry past its retention bound is still a replay
+    // until `gc_expired` runs.
+    let store = InMemoryPasskeyNonceStore::with_clock_skew(0);
+    let exp_in_past = 100;
+    let first = match store.record_if_fresh("cred-stale", "nonce-stale", exp_in_past) {
+        Ok(o) => o,
+        Err(e) => panic!("first record: {e}"),
+    };
+    assert_eq!(first, RecordOutcome::Fresh);
+    // Second record with the same key, even at a "far future" exp, must
+    // still classify as replay because the entry has not been GC'd.
+    let second = match store.record_if_fresh("cred-stale", "nonce-stale", 10_000) {
+        Ok(o) => o,
+        Err(e) => panic!("second record: {e}"),
+    };
+    assert_eq!(
+        second,
+        RecordOutcome::Replayed,
+        "stale-but-not-GC'd entries must still trip replay detection"
+    );
+}
+
+#[test]
+fn concurrent_record_calls_classify_exactly_one_as_fresh() {
+    // The `record_if_fresh` contract requires that two concurrent calls
+    // for the same `(credential_id, challenge_nonce)` cannot both
+    // observe `Fresh`. Spawning a fan of writer threads, each racing on
+    // the same key, must always see exactly one `Fresh` and N-1
+    // `Replayed`. This pins the atomicity property the trust contract
+    // documents.
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    const FANOUT: usize = 16;
+
+    let store = Arc::new(InMemoryPasskeyNonceStore::new());
+    let fresh_count = Arc::new(AtomicUsize::new(0));
+    let replay_count = Arc::new(AtomicUsize::new(0));
+    let exp = 10_000_000_000;
+
+    let mut handles = Vec::with_capacity(FANOUT);
+    for _ in 0..FANOUT {
+        let store = Arc::clone(&store);
+        let fresh = Arc::clone(&fresh_count);
+        let replay = Arc::clone(&replay_count);
+        handles.push(std::thread::spawn(move || {
+            match store.record_if_fresh("cred-race", "nonce-race", exp) {
+                Ok(RecordOutcome::Fresh) => {
+                    fresh.fetch_add(1, Ordering::SeqCst);
+                }
+                Ok(RecordOutcome::Replayed) => {
+                    replay.fetch_add(1, Ordering::SeqCst);
+                }
+                Err(e) => panic!("race writer failed: {e}"),
+            }
+        }));
+    }
+    for handle in handles {
+        if let Err(e) = handle.join() {
+            panic!("race writer panicked: {e:?}");
+        }
+    }
+
+    assert_eq!(
+        fresh_count.load(Ordering::SeqCst),
+        1,
+        "exactly one writer must observe Fresh"
+    );
+    assert_eq!(
+        replay_count.load(Ordering::SeqCst),
+        FANOUT - 1,
+        "all other writers must observe Replayed"
+    );
+}
+
+#[test]
 fn gc_after_retention_window_unblocks_slot() {
     // The retention bound is `exp + clock_skew`. With clock_skew = 0,
     // an entry whose exp is below `now_unix_seconds` is GC-able and a
@@ -156,5 +236,55 @@ mod sqlite {
         assert!(first.is_ok());
         let second = svc.mint_capability(&assertion("cred-X"), &req, fixed_now());
         assert!(matches!(second, Err(CustodyError::ReplayDetected { .. })));
+    }
+
+    #[test]
+    fn sqlite_concurrent_record_calls_classify_exactly_one_as_fresh() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        const FANOUT: usize = 8;
+
+        let store = match SqlitePasskeyNonceStore::open_in_memory() {
+            Ok(s) => s,
+            Err(e) => panic!("sqlite open: {e}"),
+        };
+        let store: Arc<dyn PasskeyNonceStore> = Arc::new(store);
+        let fresh_count = Arc::new(AtomicUsize::new(0));
+        let replay_count = Arc::new(AtomicUsize::new(0));
+        let exp = 10_000_000_000;
+
+        let mut handles = Vec::with_capacity(FANOUT);
+        for _ in 0..FANOUT {
+            let store = Arc::clone(&store);
+            let fresh = Arc::clone(&fresh_count);
+            let replay = Arc::clone(&replay_count);
+            handles.push(std::thread::spawn(move || {
+                match store.record_if_fresh("cred-race", "nonce-race", exp) {
+                    Ok(RecordOutcome::Fresh) => {
+                        fresh.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Ok(RecordOutcome::Replayed) => {
+                        replay.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Err(e) => panic!("sqlite race writer failed: {e}"),
+                }
+            }));
+        }
+        for handle in handles {
+            if let Err(e) = handle.join() {
+                panic!("sqlite race writer panicked: {e:?}");
+            }
+        }
+
+        assert_eq!(
+            fresh_count.load(Ordering::SeqCst),
+            1,
+            "sqlite store: exactly one writer must observe Fresh"
+        );
+        assert_eq!(
+            replay_count.load(Ordering::SeqCst),
+            FANOUT - 1,
+            "sqlite store: all other writers must observe Replayed"
+        );
     }
 }
