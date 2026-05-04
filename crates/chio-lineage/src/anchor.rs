@@ -284,10 +284,11 @@ pub fn pin_frontier(graph: &LineageGraph, signer_hint: Option<&str>) -> Anchored
     }
 }
 
-/// Return true when a signature payload is non-empty lower-case hex.
+/// Return true when a signature payload is non-empty even-length lower-case hex.
 #[must_use]
 pub fn is_lowercase_hex_signature_payload(signature_hex: &str) -> bool {
     !signature_hex.is_empty()
+        && signature_hex.len().is_multiple_of(2)
         && signature_hex
             .bytes()
             .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
@@ -432,7 +433,7 @@ mod tests {
 
     #[test]
     fn deserialized_signed_state_with_malformed_payload_is_unsigned() {
-        for signature_hex in ["DEADBEEF", "dead beef", " deadbeef", "zz"] {
+        for signature_hex in ["DEADBEEF", "dead beef", " deadbeef", "zz", "f"] {
             let value = serde_json::json!({
                 "schema_version": "chio.lineage.frontier/v1",
                 "graph_schema": "chio.lineage.graph/v1",

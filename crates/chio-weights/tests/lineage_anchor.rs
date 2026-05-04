@@ -176,7 +176,7 @@ fn verify_rejects_signed_state_with_malformed_signature_payloads() {
         Err(e) => panic!("anchor: {e}"),
     };
 
-    for signature_hex in ["DEADBEEF", "dead beef", " deadbeef", "zz"] {
+    for signature_hex in ["DEADBEEF", "dead beef", " deadbeef", "zz", "f"] {
         anchor.signing = SigningState::Signed {
             algorithm: "hybrid:ed25519+ml-dsa-65".to_string(),
             signature_hex: signature_hex.to_string(),
