@@ -101,25 +101,29 @@ trust_boundary_crates = [
 
 [release_audit]
 activation_evidence = """
-m08_final_report:
+m08_internal_readiness_draft:
   release_gate: RELEASE_AUDIT
-  final_report_url: https://github.com/bb-connor/arc/blob/main/releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf
-  final_report_path: releases/audit-reports/chio-independent-crypto-protocol-review-final-2026-05-02.pdf
-  final_report_sha256: abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c
+  classification: internal_readiness_draft
+  trj3_1_reclassified_from: external_vendor_final_report
+  draft_url: https://github.com/bb-connor/arc/blob/main/releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf
+  draft_path: releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf
+  draft_sha256: abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c
   audit_doc: .planning/trajectory-3/audits/M08-vendor-evidence.md
   response_memo: .planning/trajectory-3/audits/M08-vendor-evidence.md#5e-chio-response-memo
-  response_memo_status: published
-  vendor_public_reports_page: https://www.nccgroup.com/technical-assurance/cryptography-encryption/cryptography-services/
-m09_hitrust_i1_certificate:
+  response_memo_status: internal-only
+  external_vendor_engagement: deferred
+  trajectory_4_owner: M08-followup
+  note: "Self-authored internal readiness draft. No external vendor has produced a vendor-letterhead crypto-protocol review. Real external review is a trajectory-4 deliverable."
+m09_hitrust_i1_readiness_package:
   release_gate: QUALIFICATION
-  certificate_id: HITRUST-i1-CHIO-V318-DP-2026-0502
-  certificate_path: compliance/hitrust/certificate/certificate.md
-  certificate_sha256: e0a6adc2e3a8f3f7b6ff324f0db62ccce82d6a4defba22eb58e7cbb0a0f926be
-  issued_at: 2026-05-02
-  expires_at: 2027-05-02
-  scope: Chio v3.18 plus M01 healthcare design-partner deployment
-  assessor: A-LIGN
+  classification: readiness_package
+  trj3_1_reclassified_from: issued_certificate
+  certificate_id: ""
+  package_path: compliance/hitrust/readiness-package/readiness-package.md
   audit_doc: .planning/trajectory-3/audits/M09-vendor-evidence.md
+  scope: "Chio v3.18 plus M01 healthcare design-partner deployment (readiness scope; not assessor scope)"
+  external_assessor_engagement: deferred
+  trajectory_4_owner: M09-followup
   public_landing_page: docs/external-attestation/hitrust-i1/index.md
-  results_distribution_record: mycsf://results-distribution/HITRUST-i1-CHIO-V318-DP-2026-0502
+  note: "HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor has performed an audit. Real HITRUST i1 certification is a trajectory-4 deliverable."
 """
