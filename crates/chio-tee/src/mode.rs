@@ -194,6 +194,21 @@ pub enum TransitionError {
         /// Mode the requester asked for.
         to: Mode,
     },
+    /// Upgrade attempted with a `Some(_)` capability that was empty or
+    /// whitespace only. The capability-file shim reads the token from a
+    /// file under `${CHIO_TEE_RUNTIME_DIR}` and an empty/whitespace file
+    /// is the most common failure mode (touched but never populated). We
+    /// reject it explicitly so the bypass surface is not just "the
+    /// `Option` is `Some`". Cryptographic verification of the token
+    /// remains the caller's responsibility (see
+    /// [`MoteState::transition`]).
+    #[error("upgrade {from} -> {to} rejected: capability token was empty or whitespace")]
+    EmptyUpgradeCapability {
+        /// Mode the runtime was in before the request.
+        from: Mode,
+        /// Mode the requester asked for.
+        to: Mode,
+    },
 }
 
 /// Whether a transition from `from` to `to` is a downgrade or an upgrade.
@@ -249,12 +264,21 @@ impl MoteState {
     }
 
     /// Apply a transition. Downgrades and no-ops succeed unconditionally.
-    /// Upgrades require `upgrade_capability` to be `Some` (the caller is
-    /// responsible for verifying the token's freshness against the
-    /// `chio-control-plane` capability service before invoking this method).
+    /// Upgrades require `upgrade_capability` to be `Some` carrying a
+    /// non-empty (after-trim) token string. The caller remains
+    /// responsible for cryptographically verifying the token's
+    /// signature, freshness, audience, and scope against the
+    /// `chio-control-plane` capability service before invoking this
+    /// method; this layer enforces only the structural invariant that
+    /// some token text was actually produced.
     ///
-    /// On success, returns the previous mode for receipt-log emission of the
-    /// `tee.mode_changed { from, to }` event.
+    /// Empty or whitespace-only `Some(_)` values are rejected with
+    /// [`TransitionError::EmptyUpgradeCapability`] so a touched-but-not-
+    /// populated capability file under `${CHIO_TEE_RUNTIME_DIR}` cannot
+    /// be confused with a legitimate token.
+    ///
+    /// On success, returns the previous mode for receipt-log emission of
+    /// the `tee.mode_changed { from, to }` event.
     pub fn transition(
         &self,
         target: Mode,
@@ -266,14 +290,16 @@ impl MoteState {
                 self.inner.store(Arc::new(target));
                 Ok(from)
             }
-            Direction::Upgrade => {
-                if upgrade_capability.is_some() {
+            Direction::Upgrade => match upgrade_capability {
+                None => Err(TransitionError::MissingUpgradeCapability { from, to: target }),
+                Some(token) if token.trim().is_empty() => {
+                    Err(TransitionError::EmptyUpgradeCapability { from, to: target })
+                }
+                Some(_) => {
                     self.inner.store(Arc::new(target));
                     Ok(from)
-                } else {
-                    Err(TransitionError::MissingUpgradeCapability { from, to: target })
                 }
-            }
+            },
         }
     }
 
@@ -357,6 +383,31 @@ mod tests {
         let s = MoteState::new(Mode::Shadow);
         let prev = s.transition(Mode::Shadow, None).unwrap();
         assert_eq!(prev, Mode::Shadow);
+        assert_eq!(s.current(), Mode::Shadow);
+    }
+
+    /// Empty-string `Some(_)` MUST be rejected. A touched-but-never-
+    /// populated capability file would otherwise satisfy the cheap
+    /// `is_some()` check and grant an enforce upgrade with no token.
+    #[test]
+    fn upgrade_rejects_empty_capability_string() {
+        let s = MoteState::new(Mode::VerdictOnly);
+        let err = s.transition(Mode::Enforce, Some("")).unwrap_err();
+        assert!(
+            matches!(err, TransitionError::EmptyUpgradeCapability { .. }),
+            "empty capability must be rejected; got {err:?}"
+        );
+        assert_eq!(s.current(), Mode::VerdictOnly);
+    }
+
+    #[test]
+    fn upgrade_rejects_whitespace_only_capability_string() {
+        let s = MoteState::new(Mode::Shadow);
+        let err = s.transition(Mode::Enforce, Some("   \t\n")).unwrap_err();
+        assert!(
+            matches!(err, TransitionError::EmptyUpgradeCapability { .. }),
+            "whitespace-only capability must be rejected; got {err:?}"
+        );
         assert_eq!(s.current(), Mode::Shadow);
     }
 }
