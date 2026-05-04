@@ -93,6 +93,8 @@ jobs:
         with:
           go-version: "1.23.0"
 
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
       - name: Install Aeneas and Charon
         shell: bash
         run: |
@@ -134,8 +136,6 @@ jobs:
           )
           cargo creusot version
           cargo kani --version
-
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
       - name: Install portable qualification dependencies
         run: |

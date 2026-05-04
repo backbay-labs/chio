@@ -41,10 +41,18 @@ def first_line(marker: str) -> int:
     raise AssertionError(marker)
 
 release_step = first_line("run: ./scripts/qualify-release.sh")
+rust_cache_step = first_line("uses: Swatinem/rust-cache@")
 formal_steps = [
     first_line("name: Install Aeneas and Charon"),
     first_line("name: Install Rust verification tools"),
 ]
+early_installs = [line for line in formal_steps if line < rust_cache_step]
+if early_installs:
+    raise SystemExit(
+        "rust-cache restore must precede formal tool install steps "
+        f"(early line numbers: {early_installs}, rust-cache line: {rust_cache_step})"
+    )
+
 late = [line for line in formal_steps if line > release_step]
 if late:
     raise SystemExit(
