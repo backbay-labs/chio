@@ -1,35 +1,33 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 use dashmap::mapref::entry::Entry;
+use rand::rngs::OsRng;
+use rand::RngCore;
 
 use crate::session::{SessionAnchorSnapshot, SessionRequestStart};
 
 use super::*;
 
-static GLOBAL_SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
+/// Number of CSPRNG bytes used to derive a fresh session id. 16 bytes (128 bits)
+/// is well above the birthday-bound budget for any realistic session population
+/// and matches the "URL-safe random handle" recipe used elsewhere in the
+/// workspace.
+const SESSION_ID_ENTROPY_BYTES: usize = 16;
 
-fn bump_session_counter_from_id(session_id: &SessionId) {
-    let Some(number) = session_id
-        .as_str()
-        .strip_prefix("sess-")
-        .and_then(|value| value.parse::<u64>().ok())
-    else {
-        return;
-    };
-
-    let mut current = GLOBAL_SESSION_COUNTER.load(Ordering::SeqCst);
-    while current < number {
-        match GLOBAL_SESSION_COUNTER.compare_exchange(
-            current,
-            number,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ) {
-            Ok(_) => break,
-            Err(observed) => current = observed,
-        }
-    }
+/// Mint a fresh URL-safe session identifier from the operating system's
+/// CSPRNG. Sequential identifiers were previously derived from a global
+/// counter, which let an external observer enumerate active tenants over the
+/// MCP HTTP transport. Using an unguessable random handle closes that
+/// information-disclosure path and removes the session-fixation/forgery
+/// surface that came with predictable IDs.
+fn generate_random_session_id() -> SessionId {
+    let mut bytes = [0u8; SESSION_ID_ENTROPY_BYTES];
+    OsRng.fill_bytes(&mut bytes);
+    // base64url without padding produces 22 chars for 16 bytes; the
+    // `sess-` prefix preserves human readability for log scanning.
+    SessionId::new(format!("sess-{}", URL_SAFE_NO_PAD.encode(bytes)))
 }
 
 fn map_session_persist_error(error: SessionPersistError<KernelError>) -> KernelError {
@@ -45,8 +43,7 @@ impl ChioKernel {
         agent_id: AgentId,
         issued_capabilities: Vec<CapabilityToken>,
     ) -> SessionId {
-        let session_number = GLOBAL_SESSION_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
-        let session_id = SessionId::new(format!("sess-{}", session_number));
+        let session_id = generate_random_session_id();
 
         self.open_session_with_id(session_id, agent_id, issued_capabilities)
             .unwrap_or_else(|error| panic!("failed to open session: {error}"))
@@ -58,8 +55,6 @@ impl ChioKernel {
         agent_id: AgentId,
         issued_capabilities: Vec<CapabilityToken>,
     ) -> Result<SessionId, KernelError> {
-        bump_session_counter_from_id(&session_id);
-
         info!(session_id = %session_id, agent_id = %agent_id, "opening session");
         let session = self.with_sessions_write(|sessions| {
             let session = Arc::new(Session::new(
