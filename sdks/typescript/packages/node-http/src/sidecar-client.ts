@@ -144,7 +144,7 @@ export class ChioSidecarClient {
         parsed = JSON.parse(responseBody) as unknown;
       } catch (error: unknown) {
         throw new SidecarError(
-          CHIO_ERROR_CODES.INVALID_RECEIPT,
+          CHIO_ERROR_CODES.EVALUATION_FAILED,
           `failed to decode verify response: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
@@ -157,7 +157,7 @@ export class ChioSidecarClient {
         return (parsed as { valid: boolean }).valid;
       }
       throw new SidecarError(
-        CHIO_ERROR_CODES.INVALID_RECEIPT,
+        CHIO_ERROR_CODES.EVALUATION_FAILED,
         "sidecar verify response missing boolean `valid` field",
       );
     } catch (error) {

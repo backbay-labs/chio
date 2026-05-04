@@ -187,7 +187,7 @@ describe("ChioSidecarClient.verifyReceipt", () => {
     );
   });
 
-  it("throws invalid-receipt SidecarError for malformed JSON verifier responses", async () => {
+  it("throws evaluation-failed SidecarError for malformed JSON verifier responses", async () => {
     const { server, url } = await startVerifySidecar((res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end("{not json");
@@ -197,7 +197,24 @@ describe("ChioSidecarClient.verifyReceipt", () => {
       const client = new ChioSidecarClient({ sidecarUrl: url });
       await expectSidecarError(
         client.verifyReceipt(testReceipt()),
-        "chio_invalid_receipt",
+        "chio_evaluation_failed",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("throws evaluation-failed SidecarError when verifier response omits valid", async () => {
+    const { server, url } = await startVerifySidecar((res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok" }));
+    });
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.verifyReceipt(testReceipt()),
+        "chio_evaluation_failed",
       );
     } finally {
       await closeServer(server);

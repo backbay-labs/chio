@@ -59,7 +59,28 @@ func TestVerifyReceipt_InvalidReceiptValidFalse(t *testing.T) {
 	}
 }
 
-func TestVerifyReceipt_FourXXClassifiedAsInvalidReceipt(t *testing.T) {
+func TestVerifyReceipt_Non200ValidFalseClassifiedAsInvalidReceipt(t *testing.T) {
+	srv := verifyServer(t, http.StatusUnprocessableEntity, map[string]bool{"valid": false})
+	defer srv.Close()
+
+	client := NewSidecarClient(srv.URL, 5)
+	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if ok {
+		t.Fatalf("expected valid=false on definitive invalid receipt verdict")
+	}
+	var sErr *SidecarError
+	if !errors.As(err, &sErr) {
+		t.Fatalf("expected *SidecarError, got %T: %v", err, err)
+	}
+	if sErr.Code != ErrInvalidReceipt {
+		t.Fatalf("expected %q for definitive invalid receipt verdict, got %q", ErrInvalidReceipt, sErr.Code)
+	}
+	if sErr.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected StatusCode=%d, got %d", http.StatusUnprocessableEntity, sErr.StatusCode)
+	}
+}
+
+func TestVerifyReceipt_NonVerdictFourXXClassifiedAsEvaluationFailed(t *testing.T) {
 	cases := []int{
 		http.StatusBadRequest,   // 400
 		http.StatusUnauthorized, // 401
@@ -81,8 +102,40 @@ func TestVerifyReceipt_FourXXClassifiedAsInvalidReceipt(t *testing.T) {
 			if !errors.As(err, &sErr) {
 				t.Fatalf("expected *SidecarError, got %T: %v", err, err)
 			}
-			if sErr.Code != ErrInvalidReceipt {
-				t.Fatalf("expected %q for status %d, got %q", ErrInvalidReceipt, status, sErr.Code)
+			if sErr.Code != ErrEvaluationFailed {
+				t.Fatalf("expected %q for status %d without verdict, got %q", ErrEvaluationFailed, status, sErr.Code)
+			}
+			if sErr.StatusCode != status {
+				t.Fatalf("expected StatusCode=%d, got %d", status, sErr.StatusCode)
+			}
+		})
+	}
+}
+
+func TestVerifyReceipt_NonVerdictUnavailableStatusesClassifiedAsSidecarUnavailable(t *testing.T) {
+	cases := []int{
+		http.StatusNotFound,           // 404
+		http.StatusTooManyRequests,    // 429
+		http.StatusRequestTimeout,     // 408
+		http.StatusServiceUnavailable, // 503
+	}
+	for _, status := range cases {
+		status := status
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := verifyServer(t, status, map[string]string{"error": "sidecar unavailable"})
+			defer srv.Close()
+
+			client := NewSidecarClient(srv.URL, 5)
+			ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+			if ok {
+				t.Fatalf("expected valid=false on %d", status)
+			}
+			var sErr *SidecarError
+			if !errors.As(err, &sErr) {
+				t.Fatalf("expected *SidecarError, got %T: %v", err, err)
+			}
+			if sErr.Code != ErrSidecarUnavailable {
+				t.Fatalf("expected %q for status %d without verdict, got %q", ErrSidecarUnavailable, status, sErr.Code)
 			}
 			if sErr.StatusCode != status {
 				t.Fatalf("expected StatusCode=%d, got %d", status, sErr.StatusCode)
@@ -191,6 +244,33 @@ func TestVerifyReceipt_BodyReadFailureClassifiedAsSidecarUnreachable(t *testing.
 	}
 	if sErr.Code != ErrSidecarUnreachable {
 		t.Fatalf("expected %q on body read failure, got %q", ErrSidecarUnreachable, sErr.Code)
+	}
+}
+
+func TestVerifyReceipt_BodyReadTimeoutClassifiedAsSidecarUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"valid":`))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		time.Sleep(200 * time.Millisecond)
+	}))
+	defer srv.Close()
+
+	client := NewSidecarClient(srv.URL, 5)
+	client.client.Timeout = 25 * time.Millisecond
+	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if ok {
+		t.Fatalf("expected valid=false on body read timeout")
+	}
+	var sErr *SidecarError
+	if !errors.As(err, &sErr) {
+		t.Fatalf("expected *SidecarError, got %T: %v", err, err)
+	}
+	if sErr.Code != ErrSidecarUnreachable {
+		t.Fatalf("expected %q on body read timeout, got %q", ErrSidecarUnreachable, sErr.Code)
 	}
 }
 

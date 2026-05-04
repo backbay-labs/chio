@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -141,21 +140,16 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode != http.StatusOK {
-		// Fail closed (valid=false) but classify the failure so callers can
-		// distinguish "the sidecar definitively rejected this receipt" from
-		// "the sidecar itself is unhealthy or unreachable".
-		//
-		// 4xx with a body that carries a verdict means the sidecar made a
-		// decision about the receipt, so we keep ErrInvalidReceipt for those.
-		// 5xx (and the 408 request timeout) indicate the verify endpoint or
-		// upstream infrastructure is degraded; classifying those as
-		// ErrInvalidReceipt would mislead callers into treating a sidecar
-		// outage as a definitive "this receipt is invalid".
-		code := ErrInvalidReceipt
-		if isSidecarTransportFailure(resp.StatusCode) {
-			code = ErrSidecarUnavailable
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, &SidecarError{
+			Code:    ErrSidecarUnreachable,
+			Message: "failed to read verify response body: " + err.Error(),
 		}
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		code := classifyVerifyNonOK(resp.StatusCode, respBody)
 		return false, &SidecarError{
 			Code:       code,
 			Message:    "sidecar verify returned non-200: " + resp.Status,
@@ -166,13 +160,9 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 	var result struct {
 		Valid *bool `json:"valid"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		code := ErrEvaluationFailed
-		if isVerifyResponseReadFailure(err) {
-			code = ErrSidecarUnreachable
-		}
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		return false, &SidecarError{
-			Code:    code,
+			Code:    ErrEvaluationFailed,
 			Message: "failed to decode verify response: " + err.Error(),
 		}
 	}
@@ -195,8 +185,24 @@ func isSidecarTransportFailure(status int) bool {
 	return status >= 500 && status <= 599
 }
 
-func isVerifyResponseReadFailure(err error) bool {
-	return errors.Is(err, io.ErrUnexpectedEOF) || err.Error() == "unexpected EOF"
+func classifyVerifyNonOK(status int, body []byte) string {
+	if hasDefinitiveInvalidReceiptVerdict(body) {
+		return ErrInvalidReceipt
+	}
+	if isSidecarTransportFailure(status) || status == http.StatusNotFound || status == http.StatusTooManyRequests {
+		return ErrSidecarUnavailable
+	}
+	return ErrEvaluationFailed
+}
+
+func hasDefinitiveInvalidReceiptVerdict(body []byte) bool {
+	var result struct {
+		Valid *bool `json:"valid"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || result.Valid == nil {
+		return false
+	}
+	return !*result.Valid
 }
 
 // HealthCheck checks whether the sidecar is running.
