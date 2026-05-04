@@ -2,10 +2,13 @@
 //!
 //! Three verification surfaces are exposed:
 //!
-//! - [`SigstoreVerifier::verify_bundle`] performs the full keyless flow
+//! - [`SigstoreVerifier::verify_bundle`] performs the keyless flow
 //!   against a Sigstore protobuf Bundle (cert chain + signature + Rekor
-//!   transparency entry). This is the strongest assertion the crate
-//!   provides and is the recommended entry point for new consumers.
+//!   transparency entry). `sigstore-rs` validates the transparency entry
+//!   against the signing materials, but does not currently verify Rekor
+//!   Merkle inclusion or the Signed Entry Timestamp (SET). Until Chio
+//!   performs those checks itself, this path marks
+//!   [`VerifiedAttestation::rekor_inclusion_verified`] as `false`.
 //!
 //! - [`SigstoreVerifier::verify_blob`] and [`SigstoreVerifier::verify_bytes`]
 //!   verify a detached `(artifact, signature, leaf-cert)` triple against
@@ -239,7 +242,7 @@ impl AttestVerifier for SigstoreVerifier {
             certificate_identity: identity,
             certificate_oidc_issuer: expected.certificate_oidc_issuer.clone(),
             rekor_log_index,
-            rekor_inclusion_verified: true,
+            rekor_inclusion_verified: bundle_rekor_inclusion_verified(&bundle),
             signed_at,
         })
     }
@@ -507,6 +510,16 @@ fn bundle_rekor_metadata(bundle: &Bundle) -> (u64, SystemTime) {
         SystemTime::now()
     };
     (index, signed_at)
+}
+
+fn bundle_rekor_inclusion_verified(_bundle: &Bundle) -> bool {
+    // `sigstore-rs` 0.13 checks that the Rekor transparency entry is
+    // consistent with the signing materials, but its verifier still leaves
+    // Merkle inclusion and SET verification unimplemented. Bundled proof
+    // fields are therefore evidence to be verified later, not a Chio-verified
+    // inclusion result. Keep this fail-closed for callers that require Rekor
+    // inclusion by reporting `false` until this crate performs both checks.
+    false
 }
 
 fn map_bundle_verification_error(err: sigstore::bundle::verify::VerificationError) -> AttestError {
@@ -1037,6 +1050,61 @@ mod sigstore_internal_tests {
         assert_eq!(
             ID_KP_CODE_SIGNING,
             ObjectIdentifier::new_unwrap("1.3.6.1.5.5.7.3.3")
+        );
+    }
+
+    #[test]
+    fn bundled_rekor_materials_do_not_imply_chio_inclusion_verification() {
+        use sigstore_protobuf_specs::dev::sigstore::{
+            bundle::v1::{verification_material, Bundle, VerificationMaterial},
+            common::v1::{LogId, X509Certificate},
+            rekor::v1::{
+                Checkpoint, InclusionPromise, InclusionProof, KindVersion, TransparencyLogEntry,
+            },
+        };
+
+        let bundle = Bundle {
+            media_type: "application/vnd.dev.sigstore.bundle+json;version=0.2".to_owned(),
+            content: None,
+            verification_material: Some(VerificationMaterial {
+                content: Some(verification_material::Content::Certificate(
+                    X509Certificate {
+                        raw_bytes: vec![0x30],
+                    },
+                )),
+                tlog_entries: vec![TransparencyLogEntry {
+                    log_index: 42,
+                    log_id: Some(LogId {
+                        key_id: vec![1, 2, 3],
+                    }),
+                    kind_version: Some(KindVersion {
+                        kind: "hashedrekord".to_owned(),
+                        version: "0.0.1".to_owned(),
+                    }),
+                    integrated_time: 1_700_000_000,
+                    inclusion_promise: Some(InclusionPromise {
+                        signed_entry_timestamp: vec![4, 5, 6],
+                    }),
+                    inclusion_proof: Some(InclusionProof {
+                        log_index: 42,
+                        root_hash: vec![7; 32],
+                        tree_size: 64,
+                        hashes: vec![vec![8; 32], vec![9; 32]],
+                        checkpoint: Some(Checkpoint {
+                            envelope:
+                                "rekor.sigstore.dev - 1193050959916656506\n64\nroot\n\n-signature"
+                                    .to_owned(),
+                        }),
+                    }),
+                    canonicalized_body: br#"{"kind":"hashedrekord"}"#.to_vec(),
+                }],
+                timestamp_verification_data: None,
+            }),
+        };
+
+        assert!(
+            !bundle_rekor_inclusion_verified(&bundle),
+            "Chio must not report Rekor inclusion as verified from bundled materials until it verifies the Merkle proof and SET itself"
         );
     }
 }

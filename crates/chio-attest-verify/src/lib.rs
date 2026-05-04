@@ -10,8 +10,8 @@
 //! - the signing certificate chains to the embedded Fulcio trust root,
 //! - the certificate's OIDC issuer matches the expected issuer exactly,
 //! - the certificate identity SAN matches the caller-supplied regexp,
-//! - and (where applicable) the Rekor inclusion was reconciled against the
-//!   bundle's transparency log entry.
+//! - and `rekor_inclusion_verified` truthfully reflects whether this crate
+//!   verified Rekor Merkle inclusion and the Signed Entry Timestamp (SET).
 //!
 //! Any input that does not satisfy all of those properties yields one of
 //! the [`AttestError`] variants. There is no path through this crate that
@@ -220,10 +220,12 @@ pub struct VerifiedAttestation {
     /// Rekor log index, where available. `0` if the underlying bundle did
     /// not carry a transparency log entry index.
     pub rekor_log_index: u64,
-    /// `true` when this verification path consumed and reconciled a Rekor
-    /// transparency log entry; `false` for raw blob/bytes paths that lack
-    /// a bundle. Audit consumers MUST treat `false` as a weaker assertion
-    /// even though the cert chain and signature were still validated.
+    /// `true` only when this crate verified Rekor Merkle inclusion and the
+    /// Signed Entry Timestamp (SET). Currently `false` for all Sigstore
+    /// paths: raw blob/bytes inputs lack a bundle, and bundle verification
+    /// only confirms transparency-entry consistency through `sigstore-rs`.
+    /// Audit consumers MUST treat `false` as a weaker assertion even though
+    /// the cert chain and signature were still validated.
     pub rekor_inclusion_verified: bool,
     /// Best-effort signing time, derived from the Rekor integrated time
     /// when present and otherwise from the certificate `notBefore`.
