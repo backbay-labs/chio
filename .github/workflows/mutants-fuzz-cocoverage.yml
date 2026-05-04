@@ -106,10 +106,17 @@ jobs:
         if: steps.forced.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+          GH_FUZZ_BUDGET_CAP_MODE: warn
         run: |
           set -euo pipefail
           # Cocoverage runs share the 1,800 min/30d envelope with
-          # cflite_*.yml and fuzz.yml. Budget failures stop the job.
+          # cflite_*.yml and fuzz.yml. The cap is advisory: cocoverage
+          # cron minutes count against the same envelope they gate, so a
+          # hard halt becomes self-perpetuating once breached and pins
+          # the workflow red. The script still emits used/cap/remaining
+          # for operator visibility. Matches the `mutants-nightly` knob
+          # added in PR #519.
           if [[ -x scripts/check-fuzz-budget.sh ]]; then
             scripts/check-fuzz-budget.sh "${{ github.repository }}"
           else

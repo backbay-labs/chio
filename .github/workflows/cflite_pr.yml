@@ -63,8 +63,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+          GH_FUZZ_BUDGET_CAP_MODE: warn
         run: |
           set -euo pipefail
+          # Cap is advisory: cflite_pr shares the 1,800 min/30 d envelope
+          # with cflite_batch, fuzz.yml, mutants.yml, and
+          # mutants-fuzz-cocoverage.yml. Once the scheduled lanes breach
+          # the cap the PR-time guard would otherwise pin every PR's
+          # fuzz check red until the trailing window decays, with no
+          # operator action that closes the loop. The script still emits
+          # used/cap/remaining for visibility. Matches the
+          # `mutants-nightly` knob added in PR #519.
           scripts/check-fuzz-budget.sh "${{ github.repository }}"
 
   changed-target-sampling:

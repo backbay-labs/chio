@@ -92,11 +92,19 @@ jobs:
       - name: Verify 30-day fuzz budget
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+          GH_FUZZ_BUDGET_CAP_MODE: warn
         run: |
           set -euo pipefail
           # Reuse the cflite budget guard; its WORKFLOWS array enumerates
           # every fuzz workflow (cflite_pr.yml, cflite_batch.yml, fuzz.yml)
-          # against the 1,800-min/30-day cap.
+          # against the 1,800-min/30-day cap. The cap is advisory here:
+          # the cron itself contributes minutes to the trailing 30-day
+          # window, so a hard halt becomes self-perpetuating once the
+          # budget is exceeded and leaves the workflow permanently red.
+          # The script still emits its used/cap/remaining line for the
+          # operator dashboard. The matching `mutants-nightly` knob was
+          # added in PR #519.
           scripts/check-fuzz-budget.sh "${{ github.repository }}"
 
   fuzz-scheduled:

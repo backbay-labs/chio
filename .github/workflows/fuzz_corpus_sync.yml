@@ -55,7 +55,27 @@ jobs:
         working-directory: chio
         run: bash scripts/check-upstream-skips.sh
 
+      # The sibling private corpus repo `bb-connor/arc-fuzz-corpus` and the
+      # `FUZZ_CORPUS_PAT` token are provisioned out-of-band; until they
+      # exist this workflow has nothing to pull, so skip the sync cleanly
+      # rather than hard-failing every Sunday cron with `Input required and
+      # not supplied: token`. The cflite_*.yml workflows already gate their
+      # storage-repo wiring on the same secret.
+      - name: Detect corpus storage availability
+        id: storage
+        env:
+          FUZZ_CORPUS_PAT: ${{ secrets.FUZZ_CORPUS_PAT }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${FUZZ_CORPUS_PAT}" ]]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "fuzz_corpus_sync: FUZZ_CORPUS_PAT not configured; skipping sync"
+          fi
+
       - name: Checkout arc-fuzz-corpus sibling repo
+        if: steps.storage.outputs.enabled == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           repository: ${{ env.CORPUS_REPO }}
@@ -66,6 +86,7 @@ jobs:
 
       - name: Record source corpus commit
         id: source
+        if: steps.storage.outputs.enabled == 'true'
         working-directory: arc-fuzz-corpus
         run: |
           set -euo pipefail
@@ -79,6 +100,7 @@ jobs:
 
       - name: Copy minimized seeds into fuzz/corpus/<target>/
         id: copy
+        if: steps.storage.outputs.enabled == 'true'
         working-directory: chio
         run: |
           set -euo pipefail
@@ -120,12 +142,12 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Bail out early if no new seeds
-        if: steps.copy.outputs.added_files == '0'
+        if: steps.storage.outputs.enabled == 'true' && steps.copy.outputs.added_files == '0'
         run: |
           echo "no new minimized seeds; skipping gitleaks + PR steps"
 
       - name: Stage candidate diff (chio worktree)
-        if: steps.copy.outputs.added_files != '0'
+        if: steps.storage.outputs.enabled == 'true' && steps.copy.outputs.added_files != '0'
         working-directory: chio
         run: |
           set -euo pipefail
@@ -135,7 +157,7 @@ jobs:
           git status --short
 
       - name: Install gitleaks
-        if: steps.copy.outputs.added_files != '0'
+        if: steps.storage.outputs.enabled == 'true' && steps.copy.outputs.added_files != '0'
         run: |
           set -euo pipefail
           mkdir -p "${HOME}/.local/bin"
@@ -150,7 +172,7 @@ jobs:
 
       - name: Run gitleaks against candidate corpus diff
         id: gitleaks
-        if: steps.copy.outputs.added_files != '0'
+        if: steps.storage.outputs.enabled == 'true' && steps.copy.outputs.added_files != '0'
         working-directory: chio
         run: |
           set -euo pipefail
@@ -174,7 +196,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Upload gitleaks report
-        if: always() && steps.copy.outputs.added_files != '0'
+        if: always() && steps.storage.outputs.enabled == 'true' && steps.copy.outputs.added_files != '0'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gitleaks-report-${{ github.run_id }}
@@ -183,7 +205,7 @@ jobs:
           retention-days: 30
 
       - name: Open or update sync PR
-        if: steps.copy.outputs.added_files != '0' && steps.gitleaks.outputs.result == 'clean'
+        if: steps.storage.outputs.enabled == 'true' && steps.copy.outputs.added_files != '0' && steps.gitleaks.outputs.result == 'clean'
         working-directory: chio
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
