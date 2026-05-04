@@ -108,14 +108,55 @@ fn anchor_carries_signed_state_when_signer_present() {
         Ok(a) => a,
         Err(e) => panic!("anchor: {e}"),
     };
+    // Signer hint is present but no signature payload was supplied, so
+    // the anchor records `UnsignedSignerStubbed`. Constructing
+    // `SigningState::Signed { signature_hex: "" }` here would expose the
+    // P0 forgery vector documented on the lineage `SigningState` enum:
+    // verifiers matching `Signed { .. }` alone would treat an unsigned
+    // anchor as authenticated.
     match anchor.signing {
-        SigningState::Signed { algorithm, .. } => {
+        SigningState::UnsignedSignerStubbed { ref algorithm } => {
             assert_eq!(algorithm, "hybrid:ed25519+ml-dsa-65");
         }
-        SigningState::UnsignedSoftDepAbsent => {
-            panic!("signer hint must produce signed state");
+        other => {
+            panic!("signer hint without payload must produce UnsignedSignerStubbed, got {other:?}");
         }
     }
+    assert!(!anchor.is_signed());
+}
+
+#[test]
+fn verify_rejects_signed_state_with_empty_signature_payload() {
+    // Regression: an attacker (or buggy producer) cannot forge an
+    // authenticated-looking anchor by deserialising
+    // `SigningState::Signed { signature_hex: "" }` over an otherwise
+    // faithful proof. `verify_model_card_anchor` MUST fail-closed on the
+    // empty-payload shape symmetrically with
+    // `AnchoredFrontier::is_signed` over in `chio-lineage`.
+    let card = good_card();
+    let bytes = match card.to_canonical_json() {
+        Ok(b) => b,
+        Err(e) => panic!("encode: {e}"),
+    };
+    let attestation = attestation_for(&bytes);
+    let verified = VerifiedModelCard {
+        card,
+        attestation: attestation.clone(),
+    };
+    let mut anchor = match anchor_model_card(&verified, &bytes, "chio.lineage.graph/v1", None) {
+        Ok(a) => a,
+        Err(e) => panic!("anchor: {e}"),
+    };
+    anchor.signing = SigningState::Signed {
+        algorithm: "hybrid:ed25519+ml-dsa-65".to_string(),
+        signature_hex: String::new(),
+    };
+    assert!(!anchor.is_signed());
+    let res = verify_model_card_anchor(&anchor, &bytes, &attestation);
+    assert!(matches!(
+        res,
+        Err(chio_weights::WeightsError::BundleRejected(_))
+    ));
 }
 
 #[test]

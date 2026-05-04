@@ -27,13 +27,16 @@
 //! # Soft-dep state
 //!
 //! `chio-lineage`'s [`SigningState`] enum records hybrid-signing presence.
-//! When the caller passes `Some(algorithm)`, the anchor records the
-//! algorithm string verbatim with an empty signature placeholder; when the
-//! caller passes `None`, the anchor records
-//! [`SigningState::UnsignedSoftDepAbsent`]. The shape mirrors
-//! [`chio_lineage::anchor::pin_frontier`] so a downstream verifier can
-//! distinguish a verified anchor from a degraded unsigned one without
-//! learning a model-card-specific schema.
+//! When the caller passes `Some(algorithm)` (i.e. a signer was named but
+//! M03 hybrid signing has not produced a payload yet), the anchor records
+//! [`SigningState::UnsignedSignerStubbed`] so verifiers fail-closed; when
+//! the caller passes `None`, the anchor records
+//! [`SigningState::UnsignedSoftDepAbsent`]. Neither variant impersonates
+//! [`SigningState::Signed`], because emitting `Signed` with an empty
+//! `signature_hex` would let a verifier matching on the variant alone treat
+//! the artifact as authenticated. M10 P5.T1 anchors therefore never
+//! construct [`SigningState::Signed`]; that variant is reserved for the
+//! eventual M03 wire-up that supplies a real signature payload.
 
 use chio_lineage::anchor::{CanonicalSource, FrontierDigest, SigningState};
 use chrono::{DateTime, Utc};
@@ -95,6 +98,22 @@ pub struct ModelCardLineageAnchor {
     /// Card `expires_at` lifted so anchor consumers can reason about
     /// liveness without re-parsing the card body.
     pub card_expires_at: DateTime<Utc>,
+}
+
+impl ModelCardLineageAnchor {
+    /// Return `true` when the artifact carries a real (non-empty) hybrid
+    /// signature payload. Mirrors
+    /// [`chio_lineage::anchor::AnchoredFrontier::is_signed`] so callers can
+    /// fail-closed without re-matching every [`SigningState`] variant. A
+    /// `Signed` record carrying an empty `signature_hex` is treated as
+    /// unsigned to defeat the empty-payload forgery vector.
+    #[must_use]
+    pub fn is_signed(&self) -> bool {
+        matches!(
+            &self.signing,
+            SigningState::Signed { signature_hex, .. } if !signature_hex.is_empty()
+        )
+    }
 }
 
 /// Compute the SHA-256 digest of the canonical lineage projection for a
@@ -162,10 +181,16 @@ pub fn anchor_model_card(
     let projection = anchor_projection_bytes(card_bytes, &verified.attestation)?;
     let digest_hex = sha256_hex(&projection);
 
+    // Fail-closed: M10 P5.T1 never has a real signature payload to record,
+    // so we MUST NOT construct `SigningState::Signed { signature_hex: "" }`
+    // here. Doing so would let a verifier matching `SigningState::Signed
+    // { .. }` treat the anchor as authenticated even though no M03 hybrid
+    // signature exists. Until M03 plumbs a real payload through this
+    // helper, a signer hint produces `UnsignedSignerStubbed` so verifiers
+    // see an explicit unsigned variant.
     let signing = match signer_hint {
-        Some(algorithm) => SigningState::Signed {
+        Some(algorithm) => SigningState::UnsignedSignerStubbed {
             algorithm: algorithm.to_string(),
-            signature_hex: String::new(),
         },
         None => SigningState::UnsignedSoftDepAbsent,
     };
@@ -256,6 +281,21 @@ pub fn verify_model_card_anchor(
             "model card anchor rekor_inclusion_verified mismatch: expected {}, got {}",
             attestation.rekor_inclusion_verified, anchor.rekor_inclusion_verified
         )));
+    }
+
+    // Defense-in-depth: a `Signed` variant carrying an empty signature
+    // payload would represent a forgery vector against verifiers that match
+    // on the variant alone. This helper rejects that shape symmetrically
+    // with `chio_lineage::anchor::AnchoredFrontier::is_signed`. Anchors
+    // produced by `anchor_model_card` never construct `Signed`; rejecting
+    // here also covers anchors deserialised from external bytes.
+    if let SigningState::Signed { signature_hex, .. } = &anchor.signing {
+        if signature_hex.is_empty() {
+            return Err(WeightsError::BundleRejected(
+                "model card anchor signing state was Signed but signature_hex was empty"
+                    .to_string(),
+            ));
+        }
     }
 
     let card = crate::card::ModelCard::from_canonical_json(card_bytes)?;
@@ -376,11 +416,16 @@ mod tests {
             Ok(a) => a,
             Err(e) => panic!("anchor: {e}"),
         };
+        // Signer hint is present but no signature payload was supplied, so
+        // the anchor MUST record `UnsignedSignerStubbed`. A naive `Signed`
+        // variant with empty `signature_hex` would let a verifier matching
+        // on the variant alone treat the artifact as authenticated.
         assert!(matches!(
             anchor.signing,
-            SigningState::Signed { ref algorithm, .. }
+            SigningState::UnsignedSignerStubbed { ref algorithm }
                 if algorithm == "hybrid:ed25519+ml-dsa-65"
         ));
+        assert!(!anchor.is_signed());
     }
 
     #[test]
