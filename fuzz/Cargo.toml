@@ -52,6 +52,10 @@ libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 # Pinned to the same 1.x line consumed by chio-core-types / chio-manifest.
 serde_json = "1"
+# ClusterFuzzLite's base builder can expose an older system OpenSSL than
+# webauthn-attestation-ca accepts. Keep the fuzz workspace hermetic without
+# changing production crate features.
+openssl = { version = "0.10", features = ["vendored"] }
 
 # `unwrap_used`/`expect_used` denied so fuzz targets cannot mask panics
 # behind a hidden `.unwrap()`. Targets must use `if let Ok(_) = ...` or
