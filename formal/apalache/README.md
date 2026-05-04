@@ -22,8 +22,8 @@ solver, and 30 minute per-invariant timeout in CI.
 | Invariant | Spec | Config | Purpose |
 | --- | --- | --- | --- |
 | `MonotoneLogApalache` | `MonotoneLogApalache.tla` | `MCMonotoneLogApalache.cfg` | Port of `formal/tla/RevocationPropagation.tla` `MonotoneLog` with explicit Apalache type annotations. |
-| `RevocationCutCompleteness` | `RevocationCutCompleteness.tla` | `MCRevocationCutCompleteness.cfg` | Lifts Lean `revocation_is_cut` into a bounded state-machine invariant over direct delegation cuts. |
-| `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | Names the single Apalache invariant that replaces the prior joint discharge of `RETIRED-SQLITE-CROSS-ROW`. |
+| `RevocationCutCompleteness` | `RevocationCutCompleteness.tla` | `MCRevocationCutCompleteness.cfg` | Lifts Lean `revocation_is_cut` into a bounded state-machine invariant over transitive delegation cuts. |
+| `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | Names the Apalache invariant that replaces the prior joint discharge of `RETIRED-SQLITE-CROSS-ROW`, with receipt persistence and allow publication split into separate actions. |
 | `KernelTransitionCancelSafe` | `KernelTransitionCancelSafe.tla` | `MCKernelTransitionCancelSafe.cfg` | Models an interrupted kernel transition and proves rollback leaves budget and receipt state unchanged. |
 
 ## Local smoke commands

@@ -46,6 +46,12 @@ jobs:
           command -v apalache-mc
           apalache-mc version || true
 
+      - name: Formal slice contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/check-apalache-formal-slice.py
+
       - name: M06 Apalache safety checks
         shell: bash
         run: |

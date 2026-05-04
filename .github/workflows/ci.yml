@@ -411,8 +411,8 @@ jobs:
   # AttenuationPreserving) via MCRevocationPropagation.cfg at PROCS=4, CAPS=8.
   # The PR tier uses a bounded length=6 smoke depth to keep review latency
   # stable. Liveness (RevocationEventuallySeen) runs nightly; see
-  # formal-tla-liveness in nightly.yml. Fails closed: a non-zero apalache-mc
-  # exit blocks merge.
+  # formal-tla-liveness in apalache-temporal.yml. Fails closed: a non-zero
+  # apalache-mc exit blocks merge.
   formal-tla:
     name: formal-tla (apalache safety)
     # owner: M03

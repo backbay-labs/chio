@@ -50,13 +50,10 @@ jobs:
           cargo test -p chio-credentials --test property_passport -- --nocapture
           cargo test -p chio-policy --test property_evaluate -- --nocapture
 
-  # The nightly RevocationEventuallySeen liveness check used to live here at
-  # length=24. Trajectory-3.1 PR #516 split apalache-nightly.yml into the
-  # required apalache-safety.yml (M06 invariants) and advisory
-  # apalache-temporal.yml (RevocationEventuallySeen continue-on-error pending
-  # apalache 0.50.1 temporal-encoding fix; trajectory-4.M06-followup). The
-  # nightly copy was a duplicate of the broken legacy property and was the
-  # main driver of red nightly runs. Removed by trj3.2.
+  # The nightly RevocationEventuallySeen liveness check runs in the dedicated
+  # fail-closed apalache-temporal.yml workflow at length=24. Keeping it in a
+  # separate scheduled workflow avoids duplicating the safety sweep here while
+  # preserving the formal OWNERS nightly-liveness obligation.
 
   # Nightly Kani lane: runs the union of `lanes.pr` and `lanes.nightly_only`
   # from formal/rust-verification/kani-public-harnesses.toml. The PR job
