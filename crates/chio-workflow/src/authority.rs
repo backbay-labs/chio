@@ -309,7 +309,7 @@ impl WorkflowAuthority {
 
     /// Finalize a workflow execution and produce a signed receipt.
     pub fn finalize(
-        &mut self,
+        &self,
         mut execution: WorkflowExecution,
     ) -> Result<WorkflowReceipt, WorkflowError> {
         execution.active = false;

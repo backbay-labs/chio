@@ -382,7 +382,10 @@ impl OpenMarketPenaltyIssueRequest {
         if let Some(activation) = self.activation.as_ref() {
             verify_signed_activation(activation)?;
         }
-        ensure_open_market_issue_authority_signers(self, &self.fee_schedule.signer_key)?;
+        ensure_open_market_issue_authority_signers(
+            self,
+            std::slice::from_ref(&self.fee_schedule.signer_key),
+        )?;
         validate_non_empty(&self.issued_by, "issued_by")?;
         validate_monetary_amount(&self.penalty_amount, "penalty_amount")?;
         if self.evidence_refs.is_empty() {
@@ -504,8 +507,22 @@ pub fn build_open_market_penalty_artifact(
     issued_at: u64,
     trusted_local_operator_signer: &PublicKey,
 ) -> Result<OpenMarketPenaltyArtifact, String> {
+    build_open_market_penalty_artifact_with_trusted_signers(
+        local_operator_id,
+        request,
+        issued_at,
+        std::slice::from_ref(trusted_local_operator_signer),
+    )
+}
+
+pub fn build_open_market_penalty_artifact_with_trusted_signers(
+    local_operator_id: &str,
+    request: &OpenMarketPenaltyIssueRequest,
+    issued_at: u64,
+    trusted_local_operator_signers: &[PublicKey],
+) -> Result<OpenMarketPenaltyArtifact, String> {
     request.validate()?;
-    ensure_open_market_issue_authority_signers(request, trusted_local_operator_signer)?;
+    ensure_open_market_issue_authority_signers(request, trusted_local_operator_signers)?;
     validate_non_empty(local_operator_id, "local_operator_id")?;
     if request.fee_schedule.body.governing_operator_id != local_operator_id
         || request.charter.body.governing_operator_id != local_operator_id
@@ -581,6 +598,18 @@ pub fn evaluate_open_market_penalty(
     now: u64,
     trusted_local_operator_signer: &PublicKey,
 ) -> Result<OpenMarketPenaltyEvaluation, String> {
+    evaluate_open_market_penalty_with_trusted_signers(
+        request,
+        now,
+        std::slice::from_ref(trusted_local_operator_signer),
+    )
+}
+
+pub fn evaluate_open_market_penalty_with_trusted_signers(
+    request: &OpenMarketPenaltyEvaluationRequest,
+    now: u64,
+    trusted_local_operator_signers: &[PublicKey],
+) -> Result<OpenMarketPenaltyEvaluation, String> {
     request.validate()?;
     let evaluated_at = request.evaluated_at.unwrap_or(now);
 
@@ -652,7 +681,7 @@ pub fn evaluate_open_market_penalty(
         }
     }
     if let Err(error) =
-        ensure_open_market_evaluation_authority_signers(request, trusted_local_operator_signer)
+        ensure_open_market_evaluation_authority_signers(request, trusted_local_operator_signers)
     {
         return Ok(open_market_failure(
             request,
@@ -1073,46 +1102,46 @@ fn verify_signed_penalty(penalty: &SignedOpenMarketPenalty) -> Result<(), String
 
 fn ensure_open_market_issue_authority_signers(
     request: &OpenMarketPenaltyIssueRequest,
-    expected_signer: &PublicKey,
+    trusted_signers: &[PublicKey],
 ) -> Result<(), String> {
     ensure_matching_signer_key(
         "open-market fee schedule",
         &request.fee_schedule.signer_key,
-        expected_signer,
+        trusted_signers,
     )?;
     ensure_matching_signer_key(
         "governance charter",
         &request.charter.signer_key,
-        expected_signer,
+        trusted_signers,
     )?;
-    ensure_matching_signer_key("governance case", &request.case.signer_key, expected_signer)?;
+    ensure_matching_signer_key("governance case", &request.case.signer_key, trusted_signers)?;
     if let Some(activation) = request.activation.as_ref() {
-        ensure_matching_signer_key("trust activation", &activation.signer_key, expected_signer)?;
+        ensure_matching_signer_key("trust activation", &activation.signer_key, trusted_signers)?;
     }
     Ok(())
 }
 
 fn ensure_open_market_evaluation_authority_signers(
     request: &OpenMarketPenaltyEvaluationRequest,
-    expected_signer: &PublicKey,
+    trusted_signers: &[PublicKey],
 ) -> Result<(), String> {
     ensure_matching_signer_key(
         "open-market fee schedule",
         &request.fee_schedule.signer_key,
-        expected_signer,
+        trusted_signers,
     )?;
     ensure_matching_signer_key(
         "governance charter",
         &request.charter.signer_key,
-        expected_signer,
+        trusted_signers,
     )?;
-    ensure_matching_signer_key("governance case", &request.case.signer_key, expected_signer)?;
-    ensure_matching_signer_key("penalty", &request.penalty.signer_key, expected_signer)?;
+    ensure_matching_signer_key("governance case", &request.case.signer_key, trusted_signers)?;
+    ensure_matching_signer_key("penalty", &request.penalty.signer_key, trusted_signers)?;
     if let Some(activation) = request.activation.as_ref() {
-        ensure_matching_signer_key("trust activation", &activation.signer_key, expected_signer)?;
+        ensure_matching_signer_key("trust activation", &activation.signer_key, trusted_signers)?;
     }
     if let Some(prior_penalty) = request.prior_penalty.as_ref() {
-        ensure_matching_signer_key("prior penalty", &prior_penalty.signer_key, expected_signer)?;
+        ensure_matching_signer_key("prior penalty", &prior_penalty.signer_key, trusted_signers)?;
     }
     Ok(())
 }
@@ -1120,11 +1149,14 @@ fn ensure_open_market_evaluation_authority_signers(
 fn ensure_matching_signer_key(
     label: &str,
     signer_key: &PublicKey,
-    expected_signer: &PublicKey,
+    trusted_signers: &[PublicKey],
 ) -> Result<(), String> {
-    if signer_key != expected_signer {
+    if !trusted_signers
+        .iter()
+        .any(|trusted_signer| trusted_signer == signer_key)
+    {
         return Err(format!(
-            "{label} signer does not match the open-market governing authority signer"
+            "{label} signer does not match a trusted open-market governing authority signer"
         ));
     }
     Ok(())

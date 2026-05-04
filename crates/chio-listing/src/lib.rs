@@ -863,11 +863,17 @@ pub fn evaluate_generic_trust_activation(
     if !activation
         .verify_signature()
         .map_err(|error| error.to_string())?
-        || activation.signer_key != *trusted_local_operator_signer
     {
         evaluation.findings.push(GenericTrustActivationFinding {
             code: GenericTrustActivationFindingCode::ActivationUnverifiable,
             message: "trust activation signature is invalid".to_string(),
+        });
+        return Ok(evaluation);
+    }
+    if activation.signer_key != *trusted_local_operator_signer {
+        evaluation.findings.push(GenericTrustActivationFinding {
+            code: GenericTrustActivationFindingCode::ActivationUnverifiable,
+            message: "trust activation signer is not trusted by this local operator".to_string(),
         });
         return Ok(evaluation);
     }

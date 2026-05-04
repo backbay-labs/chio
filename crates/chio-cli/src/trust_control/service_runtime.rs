@@ -705,15 +705,20 @@ pub fn evaluate_generic_trust_activation_request(
         config.authority_seed_path.as_deref(),
         config.authority_db_path.as_deref(),
     )?;
-    if let Some(activation) = request.activation.as_ref() {
-        ensure_signed_by_local_authority(
+    let trusted_authority_signers = trusted_authority_public_keys(config)?;
+    let current_signer = signer_keypair.public_key();
+    let trusted_local_operator_signer = if let Some(activation) = request.activation.as_ref() {
+        ensure_signed_by_trusted_authority(
             "trust activation",
             &activation.signer_key,
-            &signer_keypair.public_key(),
+            &trusted_authority_signers,
         )?;
-    }
+        &activation.signer_key
+    } else {
+        &current_signer
+    };
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_generic_trust_activation(request, now, &signer_keypair.public_key())
+    evaluate_generic_trust_activation(request, now, trusted_local_operator_signer)
         .map_err(CliError::cli_other_error)
 }
 
@@ -798,14 +803,15 @@ pub fn issue_signed_open_market_penalty(
         config.authority_seed_path.as_deref(),
         config.authority_db_path.as_deref(),
     )?;
-    ensure_open_market_issue_signed_by_local_authority(request, &signer_keypair.public_key())?;
+    let trusted_authority_signers = trusted_authority_public_keys(config)?;
+    ensure_open_market_issue_signed_by_trusted_authority(request, &trusted_authority_signers)?;
     let local_operator = public_generic_registry_publisher(config)?;
     let issued_at = request.opened_at.unwrap_or(now_unix_secs()?);
-    let artifact = build_open_market_penalty_artifact(
+    let artifact = build_open_market_penalty_artifact_with_trusted_signers(
         &local_operator.operator_id,
         request,
         issued_at,
-        &signer_keypair.public_key(),
+        &trusted_authority_signers,
     )
     .map_err(CliError::cli_other_error)?;
     SignedOpenMarketPenalty::sign(artifact, &signer_keypair).map_err(|error| {
@@ -819,97 +825,123 @@ pub fn evaluate_open_market_penalty_request(
     config: &TrustServiceConfig,
     request: &OpenMarketPenaltyEvaluationRequest,
 ) -> Result<OpenMarketPenaltyEvaluation, CliError> {
-    let signer_keypair = load_behavioral_feed_signing_keypair(
-        config.authority_seed_path.as_deref(),
-        config.authority_db_path.as_deref(),
-    )?;
-    ensure_open_market_evaluation_signed_by_local_authority(request, &signer_keypair.public_key())?;
+    let trusted_authority_signers = trusted_authority_public_keys(config)?;
+    ensure_open_market_evaluation_signed_by_trusted_authority(request, &trusted_authority_signers)?;
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_open_market_penalty(request, now, &signer_keypair.public_key())
+    evaluate_open_market_penalty_with_trusted_signers(request, now, &trusted_authority_signers)
         .map_err(CliError::cli_other_error)
 }
 
-fn ensure_open_market_issue_signed_by_local_authority(
+fn ensure_open_market_issue_signed_by_trusted_authority(
     request: &OpenMarketPenaltyIssueRequest,
-    expected_signer: &PublicKey,
+    trusted_authority_signers: &[PublicKey],
 ) -> Result<(), CliError> {
-    ensure_signed_by_local_authority(
+    ensure_signed_by_trusted_authority(
         "open-market fee schedule",
         &request.fee_schedule.signer_key,
-        expected_signer,
+        trusted_authority_signers,
     )?;
-    ensure_signed_by_local_authority(
+    ensure_signed_by_trusted_authority(
         "governance charter",
         &request.charter.signer_key,
-        expected_signer,
+        trusted_authority_signers,
     )?;
-    ensure_signed_by_local_authority(
+    ensure_signed_by_trusted_authority(
         "governance case",
         &request.case.signer_key,
-        expected_signer,
+        trusted_authority_signers,
     )?;
     if let Some(activation) = request.activation.as_ref() {
-        ensure_signed_by_local_authority(
+        ensure_signed_by_trusted_authority(
             "trust activation",
             &activation.signer_key,
-            expected_signer,
+            trusted_authority_signers,
         )?;
     }
     Ok(())
 }
 
-fn ensure_open_market_evaluation_signed_by_local_authority(
+fn ensure_open_market_evaluation_signed_by_trusted_authority(
     request: &OpenMarketPenaltyEvaluationRequest,
-    expected_signer: &PublicKey,
+    trusted_authority_signers: &[PublicKey],
 ) -> Result<(), CliError> {
-    ensure_signed_by_local_authority(
+    ensure_signed_by_trusted_authority(
         "open-market fee schedule",
         &request.fee_schedule.signer_key,
-        expected_signer,
+        trusted_authority_signers,
     )?;
-    ensure_signed_by_local_authority(
+    ensure_signed_by_trusted_authority(
         "governance charter",
         &request.charter.signer_key,
-        expected_signer,
+        trusted_authority_signers,
     )?;
-    ensure_signed_by_local_authority(
+    ensure_signed_by_trusted_authority(
         "governance case",
         &request.case.signer_key,
-        expected_signer,
+        trusted_authority_signers,
     )?;
-    ensure_signed_by_local_authority(
+    ensure_signed_by_trusted_authority(
         "open-market penalty",
         &request.penalty.signer_key,
-        expected_signer,
+        trusted_authority_signers,
     )?;
     if let Some(activation) = request.activation.as_ref() {
-        ensure_signed_by_local_authority(
+        ensure_signed_by_trusted_authority(
             "trust activation",
             &activation.signer_key,
-            expected_signer,
+            trusted_authority_signers,
         )?;
     }
     if let Some(prior_penalty) = request.prior_penalty.as_ref() {
-        ensure_signed_by_local_authority(
+        ensure_signed_by_trusted_authority(
             "prior open-market penalty",
             &prior_penalty.signer_key,
-            expected_signer,
+            trusted_authority_signers,
         )?;
     }
     Ok(())
 }
 
-fn ensure_signed_by_local_authority(
+fn ensure_signed_by_trusted_authority(
     label: &str,
     signer_key: &PublicKey,
-    expected_signer: &PublicKey,
+    trusted_authority_signers: &[PublicKey],
 ) -> Result<(), CliError> {
-    if signer_key != expected_signer {
+    if !trusted_authority_signers
+        .iter()
+        .any(|trusted_signer| trusted_signer == signer_key)
+    {
         return Err(CliError::cli_other_error(format!(
-            "{label} signer does not match the local trust-control authority signer"
+            "{label} signer does not match a trusted trust-control authority signer"
         )));
     }
     Ok(())
+}
+
+fn trusted_authority_public_keys(config: &TrustServiceConfig) -> Result<Vec<PublicKey>, CliError> {
+    let status = authority_status_for_config(config)?;
+    if !status.configured {
+        return Err(CliError::cli_other_error(
+            "trust-control authority is not configured".to_string(),
+        ));
+    }
+    let mut trusted = status
+        .trusted_public_keys
+        .iter()
+        .map(|value| PublicKey::from_hex(value))
+        .collect::<Result<Vec<_>, _>>()?;
+    if let Some(current) = status.public_key.as_deref() {
+        let current = PublicKey::from_hex(current)?;
+        if !trusted.iter().any(|public_key| public_key == &current) {
+            trusted.push(current);
+        }
+    }
+    if trusted.is_empty() {
+        return Err(CliError::cli_other_error(
+            "trust-control authority did not publish any trusted signing keys".to_string(),
+        ));
+    }
+    Ok(trusted)
 }
 
 pub fn issue_signed_portable_reputation_summary(
@@ -5059,6 +5091,23 @@ mod service_runtime_tests {
         assert!(unconfigured
             .to_string()
             .contains("does not have an authority configured"));
+    }
+
+    #[test]
+    fn trusted_authority_signer_check_accepts_rotated_keys() {
+        let current = Keypair::generate().public_key();
+        let previous = Keypair::generate().public_key();
+        let outsider = Keypair::generate().public_key();
+        let trusted = vec![previous.clone(), current];
+
+        ensure_signed_by_trusted_authority("trust activation", &previous, &trusted)
+            .expect("previous authority key should remain trusted");
+        let error =
+            ensure_signed_by_trusted_authority("trust activation", &outsider, &trusted)
+                .expect_err("outsider signer should fail closed");
+        assert!(error
+            .to_string()
+            .contains("does not match a trusted trust-control authority signer"));
     }
 
     #[test]
