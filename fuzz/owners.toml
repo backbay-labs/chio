@@ -64,6 +64,10 @@ path  = "crates/chio-openapi-mcp-bridge"
 crate = "chio-kernel-core"
 path  = "crates/chio-kernel-core"
 
+[targets.eval_receipt_bundle]
+crate = "chio-eval-receipt"
+path  = "crates/chio-eval-receipt"
+
 [targets.canonical_json]
 crate = "chio-core-types"
 path  = "crates/chio-core-types"
