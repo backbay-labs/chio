@@ -16,6 +16,10 @@ use crate::{AttestVerifier, ExpectedIdentity, VerifiedAttestation};
 /// Structured event name emitted for every guard load verification path.
 pub const CHIO_GUARD_VERIFY_EVENT: &str = "chio.guard.verify";
 
+/// Stable reason used when Sigstore metadata was verified but Rekor inclusion
+/// was not independently verified by Chio.
+pub const REKOR_INCLUSION_UNVERIFIED_REASON: &str = "rekor-inclusion-unverified";
+
 /// Verification path selected for a guard load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -161,6 +165,27 @@ impl GuardLoadEvent {
             reason: Some(reason.into()),
         }
     }
+
+    /// Build a deny event from a verification report that reached signer
+    /// metadata but did not satisfy the admission contract.
+    pub fn deny_report(
+        source: GuardLoadSource,
+        digest: impl Into<String>,
+        report: &GuardVerificationReport,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            event: CHIO_GUARD_VERIFY_EVENT,
+            result: GuardLoadEventResult::Deny,
+            verification: report.kind,
+            source,
+            digest: digest.into(),
+            subject_digest_sha256: Some(sha256_hex(&report.assertion.digest_sha256)),
+            identity: Some(report.assertion.identity.clone()),
+            rekor_inclusion_verified: report.rekor_inclusion_verified,
+            reason: Some(reason.into()),
+        }
+    }
 }
 
 /// Normalized assertion produced by one verified signing mode.
@@ -213,6 +238,19 @@ impl GuardVerificationReport {
             rekor_inclusion_verified: Some(attestation.rekor_inclusion_verified),
         }
     }
+
+    /// Whether this report satisfies the default guard load admission contract.
+    ///
+    /// Ed25519-only loads have no Sigstore component. Sigstore-only and
+    /// dual-verified loads must carry Chio-verified Rekor inclusion.
+    pub fn admits_guard_load(&self) -> bool {
+        match self.kind {
+            GuardVerificationKind::Ed25519Only => true,
+            GuardVerificationKind::SigstoreOnly | GuardVerificationKind::DualVerified => {
+                self.rekor_inclusion_verified == Some(true)
+            }
+        }
+    }
 }
 
 /// Build the shared expected identity from operator configuration.
@@ -258,15 +296,28 @@ impl<'a> GuardSigstoreVerifier<'a> {
         Self { verifier, expected }
     }
 
-    /// Verify cached `module.wasm` and `sigstore-bundle.json` bytes.
+    /// Verify cached `module.wasm` and `sigstore-bundle.json` bytes for
+    /// admission.
     ///
     /// This is the normal on-disk cache path. The shared attestation verifier
     /// validates the Fulcio chain, expected identity, artifact signature, and
-    /// Rekor transparency-entry consistency. Rekor Merkle inclusion remains a
-    /// stronger bit on [`VerifiedAttestation`]; callers that require that
-    /// property must inspect `rekor_inclusion_verified` and deny while it is
-    /// `false`.
+    /// Rekor transparency-entry consistency. Chio denies admission unless
+    /// [`VerifiedAttestation::rekor_inclusion_verified`] is `true`.
     pub fn verify_bundle(
+        &self,
+        artifact: &[u8],
+        bundle_json: &[u8],
+    ) -> Result<VerifiedAttestation> {
+        let attestation = self.verify_bundle_report_only(artifact, bundle_json)?;
+        require_rekor_inclusion_verified(&attestation)?;
+        Ok(attestation)
+    }
+
+    /// Verify cached bundle material only for reporting or diagnostics.
+    ///
+    /// This method preserves the shared verifier's honest metadata even when
+    /// Rekor inclusion is not Chio-verified. It is not an admission API.
+    pub fn verify_bundle_report_only(
         &self,
         artifact: &[u8],
         bundle_json: &[u8],
@@ -282,6 +333,20 @@ impl<'a> GuardSigstoreVerifier<'a> {
         let artifact = read_cache_file(&layout.module_wasm_path())?;
         let bundle_json = read_cache_file(&layout.sigstore_bundle_json_path())?;
         self.verify_bundle(&artifact, &bundle_json)
+    }
+
+    /// Read and verify a cache layout only for reporting or diagnostics.
+    ///
+    /// This method is intentionally not an admission API. It can return a
+    /// report with `rekor_inclusion_verified = Some(false)`.
+    pub fn verify_cached_layout_report_only(
+        &self,
+        layout: &GuardCacheLayout,
+    ) -> Result<GuardVerificationReport> {
+        let artifact = read_cache_file(&layout.module_wasm_path())?;
+        let bundle_json = read_cache_file(&layout.sigstore_bundle_json_path())?;
+        let attestation = self.verify_bundle_report_only(&artifact, &bundle_json)?;
+        Ok(GuardVerificationReport::sigstore_only(&attestation))
     }
 
     /// Verify a cached layout and return a Sigstore-only structured report.
@@ -326,6 +391,7 @@ where
 
     let ed25519 = ed25519?;
     let sigstore = sigstore?;
+    require_rekor_inclusion_verified(&sigstore)?;
     let sigstore_assertion = GuardVerifiedSignature::from_sigstore(&sigstore);
 
     if ed25519.digest_sha256 != sigstore_assertion.digest_sha256 {
@@ -345,6 +411,14 @@ where
         assertion: ed25519,
         rekor_inclusion_verified: Some(sigstore.rekor_inclusion_verified),
     })
+}
+
+fn require_rekor_inclusion_verified(attestation: &VerifiedAttestation) -> Result<()> {
+    if attestation.rekor_inclusion_verified {
+        return Ok(());
+    }
+
+    Err(GuardRegistryError::VerifyMissingRekorProof)
 }
 
 fn read_cache_file(path: &std::path::Path) -> Result<Vec<u8>> {

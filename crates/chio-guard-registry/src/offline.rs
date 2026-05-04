@@ -8,7 +8,7 @@ use crate::cache::{GuardCache, GuardCacheLayout};
 use crate::oci::{GuardRegistryError, Sha256Digest};
 use crate::verify::{
     GuardLoadEvent, GuardLoadEventResult, GuardLoadSource, GuardVerificationKind,
-    GuardVerificationReport,
+    GuardVerificationReport, REKOR_INCLUSION_UNVERIFIED_REASON,
 };
 
 /// Result type for offline load policy decisions.
@@ -168,6 +168,20 @@ where
 
     match verify_cached(&layout) {
         Ok(report) => {
+            if !report.admits_guard_load() {
+                let event = GuardLoadEvent::deny_report(
+                    source,
+                    digest,
+                    &report,
+                    REKOR_INCLUSION_UNVERIFIED_REASON,
+                );
+                return signature_denied(
+                    request.network,
+                    GuardRegistryError::VerifyMissingRekorProof,
+                    event,
+                );
+            }
+
             let event = GuardLoadEvent::allow_report(source, digest, &report);
             Ok(GuardOfflineLoad {
                 digest: request.digest.clone(),
@@ -183,17 +197,25 @@ where
                 digest,
                 "signature-verification-failed",
             );
-            match request.network {
-                GuardNetworkState::Online => Err(GuardOfflineLoadError::NetworkSignatureDenied {
-                    source: Box::new(error),
-                    event: Box::new(event),
-                }),
-                GuardNetworkState::Offline => Err(GuardOfflineLoadError::CachedSignatureDenied {
-                    source: Box::new(error),
-                    event: Box::new(event),
-                }),
-            }
+            signature_denied(request.network, error, event)
         }
+    }
+}
+
+fn signature_denied(
+    network: GuardNetworkState,
+    error: GuardRegistryError,
+    event: GuardLoadEvent,
+) -> GuardOfflineLoadResult<GuardOfflineLoad> {
+    match network {
+        GuardNetworkState::Online => Err(GuardOfflineLoadError::NetworkSignatureDenied {
+            source: Box::new(error),
+            event: Box::new(event),
+        }),
+        GuardNetworkState::Offline => Err(GuardOfflineLoadError::CachedSignatureDenied {
+            source: Box::new(error),
+            event: Box::new(event),
+        }),
     }
 }
 

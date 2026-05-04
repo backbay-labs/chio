@@ -217,17 +217,33 @@ fn bundle_missing_rekor_and_trust_root_map_distinctly() {
 }
 
 #[test]
-fn bundle_success_preserves_unverified_rekor_inclusion_bit() {
+fn bundle_admission_denies_unverified_rekor_inclusion() {
     let expected = expected_identity();
     let verifier = BundleSuccessVerifier {
         rekor_inclusion_verified: false,
     };
 
-    let attestation =
-        match GuardSigstoreVerifier::new(&verifier, &expected).verify_bundle(b"wasm", b"bundle") {
-            Ok(attestation) => attestation,
-            Err(error) => panic!("Sigstore bundle verification should allow: {error}"),
-        };
+    let result = GuardSigstoreVerifier::new(&verifier, &expected).verify_bundle(b"wasm", b"bundle");
+
+    assert!(matches!(
+        result,
+        Err(GuardRegistryError::VerifyMissingRekorProof)
+    ));
+}
+
+#[test]
+fn bundle_report_only_preserves_unverified_rekor_inclusion_bit() {
+    let expected = expected_identity();
+    let verifier = BundleSuccessVerifier {
+        rekor_inclusion_verified: false,
+    };
+
+    let attestation = match GuardSigstoreVerifier::new(&verifier, &expected)
+        .verify_bundle_report_only(b"wasm", b"bundle")
+    {
+        Ok(attestation) => attestation,
+        Err(error) => panic!("report-only Sigstore verification should preserve metadata: {error}"),
+    };
 
     assert!(!attestation.rekor_inclusion_verified);
     assert_eq!(attestation.rekor_log_index, 42);
