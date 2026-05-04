@@ -233,30 +233,66 @@ fn classify_hec_response(body: &str, batch_size: usize) -> Result<usize, ExportE
         .unwrap_or("<no text>");
 
     // `invalid-event-number` is HEC's marker for per-event rejections.
-    let invalid_events: Vec<i64> = parsed
+    let invalid_events = parsed
         .get("invalid-event-number")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect())
-        .unwrap_or_default();
+        .and_then(parse_invalid_event_numbers);
 
-    if code == 0 && invalid_events.is_empty() {
+    if code == 0 && invalid_events.is_none() {
         return Ok(batch_size);
     }
 
-    let failed = invalid_events
-        .len()
-        .max(if code == 0 { 0 } else { batch_size });
-    let succeeded = batch_size.saturating_sub(failed);
-    let invalid_summary = if invalid_events.is_empty() {
-        String::new()
-    } else {
-        format!(" invalid-event-number={invalid_events:?}")
+    let (succeeded, failed) = match invalid_events.as_ref() {
+        Some(InvalidEventNumbers::FirstRejected(index)) => {
+            let succeeded = (*index as usize).min(batch_size);
+            (succeeded, batch_size.saturating_sub(succeeded))
+        }
+        Some(InvalidEventNumbers::RejectedIndices(indices)) => {
+            let failed = indices.len().min(batch_size);
+            (batch_size.saturating_sub(failed), failed)
+        }
+        None => (0, batch_size),
     };
+    let invalid_summary = invalid_events
+        .as_ref()
+        .map(|invalid_events| format!(" invalid-event-number={invalid_events}"))
+        .unwrap_or_default();
     Err(ExportError::PartialFailure {
         succeeded,
         failed,
         details: format!("HEC 2xx with code={code} text={text:?}{invalid_summary}"),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum InvalidEventNumbers {
+    FirstRejected(i64),
+    RejectedIndices(Vec<i64>),
+}
+
+impl std::fmt::Display for InvalidEventNumbers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FirstRejected(index) => write!(f, "{index}"),
+            Self::RejectedIndices(indices) => write!(f, "{indices:?}"),
+        }
+    }
+}
+
+fn parse_invalid_event_numbers(value: &serde_json::Value) -> Option<InvalidEventNumbers> {
+    if let Some(index) = value.as_i64() {
+        return Some(InvalidEventNumbers::FirstRejected(index.max(0)));
+    }
+    let indices = value
+        .as_array()?
+        .iter()
+        .filter_map(|value| value.as_i64())
+        .filter(|index| *index >= 0)
+        .collect::<Vec<_>>();
+    if indices.is_empty() {
+        None
+    } else {
+        Some(InvalidEventNumbers::RejectedIndices(indices))
+    }
 }
 
 #[cfg(test)]
@@ -303,6 +339,26 @@ mod tests {
                 assert_eq!(succeeded, 3);
                 assert!(
                     details.contains("invalid-event-number"),
+                    "details: {details}"
+                );
+            }
+            other => panic!("expected PartialFailure, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_scalar_invalid_event_number_as_first_rejected_event() {
+        let body = r#"{"text":"Invalid data format","code":6,"invalid-event-number":3}"#;
+        match classify_hec_response(body, 5).unwrap_err() {
+            ExportError::PartialFailure {
+                succeeded,
+                failed,
+                details,
+            } => {
+                assert_eq!(succeeded, 3);
+                assert_eq!(failed, 2);
+                assert!(
+                    details.contains("invalid-event-number=3"),
                     "details: {details}"
                 );
             }
