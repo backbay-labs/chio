@@ -97,7 +97,9 @@ struct Cli {
     control_url: Option<String>,
 
     /// Bearer token used to authenticate to the shared trust-control service.
-    #[arg(long, global = true)]
+    /// Prefer `CHIO_CONTROL_TOKEN` env over the argv form so the bearer does
+    /// not leak via `ps` / `/proc/<pid>/cmdline`.
+    #[arg(long, global = true, env = "CHIO_CONTROL_TOKEN", hide_env_values = true)]
     control_token: Option<String>,
 }
 
@@ -929,7 +931,9 @@ enum McpCommands {
         listen: SocketAddr,
 
         /// Static bearer token required for remote MCP session admission.
-        #[arg(long)]
+        /// Prefer `CHIO_MCP_AUTH_TOKEN` env over the argv form so the bearer
+        /// does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(long, env = "CHIO_MCP_AUTH_TOKEN", hide_env_values = true)]
         auth_token: Option<String>,
 
         /// Public key used to verify externally issued JWT bearer tokens.
@@ -949,7 +953,9 @@ enum McpCommands {
         auth_introspection_client_id: Option<String>,
 
         /// Client secret used when calling the token introspection endpoint.
-        #[arg(long)]
+        /// Prefer `CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET` env over the argv
+        /// form so the secret does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(long, env = "CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET", hide_env_values = true)]
         auth_introspection_client_secret: Option<String>,
 
         /// Optional provider profile used for principal mapping and default OIDC discovery behavior.
@@ -977,7 +983,9 @@ enum McpCommands {
         auth_jwt_audience: Option<String>,
 
         /// Optional static bearer token for remote admin APIs.
-        #[arg(long)]
+        /// Prefer `CHIO_MCP_ADMIN_TOKEN` env over the argv form so the bearer
+        /// does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(long, env = "CHIO_MCP_ADMIN_TOKEN", hide_env_values = true)]
         admin_token: Option<String>,
 
         /// Public base URL used when constructing protected-resource metadata URLs.
