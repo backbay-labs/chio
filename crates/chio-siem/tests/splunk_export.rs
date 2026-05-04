@@ -308,6 +308,98 @@ fn splunk_hec_rejects_plaintext_http_endpoint() {
     }
 }
 
+/// Splunk HEC may return 200 OK with `code != 0` to signal that the entire
+/// batch was rejected. The exporter must surface this as `PartialFailure`
+/// rather than silently treating it as success.
+#[tokio::test]
+async fn splunk_hec_200_with_nonzero_code_classifies_as_partial_failure() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_raw(r#"{"text":"Server error","code":8}"#, "application/json"),
+        )
+        .mount(&server)
+        .await;
+
+    let config = SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        index: None,
+        host: None,
+    };
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
+
+    let events = vec![
+        SiemEvent::from_receipt(sample_receipt("rcpt-pf-1")),
+        SiemEvent::from_receipt(sample_receipt("rcpt-pf-2")),
+    ];
+    let result = exporter.export_batch(&events).await;
+    match result.unwrap_err() {
+        ExportError::PartialFailure {
+            succeeded,
+            failed,
+            details,
+        } => {
+            assert_eq!(succeeded, 0);
+            assert_eq!(failed, 2);
+            assert!(details.contains("code=8"), "details: {details}");
+        }
+        other => panic!("expected PartialFailure, got: {other:?}"),
+    }
+}
+
+/// Splunk HEC returns 200 with `invalid-event-number` listing which events
+/// in the batch were rejected. Each rejected index counts as a per-event
+/// failure; the rest of the batch should be reported as succeeded.
+#[tokio::test]
+async fn splunk_hec_200_with_invalid_event_number_reports_per_event_failures() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"text":"partial","code":0,"invalid-event-number":[0,2]}"#,
+            "application/json",
+        ))
+        .mount(&server)
+        .await;
+
+    let config = SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        index: None,
+        host: None,
+    };
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
+
+    let events = vec![
+        SiemEvent::from_receipt(sample_receipt("rcpt-pe-0")),
+        SiemEvent::from_receipt(sample_receipt("rcpt-pe-1")),
+        SiemEvent::from_receipt(sample_receipt("rcpt-pe-2")),
+    ];
+    let result = exporter.export_batch(&events).await;
+    match result.unwrap_err() {
+        ExportError::PartialFailure {
+            succeeded,
+            failed,
+            details,
+        } => {
+            assert_eq!(failed, 2, "two events flagged invalid");
+            assert_eq!(succeeded, 1, "one event accepted");
+            assert!(
+                details.contains("invalid-event-number"),
+                "details: {details}"
+            );
+        }
+        other => panic!("expected PartialFailure, got: {other:?}"),
+    }
+}
+
 /// SplunkHecExporter::new accepts https:// endpoints (build-time check only; no network call).
 #[test]
 fn splunk_hec_accepts_https_endpoint() {

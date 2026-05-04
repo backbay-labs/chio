@@ -133,17 +133,160 @@ impl Exporter for SplunkHecExporter {
                 .map_err(|e| ExportError::HttpError(format!("HEC request failed: {e}")))?;
 
             let status = response.status();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unreadable body>".to_string());
+
             if !status.is_success() {
-                let body = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "<unreadable body>".to_string());
                 return Err(ExportError::HttpError(format!(
                     "HEC returned {status}: {body}"
                 )));
             }
 
-            Ok(events.len())
+            // 2xx does not always mean every event was indexed. Splunk HEC
+            // can return 200 with `code != 0` or with embedded
+            // `invalid-event-number` markers when individual events in the
+            // batch were rejected. Parse the body to detect partial failure
+            // rather than silently treating it as full success.
+            classify_hec_response(&body, events.len())
         })
+    }
+}
+
+/// Classify a Splunk HEC 2xx response body.
+///
+/// Splunk HEC returns 200 OK even when one or more events were rejected.
+/// The response is JSON with at least a top-level `code` field; success is
+/// `code == 0`. Per-event failures additionally surface as
+/// `invalid-event-number` markers in the response.
+///
+/// Returns:
+/// - `Ok(batch_size)` when `code == 0` and no per-event errors are present.
+/// - `Err(PartialFailure)` when `code != 0` or per-event errors are
+///   detected. The error carries enough detail to drive metrics and a DLQ
+///   entry without re-parsing the body.
+fn classify_hec_response(body: &str, batch_size: usize) -> Result<usize, ExportError> {
+    let parsed: serde_json::Value = match serde_json::from_str(body) {
+        Ok(v) => v,
+        Err(_) => {
+            // HEC normally returns a JSON object on success. A non-JSON 2xx
+            // body is unexpected; treat it as a partial failure rather than
+            // silently dropping events.
+            return Err(ExportError::PartialFailure {
+                succeeded: 0,
+                failed: batch_size,
+                details: format!("HEC 2xx with non-JSON body: {body}"),
+            });
+        }
+    };
+
+    let code = parsed.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+    let text = parsed
+        .get("text")
+        .and_then(|t| t.as_str())
+        .unwrap_or("<no text>");
+
+    // `invalid-event-number` is HEC's marker for per-event rejections.
+    let invalid_events: Vec<i64> = parsed
+        .get("invalid-event-number")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect())
+        .unwrap_or_default();
+
+    if code == 0 && invalid_events.is_empty() {
+        return Ok(batch_size);
+    }
+
+    let failed = invalid_events
+        .len()
+        .max(if code == 0 { 0 } else { batch_size });
+    let succeeded = batch_size.saturating_sub(failed);
+    let invalid_summary = if invalid_events.is_empty() {
+        String::new()
+    } else {
+        format!(" invalid-event-number={invalid_events:?}")
+    };
+    Err(ExportError::PartialFailure {
+        succeeded,
+        failed,
+        details: format!("HEC 2xx with code={code} text={text:?}{invalid_summary}"),
+    })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_full_success() {
+        let body = r#"{"text":"Success","code":0}"#;
+        assert_eq!(classify_hec_response(body, 5).unwrap(), 5);
+    }
+
+    #[test]
+    fn classify_global_failure_with_nonzero_code() {
+        let body = r#"{"text":"Server error","code":8}"#;
+        match classify_hec_response(body, 3).unwrap_err() {
+            ExportError::PartialFailure {
+                succeeded,
+                failed,
+                details,
+            } => {
+                assert_eq!(succeeded, 0);
+                assert_eq!(failed, 3);
+                assert!(details.contains("code=8"), "details: {details}");
+                assert!(details.contains("Server error"), "details: {details}");
+            }
+            other => panic!("expected PartialFailure, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_per_event_invalid_event_number() {
+        // Splunk HEC sometimes returns 200 with an array of rejected event
+        // indices when the batch was partially accepted.
+        let body = r#"{"text":"partial","code":0,"invalid-event-number":[1,3]}"#;
+        match classify_hec_response(body, 5).unwrap_err() {
+            ExportError::PartialFailure {
+                succeeded,
+                failed,
+                details,
+            } => {
+                assert_eq!(failed, 2);
+                assert_eq!(succeeded, 3);
+                assert!(
+                    details.contains("invalid-event-number"),
+                    "details: {details}"
+                );
+            }
+            other => panic!("expected PartialFailure, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_non_json_body_treated_as_partial_failure() {
+        let body = "not json at all";
+        match classify_hec_response(body, 4).unwrap_err() {
+            ExportError::PartialFailure {
+                succeeded,
+                failed,
+                details,
+            } => {
+                assert_eq!(succeeded, 0);
+                assert_eq!(failed, 4);
+                assert!(details.contains("non-JSON"), "details: {details}");
+            }
+            other => panic!("expected PartialFailure, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_missing_code_treated_as_success() {
+        // Defensive: if HEC returns 200 with a body that omits `code`, default
+        // to success. This matches how older HEC versions sometimes reply.
+        let body = r#"{"text":"OK"}"#;
+        assert_eq!(classify_hec_response(body, 2).unwrap(), 2);
     }
 }
