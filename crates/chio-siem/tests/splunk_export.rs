@@ -331,3 +331,29 @@ fn splunk_hec_accepts_https_endpoint() {
         "SplunkHecExporter::new must accept https:// endpoints"
     );
 }
+
+/// Regression: case-sensitive `starts_with("http://")` allowed `HTTP://`
+/// (uppercase) endpoints to bypass TLS enforcement. URL schemes are
+/// case-insensitive per RFC 3986, so any cased variant of `http` must
+/// be rejected.
+#[test]
+fn splunk_hec_rejects_uppercase_and_mixed_case_http_scheme() {
+    for plaintext in [
+        "HTTP://splunk.example.com:8088",
+        "Http://splunk.example.com:8088",
+    ] {
+        let config = SplunkConfig {
+            endpoint: plaintext.to_string(),
+            hec_token: "secret-token".to_string(),
+            sourcetype: "chio:receipt".to_string(),
+            index: None,
+            host: None,
+            ..SplunkConfig::default()
+        };
+        let result = SplunkHecExporter::new(config);
+        assert!(
+            result.is_err(),
+            "SplunkHecExporter::new must reject {plaintext} (case-insensitive scheme)"
+        );
+    }
+}

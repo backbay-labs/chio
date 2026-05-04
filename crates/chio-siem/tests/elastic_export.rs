@@ -318,3 +318,40 @@ fn elastic_new_accepts_https() {
         "ElasticsearchExporter::new must accept https:// endpoints"
     );
 }
+
+/// Regression for the case-sensitive scheme check that allowed `HTTP://`
+/// (uppercase) endpoints to bypass TLS enforcement. URL schemes are
+/// case-insensitive per RFC 3986, so any cased variant of `http` must be
+/// rejected. We exercise both `HTTP://` and `Http://`.
+#[test]
+fn elastic_new_rejects_uppercase_and_mixed_case_http_scheme() {
+    for plaintext in ["HTTP://es.example.com:9200", "Http://es.example.com:9200"] {
+        let config = ElasticConfig {
+            endpoint: plaintext.to_string(),
+            index_name: "chio-receipts".to_string(),
+            auth: ElasticAuthConfig::ApiKey("must-not-leak".to_string()),
+            ..ElasticConfig::default()
+        };
+        let result = ElasticsearchExporter::new(config);
+        assert!(
+            matches!(result, Err(ExportError::HttpError(_))),
+            "ElasticsearchExporter::new must reject {plaintext} (case-insensitive scheme)"
+        );
+    }
+}
+
+/// HTTPS schemes are case-insensitive too, so `HTTPS://` must be accepted.
+#[test]
+fn elastic_new_accepts_uppercase_https_scheme() {
+    let config = ElasticConfig {
+        endpoint: "HTTPS://es.example.com:9200".to_string(),
+        index_name: "chio-receipts".to_string(),
+        auth: ElasticAuthConfig::ApiKey("test-api-key".to_string()),
+        ..ElasticConfig::default()
+    };
+    let result = ElasticsearchExporter::new(config);
+    assert!(
+        result.is_ok(),
+        "ElasticsearchExporter::new must accept HTTPS:// (case-insensitive)"
+    );
+}

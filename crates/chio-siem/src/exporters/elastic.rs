@@ -13,6 +13,7 @@ use zeroize::Zeroizing;
 
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+use crate::exporters::require_https_endpoint;
 
 /// Authentication configuration for the Elasticsearch exporter.
 ///
@@ -73,18 +74,19 @@ impl ElasticsearchExporter {
     /// Builds a `reqwest::Client` with rustls TLS and returns an error if the
     /// client cannot be constructed.
     ///
-    /// Returns an error if `config.endpoint` uses `http://` (plaintext). The
-    /// auth credentials (API keys, Basic passwords) MUST NOT be transmitted
-    /// over an unencrypted connection. Use [`Self::new_plaintext_for_tests`]
-    /// for integration tests against a local mock server.
+    /// Returns an error if `config.endpoint` is not an `https://` URL
+    /// (plaintext or unparsable). The auth credentials (API keys, Basic
+    /// passwords) MUST NOT be transmitted over an unencrypted connection.
+    /// The scheme comparison is case-insensitive per RFC 3986, so
+    /// `HTTP://`, `Http://`, and similar variants are all rejected. Use
+    /// [`Self::new_plaintext_for_tests`] for integration tests against a
+    /// local mock server.
     pub fn new(config: ElasticConfig) -> Result<Self, ExportError> {
-        if config.endpoint.starts_with("http://") {
-            return Err(ExportError::HttpError(
-                "Elasticsearch endpoint must use https:// -- sending API keys \
-                 or Basic credentials over plaintext http:// is not permitted"
-                    .to_string(),
-            ));
-        }
+        require_https_endpoint(
+            &config.endpoint,
+            "Elasticsearch endpoint must use https:// -- sending API keys \
+             or Basic credentials over plaintext http:// is not permitted",
+        )?;
 
         let client = reqwest::Client::builder()
             .timeout(config.timeout)

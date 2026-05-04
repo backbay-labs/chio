@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+use crate::exporters::require_https_endpoint;
 
 /// Configuration for the Splunk HEC exporter.
 #[derive(Debug, Clone)]
@@ -61,16 +62,17 @@ impl SplunkHecExporter {
     /// Builds a `reqwest::Client` with rustls TLS and returns an error if the
     /// client cannot be constructed.
     ///
-    /// Returns an error if `config.endpoint` uses `http://` (plaintext). HEC
-    /// tokens must only be sent over a TLS-protected connection (`https://`).
+    /// Returns an error if `config.endpoint` is not an `https://` URL
+    /// (plaintext or unparsable). HEC tokens must only be sent over a
+    /// TLS-protected connection (`https://`). The scheme comparison is
+    /// case-insensitive per RFC 3986, so `HTTP://`, `Http://`, and
+    /// similar variants are all rejected.
     pub fn new(config: SplunkConfig) -> Result<Self, ExportError> {
-        if config.endpoint.starts_with("http://") {
-            return Err(ExportError::HttpError(
-                "Splunk HEC endpoint must use https:// -- sending HEC tokens over \
-                 plaintext http:// is not permitted"
-                    .to_string(),
-            ));
-        }
+        require_https_endpoint(
+            &config.endpoint,
+            "Splunk HEC endpoint must use https:// -- sending HEC tokens over \
+             plaintext http:// is not permitted",
+        )?;
 
         let client = reqwest::Client::builder()
             .timeout(config.timeout)
