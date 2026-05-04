@@ -321,3 +321,53 @@ fn malformed_done_tool_call_arguments_fail_closed() {
     assert!(matches!(err, ProviderError::BadToolArgs(_)));
     assert!(err.to_string().contains("arguments"));
 }
+
+#[test]
+fn zero_length_argument_deltas_count_toward_buffered_frame_limit() {
+    let adapter = OpenAiAdapter::new("org_chio_demo");
+    let mut raw = String::from(concat!(
+        "event: response.output_item.added\n",
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_many_empty\",\"call_id\":\"call_many_empty\",\"name\":\"create_calendar_event\",\"arguments\":\"\"}}\n\n",
+    ));
+    for _ in 0..4097 {
+        raw.push_str(concat!(
+            "event: response.function_call_arguments.delta\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"call_id\":\"call_many_empty\",\"delta\":\"\"}\n\n",
+        ));
+    }
+    raw.push_str(concat!(
+        "event: response.function_call_arguments.done\n",
+        "data: {\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"item_id\":\"fc_many_empty\",\"arguments\":\"{}\"}\n\n",
+        "event: response.output_item.done\n",
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_many_empty\",\"call_id\":\"call_many_empty\",\"name\":\"create_calendar_event\",\"arguments\":\"{}\"}}\n\n",
+    ));
+
+    let err = adapter
+        .gate_sse_stream(raw.as_bytes(), |_| Ok(allow_verdict()))
+        .expect_err("too many buffered raw frames should fail closed");
+
+    assert!(matches!(err, ProviderError::Malformed(_)));
+    assert!(err.to_string().contains("raw frame count"));
+}
+
+#[test]
+fn non_append_start_frame_bytes_count_toward_buffered_raw_byte_limit() {
+    let adapter = OpenAiAdapter::new("org_chio_demo");
+    let padding = "x".repeat(2 * 1024 * 1024 + 2048);
+    let raw = format!(
+        concat!(
+            "event: response.output_item.added\n",
+            "data: {{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{{\"type\":\"function_call\",\"id\":\"fc_huge_start\",\"call_id\":\"call_huge_start\",\"name\":\"create_calendar_event\",\"arguments\":\"\",\"padding\":\"{}\"}}}}\n\n",
+            "event: response.output_item.done\n",
+            "data: {{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{{\"type\":\"function_call\",\"id\":\"fc_huge_start\",\"call_id\":\"call_huge_start\",\"name\":\"create_calendar_event\",\"arguments\":\"{{}}\"}}}}\n\n",
+        ),
+        padding
+    );
+
+    let err = adapter
+        .gate_sse_stream(raw.as_bytes(), |_| Ok(allow_verdict()))
+        .expect_err("oversized non-append raw frame should fail closed");
+
+    assert!(matches!(err, ProviderError::Malformed(_)));
+    assert!(err.to_string().contains("raw frame bytes"));
+}

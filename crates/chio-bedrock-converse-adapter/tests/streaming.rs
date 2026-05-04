@@ -429,3 +429,68 @@ fn evaluator_errors_fail_closed() {
 
     assert!(err.to_string().contains("verdict latency budget exceeded"));
 }
+
+#[test]
+fn zero_length_tool_use_deltas_count_toward_buffered_frame_limit() {
+    let adapter = adapter();
+    let mut events = vec![json!({
+        "contentBlockStart": {
+            "contentBlockIndex": 0,
+            "start": {
+                "toolUse": {
+                    "toolUseId": "tooluse_many_empty",
+                    "name": "get_weather"
+                }
+            }
+        }
+    })];
+    for _ in 0..4097 {
+        events.push(json!({
+            "contentBlockDelta": {
+                "contentBlockIndex": 0,
+                "delta": {
+                    "toolUse": {
+                        "input": ""
+                    }
+                }
+            }
+        }));
+    }
+    events.push(json!({"contentBlockStop": {"contentBlockIndex": 0}}));
+
+    let err = adapter
+        .gate_converse_stream(&stream_bytes(Value::Array(events)), |_invocation| {
+            Ok(allow_verdict())
+        })
+        .expect_err("too many buffered raw frames should fail closed");
+
+    assert!(matches!(err, ProviderError::Malformed(_)));
+    assert!(err.to_string().contains("raw frame count"));
+}
+
+#[test]
+fn non_append_start_frame_bytes_count_toward_buffered_raw_byte_limit() {
+    let adapter = adapter();
+    let stream = json!([
+        {
+            "contentBlockStart": {
+                "contentBlockIndex": 0,
+                "start": {
+                    "toolUse": {
+                        "toolUseId": "tooluse_huge_start",
+                        "name": "get_weather",
+                        "padding": "x".repeat(2 * 1024 * 1024 + 2048)
+                    }
+                }
+            }
+        },
+        {"contentBlockStop": {"contentBlockIndex": 0}}
+    ]);
+
+    let err = adapter
+        .gate_converse_stream(&stream_bytes(stream), |_invocation| Ok(allow_verdict()))
+        .expect_err("oversized non-append raw frame should fail closed");
+
+    assert!(matches!(err, ProviderError::Malformed(_)));
+    assert!(err.to_string().contains("raw frame bytes"));
+}

@@ -23,6 +23,12 @@ use std::fmt;
 /// can opt into [`StreamPhase::transition_with_limit`].
 pub const DEFAULT_MAX_BUFFERED_BLOCK_BYTES: usize = 1024 * 1024;
 
+/// Default upper bound on raw provider frames retained for one buffered block.
+///
+/// Argument-byte limits alone do not cap zero-length deltas or large provider
+/// metadata frames that must remain withheld until a verdict resolves.
+pub const DEFAULT_MAX_BUFFERED_RAW_FRAMES: usize = 4096;
+
 /// Kind of a buffered block.
 ///
 /// Each provider exposes a small handful of block kinds that the fabric needs

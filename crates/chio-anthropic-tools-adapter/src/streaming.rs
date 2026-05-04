@@ -8,6 +8,7 @@
 
 use chio_tool_call_fabric::{
     BlockKind, DenyReason, ProviderError, StreamEvent, StreamPhase, ToolInvocation, VerdictResult,
+    DEFAULT_MAX_BUFFERED_BLOCK_BYTES, DEFAULT_MAX_BUFFERED_RAW_FRAMES,
 };
 use serde_json::Value;
 
@@ -75,8 +76,7 @@ impl<'a> StreamGate<'a> {
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
         let Some(event) = frame.event.as_deref() else {
-            self.forward_or_buffer(frame);
-            return Ok(());
+            return self.forward_or_buffer(frame);
         };
 
         match event {
@@ -88,10 +88,7 @@ impl<'a> StreamGate<'a> {
                 "Anthropic SSE error event: {}",
                 frame.data_text()
             ))),
-            _ => {
-                self.forward_or_buffer(frame);
-                Ok(())
-            }
+            _ => self.forward_or_buffer(frame),
         }
     }
 
@@ -127,7 +124,7 @@ impl<'a> StreamGate<'a> {
                 kind,
             },
         )?;
-        self.active = Some(ActiveBlock::tool(index, frame, block));
+        self.active = Some(ActiveBlock::tool(index, frame, block)?);
         Ok(())
     }
 
@@ -153,7 +150,7 @@ impl<'a> StreamGate<'a> {
             },
         )?;
         active.input_json.push_str(partial_json);
-        active.frames.push(frame);
+        active.push_frame(frame)?;
         Ok(())
     }
 
@@ -185,7 +182,7 @@ impl<'a> StreamGate<'a> {
         self.phase = transition(&self.phase, StreamEvent::FinishBlock)?;
         self.invocations.push(invocation);
         self.verdicts.push(verdict);
-        active.frames.push(frame);
+        active.push_frame(frame)?;
         for frame in active.frames {
             self.output.extend_from_slice(&frame.raw);
         }
@@ -204,14 +201,15 @@ impl<'a> StreamGate<'a> {
         Ok(())
     }
 
-    fn forward_or_buffer(&mut self, frame: SseFrame) {
+    fn forward_or_buffer(&mut self, frame: SseFrame) -> Result<(), ProviderError> {
         if let Some(active) = self.active.as_mut() {
             if active.kind == BlockKind::ToolCall {
-                active.frames.push(frame);
-                return;
+                active.push_frame(frame)?;
+                return Ok(());
             }
         }
         self.output.extend_from_slice(&frame.raw);
+        Ok(())
     }
 
     fn finish(self) -> Result<GatedSseStream, ProviderError> {
@@ -235,6 +233,8 @@ struct ActiveBlock {
     index: u64,
     kind: BlockKind,
     frames: Vec<SseFrame>,
+    raw_frame_count: usize,
+    raw_frame_bytes: usize,
     tool_use: Option<ToolUseBlock>,
     input_json: String,
 }
@@ -245,19 +245,47 @@ impl ActiveBlock {
             index,
             kind,
             frames: Vec::new(),
+            raw_frame_count: 0,
+            raw_frame_bytes: 0,
             tool_use: None,
             input_json: String::new(),
         }
     }
 
-    fn tool(index: u64, frame: SseFrame, block: ToolUseBlock) -> Self {
-        Self {
+    fn tool(index: u64, frame: SseFrame, block: ToolUseBlock) -> Result<Self, ProviderError> {
+        let mut active = Self {
             index,
             kind: BlockKind::ToolCall,
-            frames: vec![frame],
+            frames: Vec::new(),
+            raw_frame_count: 0,
+            raw_frame_bytes: 0,
             tool_use: Some(block),
             input_json: String::new(),
+        };
+        active.push_frame(frame)?;
+        Ok(active)
+    }
+
+    fn push_frame(&mut self, frame: SseFrame) -> Result<(), ProviderError> {
+        let next_count = self.raw_frame_count.saturating_add(1);
+        if next_count > DEFAULT_MAX_BUFFERED_RAW_FRAMES {
+            return Err(ProviderError::Malformed(format!(
+                "Anthropic content block {} raw frame count {next_count} exceeded limit {}",
+                self.index, DEFAULT_MAX_BUFFERED_RAW_FRAMES
+            )));
         }
+        let frame_bytes = frame.raw.len();
+        let projected = self.raw_frame_bytes.saturating_add(frame_bytes);
+        if projected > DEFAULT_MAX_BUFFERED_BLOCK_BYTES {
+            return Err(ProviderError::Malformed(format!(
+                "Anthropic content block {} raw frame bytes would grow from {} to {projected}, exceeding limit {}",
+                self.index, self.raw_frame_bytes, DEFAULT_MAX_BUFFERED_BLOCK_BYTES
+            )));
+        }
+        self.raw_frame_count = next_count;
+        self.raw_frame_bytes = projected;
+        self.frames.push(frame);
+        Ok(())
     }
 
     fn ensure_index(&self, index: u64, event: &str) -> Result<(), ProviderError> {
