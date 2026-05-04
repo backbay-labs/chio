@@ -175,6 +175,25 @@ fn execution_time_bound_denies_over_limit() {
 }
 
 #[test]
+fn execution_time_bound_allows_exact_limit() {
+    let guard = CodeExecutionGuard::with_config(CodeExecutionConfig {
+        language_allowlist: vec!["python".to_string()],
+        module_denylist: vec![],
+        network_access: true,
+        max_execution_time_ms: Some(1_000),
+        ..CodeExecutionConfig::default()
+    })
+    .expect("build guard");
+
+    let v = eval(
+        &guard,
+        "python",
+        serde_json::json!({"code": "print(1)", "timeout_ms": 1_000}),
+    );
+    assert!(matches!(v, Verdict::Allow), "expected Allow, got {v:?}");
+}
+
+#[test]
 fn non_code_execution_actions_pass_through() {
     let guard = CodeExecutionGuard::new();
     let v = eval(&guard, "read_file", serde_json::json!({"path": "/tmp/x"}));
@@ -220,5 +239,25 @@ fn payload_exceeding_max_scan_bytes_is_denied_failclosed() {
     assert!(
         matches!(v, Verdict::Deny),
         "oversized payload must fail-closed, got {v:?}"
+    );
+}
+
+#[test]
+fn payload_at_max_scan_bytes_is_allowed() {
+    let guard = CodeExecutionGuard::with_config(CodeExecutionConfig {
+        language_allowlist: vec!["python".to_string()],
+        network_access: true,
+        max_scan_bytes: 64,
+        ..CodeExecutionConfig::default()
+    })
+    .expect("build guard");
+
+    let code = "a".repeat(64);
+    assert_eq!(code.len(), 64);
+
+    let v = eval(&guard, "python", serde_json::json!({"code": code}));
+    assert!(
+        matches!(v, Verdict::Allow),
+        "payload exactly at max_scan_bytes should be allowed, got {v:?}"
     );
 }

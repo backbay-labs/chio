@@ -188,10 +188,15 @@ jobs:
           # a unified-diff text file (not a git ref). --no-shuffle keeps
           # reproducibility across runs; --timeout leaves enough room for
           # cold trust-boundary crate builds while the job timeout stays the
-          # outer wall-time cap.
+          # outer wall-time cap. Load the focused per-crate config and keep
+          # the test scope crate-local for PR lanes; the workspace-root config
+          # is for nightly full sweeps and adds a full-workspace baseline
+          # before any scoped mutants run.
           mutants_exit=0
           cargo mutants \
+            --config "crates/${{ matrix.package }}/mutants.toml" \
             --package "${{ matrix.package }}" \
+            --test-workspace false \
             --in-diff "${{ steps.diff.outputs.diff_file }}" \
             --no-shuffle \
             --timeout 300 \
