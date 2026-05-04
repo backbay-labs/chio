@@ -105,6 +105,7 @@ def check_revocation_cut() -> None:
 
 def check_temporal_workflow() -> None:
     text = read(".github/workflows/apalache-temporal.yml")
+    cfg = read("formal/tla/MCRevocationPropagationTemporal.cfg")
 
     require(
         "continue-on-error" not in text,
@@ -122,6 +123,23 @@ def check_temporal_workflow() -> None:
         "schedule:" in text and "workflow_dispatch:" in text,
         "apalache-temporal must remain a scheduled/manual nightly liveness lane",
     )
+    require(
+        re.search(r"(?m)^INVARIANT\s*\n\s*SafetyInv\b", cfg) is not None,
+        "MCRevocationPropagationTemporal.cfg must check SafetyInv at the nightly length bound",
+    )
+
+
+def check_safety_workflow_paths() -> None:
+    text = read(".github/workflows/apalache-safety.yml")
+
+    require(
+        '- "scripts/check-apalache-formal-slice.py"' in text,
+        "apalache-safety paths must include scripts/check-apalache-formal-slice.py",
+    )
+    require(
+        '- ".github/workflows/apalache-temporal.yml"' in text,
+        "apalache-safety paths must keep .github/workflows/apalache-temporal.yml",
+    )
 
 
 def main() -> int:
@@ -129,6 +147,7 @@ def main() -> int:
         check_receipt_before_allow,
         check_revocation_cut,
         check_temporal_workflow,
+        check_safety_workflow_paths,
     )
     failures: list[str] = []
     for check in checks:
