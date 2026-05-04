@@ -137,21 +137,69 @@ describe("ChioSidecarClient.verifyReceipt", () => {
     }
   });
 
-  it("throws invalid-receipt SidecarError for 4xx verifier responses", async () => {
-    const { server, url } = await startVerifySidecar((res) => {
-      res.writeHead(422, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "bad receipt" }));
-    });
+  it("throws invalid-receipt SidecarError for definitive non-200 verifier bodies", async () => {
+    const cases: unknown[] = [{ valid: false }, { error: "chio_invalid_receipt" }];
 
-    try {
-      const client = new ChioSidecarClient({ sidecarUrl: url });
-      await expectSidecarError(
-        client.verifyReceipt(testReceipt()),
-        "chio_invalid_receipt",
-        422,
-      );
-    } finally {
-      await closeServer(server);
+    for (const body of cases) {
+      const { server, url } = await startVerifySidecar((res) => {
+        res.writeHead(422, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(body));
+      });
+
+      try {
+        const client = new ChioSidecarClient({ sidecarUrl: url });
+        await expectSidecarError(
+          client.verifyReceipt(testReceipt()),
+          "chio_invalid_receipt",
+          422,
+        );
+      } finally {
+        await closeServer(server);
+      }
+    }
+  });
+
+  it("throws evaluation-failed SidecarError for non-verdict 4xx verifier responses", async () => {
+    const cases = [400, 401, 403, 422];
+
+    for (const statusCode of cases) {
+      const { server, url } = await startVerifySidecar((res) => {
+        res.writeHead(statusCode, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "bad receipt" }));
+      });
+
+      try {
+        const client = new ChioSidecarClient({ sidecarUrl: url });
+        await expectSidecarError(
+          client.verifyReceipt(testReceipt()),
+          "chio_evaluation_failed",
+          statusCode,
+        );
+      } finally {
+        await closeServer(server);
+      }
+    }
+  });
+
+  it("throws sidecar-unavailable SidecarError for non-verdict unavailable verifier responses", async () => {
+    const cases = [404, 429];
+
+    for (const statusCode of cases) {
+      const { server, url } = await startVerifySidecar((res) => {
+        res.writeHead(statusCode, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "sidecar unavailable" }));
+      });
+
+      try {
+        const client = new ChioSidecarClient({ sidecarUrl: url });
+        await expectSidecarError(
+          client.verifyReceipt(testReceipt()),
+          "chio_sidecar_unavailable",
+          statusCode,
+        );
+      } finally {
+        await closeServer(server);
+      }
     }
   });
 

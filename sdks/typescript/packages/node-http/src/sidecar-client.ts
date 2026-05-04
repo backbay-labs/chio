@@ -126,17 +126,15 @@ export class ChioSidecarClient {
         signal: controller.signal,
       });
 
+      const responseBody = await response.text();
       if (!response.ok) {
         throw new SidecarError(
-          isSidecarTransportFailure(response.status)
-            ? CHIO_ERROR_CODES.SIDECAR_UNAVAILABLE
-            : CHIO_ERROR_CODES.INVALID_RECEIPT,
+          classifyVerifyNonOk(response.status, responseBody),
           `sidecar verify returned non-200: ${response.status} ${response.statusText}`.trim(),
           response.status,
         );
       }
 
-      const responseBody = await response.text();
       // Validate the response shape at runtime; malformed payloads must fail
       // closed, while body-read failures keep their transport classification.
       let parsed: unknown;
@@ -203,4 +201,31 @@ export class ChioSidecarClient {
 
 function isSidecarTransportFailure(statusCode: number): boolean {
   return statusCode === 408 || (statusCode >= 500 && statusCode <= 599);
+}
+
+function classifyVerifyNonOk(statusCode: number, body: string): string {
+  if (hasDefinitiveInvalidReceiptBody(body)) {
+    return CHIO_ERROR_CODES.INVALID_RECEIPT;
+  }
+  if (isSidecarTransportFailure(statusCode) || statusCode === 404 || statusCode === 429) {
+    return CHIO_ERROR_CODES.SIDECAR_UNAVAILABLE;
+  }
+  return CHIO_ERROR_CODES.EVALUATION_FAILED;
+}
+
+function hasDefinitiveInvalidReceiptBody(body: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body) as unknown;
+  } catch {
+    return false;
+  }
+
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    (("valid" in parsed && (parsed as { valid: unknown }).valid === false) ||
+      ("error" in parsed &&
+        (parsed as { error: unknown }).error === CHIO_ERROR_CODES.INVALID_RECEIPT))
+  );
 }
