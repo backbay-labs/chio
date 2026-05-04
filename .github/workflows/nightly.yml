@@ -34,8 +34,8 @@ jobs:
 
       - name: Install Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
@@ -50,55 +50,13 @@ jobs:
           cargo test -p chio-credentials --test property_passport -- --nocapture
           cargo test -p chio-policy --test property_evaluate -- --nocapture
 
-  # Nightly Apalache liveness lane for the RevocationPropagation TLA+ module.
-  # Checks RevocationEventuallySeen (weak fairness on Propagate) at length=24
-  # against MCRevocationPropagation.cfg (PROCS=4, CAPS=8).
-  formal-tla-liveness:
-    name: formal-tla-liveness (apalache liveness)
-    # owner: M03
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    concurrency:
-      group: ${{ github.event_name == 'pull_request' && format('pr-{0}-formal-tla-liveness', github.ref) || format('main-{0}-formal-tla-liveness', github.sha) }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-      - name: Install Java runtime (apalache-mc requires Java 17+)
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Install Apalache (pinned 0.50.x)
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./tools/install-apalache.sh
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-
-      - name: Confirm apalache-mc on PATH
-        shell: bash
-        run: |
-          set -euo pipefail
-          command -v apalache-mc
-          apalache-mc version || true
-
-      - name: Apalache liveness check (RevocationEventuallySeen length=24)
-        shell: bash
-        # RevocationEventuallySeen is a temporal property (uses the
-        # leads-to operator `~>` in formal/tla/RevocationPropagation.tla),
-        # so it is supplied to Apalache via `--temporal=` and NOT `--inv=`.
-        # `--inv=` is reserved for state invariants and would either error
-        # out or silently mischeck the property. An earlier invocation used
-        # `--inv=`; this was corrected after PR #66 review.
-        run: |
-          set -euo pipefail
-          apalache-mc check \
-            --length=24 \
-            --temporal=RevocationEventuallySeen \
-            --config=formal/tla/MCRevocationPropagation.cfg \
-            formal/tla/RevocationPropagation.tla
+  # The nightly RevocationEventuallySeen liveness check used to live here at
+  # length=24. Trajectory-3.1 PR #516 split apalache-nightly.yml into the
+  # required apalache-safety.yml (M06 invariants) and advisory
+  # apalache-temporal.yml (RevocationEventuallySeen continue-on-error pending
+  # apalache 0.50.1 temporal-encoding fix; trajectory-4.M06-followup). The
+  # nightly copy was a duplicate of the broken legacy property and was the
+  # main driver of red nightly runs. Removed by trj3.2.
 
   # Nightly Kani lane: runs the union of `lanes.pr` and `lanes.nightly_only`
   # from formal/rust-verification/kani-public-harnesses.toml. The PR job
