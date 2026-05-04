@@ -114,10 +114,10 @@ pub fn frontier_digest(graph: &LineageGraph) -> FrontierDigest {
 /// cannot accidentally authenticate another Chio payload shape.
 #[must_use]
 pub fn frontier_signature_message(graph: &LineageGraph) -> Vec<u8> {
-    let mut message =
-        Vec::with_capacity(FRONTIER_SIGNATURE_DOMAIN.len() + frontier_bytes(graph).len());
+    let frontier = frontier_bytes(graph);
+    let mut message = Vec::with_capacity(FRONTIER_SIGNATURE_DOMAIN.len() + frontier.len());
     message.extend_from_slice(FRONTIER_SIGNATURE_DOMAIN);
-    message.extend_from_slice(&frontier_bytes(graph));
+    message.extend_from_slice(&frontier);
     message
 }
 
