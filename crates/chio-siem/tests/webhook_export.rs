@@ -190,6 +190,48 @@ async fn webhook_fails_fast_on_400() {
 }
 
 #[tokio::test]
+async fn webhook_errors_redact_url_secrets() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/hook"))
+        .respond_with(ResponseTemplate::new(400))
+        .mount(&server)
+        .await;
+
+    let config = WebhookConfig {
+        url: format!(
+            "{}/hook?token=supersecret&client_secret=alsosensitive",
+            server.uri()
+        ),
+        retry: WebhookRetry {
+            max_retries: 0,
+            base_backoff_ms: 0,
+        },
+        ..WebhookConfig::default()
+    };
+    let exporter = WebhookExporter::new(config).expect("builds");
+
+    let events = vec![SiemEvent::from_receipt(allow_receipt("wh-redact-url"))];
+    let result = exporter.export_batch(&events).await;
+    let err = result.expect_err("400 response should fail");
+    let message = err.to_string();
+
+    assert!(
+        !message.contains("supersecret") && !message.contains("alsosensitive"),
+        "webhook error must not contain query secrets: {message}"
+    );
+    assert!(
+        !message.contains("token=") && !message.contains("client_secret="),
+        "webhook error must not contain secret-bearing query keys: {message}"
+    );
+    assert!(
+        message.contains("webhook endpoint returned 400"),
+        "message should keep useful failure context: {message}"
+    );
+}
+
+#[tokio::test]
 async fn webhook_filters_by_min_severity() {
     let server = MockServer::start().await;
 

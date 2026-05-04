@@ -11,9 +11,14 @@ use chio_core::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,
 };
 use chio_siem::event::SiemEvent;
+use chio_siem::exporter::ExportError;
 use chio_siem::ocsf::{receipt_to_ocsf, OCSF_CATEGORY_UID, OCSF_CLASS_UID, OCSF_SCHEMA_VERSION};
+use chio_siem::Exporter;
 use chio_siem::{OcsfExporter, OcsfExporterConfig, OcsfPayloadFormat};
 use serde_json::Value;
+use std::time::{Duration, Instant};
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn receipt_with(
     id: &str,
@@ -326,4 +331,65 @@ fn ocsf_exporter_ndjson_body_contains_one_line_per_receipt() {
         let parsed: Value = serde_json::from_str(line).expect("each ndjson line parses");
         assert_eq!(parsed["class_uid"], OCSF_CLASS_UID);
     }
+}
+
+#[test]
+fn ocsf_exporter_rejects_plaintext_endpoint_when_bearer_token_is_configured() {
+    let cfg = OcsfExporterConfig {
+        endpoint: "http://collector.example.test/ocsf".to_string(),
+        bearer_token: Some("secret-token".to_string()),
+        ..OcsfExporterConfig::default()
+    };
+
+    let err = match OcsfExporter::new(cfg) {
+        Ok(_) => panic!("plaintext bearer endpoint must be rejected"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("https"),
+        "error should explain the HTTPS requirement: {err}"
+    );
+    assert!(
+        !err.to_string().contains("secret-token"),
+        "error must not echo the bearer token: {err}"
+    );
+}
+
+#[tokio::test]
+async fn ocsf_exporter_honors_configured_request_timeout() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/ocsf"))
+        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(250)))
+        .mount(&server)
+        .await;
+
+    let cfg = OcsfExporterConfig {
+        endpoint: format!("{}/ocsf", server.uri()),
+        timeout: Duration::from_millis(25),
+        ..OcsfExporterConfig::default()
+    };
+    let exporter = OcsfExporter::new(cfg).expect("build exporter");
+    let events = vec![SiemEvent::from_receipt(allow_receipt())];
+
+    let started = Instant::now();
+    let err = exporter
+        .export_batch(&events)
+        .await
+        .expect_err("slow endpoint should time out");
+
+    match err {
+        ExportError::HttpError(message) => {
+            assert!(
+                message.contains("OCSF sink request failed"),
+                "message: {message}"
+            );
+        }
+        other => panic!("expected HttpError, got {other:?}"),
+    }
+    assert!(
+        started.elapsed() < Duration::from_millis(200),
+        "configured timeout should fire before the mock response delay"
+    );
 }

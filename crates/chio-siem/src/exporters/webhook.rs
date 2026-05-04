@@ -218,6 +218,10 @@ impl WebhookExporter {
         Ok(req.header("Content-Type", "application/json").body(body))
     }
 
+    fn safe_endpoint_label(&self) -> String {
+        sanitize_url_for_error(&self.config.url)
+    }
+
     async fn deliver_one(&self, event: &SiemEvent) -> Result<(), ExportError> {
         let mut last_err: Option<ExportError> = None;
 
@@ -243,8 +247,8 @@ impl WebhookExporter {
                         .await
                         .unwrap_or_else(|_| "<unreadable body>".to_string());
                     let err = ExportError::HttpError(format!(
-                        "webhook {} returned {status}: {body}",
-                        self.config.url
+                        "webhook endpoint returned {status}: {body} ({})",
+                        self.safe_endpoint_label()
                     ));
 
                     // Retry on 429 and 5xx; give up on other 4xx.
@@ -257,8 +261,9 @@ impl WebhookExporter {
                 }
                 Err(e) => {
                     last_err = Some(ExportError::HttpError(format!(
-                        "webhook {} request failed: {e}",
-                        self.config.url
+                        "webhook endpoint request failed: {} ({})",
+                        classify_reqwest_error(&e),
+                        self.safe_endpoint_label()
                     )));
                 }
             }
@@ -267,6 +272,34 @@ impl WebhookExporter {
         Err(last_err.unwrap_or_else(|| {
             ExportError::HttpError("webhook delivery failed with no error".to_string())
         }))
+    }
+}
+
+fn sanitize_url_for_error(raw_url: &str) -> String {
+    let Ok(mut url) = url::Url::parse(raw_url) else {
+        return "<invalid webhook endpoint>".to_string();
+    };
+
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_query(None);
+    url.set_fragment(None);
+    url.to_string()
+}
+
+fn classify_reqwest_error(error: &reqwest::Error) -> &'static str {
+    if error.is_timeout() {
+        "timeout"
+    } else if error.is_connect() {
+        "connect error"
+    } else if error.is_request() {
+        "request error"
+    } else if error.is_body() {
+        "body error"
+    } else if error.is_decode() {
+        "decode error"
+    } else {
+        "transport error"
     }
 }
 

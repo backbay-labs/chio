@@ -18,9 +18,13 @@
 //! [`OcsfExporter::format_events`] to get the per-event JSON objects without
 //! making any network calls.
 
+use std::time::Duration;
+
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::ocsf::receipt_to_ocsf;
+
+const DEFAULT_OCSF_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Payload serialization format for the OCSF exporter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,7 +37,7 @@ pub enum OcsfPayloadFormat {
 }
 
 /// Configuration for the OCSF exporter.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct OcsfExporterConfig {
     /// HTTPS endpoint that accepts OCSF events.
     ///
@@ -50,6 +54,20 @@ pub struct OcsfExporterConfig {
     /// `application/json` for [`OcsfPayloadFormat::JsonArray`] and
     /// `application/x-ndjson` for [`OcsfPayloadFormat::Ndjson`].
     pub content_type: Option<String>,
+    /// HTTP request timeout.
+    pub timeout: Duration,
+}
+
+impl Default for OcsfExporterConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: String::new(),
+            bearer_token: None,
+            payload_format: OcsfPayloadFormat::default(),
+            content_type: None,
+            timeout: DEFAULT_OCSF_TIMEOUT,
+        }
+    }
 }
 
 /// Exporter that transforms Chio receipts into OCSF 1.3.0 Authorization events
@@ -66,10 +84,29 @@ impl OcsfExporter {
     /// is empty the exporter operates as an in-process formatter and will
     /// short-circuit network delivery in [`Exporter::export_batch`].
     pub fn new(config: OcsfExporterConfig) -> Result<Self, ExportError> {
+        Self::validate_endpoint_security(&config)?;
+
         let client = reqwest::Client::builder()
+            .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
         Ok(Self { config, client })
+    }
+
+    fn validate_endpoint_security(config: &OcsfExporterConfig) -> Result<(), ExportError> {
+        if config.endpoint.trim().is_empty() || config.bearer_token.is_none() {
+            return Ok(());
+        }
+
+        let parsed = url::Url::parse(&config.endpoint)
+            .map_err(|e| ExportError::HttpError(format!("invalid OCSF sink endpoint URL: {e}")))?;
+        if parsed.scheme().eq_ignore_ascii_case("https") {
+            return Ok(());
+        }
+
+        Err(ExportError::HttpError(
+            "OCSF bearer-token export requires an https endpoint".to_string(),
+        ))
     }
 
     /// Produce one OCSF JSON object per receipt without performing I/O.
