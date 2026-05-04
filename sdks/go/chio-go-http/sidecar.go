@@ -197,12 +197,13 @@ func classifyVerifyNonOK(status int, body []byte) string {
 
 func hasDefinitiveInvalidReceiptVerdict(body []byte) bool {
 	var result struct {
-		Valid *bool `json:"valid"`
+		Valid *bool  `json:"valid"`
+		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil || result.Valid == nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return false
 	}
-	return !*result.Valid
+	return (result.Valid != nil && !*result.Valid) || result.Error == ErrInvalidReceipt
 }
 
 // HealthCheck checks whether the sidecar is running.

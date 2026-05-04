@@ -80,6 +80,27 @@ func TestVerifyReceipt_Non200ValidFalseClassifiedAsInvalidReceipt(t *testing.T) 
 	}
 }
 
+func TestVerifyReceipt_Non200InvalidReceiptErrorClassifiedAsInvalidReceipt(t *testing.T) {
+	srv := verifyServer(t, http.StatusUnprocessableEntity, map[string]string{"error": ErrInvalidReceipt})
+	defer srv.Close()
+
+	client := NewSidecarClient(srv.URL, 5)
+	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if ok {
+		t.Fatalf("expected valid=false on definitive invalid receipt error")
+	}
+	var sErr *SidecarError
+	if !errors.As(err, &sErr) {
+		t.Fatalf("expected *SidecarError, got %T: %v", err, err)
+	}
+	if sErr.Code != ErrInvalidReceipt {
+		t.Fatalf("expected %q for definitive invalid receipt error, got %q", ErrInvalidReceipt, sErr.Code)
+	}
+	if sErr.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected StatusCode=%d, got %d", http.StatusUnprocessableEntity, sErr.StatusCode)
+	}
+}
+
 func TestVerifyReceipt_NonVerdictFourXXClassifiedAsEvaluationFailed(t *testing.T) {
 	cases := []int{
 		http.StatusBadRequest,   // 400
