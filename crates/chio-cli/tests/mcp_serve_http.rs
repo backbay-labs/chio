@@ -2614,21 +2614,16 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
     let token = "test-token";
     let session_db_path = dir.join("remote-session-tombstones.sqlite3");
 
-    let (
-        deleted_session,
-        deleted_protocol,
-        expired_session,
-        expired_protocol,
-        shutdown_session,
-        shutdown_protocol,
-    ) = {
+    // Phase 1a: create the deleted-session tombstone with a long idle expiry so the
+    // session cannot race the reaper between `initialize` and `notifications/initialized`.
+    let (deleted_session, deleted_protocol) = {
         let _server = spawn_http_server_with_session_lifecycle_tuning(
             &dir,
             listen,
             token,
             Some(&session_db_path),
-            Some(250),
-            Some(250),
+            Some(5_000),
+            Some(5_000),
             Some(50),
         );
         let client = Client::builder()
@@ -2649,9 +2644,38 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
             Some("deleted")
         );
 
+        (deleted_session, deleted_protocol)
+    };
+
+    // Phase 1b: create the expired-session tombstone using a tight idle expiry so the
+    // reaper can transition the session to Expired within the wait loop budget. The
+    // session is only `initialize`d once, so the brief race between `initialize` and
+    // `notifications/initialized` is the only timing constraint here.
+    let (expired_session, expired_protocol) = {
+        let idle_expiry_millis: u64 = 1_500;
+        let _server = spawn_http_server_with_session_lifecycle_tuning(
+            &dir,
+            listen,
+            token,
+            Some(&session_db_path),
+            Some(idle_expiry_millis),
+            Some(idle_expiry_millis),
+            Some(50),
+        );
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("build reqwest client");
+        let base_url = format!("http://{listen}");
+        wait_for_server(&client, &base_url);
+
         let (expired_session, expired_protocol) = initialize_session(&client, &base_url, token);
+        let poll_interval = Duration::from_millis(75);
+        // Allow at least 4x the idle expiry to absorb reaper jitter and CI scheduling slack.
+        let max_wait = Duration::from_millis(idle_expiry_millis * 4);
+        let deadline = std::time::Instant::now() + max_wait;
         let mut expired = None;
-        for _ in 0..40 {
+        while std::time::Instant::now() < deadline {
             let trust_status = get_admin_session_trust(&client, &base_url, token, &expired_session);
             assert_eq!(trust_status.status(), reqwest::StatusCode::OK);
             let trust_status: Value = trust_status.json().expect("expired trust json");
@@ -2659,10 +2683,32 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
                 expired = Some(trust_status);
                 break;
             }
-            thread::sleep(Duration::from_millis(75));
+            thread::sleep(poll_interval);
         }
         let expired = expired.expect("session to expire before restart");
         assert_eq!(expired["sessionId"], expired_session);
+
+        (expired_session, expired_protocol)
+    };
+
+    // Phase 1c: create the shutdown-session tombstone with a long idle expiry so the
+    // session cannot race the reaper before the admin shutdown call lands.
+    let (shutdown_session, shutdown_protocol) = {
+        let _server = spawn_http_server_with_session_lifecycle_tuning(
+            &dir,
+            listen,
+            token,
+            Some(&session_db_path),
+            Some(5_000),
+            Some(5_000),
+            Some(50),
+        );
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("build reqwest client");
+        let base_url = format!("http://{listen}");
+        wait_for_server(&client, &base_url);
 
         let (shutdown_session, shutdown_protocol) = initialize_session(&client, &base_url, token);
         let shutdown = post_admin_session_shutdown(&client, &base_url, token, &shutdown_session);
@@ -2670,14 +2716,7 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
         let shutdown: Value = shutdown.json().expect("shutdown json");
         assert_eq!(shutdown["lifecycle"]["state"].as_str(), Some("closed"));
 
-        (
-            deleted_session,
-            deleted_protocol,
-            expired_session,
-            expired_protocol,
-            shutdown_session,
-            shutdown_protocol,
-        )
+        (shutdown_session, shutdown_protocol)
     };
 
     let _server = spawn_http_server_with_session_lifecycle_tuning(
