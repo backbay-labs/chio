@@ -120,8 +120,10 @@ pub struct CodeExecutionConfig {
     /// is denied.  `None` disables the check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_execution_time_ms: Option<u64>,
-    /// Maximum bytes of code to scan for module detection.  Longer code
-    /// bodies are truncated at a UTF-8 boundary before scanning.
+    /// Maximum bytes of code to scan for module / network detection.
+    /// Longer code bodies are denied outright (fail-closed) so a
+    /// padding-based bypass cannot push a forbidden import past the
+    /// scan boundary.
     #[serde(default = "default_max_scan_bytes")]
     pub max_scan_bytes: usize,
 }
@@ -281,20 +283,25 @@ impl Guard for CodeExecutionGuard {
             }
         }
 
-        // Bound scan size for module detection.
-        let truncated = if code.len() > self.max_scan_bytes {
-            let mut end = self.max_scan_bytes;
-            while end > 0 && !code.is_char_boundary(end) {
-                end -= 1;
-            }
-            &code[..end]
-        } else {
-            code.as_str()
-        };
+        // Bound scan size for module / network detection. Fail-closed: a
+        // body larger than the configured scan window cannot be safely
+        // analyzed without leaving room for a padding-based bypass that
+        // pushes a forbidden import past the truncation boundary, so we
+        // deny outright rather than silently scan only the prefix.
+        if code.len() > self.max_scan_bytes {
+            tracing::warn!(
+                guard = "code-execution",
+                code_len = code.len(),
+                max_scan_bytes = self.max_scan_bytes,
+                "denying code execution: payload exceeds max_scan_bytes"
+            );
+            return Ok(Verdict::Deny);
+        }
+        let scanned = code.as_str();
 
         // 2. Dangerous-module detection.
         for (name, re) in &self.module_patterns {
-            if re.is_match(truncated) {
+            if re.is_match(scanned) {
                 tracing::warn!(
                     guard = "code-execution",
                     module = %name,
@@ -307,7 +314,7 @@ impl Guard for CodeExecutionGuard {
         // 3. Network access gate.
         if !self.network_access {
             let requested = Self::requested_network_access(&ctx.request.arguments).unwrap_or(false);
-            if requested || Self::code_uses_network(truncated) {
+            if requested || Self::code_uses_network(scanned) {
                 return Ok(Verdict::Deny);
             }
         }

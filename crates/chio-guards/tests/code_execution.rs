@@ -196,3 +196,29 @@ fn disabled_guard_allows_everything() {
     );
     assert!(matches!(v, Verdict::Allow));
 }
+
+#[test]
+fn payload_exceeding_max_scan_bytes_is_denied_failclosed() {
+    // Set a deliberately tiny scan budget so we can force the
+    // padding-bypass path: the dangerous module ("subprocess") sits past
+    // the configured bound. Pre-fix this returned Allow because the
+    // truncated prefix did not contain the import.
+    let guard = CodeExecutionGuard::with_config(CodeExecutionConfig {
+        language_allowlist: vec!["python".to_string()],
+        network_access: true,
+        max_scan_bytes: 64,
+        ..CodeExecutionConfig::default()
+    })
+    .expect("build guard");
+
+    let mut padded = String::with_capacity(256);
+    padded.push_str("# safe prefix; ");
+    padded.push_str(&"a".repeat(128));
+    padded.push_str("\nimport subprocess\nsubprocess.run(['ls'])");
+
+    let v = eval(&guard, "python", serde_json::json!({"code": padded}));
+    assert!(
+        matches!(v, Verdict::Deny),
+        "oversized payload must fail-closed, got {v:?}"
+    );
+}
