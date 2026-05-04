@@ -241,10 +241,6 @@ where
 
     let mut response = http::Response::new(ResBody::default());
     *response.status_mut() = status;
-    response.headers_mut().insert(
-        http::header::CONTENT_TYPE,
-        http::HeaderValue::from_static("application/json"),
-    );
 
     if let Some(receipt) = receipt {
         if let Ok(val) = http::HeaderValue::from_str(&receipt.id) {
@@ -252,6 +248,10 @@ where
         }
         if let Ok(body_bytes) = serde_json::to_vec(&receipt) {
             *response.body_mut() = ResBody::from(Bytes::from(body_bytes));
+            response.headers_mut().insert(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static("application/json"),
+            );
         }
         response.extensions_mut().insert(receipt);
     }
@@ -750,6 +750,49 @@ mod tests {
                 .unwrap_or_else(|e| panic!("verify failed: {e}")),
             "deserialised receipt body must verify under the embedded kernel key"
         );
+    }
+
+    #[tokio::test]
+    async fn service_413_without_receipt_body_omits_json_content_type() {
+        let (_kp, evaluator) = make_service();
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("BREW")
+            .uri("/pets")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(resp.extensions().get::<HttpReceipt>().is_none());
+        assert!(resp.headers().get(http::header::CONTENT_TYPE).is_none());
+        assert!(resp.headers().get("x-chio-receipt-id").is_none());
+
+        let body_bytes = resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap_or_else(|e| panic!("collect failed: {e}"))
+            .to_bytes();
+        assert!(body_bytes.is_empty());
     }
 
     #[tokio::test]
