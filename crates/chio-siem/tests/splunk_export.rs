@@ -1,6 +1,8 @@
 // Integration tests for SplunkHecExporter against a wiremock mock server.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::time::Duration;
+
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, SettlementStatus,
@@ -106,6 +108,7 @@ async fn splunk_hec_sends_correct_envelope() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        timeout: Duration::from_secs(30),
     };
     // Use plaintext constructor -- wiremock runs on plain http:// for tests.
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
@@ -187,6 +190,7 @@ async fn splunk_hec_returns_error_on_401() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        timeout: Duration::from_secs(30),
     };
     // Use plaintext constructor -- wiremock runs on plain http:// for tests.
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
@@ -226,6 +230,7 @@ async fn splunk_hec_returns_error_on_400() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        timeout: Duration::from_secs(30),
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -264,6 +269,7 @@ async fn splunk_hec_returns_error_on_503() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        timeout: Duration::from_secs(30),
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -282,6 +288,91 @@ async fn splunk_hec_returns_error_on_503() {
     }
 }
 
+/// SplunkHecExporter caps HEC response bodies before including them in errors.
+#[tokio::test]
+async fn splunk_hec_rejects_oversized_error_response_body() {
+    let server = MockServer::start().await;
+    let oversized_body = "x".repeat(70 * 1024);
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(ResponseTemplate::new(500).set_body_raw(oversized_body, "text/plain"))
+        .mount(&server)
+        .await;
+
+    let config = SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        index: None,
+        host: None,
+        timeout: Duration::from_secs(30),
+    };
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
+
+    let events = vec![SiemEvent::from_receipt(sample_receipt(
+        "splunk-rcpt-large-error",
+    ))];
+    let result = exporter.export_batch(&events).await;
+
+    match result.unwrap_err() {
+        ExportError::HttpError(msg) => {
+            assert!(
+                msg.contains("response body") && msg.contains("limit"),
+                "HttpError should explain response body limit, got: {msg}"
+            );
+            assert!(
+                msg.len() < 2048,
+                "HttpError should not include the entire oversized body"
+            );
+        }
+        other => panic!("expected ExportError::HttpError, got: {other:?}"),
+    }
+}
+
+/// SplunkHecExporter applies the configured HTTP timeout to HEC requests.
+#[tokio::test]
+async fn splunk_hec_honors_configured_timeout() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(Duration::from_secs(5))
+                .set_body_raw(r#"{"text":"Success","code":0}"#, "application/json"),
+        )
+        .mount(&server)
+        .await;
+
+    let config = SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        index: None,
+        host: None,
+        timeout: Duration::from_millis(50),
+    };
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
+
+    let events = vec![SiemEvent::from_receipt(sample_receipt(
+        "splunk-rcpt-timeout",
+    ))];
+    let result = tokio::time::timeout(Duration::from_millis(500), exporter.export_batch(&events))
+        .await
+        .expect("client timeout should fire before the outer test timeout");
+
+    match result.unwrap_err() {
+        ExportError::HttpError(msg) => {
+            assert!(
+                msg.contains("timed out") || msg.contains("timeout"),
+                "HttpError should mention timeout, got: {msg}"
+            );
+        }
+        other => panic!("expected ExportError::HttpError, got: {other:?}"),
+    }
+}
+
 /// SplunkHecExporter::new rejects plaintext http:// endpoints to protect HEC tokens.
 #[test]
 fn splunk_hec_rejects_plaintext_http_endpoint() {
@@ -291,6 +382,7 @@ fn splunk_hec_rejects_plaintext_http_endpoint() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        timeout: Duration::from_secs(30),
     };
     let result = SplunkHecExporter::new(config);
     assert!(
@@ -330,6 +422,7 @@ async fn splunk_hec_200_with_nonzero_code_classifies_as_partial_failure() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        timeout: Duration::from_secs(30),
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -374,6 +467,7 @@ async fn splunk_hec_200_with_invalid_event_number_reports_per_event_failures() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        timeout: Duration::from_secs(30),
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -409,6 +503,7 @@ fn splunk_hec_accepts_https_endpoint() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        timeout: Duration::from_secs(30),
     };
     // Construction should succeed; no network call is made here.
     let result = SplunkHecExporter::new(config);

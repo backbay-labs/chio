@@ -4,8 +4,13 @@
 //! JSON event envelopes. Each envelope wraps the full ChioReceipt JSON under the
 //! "event" key with Splunk-native time/sourcetype fields.
 
+use std::time::Duration;
+
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+
+const DEFAULT_HEC_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_HEC_RESPONSE_BODY_BYTES: usize = 64 * 1024;
 
 /// Configuration for the Splunk HEC exporter.
 #[derive(Debug, Clone)]
@@ -20,6 +25,8 @@ pub struct SplunkConfig {
     pub index: Option<String>,
     /// Optional host field sent with each event envelope.
     pub host: Option<String>,
+    /// HTTP request timeout. Default: 30 seconds.
+    pub timeout: Duration,
 }
 
 impl Default for SplunkConfig {
@@ -30,6 +37,7 @@ impl Default for SplunkConfig {
             sourcetype: "chio:receipt".to_string(),
             index: None,
             host: None,
+            timeout: DEFAULT_HEC_TIMEOUT,
         }
     }
 }
@@ -64,6 +72,7 @@ impl SplunkHecExporter {
         }
 
         let client = reqwest::Client::builder()
+            .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
         Ok(Self { config, client })
@@ -77,6 +86,7 @@ impl SplunkHecExporter {
     /// HEC tokens from being sent in cleartext.
     pub fn new_plaintext_for_tests(config: SplunkConfig) -> Result<Self, ExportError> {
         let client = reqwest::Client::builder()
+            .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
         Ok(Self { config, client })
@@ -122,7 +132,7 @@ impl Exporter for SplunkHecExporter {
             let payload = parts.join("\n");
             let url = format!("{}/services/collector/event", self.config.endpoint);
 
-            let response = self
+            let mut response = self
                 .client
                 .post(&url)
                 .header("Authorization", format!("Splunk {}", self.config.hec_token))
@@ -130,13 +140,16 @@ impl Exporter for SplunkHecExporter {
                 .body(payload)
                 .send()
                 .await
-                .map_err(|e| ExportError::HttpError(format!("HEC request failed: {e}")))?;
+                .map_err(|e| {
+                    if e.is_timeout() {
+                        ExportError::HttpError(format!("HEC request timed out: {e}"))
+                    } else {
+                        ExportError::HttpError(format!("HEC request failed: {e}"))
+                    }
+                })?;
 
             let status = response.status();
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "<unreadable body>".to_string());
+            let body = read_hec_response_body(&mut response).await?;
 
             if !status.is_success() {
                 return Err(ExportError::HttpError(format!(
@@ -152,6 +165,38 @@ impl Exporter for SplunkHecExporter {
             classify_hec_response(&body, events.len())
         })
     }
+}
+
+async fn read_hec_response_body(response: &mut reqwest::Response) -> Result<String, ExportError> {
+    if let Some(content_length) = response.content_length() {
+        if content_length > MAX_HEC_RESPONSE_BODY_BYTES as u64 {
+            return Err(hec_response_body_too_large(content_length));
+        }
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| ExportError::HttpError(format!("failed to read HEC response body: {e}")))?
+    {
+        let next_len = body
+            .len()
+            .checked_add(chunk.len())
+            .ok_or_else(|| hec_response_body_too_large(u64::MAX))?;
+        if next_len > MAX_HEC_RESPONSE_BODY_BYTES {
+            return Err(hec_response_body_too_large(next_len as u64));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+fn hec_response_body_too_large(size: u64) -> ExportError {
+    ExportError::HttpError(format!(
+        "HEC response body exceeded {MAX_HEC_RESPONSE_BODY_BYTES} byte limit (received at least {size} bytes)"
+    ))
 }
 
 /// Classify a Splunk HEC 2xx response body.
