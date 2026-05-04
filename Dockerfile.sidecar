@@ -13,7 +13,18 @@ FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION}@sha256:3c06253e433c1b2ac2c279a
 # `protobuf-compiler` for the same reason; keep this image consistent so
 # any future dep change that pulls chio-envoy-ext-authz into chio-cli's
 # transitive graph does not silently break the Docker build.
-RUN apk add --no-cache build-base cmake perl pkgconf musl-dev protoc
+# `openssl-dev` + `openssl-libs-static` are required because the
+# `chio-custody-hw` member pulls in `webauthn-rs-core`, which links
+# against `openssl-sys` (no `vendored` feature on the workspace pin). The
+# crate is reachable from chio-cli through `chio-kernel -> chio-custody-hw`,
+# so `cargo build --package chio-cli` compiles it. Static linking
+# (`OPENSSL_STATIC=1`) keeps the runtime layer slim: the final alpine
+# image only ships `ca-certificates` + `tini` and never gains a
+# `libssl.so` runtime dep.
+RUN apk add --no-cache build-base cmake perl pkgconf musl-dev protoc openssl-dev openssl-libs-static
+ENV OPENSSL_STATIC=1 \
+    OPENSSL_NO_VENDOR=1 \
+    PKG_CONFIG_ALL_STATIC=1
 WORKDIR /workspace
 
 # Copy the full workspace so path dependencies resolve. Keep this list
