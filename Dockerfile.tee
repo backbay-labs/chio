@@ -9,7 +9,7 @@ ARG ALPINE_VERSION=3.22
 # Stage 1: build the binary
 ############################
 FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION}@sha256:3c06253e433c1b2ac2c279a98226d385d25c5f324138ab2861a5414bfa6855f9 AS builder
-RUN apk add --no-cache build-base cmake perl pkgconf musl-dev protoc
+RUN apk add --no-cache build-base cmake openssl-dev perl pkgconf musl-dev protoc
 WORKDIR /workspace
 
 # Copy the full workspace because chio-tee reaches path dependencies under
