@@ -14,6 +14,23 @@ use sha2::{Digest, Sha256};
 /// deferred to trajectory-4 (M02-followup).
 const SYNTHETIC_TEST_SAMPLE: &str = "synthetic-test-sample";
 
+/// Closed set of fields permitted in a `chio-memo-signature.v1` sig file.
+///
+/// Keeping this list explicit lets the verifier reject duplicate keys and any
+/// unknown extension fields. That fail-closes two parser-disagreement attacks:
+/// (1) a malicious sig that lists `scheme: synthetic-test-sample` first and
+/// `scheme: sigstore-cosign` second, hoping a downstream tool picks the second
+/// occurrence; (2) sneaking attacker-controlled claims past the verifier in
+/// fields it never reads.
+const ALLOWED_SIGNATURE_FIELDS: &[&str] = &[
+    "signature_format",
+    "scheme",
+    "signer_identity",
+    "signed_payload",
+    "memo_sha256",
+    "signature",
+];
+
 fn main() -> ExitCode {
     match run() {
         Ok(message) => {
@@ -90,16 +107,32 @@ fn verify_memo_path(memo_path: &str, sig_path: &str) -> Result<String, String> {
 }
 
 fn parse_signature_fields(sig: &str) -> Result<Vec<(&str, &str)>, String> {
-    let mut fields = Vec::new();
+    let mut fields: Vec<(&str, &str)> = Vec::new();
     for line in sig.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
+        // Lines that are entirely whitespace are tolerated as separators, but
+        // we deliberately do not skip `#`-prefixed comments: the
+        // chio-memo-signature.v1 format has no comment syntax, and silently
+        // dropping arbitrary attacker-controlled bytes from a signed input is
+        // exactly the parser-tolerance pattern that has caused real-world
+        // signature verification bypasses.
+        if line.chars().all(char::is_whitespace) {
             continue;
         }
-        let Some((key, value)) = trimmed.split_once(':') else {
-            return Err(format!("invalid signature line: {trimmed}"));
+        let Some((key, value)) = line.split_once(':') else {
+            return Err(format!("invalid signature line: {}", line.trim()));
         };
-        fields.push((key.trim(), value.trim()));
+        let key = key.trim();
+        let value = value.trim();
+        if key.is_empty() {
+            return Err("signature field key must not be empty".to_owned());
+        }
+        if !ALLOWED_SIGNATURE_FIELDS.contains(&key) {
+            return Err(format!("unknown signature field: {key}"));
+        }
+        if fields.iter().any(|(existing, _)| *existing == key) {
+            return Err(format!("duplicate signature field: {key}"));
+        }
+        fields.push((key, value));
     }
     Ok(fields)
 }
@@ -205,6 +238,116 @@ mod tests {
         assert!(
             !message.contains("cosign-github-oidc-test"),
             "verifier must not surface the legacy cosign-github-oidc-test literal, got: {message}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_duplicate_scheme_field() -> Result<(), String> {
+        // Defence-in-depth: a sig file with two `scheme:` lines (one
+        // synthetic-test-sample, one sigstore-cosign) must not slip through
+        // because the verifier happens to match the first occurrence. Reject
+        // duplicates outright so any downstream parser disagreement fail-closes.
+        let memo = b"duplicate-scheme rejection test memo\n";
+        let memo_sha = sha256_hex(memo);
+        let signer = "https://example.invalid/dup-scheme-signer";
+        let signature = memo_signature(&memo_sha, signer);
+        let sig_body = format!(
+            "signature_format: chio-memo-signature.v1\n\
+             scheme: synthetic-test-sample\n\
+             scheme: sigstore-cosign\n\
+             signer_identity: {signer}\n\
+             signed_payload: m02-memo.md:sha256\n\
+             memo_sha256: {memo_sha}\n\
+             signature: {signature}\n",
+        );
+
+        let memo_path = write_temp("dup-scheme-memo.md", memo)?;
+        let sig_path = write_temp("dup-scheme-memo.sig", sig_body.as_bytes())?;
+
+        let result = verify_memo_path(path_str(&memo_path)?, path_str(&sig_path)?);
+        let _ = fs::remove_file(&memo_path);
+        let _ = fs::remove_file(&sig_path);
+
+        let err = result
+            .err()
+            .ok_or_else(|| "duplicate scheme field must be rejected".to_owned())?;
+        assert!(
+            err.contains("duplicate signature field: scheme"),
+            "expected duplicate-field rejection, got: {err}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_unknown_field() -> Result<(), String> {
+        // The chio-memo-signature.v1 format is a closed set. Tolerating
+        // attacker-controlled extension fields would let a malicious memo
+        // smuggle claims (e.g. forged cosign certs, secret material) past the
+        // verifier in fields it never reads.
+        let memo = b"unknown-field rejection test memo\n";
+        let memo_sha = sha256_hex(memo);
+        let signer = "https://example.invalid/unknown-field-signer";
+        let signature = memo_signature(&memo_sha, signer);
+        let sig_body = format!(
+            "signature_format: chio-memo-signature.v1\n\
+             scheme: synthetic-test-sample\n\
+             signer_identity: {signer}\n\
+             signed_payload: m02-memo.md:sha256\n\
+             memo_sha256: {memo_sha}\n\
+             signature: {signature}\n\
+             attacker_claim: forged-cosign-cert\n",
+        );
+
+        let memo_path = write_temp("unknown-field-memo.md", memo)?;
+        let sig_path = write_temp("unknown-field-memo.sig", sig_body.as_bytes())?;
+
+        let result = verify_memo_path(path_str(&memo_path)?, path_str(&sig_path)?);
+        let _ = fs::remove_file(&memo_path);
+        let _ = fs::remove_file(&sig_path);
+
+        let err = result
+            .err()
+            .ok_or_else(|| "unknown signature field must be rejected".to_owned())?;
+        assert!(
+            err.contains("unknown signature field: attacker_claim"),
+            "expected unknown-field rejection, got: {err}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_comment_line() -> Result<(), String> {
+        // The format has no comment syntax; silently dropping `#`-prefixed
+        // lines is parser tolerance the verifier should not extend.
+        let memo = b"comment rejection test memo\n";
+        let memo_sha = sha256_hex(memo);
+        let signer = "https://example.invalid/comment-signer";
+        let signature = memo_signature(&memo_sha, signer);
+        let sig_body = format!(
+            "# spurious comment line\n\
+             signature_format: chio-memo-signature.v1\n\
+             scheme: synthetic-test-sample\n\
+             signer_identity: {signer}\n\
+             signed_payload: m02-memo.md:sha256\n\
+             memo_sha256: {memo_sha}\n\
+             signature: {signature}\n",
+        );
+
+        let memo_path = write_temp("comment-memo.md", memo)?;
+        let sig_path = write_temp("comment-memo.sig", sig_body.as_bytes())?;
+
+        let result = verify_memo_path(path_str(&memo_path)?, path_str(&sig_path)?);
+        let _ = fs::remove_file(&memo_path);
+        let _ = fs::remove_file(&sig_path);
+
+        let err = result
+            .err()
+            .ok_or_else(|| "comment-prefixed lines must be rejected".to_owned())?;
+        assert!(
+            err.contains("unknown signature field: # spurious comment line")
+                || err.contains("invalid signature line"),
+            "expected comment rejection, got: {err}"
         );
         Ok(())
     }
