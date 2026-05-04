@@ -129,8 +129,18 @@ export class ChioSidecarClient {
         return false;
       }
 
-      const result = (await response.json()) as { valid: boolean };
-      return result.valid;
+      // Validate the response shape at runtime; an unexpected payload
+      // must fail closed rather than coerce to a truthy value.
+      const parsed: unknown = await response.json();
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        "valid" in parsed &&
+        typeof (parsed as { valid: unknown }).valid === "boolean"
+      ) {
+        return (parsed as { valid: boolean }).valid;
+      }
+      return false;
     } catch {
       return false;
     } finally {

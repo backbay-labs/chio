@@ -141,14 +141,24 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return false, nil
+		// Fail closed (valid=false) but surface the protocol error so
+		// callers can distinguish "receipt invalid" from "verify endpoint
+		// is broken/unreachable".
+		return false, &SidecarError{
+			Code:       ErrInvalidReceipt,
+			Message:    "sidecar verify returned non-200: " + resp.Status,
+			StatusCode: resp.StatusCode,
+		}
 	}
 
 	var result struct {
 		Valid bool `json:"valid"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return false, nil
+		return false, &SidecarError{
+			Code:    ErrInvalidReceipt,
+			Message: "failed to decode verify response: " + err.Error(),
+		}
 	}
 	return result.Valid, nil
 }
