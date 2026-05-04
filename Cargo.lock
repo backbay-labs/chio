@@ -2587,6 +2587,7 @@ dependencies = [
  "coset",
  "dcap-rs",
  "fips204",
+ "futures-util",
  "p256 0.13.2",
  "p384",
  "pem",
@@ -2603,7 +2604,9 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "toml 0.8.23",
+ "tough",
  "tracing",
+ "url",
  "x509-cert",
 ]
 
