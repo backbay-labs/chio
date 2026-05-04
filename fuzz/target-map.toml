@@ -55,6 +55,18 @@ triggers = [
 seeds    = "fuzz/corpus/manifest_roundtrip"
 notes    = "Tool-manifest decode plus canonicalization; downstream of M01 manifest vectors."
 
+[targets.underwriting_policy_input]
+crate    = "chio-underwriting"
+path     = "fuzz/fuzz_targets/underwriting_policy_input.rs"
+triggers = [
+    "crates/chio-underwriting/**",
+    "spec/schemas/underwriting/**",
+    "fuzz/fuzz_targets/underwriting_policy_input.rs",
+    "fuzz/corpus/underwriting_policy_input/**",
+]
+seeds    = "fuzz/corpus/underwriting_policy_input"
+notes    = "Underwriting policy, decision, marketplace, and premium decode surfaces."
+
 [targets.attest_verify]
 crate    = "chio-attest-verify"
 path     = "fuzz/fuzz_targets/attest_verify.rs"

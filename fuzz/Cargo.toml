@@ -39,6 +39,7 @@ chio-data-guards = { path = "../crates/chio-data-guards" }
 chio-guards = { path = "../crates/chio-guards" }
 chio-kernel = { path = "../crates/chio-kernel" }
 chio-manifest = { path = "../crates/chio-manifest" }
+chio-underwriting = { path = "../crates/chio-underwriting" }
 chio-credentials = { path = "../crates/chio-credentials", features = ["fuzz"] }
 chio-did = { path = "../crates/chio-did", features = ["fuzz"] }
 chio-kernel-core = { path = "../crates/chio-kernel-core", features = ["fuzz"] }
@@ -175,6 +176,13 @@ bench = false
 [[bin]]
 name = "manifest_roundtrip"
 path = "fuzz_targets/manifest_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "underwriting_policy_input"
+path = "fuzz_targets/underwriting_policy_input.rs"
 test = false
 doc = false
 bench = false

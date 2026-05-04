@@ -33,6 +33,7 @@ TARGETS=(
     canonical_json
     capability_receipt
     manifest_roundtrip
+    underwriting_policy_input
     fuzz_policy_parse_compile
     fuzz_sql_parser
     fuzz_merkle_checkpoint
