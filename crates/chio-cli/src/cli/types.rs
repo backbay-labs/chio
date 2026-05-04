@@ -174,6 +174,67 @@ mod cli_env_tests {
         restore_env("CHIO_MCP_AUTH_TOKEN", prior_mcp_auth);
         restore_env("CHIO_MCP_ADMIN_TOKEN", prior_mcp_admin);
     }
+
+    #[test]
+    fn guard_publish_reads_registry_password_env_var() {
+        let _guard = env_lock();
+        let prior = std::env::var_os("CHIO_GUARD_REGISTRY_PASSWORD");
+        std::env::set_var("CHIO_GUARD_REGISTRY_PASSWORD", "registry-password");
+
+        let parsed = Cli::try_parse_from([
+            "chio",
+            "guard",
+            "publish",
+            ".",
+            "--ref",
+            "oci://ghcr.io/chio/tool-gate:v1",
+            "--epoch-id-seed",
+            "seed-1",
+            "--username",
+            "registry-user",
+        ])
+        .unwrap_or_else(|error| panic!("CLI parse failed: {error}"));
+
+        match parsed.command {
+            Commands::Guard {
+                command: GuardCommands::Publish { password, .. },
+            } => {
+                assert_eq!(password.as_deref(), Some("registry-password"));
+            }
+            _ => panic!("expected guard publish command"),
+        }
+
+        restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
+    }
+
+    #[test]
+    fn guard_pull_reads_registry_password_env_var() {
+        let _guard = env_lock();
+        let prior = std::env::var_os("CHIO_GUARD_REGISTRY_PASSWORD");
+        std::env::set_var("CHIO_GUARD_REGISTRY_PASSWORD", "registry-password");
+
+        let parsed = Cli::try_parse_from([
+            "chio",
+            "guard",
+            "pull",
+            "--ref",
+            "oci://ghcr.io/chio/tool-gate@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--username",
+            "registry-user",
+        ])
+        .unwrap_or_else(|error| panic!("CLI parse failed: {error}"));
+
+        match parsed.command {
+            Commands::Guard {
+                command: GuardCommands::Pull { password, .. },
+            } => {
+                assert_eq!(password.as_deref(), Some("registry-password"));
+            }
+            _ => panic!("expected guard pull command"),
+        }
+
+        restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
+    }
 }
 
 #[derive(Subcommand)]
@@ -753,7 +814,14 @@ enum GuardCommands {
         #[arg(long)]
         username: Option<String>,
         /// Registry password or token for HTTP basic auth.
-        #[arg(long, requires = "username")]
+        /// Prefer `CHIO_GUARD_REGISTRY_PASSWORD` env over the argv form so
+        /// the secret does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(
+            long,
+            requires = "username",
+            env = "CHIO_GUARD_REGISTRY_PASSWORD",
+            hide_env_values = true
+        )]
         password: Option<String>,
         /// Registry host allowed to use HTTP instead of HTTPS.
         #[arg(long = "allow-http-registry")]
@@ -769,7 +837,14 @@ enum GuardCommands {
         #[arg(long)]
         username: Option<String>,
         /// Registry password or token for HTTP basic auth.
-        #[arg(long, requires = "username")]
+        /// Prefer `CHIO_GUARD_REGISTRY_PASSWORD` env over the argv form so
+        /// the secret does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(
+            long,
+            requires = "username",
+            env = "CHIO_GUARD_REGISTRY_PASSWORD",
+            hide_env_values = true
+        )]
         password: Option<String>,
         /// Registry host allowed to use HTTP instead of HTTPS.
         #[arg(long = "allow-http-registry")]
