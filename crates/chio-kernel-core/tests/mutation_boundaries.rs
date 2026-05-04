@@ -325,6 +325,53 @@ fn resolve_matching_grants_audience_null_distinct_from_empty_string_and_missing(
 }
 
 #[test]
+fn resolve_matching_grants_audience_mixed_null_array_fails_closed() {
+    // A mixed array `["security", null]` directly under an audience key must
+    // poison the constraint to match the hosted matcher's strict semantics
+    // (`chio_kernel::request_matching::collect_string_values_strict` rejects
+    // any non-string, non-array leaf). The portable matcher previously treated
+    // null array elements as tolerated; that allowed an attacker who controlled
+    // any nullable field in the array to relax the allowlist check on the
+    // sibling string elements compared to the hosted kernel.
+    let scope = ChioScope {
+        grants: vec![grant(
+            "web",
+            "send",
+            vec![Operation::Invoke],
+            vec![Constraint::AudienceAllowlist(vec!["security".to_string()])],
+        )],
+        ..ChioScope::default()
+    };
+
+    let mixed_null = serde_json::json!({ "audience": ["security", null] });
+    let matches = resolve_matching_grants(&scope, "send", "web", &mixed_null);
+    assert!(
+        matches.as_ref().is_ok_and(Vec::is_empty),
+        "mixed null in audience array must fail closed (saw {matches:?})"
+    );
+
+    // Memory-store allowlist parity.
+    let memory_scope = ChioScope {
+        grants: vec![grant(
+            "memory",
+            "write",
+            vec![Operation::Invoke],
+            vec![Constraint::MemoryStoreAllowlist(vec![
+                "case-notes".to_string()
+            ])],
+        )],
+        ..ChioScope::default()
+    };
+
+    let mixed_null_store = serde_json::json!({ "store": ["case-notes", null] });
+    let matches = resolve_matching_grants(&memory_scope, "write", "memory", &mixed_null_store);
+    assert!(
+        matches.as_ref().is_ok_and(Vec::is_empty),
+        "mixed null in store array must fail closed (saw {matches:?})"
+    );
+}
+
+#[test]
 fn resolve_matching_grants_memory_store_allowlist_rejects_non_string_values() {
     let scope = ChioScope {
         grants: vec![grant(

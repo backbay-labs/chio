@@ -592,10 +592,13 @@ fn is_audience_key(key: &str) -> bool {
     )
 }
 
-/// Walk a JSON value collecting string leaves; returns false if a
-/// non-string, non-array, non-null leaf is observed under a relevant key.
-/// Null leaves are tolerated (they contribute no values) so an explicitly
-/// null audience entry does not poison the constraint.
+/// Walk a JSON value collecting string leaves; returns false if any
+/// non-string, non-array leaf is observed (including `null`). The
+/// "explicit null directly under a relevant key" case is special-cased
+/// upstream by callers (see `collect_audience_values` / `collect_memory_store_values`),
+/// so once we recurse into the value the strict policy applies and a
+/// mixed array like `["security", null]` poisons the constraint, matching
+/// the hosted kernel's `request_matching::collect_string_values_strict`.
 fn collect_string_values_strict(value: &serde_json::Value, out: &mut Vec<String>) -> bool {
     match value {
         serde_json::Value::String(s) => {
@@ -610,8 +613,8 @@ fn collect_string_values_strict(value: &serde_json::Value, out: &mut Vec<String>
             }
             true
         }
-        serde_json::Value::Null => true,
-        serde_json::Value::Bool(_)
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
         | serde_json::Value::Number(_)
         | serde_json::Value::Object(_) => false,
     }
