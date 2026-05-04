@@ -7,6 +7,8 @@
 //! Partial failures (HTTP 200 with `errors: true`) are detected by parsing
 //! the bulk response body and counting per-item status codes.
 
+use std::time::Duration;
+
 use zeroize::Zeroizing;
 
 use crate::event::SiemEvent;
@@ -40,6 +42,11 @@ pub struct ElasticConfig {
     pub index_name: String,
     /// Authentication method and credentials.
     pub auth: ElasticAuthConfig,
+    /// HTTP request timeout. Default: 30 seconds.
+    ///
+    /// A stalled cluster must not block the SIEM manager poll loop;
+    /// `reqwest` does not apply a default timeout, so we install one here.
+    pub timeout: Duration,
 }
 
 impl Default for ElasticConfig {
@@ -48,6 +55,7 @@ impl Default for ElasticConfig {
             endpoint: String::new(),
             index_name: "chio-receipts".to_string(),
             auth: ElasticAuthConfig::ApiKey(String::new()),
+            timeout: Duration::from_secs(30),
         }
     }
 }
@@ -64,8 +72,36 @@ impl ElasticsearchExporter {
     ///
     /// Builds a `reqwest::Client` with rustls TLS and returns an error if the
     /// client cannot be constructed.
+    ///
+    /// Returns an error if `config.endpoint` uses `http://` (plaintext). The
+    /// auth credentials (API keys, Basic passwords) MUST NOT be transmitted
+    /// over an unencrypted connection. Use [`Self::new_plaintext_for_tests`]
+    /// for integration tests against a local mock server.
     pub fn new(config: ElasticConfig) -> Result<Self, ExportError> {
+        if config.endpoint.starts_with("http://") {
+            return Err(ExportError::HttpError(
+                "Elasticsearch endpoint must use https:// -- sending API keys \
+                 or Basic credentials over plaintext http:// is not permitted"
+                    .to_string(),
+            ));
+        }
+
         let client = reqwest::Client::builder()
+            .timeout(config.timeout)
+            .build()
+            .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
+        Ok(Self { config, client })
+    }
+
+    /// Create an `ElasticsearchExporter` without TLS scheme validation.
+    ///
+    /// This constructor is intended for integration tests that run against a
+    /// local mock server over plain HTTP. Do NOT use this in production code:
+    /// it bypasses the `https://` enforcement that protects auth credentials
+    /// from being sent in cleartext.
+    pub fn new_plaintext_for_tests(config: ElasticConfig) -> Result<Self, ExportError> {
+        let client = reqwest::Client::builder()
+            .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
         Ok(Self { config, client })

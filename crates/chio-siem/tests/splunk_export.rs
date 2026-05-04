@@ -106,6 +106,7 @@ async fn splunk_hec_sends_correct_envelope() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     // Use plaintext constructor -- wiremock runs on plain http:// for tests.
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
@@ -187,6 +188,7 @@ async fn splunk_hec_returns_error_on_401() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     // Use plaintext constructor -- wiremock runs on plain http:// for tests.
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
@@ -226,6 +228,7 @@ async fn splunk_hec_returns_error_on_400() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -264,6 +267,7 @@ async fn splunk_hec_returns_error_on_503() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -291,6 +295,7 @@ fn splunk_hec_rejects_plaintext_http_endpoint() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     let result = SplunkHecExporter::new(config);
     assert!(
@@ -317,6 +322,7 @@ fn splunk_hec_accepts_https_endpoint() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     // Construction should succeed; no network call is made here.
     let result = SplunkHecExporter::new(config);

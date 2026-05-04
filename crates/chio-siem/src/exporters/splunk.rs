@@ -4,6 +4,8 @@
 //! JSON event envelopes. Each envelope wraps the full ChioReceipt JSON under the
 //! "event" key with Splunk-native time/sourcetype fields.
 
+use std::time::Duration;
+
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 
@@ -20,6 +22,12 @@ pub struct SplunkConfig {
     pub index: Option<String>,
     /// Optional host field sent with each event envelope.
     pub host: Option<String>,
+    /// HTTP request timeout. Default: 30 seconds.
+    ///
+    /// A slow or stalled HEC endpoint must not block the SIEM manager poll
+    /// loop. `reqwest` does not apply any timeout by default, so we install
+    /// one here and treat a stuck collector as a transient error.
+    pub timeout: Duration,
 }
 
 impl Default for SplunkConfig {
@@ -30,6 +38,7 @@ impl Default for SplunkConfig {
             sourcetype: "chio:receipt".to_string(),
             index: None,
             host: None,
+            timeout: Duration::from_secs(30),
         }
     }
 }
@@ -64,6 +73,7 @@ impl SplunkHecExporter {
         }
 
         let client = reqwest::Client::builder()
+            .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
         Ok(Self { config, client })
@@ -77,6 +87,7 @@ impl SplunkHecExporter {
     /// HEC tokens from being sent in cleartext.
     pub fn new_plaintext_for_tests(config: SplunkConfig) -> Result<Self, ExportError> {
         let client = reqwest::Client::builder()
+            .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
         Ok(Self { config, client })
