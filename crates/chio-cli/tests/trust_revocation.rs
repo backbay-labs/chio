@@ -1,5 +1,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -82,14 +83,29 @@ fn spawn_trust_service(
     ServerGuard { child }
 }
 
-fn wait_for_trust_service(client: &Client, base_url: &str) {
-    for _ in 0..50 {
+fn wait_for_trust_service(client: &Client, base_url: &str, service: &mut ServerGuard) {
+    // 30s readiness budget matches mcp_auth_server.rs and provider_admin.rs.
+    // The previous 5s budget is tight on slow CI runners and risks flake.
+    for _ in 0..300 {
+        if let Some(status) = service.child.try_wait().expect("poll trust service child") {
+            let mut stderr = String::new();
+            if let Some(child_stderr) = service.child.stderr.as_mut() {
+                let _ = child_stderr.read_to_string(&mut stderr);
+            }
+            panic!(
+                "trust service exited before becoming ready (status {status})\nstderr:\n{stderr}",
+            );
+        }
         match client.get(format!("{base_url}/health")).send() {
             Ok(response) if response.status() == reqwest::StatusCode::OK => return,
             Ok(_) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(100)),
         }
     }
-    panic!("trust service did not become ready");
+    let mut stderr = String::new();
+    if let Some(child_stderr) = service.child.stderr.as_mut() {
+        let _ = child_stderr.read_to_string(&mut stderr);
+    }
+    panic!("trust service did not become ready\nstderr:\n{stderr}");
 }
 
 #[test]
@@ -155,7 +171,7 @@ fn trust_revoke_and_status_can_target_control_service() {
     let budget_db_path = dir.join("budgets.sqlite3");
     let listen = reserve_listen_addr();
     let service_token = "control-secret";
-    let _service = spawn_trust_service(
+    let mut service = spawn_trust_service(
         listen,
         service_token,
         &receipt_db_path,
@@ -165,7 +181,7 @@ fn trust_revoke_and_status_can_target_control_service() {
     );
     let client = Client::builder().build().expect("build reqwest client");
     let base_url = format!("http://{listen}");
-    wait_for_trust_service(&client, &base_url);
+    wait_for_trust_service(&client, &base_url, &mut service);
 
     let capability_id = "cap-test-remote-123";
 
