@@ -3,16 +3,23 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/criterion-compare.sh [--baseline DIR] [--current DIR] [--threshold-percent N] [--dry-run]
+Usage: scripts/criterion-compare.sh [--baseline DIR] [--current DIR] [--threshold-percent N] [--noise-floor-ns N] [--dry-run]
 
 Compares Criterion estimate JSON files and fails if any current benchmark is
 more than the threshold percent slower than its matching baseline benchmark.
+
+Benchmarks whose baseline median lower bound is below the noise-floor (in
+nanoseconds) are reported but excluded from the regression gate. This keeps
+the gate honest for stub benches whose timed body collapses under LLVM into
+sub-nanosecond loops where 1-2 cycle jitter on shared CI runners produces
+spurious double-digit percent swings.
 USAGE
 }
 
 baseline_dir="${CRITERION_BASELINE_DIR:-target/criterion-baseline}"
 current_dir="${CRITERION_CURRENT_DIR:-target/criterion}"
 threshold_percent="${CRITERION_THRESHOLD_PERCENT:-10}"
+noise_floor_ns="${CRITERION_NOISE_FLOOR_NS:-1.0}"
 dry_run="false"
 
 while [[ "$#" -gt 0 ]]; do
@@ -27,6 +34,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --threshold-percent)
       threshold_percent="${2:?missing value for --threshold-percent}"
+      shift 2
+      ;;
+    --noise-floor-ns)
+      noise_floor_ns="${2:?missing value for --noise-floor-ns}"
       shift 2
       ;;
     --dry-run)
@@ -60,7 +71,7 @@ JSON
 JSON
 fi
 
-python3 - "$baseline_dir" "$current_dir" "$threshold_percent" <<'PY'
+python3 - "$baseline_dir" "$current_dir" "$threshold_percent" "$noise_floor_ns" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -68,6 +79,7 @@ from pathlib import Path
 baseline_root = Path(sys.argv[1])
 current_root = Path(sys.argv[2])
 threshold = float(sys.argv[3])
+noise_floor = float(sys.argv[4])
 
 if not baseline_root.exists():
     raise SystemExit(f"baseline criterion directory not found: {baseline_root}")
@@ -100,6 +112,7 @@ if new_benchmarks:
         print(f"  {rel}", file=sys.stderr)
 
 failures = []
+noise_floor_skipped = []
 for rel, current_path in sorted(current.items()):
     if rel not in baseline:
         continue
@@ -108,6 +121,10 @@ for rel, current_path in sorted(current.items()):
     if base_value <= 0:
         raise SystemExit(f"{baseline[rel]} has non-positive median lower bound {base_value}")
     regression = ((current_value - base_value) / base_value) * 100.0
+    if base_value < noise_floor or current_value < noise_floor:
+        print(f"{rel}: baseline={base_value:.3f} current={current_value:.3f} regression={regression:.2f}% (below noise floor {noise_floor:.3f}ns; not gated)")
+        noise_floor_skipped.append(rel)
+        continue
     print(f"{rel}: baseline={base_value:.3f} current={current_value:.3f} regression={regression:.2f}%")
     if regression > threshold:
         failures.append((rel, regression))
@@ -121,6 +138,9 @@ if failures:
 if len(current) == len(new_benchmarks):
     print("no baseline-matched Criterion benchmarks found; only new benchmarks were reported")
     raise SystemExit(0)
+
+if noise_floor_skipped:
+    print(f"{len(noise_floor_skipped)} benchmark(s) below noise floor {noise_floor:.3f}ns excluded from gate")
 
 print(f"kernel bench regression gate passed, threshold={threshold:.2f}%")
 PY
