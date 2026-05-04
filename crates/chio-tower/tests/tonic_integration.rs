@@ -45,7 +45,9 @@ async fn grpc_post_denied_without_capability() {
     let inner = tower::service_fn(|_req: Request<TestBody>| async {
         panic!("inner should not be called");
         #[allow(unreachable_code)]
-        Ok::<http::Response<()>, Box<dyn std::error::Error + Send + Sync>>(http::Response::new(()))
+        Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+            http::Response::new(Full::new(Bytes::new())),
+        )
     });
 
     let mut service = layer.layer(inner);
@@ -58,7 +60,7 @@ async fn grpc_post_denied_without_capability() {
         .body(Full::new(Bytes::new()))
         .unwrap_or_else(|e| panic!("build failed: {e}"));
 
-    let resp: http::Response<()> = service
+    let resp: http::Response<TestBody> = service
         .ready()
         .await
         .unwrap_or_else(|e| panic!("ready failed: {e}"))
@@ -86,12 +88,12 @@ async fn grpc_post_allowed_with_capability() {
     let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());
 
     let inner = tower::service_fn(|_req: Request<TestBody>| async {
-        let mut resp = http::Response::new(());
+        let mut resp = http::Response::new(Full::new(Bytes::new()));
         resp.headers_mut().insert(
             "content-type",
             http::HeaderValue::from_static("application/grpc"),
         );
-        Ok::<http::Response<()>, Box<dyn std::error::Error + Send + Sync>>(resp)
+        Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(resp)
     });
 
     let mut service = layer.layer(inner);
@@ -107,7 +109,7 @@ async fn grpc_post_allowed_with_capability() {
         .body(Full::new(Bytes::new()))
         .unwrap_or_else(|e| panic!("build failed: {e}"));
 
-    let resp: http::Response<()> = service
+    let resp: http::Response<TestBody> = service
         .ready()
         .await
         .unwrap_or_else(|e| panic!("ready failed: {e}"))
@@ -135,7 +137,9 @@ async fn grpc_receipt_id_format() {
     let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());
 
     let inner = tower::service_fn(|_req: Request<TestBody>| async {
-        Ok::<http::Response<()>, Box<dyn std::error::Error + Send + Sync>>(http::Response::new(()))
+        Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+            http::Response::new(Full::new(Bytes::new())),
+        )
     });
 
     let mut service = layer.layer(inner);
@@ -151,7 +155,7 @@ async fn grpc_receipt_id_format() {
         .body(Full::new(Bytes::new()))
         .unwrap_or_else(|e| panic!("build failed: {e}"));
 
-    let resp: http::Response<()> = service
+    let resp: http::Response<TestBody> = service
         .ready()
         .await
         .unwrap_or_else(|e| panic!("ready failed: {e}"))
@@ -183,7 +187,9 @@ async fn grpc_bearer_identity() {
     let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());
 
     let inner = tower::service_fn(|_req: Request<TestBody>| async {
-        Ok::<http::Response<()>, Box<dyn std::error::Error + Send + Sync>>(http::Response::new(()))
+        Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+            http::Response::new(Full::new(Bytes::new())),
+        )
     });
 
     let mut service = layer.layer(inner);
@@ -200,7 +206,7 @@ async fn grpc_bearer_identity() {
         .body(Full::new(Bytes::new()))
         .unwrap_or_else(|e| panic!("build failed: {e}"));
 
-    let resp: http::Response<()> = service
+    let resp: http::Response<TestBody> = service
         .ready()
         .await
         .unwrap_or_else(|e| panic!("ready failed: {e}"))

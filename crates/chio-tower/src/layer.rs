@@ -72,7 +72,7 @@ mod tests {
         // Verify that layer can wrap a simple closure.
         let _service = layer.layer(tower::service_fn(
             |_req: http::Request<Full<Bytes>>| async {
-                Ok::<_, std::convert::Infallible>(http::Response::new(()))
+                Ok::<_, std::convert::Infallible>(http::Response::new(Full::new(Bytes::new())))
             },
         ));
     }

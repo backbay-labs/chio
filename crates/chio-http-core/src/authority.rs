@@ -74,6 +74,18 @@ pub struct HttpAuthorityInput<'a> {
     pub policy: HttpAuthorityPolicy,
 }
 
+/// Input for [`HttpAuthority::sign_transport_deny_receipt`]: a deny verdict
+/// emitted by the transport layer (for example, a body-size guard) before
+/// the kernel evaluation pipeline has run.
+pub struct TransportDenyInput<'a> {
+    pub request_id: &'a str,
+    pub route_pattern: &'a str,
+    pub method: HttpMethod,
+    pub caller_identity_hash: &'a str,
+    pub content_hash: Option<&'a str>,
+    pub verdict: Verdict,
+}
+
 #[derive(Debug, Clone)]
 pub struct PreparedHttpEvaluation {
     pub verdict: Verdict,
@@ -431,6 +443,44 @@ impl HttpAuthority {
                 prepared.route_selection_metadata.as_ref(),
             ),
         )
+    }
+
+    /// Sign a deny receipt for a request that was rejected before the kernel
+    /// ever evaluated it (for example, an oversized HTTP body that the
+    /// transport layer refused to buffer). The caller supplies the verdict and
+    /// the surface-level identification fields directly because no kernel
+    /// receipt id, content hash, or capability id exists yet. The receipt
+    /// carries `final` HTTP status scope metadata so downstream auditors can
+    /// distinguish it from in-band kernel decisions.
+    pub fn sign_transport_deny_receipt(
+        &self,
+        input: TransportDenyInput<'_>,
+    ) -> Result<HttpReceipt, HttpAuthorityError> {
+        if !input.verdict.is_denied() {
+            return Err(HttpAuthorityError::Kernel(
+                "sign_transport_deny_receipt requires a Deny verdict".to_string(),
+            ));
+        }
+        let response_status = decision_status(&input.verdict);
+        let body = HttpReceiptBody {
+            id: uuid::Uuid::now_v7().to_string(),
+            request_id: input.request_id.to_string(),
+            route_pattern: input.route_pattern.to_string(),
+            method: input.method,
+            caller_identity_hash: input.caller_identity_hash.to_string(),
+            session_id: None,
+            verdict: input.verdict,
+            evidence: Vec::new(),
+            response_status,
+            timestamp: chrono::Utc::now().timestamp() as u64,
+            content_hash: input.content_hash.unwrap_or_default().to_string(),
+            policy_hash: self.policy_hash.clone(),
+            capability_id: None,
+            metadata: Some(http_status_metadata_final(None)),
+            kernel_key: self.keypair.public_key(),
+        };
+        HttpReceipt::sign(body, self.keypair.as_ref())
+            .map_err(|e| HttpAuthorityError::ReceiptSign(e.to_string()))
     }
 
     pub fn finalize_decision_receipt(

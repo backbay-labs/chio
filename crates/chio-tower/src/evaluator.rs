@@ -9,7 +9,7 @@ use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::GuardEvidence;
 use chio_http_core::{
     CallerIdentity, HttpAuthority, HttpAuthorityError, HttpAuthorityInput, HttpAuthorityPolicy,
-    HttpMethod, HttpReceipt, PreparedHttpEvaluation, Verdict,
+    HttpMethod, HttpReceipt, PreparedHttpEvaluation, TransportDenyInput, Verdict,
 };
 
 use crate::error::ChioTowerError;
@@ -169,6 +169,20 @@ impl ChioEvaluator {
             .finalize_receipt(prepared, response_status, None)
             .map_err(Into::into)
     }
+
+    /// Sign a deny receipt for a request that the transport layer rejected
+    /// before kernel evaluation (for example, an oversized body that the
+    /// middleware refused to buffer). Used by [`crate::ChioService`] to attach
+    /// a verifiable verdict to its `413 Payload Too Large` response so an
+    /// auditor cannot claim the rejection was a bare network error.
+    pub(crate) fn sign_transport_deny_receipt(
+        &self,
+        input: TransportDenyInput<'_>,
+    ) -> Result<HttpReceipt, ChioTowerError> {
+        self.authority
+            .sign_transport_deny_receipt(input)
+            .map_err(Into::into)
+    }
 }
 
 fn extract_presented_capability<'a>(
@@ -230,7 +244,7 @@ impl Clone for ChioEvaluator {
 }
 
 /// Parse an HTTP method string into the chio-http-core HttpMethod enum.
-fn parse_method(method: &str) -> Result<HttpMethod, ChioTowerError> {
+pub(crate) fn parse_method(method: &str) -> Result<HttpMethod, ChioTowerError> {
     match method.to_uppercase().as_str() {
         "GET" => Ok(HttpMethod::Get),
         "POST" => Ok(HttpMethod::Post),
