@@ -33,6 +33,12 @@ pub enum CanonicalSource {
 }
 
 /// Soft-dep state for hybrid signing.
+///
+/// The `Signed` variant carries a non-empty signature payload. A pinned
+/// frontier that advertises `Signed` with an empty `signature_hex` is
+/// rejected at construction time so a downstream verifier cannot be
+/// tricked into trusting an unsigned anchor (lineage tamper, M09 P5
+/// fail-closed contract).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SigningState {
@@ -43,6 +49,11 @@ pub enum SigningState {
     },
     /// M03 hybrid signing was absent. Frontier is recorded unsigned.
     UnsignedSoftDepAbsent,
+    /// A signer was named but the soft-dep produced no signature payload.
+    /// Distinct from `UnsignedSoftDepAbsent` so model-card anchoring can
+    /// surface the partial-signing path explicitly. Verifiers MUST treat
+    /// this state as unsigned.
+    UnsignedSignerStubbed { algorithm: String },
 }
 
 /// The pinned-frontier artifact written by `arc lineage pin`.
@@ -247,18 +258,18 @@ impl Sha256 {
     }
 }
 
-/// Pin a lineage frontier. Records the digest plus signing state. M03
-/// hybrid signing is consumed via `signer_hint`; a `None` value records
-/// the unsigned soft-dep-absent state.
+/// Pin a lineage frontier. Records the digest plus signing state. When
+/// `signer_hint` is `None` the artifact is recorded as
+/// `UnsignedSoftDepAbsent`. A signer hint without a signature payload
+/// records `UnsignedSignerStubbed { algorithm }` rather than
+/// `Signed { signature_hex: "" }`, so a verifier cannot mistake a
+/// stub for a real PQ signature. Real signing is produced through
+/// [`pin_frontier_signed`].
 pub fn pin_frontier(graph: &LineageGraph, signer_hint: Option<&str>) -> AnchoredFrontier {
     let digest = frontier_digest(graph);
     let signing = match signer_hint {
-        Some(algo) => SigningState::Signed {
+        Some(algo) => SigningState::UnsignedSignerStubbed {
             algorithm: algo.to_string(),
-            // The signer hint is recorded but no signature is produced
-            // without M03 hybrid signing wired in. M10 will replace this
-            // placeholder with a real PQ signature payload.
-            signature_hex: String::new(),
         },
         None => SigningState::UnsignedSoftDepAbsent,
     };
@@ -270,6 +281,69 @@ pub fn pin_frontier(graph: &LineageGraph, signer_hint: Option<&str>) -> Anchored
         signing,
         node_count: graph.nodes.len(),
         edge_count: graph.edges.len(),
+    }
+}
+
+/// Pin a frontier with a real PQ signature payload. The signature is
+/// validated to be non-empty and lower-case hexadecimal so the
+/// `Signed` variant cannot be forged by passing an empty string. Used
+/// once M03 hybrid signing is wired in.
+pub fn pin_frontier_signed(
+    graph: &LineageGraph,
+    algorithm: &str,
+    signature_hex: &str,
+) -> Result<AnchoredFrontier, AnchorError> {
+    if algorithm.trim().is_empty() {
+        return Err(AnchorError::EmptySigningAlgorithm);
+    }
+    if signature_hex.is_empty() {
+        return Err(AnchorError::EmptySignaturePayload);
+    }
+    if !signature_hex
+        .bytes()
+        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(AnchorError::SignaturePayloadNotHex);
+    }
+    let digest = frontier_digest(graph);
+    Ok(AnchoredFrontier {
+        schema_version: "chio.lineage.frontier/v1".to_string(),
+        graph_schema: graph.schema_version.clone(),
+        canonical_source: CanonicalSource::EquivalenceShim,
+        digest,
+        signing: SigningState::Signed {
+            algorithm: algorithm.to_string(),
+            signature_hex: signature_hex.to_string(),
+        },
+        node_count: graph.nodes.len(),
+        edge_count: graph.edges.len(),
+    })
+}
+
+/// Errors surfaced when constructing a signed anchor.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AnchorError {
+    /// The signing algorithm label was empty.
+    #[error("signing algorithm label was empty")]
+    EmptySigningAlgorithm,
+    /// The signature payload was empty.
+    #[error("signature payload was empty")]
+    EmptySignaturePayload,
+    /// The signature payload was not lower-case hexadecimal.
+    #[error("signature payload was not lower-case hexadecimal")]
+    SignaturePayloadNotHex,
+}
+
+impl AnchoredFrontier {
+    /// Return true when the artifact carries a real (non-empty) signature
+    /// payload. A frontier in any unsigned-state variant returns false so
+    /// callers can fail-closed without re-matching every variant.
+    #[must_use]
+    pub fn is_signed(&self) -> bool {
+        matches!(
+            &self.signing,
+            SigningState::Signed { signature_hex, .. } if !signature_hex.is_empty()
+        )
     }
 }
 
@@ -304,6 +378,7 @@ mod tests {
             SigningState::UnsignedSoftDepAbsent
         ));
         assert_eq!(pinned.digest.algo, "sha256");
+        assert!(!pinned.is_signed());
     }
 
     #[test]
@@ -312,5 +387,56 @@ mod tests {
         let a = frontier_digest(&g).hex;
         let b = frontier_digest(&g).hex;
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn pin_with_signer_hint_does_not_forge_signed_state() {
+        // Regression: a signer hint without an actual signature must not
+        // produce a `Signed { signature_hex: "" }` state. A verifier
+        // checking `is_signed()` would otherwise be deceived by an
+        // anchor that carries no signature payload.
+        let g = LineageGraph::empty();
+        let pinned = pin_frontier(&g, Some("ml-dsa-65"));
+        assert!(matches!(
+            pinned.signing,
+            SigningState::UnsignedSignerStubbed { .. }
+        ));
+        assert!(!pinned.is_signed());
+    }
+
+    #[test]
+    fn pin_signed_rejects_empty_signature() {
+        let g = LineageGraph::empty();
+        let err = pin_frontier_signed(&g, "ml-dsa-65", "")
+            .err()
+            .unwrap_or(AnchorError::EmptySigningAlgorithm);
+        assert_eq!(err, AnchorError::EmptySignaturePayload);
+    }
+
+    #[test]
+    fn pin_signed_rejects_non_hex_signature() {
+        let g = LineageGraph::empty();
+        let err = pin_frontier_signed(&g, "ml-dsa-65", "ZZZZ")
+            .err()
+            .unwrap_or(AnchorError::EmptySigningAlgorithm);
+        assert_eq!(err, AnchorError::SignaturePayloadNotHex);
+    }
+
+    #[test]
+    fn pin_signed_rejects_empty_algorithm() {
+        let g = LineageGraph::empty();
+        let err = pin_frontier_signed(&g, "  ", "deadbeef")
+            .err()
+            .unwrap_or(AnchorError::EmptySignaturePayload);
+        assert_eq!(err, AnchorError::EmptySigningAlgorithm);
+    }
+
+    #[test]
+    fn pin_signed_with_real_payload_is_signed() {
+        let g = LineageGraph::empty();
+        let pinned = pin_frontier_signed(&g, "ml-dsa-65", "deadbeef").unwrap_or_else(|_| {
+            panic!("signed pin should succeed with real payload");
+        });
+        assert!(pinned.is_signed());
     }
 }

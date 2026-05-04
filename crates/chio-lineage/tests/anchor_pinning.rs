@@ -1,6 +1,8 @@
 //! Integration test for M09 P5.T6 anchor pinning.
 
-use chio_lineage::anchor::{frontier_digest, pin_frontier, CanonicalSource, SigningState};
+use chio_lineage::anchor::{
+    frontier_digest, pin_frontier, pin_frontier_signed, CanonicalSource, SigningState,
+};
 use chio_lineage::ingest_replay_corpus::{ingest_corpus, CorpusReceiptRow};
 
 fn fixture_graph() -> chio_lineage::schema::LineageGraph {
@@ -43,12 +45,35 @@ fn missing_m03_signer_records_unsigned_state_and_exits_cleanly() {
 }
 
 #[test]
-fn signer_hint_is_recorded_for_m10_consumption() {
+fn signer_hint_without_signature_is_unsigned_stub() {
+    // A signer hint without an actual signature payload must NOT promote
+    // the artifact to `Signed`. Verifiers checking `is_signed()` would
+    // otherwise be tricked into trusting an unsigned anchor (lineage
+    // tamper, fail-closed contract).
     let g = fixture_graph();
     let pinned = pin_frontier(&g, Some("hybrid-ed25519-mldsa65"));
-    if let SigningState::Signed { algorithm, .. } = pinned.signing {
+    if let SigningState::UnsignedSignerStubbed { algorithm } = &pinned.signing {
         assert_eq!(algorithm, "hybrid-ed25519-mldsa65");
     } else {
-        panic!("signer hint should produce Signed state");
+        panic!("signer hint without signature should produce UnsignedSignerStubbed state");
     }
+    assert!(!pinned.is_signed());
+}
+
+#[test]
+fn pin_frontier_signed_with_real_payload_is_signed() {
+    let g = fixture_graph();
+    let pinned = pin_frontier_signed(&g, "hybrid-ed25519-mldsa65", "deadbeef")
+        .unwrap_or_else(|_| panic!("signed pin should succeed with valid payload"));
+    if let SigningState::Signed {
+        algorithm,
+        signature_hex,
+    } = &pinned.signing
+    {
+        assert_eq!(algorithm, "hybrid-ed25519-mldsa65");
+        assert_eq!(signature_hex, "deadbeef");
+    } else {
+        panic!("real payload should produce Signed state");
+    }
+    assert!(pinned.is_signed());
 }

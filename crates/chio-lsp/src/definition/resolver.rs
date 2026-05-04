@@ -1,6 +1,6 @@
 //! URN resolution helpers for the go-to-definition provider.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
@@ -97,17 +97,69 @@ fn manifest_path_in(text: &str) -> Option<PathBuf> {
 
 /// Locate the first occurrence of `urn` in the file at `manifest_path`
 /// resolved relative to the directory of the document URI.
-fn locate_in_file(doc_uri: &Url, manifest_path: &PathBuf, urn: &str) -> Option<Location> {
+///
+/// The on-disk read is fail-closed scoped:
+///
+/// - Absolute paths are rejected. A hostile `chio.yaml` opened in the
+///   editor cannot point the LSP server at `/etc/passwd`.
+/// - Paths that escape the document directory (`..` traversal, symlink
+///   indirection) are rejected after canonicalisation.
+/// - Only filenames matching the manifest naming pattern
+///   (`*.chio-manifest.yaml` / `*.chio-manifest.yml` / `chio-manifest.yaml`)
+///   are followed. The LSP server does not behave like a generic file
+///   reader.
+fn locate_in_file(doc_uri: &Url, manifest_path: &Path, urn: &str) -> Option<Location> {
     let doc_dir = doc_uri.to_file_path().ok()?.parent()?.to_path_buf();
-    let resolved = if manifest_path.is_absolute() {
-        manifest_path.clone()
-    } else {
-        doc_dir.join(manifest_path)
-    };
+    let resolved = scoped_manifest_path(&doc_dir, manifest_path)?;
     let body = std::fs::read_to_string(&resolved).ok()?;
     let range = locate_in_text(doc_uri, &body, urn)?;
     let target = Url::from_file_path(&resolved).ok()?;
     Some(Location { uri: target, range })
+}
+
+/// Resolve `manifest_path` against `doc_dir`, rejecting absolute paths
+/// and escapes outside the document directory. Returns `None` for any
+/// rejected path so the caller fails closed.
+fn scoped_manifest_path(doc_dir: &Path, manifest_path: &Path) -> Option<PathBuf> {
+    if manifest_path.as_os_str().is_empty() || manifest_path.is_absolute() {
+        return None;
+    }
+    if !manifest_filename_is_allowed(manifest_path) {
+        return None;
+    }
+    if path_contains_parent_component(manifest_path) {
+        return None;
+    }
+    let joined = doc_dir.join(manifest_path);
+    let canonical_doc_dir = std::fs::canonicalize(doc_dir).ok()?;
+    let canonical_target = std::fs::canonicalize(&joined).ok()?;
+    if !canonical_target.starts_with(&canonical_doc_dir) {
+        return None;
+    }
+    Some(canonical_target)
+}
+
+fn path_contains_parent_component(path: &Path) -> bool {
+    use std::path::Component;
+    path.components().any(|c| {
+        matches!(
+            c,
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir
+        )
+    })
+}
+
+fn manifest_filename_is_allowed(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if name.contains('\0') {
+        return false;
+    }
+    name.ends_with(".chio-manifest.yaml")
+        || name.ends_with(".chio-manifest.yml")
+        || name == "chio-manifest.yaml"
+        || name == "chio-manifest.yml"
 }
 
 fn locate_in_text(_uri: &Url, text: &str, urn: &str) -> Option<Range> {
@@ -172,6 +224,64 @@ mod tests {
         let pos = Position::new(1, 22);
         let urn = extract_urn_at_position(text, pos).expect("urn extracted");
         assert_eq!(urn, "urn:chio:scope:tool.read");
+    }
+
+    #[test]
+    fn scoped_manifest_rejects_absolute_path() {
+        let doc_dir = Path::new("/tmp");
+        let abs = PathBuf::from("/etc/passwd");
+        assert!(scoped_manifest_path(doc_dir, &abs).is_none());
+    }
+
+    #[test]
+    fn scoped_manifest_rejects_parent_traversal() {
+        let doc_dir = Path::new("/tmp");
+        let traversal = PathBuf::from("../../etc/passwd.chio-manifest.yaml");
+        assert!(scoped_manifest_path(doc_dir, &traversal).is_none());
+    }
+
+    #[test]
+    fn scoped_manifest_rejects_non_manifest_filename() {
+        let doc_dir = Path::new("/tmp");
+        // Even a sibling-only path is rejected if the filename is not
+        // recognised as a Chio manifest.
+        let bad = PathBuf::from("notes.txt");
+        assert!(scoped_manifest_path(doc_dir, &bad).is_none());
+    }
+
+    #[test]
+    fn scoped_manifest_rejects_empty_path() {
+        let doc_dir = Path::new("/tmp");
+        assert!(scoped_manifest_path(doc_dir, &PathBuf::new()).is_none());
+    }
+
+    #[test]
+    fn manifest_filename_allows_known_patterns() {
+        assert!(manifest_filename_is_allowed(Path::new(
+            "tools.chio-manifest.yaml"
+        )));
+        assert!(manifest_filename_is_allowed(Path::new("chio-manifest.yml")));
+        assert!(!manifest_filename_is_allowed(Path::new("manifest.yaml")));
+        assert!(!manifest_filename_is_allowed(Path::new("/etc/passwd")));
+    }
+
+    #[test]
+    fn scoped_manifest_accepts_sibling_manifest() {
+        let tmp = std::env::temp_dir().join("chio-lsp-resolver-scope-test");
+        std::fs::create_dir_all(&tmp).expect("mkdir");
+        let manifest = tmp.join("tools.chio-manifest.yaml");
+        std::fs::write(&manifest, "version: 1\n").expect("write");
+
+        let resolved = scoped_manifest_path(&tmp, Path::new("tools.chio-manifest.yaml"))
+            .expect("sibling manifest is in scope");
+        // canonicalisation should strip the relative prefix and stay
+        // inside the document directory.
+        let canonical_tmp = std::fs::canonicalize(&tmp).expect("canonical tmp");
+        assert!(resolved.starts_with(&canonical_tmp));
+
+        // Cleanup.
+        let _ = std::fs::remove_file(&manifest);
+        let _ = std::fs::remove_dir(&tmp);
     }
 
     #[test]
