@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -59,9 +61,9 @@ func TestVerifyReceipt_InvalidReceiptValidFalse(t *testing.T) {
 
 func TestVerifyReceipt_FourXXClassifiedAsInvalidReceipt(t *testing.T) {
 	cases := []int{
-		http.StatusBadRequest,    // 400
-		http.StatusUnauthorized,  // 401
-		http.StatusForbidden,     // 403
+		http.StatusBadRequest,   // 400
+		http.StatusUnauthorized, // 401
+		http.StatusForbidden,    // 403
 		http.StatusUnprocessableEntity,
 	}
 	for _, status := range cases {
@@ -156,5 +158,59 @@ func TestVerifyReceipt_TransportError(t *testing.T) {
 	}
 	if sErr.Code != ErrSidecarUnreachable {
 		t.Fatalf("expected %q on transport error, got %q", ErrSidecarUnreachable, sErr.Code)
+	}
+}
+
+func TestVerifyReceipt_BodyReadFailureClassifiedAsSidecarUnreachable(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = fmt.Fprint(conn, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 32\r\n\r\n{\"valid\":")
+	}()
+
+	client := NewSidecarClient("http://"+ln.Addr().String(), 5)
+	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	<-done
+	if ok {
+		t.Fatalf("expected valid=false on body read failure")
+	}
+	var sErr *SidecarError
+	if !errors.As(err, &sErr) {
+		t.Fatalf("expected *SidecarError, got %T: %v", err, err)
+	}
+	if sErr.Code != ErrSidecarUnreachable {
+		t.Fatalf("expected %q on body read failure, got %q", ErrSidecarUnreachable, sErr.Code)
+	}
+}
+
+func TestVerifyReceipt_MissingValidFieldClassifiedAsProtocolError(t *testing.T) {
+	srv := verifyServer(t, http.StatusOK, map[string]string{"status": "ok"})
+	defer srv.Close()
+
+	client := NewSidecarClient(srv.URL, 5)
+	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if ok {
+		t.Fatalf("expected valid=false on malformed verify response")
+	}
+	var sErr *SidecarError
+	if !errors.As(err, &sErr) {
+		t.Fatalf("expected *SidecarError, got %T: %v", err, err)
+	}
+	if sErr.Code == ErrInvalidReceipt {
+		t.Fatalf("missing valid must be a protocol error, got %q", sErr.Code)
+	}
+	if sErr.Code != ErrEvaluationFailed {
+		t.Fatalf("expected %q for malformed verify response, got %q", ErrEvaluationFailed, sErr.Code)
 	}
 }

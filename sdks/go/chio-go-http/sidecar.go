@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -163,15 +164,25 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 	}
 
 	var result struct {
-		Valid bool `json:"valid"`
+		Valid *bool `json:"valid"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		code := ErrEvaluationFailed
+		if isVerifyResponseReadFailure(err) {
+			code = ErrSidecarUnreachable
+		}
 		return false, &SidecarError{
-			Code:    ErrInvalidReceipt,
+			Code:    code,
 			Message: "failed to decode verify response: " + err.Error(),
 		}
 	}
-	return result.Valid, nil
+	if result.Valid == nil {
+		return false, &SidecarError{
+			Code:    ErrEvaluationFailed,
+			Message: "sidecar verify response missing boolean `valid` field",
+		}
+	}
+	return *result.Valid, nil
 }
 
 // isSidecarTransportFailure reports whether the HTTP status indicates a
@@ -182,6 +193,10 @@ func isSidecarTransportFailure(status int) bool {
 		return true
 	}
 	return status >= 500 && status <= 599
+}
+
+func isVerifyResponseReadFailure(err error) bool {
+	return errors.Is(err, io.ErrUnexpectedEOF) || err.Error() == "unexpected EOF"
 }
 
 // HealthCheck checks whether the sidecar is running.

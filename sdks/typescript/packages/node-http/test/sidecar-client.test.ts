@@ -203,4 +203,45 @@ describe("ChioSidecarClient.verifyReceipt", () => {
       await closeServer(server);
     }
   });
+
+  it("throws timeout SidecarError when verifier body read times out", async () => {
+    const { server, url } = await startVerifySidecar((res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.write('{"valid":');
+    });
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url, timeoutMs: 25 });
+      await expectSidecarError(
+        client.verifyReceipt(testReceipt()),
+        "chio_timeout",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("throws sidecar-unreachable SidecarError when verifier body read fails", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      ({
+        ok: true,
+        text: async () => {
+          throw new TypeError("terminated");
+        },
+        json: async () => {
+          throw new TypeError("terminated");
+        },
+      }) as Response) as typeof fetch;
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: "http://127.0.0.1:9090" });
+      await expectSidecarError(
+        client.verifyReceipt(testReceipt()),
+        "chio_sidecar_unreachable",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

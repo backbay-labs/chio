@@ -136,14 +136,18 @@ export class ChioSidecarClient {
         );
       }
 
-      // Validate the response shape at runtime; an unexpected payload
-      // must fail closed rather than coerce to a truthy value.
-      const parsed: unknown = await response.json().catch((error: unknown) => {
+      const responseBody = await response.text();
+      // Validate the response shape at runtime; malformed payloads must fail
+      // closed, while body-read failures keep their transport classification.
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(responseBody) as unknown;
+      } catch (error: unknown) {
         throw new SidecarError(
           CHIO_ERROR_CODES.INVALID_RECEIPT,
           `failed to decode verify response: ${error instanceof Error ? error.message : String(error)}`,
         );
-      });
+      }
       if (
         typeof parsed === "object" &&
         parsed !== null &&
