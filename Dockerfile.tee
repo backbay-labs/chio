@@ -15,13 +15,14 @@ WORKDIR /workspace
 # Copy the full workspace because chio-tee reaches path dependencies under
 # crates/ and Cargo resolves every workspace member against the committed lock.
 # Top-level directories listed here must match every prefix declared as a
-# workspace member in the root `Cargo.toml`. Today that means: bench,
-# crates, editors, examples, formal, integrations, tests, xtask. Missing
-# any one of them aborts manifest loading with `failed to load manifest for
-# workspace member ...` even when only the chio-tee package is being built.
+# workspace member in the root `Cargo.toml`. chio-web3-bindings also embeds
+# reviewed contract artifacts with include_str!, so contracts/ must be present
+# even when only the chio-tee package is being built. Missing any one of these
+# inputs aborts manifest loading or Rust compilation.
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY bench ./bench
+COPY contracts ./contracts
 COPY editors ./editors
 COPY wit ./wit
 COPY examples ./examples
