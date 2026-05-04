@@ -5,8 +5,9 @@
 # Pinned release: apalache-mc 0.50.x (see decisions.yml id=apalache-vs-tlc).
 # This script is idempotent. It downloads the release tarball, extracts
 # it under ~/.local/share/apalache, and links the launcher into
-# ~/.local/bin/apalache-mc. Re-running with the pinned version is a
-# no-op.
+# ~/.local/bin/apalache-mc. Reusing an existing launcher is an explicit
+# local opt-in with APALACHE_TRUST_EXISTING=1. CI always reinstalls through
+# the pinned checksum gate.
 
 set -euo pipefail
 
@@ -46,8 +47,19 @@ case ":${PATH}:" in
     *) echo "warning: ${bin_dir} is not on PATH; add it before invoking apalache-mc" >&2 ;;
 esac
 
+ci_mode=0
+case "${CI:-}" in
+    ""|0|false|False|FALSE) ;;
+    *) ci_mode=1 ;;
+esac
+
+trust_existing=0
+if [[ "${APALACHE_TRUST_EXISTING:-}" == "1" && "${ci_mode}" -eq 0 ]]; then
+    trust_existing=1
+fi
+
 current_version=""
-if [[ -x "${symlink}" ]]; then
+if [[ "${trust_existing}" -eq 1 && -x "${symlink}" ]]; then
     # Probe the existing launcher non-fatally. Any failure here (wrong Java
     # version, corrupted install, transient runtime error) must NOT abort
     # the script under `set -euo pipefail`; the installer recovers by
@@ -59,12 +71,16 @@ if [[ -x "${symlink}" ]]; then
         || true)"
 fi
 
-if [[ "${current_version}" == "${APALACHE_VERSION}" ]]; then
+if [[ "${trust_existing}" -eq 1 && "${current_version}" == "${APALACHE_VERSION}" ]]; then
     echo "apalache-mc ${APALACHE_VERSION} already installed at ${symlink}"
     exit 0
 fi
 
-if [[ ! -x "${launcher}" ]]; then
+if [[ "${trust_existing}" -eq 0 && -x "${symlink}" ]]; then
+    echo "reinstalling apalache-mc ${APALACHE_VERSION}; existing launcher is not trusted"
+fi
+
+if [[ "${trust_existing}" -eq 0 || ! -x "${launcher}" ]]; then
     echo "installing apalache-mc ${APALACHE_VERSION}"
     asset="apalache-${APALACHE_VERSION}.tgz"
     # APALACHE_DOWNLOAD_URL is a test seam; defaults to the upstream release.
@@ -107,6 +123,7 @@ if [[ ! -x "${launcher}" ]]; then
         echo "  actual:   ${actual_sha}" >&2
         exit 7
     fi
+    rm -rf "${install_dir}"
     tar -xzf "${tmp_dir}/${asset}" -C "${share_dir}"
     if [[ ! -x "${launcher}" ]]; then
         echo "error: extracted tree missing launcher at ${launcher}" >&2
