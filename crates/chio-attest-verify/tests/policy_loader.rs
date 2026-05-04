@@ -238,6 +238,10 @@ fn identity_mismatch_propagates_fail_closed() {
         Err(AttestError::IdentityMismatch) => {}
         other => panic!("expected IdentityMismatch to propagate, got {other:?}"),
     }
+    assert!(
+        verifier.was_called(),
+        "loader must invoke verifier before identity rejection"
+    );
 }
 
 #[test]
