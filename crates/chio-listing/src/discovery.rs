@@ -302,9 +302,10 @@ pub fn search(
     let aggregated = aggregate_generic_listing_reports(reports, &listing_query, now);
     let mut errors = aggregated.errors;
 
-    // Index pricing hints by listing_id for O(n) lookup. Store only the
-    // most-recent verified hint per listing.
-    let mut indexed_hints: BTreeMap<String, SignedListingPricingHint> = BTreeMap::new();
+    // Index structurally valid, self-consistent pricing hints by listing_id.
+    // Authority binding requires the verified listing body, so that check is
+    // applied after aggregation when the namespace-owner signer is available.
+    let mut indexed_hints: BTreeMap<String, Vec<SignedListingPricingHint>> = BTreeMap::new();
     for hint in pricing_hints {
         if let Err(error) = hint.body.validate() {
             errors.push(GenericListingSearchError {
@@ -345,15 +346,10 @@ pub fn search(
         if !hint.body.is_live_at(now) {
             continue;
         }
-        match indexed_hints.get(&hint.body.listing_id) {
-            None => {
-                indexed_hints.insert(hint.body.listing_id.clone(), hint.clone());
-            }
-            Some(existing) if existing.body.issued_at < hint.body.issued_at => {
-                indexed_hints.insert(hint.body.listing_id.clone(), hint.clone());
-            }
-            Some(_) => {}
-        }
+        indexed_hints
+            .entry(hint.body.listing_id.clone())
+            .or_default()
+            .push(hint.clone());
     }
 
     let max_price = query.max_price_per_call.as_ref();
@@ -385,33 +381,37 @@ pub fn search(
             continue;
         }
 
-        let Some(hint) = indexed_hints.get(&aggregated_result.listing.body.listing_id) else {
+        let Some(hints) = indexed_hints.get(&aggregated_result.listing.body.listing_id) else {
             continue;
         };
 
-        if normalize_namespace(&hint.body.namespace)
-            != normalize_namespace(&aggregated_result.listing.body.namespace)
-        {
-            errors.push(GenericListingSearchError {
-                operator_id: hint.body.provider_operator_id.clone(),
-                operator_name: None,
-                registry_url: String::new(),
-                error: format!("pricing hint `{}` namespace mismatch", hint.body.listing_id),
-            });
-            continue;
+        let mut selected_hint = None;
+        for hint in hints {
+            if let Err(error) = validate_pricing_hint_listing_authority(
+                hint,
+                &aggregated_result.listing,
+                &aggregated_result.publisher,
+            ) {
+                errors.push(GenericListingSearchError {
+                    operator_id: hint.body.provider_operator_id.clone(),
+                    operator_name: None,
+                    registry_url: aggregated_result.publisher.registry_url.clone(),
+                    error,
+                });
+                continue;
+            }
+            if selected_hint
+                .as_ref()
+                .is_none_or(|existing: &&SignedListingPricingHint| {
+                    existing.body.issued_at < hint.body.issued_at
+                })
+            {
+                selected_hint = Some(hint);
+            }
         }
-        if hint.body.provider_operator_id != aggregated_result.publisher.operator_id {
-            errors.push(GenericListingSearchError {
-                operator_id: hint.body.provider_operator_id.clone(),
-                operator_name: None,
-                registry_url: aggregated_result.publisher.registry_url.clone(),
-                error: format!(
-                    "pricing hint `{}` provider does not match publisher",
-                    hint.body.listing_id
-                ),
-            });
+        let Some(hint) = selected_hint else {
             continue;
-        }
+        };
         if let Some(prefix) = scope_prefix {
             if !hint.body.capability_scope.starts_with(prefix) {
                 continue;
@@ -572,6 +572,38 @@ pub fn resolve_admissible_listing<'a>(
 #[must_use]
 pub fn provider_signing_key(listing: &Listing) -> &PublicKey {
     &listing.pricing.signer_key
+}
+
+fn validate_pricing_hint_listing_authority(
+    hint: &SignedListingPricingHint,
+    listing: &SignedGenericListing,
+    publisher: &GenericRegistryPublisher,
+) -> Result<(), String> {
+    if normalize_namespace(&hint.body.namespace) != normalize_namespace(&listing.body.namespace) {
+        return Err(format!(
+            "pricing hint `{}` namespace mismatch",
+            hint.body.listing_id
+        ));
+    }
+    if hint.body.provider_operator_id != publisher.operator_id {
+        return Err(format!(
+            "pricing hint `{}` provider does not match publisher",
+            hint.body.listing_id
+        ));
+    }
+    if hint.body.provider_operator_id != listing.body.namespace_ownership.owner_id {
+        return Err(format!(
+            "pricing hint `{}` provider does not match listing authority",
+            hint.body.listing_id
+        ));
+    }
+    if hint.signer_key != listing.body.namespace_ownership.signer_public_key {
+        return Err(format!(
+            "pricing hint `{}` signer does not match listing pricing authority",
+            hint.body.listing_id
+        ));
+    }
+    Ok(())
 }
 
 fn non_empty(value: &str, field: &str) -> Result<(), String> {
@@ -750,7 +782,7 @@ mod tests {
             ],
         );
 
-        let operator_keypair = Keypair::generate();
+        let operator_keypair = registry_keypair.clone();
         let hints = vec![
             sample_pricing_hint(
                 &operator_keypair,
@@ -822,7 +854,7 @@ mod tests {
         let listing = sample_listing(&registry_keypair, "listing-1", GenericListingStatus::Active);
         let report = sample_report(&registry_keypair, "operator-a", 100, vec![listing]);
 
-        let operator_keypair = Keypair::generate();
+        let operator_keypair = registry_keypair.clone();
         let mut hint = sample_pricing_hint(
             &operator_keypair,
             "operator-a",
@@ -848,7 +880,7 @@ mod tests {
         let listing = sample_listing(&registry_keypair, "listing-1", GenericListingStatus::Active);
         let report = sample_report(&registry_keypair, "operator-a", 100, vec![listing]);
 
-        let operator_keypair = Keypair::generate();
+        let operator_keypair = registry_keypair.clone();
         // Hint expires at 710.
         let stale = sample_pricing_hint(
             &operator_keypair,
@@ -877,7 +909,7 @@ mod tests {
             vec![listing_a, listing_b],
         );
 
-        let operator_keypair = Keypair::generate();
+        let operator_keypair = registry_keypair.clone();
         let hints = vec![
             sample_pricing_hint(
                 &operator_keypair,
@@ -923,7 +955,7 @@ mod tests {
     fn compare_flags_currency_inconsistency() {
         let registry_keypair = Keypair::generate();
         let listing = sample_listing(&registry_keypair, "listing-a", GenericListingStatus::Active);
-        let operator_keypair = Keypair::generate();
+        let operator_keypair = registry_keypair.clone();
 
         let hint_usd = require_ok(
             SignedListingPricingHint::sign(

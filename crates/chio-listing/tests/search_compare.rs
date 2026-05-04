@@ -168,7 +168,7 @@ fn search_orders_results_by_price_and_emits_signed_schema_fields() {
         vec![cheap.clone(), mid.clone(), pricey.clone()],
     );
 
-    let operator_keypair = Keypair::generate();
+    let operator_keypair = registry_keypair.clone();
     let hints = vec![
         pricing_hint(
             &operator_keypair,
@@ -215,7 +215,7 @@ fn search_rejects_hint_mismatched_to_publisher_operator() {
     let active = listing(&registry_keypair, "listing-1", GenericListingStatus::Active);
     let rep = report(&registry_keypair, "operator-a", 100, vec![active]);
 
-    let operator_keypair = Keypair::generate();
+    let operator_keypair = registry_keypair.clone();
     // Hint claims "operator-b" but publisher is "operator-a".
     let hint = pricing_hint(
         &operator_keypair,
@@ -236,12 +236,45 @@ fn search_rejects_hint_mismatched_to_publisher_operator() {
 }
 
 #[test]
+fn search_rejects_pricing_hint_not_signed_by_listing_authority() {
+    let registry_keypair = Keypair::generate();
+    let active = listing(&registry_keypair, "listing-1", GenericListingStatus::Active);
+    let rep = report(&registry_keypair, "operator-a", 100, vec![active]);
+
+    let attacker_keypair = Keypair::generate();
+    assert_ne!(registry_keypair.public_key(), attacker_keypair.public_key());
+    let hint = pricing_hint(
+        &attacker_keypair,
+        "operator-a",
+        "listing-1",
+        "tools:search",
+        1,
+        110,
+        600,
+    );
+
+    let response = search(&[rep], &[hint], &ListingQuery::default(), 120);
+    assert_eq!(
+        response.result_count, 0,
+        "self-signed pricing hints must not be admitted by operator id alone"
+    );
+    assert!(
+        response
+            .errors
+            .iter()
+            .any(|error| error.error.contains("pricing authority")),
+        "expected pricing authority binding error, got: {:?}",
+        response.errors
+    );
+}
+
+#[test]
 fn search_filters_by_provider_operator_id_and_require_fresh() {
     let registry_keypair = Keypair::generate();
     let active = listing(&registry_keypair, "listing-1", GenericListingStatus::Active);
     let rep = report(&registry_keypair, "operator-a", 100, vec![active]);
 
-    let operator_keypair = Keypair::generate();
+    let operator_keypair = registry_keypair.clone();
     let hint = pricing_hint(
         &operator_keypair,
         "operator-a",
@@ -284,7 +317,7 @@ fn compare_ranks_cheapest_at_10000_bps() {
         vec![listing_a, listing_b],
     );
 
-    let operator_keypair = Keypair::generate();
+    let operator_keypair = registry_keypair.clone();
     let hints = vec![
         pricing_hint(
             &operator_keypair,
@@ -389,7 +422,7 @@ fn search_rejects_listing_signed_by_attacker_when_namespace_owner_key_is_pinned(
     );
     let rep = report(&owner_keypair, "operator-a", 100, vec![spoofed]);
 
-    let operator_keypair = Keypair::generate();
+    let operator_keypair = owner_keypair.clone();
     let hint = pricing_hint(
         &operator_keypair,
         "operator-a",
@@ -423,7 +456,7 @@ fn search_honors_require_fresh_equals_false_allows_passthrough() {
     let active = listing(&registry_keypair, "listing-1", GenericListingStatus::Active);
     let rep = report(&registry_keypair, "operator-a", 100, vec![active]);
 
-    let operator_keypair = Keypair::generate();
+    let operator_keypair = registry_keypair.clone();
     let hint = pricing_hint(
         &operator_keypair,
         "operator-a",

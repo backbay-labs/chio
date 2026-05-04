@@ -266,6 +266,16 @@ impl WorkflowAuthority {
             ));
         }
 
+        let step_budget_exceeded = input.cost.as_ref().and_then(|cost| {
+            step.budget_limit.as_ref().and_then(|limit| {
+                if cost.currency != limit.currency || cost.units > limit.units {
+                    Some((limit.units, cost.units, limit.currency.clone()))
+                } else {
+                    None
+                }
+            })
+        });
+
         // Track budget
         if let Some(ref c) = input.cost {
             execution.budget_spent = execution.budget_spent.saturating_add(c.units);
@@ -286,6 +296,19 @@ impl WorkflowAuthority {
         };
 
         execution.step_records.push(record);
+
+        if let Some((limit_units, spent_units, currency)) = step_budget_exceeded {
+            execution.active = false;
+            execution.budget_limit = Some(MonetaryAmount {
+                units: limit_units,
+                currency: currency.clone(),
+            });
+            return Err(WorkflowError::BudgetExceeded {
+                limit_units,
+                spent_units,
+                currency,
+            });
+        }
 
         // Check budget envelope after recording so that finalize() includes
         // the offending step in the receipt.
@@ -313,6 +336,7 @@ impl WorkflowAuthority {
         mut execution: WorkflowExecution,
     ) -> Result<WorkflowReceipt, WorkflowError> {
         execution.active = false;
+        let capability_id = execution.capability_id.clone();
 
         let completed_at = current_unix_secs();
         let duration_ms = completed_at
@@ -356,6 +380,8 @@ impl WorkflowAuthority {
             "workflow receipt signed"
         );
 
+        self.release_execution(&capability_id)?;
+
         Ok(receipt)
     }
 
@@ -382,6 +408,22 @@ impl WorkflowAuthority {
             return Err(WorkflowError::ExecutionLimitReached { limit });
         }
         *count = count.saturating_add(1);
+        Ok(())
+    }
+
+    fn release_execution(&self, capability_id: &str) -> Result<(), WorkflowError> {
+        let mut counts = self
+            .limited_execution_counts
+            .lock()
+            .map_err(|_| WorkflowError::InvalidState("execution counters are poisoned".into()))?;
+        let Some(count) = counts.get_mut(capability_id) else {
+            return Ok(());
+        };
+        if *count <= 1 {
+            counts.remove(capability_id);
+        } else {
+            *count = count.saturating_sub(1);
+        }
         Ok(())
     }
 }
@@ -494,7 +536,7 @@ mod tests {
     fn successful_workflow_execution() {
         let manifest = make_manifest();
         let grant = make_grant();
-        let mut authority = WorkflowAuthority::new(Keypair::generate());
+        let authority = WorkflowAuthority::new(Keypair::generate());
 
         let mut execution = authority
             .begin(
@@ -660,6 +702,67 @@ mod tests {
     }
 
     #[test]
+    fn step_budget_limit_is_enforced_when_recording_step_cost() {
+        let mut manifest = make_manifest();
+        manifest.steps[0].budget_limit = Some(MonetaryAmount {
+            units: 25,
+            currency: "USD".to_string(),
+        });
+        let mut grant = make_grant();
+        grant.budget_envelope = Some(MonetaryAmount {
+            units: 1_000,
+            currency: "USD".to_string(),
+        });
+
+        let authority = WorkflowAuthority::new(Keypair::generate());
+        let mut execution = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+
+        let result = authority.record_step(
+            &mut execution,
+            &manifest.steps[0],
+            StepExecutionRecordInput {
+                outcome: StepOutcome::Success,
+                duration_ms: 100,
+                cost: Some(MonetaryAmount {
+                    units: 50,
+                    currency: "USD".to_string(),
+                }),
+                tool_receipt_id: None,
+                output_hash: None,
+            },
+        );
+
+        assert!(matches!(
+            result,
+            Err(WorkflowError::BudgetExceeded {
+                limit_units: 25,
+                spent_units: 50,
+                ..
+            })
+        ));
+        assert_eq!(execution.step_records.len(), 1);
+        assert!(!execution.active);
+
+        let receipt = authority.finalize(execution).unwrap();
+        assert!(matches!(
+            receipt.outcome,
+            WorkflowOutcome::BudgetExceeded {
+                limit_units: 25,
+                spent_units: 50,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn step_order_enforcement() {
         let manifest = make_manifest();
         let grant = make_grant();
@@ -742,7 +845,7 @@ mod tests {
             "1.0.0".to_string(),
             vec!["srv:tool".to_string()],
         );
-        let mut authority = WorkflowAuthority::new(Keypair::generate());
+        let authority = WorkflowAuthority::new(Keypair::generate());
 
         let mut execution = authority
             .begin(
@@ -778,7 +881,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_limit_reached() {
+    fn execution_limit_allows_reuse_after_finalize() {
         let manifest = SkillManifest::new(
             "limited".to_string(),
             "1.0.0".to_string(),
@@ -802,7 +905,7 @@ mod tests {
         );
         grant.max_executions = Some(1);
 
-        let mut authority = WorkflowAuthority::new(Keypair::generate());
+        let authority = WorkflowAuthority::new(Keypair::generate());
 
         // First execution should work
         let mut execution = authority
@@ -823,12 +926,9 @@ mod tests {
             .unwrap();
         authority.finalize(execution).unwrap();
 
-        // Second execution should be rejected
+        // Finalize releases the active reservation, so reuse is allowed.
         let result = authority.begin(&manifest, &grant, "a".to_string(), "c".to_string(), None);
-        assert!(matches!(
-            result,
-            Err(WorkflowError::ExecutionLimitReached { .. })
-        ));
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -866,6 +966,70 @@ mod tests {
         assert!(
             matches!(result, Err(WorkflowError::ExecutionLimitReached { .. })),
             "limit must be consumed when begin starts, not only after finalize"
+        );
+    }
+
+    #[test]
+    fn execution_limit_reservation_is_released_on_finalize() {
+        let manifest = SkillManifest::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            "Limited".to_string(),
+            vec![SkillStep {
+                index: 0,
+                server_id: "srv".to_string(),
+                tool_name: "tool".to_string(),
+                label: None,
+                input_contract: None,
+                output_contract: None,
+                budget_limit: None,
+                retryable: false,
+                max_retries: None,
+            }],
+        );
+        let mut grant = SkillGrant::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            vec!["srv:tool".to_string()],
+        );
+        grant.max_executions = Some(1);
+
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let execution = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-a".to_string(),
+                "cap-reused".to_string(),
+                None,
+            )
+            .unwrap();
+
+        let blocked = authority.begin(
+            &manifest,
+            &grant,
+            "agent-b".to_string(),
+            "cap-reused".to_string(),
+            None,
+        );
+        assert!(matches!(
+            blocked,
+            Err(WorkflowError::ExecutionLimitReached { .. })
+        ));
+
+        authority.finalize(execution).unwrap();
+
+        let reused = authority.begin(
+            &manifest,
+            &grant,
+            "agent-c".to_string(),
+            "cap-reused".to_string(),
+            None,
+        );
+        assert!(
+            reused.is_ok(),
+            "finalize should release limited execution reservations"
         );
     }
 
@@ -1065,7 +1229,7 @@ mod tests {
         // the same authority would collide and produce shadowed receipts.
         let manifest = make_manifest();
         let grant = make_grant();
-        let mut authority = WorkflowAuthority::new(Keypair::generate());
+        let authority = WorkflowAuthority::new(Keypair::generate());
 
         let exec_a = authority
             .begin(

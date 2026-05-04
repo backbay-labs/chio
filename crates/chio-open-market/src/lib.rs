@@ -382,10 +382,6 @@ impl OpenMarketPenaltyIssueRequest {
         if let Some(activation) = self.activation.as_ref() {
             verify_signed_activation(activation)?;
         }
-        ensure_open_market_issue_authority_signers(
-            self,
-            std::slice::from_ref(&self.fee_schedule.signer_key),
-        )?;
         validate_non_empty(&self.issued_by, "issued_by")?;
         validate_monetary_amount(&self.penalty_amount, "penalty_amount")?;
         if self.evidence_refs.is_empty() {
@@ -1572,6 +1568,37 @@ mod tests {
     }
 
     #[test]
+    fn open_market_penalty_issue_accepts_rotated_trusted_authority_signers() {
+        let previous_keypair = Keypair::from_seed(&[7_u8; 32]);
+        let current_keypair = Keypair::from_seed(&[8_u8; 32]);
+        let owner_id = "https://registry.chio.example";
+        let listing = sample_listing(owner_id, &previous_keypair);
+        let activation = sample_activation(owner_id, &current_keypair, &listing);
+        let charter = sample_charter(owner_id, &current_keypair);
+        let governance_case =
+            sample_sanction_case(owner_id, &current_keypair, &listing, &activation, &charter);
+        let fee_schedule = sample_fee_schedule(owner_id, &previous_keypair);
+        let request = sample_penalty_issue_request(
+            owner_id,
+            fee_schedule,
+            charter,
+            governance_case,
+            listing,
+            Some(activation),
+        );
+
+        let artifact = build_open_market_penalty_artifact_with_trusted_signers(
+            owner_id,
+            &request,
+            204,
+            &[previous_keypair.public_key(), current_keypair.public_key()],
+        )
+        .test_expect("rotated trusted signer set should issue penalty");
+
+        assert_eq!(artifact.governing_operator_id, owner_id);
+    }
+
+    #[test]
     fn open_market_evaluation_rejects_expired_fee_schedule() {
         let signing_keypair = Keypair::from_seed(&[7_u8; 32]);
         let owner_id = "https://registry.chio.example";
@@ -2066,15 +2093,21 @@ mod tests {
                 .test_expect("sign forged charter");
         let fee_schedule = sample_fee_schedule(owner_id, &signing_keypair);
 
-        let error = sample_penalty_issue_request(
+        let request = sample_penalty_issue_request(
             owner_id,
             fee_schedule,
             forged_charter,
             governance_case,
             listing,
             Some(activation),
+        );
+
+        let error = build_open_market_penalty_artifact(
+            owner_id,
+            &request,
+            204,
+            &signing_keypair.public_key(),
         )
-        .validate()
         .test_expect_err("mismatched governing signer rejected");
 
         assert!(error.contains("governing authority signer"));
