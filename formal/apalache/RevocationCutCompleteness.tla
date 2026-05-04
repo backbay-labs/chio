@@ -3,6 +3,15 @@
 (* Bounded state-machine lift of Lean revocation_is_cut.                   *)
 (* A revoked root or direct parent removes dispatch eligibility for every   *)
 (* affected local authority view.                                           *)
+(*                                                                          *)
+(* Known modeling bound (trj3.2 review, 2026-05-03):                        *)
+(*   `DescendsFrom` matches one level only (self or direct parent), so the  *)
+(*   bounded model proves cut completeness for depth <= 1 of the delegation *)
+(*   DAG. Transitive subtree cut is covered by `DepthBoundedByRoot` plus    *)
+(*   `RevokedSubtreeNotObservable` in DelegationDepthBound.tla and by the   *)
+(*   Lean `revocation_is_cut` theorem; the Apalache module here does not    *)
+(*   re-prove the transitive case. Lifting to a transitive `DescendsFrom`   *)
+(*   under Apalache 0.50.x requires a bounded TC unrolling and is deferred. *)
 (***************************************************************************)
 
 EXTENDS Naturals, FiniteSets, Common

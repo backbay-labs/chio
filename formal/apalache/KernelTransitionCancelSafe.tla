@@ -4,6 +4,14 @@
 (* When cancellation is pending, budget and receipt state must equal the    *)
 (* pre-transition snapshot. CancelTransition clears the flag without        *)
 (* changing either state surface.                                           *)
+(*                                                                          *)
+(* Known modeling bound (trj3.2 review, 2026-05-03):                        *)
+(*   `Commit` is guarded by `cancel_pending = FALSE`, so no action mutates  *)
+(*   `budget_used` or `receipt_count` while a cancel is pending, and the    *)
+(*   invariant holds by construction. The bounded model pins the cross-step *)
+(*   atomicity contract Kani cannot model (Begin -> Cancel preserves the    *)
+(*   snapshot exactly) but does not exercise concurrent Commit-vs-Cancel    *)
+(*   races; that interleaving is out of scope per D04.                      *)
 (***************************************************************************)
 
 EXTENDS Naturals, Common

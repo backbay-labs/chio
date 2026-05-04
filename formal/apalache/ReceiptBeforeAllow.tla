@@ -3,6 +3,15 @@
 (* Single Apalache invariant for the RETIRED-SQLITE-CROSS-ROW handoff.     *)
 (* A capability may appear in an authority's allowed set only after an      *)
 (* allow receipt for that authority and capability exists in the log.       *)
+(*                                                                          *)
+(* Known modeling bound (trj3.2 review, 2026-05-03):                        *)
+(*   `Allow` writes `receipt_log`, `allow_recorded`, and `allowed`          *)
+(*   atomically in a single TLA step, so the invariant `allowed \subseteq   *)
+(*   allow_recorded` holds by construction. The bounded model therefore     *)
+(*   pins the cross-row contract (no Allow without a logged allow receipt)  *)
+(*   but cannot exhibit a temporal split between receipt persistence and    *)
+(*   allow-set publication; that interleaving is covered by Kani harnesses  *)
+(*   on `receipt_store::commit_then_publish`.                               *)
 (***************************************************************************)
 
 EXTENDS Naturals, Sequences, FiniteSets, Common
