@@ -523,12 +523,12 @@ fn argument_contains_custom(arguments: &serde_json::Value, key: &str, expected: 
 /// `saw_relevant_key` distinguishes "the request never carried such a
 /// key" (constraint cannot apply) from "the request carried the key but
 /// no string values" (fail-closed). `invalid` is set when a relevant key
-/// holds a non-string, non-null leaf (number, object, bool) which is
-/// rejected outright instead of silently widening scope. A bare null
-/// directly under a relevant key is treated as "key not provided" so it
-/// does not flip `saw_relevant_key` and is observably distinct from
-/// `audience: ""`. Mirrors the full-kernel `chio_kernel::request_matching`
-/// semantics for the cases where they overlap.
+/// holds a non-string leaf (number, object, bool, null) which is rejected
+/// outright instead of silently widening scope. A bare null directly under
+/// a relevant key fails closed because the request named the constrained
+/// field without supplying an allowlistable value. Mirrors the full-kernel
+/// `chio_kernel::request_matching` semantics for the cases where they
+/// overlap.
 #[derive(Default)]
 struct ObservedStringValues {
     values: Vec<String>,
@@ -556,14 +556,6 @@ fn collect_audience_values(arguments: &serde_json::Value, out: &mut ObservedStri
         serde_json::Value::Object(map) => {
             for (key, value) in map {
                 if is_audience_key(key) {
-                    // A null leaf directly under a relevant key is treated
-                    // as "key not provided" - it neither flips the
-                    // saw_relevant_key flag nor poisons the constraint.
-                    // This keeps `audience: null` distinct from
-                    // `audience: ""` (which is a relevant empty string).
-                    if value.is_null() {
-                        continue;
-                    }
                     let before = out.values.len();
                     out.saw_relevant_key = true;
                     if !collect_string_values_strict(value, &mut out.values)
@@ -594,11 +586,10 @@ fn is_audience_key(key: &str) -> bool {
 
 /// Walk a JSON value collecting string leaves; returns false if any
 /// non-string, non-array leaf is observed (including `null`). The
-/// "explicit null directly under a relevant key" case is special-cased
-/// upstream by callers (see `collect_audience_values` / `collect_memory_store_values`),
-/// so once we recurse into the value the strict policy applies and a
-/// mixed array like `["security", null]` poisons the constraint, matching
-/// the hosted kernel's `request_matching::collect_string_values_strict`.
+/// strict policy applies everywhere a relevant key is present. A bare
+/// `audience: null` and a mixed array like `["security", null]` both
+/// poison the constraint, matching the hosted kernel's
+/// `request_matching::collect_string_values_strict`.
 fn collect_string_values_strict(value: &serde_json::Value, out: &mut Vec<String>) -> bool {
     match value {
         serde_json::Value::String(s) => {
@@ -640,12 +631,6 @@ fn collect_memory_store_values(arguments: &serde_json::Value, out: &mut Observed
         serde_json::Value::Object(map) => {
             for (key, value) in map {
                 if is_memory_store_key(key) {
-                    // See `collect_audience_values`: null directly under a
-                    // relevant key is "key not provided" rather than a
-                    // poisoned relevant key.
-                    if value.is_null() {
-                        continue;
-                    }
                     let before = out.values.len();
                     out.saw_relevant_key = true;
                     if !collect_string_values_strict(value, &mut out.values)

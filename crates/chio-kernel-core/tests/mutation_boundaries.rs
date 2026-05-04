@@ -248,16 +248,15 @@ fn resolve_matching_grants_audience_allowlist_rejects_non_string_values() {
 }
 
 #[test]
-fn resolve_matching_grants_audience_null_distinct_from_empty_string_and_missing() {
+fn resolve_matching_grants_audience_null_fails_closed_and_missing_allows() {
     // Three observably distinct shapes:
-    //   * `audience: null` -> "key not provided" (constraint cannot apply,
-    //     allows). Treated as if the key were missing.
+    //   * `audience: null` -> relevant key with no string values, fails closed.
     //   * `audience: ""` -> relevant empty string (fails closed because no
     //     allowed value matches "").
     //   * `audience` missing -> "key not provided" (allows).
-    // Regression for the strict-collector P1 review: a null leaf must not
-    // flip `saw_relevant_key`, so it is observably distinct from an empty
-    // string while sharing the same outcome as an absent key.
+    // Regression for the strict-collector P1 review: null under a relevant
+    // key must not be treated like absence, or an attacker can bypass an
+    // audience/store allowlist by sending an explicit JSON null.
     let scope = ChioScope {
         grants: vec![grant(
             "web",
@@ -269,12 +268,10 @@ fn resolve_matching_grants_audience_null_distinct_from_empty_string_and_missing(
     };
 
     let null_audience = serde_json::json!({ "audience": null });
-    let matches = resolve_matching_grants(&scope, "send", "web", &null_audience)
-        .unwrap_or_else(|e| panic!("null audience should not deny: {e:?}"));
-    assert_eq!(
-        matches.len(),
-        1,
-        "audience: null should be treated as key not provided"
+    let matches = resolve_matching_grants(&scope, "send", "web", &null_audience);
+    assert!(
+        matches.as_ref().is_ok_and(Vec::is_empty),
+        "audience: null is a relevant key with no string values and must fail closed"
     );
 
     let empty_audience = serde_json::json!({ "audience": "" });
@@ -303,12 +300,10 @@ fn resolve_matching_grants_audience_null_distinct_from_empty_string_and_missing(
     };
 
     let null_store = serde_json::json!({ "store": null });
-    let matches = resolve_matching_grants(&memory_scope, "write", "memory", &null_store)
-        .unwrap_or_else(|e| panic!("null store should not deny: {e:?}"));
-    assert_eq!(
-        matches.len(),
-        1,
-        "store: null should be treated as key not provided"
+    let matches = resolve_matching_grants(&memory_scope, "write", "memory", &null_store);
+    assert!(
+        matches.as_ref().is_ok_and(Vec::is_empty),
+        "store: null is a relevant key with no string values and must fail closed"
     );
 
     let empty_store = serde_json::json!({ "store": "" });
