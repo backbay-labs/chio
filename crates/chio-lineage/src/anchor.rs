@@ -284,10 +284,19 @@ pub fn pin_frontier(graph: &LineageGraph, signer_hint: Option<&str>) -> Anchored
     }
 }
 
+/// Return true when a signature payload is non-empty lower-case hex.
+#[must_use]
+pub fn is_lowercase_hex_signature_payload(signature_hex: &str) -> bool {
+    !signature_hex.is_empty()
+        && signature_hex
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// Pin a frontier with a real PQ signature payload. The signature is
 /// validated to be non-empty and lower-case hexadecimal so the
-/// `Signed` variant cannot be forged by passing an empty string. Used
-/// once M03 hybrid signing is wired in.
+/// `Signed` variant cannot be forged by passing an empty or malformed
+/// string. Used once M03 hybrid signing is wired in.
 pub fn pin_frontier_signed(
     graph: &LineageGraph,
     algorithm: &str,
@@ -299,10 +308,7 @@ pub fn pin_frontier_signed(
     if signature_hex.is_empty() {
         return Err(AnchorError::EmptySignaturePayload);
     }
-    if !signature_hex
-        .bytes()
-        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-    {
+    if !is_lowercase_hex_signature_payload(signature_hex) {
         return Err(AnchorError::SignaturePayloadNotHex);
     }
     let digest = frontier_digest(graph);
@@ -335,14 +341,16 @@ pub enum AnchorError {
 }
 
 impl AnchoredFrontier {
-    /// Return true when the artifact carries a real (non-empty) signature
-    /// payload. A frontier in any unsigned-state variant returns false so
-    /// callers can fail-closed without re-matching every variant.
+    /// Return true when the artifact carries a real non-empty lower-case
+    /// hex signature payload. A frontier in any unsigned-state variant
+    /// returns false so callers can fail-closed without re-matching every
+    /// variant.
     #[must_use]
     pub fn is_signed(&self) -> bool {
         matches!(
             &self.signing,
-            SigningState::Signed { signature_hex, .. } if !signature_hex.is_empty()
+            SigningState::Signed { signature_hex, .. }
+                if is_lowercase_hex_signature_payload(signature_hex)
         )
     }
 }
@@ -420,6 +428,35 @@ mod tests {
             .err()
             .unwrap_or(AnchorError::EmptySigningAlgorithm);
         assert_eq!(err, AnchorError::SignaturePayloadNotHex);
+    }
+
+    #[test]
+    fn deserialized_signed_state_with_malformed_payload_is_unsigned() {
+        for signature_hex in ["DEADBEEF", "dead beef", " deadbeef", "zz"] {
+            let value = serde_json::json!({
+                "schema_version": "chio.lineage.frontier/v1",
+                "graph_schema": "chio.lineage.graph/v1",
+                "canonical_source": "equivalence_shim",
+                "digest": {
+                    "algo": "sha256",
+                    "hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                },
+                "signing": {
+                    "signed": {
+                        "algorithm": "ml-dsa-65",
+                        "signature_hex": signature_hex
+                    }
+                },
+                "node_count": 0,
+                "edge_count": 0
+            });
+            let decoded: AnchoredFrontier = serde_json::from_value(value)
+                .unwrap_or_else(|err| panic!("deserialize signed state: {err}"));
+            assert!(
+                !decoded.is_signed(),
+                "malformed signature payload {signature_hex:?} must be unsigned"
+            );
+        }
     }
 
     #[test]

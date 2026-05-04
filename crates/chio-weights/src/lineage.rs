@@ -38,7 +38,9 @@
 //! construct [`SigningState::Signed`]; that variant is reserved for the
 //! eventual M03 wire-up that supplies a real signature payload.
 
-use chio_lineage::anchor::{CanonicalSource, FrontierDigest, SigningState};
+use chio_lineage::anchor::{
+    is_lowercase_hex_signature_payload, CanonicalSource, FrontierDigest, SigningState,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -101,17 +103,18 @@ pub struct ModelCardLineageAnchor {
 }
 
 impl ModelCardLineageAnchor {
-    /// Return `true` when the artifact carries a real (non-empty) hybrid
-    /// signature payload. Mirrors
+    /// Return `true` when the artifact carries a real non-empty lower-case
+    /// hex hybrid signature payload. Mirrors
     /// [`chio_lineage::anchor::AnchoredFrontier::is_signed`] so callers can
     /// fail-closed without re-matching every [`SigningState`] variant. A
-    /// `Signed` record carrying an empty `signature_hex` is treated as
-    /// unsigned to defeat the empty-payload forgery vector.
+    /// `Signed` record carrying an empty or malformed `signature_hex` is
+    /// treated as unsigned to defeat signature-state forgery.
     #[must_use]
     pub fn is_signed(&self) -> bool {
         matches!(
             &self.signing,
-            SigningState::Signed { signature_hex, .. } if !signature_hex.is_empty()
+            SigningState::Signed { signature_hex, .. }
+                if is_lowercase_hex_signature_payload(signature_hex)
         )
     }
 }
@@ -283,16 +286,16 @@ pub fn verify_model_card_anchor(
         )));
     }
 
-    // Defense-in-depth: a `Signed` variant carrying an empty signature
-    // payload would represent a forgery vector against verifiers that match
-    // on the variant alone. This helper rejects that shape symmetrically
-    // with `chio_lineage::anchor::AnchoredFrontier::is_signed`. Anchors
-    // produced by `anchor_model_card` never construct `Signed`; rejecting
-    // here also covers anchors deserialised from external bytes.
+    // Defense-in-depth: a `Signed` variant carrying an empty or malformed
+    // signature payload would represent a forgery vector against verifiers
+    // that match on the variant alone. This helper rejects that shape
+    // symmetrically with `chio_lineage::anchor::AnchoredFrontier::is_signed`.
+    // Anchors produced by `anchor_model_card` never construct `Signed`;
+    // rejecting here also covers anchors deserialised from external bytes.
     if let SigningState::Signed { signature_hex, .. } = &anchor.signing {
-        if signature_hex.is_empty() {
+        if !is_lowercase_hex_signature_payload(signature_hex) {
             return Err(WeightsError::BundleRejected(
-                "model card anchor signing state was Signed but signature_hex was empty"
+                "model card anchor signing state was Signed but signature_hex was empty or not lower-case hexadecimal"
                     .to_string(),
             ));
         }
@@ -426,6 +429,37 @@ mod tests {
                 if algorithm == "hybrid:ed25519+ml-dsa-65"
         ));
         assert!(!anchor.is_signed());
+    }
+
+    #[test]
+    fn anchor_signed_state_with_malformed_payload_is_unsigned() {
+        let card = good_card();
+        let bytes = match card.to_canonical_json() {
+            Ok(b) => b,
+            Err(e) => panic!("encode: {e}"),
+        };
+        let mut digest = [0u8; 32];
+        digest.copy_from_slice(&Sha256::digest(&bytes));
+        let att = good_attestation(digest);
+        let verified = VerifiedModelCard {
+            card,
+            attestation: att,
+        };
+        let mut anchor = match anchor_model_card(&verified, &bytes, "chio.lineage.graph/v1", None) {
+            Ok(a) => a,
+            Err(e) => panic!("anchor: {e}"),
+        };
+
+        for signature_hex in ["DEADBEEF", "dead beef", " deadbeef", "zz"] {
+            anchor.signing = SigningState::Signed {
+                algorithm: "hybrid:ed25519+ml-dsa-65".to_string(),
+                signature_hex: signature_hex.to_string(),
+            };
+            assert!(
+                !anchor.is_signed(),
+                "malformed signature payload {signature_hex:?} must be unsigned"
+            );
+        }
     }
 
     #[test]

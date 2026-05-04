@@ -160,6 +160,37 @@ fn verify_rejects_signed_state_with_empty_signature_payload() {
 }
 
 #[test]
+fn verify_rejects_signed_state_with_malformed_signature_payloads() {
+    let card = good_card();
+    let bytes = match card.to_canonical_json() {
+        Ok(b) => b,
+        Err(e) => panic!("encode: {e}"),
+    };
+    let attestation = attestation_for(&bytes);
+    let verified = VerifiedModelCard {
+        card,
+        attestation: attestation.clone(),
+    };
+    let mut anchor = match anchor_model_card(&verified, &bytes, "chio.lineage.graph/v1", None) {
+        Ok(a) => a,
+        Err(e) => panic!("anchor: {e}"),
+    };
+
+    for signature_hex in ["DEADBEEF", "dead beef", " deadbeef", "zz"] {
+        anchor.signing = SigningState::Signed {
+            algorithm: "hybrid:ed25519+ml-dsa-65".to_string(),
+            signature_hex: signature_hex.to_string(),
+        };
+        assert!(!anchor.is_signed());
+        let res = verify_model_card_anchor(&anchor, &bytes, &attestation);
+        assert!(
+            matches!(res, Err(chio_weights::WeightsError::BundleRejected(_))),
+            "verifier must reject malformed signature payload {signature_hex:?}"
+        );
+    }
+}
+
+#[test]
 fn anchor_artifact_serialises_through_serde_json_round_trip() {
     let card = good_card();
     let bytes = match card.to_canonical_json() {
