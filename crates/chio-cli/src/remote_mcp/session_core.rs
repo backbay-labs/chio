@@ -117,13 +117,13 @@ const TOKEN_INTROSPECTION_TIMEOUT_SECS: u64 = 5;
 const IDENTITY_FEDERATION_DERIVATION_LABEL: &[u8] = b"chio.identity_federation.v1";
 const REMOTE_SESSION_RESUME_INTEGRITY_LABEL: &[u8] = b"chio.remote_mcp.resume_integrity.v1";
 const SESSION_IDLE_EXPIRY_ENV: &str = "CHIO_MCP_SESSION_IDLE_EXPIRY_MILLIS";
-const LEGACY_SESSION_IDLE_EXPIRY_ENV: &str = "CHIO_MCP_SESSION_IDLE_EXPIRY_MILLIS";
+const LEGACY_SESSION_IDLE_EXPIRY_ENV: &str = "ARC_MCP_SESSION_IDLE_EXPIRY_MILLIS";
 const SESSION_DRAIN_GRACE_ENV: &str = "CHIO_MCP_SESSION_DRAIN_GRACE_MILLIS";
-const LEGACY_SESSION_DRAIN_GRACE_ENV: &str = "CHIO_MCP_SESSION_DRAIN_GRACE_MILLIS";
+const LEGACY_SESSION_DRAIN_GRACE_ENV: &str = "ARC_MCP_SESSION_DRAIN_GRACE_MILLIS";
 const SESSION_REAPER_INTERVAL_ENV: &str = "CHIO_MCP_SESSION_REAPER_INTERVAL_MILLIS";
-const LEGACY_SESSION_REAPER_INTERVAL_ENV: &str = "CHIO_MCP_SESSION_REAPER_INTERVAL_MILLIS";
+const LEGACY_SESSION_REAPER_INTERVAL_ENV: &str = "ARC_MCP_SESSION_REAPER_INTERVAL_MILLIS";
 const SESSION_TOMBSTONE_RETENTION_ENV: &str = "CHIO_MCP_SESSION_TOMBSTONE_RETENTION_MILLIS";
-const LEGACY_SESSION_TOMBSTONE_RETENTION_ENV: &str = "CHIO_MCP_SESSION_TOMBSTONE_RETENTION_MILLIS";
+const LEGACY_SESSION_TOMBSTONE_RETENTION_ENV: &str = "ARC_MCP_SESSION_TOMBSTONE_RETENTION_MILLIS";
 const SESSION_TOUCH_PERSIST_INTERVAL_MILLIS: u64 = 5_000;
 
 type NotificationTapQueue = Arc<StdMutex<VecDeque<Value>>>;
@@ -3041,6 +3041,22 @@ impl RemoteSessionLedger {
                     state.as_str()
                 )));
             }
+        }
+        // Guard against re-terminalizing a session that has already reached a
+        // terminal state. Without this, a concurrent reaper expiry followed by
+        // an admin shutdown (or DELETE) on the same session would overwrite the
+        // first tombstone's state, refresh `terminal_at` (extending retention),
+        // and re-issue spurious resumable-record deletes against SQLite.
+        let current_state = session.lifecycle_snapshot().state;
+        match current_state {
+            RemoteSessionState::Deleted
+            | RemoteSessionState::Expired
+            | RemoteSessionState::Closed => {
+                return Ok(());
+            }
+            RemoteSessionState::Initializing
+            | RemoteSessionState::Ready
+            | RemoteSessionState::Draining => {}
         }
         let terminal_at = session_now_millis();
         let mut record = session.diagnostic_record();
