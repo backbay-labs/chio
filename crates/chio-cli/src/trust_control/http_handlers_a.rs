@@ -591,7 +591,7 @@ async fn handle_evaluate_generic_trust_activation(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_generic_trust_activation_request(&request) {
+    match evaluate_generic_trust_activation_request(&state.config, &request) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -675,7 +675,7 @@ async fn handle_evaluate_open_market_penalty(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match evaluate_open_market_penalty_request(&request) {
+    match evaluate_open_market_penalty_request(&state.config, &request) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }

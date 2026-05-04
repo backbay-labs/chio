@@ -698,10 +698,23 @@ pub fn issue_signed_generic_trust_activation(
 }
 
 pub fn evaluate_generic_trust_activation_request(
+    config: &TrustServiceConfig,
     request: &GenericTrustActivationEvaluationRequest,
 ) -> Result<GenericTrustActivationEvaluation, CliError> {
+    let signer_keypair = load_behavioral_feed_signing_keypair(
+        config.authority_seed_path.as_deref(),
+        config.authority_db_path.as_deref(),
+    )?;
+    if let Some(activation) = request.activation.as_ref() {
+        ensure_signed_by_local_authority(
+            "trust activation",
+            &activation.signer_key,
+            &signer_keypair.public_key(),
+        )?;
+    }
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_generic_trust_activation(request, now).map_err(CliError::cli_other_error)
+    evaluate_generic_trust_activation(request, now, &signer_keypair.public_key())
+        .map_err(CliError::cli_other_error)
 }
 
 pub fn issue_signed_generic_governance_charter(
@@ -785,11 +798,16 @@ pub fn issue_signed_open_market_penalty(
         config.authority_seed_path.as_deref(),
         config.authority_db_path.as_deref(),
     )?;
+    ensure_open_market_issue_signed_by_local_authority(request, &signer_keypair.public_key())?;
     let local_operator = public_generic_registry_publisher(config)?;
     let issued_at = request.opened_at.unwrap_or(now_unix_secs()?);
-    let artifact =
-        build_open_market_penalty_artifact(&local_operator.operator_id, request, issued_at)
-            .map_err(CliError::cli_other_error)?;
+    let artifact = build_open_market_penalty_artifact(
+        &local_operator.operator_id,
+        request,
+        issued_at,
+        &signer_keypair.public_key(),
+    )
+    .map_err(CliError::cli_other_error)?;
     SignedOpenMarketPenalty::sign(artifact, &signer_keypair).map_err(|error| {
         CliError::cli_other_error(format!(
             "failed to sign open-market penalty artifact: {error}"
@@ -798,10 +816,100 @@ pub fn issue_signed_open_market_penalty(
 }
 
 pub fn evaluate_open_market_penalty_request(
+    config: &TrustServiceConfig,
     request: &OpenMarketPenaltyEvaluationRequest,
 ) -> Result<OpenMarketPenaltyEvaluation, CliError> {
+    let signer_keypair = load_behavioral_feed_signing_keypair(
+        config.authority_seed_path.as_deref(),
+        config.authority_db_path.as_deref(),
+    )?;
+    ensure_open_market_evaluation_signed_by_local_authority(request, &signer_keypair.public_key())?;
     let now = request.evaluated_at.unwrap_or(now_unix_secs()?);
-    evaluate_open_market_penalty(request, now).map_err(CliError::cli_other_error)
+    evaluate_open_market_penalty(request, now, &signer_keypair.public_key())
+        .map_err(CliError::cli_other_error)
+}
+
+fn ensure_open_market_issue_signed_by_local_authority(
+    request: &OpenMarketPenaltyIssueRequest,
+    expected_signer: &PublicKey,
+) -> Result<(), CliError> {
+    ensure_signed_by_local_authority(
+        "open-market fee schedule",
+        &request.fee_schedule.signer_key,
+        expected_signer,
+    )?;
+    ensure_signed_by_local_authority(
+        "governance charter",
+        &request.charter.signer_key,
+        expected_signer,
+    )?;
+    ensure_signed_by_local_authority(
+        "governance case",
+        &request.case.signer_key,
+        expected_signer,
+    )?;
+    if let Some(activation) = request.activation.as_ref() {
+        ensure_signed_by_local_authority(
+            "trust activation",
+            &activation.signer_key,
+            expected_signer,
+        )?;
+    }
+    Ok(())
+}
+
+fn ensure_open_market_evaluation_signed_by_local_authority(
+    request: &OpenMarketPenaltyEvaluationRequest,
+    expected_signer: &PublicKey,
+) -> Result<(), CliError> {
+    ensure_signed_by_local_authority(
+        "open-market fee schedule",
+        &request.fee_schedule.signer_key,
+        expected_signer,
+    )?;
+    ensure_signed_by_local_authority(
+        "governance charter",
+        &request.charter.signer_key,
+        expected_signer,
+    )?;
+    ensure_signed_by_local_authority(
+        "governance case",
+        &request.case.signer_key,
+        expected_signer,
+    )?;
+    ensure_signed_by_local_authority(
+        "open-market penalty",
+        &request.penalty.signer_key,
+        expected_signer,
+    )?;
+    if let Some(activation) = request.activation.as_ref() {
+        ensure_signed_by_local_authority(
+            "trust activation",
+            &activation.signer_key,
+            expected_signer,
+        )?;
+    }
+    if let Some(prior_penalty) = request.prior_penalty.as_ref() {
+        ensure_signed_by_local_authority(
+            "prior open-market penalty",
+            &prior_penalty.signer_key,
+            expected_signer,
+        )?;
+    }
+    Ok(())
+}
+
+fn ensure_signed_by_local_authority(
+    label: &str,
+    signer_key: &PublicKey,
+    expected_signer: &PublicKey,
+) -> Result<(), CliError> {
+    if signer_key != expected_signer {
+        return Err(CliError::cli_other_error(format!(
+            "{label} signer does not match the local trust-control authority signer"
+        )));
+    }
+    Ok(())
 }
 
 pub fn issue_signed_portable_reputation_summary(
