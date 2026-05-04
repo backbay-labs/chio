@@ -83,15 +83,25 @@ fn spawn_trust_service(
     ServerGuard { child }
 }
 
+/// Drain stderr from a trust service child that has already been killed (or
+/// observed exited). Reading from a still-running child's stderr pipe will
+/// block forever because the pipe stays open while the process is alive, so
+/// callers must ensure the child has been terminated before invoking this.
+fn drain_stderr_after_exit(service: &mut ServerGuard) -> String {
+    let _ = service.child.wait();
+    let mut stderr = String::new();
+    if let Some(child_stderr) = service.child.stderr.as_mut() {
+        let _ = child_stderr.read_to_string(&mut stderr);
+    }
+    stderr
+}
+
 fn wait_for_trust_service(client: &Client, base_url: &str, service: &mut ServerGuard) {
     // 30s readiness budget matches mcp_auth_server.rs and provider_admin.rs.
     // The previous 5s budget is tight on slow CI runners and risks flake.
     for _ in 0..300 {
         if let Some(status) = service.child.try_wait().expect("poll trust service child") {
-            let mut stderr = String::new();
-            if let Some(child_stderr) = service.child.stderr.as_mut() {
-                let _ = child_stderr.read_to_string(&mut stderr);
-            }
+            let stderr = drain_stderr_after_exit(service);
             panic!(
                 "trust service exited before becoming ready (status {status})\nstderr:\n{stderr}",
             );
@@ -101,10 +111,13 @@ fn wait_for_trust_service(client: &Client, base_url: &str, service: &mut ServerG
             Ok(_) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(100)),
         }
     }
-    let mut stderr = String::new();
-    if let Some(child_stderr) = service.child.stderr.as_mut() {
-        let _ = child_stderr.read_to_string(&mut stderr);
-    }
+    // Readiness budget exhausted but the trust service may still be running.
+    // Kill the child *first* and only then drain stderr: read_to_string on a
+    // live child's piped stderr blocks until the writer closes, which never
+    // happens while the process is alive, so reading first would hang the
+    // test forever instead of surfacing the diagnostic.
+    let _ = service.child.kill();
+    let stderr = drain_stderr_after_exit(service);
     panic!("trust service did not become ready\nstderr:\n{stderr}");
 }
 
