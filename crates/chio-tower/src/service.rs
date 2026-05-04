@@ -215,6 +215,7 @@ where
     let status = http::StatusCode::PAYLOAD_TOO_LARGE;
     let parsed_method = crate::evaluator::parse_method(method).ok();
     let caller_identity_hash = caller.identity_hash().ok();
+    let route_pattern = (evaluator.route_resolver())(method, path);
 
     let receipt = match (parsed_method, caller_identity_hash.as_deref()) {
         (Some(http_method), Some(caller_hash)) => {
@@ -227,7 +228,7 @@ where
             evaluator
                 .sign_transport_deny_receipt(TransportDenyInput {
                     request_id: &request_id,
-                    route_pattern: path,
+                    route_pattern: &route_pattern,
                     method: http_method,
                     caller_identity_hash: caller_hash,
                     content_hash: None,
@@ -749,5 +750,50 @@ mod tests {
                 .unwrap_or_else(|e| panic!("verify failed: {e}")),
             "deserialised receipt body must verify under the embedded kernel key"
         );
+    }
+
+    #[tokio::test]
+    async fn service_413_receipt_uses_route_resolver_pattern() {
+        fn route_resolver(_method: &str, path: &str) -> String {
+            if path.starts_with("/pets/") {
+                "/pets/{petId}".to_string()
+            } else {
+                path.to_string()
+            }
+        }
+
+        let (_kp, evaluator) = make_service();
+        let evaluator = evaluator.with_route_resolver(route_resolver);
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/pets/secret-id")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        let receipt = resp
+            .extensions()
+            .get::<HttpReceipt>()
+            .unwrap_or_else(|| panic!("missing receipt extension on 413"));
+        assert_eq!(receipt.route_pattern, "/pets/{petId}");
     }
 }
