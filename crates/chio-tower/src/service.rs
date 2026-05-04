@@ -11,6 +11,15 @@ use tower_service::Service;
 
 use crate::evaluator::{ChioEvaluator, EvaluationInput};
 
+/// Default upper bound on buffered request body size (8 MiB).
+///
+/// The middleware needs to inspect request bodies to compute content hashes
+/// for receipts; without a cap a single oversized request could exhaust host
+/// memory before the inner service ever sees it. Callers can override this
+/// via [`ChioService::with_max_body_bytes`] when a deployment expects larger
+/// payloads.
+pub const DEFAULT_MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
+
 /// Tower `Service` that evaluates HTTP requests against the Chio kernel.
 ///
 /// For each request, the service:
@@ -25,12 +34,28 @@ use crate::evaluator::{ChioEvaluator, EvaluationInput};
 pub struct ChioService<S> {
     inner: S,
     evaluator: ChioEvaluator,
+    max_body_bytes: usize,
 }
 
 impl<S> ChioService<S> {
     /// Create a new Chio service wrapping the inner service.
     pub fn new(inner: S, evaluator: ChioEvaluator) -> Self {
-        Self { inner, evaluator }
+        Self {
+            inner,
+            evaluator,
+            max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+        }
+    }
+
+    /// Override the maximum body size buffered for hashing.
+    ///
+    /// Requests whose advertised or observed body size exceeds this limit are
+    /// rejected with `413 Payload Too Large` before reaching the inner
+    /// service. Defaults to [`DEFAULT_MAX_BODY_BYTES`].
+    #[must_use]
+    pub fn with_max_body_bytes(mut self, max_body_bytes: usize) -> Self {
+        self.max_body_bytes = max_body_bytes;
+        self
     }
 }
 
@@ -57,6 +82,7 @@ where
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         let evaluator = self.evaluator.clone();
         let mut inner = self.inner.clone();
+        let max_body_bytes = self.max_body_bytes;
 
         Box::pin(async move {
             let method = req.method().as_str().to_string();
@@ -71,7 +97,16 @@ where
                 })
                 .unwrap_or_default();
             let headers = req.headers().clone();
-            let (req, body_hash, body_length) = buffer_request_body(req).await?;
+            let (req, body_hash, body_length) = match buffer_request_body(req, max_body_bytes).await
+            {
+                Ok(parts) => parts,
+                Err(BufferBodyError::TooLarge) => {
+                    let mut response = http::Response::new(ResBody::default());
+                    *response.status_mut() = http::StatusCode::PAYLOAD_TOO_LARGE;
+                    return Ok(response);
+                }
+                Err(BufferBodyError::Inner(error)) => return Err(error),
+            };
 
             // Extract caller identity.
             let identity_fn = evaluator.identity_extractor();
@@ -143,16 +178,42 @@ fn denied_status(verdict: &chio_http_core::Verdict) -> http::StatusCode {
     }
 }
 
+/// Result of a failed body buffer operation.
+enum BufferBodyError {
+    /// The request body exceeded the configured limit. The middleware reports
+    /// this as 413 Payload Too Large rather than passing it to the inner
+    /// service.
+    TooLarge,
+    /// The underlying body or inner service produced an error.
+    Inner(Box<dyn std::error::Error + Send + Sync>),
+}
+
 async fn buffer_request_body<ReqBody>(
     req: http::Request<ReqBody>,
-) -> Result<(http::Request<ReqBody>, Option<String>, u64), Box<dyn std::error::Error + Send + Sync>>
+    max_body_bytes: usize,
+) -> Result<(http::Request<ReqBody>, Option<String>, u64), BufferBodyError>
 where
     ReqBody: Body + From<Bytes>,
     ReqBody::Data: Send,
     ReqBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
+    // Reject early when the body advertises a size beyond the cap. This avoids
+    // pulling any bytes for clearly-oversized payloads.
+    if let Some(upper) = req.body().size_hint().upper() {
+        if upper > max_body_bytes as u64 {
+            return Err(BufferBodyError::TooLarge);
+        }
+    }
+
     let (parts, body) = req.into_parts();
-    let collected = body.collect().await.map_err(Into::into)?.to_bytes();
+    let collected = body
+        .collect()
+        .await
+        .map_err(|error| BufferBodyError::Inner(error.into()))?
+        .to_bytes();
+    if collected.len() > max_body_bytes {
+        return Err(BufferBodyError::TooLarge);
+    }
     let body_length = collected.len() as u64;
     let body_hash = if collected.is_empty() {
         None
@@ -334,9 +395,12 @@ mod tests {
             .body(Full::new(payload.clone()))
             .unwrap_or_else(|e| panic!("build failed: {e}"));
 
-        let (req, body_hash, body_length) = buffer_request_body(req)
-            .await
-            .unwrap_or_else(|e| panic!("buffer failed: {e}"));
+        let (req, body_hash, body_length) =
+            match buffer_request_body(req, DEFAULT_MAX_BODY_BYTES).await {
+                Ok(parts) => parts,
+                Err(BufferBodyError::TooLarge) => panic!("body unexpectedly too large"),
+                Err(BufferBodyError::Inner(error)) => panic!("buffer failed: {error}"),
+            };
 
         let replayed = req
             .into_body()
@@ -351,5 +415,50 @@ mod tests {
         assert_eq!(body_length, payload.len() as u64);
         assert_eq!(body_hash, Some(hex::encode(expected.finalize())));
         assert_eq!(replayed, payload);
+    }
+
+    #[tokio::test]
+    async fn buffer_request_body_rejects_oversized_payload() {
+        let payload = Bytes::from(vec![b'a'; 32]);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/oversized")
+            .body(Full::new(payload))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let result = buffer_request_body(req, 16).await;
+        assert!(matches!(result, Err(BufferBodyError::TooLarge)));
+    }
+
+    #[tokio::test]
+    async fn service_returns_413_when_body_exceeds_limit() {
+        let (_kp, evaluator) = make_service();
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/pets")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

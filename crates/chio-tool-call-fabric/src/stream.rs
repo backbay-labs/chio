@@ -14,6 +14,15 @@
 
 use std::fmt;
 
+/// Default upper bound on bytes accumulated in a single [`BufferedBlock`].
+///
+/// Streams hold tool-call arguments in memory while the kernel resolves a
+/// verdict. Without an upper bound, a malicious or runaway upstream could
+/// pin unbounded heap until the verdict resolves. The default of 1 MiB is
+/// generous for tool-call argument JSON; callers that expect larger blocks
+/// can opt into [`StreamPhase::transition_with_limit`].
+pub const DEFAULT_MAX_BUFFERED_BLOCK_BYTES: usize = 1024 * 1024;
+
 /// Kind of a buffered block.
 ///
 /// Each provider exposes a small handful of block kinds that the fabric needs
@@ -148,6 +157,18 @@ pub enum StreamError {
     /// The stream is already closed; no further events are accepted.
     #[error("stream is closed; event {event} ignored")]
     AlreadyClosed { event: &'static str },
+    /// Buffering this chunk would push the in-flight block past its
+    /// configured byte cap. Adapters should fail the upstream stream
+    /// rather than continue buffering.
+    #[error(
+        "AppendBytes would grow buffered block {block_id} from {buffered} to {projected} bytes, exceeding limit {limit}"
+    )]
+    BufferOverflow {
+        block_id: String,
+        buffered: usize,
+        projected: usize,
+        limit: usize,
+    },
 }
 
 impl StreamPhase {
@@ -157,7 +178,25 @@ impl StreamPhase {
     /// `&self` and returns a fresh `StreamPhase`), so an adapter that wants to
     /// stay in its current state on an invalid event can simply discard the
     /// error.
+    ///
+    /// Buffered blocks are capped at [`DEFAULT_MAX_BUFFERED_BLOCK_BYTES`].
+    /// Adapters that need a different cap (or none) should call
+    /// [`StreamPhase::transition_with_limit`] directly.
     pub fn transition(&self, event: StreamEvent) -> Result<StreamPhase, StreamError> {
+        self.transition_with_limit(event, DEFAULT_MAX_BUFFERED_BLOCK_BYTES)
+    }
+
+    /// Apply `event` to this phase, enforcing `max_buffered_bytes` on
+    /// `AppendBytes`. See [`StreamPhase::transition`] for general semantics.
+    ///
+    /// `max_buffered_bytes` of 0 disables buffering entirely (any
+    /// non-empty chunk overflows). `usize::MAX` effectively disables the
+    /// cap for callers that have an upstream limit.
+    pub fn transition_with_limit(
+        &self,
+        event: StreamEvent,
+        max_buffered_bytes: usize,
+    ) -> Result<StreamPhase, StreamError> {
         match (self, event) {
             // Closed is terminal; any event is a hard error.
             (StreamPhase::Closed, ev) => Err(StreamError::AlreadyClosed {
@@ -185,6 +224,15 @@ impl StreamPhase {
             // Buffering: AppendBytes extends, FinishBlock advances to Emitting,
             // StartBlock is a protocol error (previous block must finish first).
             (StreamPhase::Buffering(block), StreamEvent::AppendBytes { chunk }) => {
+                let projected = block.bytes.len().saturating_add(chunk.len());
+                if projected > max_buffered_bytes {
+                    return Err(StreamError::BufferOverflow {
+                        block_id: block.block_id.clone(),
+                        buffered: block.bytes.len(),
+                        projected,
+                        limit: max_buffered_bytes,
+                    });
+                }
                 let mut next = block.clone();
                 next.append(&chunk);
                 Ok(StreamPhase::Buffering(next))
@@ -318,9 +366,67 @@ mod tests {
             StreamError::AlreadyClosed {
                 event: "FinishBlock",
             },
+            StreamError::BufferOverflow {
+                block_id: "blk_overflow".to_string(),
+                buffered: 8,
+                projected: 12,
+                limit: 10,
+            },
         ];
         for err in cases {
             assert!(!err.to_string().contains('\u{2014}'), "em dash in {err}");
         }
+    }
+
+    #[test]
+    fn buffering_append_overflow_is_rejected() {
+        let phase = StreamPhase::Buffering(BufferedBlock::new("blk_cap", BlockKind::ToolCall));
+        let next = phase
+            .transition_with_limit(
+                StreamEvent::AppendBytes {
+                    chunk: b"abcde".to_vec(),
+                },
+                4,
+            )
+            .unwrap_err();
+        match next {
+            StreamError::BufferOverflow {
+                block_id,
+                buffered,
+                projected,
+                limit,
+            } => {
+                assert_eq!(block_id, "blk_cap");
+                assert_eq!(buffered, 0);
+                assert_eq!(projected, 5);
+                assert_eq!(limit, 4);
+            }
+            other => panic!("expected BufferOverflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn buffering_append_at_exact_limit_is_allowed() {
+        let phase = StreamPhase::Buffering(BufferedBlock::new("blk_eq", BlockKind::ToolCall));
+        let next = phase
+            .transition_with_limit(
+                StreamEvent::AppendBytes {
+                    chunk: b"abcd".to_vec(),
+                },
+                4,
+            )
+            .unwrap();
+        let buf = next.buffered().unwrap();
+        assert_eq!(buf.bytes, b"abcd");
+    }
+
+    #[test]
+    fn default_transition_caps_at_one_mib() {
+        let phase = StreamPhase::Buffering(BufferedBlock::new("blk_huge", BlockKind::ToolCall));
+        let oversized = vec![b'x'; DEFAULT_MAX_BUFFERED_BLOCK_BYTES + 1];
+        let err = phase
+            .transition(StreamEvent::AppendBytes { chunk: oversized })
+            .unwrap_err();
+        assert!(matches!(err, StreamError::BufferOverflow { .. }));
     }
 }
