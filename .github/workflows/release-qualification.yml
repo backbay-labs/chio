@@ -11,6 +11,14 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
+  # Pinned to match .github/workflows/ci.yml so the formal-proof gates
+  # invoked through scripts/qualify-release.sh -> scripts/ci-workspace.sh
+  # see the same Aeneas/Charon, Creusot, and Kani builds as the PR-tier
+  # CI lane.
+  CHIO_AENEAS_RELEASE_TAG: build-2026.04.22.215158-38d10a22642d75d051e14006cc6e45055381f10e
+  CHIO_AENEAS_LINUX_X86_64_SHA256: 11b4e88776655c9fd5e391bfd2824e8b52916590962fbcb392768c57b7b32ca7
+  CHIO_CREUSOT_REV: a12f3ac7f688c7b93cee2c2eb60282004a2bdb30
+  CHIO_KANI_VERSION: 0.67.0
 
 jobs:
   qualify:
@@ -90,6 +98,48 @@ jobs:
           go-version: "1.23.0"
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install Aeneas and Charon
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/chio-aeneas-bin"
+          archive="${RUNNER_TEMP}/aeneas-linux-x86_64.tar.gz"
+          curl -fsSL \
+            "https://github.com/AeneasVerif/aeneas/releases/download/${CHIO_AENEAS_RELEASE_TAG}/aeneas-linux-x86_64.tar.gz" \
+            -o "${archive}"
+          echo "${CHIO_AENEAS_LINUX_X86_64_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}/chio-aeneas-bin" aeneas charon charon-driver
+          chmod +x \
+            "${RUNNER_TEMP}/chio-aeneas-bin/aeneas" \
+            "${RUNNER_TEMP}/chio-aeneas-bin/charon" \
+            "${RUNNER_TEMP}/chio-aeneas-bin/charon-driver"
+          echo "${RUNNER_TEMP}/chio-aeneas-bin" >> "${GITHUB_PATH}"
+          echo "CHIO_CHARON=${RUNNER_TEMP}/chio-aeneas-bin/charon" >> "${GITHUB_ENV}"
+          "${RUNNER_TEMP}/chio-aeneas-bin/aeneas" --help >/dev/null
+          "${RUNNER_TEMP}/chio-aeneas-bin/charon" --help >/dev/null
+
+      - name: Install Rust verification tools
+        shell: bash
+        env:
+          OPAMYES: "1"
+          OPAMCONFIRMLEVEL: "unsafe-yes"
+          CARGO_TARGET_DIR: ${{ runner.temp }}/chio-verification-tool-target
+        run: |
+          set -euo pipefail
+          cargo install kani-verifier --locked --version "${CHIO_KANI_VERSION}"
+          cargo kani setup
+          sudo apt-get update
+          sudo apt-get install -y opam
+          opam init --disable-sandboxing --bare -y
+          git clone https://github.com/creusot-rs/creusot "${RUNNER_TEMP}/creusot"
+          git -C "${RUNNER_TEMP}/creusot" checkout "${CHIO_CREUSOT_REV}"
+          (
+            cd "${RUNNER_TEMP}/creusot"
+            ./INSTALL
+          )
+          cargo creusot version
+          cargo kani --version
 
       - name: Install portable qualification dependencies
         run: |
