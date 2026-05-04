@@ -75,3 +75,7 @@ path  = "crates/chio-core-types"
 [targets.manifest_roundtrip]
 crate = "chio-manifest"
 path  = "crates/chio-manifest"
+
+[targets.federation_trust_establishment]
+crate = "chio-federation"
+path  = "crates/chio-federation"

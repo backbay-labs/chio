@@ -55,6 +55,18 @@ triggers = [
 seeds    = "fuzz/corpus/manifest_roundtrip"
 notes    = "Tool-manifest decode plus canonicalization; downstream of M01 manifest vectors."
 
+[targets.federation_trust_establishment]
+crate    = "chio-federation"
+path     = "fuzz/fuzz_targets/federation_trust_establishment.rs"
+triggers = [
+    "crates/chio-federation/**",
+    "spec/schemas/federation/**",
+    "fuzz/fuzz_targets/federation_trust_establishment.rs",
+    "fuzz/corpus/federation_trust_establishment/**",
+]
+seeds    = "fuzz/corpus/federation_trust_establishment"
+notes    = "Kernel trust-establishment envelopes, peer pins, freshness, and fail-closed resolution."
+
 [targets.attest_verify]
 crate    = "chio-attest-verify"
 path     = "fuzz/fuzz_targets/attest_verify.rs"
