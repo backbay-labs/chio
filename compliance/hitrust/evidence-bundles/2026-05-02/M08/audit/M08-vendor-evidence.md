@@ -124,6 +124,15 @@ Repository-hosted draft artifacts are the only trajectory-3 evidence
 channel for M08. Public or vendor-hosted channels are out of scope until
 the trajectory-4 external review is completed and separately recorded.
 
+### 5e. Chio response memo
+
+The Chio response memo for trajectory-3 is this internal readiness
+section. It records that no external crypto-protocol reviewer has issued
+a completed report, no vendor response cycle has completed, and no public
+vendor-hosted artifact may be cited for M08. The response-memo pointer in
+`releases.toml` is intentionally anchored here so release evidence
+resolves to the fail-closed internal readiness statement.
+
 ## 6. Trajectory-4 Exit Criteria
 
 Before a future external review can replace this internal readiness
