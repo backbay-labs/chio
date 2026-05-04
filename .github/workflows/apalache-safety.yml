@@ -10,6 +10,7 @@ on:
       - "formal/tla/**"
       - "tools/install-apalache.sh"
       - ".github/workflows/apalache-safety.yml"
+      - ".github/workflows/apalache-temporal.yml"
 
 permissions:
   contents: read

@@ -15,8 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-temporal', github.ref) || format('main-{0}-apalache-temporal', github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ format('{0}-{1}-apalache-temporal', github.event_name, github.sha) }}
 
 jobs:
   revocation-eventually-seen:
