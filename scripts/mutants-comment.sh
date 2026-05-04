@@ -120,7 +120,15 @@ if [[ ! "${SURVIVOR_CAP}" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 
-OUTCOMES_JSON="${OUTPUT_DIR}/outcomes.json"
+OUTCOMES_JSON=""
+for candidate in \
+    "${OUTPUT_DIR}/outcomes.json" \
+    "${OUTPUT_DIR}/mutants.out/outcomes.json"; do
+    if [[ -f "${candidate}" ]]; then
+        OUTCOMES_JSON="${candidate}"
+        break
+    fi
+done
 
 header="### cargo-mutants ${GATE_MODE} report"
 if [[ -n "${PACKAGE}" ]]; then
@@ -142,7 +150,7 @@ fi
 if ! command -v jq >/dev/null 2>&1; then
     body="${header}
 
-\`outcomes.json\` written to \`${OUTPUT_DIR}\` but \`jq\` not available
+\`outcomes.json\` written to \`${OUTCOMES_JSON}\` but \`jq\` not available
 on the runner; raw report attached as a workflow artifact. The lane is
 \`${GATE_MODE}\`; see \`docs/fuzzing/mutants.md\` for triage policy."
     gh pr comment "${PR_NUMBER}" --body "${body}"
@@ -153,11 +161,13 @@ fi
 # tolerates object-keyed outcomes and root-array fixtures used by dry-runs.
 outcomes_filter='
 def outcomes:
-    if (.outcomes | type) == "array" then .outcomes
-    elif (.outcomes | type) == "object" then [.outcomes[]]
-    elif type == "array" then .
-    else []
-    end;
+    (
+        if (.outcomes | type) == "array" then .outcomes
+        elif (.outcomes | type) == "object" then [.outcomes[]]
+        elif type == "array" then .
+        else []
+        end
+    ) | map(select((.scenario? // "") != "Baseline"));
 '
 total=$(jq "${outcomes_filter} outcomes | length" "${OUTCOMES_JSON}")
 caught=$(jq "${outcomes_filter} outcomes | map(select((.summary // .status) == \"CaughtMutant\")) | length" "${OUTCOMES_JSON}")

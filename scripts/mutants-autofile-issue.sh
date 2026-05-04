@@ -44,9 +44,17 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
-OUTCOMES_JSON="${OUTPUT_DIR}/outcomes.json"
+OUTCOMES_JSON=""
+for candidate in \
+    "${OUTPUT_DIR}/outcomes.json" \
+    "${OUTPUT_DIR}/mutants.out/outcomes.json"; do
+    if [[ -f "${candidate}" ]]; then
+        OUTCOMES_JSON="${candidate}"
+        break
+    fi
+done
 if [[ ! -f "${OUTCOMES_JSON}" ]]; then
-    printf 'mutants-autofile-issue: no outcomes.json at %s; nothing to file\n' "${OUTCOMES_JSON}"
+    printf 'mutants-autofile-issue: no outcomes.json under %s; nothing to file\n' "${OUTPUT_DIR}"
     exit 0
 fi
 
@@ -83,11 +91,13 @@ hash_input() {
 
 survivors_json=$(jq -c --argjson cap "${SURVIVOR_CAP}" '
     def outcomes:
-        if (.outcomes | type) == "array" then .outcomes
-        elif (.outcomes | type) == "object" then [.outcomes[]]
-        elif type == "array" then .
-        else []
-        end;
+        (
+            if (.outcomes | type) == "array" then .outcomes
+            elif (.outcomes | type) == "object" then [.outcomes[]]
+            elif type == "array" then .
+            else []
+            end
+        ) | map(select((.scenario? // "") != "Baseline"));
     def verdict: (.summary // .status // "unknown");
     def survivor: verdict == "MissedMutant" or verdict == "Timeout";
     def pathish($value):

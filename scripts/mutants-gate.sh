@@ -154,7 +154,14 @@ fi
 
 outcomes_json=""
 if [[ -n "${OUTPUT_DIR}" ]]; then
-    outcomes_json="${OUTPUT_DIR}/outcomes.json"
+    for candidate in \
+        "${OUTPUT_DIR}/outcomes.json" \
+        "${OUTPUT_DIR}/mutants.out/outcomes.json"; do
+        if [[ -f "${candidate}" ]]; then
+            outcomes_json="${candidate}"
+            break
+        fi
+    done
 fi
 
 if [[ ! "${EXIT_CODE}" =~ ^[0-9]+$ ]]; then
@@ -173,11 +180,13 @@ if [[ -f "${outcomes_json}" ]]; then
     fi
     counts="$(jq -r '
         def outcomes:
-            if (.outcomes | type) == "array" then .outcomes
-            elif (.outcomes | type) == "object" then [.outcomes[]]
-            elif type == "array" then .
-            else []
-            end;
+            (
+                if (.outcomes | type) == "array" then .outcomes
+                elif (.outcomes | type) == "object" then [.outcomes[]]
+                elif type == "array" then .
+                else []
+                end
+            ) | map(select((.scenario? // "") != "Baseline"));
         outcomes as $outcomes
         | [
             ($outcomes | length),
