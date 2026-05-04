@@ -213,6 +213,64 @@ fn resolve_matching_grants_enforces_domain_audience_and_memory_constraints() {
 }
 
 #[test]
+fn resolve_matching_grants_audience_allowlist_rejects_non_string_values() {
+    // A non-string value under an audience-style key must fail closed
+    // instead of silently widening scope. Mirrors the
+    // `chio_kernel::request_matching` strict semantics so the portable
+    // matcher and the full kernel agree on this trust-boundary case.
+    let scope = ChioScope {
+        grants: vec![grant(
+            "web",
+            "send",
+            vec![Operation::Invoke],
+            vec![Constraint::AudienceAllowlist(vec!["security".to_string()])],
+        )],
+        ..ChioScope::default()
+    };
+
+    let non_string = serde_json::json!({ "audience": 42 });
+    let matches = resolve_matching_grants(&scope, "send", "web", &non_string);
+    assert!(matches.as_ref().is_ok_and(Vec::is_empty));
+
+    let object_under_key = serde_json::json!({ "audience": { "team": "security" } });
+    let matches = resolve_matching_grants(&scope, "send", "web", &object_under_key);
+    assert!(matches.as_ref().is_ok_and(Vec::is_empty));
+
+    let empty_array = serde_json::json!({ "audience": [] });
+    let matches = resolve_matching_grants(&scope, "send", "web", &empty_array);
+    assert!(matches.as_ref().is_ok_and(Vec::is_empty));
+
+    // Absent key still allows (constraint cannot apply).
+    let no_key = serde_json::json!({ "subject": "ping" });
+    let matches = resolve_matching_grants(&scope, "send", "web", &no_key)
+        .unwrap_or_else(|e| panic!("absent audience key should not deny: {e:?}"));
+    assert_eq!(matches.len(), 1);
+}
+
+#[test]
+fn resolve_matching_grants_memory_store_allowlist_rejects_non_string_values() {
+    let scope = ChioScope {
+        grants: vec![grant(
+            "memory",
+            "write",
+            vec![Operation::Invoke],
+            vec![Constraint::MemoryStoreAllowlist(vec![
+                "case-notes".to_string()
+            ])],
+        )],
+        ..ChioScope::default()
+    };
+
+    let non_string = serde_json::json!({ "store": true });
+    let matches = resolve_matching_grants(&scope, "write", "memory", &non_string);
+    assert!(matches.as_ref().is_ok_and(Vec::is_empty));
+
+    let nested_object = serde_json::json!({ "namespace": { "id": "case-notes" } });
+    let matches = resolve_matching_grants(&scope, "write", "memory", &nested_object);
+    assert!(matches.as_ref().is_ok_and(Vec::is_empty));
+}
+
+#[test]
 fn resolve_matching_grants_fails_closed_on_unsupported_constraints() {
     let scope = ChioScope {
         grants: vec![grant(

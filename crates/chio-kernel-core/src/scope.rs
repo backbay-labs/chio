@@ -518,23 +518,48 @@ fn argument_contains_custom(arguments: &serde_json::Value, key: &str, expected: 
     }
 }
 
+/// Observed string values for a key-driven allowlist constraint.
+///
+/// `saw_relevant_key` distinguishes "the request never carried such a
+/// key" (constraint cannot apply) from "the request carried the key but
+/// no string values" (fail-closed). `invalid` is set when a relevant key
+/// holds a non-string leaf (number, object, bool, null) which is rejected
+/// outright instead of silently widening scope. Mirrors the full-kernel
+/// `chio_kernel::request_matching` semantics.
+#[derive(Default)]
+struct ObservedStringValues {
+    values: Vec<String>,
+    saw_relevant_key: bool,
+    invalid: bool,
+}
+
 fn audience_allowlist_matches(arguments: &serde_json::Value, allowed: &[String]) -> bool {
-    let mut observed: Vec<String> = Vec::new();
+    let mut observed = ObservedStringValues::default();
     collect_audience_values(arguments, &mut observed);
-    if observed.is_empty() {
+    if observed.invalid {
+        return false;
+    }
+    if !observed.saw_relevant_key {
         return true;
     }
     observed
+        .values
         .iter()
         .all(|value| allowed.iter().any(|allowed_value| allowed_value == value))
 }
 
-fn collect_audience_values(arguments: &serde_json::Value, out: &mut Vec<String>) {
+fn collect_audience_values(arguments: &serde_json::Value, out: &mut ObservedStringValues) {
     match arguments {
         serde_json::Value::Object(map) => {
             for (key, value) in map {
                 if is_audience_key(key) {
-                    collect_string_values(value, out);
+                    let before = out.values.len();
+                    out.saw_relevant_key = true;
+                    if !collect_string_values_strict(value, &mut out.values)
+                        || out.values.len() == before
+                    {
+                        out.invalid = true;
+                    }
                 } else {
                     collect_audience_values(value, out);
                 }
@@ -556,35 +581,58 @@ fn is_audience_key(key: &str) -> bool {
     )
 }
 
-fn collect_string_values(value: &serde_json::Value, out: &mut Vec<String>) {
+/// Walk a JSON value collecting string leaves; returns false if a
+/// non-string, non-array, non-null leaf is observed under a relevant key.
+/// Null leaves are tolerated (they contribute no values) so an explicitly
+/// null audience entry does not poison the constraint.
+fn collect_string_values_strict(value: &serde_json::Value, out: &mut Vec<String>) -> bool {
     match value {
-        serde_json::Value::String(s) => out.push(s.clone()),
-        serde_json::Value::Array(values) => {
-            for value in values {
-                collect_string_values(value, out);
-            }
+        serde_json::Value::String(s) => {
+            out.push(s.clone());
+            true
         }
-        _ => {}
+        serde_json::Value::Array(values) => {
+            for entry in values {
+                if !collect_string_values_strict(entry, out) {
+                    return false;
+                }
+            }
+            true
+        }
+        serde_json::Value::Null => true,
+        serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::Object(_) => false,
     }
 }
 
 fn memory_store_allowlist_matches(arguments: &serde_json::Value, allowed: &[String]) -> bool {
-    let mut observed: Vec<String> = Vec::new();
+    let mut observed = ObservedStringValues::default();
     collect_memory_store_values(arguments, &mut observed);
-    if observed.is_empty() {
+    if observed.invalid {
+        return false;
+    }
+    if !observed.saw_relevant_key {
         return true;
     }
     observed
+        .values
         .iter()
         .all(|value| allowed.iter().any(|allowed_value| allowed_value == value))
 }
 
-fn collect_memory_store_values(arguments: &serde_json::Value, out: &mut Vec<String>) {
+fn collect_memory_store_values(arguments: &serde_json::Value, out: &mut ObservedStringValues) {
     match arguments {
         serde_json::Value::Object(map) => {
             for (key, value) in map {
                 if is_memory_store_key(key) {
-                    collect_string_values(value, out);
+                    let before = out.values.len();
+                    out.saw_relevant_key = true;
+                    if !collect_string_values_strict(value, &mut out.values)
+                        || out.values.len() == before
+                    {
+                        out.invalid = true;
+                    }
                 } else {
                     collect_memory_store_values(value, out);
                 }
