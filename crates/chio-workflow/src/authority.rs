@@ -80,6 +80,8 @@ pub struct WorkflowExecution {
     pub session_id: Option<String>,
     /// Capability ID.
     pub capability_id: String,
+    /// Whether this execution reserved capacity from a limited grant.
+    limited_execution_reserved: bool,
     /// Unix timestamp when execution started.
     pub started_at: u64,
     /// Steps completed so far.
@@ -102,6 +104,12 @@ pub struct StepExecutionRecordInput {
     pub output_hash: Option<String>,
 }
 
+#[derive(Debug, Default)]
+struct LimitedExecutionCount {
+    completed: u32,
+    in_flight: u32,
+}
+
 impl WorkflowExecution {
     /// Return the number of completed steps.
     #[must_use]
@@ -119,7 +127,7 @@ pub struct WorkflowAuthority {
     /// Number of workflow executions successfully started.
     execution_count: AtomicU32,
     /// Per-capability reservations for grants with an execution limit.
-    limited_execution_counts: Mutex<HashMap<String, u32>>,
+    limited_execution_counts: Mutex<HashMap<String, LimitedExecutionCount>>,
     /// Monotonic counter incremented on every `begin()` call. Used to
     /// disambiguate execution ids when multiple `begin()` invocations land
     /// in the same wall-clock second on the same authority. Stored as an
@@ -166,7 +174,8 @@ impl WorkflowAuthority {
             }
         }
 
-        self.reserve_execution(&capability_id, grant.max_executions)?;
+        let limited_execution_reserved =
+            self.reserve_execution(&capability_id, grant.max_executions)?;
         self.execution_count.fetch_add(1, Ordering::AcqRel);
 
         let budget_limit = grant
@@ -200,6 +209,7 @@ impl WorkflowAuthority {
             agent_id,
             session_id,
             capability_id,
+            limited_execution_reserved,
             started_at: now,
             step_records: Vec::new(),
             budget_spent: 0,
@@ -380,7 +390,9 @@ impl WorkflowAuthority {
             "workflow receipt signed"
         );
 
-        self.release_execution(&capability_id)?;
+        if execution.limited_execution_reserved {
+            self.complete_execution(&capability_id)?;
+        }
 
         Ok(receipt)
     }
@@ -395,23 +407,23 @@ impl WorkflowAuthority {
         &self,
         capability_id: &str,
         max_executions: Option<u32>,
-    ) -> Result<(), WorkflowError> {
+    ) -> Result<bool, WorkflowError> {
         let Some(limit) = max_executions else {
-            return Ok(());
+            return Ok(false);
         };
         let mut counts = self
             .limited_execution_counts
             .lock()
             .map_err(|_| WorkflowError::InvalidState("execution counters are poisoned".into()))?;
-        let count = counts.entry(capability_id.to_string()).or_insert(0);
-        if *count >= limit {
+        let count = counts.entry(capability_id.to_string()).or_default();
+        if count.completed.saturating_add(count.in_flight) >= limit {
             return Err(WorkflowError::ExecutionLimitReached { limit });
         }
-        *count = count.saturating_add(1);
-        Ok(())
+        count.in_flight = count.in_flight.saturating_add(1);
+        Ok(true)
     }
 
-    fn release_execution(&self, capability_id: &str) -> Result<(), WorkflowError> {
+    fn complete_execution(&self, capability_id: &str) -> Result<(), WorkflowError> {
         let mut counts = self
             .limited_execution_counts
             .lock()
@@ -419,11 +431,10 @@ impl WorkflowAuthority {
         let Some(count) = counts.get_mut(capability_id) else {
             return Ok(());
         };
-        if *count <= 1 {
-            counts.remove(capability_id);
-        } else {
-            *count = count.saturating_sub(1);
+        if count.in_flight > 0 {
+            count.in_flight = count.in_flight.saturating_sub(1);
         }
+        count.completed = count.completed.saturating_add(1);
         Ok(())
     }
 }
@@ -881,7 +892,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_limit_allows_reuse_after_finalize() {
+    fn execution_limit_denies_reuse_after_finalize() {
         let manifest = SkillManifest::new(
             "limited".to_string(),
             "1.0.0".to_string(),
@@ -926,9 +937,12 @@ mod tests {
             .unwrap();
         authority.finalize(execution).unwrap();
 
-        // Finalize releases the active reservation, so reuse is allowed.
+        // Finalize completes the lifetime execution, so reuse is denied.
         let result = authority.begin(&manifest, &grant, "a".to_string(), "c".to_string(), None);
-        assert!(result.is_ok());
+        assert!(matches!(
+            result,
+            Err(WorkflowError::ExecutionLimitReached { .. })
+        ));
     }
 
     #[test]
@@ -970,7 +984,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_limit_reservation_is_released_on_finalize() {
+    fn execution_limit_tracks_completed_and_in_flight_executions() {
         let manifest = SkillManifest::new(
             "limited".to_string(),
             "1.0.0".to_string(),
@@ -992,7 +1006,7 @@ mod tests {
             "1.0.0".to_string(),
             vec!["srv:tool".to_string()],
         );
-        grant.max_executions = Some(1);
+        grant.max_executions = Some(2);
 
         let authority = WorkflowAuthority::new(Keypair::generate());
 
@@ -1006,10 +1020,20 @@ mod tests {
             )
             .unwrap();
 
+        let execution_2 = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-b".to_string(),
+                "cap-reused".to_string(),
+                None,
+            )
+            .unwrap();
+
         let blocked = authority.begin(
             &manifest,
             &grant,
-            "agent-b".to_string(),
+            "agent-c".to_string(),
             "cap-reused".to_string(),
             None,
         );
@@ -1020,21 +1044,35 @@ mod tests {
 
         authority.finalize(execution).unwrap();
 
-        let reused = authority.begin(
+        let still_blocked = authority.begin(
             &manifest,
             &grant,
-            "agent-c".to_string(),
+            "agent-d".to_string(),
             "cap-reused".to_string(),
             None,
         );
-        assert!(
-            reused.is_ok(),
-            "finalize should release limited execution reservations"
+        assert!(matches!(
+            still_blocked,
+            Err(WorkflowError::ExecutionLimitReached { .. })
+        ));
+
+        authority.finalize(execution_2).unwrap();
+
+        let exhausted = authority.begin(
+            &manifest,
+            &grant,
+            "agent-e".to_string(),
+            "cap-reused".to_string(),
+            None,
         );
+        assert!(matches!(
+            exhausted,
+            Err(WorkflowError::ExecutionLimitReached { .. })
+        ));
     }
 
     #[test]
-    fn unlimited_execution_does_not_consume_limited_grant() {
+    fn unlimited_finalize_does_not_release_limited_reservation() {
         let manifest = SkillManifest::new(
             "limited".to_string(),
             "1.0.0".to_string(),
@@ -1065,7 +1103,7 @@ mod tests {
 
         let authority = WorkflowAuthority::new(Keypair::generate());
 
-        authority
+        let unlimited_execution = authority
             .begin(
                 &manifest,
                 &unlimited_grant,
@@ -1084,6 +1122,8 @@ mod tests {
                 None,
             )
             .unwrap();
+
+        authority.finalize(unlimited_execution).unwrap();
 
         let result = authority.begin(
             &manifest,
