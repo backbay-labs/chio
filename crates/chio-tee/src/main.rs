@@ -1,4 +1,6 @@
-fn main() {
-    eprintln!("chio-tee skeleton: not yet implemented");
-    std::process::exit(0);
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    eprintln!("chio-tee runtime is not yet implemented");
+    ExitCode::from(2)
 }
