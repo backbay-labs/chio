@@ -135,6 +135,7 @@ type ChioPassthrough struct {
 const (
 	ErrAccessDenied       = "chio_access_denied"
 	ErrSidecarUnreachable = "chio_sidecar_unreachable"
+	ErrSidecarUnavailable = "chio_sidecar_unavailable"
 	ErrEvaluationFailed   = "chio_evaluation_failed"
 	ErrInvalidReceipt     = "chio_invalid_receipt"
 	ErrTimeout            = "chio_timeout"

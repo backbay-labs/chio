@@ -141,11 +141,22 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		// Fail closed (valid=false) but surface the protocol error so
-		// callers can distinguish "receipt invalid" from "verify endpoint
-		// is broken/unreachable".
+		// Fail closed (valid=false) but classify the failure so callers can
+		// distinguish "the sidecar definitively rejected this receipt" from
+		// "the sidecar itself is unhealthy or unreachable".
+		//
+		// 4xx with a body that carries a verdict means the sidecar made a
+		// decision about the receipt, so we keep ErrInvalidReceipt for those.
+		// 5xx (and the 408 request timeout) indicate the verify endpoint or
+		// upstream infrastructure is degraded; classifying those as
+		// ErrInvalidReceipt would mislead callers into treating a sidecar
+		// outage as a definitive "this receipt is invalid".
+		code := ErrInvalidReceipt
+		if isSidecarTransportFailure(resp.StatusCode) {
+			code = ErrSidecarUnavailable
+		}
 		return false, &SidecarError{
-			Code:       ErrInvalidReceipt,
+			Code:       code,
 			Message:    "sidecar verify returned non-200: " + resp.Status,
 			StatusCode: resp.StatusCode,
 		}
@@ -161,6 +172,16 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 		}
 	}
 	return result.Valid, nil
+}
+
+// isSidecarTransportFailure reports whether the HTTP status indicates a
+// sidecar (or upstream) infrastructure failure rather than a verdict about
+// the receipt. We treat 5xx and 408 (request timeout) as transport failures.
+func isSidecarTransportFailure(status int) bool {
+	if status == http.StatusRequestTimeout {
+		return true
+	}
+	return status >= 500 && status <= 599
 }
 
 // HealthCheck checks whether the sidecar is running.
