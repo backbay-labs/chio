@@ -32,11 +32,9 @@
 //! [`SigningState::UnsignedSignerStubbed`] so verifiers fail-closed; when
 //! the caller passes `None`, the anchor records
 //! [`SigningState::UnsignedSoftDepAbsent`]. Neither variant impersonates
-//! [`SigningState::Signed`], because emitting `Signed` with an empty
-//! `signature_hex` would let a verifier matching on the variant alone treat
-//! the artifact as authenticated. M10 P5.T1 anchors therefore never
-//! construct [`SigningState::Signed`]; that variant is reserved for the
-//! eventual M03 wire-up that supplies a real signature payload.
+//! [`SigningState::Signed`]. M10 P5.T1 anchors never construct
+//! [`SigningState::Signed`], and imported signed anchors are rejected until
+//! a local verifier can authenticate the signature against a trusted key.
 
 use chio_lineage::anchor::{
     is_lowercase_hex_signature_payload, CanonicalSource, FrontierDigest, SigningState,
@@ -103,19 +101,12 @@ pub struct ModelCardLineageAnchor {
 }
 
 impl ModelCardLineageAnchor {
-    /// Return `true` when the artifact carries a real non-empty lower-case
-    /// hex hybrid signature payload. Mirrors
-    /// [`chio_lineage::anchor::AnchoredFrontier::is_signed`] so callers can
-    /// fail-closed without re-matching every [`SigningState`] variant. A
-    /// `Signed` record carrying an empty or malformed `signature_hex` is
-    /// treated as unsigned to defeat signature-state forgery.
+    /// Return `true` only when the artifact carries a locally verified
+    /// signature. No verifier is wired in yet, so every current state is
+    /// treated as unsigned for fail-closed consumers.
     #[must_use]
     pub fn is_signed(&self) -> bool {
-        matches!(
-            &self.signing,
-            SigningState::Signed { signature_hex, .. }
-                if is_lowercase_hex_signature_payload(signature_hex)
-        )
+        false
     }
 }
 
@@ -286,19 +277,23 @@ pub fn verify_model_card_anchor(
         )));
     }
 
-    // Defense-in-depth: a `Signed` variant carrying an empty or malformed
-    // signature payload would represent a forgery vector against verifiers
-    // that match on the variant alone. This helper rejects that shape
-    // symmetrically with `chio_lineage::anchor::AnchoredFrontier::is_signed`.
-    // Anchors produced by `anchor_model_card` never construct `Signed`;
-    // rejecting here also covers anchors deserialised from external bytes.
-    if let SigningState::Signed { signature_hex, .. } = &anchor.signing {
+    // Defense-in-depth: no local verifier is wired for lineage signature
+    // payloads yet. Reject every imported Signed state so arbitrary hex
+    // cannot be promoted into public trust evidence.
+    if let SigningState::Signed {
+        algorithm,
+        signature_hex,
+    } = &anchor.signing
+    {
         if !is_lowercase_hex_signature_payload(signature_hex) {
             return Err(WeightsError::BundleRejected(
                 "model card anchor signing state was Signed but signature_hex was empty or not lower-case hexadecimal"
                     .to_string(),
             ));
         }
+        return Err(WeightsError::BundleRejected(format!(
+            "model card anchor signing algorithm {algorithm:?} is not verified by this build"
+        )));
     }
 
     let card = crate::card::ModelCard::from_canonical_json(card_bytes)?;

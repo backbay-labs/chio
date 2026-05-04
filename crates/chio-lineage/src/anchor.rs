@@ -9,7 +9,11 @@
 
 use serde::{Deserialize, Serialize};
 
+use chio_core_types::crypto::{PublicKey, Signature};
+
 use crate::schema::{LineageEdge, LineageGraph, LineageNode};
+
+const FRONTIER_SIGNATURE_DOMAIN: &[u8] = b"chio.lineage.frontier-signature/v1\0";
 
 /// SHA-256 of the canonical JSON of a frontier projection. The frontier
 /// is a deterministic sorted list of node ids and edge keys; canonical
@@ -34,11 +38,9 @@ pub enum CanonicalSource {
 
 /// Soft-dep state for hybrid signing.
 ///
-/// The `Signed` variant carries a non-empty signature payload. A pinned
-/// frontier that advertises `Signed` with an empty `signature_hex` is
-/// rejected at construction time so a downstream verifier cannot be
-/// tricked into trusting an unsigned anchor (lineage tamper, M09 P5
-/// fail-closed contract).
+/// The `Signed` variant carries a signature payload from an external
+/// signer. The artifact does not carry a trusted key, so consumers must
+/// verify it with [`verify_frontier_signature`] or [`AnchoredFrontier::is_signed_by`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SigningState {
@@ -104,6 +106,19 @@ pub fn frontier_digest(graph: &LineageGraph) -> FrontierDigest {
         algo: "sha256".to_string(),
         hex,
     }
+}
+
+/// Bytes that lineage frontier signatures cover.
+///
+/// This is domain-separated from the raw frontier digest so the same key
+/// cannot accidentally authenticate another Chio payload shape.
+#[must_use]
+pub fn frontier_signature_message(graph: &LineageGraph) -> Vec<u8> {
+    let mut message =
+        Vec::with_capacity(FRONTIER_SIGNATURE_DOMAIN.len() + frontier_bytes(graph).len());
+    message.extend_from_slice(FRONTIER_SIGNATURE_DOMAIN);
+    message.extend_from_slice(&frontier_bytes(graph));
+    message
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -294,13 +309,15 @@ pub fn is_lowercase_hex_signature_payload(signature_hex: &str) -> bool {
             .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// Pin a frontier with a real PQ signature payload. The signature is
-/// validated to be non-empty and lower-case hexadecimal so the
-/// `Signed` variant cannot be forged by passing an empty or malformed
-/// string. Used once M03 hybrid signing is wired in.
+/// Pin a frontier with a PQ signature payload.
+///
+/// The payload shape is validated and the signature must verify against
+/// the caller-provided trusted signer key before the artifact is marked
+/// `Signed`.
 pub fn pin_frontier_signed(
     graph: &LineageGraph,
     algorithm: &str,
+    trusted_signer: &PublicKey,
     signature_hex: &str,
 ) -> Result<AnchoredFrontier, AnchorError> {
     if algorithm.trim().is_empty() {
@@ -311,6 +328,11 @@ pub fn pin_frontier_signed(
     }
     if !is_lowercase_hex_signature_payload(signature_hex) {
         return Err(AnchorError::SignaturePayloadNotHex);
+    }
+    let signature = Signature::from_hex(signature_hex)
+        .map_err(|error| AnchorError::SignaturePayloadInvalid(error.to_string()))?;
+    if !trusted_signer.verify(&frontier_signature_message(graph), &signature) {
+        return Err(AnchorError::SignatureVerificationFailed);
     }
     let digest = frontier_digest(graph);
     Ok(AnchoredFrontier {
@@ -327,6 +349,35 @@ pub fn pin_frontier_signed(
     })
 }
 
+/// Verify a pinned frontier signature against a caller-provided trusted key.
+///
+/// The anchor artifact does not carry its own trusted key, so callers must
+/// provide the authority key they already trust. This avoids treating an
+/// attacker-supplied signature and attacker-supplied key as sufficient
+/// proof of lineage authenticity.
+pub fn verify_frontier_signature(
+    frontier: &AnchoredFrontier,
+    graph: &LineageGraph,
+    trusted_signer: &PublicKey,
+) -> Result<(), AnchorError> {
+    let expected_digest = frontier_digest(graph);
+    if frontier.digest != expected_digest {
+        return Err(AnchorError::DigestMismatch);
+    }
+    let SigningState::Signed { signature_hex, .. } = &frontier.signing else {
+        return Err(AnchorError::UnsignedFrontier);
+    };
+    if !is_lowercase_hex_signature_payload(signature_hex) {
+        return Err(AnchorError::SignaturePayloadNotHex);
+    }
+    let signature = Signature::from_hex(signature_hex)
+        .map_err(|error| AnchorError::SignaturePayloadInvalid(error.to_string()))?;
+    if !trusted_signer.verify(&frontier_signature_message(graph), &signature) {
+        return Err(AnchorError::SignatureVerificationFailed);
+    }
+    Ok(())
+}
+
 /// Errors surfaced when constructing a signed anchor.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AnchorError {
@@ -339,26 +390,41 @@ pub enum AnchorError {
     /// The signature payload was not lower-case hexadecimal.
     #[error("signature payload was not lower-case hexadecimal")]
     SignaturePayloadNotHex,
+    /// The signature payload could not be parsed by the configured crypto backend.
+    #[error("signature payload is invalid: {0}")]
+    SignaturePayloadInvalid(String),
+    /// The signature does not verify against the trusted signer key.
+    #[error("signature verification failed")]
+    SignatureVerificationFailed,
+    /// The anchor digest does not match the supplied graph.
+    #[error("frontier digest does not match graph")]
+    DigestMismatch,
+    /// The frontier is not signed.
+    #[error("frontier is unsigned")]
+    UnsignedFrontier,
 }
 
 impl AnchoredFrontier {
-    /// Return true when the artifact carries a real non-empty lower-case
-    /// hex signature payload. A frontier in any unsigned-state variant
-    /// returns false so callers can fail-closed without re-matching every
-    /// variant.
+    /// Return true only when the artifact carries a locally verified
+    /// signature. This no-context helper has no trusted key, so it treats
+    /// every current state as unsigned for fail-closed consumers.
     #[must_use]
     pub fn is_signed(&self) -> bool {
-        matches!(
-            &self.signing,
-            SigningState::Signed { signature_hex, .. }
-                if is_lowercase_hex_signature_payload(signature_hex)
-        )
+        false
+    }
+
+    /// Return true when the frontier verifies against a caller-provided
+    /// trusted signer key.
+    #[must_use]
+    pub fn is_signed_by(&self, graph: &LineageGraph, trusted_signer: &PublicKey) -> bool {
+        verify_frontier_signature(self, graph, trusted_signer).is_ok()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chio_core_types::crypto::Keypair;
 
     #[test]
     fn empty_string_sha256_matches_known_vector() {
@@ -416,7 +482,8 @@ mod tests {
     #[test]
     fn pin_signed_rejects_empty_signature() {
         let g = LineageGraph::empty();
-        let err = pin_frontier_signed(&g, "ml-dsa-65", "")
+        let keypair = Keypair::from_seed(&[7_u8; 32]);
+        let err = pin_frontier_signed(&g, "ml-dsa-65", &keypair.public_key(), "")
             .err()
             .unwrap_or(AnchorError::EmptySigningAlgorithm);
         assert_eq!(err, AnchorError::EmptySignaturePayload);
@@ -425,7 +492,8 @@ mod tests {
     #[test]
     fn pin_signed_rejects_non_hex_signature() {
         let g = LineageGraph::empty();
-        let err = pin_frontier_signed(&g, "ml-dsa-65", "ZZZZ")
+        let keypair = Keypair::from_seed(&[7_u8; 32]);
+        let err = pin_frontier_signed(&g, "ml-dsa-65", &keypair.public_key(), "ZZZZ")
             .err()
             .unwrap_or(AnchorError::EmptySigningAlgorithm);
         assert_eq!(err, AnchorError::SignaturePayloadNotHex);
@@ -463,18 +531,46 @@ mod tests {
     #[test]
     fn pin_signed_rejects_empty_algorithm() {
         let g = LineageGraph::empty();
-        let err = pin_frontier_signed(&g, "  ", "deadbeef")
+        let keypair = Keypair::from_seed(&[7_u8; 32]);
+        let err = pin_frontier_signed(&g, "  ", &keypair.public_key(), "deadbeef")
             .err()
             .unwrap_or(AnchorError::EmptySignaturePayload);
         assert_eq!(err, AnchorError::EmptySigningAlgorithm);
     }
 
     #[test]
-    fn pin_signed_with_real_payload_is_signed() {
+    fn pin_signed_rejects_unparseable_payload() {
         let g = LineageGraph::empty();
-        let pinned = pin_frontier_signed(&g, "ml-dsa-65", "deadbeef").unwrap_or_else(|_| {
-            panic!("signed pin should succeed with real payload");
-        });
-        assert!(pinned.is_signed());
+        let keypair = Keypair::from_seed(&[7_u8; 32]);
+        let err = pin_frontier_signed(&g, "ed25519", &keypair.public_key(), "deadbeef")
+            .err()
+            .unwrap_or(AnchorError::EmptySignaturePayload);
+        assert!(matches!(err, AnchorError::SignaturePayloadInvalid(_)));
+    }
+
+    #[test]
+    fn pin_signed_with_trusted_key_verifies() {
+        let g = LineageGraph::empty();
+        let keypair = Keypair::from_seed(&[7_u8; 32]);
+        let signature = keypair.sign(&frontier_signature_message(&g));
+        let pinned = pin_frontier_signed(&g, "ed25519", &keypair.public_key(), &signature.to_hex())
+            .unwrap_or_else(|error| panic!("signed pin should verify: {error}"));
+        assert!(!pinned.is_signed());
+        assert!(pinned.is_signed_by(&g, &keypair.public_key()));
+        assert!(verify_frontier_signature(&pinned, &g, &keypair.public_key()).is_ok());
+    }
+
+    #[test]
+    fn verify_signed_frontier_rejects_wrong_key() {
+        let g = LineageGraph::empty();
+        let keypair = Keypair::from_seed(&[7_u8; 32]);
+        let wrong_keypair = Keypair::from_seed(&[8_u8; 32]);
+        let signature = keypair.sign(&frontier_signature_message(&g));
+        let pinned = pin_frontier_signed(&g, "ed25519", &keypair.public_key(), &signature.to_hex())
+            .unwrap_or_else(|error| panic!("signed pin should verify: {error}"));
+        let err = verify_frontier_signature(&pinned, &g, &wrong_keypair.public_key())
+            .err()
+            .unwrap_or(AnchorError::EmptySignaturePayload);
+        assert_eq!(err, AnchorError::SignatureVerificationFailed);
     }
 }

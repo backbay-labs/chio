@@ -1,7 +1,9 @@
 //! Integration test for M09 P5.T6 anchor pinning.
 
+use chio_core_types::crypto::Keypair;
 use chio_lineage::anchor::{
-    frontier_digest, pin_frontier, pin_frontier_signed, CanonicalSource, SigningState,
+    frontier_digest, frontier_signature_message, pin_frontier, pin_frontier_signed,
+    verify_frontier_signature, CanonicalSource, SigningState,
 };
 use chio_lineage::ingest_replay_corpus::{ingest_corpus, CorpusReceiptRow};
 
@@ -61,19 +63,24 @@ fn signer_hint_without_signature_is_unsigned_stub() {
 }
 
 #[test]
-fn pin_frontier_signed_with_real_payload_is_signed() {
+fn pin_frontier_signed_with_unverified_payload_fails_closed() {
     let g = fixture_graph();
-    let pinned = pin_frontier_signed(&g, "hybrid-ed25519-mldsa65", "deadbeef")
-        .unwrap_or_else(|_| panic!("signed pin should succeed with valid payload"));
-    if let SigningState::Signed {
-        algorithm,
-        signature_hex,
-    } = &pinned.signing
-    {
-        assert_eq!(algorithm, "hybrid-ed25519-mldsa65");
-        assert_eq!(signature_hex, "deadbeef");
-    } else {
-        panic!("real payload should produce Signed state");
-    }
-    assert!(pinned.is_signed());
+    let keypair = Keypair::from_seed(&[7_u8; 32]);
+    let err = pin_frontier_signed(&g, "ed25519", &keypair.public_key(), "deadbeef")
+        .err()
+        .unwrap_or_else(|| panic!("unverified payload must fail closed"));
+    assert!(format!("{err}").contains("signature payload is invalid"));
+}
+
+#[test]
+fn pin_frontier_signed_verifies_with_trusted_key() {
+    let g = fixture_graph();
+    let keypair = Keypair::from_seed(&[7_u8; 32]);
+    let signature = keypair.sign(&frontier_signature_message(&g));
+    let pinned = pin_frontier_signed(&g, "ed25519", &keypair.public_key(), &signature.to_hex())
+        .unwrap_or_else(|error| panic!("signed pin should verify: {error}"));
+
+    assert!(!pinned.is_signed());
+    assert!(pinned.is_signed_by(&g, &keypair.public_key()));
+    assert!(verify_frontier_signature(&pinned, &g, &keypair.public_key()).is_ok());
 }
