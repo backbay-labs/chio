@@ -13,7 +13,7 @@
 # the operator can grep to verify the claim.
 
 schema: chio.security.coverage/v1
-updated_at: "2026-04-30"
+updated_at: "2026-05-03"
 
 threats:
   # Trajectory-1 register (six initial IDs) is owned by M05 P5.T3 test
@@ -98,6 +98,96 @@ threats:
       - crates/chio-attest-verify/tests/nitro_root_rotation.rs
       - crates/chio-kernel/tests/pq_key_load_after_self_quote.rs
       - crates/chio-conformance/tests/threats/tee_quote_forgery.rs
+
+  # M05 closes the trajectory-1 register threats via chio-conformance threat
+  # tests + chio-adversarial-suite cases. coveredBy mirrors the JSON
+  # source-of-truth in spec/security/chio-threat-model.v1.json.
+  - id: capability_token_theft
+    coverage_state: covered
+    owned_by: M05
+    closed_by: M05.P5.T3
+    backing_evidence:
+      - crates/chio-conformance/tests/threats/capability_token_theft.rs
+      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-001.json
+      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-002.json
+      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-005.json
+      - crates/chio-adversarial-suite/cases/future_dated/future-dated-002.json
+      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-005.json
+      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-003.json
+      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-005.json
+
+  - id: delegation_chain_abuse
+    coverage_state: covered
+    owned_by: M05
+    closed_by: M05.P5.T3
+    backing_evidence:
+      - crates/chio-conformance/tests/threats/delegation_chain_abuse.rs
+      - crates/chio-adversarial-suite/cases/future_dated/future-dated-004.json
+      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-004.json
+      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-004.json
+      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-005.json
+      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-001.json
+      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-002.json
+      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-004.json
+      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-005.json
+      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-001.json
+      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-002.json
+      - crates/chio-adversarial-suite/cases/scope_superset/scope-superset-004.json
+
+  - id: kernel_impersonation
+    coverage_state: covered
+    owned_by: M05
+    closed_by: M05.P5.T3
+    backing_evidence:
+      - crates/chio-conformance/tests/threats/kernel_impersonation.rs
+      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-002.json
+      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-005.json
+      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-004.json
+      - crates/chio-adversarial-suite/cases/future_dated/future-dated-005.json
+      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-001.json
+      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-002.json
+      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-001.json
+      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json
+      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json
+      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json
+
+  - id: native_channel_replay
+    coverage_state: covered
+    owned_by: M05
+    closed_by: M05.P5.T3
+    backing_evidence:
+      - crates/chio-conformance/tests/threats/native_channel_replay.rs
+      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-001.json
+      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-003.json
+      - crates/chio-adversarial-suite/cases/anchor_grafted/anchor-grafted-004.json
+      - crates/chio-adversarial-suite/cases/clock_rewound/clock-rewound-003.json
+      - crates/chio-adversarial-suite/cases/future_dated/future-dated-001.json
+      - crates/chio-adversarial-suite/cases/future_dated/future-dated-003.json
+      - crates/chio-adversarial-suite/cases/partial_signature/partial-signature-003.json
+      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-001.json
+      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-002.json
+      - crates/chio-adversarial-suite/cases/replayed_nonce/replayed-nonce-003.json
+      - crates/chio-adversarial-suite/cases/revocation_rollback/revocation-rollback-003.json
+
+  - id: resource_exhaustion_dos
+    coverage_state: covered
+    owned_by: M05
+    closed_by: M05.P5.T3
+    backing_evidence:
+      - crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs
+      - crates/chio-wasm-guards/tests/escape/fuel_exhaustion.rs
+      - crates/chio-wasm-guards/tests/escape/oversize_memory.rs
+      - crates/chio-wasm-guards/tests/escape/deep_recursion.rs
+      - crates/chio-wasm-guards/tests/escape/table_grow.rs
+
+  - id: tool_server_escape
+    coverage_state: covered
+    owned_by: M05
+    closed_by: M05.P5.T3
+    backing_evidence:
+      - crates/chio-conformance/tests/threats/tool_server_escape.rs
+      - crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json
+      - crates/chio-wasm-guards/tests/escape/signed_but_malicious.rs
 
   - id: mobile_attestation_replay
     coverage_state: pending

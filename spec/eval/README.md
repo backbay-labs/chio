@@ -17,6 +17,10 @@ The bundle:
 - supports deterministic local test signatures for fixtures and
   partner-review samples.
 
-Production partner memos default to cosign + GitHub OIDC. The local
-`test-sha256` signature kind is only for checked-in fixtures and smoke
-tests.
+The bundle parser today accepts only the local `test-sha256` signature
+kind. Trajectory-3.1 retracted real partner cryptographic attestation
+(see `.planning/trajectory-3/audits/M02-ai-lab.md` disclaimer); cosign
++ GitHub OIDC and PGP detached lanes are deferred to trajectory-4
+(M02-followup). Until those lanes land, the schema enum and the
+verifier are intentionally aligned on a single closed allow-list and
+any other `kind` value is rejected fail-closed.
