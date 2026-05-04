@@ -190,6 +190,7 @@ export type RoutePatternResolver = (method: HttpMethod, path: string) => string;
 export const CHIO_ERROR_CODES = {
   ACCESS_DENIED: "chio_access_denied",
   SIDECAR_UNREACHABLE: "chio_sidecar_unreachable",
+  SIDECAR_UNAVAILABLE: "chio_sidecar_unavailable",
   EVALUATION_FAILED: "chio_evaluation_failed",
   INVALID_RECEIPT: "chio_invalid_receipt",
   TIMEOUT: "chio_timeout",

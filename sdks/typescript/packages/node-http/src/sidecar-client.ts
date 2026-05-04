@@ -6,6 +6,7 @@
  * ChioHttpRequest and returns an EvaluateResponse with a signed receipt.
  */
 
+import { CHIO_ERROR_CODES } from "./types.js";
 import type {
   ChioConfig,
   ChioHttpRequest,
@@ -126,12 +127,23 @@ export class ChioSidecarClient {
       });
 
       if (!response.ok) {
-        return false;
+        throw new SidecarError(
+          isSidecarTransportFailure(response.status)
+            ? CHIO_ERROR_CODES.SIDECAR_UNAVAILABLE
+            : CHIO_ERROR_CODES.INVALID_RECEIPT,
+          `sidecar verify returned non-200: ${response.status} ${response.statusText}`.trim(),
+          response.status,
+        );
       }
 
       // Validate the response shape at runtime; an unexpected payload
       // must fail closed rather than coerce to a truthy value.
-      const parsed: unknown = await response.json();
+      const parsed: unknown = await response.json().catch((error: unknown) => {
+        throw new SidecarError(
+          CHIO_ERROR_CODES.INVALID_RECEIPT,
+          `failed to decode verify response: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
       if (
         typeof parsed === "object" &&
         parsed !== null &&
@@ -140,9 +152,24 @@ export class ChioSidecarClient {
       ) {
         return (parsed as { valid: boolean }).valid;
       }
-      return false;
-    } catch {
-      return false;
+      throw new SidecarError(
+        CHIO_ERROR_CODES.INVALID_RECEIPT,
+        "sidecar verify response missing boolean `valid` field",
+      );
+    } catch (error) {
+      if (error instanceof SidecarError) {
+        throw error;
+      }
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new SidecarError(
+          CHIO_ERROR_CODES.TIMEOUT,
+          `sidecar verify timed out after ${this.timeoutMs}ms`,
+        );
+      }
+      throw new SidecarError(
+        CHIO_ERROR_CODES.SIDECAR_UNREACHABLE,
+        `failed to reach sidecar at ${this.baseUrl}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -168,4 +195,8 @@ export class ChioSidecarClient {
       clearTimeout(timer);
     }
   }
+}
+
+function isSidecarTransportFailure(statusCode: number): boolean {
+  return statusCode === 408 || (statusCode >= 500 && statusCode <= 599);
 }
