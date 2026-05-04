@@ -109,6 +109,73 @@ impl Cli {
     }
 }
 
+#[cfg(test)]
+mod cli_env_tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn restore_env(name: &str, value: Option<OsString>) {
+        if let Some(value) = value {
+            std::env::set_var(name, value);
+        } else {
+            std::env::remove_var(name);
+        }
+    }
+
+    #[test]
+    fn mcp_serve_http_reads_documented_token_env_vars() {
+        let _guard = env_lock();
+        let prior_auth = std::env::var_os("CHIO_AUTH_TOKEN");
+        let prior_admin = std::env::var_os("CHIO_ADMIN_TOKEN");
+        let prior_mcp_auth = std::env::var_os("CHIO_MCP_AUTH_TOKEN");
+        let prior_mcp_admin = std::env::var_os("CHIO_MCP_ADMIN_TOKEN");
+        std::env::set_var("CHIO_AUTH_TOKEN", "documented-auth-token");
+        std::env::set_var("CHIO_ADMIN_TOKEN", "documented-admin-token");
+        std::env::remove_var("CHIO_MCP_AUTH_TOKEN");
+        std::env::remove_var("CHIO_MCP_ADMIN_TOKEN");
+
+        let parsed = Cli::try_parse_from([
+            "chio",
+            "mcp",
+            "serve-http",
+            "--policy",
+            "policy.yaml",
+            "--server-id",
+            "mcp",
+            "/bin/true",
+        ])
+        .unwrap_or_else(|error| panic!("CLI parse failed: {error}"));
+
+        match parsed.command {
+            Commands::Mcp {
+                command:
+                    McpCommands::ServeHttp {
+                        auth_token,
+                        admin_token,
+                        ..
+                    },
+            } => {
+                assert_eq!(auth_token.as_deref(), Some("documented-auth-token"));
+                assert_eq!(admin_token.as_deref(), Some("documented-admin-token"));
+            }
+            _ => panic!("expected mcp serve-http command"),
+        }
+
+        restore_env("CHIO_AUTH_TOKEN", prior_auth);
+        restore_env("CHIO_ADMIN_TOKEN", prior_admin);
+        restore_env("CHIO_MCP_AUTH_TOKEN", prior_mcp_auth);
+        restore_env("CHIO_MCP_ADMIN_TOKEN", prior_mcp_admin);
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Spawn an agent subprocess and enforce policy via the kernel.
@@ -931,9 +998,9 @@ enum McpCommands {
         listen: SocketAddr,
 
         /// Static bearer token required for remote MCP session admission.
-        /// Prefer `CHIO_MCP_AUTH_TOKEN` env over the argv form so the bearer
+        /// Prefer `CHIO_AUTH_TOKEN` env over the argv form so the bearer
         /// does not leak via `ps` / `/proc/<pid>/cmdline`.
-        #[arg(long, env = "CHIO_MCP_AUTH_TOKEN", hide_env_values = true)]
+        #[arg(long, env = "CHIO_AUTH_TOKEN", hide_env_values = true)]
         auth_token: Option<String>,
 
         /// Public key used to verify externally issued JWT bearer tokens.
@@ -983,9 +1050,9 @@ enum McpCommands {
         auth_jwt_audience: Option<String>,
 
         /// Optional static bearer token for remote admin APIs.
-        /// Prefer `CHIO_MCP_ADMIN_TOKEN` env over the argv form so the bearer
+        /// Prefer `CHIO_ADMIN_TOKEN` env over the argv form so the bearer
         /// does not leak via `ps` / `/proc/<pid>/cmdline`.
-        #[arg(long, env = "CHIO_MCP_ADMIN_TOKEN", hide_env_values = true)]
+        #[arg(long, env = "CHIO_ADMIN_TOKEN", hide_env_values = true)]
         admin_token: Option<String>,
 
         /// Public base URL used when constructing protected-resource metadata URLs.
