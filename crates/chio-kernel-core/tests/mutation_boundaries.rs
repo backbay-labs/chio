@@ -248,6 +248,83 @@ fn resolve_matching_grants_audience_allowlist_rejects_non_string_values() {
 }
 
 #[test]
+fn resolve_matching_grants_audience_null_distinct_from_empty_string_and_missing() {
+    // Three observably distinct shapes:
+    //   * `audience: null` -> "key not provided" (constraint cannot apply,
+    //     allows). Treated as if the key were missing.
+    //   * `audience: ""` -> relevant empty string (fails closed because no
+    //     allowed value matches "").
+    //   * `audience` missing -> "key not provided" (allows).
+    // Regression for the strict-collector P1 review: a null leaf must not
+    // flip `saw_relevant_key`, so it is observably distinct from an empty
+    // string while sharing the same outcome as an absent key.
+    let scope = ChioScope {
+        grants: vec![grant(
+            "web",
+            "send",
+            vec![Operation::Invoke],
+            vec![Constraint::AudienceAllowlist(vec!["security".to_string()])],
+        )],
+        ..ChioScope::default()
+    };
+
+    let null_audience = serde_json::json!({ "audience": null });
+    let matches = resolve_matching_grants(&scope, "send", "web", &null_audience)
+        .unwrap_or_else(|e| panic!("null audience should not deny: {e:?}"));
+    assert_eq!(
+        matches.len(),
+        1,
+        "audience: null should be treated as key not provided"
+    );
+
+    let empty_audience = serde_json::json!({ "audience": "" });
+    let matches = resolve_matching_grants(&scope, "send", "web", &empty_audience);
+    assert!(
+        matches.as_ref().is_ok_and(Vec::is_empty),
+        "audience: \"\" is a relevant empty string and must fail closed"
+    );
+
+    let missing_audience = serde_json::json!({ "subject": "ping" });
+    let matches = resolve_matching_grants(&scope, "send", "web", &missing_audience)
+        .unwrap_or_else(|e| panic!("missing audience should not deny: {e:?}"));
+    assert_eq!(matches.len(), 1, "missing audience should allow");
+
+    // Memory-store allowlist parity: same three shapes, same outcomes.
+    let memory_scope = ChioScope {
+        grants: vec![grant(
+            "memory",
+            "write",
+            vec![Operation::Invoke],
+            vec![Constraint::MemoryStoreAllowlist(vec![
+                "case-notes".to_string()
+            ])],
+        )],
+        ..ChioScope::default()
+    };
+
+    let null_store = serde_json::json!({ "store": null });
+    let matches = resolve_matching_grants(&memory_scope, "write", "memory", &null_store)
+        .unwrap_or_else(|e| panic!("null store should not deny: {e:?}"));
+    assert_eq!(
+        matches.len(),
+        1,
+        "store: null should be treated as key not provided"
+    );
+
+    let empty_store = serde_json::json!({ "store": "" });
+    let matches = resolve_matching_grants(&memory_scope, "write", "memory", &empty_store);
+    assert!(
+        matches.as_ref().is_ok_and(Vec::is_empty),
+        "store: \"\" is a relevant empty string and must fail closed"
+    );
+
+    let missing_store = serde_json::json!({ "subject": "ping" });
+    let matches = resolve_matching_grants(&memory_scope, "write", "memory", &missing_store)
+        .unwrap_or_else(|e| panic!("missing store should not deny: {e:?}"));
+    assert_eq!(matches.len(), 1, "missing store should allow");
+}
+
+#[test]
 fn resolve_matching_grants_memory_store_allowlist_rejects_non_string_values() {
     let scope = ChioScope {
         grants: vec![grant(

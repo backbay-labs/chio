@@ -523,9 +523,12 @@ fn argument_contains_custom(arguments: &serde_json::Value, key: &str, expected: 
 /// `saw_relevant_key` distinguishes "the request never carried such a
 /// key" (constraint cannot apply) from "the request carried the key but
 /// no string values" (fail-closed). `invalid` is set when a relevant key
-/// holds a non-string leaf (number, object, bool, null) which is rejected
-/// outright instead of silently widening scope. Mirrors the full-kernel
-/// `chio_kernel::request_matching` semantics.
+/// holds a non-string, non-null leaf (number, object, bool) which is
+/// rejected outright instead of silently widening scope. A bare null
+/// directly under a relevant key is treated as "key not provided" so it
+/// does not flip `saw_relevant_key` and is observably distinct from
+/// `audience: ""`. Mirrors the full-kernel `chio_kernel::request_matching`
+/// semantics for the cases where they overlap.
 #[derive(Default)]
 struct ObservedStringValues {
     values: Vec<String>,
@@ -553,6 +556,14 @@ fn collect_audience_values(arguments: &serde_json::Value, out: &mut ObservedStri
         serde_json::Value::Object(map) => {
             for (key, value) in map {
                 if is_audience_key(key) {
+                    // A null leaf directly under a relevant key is treated
+                    // as "key not provided" - it neither flips the
+                    // saw_relevant_key flag nor poisons the constraint.
+                    // This keeps `audience: null` distinct from
+                    // `audience: ""` (which is a relevant empty string).
+                    if value.is_null() {
+                        continue;
+                    }
                     let before = out.values.len();
                     out.saw_relevant_key = true;
                     if !collect_string_values_strict(value, &mut out.values)
@@ -626,6 +637,12 @@ fn collect_memory_store_values(arguments: &serde_json::Value, out: &mut Observed
         serde_json::Value::Object(map) => {
             for (key, value) in map {
                 if is_memory_store_key(key) {
+                    // See `collect_audience_values`: null directly under a
+                    // relevant key is "key not provided" rather than a
+                    // poisoned relevant key.
+                    if value.is_null() {
+                        continue;
+                    }
                     let before = out.values.len();
                     out.saw_relevant_key = true;
                     if !collect_string_values_strict(value, &mut out.values)
