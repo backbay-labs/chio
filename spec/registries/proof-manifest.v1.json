@@ -81,10 +81,12 @@
       "claim_ref": "claim.receipt.dag_acyclicity",
       "introduced_by": "trajectory-4/T1.2",
       "evidence": [
-        {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"},
         {"kind": "lean_theorem", "ref": "theorem.receipt.dag_acyclicity"},
         {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_v2_dag_rejects_non_increasing_ordinal"},
         {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::receipt_v2_dag_cycle_shape_rejected"}
+      ],
+      "evidence_proposed": [
+        {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"}
       ]
     },
     {
