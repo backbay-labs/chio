@@ -12,6 +12,8 @@ use crate::event::SiemEvent;
 use crate::exporter::{ExportError, Exporter};
 use crate::ratelimit::{ExportRateLimiter, RateLimitConfig};
 
+const MAX_RETRY_BACKOFF_MS: u64 = 60_000;
+
 /// Error variants for ExporterManager operations.
 #[derive(Debug, thiserror::Error)]
 pub enum SiemError {
@@ -297,7 +299,7 @@ impl ExporterManager {
 
         for attempt in 0..=max_retries {
             if attempt > 0 {
-                let backoff_ms = base_backoff_ms * (1u64 << (attempt - 1));
+                let backoff_ms = retry_backoff_ms(base_backoff_ms, attempt);
                 tracing::debug!(
                     exporter = exporter.name(),
                     attempt = attempt,
@@ -347,5 +349,30 @@ impl ExporterManager {
             );
             tokio::time::sleep(delay).await;
         }
+    }
+}
+
+fn retry_backoff_ms(base_backoff_ms: u64, attempt: u32) -> u64 {
+    let shift = attempt.saturating_sub(1).min(u64::BITS - 1);
+    let multiplier = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
+    base_backoff_ms
+        .saturating_mul(multiplier)
+        .min(MAX_RETRY_BACKOFF_MS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_backoff_ms_saturates_at_configured_ceiling() {
+        assert_eq!(retry_backoff_ms(500, 1), 500);
+        assert_eq!(retry_backoff_ms(500, 2), 1_000);
+        assert_eq!(retry_backoff_ms(500, 40), MAX_RETRY_BACKOFF_MS);
+    }
+
+    #[test]
+    fn retry_backoff_ms_saturates_overflowing_base_delay() {
+        assert_eq!(retry_backoff_ms(u64::MAX, 2), MAX_RETRY_BACKOFF_MS);
     }
 }

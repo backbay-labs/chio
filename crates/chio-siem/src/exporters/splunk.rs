@@ -4,8 +4,11 @@
 //! JSON event envelopes. Each envelope wraps the full ChioReceipt JSON under the
 //! "event" key with Splunk-native time/sourcetype fields.
 
+use std::time::Duration;
+
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+use crate::exporters::require_https_endpoint;
 
 /// Configuration for the Splunk HEC exporter.
 #[derive(Debug, Clone)]
@@ -20,6 +23,12 @@ pub struct SplunkConfig {
     pub index: Option<String>,
     /// Optional host field sent with each event envelope.
     pub host: Option<String>,
+    /// HTTP request timeout. Default: 30 seconds.
+    ///
+    /// A slow or stalled HEC endpoint must not block the SIEM manager poll
+    /// loop. `reqwest` does not apply any timeout by default, so we install
+    /// one here and treat a stuck collector as a transient error.
+    pub timeout: Duration,
 }
 
 impl Default for SplunkConfig {
@@ -30,6 +39,7 @@ impl Default for SplunkConfig {
             sourcetype: "chio:receipt".to_string(),
             index: None,
             host: None,
+            timeout: Duration::from_secs(30),
         }
     }
 }
@@ -52,18 +62,20 @@ impl SplunkHecExporter {
     /// Builds a `reqwest::Client` with rustls TLS and returns an error if the
     /// client cannot be constructed.
     ///
-    /// Returns an error if `config.endpoint` uses `http://` (plaintext). HEC
-    /// tokens must only be sent over a TLS-protected connection (`https://`).
+    /// Returns an error if `config.endpoint` is not an `https://` URL
+    /// (plaintext or unparsable). HEC tokens must only be sent over a
+    /// TLS-protected connection (`https://`). The scheme comparison is
+    /// case-insensitive per RFC 3986, so `HTTP://`, `Http://`, and
+    /// similar variants are all rejected.
     pub fn new(config: SplunkConfig) -> Result<Self, ExportError> {
-        if config.endpoint.starts_with("http://") {
-            return Err(ExportError::HttpError(
-                "Splunk HEC endpoint must use https:// -- sending HEC tokens over \
-                 plaintext http:// is not permitted"
-                    .to_string(),
-            ));
-        }
+        require_https_endpoint(
+            &config.endpoint,
+            "Splunk HEC endpoint must use https:// -- sending HEC tokens over \
+             plaintext http:// is not permitted",
+        )?;
 
         let client = reqwest::Client::builder()
+            .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
         Ok(Self { config, client })
@@ -77,6 +89,7 @@ impl SplunkHecExporter {
     /// HEC tokens from being sent in cleartext.
     pub fn new_plaintext_for_tests(config: SplunkConfig) -> Result<Self, ExportError> {
         let client = reqwest::Client::builder()
+            .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
         Ok(Self { config, client })

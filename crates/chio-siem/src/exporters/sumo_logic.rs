@@ -21,6 +21,7 @@ use std::time::Duration;
 
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+use crate::exporters::require_https_endpoint;
 use chio_core::receipt::Decision;
 
 /// On-the-wire format for the Sumo Logic batch body.
@@ -89,13 +90,14 @@ impl SumoLogicExporter {
                 "Sumo Logic http_source_url must not be empty".to_string(),
             ));
         }
-        if config.http_source_url.starts_with("http://") {
-            return Err(ExportError::HttpError(
-                "Sumo Logic http_source_url must use https:// -- the collector \
-                 token is embedded in the URL and must not travel over cleartext"
-                    .to_string(),
-            ));
-        }
+        // RFC 3986 schemes are case-insensitive; parse the URL and require an
+        // exact `https` scheme to prevent `HTTP://` (uppercase) endpoints
+        // from bypassing the cleartext check.
+        require_https_endpoint(
+            &config.http_source_url,
+            "Sumo Logic http_source_url must use https:// -- the collector \
+             token is embedded in the URL and must not travel over cleartext",
+        )?;
 
         let client = reqwest::Client::builder()
             .timeout(config.timeout)

@@ -113,3 +113,23 @@ async fn sumo_rejects_plaintext_http_in_production_new() {
     };
     assert!(SumoLogicExporter::new(cfg).is_err());
 }
+
+/// Regression: case-sensitive `starts_with("http://")` allowed `HTTP://`
+/// (uppercase) URLs to slip past the cleartext check. URL schemes are
+/// case-insensitive per RFC 3986; cased variants must be rejected.
+#[tokio::test]
+async fn sumo_rejects_uppercase_and_mixed_case_http_scheme() {
+    for plaintext in [
+        "HTTP://collectors.sumologic.com/receiver/v1/xyz",
+        "Http://collectors.sumologic.com/receiver/v1/xyz",
+    ] {
+        let cfg = SumoLogicConfig {
+            http_source_url: plaintext.to_string(),
+            ..SumoLogicConfig::default()
+        };
+        assert!(
+            SumoLogicExporter::new(cfg).is_err(),
+            "SumoLogicExporter::new must reject {plaintext} (case-insensitive scheme)"
+        );
+    }
+}

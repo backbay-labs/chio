@@ -106,6 +106,7 @@ async fn splunk_hec_sends_correct_envelope() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     // Use plaintext constructor -- wiremock runs on plain http:// for tests.
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
@@ -187,6 +188,7 @@ async fn splunk_hec_returns_error_on_401() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     // Use plaintext constructor -- wiremock runs on plain http:// for tests.
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
@@ -226,6 +228,7 @@ async fn splunk_hec_returns_error_on_400() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -264,6 +267,7 @@ async fn splunk_hec_returns_error_on_503() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -291,6 +295,7 @@ fn splunk_hec_rejects_plaintext_http_endpoint() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     let result = SplunkHecExporter::new(config);
     assert!(
@@ -317,6 +322,7 @@ fn splunk_hec_accepts_https_endpoint() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        ..SplunkConfig::default()
     };
     // Construction should succeed; no network call is made here.
     let result = SplunkHecExporter::new(config);
@@ -324,4 +330,30 @@ fn splunk_hec_accepts_https_endpoint() {
         result.is_ok(),
         "SplunkHecExporter::new must accept https:// endpoints"
     );
+}
+
+/// Regression: case-sensitive `starts_with("http://")` allowed `HTTP://`
+/// (uppercase) endpoints to bypass TLS enforcement. URL schemes are
+/// case-insensitive per RFC 3986, so any cased variant of `http` must
+/// be rejected.
+#[test]
+fn splunk_hec_rejects_uppercase_and_mixed_case_http_scheme() {
+    for plaintext in [
+        "HTTP://splunk.example.com:8088",
+        "Http://splunk.example.com:8088",
+    ] {
+        let config = SplunkConfig {
+            endpoint: plaintext.to_string(),
+            hec_token: "secret-token".to_string(),
+            sourcetype: "chio:receipt".to_string(),
+            index: None,
+            host: None,
+            ..SplunkConfig::default()
+        };
+        let result = SplunkHecExporter::new(config);
+        assert!(
+            result.is_err(),
+            "SplunkHecExporter::new must reject {plaintext} (case-insensitive scheme)"
+        );
+    }
 }

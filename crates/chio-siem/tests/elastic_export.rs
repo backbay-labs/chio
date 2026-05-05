@@ -87,6 +87,7 @@ fn api_key_config(endpoint: &str) -> ElasticConfig {
         endpoint: endpoint.to_string(),
         index_name: "chio-receipts".to_string(),
         auth: ElasticAuthConfig::ApiKey("test-api-key".to_string()),
+        ..ElasticConfig::default()
     }
 }
 
@@ -109,7 +110,7 @@ async fn elastic_bulk_sends_correct_ndjson() {
         .await;
 
     let config = api_key_config(&server.uri());
-    let exporter = ElasticsearchExporter::new(config).expect("exporter builds");
+    let exporter = ElasticsearchExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
     let receipt1 = sample_receipt("es-rcpt-001");
     let receipt2 = sample_receipt("es-rcpt-002");
@@ -206,7 +207,7 @@ async fn elastic_bulk_detects_partial_failure() {
         .await;
 
     let config = api_key_config(&server.uri());
-    let exporter = ElasticsearchExporter::new(config).expect("exporter builds");
+    let exporter = ElasticsearchExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
     let events = vec![
         SiemEvent::from_receipt(sample_receipt("es-rcpt-pf-001")),
@@ -245,7 +246,7 @@ async fn elastic_financial_metadata_in_payload() {
         .await;
 
     let config = api_key_config(&server.uri());
-    let exporter = ElasticsearchExporter::new(config).expect("exporter builds");
+    let exporter = ElasticsearchExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
     let receipt = sample_receipt_with_financial("es-rcpt-fin-001");
     let events = vec![SiemEvent::from_receipt(receipt)];
@@ -273,5 +274,84 @@ async fn elastic_financial_metadata_in_payload() {
         cost,
         Some(750),
         "metadata.financial.cost_charged should be 750 in exported document"
+    );
+}
+
+/// ElasticsearchExporter::new rejects plaintext http:// endpoints to keep API
+/// keys and Basic credentials off the cleartext wire.
+#[test]
+fn elastic_new_rejects_plaintext_http() {
+    let config = ElasticConfig {
+        endpoint: "http://es.example.com:9200".to_string(),
+        index_name: "chio-receipts".to_string(),
+        auth: ElasticAuthConfig::ApiKey("must-not-leak".to_string()),
+        ..ElasticConfig::default()
+    };
+
+    let result = ElasticsearchExporter::new(config);
+    assert!(
+        matches!(result, Err(ExportError::HttpError(_))),
+        "ElasticsearchExporter::new must reject http:// endpoints"
+    );
+    if let Err(ExportError::HttpError(message)) = result {
+        assert!(
+            message.contains("https://"),
+            "rejection message should mention the https:// requirement, got: {message}"
+        );
+    }
+}
+
+/// ElasticsearchExporter::new accepts https:// endpoints (build-time check
+/// only; no network call).
+#[test]
+fn elastic_new_accepts_https() {
+    let config = ElasticConfig {
+        endpoint: "https://es.example.com:9200".to_string(),
+        index_name: "chio-receipts".to_string(),
+        auth: ElasticAuthConfig::ApiKey("test-api-key".to_string()),
+        ..ElasticConfig::default()
+    };
+
+    let result = ElasticsearchExporter::new(config);
+    assert!(
+        result.is_ok(),
+        "ElasticsearchExporter::new must accept https:// endpoints"
+    );
+}
+
+/// Regression for the case-sensitive scheme check that allowed `HTTP://`
+/// (uppercase) endpoints to bypass TLS enforcement. URL schemes are
+/// case-insensitive per RFC 3986, so any cased variant of `http` must be
+/// rejected. We exercise both `HTTP://` and `Http://`.
+#[test]
+fn elastic_new_rejects_uppercase_and_mixed_case_http_scheme() {
+    for plaintext in ["HTTP://es.example.com:9200", "Http://es.example.com:9200"] {
+        let config = ElasticConfig {
+            endpoint: plaintext.to_string(),
+            index_name: "chio-receipts".to_string(),
+            auth: ElasticAuthConfig::ApiKey("must-not-leak".to_string()),
+            ..ElasticConfig::default()
+        };
+        let result = ElasticsearchExporter::new(config);
+        assert!(
+            matches!(result, Err(ExportError::HttpError(_))),
+            "ElasticsearchExporter::new must reject {plaintext} (case-insensitive scheme)"
+        );
+    }
+}
+
+/// HTTPS schemes are case-insensitive too, so `HTTPS://` must be accepted.
+#[test]
+fn elastic_new_accepts_uppercase_https_scheme() {
+    let config = ElasticConfig {
+        endpoint: "HTTPS://es.example.com:9200".to_string(),
+        index_name: "chio-receipts".to_string(),
+        auth: ElasticAuthConfig::ApiKey("test-api-key".to_string()),
+        ..ElasticConfig::default()
+    };
+    let result = ElasticsearchExporter::new(config);
+    assert!(
+        result.is_ok(),
+        "ElasticsearchExporter::new must accept HTTPS:// (case-insensitive)"
     );
 }
