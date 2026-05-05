@@ -237,6 +237,17 @@ jobs:
             fi
           fi
 
+      - name: Run package-local tests
+        shell: bash
+        working-directory: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          if [[ -d tests ]] && [[ -n "$(find tests -type f -name 'test*.py' -print -quit)" ]]; then
+            uv run --extra dev pytest
+          else
+            echo "No package-local tests found; skipping pytest"
+          fi
+
       - name: Build sdist and wheel
         working-directory: ${{ matrix.package }}
         run: uv build --sdist --wheel --out-dir "${GITHUB_WORKSPACE}/dist-out"

@@ -651,6 +651,37 @@ fn make_config() -> KernelConfig {
     }
 }
 
+#[test]
+fn kernel_rejects_classical_capability_under_pq_required_floor() {
+    let keypair = make_keypair();
+    let token = CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: "cap-classical-floor".to_string(),
+            issuer: keypair.public_key(),
+            subject: keypair.public_key(),
+            scope: ChioScope::default(),
+            issued_at: 100,
+            expires_at: 200,
+            delegation_chain: Vec::new(),
+        },
+        &keypair,
+    )
+    .expect("sign classical capability");
+    let mut config = make_config();
+    config.keypair = keypair;
+    let mut kernel = ChioKernel::new(config);
+    kernel.set_capability_crypto_floor(KernelCryptoFloor::PqRequired);
+
+    let error = kernel
+        .verify_capability_signature(&token)
+        .expect_err("classical capability must fail under pq_required");
+
+    assert!(
+        error.contains("crypto_floor=pq_required"),
+        "expected crypto floor rejection, got {error}"
+    );
+}
+
 fn unique_receipt_db_path(prefix: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)

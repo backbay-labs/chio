@@ -919,18 +919,32 @@ impl ChioKernel {
     /// so the boot path catches the misconfiguration even when the policy crate
     /// is bypassed.
     pub fn with_hybrid_signing_backend(
-        &self,
+        &mut self,
         hybrid: &HybridSigningConfig,
         self_quote_bytes: &[u8],
         verifier: &dyn crate::boot::KernelSelfQuoteVerifier,
     ) -> Result<Box<dyn chio_core::crypto::SigningBackend>, crate::boot::KernelBootError> {
-        crate::boot::load_kernel_signing_backend_after_self_quote(
+        let backend = crate::boot::load_kernel_signing_backend_after_self_quote(
             hybrid.crypto_floor,
             self.config.keypair.clone(),
             hybrid.pq_signing_seed.as_ref(),
             self_quote_bytes,
             verifier,
-        )
+        )?;
+        self.capability_crypto_floor = hybrid.crypto_floor;
+        Ok(backend)
+    }
+}
+
+fn capability_crypto_floor(
+    floor: KernelCryptoFloor,
+) -> chio_core::capability::CapabilityCryptoFloor {
+    match floor {
+        KernelCryptoFloor::AllowClassical => {
+            chio_core::capability::CapabilityCryptoFloor::AllowClassical
+        }
+        KernelCryptoFloor::AllowHybrid => chio_core::capability::CapabilityCryptoFloor::AllowHybrid,
+        KernelCryptoFloor::PqRequired => chio_core::capability::CapabilityCryptoFloor::PqRequired,
     }
 }
 
@@ -966,6 +980,7 @@ pub struct ChioKernel {
     payment_adapter: Option<Box<dyn PaymentAdapter>>,
     price_oracle: Option<Box<dyn PriceOracle>>,
     attestation_trust_policy: Option<AttestationTrustPolicy>,
+    capability_crypto_floor: KernelCryptoFloor,
     /// How many receipts per Merkle checkpoint batch. Default: 100.
     checkpoint_batch_size: u64,
     /// Monotonic counter for checkpoint_seq values.
@@ -1413,6 +1428,7 @@ impl ChioKernel {
             payment_adapter: None,
             price_oracle: None,
             attestation_trust_policy: None,
+            capability_crypto_floor: KernelCryptoFloor::AllowClassical,
             checkpoint_batch_size,
             checkpoint_seq_counter: AtomicU64::new(0),
             last_checkpoint_seq: AtomicU64::new(0),
@@ -3527,6 +3543,14 @@ impl ChioKernel {
         self.config.keypair.public_key()
     }
 
+    /// Set the configured capability-token crypto floor.
+    ///
+    /// Boot paths that load `policy.crypto_floor` must call this before
+    /// accepting traffic when they do not use [`Self::with_hybrid_signing_backend`].
+    pub fn set_capability_crypto_floor(&mut self, floor: KernelCryptoFloor) {
+        self.capability_crypto_floor = floor;
+    }
+
     pub fn capability_issuer_is_trusted(&self, issuer: &chio_core::PublicKey) -> bool {
         self.trusted_issuer_keys().contains(issuer)
     }
@@ -3561,7 +3585,8 @@ impl ChioKernel {
             return Err("signer public key not found among trusted CAs".to_string());
         }
 
-        match cap.verify_signature() {
+        match cap.verify_signature_with_floor(capability_crypto_floor(self.capability_crypto_floor))
+        {
             Ok(true) => Ok(()),
             Ok(false) => Err("signature did not verify".to_string()),
             Err(e) => Err(e.to_string()),
@@ -3598,14 +3623,17 @@ impl ChioKernel {
         session_filesystem_roots: Option<&'a [String]>,
     ) -> chio_kernel_core::EvaluationVerdict {
         let trusted = self.trusted_issuer_keys();
-        chio_kernel_core::evaluate(chio_kernel_core::EvaluateInput {
-            request,
-            capability,
-            trusted_issuers: &trusted,
-            clock,
-            guards,
-            session_filesystem_roots,
-        })
+        chio_kernel_core::evaluate_with_crypto_floor(
+            chio_kernel_core::EvaluateInput {
+                request,
+                capability,
+                trusted_issuers: &trusted,
+                clock,
+                guards,
+                session_filesystem_roots,
+            },
+            capability_crypto_floor(self.capability_crypto_floor),
+        )
     }
 
     /// Check the revocation store for the capability and its entire

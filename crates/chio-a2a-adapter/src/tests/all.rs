@@ -10,7 +10,7 @@ mod tests {
     use std::thread;
 
     use chio_core::capability::{
-        ChioScope, CapabilityToken, CapabilityTokenBody, Operation, ToolGrant,
+        CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
     };
     use chio_core::crypto::Keypair;
     use chio_core::receipt::Decision;
@@ -901,6 +901,58 @@ mod tests {
         assert_eq!(stream.chunk_count(), 2);
         assert!(reason.contains("terminal or interrupted"));
         server.join();
+    }
+
+    #[test]
+    fn sse_parser_stops_after_terminal_task_state() {
+        let terminal = json!({
+            "task": task_payload("TASK_STATE_COMPLETED", true)
+        });
+        let body = format!(
+            "data: {}\n\ndata: {{not-json}}\n\n",
+            serde_json::to_string(&terminal).unwrap()
+        );
+
+        let parsed = parse_sse_stream(body.as_bytes(), Ok).unwrap();
+
+        let ToolServerStreamResult::Complete(stream) = parsed else {
+            panic!("expected terminal stream to complete");
+        };
+        assert_eq!(stream.chunk_count(), 1);
+    }
+
+    #[test]
+    fn sse_parser_rejects_oversized_line() {
+        let huge_text = "a".repeat(20_000);
+        let event = json!({
+            "message": {
+                "messageId": "msg-huge",
+                "role": "agent",
+                "parts": [{ "text": huge_text }]
+            }
+        });
+        let body = format!("data: {}\n\n", serde_json::to_string(&event).unwrap());
+
+        let error = parse_sse_stream(body.as_bytes(), Ok).unwrap_err();
+
+        assert!(error.to_string().contains("line"));
+    }
+
+    #[test]
+    fn sse_parser_rejects_too_many_chunks() {
+        let working = json!({
+            "task": task_payload("TASK_STATE_WORKING", false)
+        });
+        let mut body = String::new();
+        for _ in 0..1_100 {
+            body.push_str("data: ");
+            body.push_str(&serde_json::to_string(&working).unwrap());
+            body.push_str("\n\n");
+        }
+
+        let error = parse_sse_stream(body.as_bytes(), Ok).unwrap_err();
+
+        assert!(error.to_string().contains("chunk"));
     }
 
     #[test]
@@ -2595,7 +2647,8 @@ mod tests {
 
     #[tokio::test]
     async fn kernel_e2e_oauth_client_credentials_allows_request() {
-        let Some(server) = FakeA2aServer::spawn_jsonrpc_oauth_client_credentials_single_invoke() else {
+        let Some(server) = FakeA2aServer::spawn_jsonrpc_oauth_client_credentials_single_invoke()
+        else {
             return;
         };
         let subject = Keypair::generate();

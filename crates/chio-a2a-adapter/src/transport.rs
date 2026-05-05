@@ -1,3 +1,8 @@
+const MAX_SSE_LINE_BYTES: usize = 16 * 1024;
+const MAX_SSE_EVENT_BYTES: usize = 256 * 1024;
+const MAX_SSE_TOTAL_BYTES: usize = 1024 * 1024;
+const MAX_SSE_CHUNKS: usize = 1024;
+
 fn parse_sse_stream<R: Read, F>(
     reader: R,
     decode_event: F,
@@ -10,6 +15,8 @@ where
     let mut data_lines = Vec::new();
     let mut chunks = Vec::new();
     let mut saw_terminal_or_interrupted = false;
+    let mut total_bytes = 0usize;
+    let mut event_bytes = 0usize;
 
     loop {
         line.clear();
@@ -22,10 +29,22 @@ where
                     &mut chunks,
                     &mut saw_terminal_or_interrupted,
                     &mut data_lines,
+                    &mut event_bytes,
                     &decode_event,
                 )?;
             }
             break;
+        }
+        if bytes_read > MAX_SSE_LINE_BYTES {
+            return Err(AdapterError::Protocol(format!(
+                "A2A SSE line exceeded {MAX_SSE_LINE_BYTES} bytes"
+            )));
+        }
+        total_bytes = total_bytes.saturating_add(bytes_read);
+        if total_bytes > MAX_SSE_TOTAL_BYTES {
+            return Err(AdapterError::Protocol(format!(
+                "A2A SSE stream exceeded {MAX_SSE_TOTAL_BYTES} total bytes"
+            )));
         }
 
         let trimmed = line.trim_end_matches(['\r', '\n']);
@@ -34,15 +53,26 @@ where
                 &mut chunks,
                 &mut saw_terminal_or_interrupted,
                 &mut data_lines,
+                &mut event_bytes,
                 &decode_event,
             )?;
+            if saw_terminal_or_interrupted {
+                break;
+            }
             continue;
         }
         if trimmed.starts_with(':') {
             continue;
         }
         if let Some(data) = trimmed.strip_prefix("data:") {
-            data_lines.push(data.trim_start().to_string());
+            let data = data.trim_start();
+            event_bytes = event_bytes.saturating_add(data.len()).saturating_add(1);
+            if event_bytes > MAX_SSE_EVENT_BYTES {
+                return Err(AdapterError::Protocol(format!(
+                    "A2A SSE event exceeded {MAX_SSE_EVENT_BYTES} bytes"
+                )));
+            }
+            data_lines.push(data.to_string());
         }
     }
 
@@ -69,6 +99,7 @@ fn process_sse_event<F>(
     chunks: &mut Vec<ToolCallChunk>,
     saw_terminal_or_interrupted: &mut bool,
     data_lines: &mut Vec<String>,
+    event_bytes: &mut usize,
     decode_event: &F,
 ) -> Result<(), AdapterError>
 where
@@ -80,11 +111,17 @@ where
 
     let payload = data_lines.join("\n");
     data_lines.clear();
+    *event_bytes = 0;
     let event = serde_json::from_str::<Value>(&payload).map_err(|error| {
         AdapterError::Protocol(format!("failed to decode A2A SSE event JSON: {error}"))
     })?;
     let stream_response = decode_event(event)?;
     let (stream_response, terminal_or_interrupted) = validate_stream_response(stream_response)?;
+    if chunks.len() >= MAX_SSE_CHUNKS {
+        return Err(AdapterError::Protocol(format!(
+            "A2A SSE stream exceeded {MAX_SSE_CHUNKS} chunks"
+        )));
+    }
     *saw_terminal_or_interrupted |= terminal_or_interrupted;
     chunks.push(ToolCallChunk {
         data: stream_response,

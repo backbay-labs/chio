@@ -17,6 +17,7 @@ fn fixture_graph() -> chio_lineage::schema::LineageGraph {
         tenant_id: None,
         recorded_at: Some(1),
         has_signed_lineage_statement: true,
+        signed_lineage_statement: None,
     }])
 }
 

@@ -35,10 +35,10 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use chio_core_types::capability::CapabilityToken;
+use chio_core_types::capability::{CapabilityCryptoFloor, CapabilityToken};
 use chio_core_types::crypto::PublicKey;
 
-use crate::capability_verify::{verify_capability, CapabilityError, VerifiedCapability};
+use crate::capability_verify::{verify_capability_with_floor, CapabilityError, VerifiedCapability};
 use crate::clock::Clock;
 use crate::guard::{Guard, GuardContext, PortableToolCallRequest};
 use crate::normalized::{NormalizationError, NormalizedEvaluationVerdict};
@@ -137,6 +137,11 @@ impl KernelCoreError {
                     "capability issuer is not a trusted CA".to_string()
                 }
                 CapabilityError::InvalidSignature => "capability signature is invalid".to_string(),
+                CapabilityError::CryptoFloorRejected(msg) => {
+                    let mut out = String::from("capability rejected by crypto floor: ");
+                    out.push_str(msg);
+                    out
+                }
                 CapabilityError::NotYetValid => "capability not yet valid".to_string(),
                 CapabilityError::Expired => "capability has expired".to_string(),
                 CapabilityError::Internal(msg) => {
@@ -197,8 +202,25 @@ impl KernelCoreError {
 /// is still a deny at the caller's level and chio-kernel maps it onto
 /// `KernelError::Internal`.
 pub fn evaluate(input: EvaluateInput<'_>) -> EvaluationVerdict {
+    evaluate_with_crypto_floor(input, CapabilityCryptoFloor::AllowClassical)
+}
+
+/// Evaluate with a configured capability crypto floor.
+///
+/// Legacy callers use [`evaluate`], which preserves the historical
+/// allow-classical posture. Kernels that load `policy.crypto_floor` must call
+/// this entry point so capability tokens cannot bypass the PQ floor.
+pub fn evaluate_with_crypto_floor(
+    input: EvaluateInput<'_>,
+    crypto_floor: CapabilityCryptoFloor,
+) -> EvaluationVerdict {
     // Step 1: capability verification.
-    let verified = match verify_capability(input.capability, input.trusted_issuers, input.clock) {
+    let verified = match verify_capability_with_floor(
+        input.capability,
+        input.trusted_issuers,
+        input.clock,
+        crypto_floor,
+    ) {
         Ok(verified) => verified,
         Err(error) => {
             let core_err = KernelCoreError::InvalidCapability(error);

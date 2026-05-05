@@ -1394,6 +1394,10 @@ pub struct LiabilityClaimPackageArtifact {
 
 impl LiabilityClaimPackageArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        verify_signed_artifact(&self.bound_coverage, "claim package bound_coverage")?;
+        verify_signed_artifact(&self.exposure, "claim package exposure")?;
+        verify_signed_artifact(&self.bond, "claim package bond")?;
+        verify_signed_artifact(&self.loss_event, "claim package loss_event")?;
         if self.claimant.trim().is_empty() {
             return Err("claim packages require a non-empty claimant".to_string());
         }
@@ -1509,6 +1513,7 @@ pub struct LiabilityClaimResponseArtifact {
 
 impl LiabilityClaimResponseArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        verify_signed_artifact(&self.claim, "claim response claim")?;
         self.claim.body.validate()?;
         if self.provider_response_ref.trim().is_empty() {
             return Err("claim responses require a non-empty provider_response_ref".to_string());
@@ -1580,6 +1585,7 @@ pub struct LiabilityClaimDisputeArtifact {
 
 impl LiabilityClaimDisputeArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        verify_signed_artifact(&self.provider_response, "claim dispute provider_response")?;
         self.provider_response.body.validate()?;
         if self.opened_by.trim().is_empty() {
             return Err("claim disputes require a non-empty opened_by".to_string());
@@ -1630,6 +1636,7 @@ pub struct LiabilityClaimAdjudicationArtifact {
 
 impl LiabilityClaimAdjudicationArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        verify_signed_artifact(&self.dispute, "claim adjudication dispute")?;
         self.dispute.body.validate()?;
         if self.adjudicator.trim().is_empty() {
             return Err("claim adjudications require a non-empty adjudicator".to_string());
@@ -1786,6 +1793,7 @@ pub struct LiabilityClaimPayoutInstructionArtifact {
 
 impl LiabilityClaimPayoutInstructionArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        verify_signed_artifact(&self.adjudication, "claim payout instruction adjudication")?;
         self.adjudication.body.validate()?;
         if !self
             .capital_instruction
@@ -1890,6 +1898,10 @@ pub struct LiabilityClaimPayoutReceiptArtifact {
 
 impl LiabilityClaimPayoutReceiptArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        verify_signed_artifact(
+            &self.payout_instruction,
+            "claim payout receipt payout_instruction",
+        )?;
         self.payout_instruction.body.validate()?;
         if self.payout_receipt_ref.trim().is_empty() {
             return Err("claim payout receipts require a non-empty payout_receipt_ref".to_string());
@@ -1978,6 +1990,10 @@ pub struct LiabilityClaimSettlementInstructionArtifact {
 
 impl LiabilityClaimSettlementInstructionArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        verify_signed_artifact(
+            &self.payout_receipt,
+            "claim settlement instruction payout_receipt",
+        )?;
         self.payout_receipt.body.validate()?;
         if !self
             .capital_book
@@ -2158,6 +2174,10 @@ pub struct LiabilityClaimSettlementReceiptArtifact {
 
 impl LiabilityClaimSettlementReceiptArtifact {
     pub fn validate(&self) -> Result<(), String> {
+        verify_signed_artifact(
+            &self.settlement_instruction,
+            "claim settlement receipt settlement_instruction",
+        )?;
         self.settlement_instruction.body.validate()?;
         if self.settlement_receipt_ref.trim().is_empty() {
             return Err(
@@ -2389,6 +2409,23 @@ fn validate_currency_code(value: &str, field_name: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn verify_signed_artifact<T>(
+    artifact: &SignedExportEnvelope<T>,
+    field_name: &str,
+) -> Result<(), String>
+where
+    T: Serialize + Clone,
+{
+    if artifact
+        .verify_signature()
+        .map_err(|error| format!("{field_name} signature verification failed: {error}"))?
+    {
+        Ok(())
+    } else {
+        Err(format!("{field_name} signature verification failed"))
+    }
 }
 
 fn validate_positive_money(amount: &MonetaryAmount, field_name: &str) -> Result<(), String> {
@@ -3601,6 +3638,16 @@ mod tests {
     }
 
     #[test]
+    fn liability_claim_package_rejects_tampered_bound_coverage_signature() {
+        let fixtures = sample_market_fixtures();
+        let mut claim = fixtures.claim_package.body.clone();
+        claim.bound_coverage.body.policy_number = "POL-forged".to_string();
+
+        let error = require_err(claim.validate(), "tampered coverage rejected");
+        assert!(error.contains("bound_coverage signature verification failed"));
+    }
+
+    #[test]
     fn liability_claim_response_rejects_denied_without_reason() {
         let fixtures = sample_market_fixtures();
         let mut response = fixtures.claim_response.body.clone();
@@ -3613,18 +3660,22 @@ mod tests {
     }
 
     #[test]
+    fn liability_claim_response_rejects_tampered_nested_claim_signature() {
+        let fixtures = sample_market_fixtures();
+        let mut response = fixtures.claim_response.body.clone();
+        response.claim.body.claim_amount = usd(1);
+
+        let error = require_err(response.validate(), "tampered claim rejected");
+        assert!(error.contains("claim response claim signature verification failed"));
+    }
+
+    #[test]
     fn liability_claim_dispute_rejects_fully_accepted_response() {
         let fixtures = sample_market_fixtures();
         let mut dispute = fixtures.claim_dispute.body.clone();
-        dispute.provider_response.body.covered_amount = Some(
-            dispute
-                .provider_response
-                .body
-                .claim
-                .body
-                .claim_amount
-                .clone(),
-        );
+        let mut provider_response = dispute.provider_response.body.clone();
+        provider_response.covered_amount = Some(provider_response.claim.body.claim_amount.clone());
+        dispute.provider_response = sign_export(provider_response);
 
         let error = require_err(
             dispute.validate(),
@@ -3714,6 +3765,16 @@ mod tests {
             "matched payouts require identical amount",
         );
         assert!(error.contains("observed_execution amount to match payout_amount"));
+    }
+
+    #[test]
+    fn liability_claim_payout_receipt_rejects_tampered_nested_instruction_signature() {
+        let fixtures = sample_market_fixtures();
+        let mut receipt = fixtures.payout_receipt.body.clone();
+        receipt.payout_instruction.body.payout_amount = usd(1);
+
+        let error = require_err(receipt.validate(), "tampered payout instruction rejected");
+        assert!(error.contains("payout_instruction signature verification failed"));
     }
 
     #[test]

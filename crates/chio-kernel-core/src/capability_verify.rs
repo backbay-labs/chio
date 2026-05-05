@@ -23,7 +23,9 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use chio_core_types::capability::{CapabilityToken, ChioScope};
+use chio_core_types::capability::{
+    CapabilityCryptoFloor, CapabilityFloorVerifyError, CapabilityToken, ChioScope,
+};
 use chio_core_types::crypto::PublicKey;
 
 use crate::clock::Clock;
@@ -68,6 +70,8 @@ pub enum CapabilityError {
     UntrustedIssuer,
     /// Canonical-JSON signature did not verify against the issuer key.
     InvalidSignature,
+    /// Signature material violates the configured crypto floor.
+    CryptoFloorRejected(String),
     /// Token is not yet valid (clock is before `issued_at`).
     NotYetValid,
     /// Token has expired.
@@ -86,6 +90,25 @@ pub fn verify_capability(
     trusted_issuers: &[PublicKey],
     clock: &dyn Clock,
 ) -> Result<VerifiedCapability, CapabilityError> {
+    verify_capability_with_floor(
+        token,
+        trusted_issuers,
+        clock,
+        CapabilityCryptoFloor::AllowClassical,
+    )
+}
+
+/// Verify a capability token while enforcing the configured crypto floor.
+///
+/// This is the floor-aware entry point for kernels that load
+/// `policy.crypto_floor`. The default [`verify_capability`] wrapper preserves
+/// legacy callers by using [`CapabilityCryptoFloor::AllowClassical`].
+pub fn verify_capability_with_floor(
+    token: &CapabilityToken,
+    trusted_issuers: &[PublicKey],
+    clock: &dyn Clock,
+    crypto_floor: CapabilityCryptoFloor,
+) -> Result<VerifiedCapability, CapabilityError> {
     // Issuer trust check. The legacy kernel also trusts its own public key
     // and the set returned by the capability authority; callers must
     // provide the full trust set they care about.
@@ -94,10 +117,16 @@ pub fn verify_capability(
     }
 
     // Signature check.
-    match token.verify_signature() {
+    match token.verify_signature_with_floor(crypto_floor) {
         Ok(true) => {}
         Ok(false) => return Err(CapabilityError::InvalidSignature),
-        Err(error) => {
+        Err(error @ CapabilityFloorVerifyError::RejectedByCryptoFloor { .. }) => {
+            return Err(CapabilityError::CryptoFloorRejected(error.to_string()));
+        }
+        Err(error @ CapabilityFloorVerifyError::AlgorithmMismatch { .. }) => {
+            return Err(CapabilityError::CryptoFloorRejected(error.to_string()));
+        }
+        Err(CapabilityFloorVerifyError::Crypto(error)) => {
             return Err(CapabilityError::Internal(error.to_string()));
         }
     }
@@ -133,4 +162,84 @@ where
 {
     let trusted: Vec<PublicKey> = trusted_issuers.into_iter().collect();
     verify_capability(token, &trusted, clock)
+}
+
+/// Convenience wrapper around [`verify_capability_with_floor`] for callers that
+/// build the trusted issuer set lazily.
+pub fn verify_capability_with_trusted_and_floor<I>(
+    token: &CapabilityToken,
+    trusted_issuers: I,
+    clock: &dyn Clock,
+    crypto_floor: CapabilityCryptoFloor,
+) -> Result<VerifiedCapability, CapabilityError>
+where
+    I: IntoIterator<Item = PublicKey>,
+{
+    let trusted: Vec<PublicKey> = trusted_issuers.into_iter().collect();
+    verify_capability_with_floor(token, &trusted, clock, crypto_floor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chio_core_types::capability::{CapabilityTokenBody, ChioScope};
+    use chio_core_types::crypto::Keypair;
+
+    #[test]
+    fn pq_required_rejects_classical_capability() {
+        let issuer = Keypair::generate();
+        let token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "cap-classical".to_string(),
+                issuer: issuer.public_key(),
+                subject: Keypair::generate().public_key(),
+                scope: ChioScope::default(),
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: Vec::new(),
+            },
+            &issuer,
+        )
+        .expect("sign classical capability");
+        let clock = crate::FixedClock::new(150);
+
+        let err = verify_capability_with_floor(
+            &token,
+            &[issuer.public_key()],
+            &clock,
+            CapabilityCryptoFloor::PqRequired,
+        )
+        .expect_err("classical capability must fail under pq_required");
+
+        assert!(matches!(err, CapabilityError::CryptoFloorRejected(_)));
+    }
+
+    #[test]
+    fn allow_classical_accepts_classical_capability() {
+        let issuer = Keypair::generate();
+        let token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "cap-classical".to_string(),
+                issuer: issuer.public_key(),
+                subject: Keypair::generate().public_key(),
+                scope: ChioScope::default(),
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: Vec::new(),
+            },
+            &issuer,
+        )
+        .expect("sign classical capability");
+        let clock = crate::FixedClock::new(150);
+
+        let verified = verify_capability_with_floor(
+            &token,
+            &[issuer.public_key()],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+        )
+        .expect("classical capability is accepted under allow_classical");
+
+        assert_eq!(verified.id, "cap-classical");
+    }
 }

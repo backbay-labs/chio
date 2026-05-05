@@ -7,7 +7,7 @@ use chio_kernel_core::{verify_capability, CapabilityError, Clock};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use crate::event::{AgUiEvent, EventClassification};
+use crate::event::{AgUiEvent, EventClassification, EventType};
 use crate::receipt::{AgUiReceipt, AgUiReceiptBody};
 use crate::transport::{Transport, TransportKind};
 
@@ -103,8 +103,24 @@ impl AgUiProxy {
         capability: Option<&CapabilityToken>,
         transport: &mut Transport,
     ) -> Result<(ProxyDecision, AgUiReceipt), AgUiProxyError> {
-        let decision = self.decide(event, capability);
-        let receipt = self.build_receipt(event, capability, transport.kind, &decision)?;
+        let mut server_event = event.clone();
+        let decision = match derive_server_classification(event) {
+            Ok(classification) => {
+                server_event.classification = classification.clone();
+                if classification != event.classification {
+                    ProxyDecision::Block {
+                        reason: format!(
+                            "event classification mismatch: supplied {:?}, derived {:?}",
+                            event.classification, classification
+                        ),
+                    }
+                } else {
+                    self.decide(&server_event, capability)
+                }
+            }
+            Err(reason) => ProxyDecision::Block { reason },
+        };
+        let receipt = self.build_receipt(&server_event, capability, transport.kind, &decision)?;
 
         match &decision {
             ProxyDecision::Forward => {
@@ -246,6 +262,45 @@ impl AgUiProxy {
     }
 }
 
+fn derive_server_classification(event: &AgUiEvent) -> Result<EventClassification, String> {
+    match &event.event_type {
+        EventType::TextStream => Ok(EventClassification::Display),
+        EventType::StateUpdate => Ok(EventClassification::Mutate),
+        EventType::Navigation => Ok(EventClassification::Navigate),
+        EventType::Lifecycle => derive_lifecycle_classification(&event.payload),
+        EventType::FormAction => Ok(EventClassification::Submit),
+        EventType::Notification | EventType::Error => Ok(EventClassification::Alert),
+        EventType::Custom(name) => Err(format!(
+            "custom AG-UI event type cannot be server-classified: {name}"
+        )),
+    }
+}
+
+fn derive_lifecycle_classification(
+    payload: &serde_json::Value,
+) -> Result<EventClassification, String> {
+    let action = payload
+        .get("action")
+        .or_else(|| payload.get("lifecycle"))
+        .or_else(|| payload.get("event"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_ascii_lowercase);
+
+    match action.as_deref() {
+        Some("create" | "created" | "mount" | "mounted" | "open" | "opened") => {
+            Ok(EventClassification::Create)
+        }
+        Some("destroy" | "destroyed" | "unmount" | "unmounted" | "close" | "closed") => {
+            Ok(EventClassification::Destroy)
+        }
+        Some("update" | "updated" | "change" | "changed") => Ok(EventClassification::Mutate),
+        Some(other) => Err(format!(
+            "lifecycle AG-UI event action is not classifiable: {other}"
+        )),
+        None => Err("lifecycle AG-UI event missing classifiable action".to_string()),
+    }
+}
+
 struct SystemClock;
 
 impl Clock for SystemClock {
@@ -262,6 +317,7 @@ fn capability_error_message(error: &CapabilityError) -> &'static str {
         CapabilityError::InvalidSignature => "signature did not verify",
         CapabilityError::NotYetValid => "token is not yet valid",
         CapabilityError::Expired => "token has expired",
+        CapabilityError::CryptoFloorRejected(_) => "capability crypto floor rejected",
         CapabilityError::Internal(_) => "internal verification error",
     }
 }
@@ -358,18 +414,37 @@ mod tests {
     use chio_core::capability::{CapabilityTokenBody, ChioScope, Operation};
 
     fn make_event(classification: EventClassification) -> AgUiEvent {
+        let event_type = match classification {
+            EventClassification::Display => EventType::TextStream,
+            EventClassification::Mutate => EventType::StateUpdate,
+            EventClassification::Navigate => EventType::Navigation,
+            EventClassification::Create | EventClassification::Destroy => EventType::Lifecycle,
+            EventClassification::Submit => EventType::FormAction,
+            EventClassification::Alert => EventType::Notification,
+        };
         AgUiEvent {
             event_id: "evt-test".to_string(),
             timestamp: 1700000000,
             agent_id: "agent-1".to_string(),
             session_id: Some("sess-1".to_string()),
-            event_type: EventType::TextStream,
+            event_type,
             target: Some(TargetComponent {
                 component_type: "chat".to_string(),
                 component_id: None,
             }),
             classification,
             payload: serde_json::json!({"text": "hi"}),
+        }
+    }
+
+    fn make_event_with_type(
+        event_type: EventType,
+        classification: EventClassification,
+    ) -> AgUiEvent {
+        AgUiEvent {
+            event_type,
+            classification,
+            ..make_event(EventClassification::Display)
         }
     }
 
@@ -529,6 +604,45 @@ mod tests {
         assert!(receipt.allowed);
         assert_eq!(transport.events_forwarded, 1);
         assert_eq!(receipt.capability_id, "cap-scoped");
+    }
+
+    #[test]
+    fn state_update_cannot_downgrade_classification_to_display() {
+        let config = AgUiProxyConfig {
+            allow_display_without_capability: true,
+            ..Default::default()
+        };
+        let proxy = AgUiProxy::new(config, Keypair::generate());
+        let event = make_event_with_type(EventType::StateUpdate, EventClassification::Display);
+        let mut transport = Transport::new(
+            TransportKind::WebSocket,
+            "ws-spoof".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let (decision, receipt) = proxy.evaluate(&event, None, &mut transport).unwrap();
+
+        assert!(matches!(decision, ProxyDecision::Block { .. }));
+        assert!(!receipt.allowed);
+        assert_eq!(transport.events_blocked, 1);
+    }
+
+    #[test]
+    fn server_classified_restricted_event_requires_verified_capability() {
+        let proxy = AgUiProxy::new(AgUiProxyConfig::default(), Keypair::generate());
+        let event = make_event_with_type(EventType::StateUpdate, EventClassification::Mutate);
+        let cap = make_capability();
+        let mut transport = Transport::new(
+            TransportKind::WebSocket,
+            "ws-forged-cap".to_string(),
+            "agent-1".to_string(),
+        );
+
+        let (decision, receipt) = proxy.evaluate(&event, Some(&cap), &mut transport).unwrap();
+
+        assert!(matches!(decision, ProxyDecision::Block { .. }));
+        assert!(!receipt.allowed);
+        assert_eq!(transport.events_blocked, 1);
     }
 
     #[test]

@@ -9,8 +9,11 @@ on:
       - "crates/chio-conformance/**"
       - "packages/sdk/chio-cpp/**"
       - "packages/sdk/chio-cpp-kernel/**"
+      - "packages/sdk/chio-drogon/**"
       - "packages/sdk/chio-guard-cpp/**"
+      - "examples/hello-drogon/**"
       - "scripts/check-chio-cpp*.sh"
+      - "scripts/check-chio-drogon*.sh"
       - "scripts/check-sdk-release.sh"
       - "tests/abi/**"
       - "tests/bindings/**"
@@ -23,8 +26,11 @@ on:
       - "crates/chio-conformance/**"
       - "packages/sdk/chio-cpp/**"
       - "packages/sdk/chio-cpp-kernel/**"
+      - "packages/sdk/chio-drogon/**"
       - "packages/sdk/chio-guard-cpp/**"
+      - "examples/hello-drogon/**"
       - "scripts/check-chio-cpp*.sh"
+      - "scripts/check-chio-drogon*.sh"
       - "scripts/check-sdk-release.sh"
       - "tests/abi/**"
       - "tests/bindings/**"
@@ -176,6 +182,10 @@ jobs:
           CHIO_CPP_REQUIRE_CBINDGEN: "1"
           CHIO_CPP_REQUIRE_PACKAGERS: "1"
         run: ./scripts/check-chio-cpp-release.sh
+      - name: Drogon release package smoke
+        env:
+          CHIO_CPP_REQUIRE_PACKAGERS: "1"
+        run: ./scripts/check-chio-drogon-release.sh
 
   guard-and-kernel:
     name: Guard and kernel packages
@@ -194,3 +204,13 @@ jobs:
           ctest --test-dir target/chio-cpp-kernel --output-on-failure
       - name: Build kernel package with Rust FFI backend
         run: ./packages/sdk/chio-cpp-kernel/scripts/check-with-ffi.sh
+
+  drogon:
+    name: Drogon package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake curl
+      - name: Build Drogon SDK smoke
+        run: ./scripts/check-chio-drogon.sh

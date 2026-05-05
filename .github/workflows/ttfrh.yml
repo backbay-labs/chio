@@ -47,9 +47,14 @@ jobs:
     needs: in-process-bench
     steps:
       - uses: actions/checkout@v4
-      - name: Build container image
+      - name: Run container TTFRH bench
         run: |
-          # Container path: provisions Docker, runs `npx create-chio-app`
-          # for each template, asserts a clean-machine first receipt
-          # under 60 s p99. The harness lives at bench/ttfrh/runners/.
-          echo "container lane runs in CI only; in-process bench enforces budget on PR"
+          set -euo pipefail
+          docker run --rm \
+            --cpus=4 \
+            -v "${PWD}:/workspace" \
+            -w /workspace \
+            -e CARGO_HOME=/tmp/cargo \
+            -e CARGO_TARGET_DIR=/tmp/chio-target \
+            rust:1.93-bookworm \
+            bash -lc 'cargo run -p ttfrh-bench --release -- --all --p99-budget-ms 60000'

@@ -54,6 +54,8 @@ const CHIO_TOOL_STREAMING_NOTIFICATION_METHOD: &str = "notifications/chio/tool_c
 const TASK_POLL_INTERVAL_MILLIS: u64 = 500;
 const MAX_BACKGROUND_TASKS_PER_TICK: usize = 8;
 const RELATED_TASK_META_KEY: &str = "io.modelcontextprotocol/related-task";
+const MAX_DEFERRED_MCP_TASKS: usize = 1024;
+const DEFAULT_MCP_TASK_TTL_MILLIS: u64 = 5 * 60 * 1000;
 
 #[derive(Debug, Clone)]
 pub struct McpEdgeConfig {
@@ -464,6 +466,8 @@ struct EdgeTask {
     final_outcome: Option<EdgeTaskFinalOutcome>,
     #[serde(skip)]
     background_ready_at_ms: u64,
+    #[serde(skip)]
+    expires_at_ms: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -527,6 +531,8 @@ impl EdgeTask {
         background_start_delay_millis: u64,
     ) -> Self {
         let now = iso8601_now();
+        let now_ms = unix_now_millis();
+        let ttl_millis = ttl.unwrap_or(DEFAULT_MCP_TASK_TTL_MILLIS);
         Self {
             task_id,
             status: EdgeTaskStatus::Working,
@@ -543,7 +549,8 @@ impl EdgeTask {
             context,
             operation,
             final_outcome: None,
-            background_ready_at_ms: unix_now_millis() + background_start_delay_millis,
+            background_ready_at_ms: now_ms.saturating_add(background_start_delay_millis),
+            expires_at_ms: now_ms.saturating_add(ttl_millis),
         }
     }
 
@@ -601,6 +608,10 @@ impl EdgeTask {
 
     fn background_ready(&self) -> bool {
         unix_now_millis() >= self.background_ready_at_ms
+    }
+
+    fn is_expired_at(&self, now_ms: u64) -> bool {
+        now_ms >= self.expires_at_ms
     }
 }
 
@@ -1473,6 +1484,9 @@ impl ChioMcpEdge {
         requested_task: RequestedTask,
         queue_background: bool,
     ) -> Value {
+        if let Err(response) = self.ensure_deferred_task_capacity(&id) {
+            return response;
+        }
         let task_id = self.next_task_id();
         let task = EdgeTask::new(
             task_id.clone(),
@@ -1496,6 +1510,37 @@ impl ChioMcpEdge {
             SessionTransport::StreamableHttp => TASK_POLL_INTERVAL_MILLIS,
             SessionTransport::InProcess | SessionTransport::Stdio => 0,
         }
+    }
+
+    fn ensure_deferred_task_capacity(&mut self, id: &Value) -> Result<(), Value> {
+        self.prune_expired_tasks();
+        if self.tasks.len() >= MAX_DEFERRED_MCP_TASKS {
+            self.prune_terminal_tasks();
+        }
+        if self.tasks.len() >= MAX_DEFERRED_MCP_TASKS {
+            return Err(jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "too many deferred tasks are pending",
+            ));
+        }
+        Ok(())
+    }
+
+    fn prune_expired_tasks(&mut self) {
+        let now_ms = unix_now_millis();
+        self.tasks.retain(|_, task| !task.is_expired_at(now_ms));
+        self.retain_live_background_tasks();
+    }
+
+    fn prune_terminal_tasks(&mut self) {
+        self.tasks.retain(|_, task| !task.is_terminal());
+        self.retain_live_background_tasks();
+    }
+
+    fn retain_live_background_tasks(&mut self) {
+        self.pending_background_tasks
+            .retain(|task_id| self.tasks.contains_key(task_id));
     }
 
     fn handle_tools_call(&mut self, id: Value, params: Value) -> Value {
@@ -1614,6 +1659,7 @@ impl ChioMcpEdge {
     }
 
     fn handle_tasks_list(&mut self, id: Value, params: Value) -> Value {
+        self.prune_expired_tasks();
         let session_id = match self.ready_session_id(&id) {
             Ok(session_id) => session_id,
             Err(response) => return response,
@@ -1652,6 +1698,7 @@ impl ChioMcpEdge {
     }
 
     fn handle_tasks_get(&mut self, id: Value, params: Value) -> Value {
+        self.prune_expired_tasks();
         let session_id = match self.ready_session_id(&id) {
             Ok(session_id) => session_id,
             Err(response) => return response,
@@ -1680,6 +1727,7 @@ impl ChioMcpEdge {
     }
 
     fn handle_tasks_cancel(&mut self, id: Value, params: Value) -> Value {
+        self.prune_expired_tasks();
         let session_id = match self.ready_session_id(&id) {
             Ok(session_id) => session_id,
             Err(response) => return response,
@@ -1736,6 +1784,7 @@ impl ChioMcpEdge {
     }
 
     fn handle_tasks_result(&mut self, id: Value, params: Value) -> Value {
+        self.prune_expired_tasks();
         let session_id = match self.ready_session_id(&id) {
             Ok(session_id) => session_id,
             Err(response) => return response,
@@ -1795,6 +1844,7 @@ impl ChioMcpEdge {
         reader: &mut R,
         writer: &mut W,
     ) -> Value {
+        self.prune_expired_tasks();
         let session_id = match self.ready_session_id(&id) {
             Ok(session_id) => session_id,
             Err(response) => return response,
@@ -1859,6 +1909,7 @@ impl ChioMcpEdge {
         cancel_rx: &mpsc::Receiver<Value>,
         writer: &mut W,
     ) -> Value {
+        self.prune_expired_tasks();
         let session_id = match self.ready_session_id(&id) {
             Ok(session_id) => session_id,
             Err(response) => return response,

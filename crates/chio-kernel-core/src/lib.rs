@@ -67,9 +67,13 @@ pub mod revocation_view;
 pub mod rng;
 pub mod scope;
 
-pub use capability_verify::{verify_capability, CapabilityError, VerifiedCapability};
+pub use capability_verify::{
+    verify_capability, verify_capability_with_floor, CapabilityError, VerifiedCapability,
+};
 pub use clock::{Clock, FixedClock};
-pub use evaluate::{evaluate, EvaluateInput, EvaluationVerdict, KernelCoreError};
+pub use evaluate::{
+    evaluate, evaluate_with_crypto_floor, EvaluateInput, EvaluationVerdict, KernelCoreError,
+};
 pub use guard::{Guard, GuardContext, PortableToolCallRequest};
 pub use normalized::{
     NormalizationError, NormalizedCapability, NormalizedConstraint, NormalizedEvaluationVerdict,

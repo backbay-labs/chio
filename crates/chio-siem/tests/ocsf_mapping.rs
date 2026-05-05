@@ -370,7 +370,7 @@ async fn ocsf_exporter_honors_configured_request_timeout() {
         timeout: Duration::from_millis(25),
         ..OcsfExporterConfig::default()
     };
-    let exporter = OcsfExporter::new(cfg).expect("build exporter");
+    let exporter = OcsfExporter::new_plaintext_for_tests(cfg).expect("build exporter");
     let events = vec![SiemEvent::from_receipt(allow_receipt())];
 
     let started = Instant::now();

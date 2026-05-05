@@ -3,6 +3,7 @@
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     // -- FsGuard tests --
 
@@ -87,6 +88,33 @@ mod tests {
             .is_ok());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn fs_guard_blocks_symlink_escape_by_default() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("chio-acp-root-{nonce}"));
+        let outside = std::env::temp_dir().join(format!("chio-acp-outside-{nonce}"));
+        let link = root.join("link");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let secret = outside.join("secret.txt");
+        std::fs::write(&secret, "secret").unwrap();
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+        let guard = FsGuard::new(vec![root.to_string_lossy().into_owned()]);
+        let escaped_path = link.join("secret.txt");
+
+        assert!(guard
+            .check_read(escaped_path.to_string_lossy().as_ref())
+            .is_err());
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
     // -- TerminalGuard tests --
 
     #[test]
@@ -142,11 +170,24 @@ mod tests {
     }
 
     #[test]
-    fn terminal_guard_strips_path_prefix() {
+    fn terminal_guard_requires_exact_path_allowlist_for_path_commands() {
         let guard = TerminalGuard::new(vec!["cargo".to_string()]);
         assert!(guard
             .check_command("/usr/bin/cargo", &["test".to_string()])
+            .is_err());
+
+        let guard = TerminalGuard::new(vec!["/usr/bin/cargo".to_string()]);
+        assert!(guard
+            .check_command("/usr/bin/cargo", &["test".to_string()])
             .is_ok());
+    }
+
+    #[test]
+    fn terminal_guard_rejects_path_command_by_basename_only() {
+        let guard = TerminalGuard::new(vec!["git".to_string()]);
+        assert!(guard
+            .check_command("/tmp/attacker/git", &["status".to_string()])
+            .is_err());
     }
 
     // -- PermissionMapper tests --
@@ -1156,9 +1197,7 @@ mod extended_tests {
 
     #[test]
     fn terminal_guard_command_with_spaces_in_path() {
-        let guard = TerminalGuard::new(vec!["my tool".to_string()]);
-        // The base name extraction uses rsplit('/'), so "/usr/local/bin/my tool"
-        // has base name "my tool".
+        let guard = TerminalGuard::new(vec!["/usr/local/bin/my tool".to_string()]);
         assert!(guard.check_command("/usr/local/bin/my tool", &[]).is_ok());
     }
 
@@ -2086,17 +2125,8 @@ mod extended_tests {
 
     #[test]
     fn fs_guard_prefix_with_trailing_slash_in_config() {
-        // The prefix is stored as-is (not canonicalized). A trailing
-        // slash in the prefix means `starts_with` matches, but the
-        // boundary check looks at `canonical[prefix.len()]` which is
-        // past the '/' character, so 'f' != '/' and the boundary
-        // check fails. This is consistent with fail-closed behavior:
-        // configure prefixes without trailing slashes.
         let guard = FsGuard::new(vec!["/home/user/project/".to_string()]);
-        assert!(
-            guard.check_read("/home/user/project/file.txt").is_err(),
-            "trailing slash in prefix breaks boundary check -- use without trailing slash"
-        );
+        assert!(guard.check_read("/home/user/project/file.txt").is_ok());
 
         // Without trailing slash, it works correctly.
         let guard2 = FsGuard::new(vec!["/home/user/project".to_string()]);
@@ -2158,17 +2188,17 @@ mod attestation_and_telemetry_tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use chio_core::capability::{
-        ChioScope, CapabilityToken, CapabilityTokenBody, Constraint, Operation, ToolGrant,
+        CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Operation, ToolGrant,
     };
     use chio_core::crypto::Keypair;
     use chio_core::receipt::{
-        ChioReceipt, ChioReceiptBody, ChildRequestReceipt, Decision, GuardEvidence, ToolCallAction,
+        ChildRequestReceipt, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
     };
     use chio_kernel::checkpoint::KernelCheckpoint;
     use chio_kernel::receipt_store::{ReceiptStore, ReceiptStoreError};
     use chio_kernel::{
-        ChioKernel, KernelConfig, DEFAULT_CHECKPOINT_BATCH_SIZE,
-        DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        ChioKernel, KernelConfig, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
+        DEFAULT_MAX_STREAM_TOTAL_BYTES,
     };
     use serde_json::json;
 
@@ -2437,8 +2467,10 @@ mod attestation_and_telemetry_tests {
     #[test]
     fn kernel_capability_checker_denies_missing_and_malformed_tokens() {
         let issuer = Keypair::generate();
-        let checker =
-            KernelCapabilityChecker::new(ChioKernel::new(test_kernel_config(&issuer)), "proxy-server");
+        let checker = KernelCapabilityChecker::new(
+            ChioKernel::new(test_kernel_config(&issuer)),
+            "proxy-server",
+        );
         let request = AcpCapabilityRequest {
             session_id: "session-1".to_string(),
             operation: "fs_read".to_string(),
@@ -2468,8 +2500,10 @@ mod attestation_and_telemetry_tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let now = now_secs();
-        let checker =
-            KernelCapabilityChecker::new(ChioKernel::new(test_kernel_config(&issuer)), "proxy-server");
+        let checker = KernelCapabilityChecker::new(
+            ChioKernel::new(test_kernel_config(&issuer)),
+            "proxy-server",
+        );
 
         let valid = make_capability_token(
             &issuer,
@@ -2555,8 +2589,10 @@ mod attestation_and_telemetry_tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let now = now_secs();
-        let checker =
-            KernelCapabilityChecker::new(ChioKernel::new(test_kernel_config(&issuer)), "proxy-server");
+        let checker = KernelCapabilityChecker::new(
+            ChioKernel::new(test_kernel_config(&issuer)),
+            "proxy-server",
+        );
         let token = make_capability_token(
             &issuer,
             &subject,
@@ -2589,8 +2625,10 @@ mod attestation_and_telemetry_tests {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let now = now_secs();
-        let trusted_checker =
-            KernelCapabilityChecker::new(ChioKernel::new(test_kernel_config(&issuer)), "proxy-server");
+        let trusted_checker = KernelCapabilityChecker::new(
+            ChioKernel::new(test_kernel_config(&issuer)),
+            "proxy-server",
+        );
 
         let token = make_capability_token(
             &issuer,

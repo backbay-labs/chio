@@ -2,8 +2,55 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DATE="${1:-$(date -u +%Y-%m-%d)}"
+ALLOW_MISSING="${CHIO_HITRUST_ALLOW_MISSING:-0}"
+DATE=""
+
+usage() {
+  cat <<'EOF_USAGE'
+usage: build-evidence-pack.sh [--allow-missing] [DATE]
+
+Build the HITRUST evidence bundle for DATE, defaulting to today in UTC.
+Missing required repository evidence fails the build unless --allow-missing
+or CHIO_HITRUST_ALLOW_MISSING=1 is set explicitly.
+EOF_USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --allow-missing)
+      ALLOW_MISSING="1"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --*)
+      echo "unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      if [[ -n "$DATE" ]]; then
+        echo "unexpected extra argument: $1" >&2
+        usage >&2
+        exit 2
+      fi
+      DATE="$1"
+      shift
+      ;;
+  esac
+done
+
+DATE="${DATE:-$(date -u +%Y-%m-%d)}"
 OUT="$ROOT/compliance/hitrust/evidence-bundles/$DATE"
+
+allow_missing() {
+  case "${ALLOW_MISSING}" in
+    1|true|TRUE|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 copy_if_present() {
   local src="$1"
@@ -58,5 +105,15 @@ evidence channel and referenced by hash.
 Missing source list: MISSING.csv
 Hash manifest: SHA256SUMS
 EOF_README
+
+if [[ -s "$OUT/MISSING.csv" ]]; then
+  if allow_missing; then
+    echo "warning: missing required HITRUST evidence; allow-missing mode enabled" >&2
+  else
+    echo "missing required HITRUST evidence; rerun with --allow-missing only for explicit incomplete-pack drills" >&2
+    sed 's/^/  /' "$OUT/MISSING.csv" >&2
+    exit 1
+  fi
+fi
 
 echo "$OUT"

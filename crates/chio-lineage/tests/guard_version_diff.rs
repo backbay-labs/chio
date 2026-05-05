@@ -17,6 +17,7 @@ fn corpus_v1() -> Vec<CorpusReceiptRow> {
         tenant_id: Some("tenant".into()),
         recorded_at: Some(1),
         has_signed_lineage_statement: true,
+        signed_lineage_statement: None,
     }]
 }
 
@@ -34,6 +35,7 @@ fn corpus_v2() -> Vec<CorpusReceiptRow> {
         // v2 strips the signed lineage statement so the cascade
         // surfaces as an evidence downgrade in the diff.
         has_signed_lineage_statement: false,
+        signed_lineage_statement: None,
     }]
 }
 

@@ -135,9 +135,13 @@ jobs:
           - chio_yaml_parse
           - openapi_ingest
           - receipt_log_replay
+          - eval_receipt_bundle
           - fuzz_policy_parse_compile
           - fuzz_sql_parser
           - fuzz_merkle_checkpoint
+          - federation_trust_establishment
+          - underwriting_policy_input
+          - revocation_oracle_merkle
           - fuzz_tool_action
     steps:
       # Cleanup C6: GHA `exit 0` only marks the step successful; it does

@@ -4,41 +4,33 @@
 /// denied. Path traversal attacks using `..` components are rejected
 /// before prefix checking.
 ///
-/// **Symlink limitation**: By default the guard uses purely textual
-/// canonicalization and does not resolve symlinks. A path such as
-/// `/home/user/project/link -> /etc/secret` will pass the prefix
-/// check even though the real target is outside the allowed tree.
-/// Enable `resolve_symlinks` to use `std::fs::canonicalize()` which
-/// queries the filesystem and resolves symlinks, at the cost of
-/// requiring the path to exist (writes to new files fall back to
-/// textual canonicalization when the target does not yet exist).
+/// By default the guard resolves existing path components through the
+/// filesystem before prefix matching. This catches symlinks inside an
+/// allowed tree that point outside that tree, including writes to new
+/// files below an existing symlink.
 #[derive(Debug, Clone)]
 pub struct FsGuard {
     allowed_prefixes: Vec<String>,
-    /// When true, attempt `std::fs::canonicalize()` before prefix
-    /// matching. Falls back to textual canonicalization if the path
-    /// does not exist (e.g. new files being written).
+    /// When true, resolve existing filesystem components before prefix
+    /// matching. Falls back to textual canonicalization if no component
+    /// can be resolved.
     resolve_symlinks: bool,
 }
 
 impl FsGuard {
     /// Create a new guard with the given set of allowed path prefixes.
-    ///
-    /// Symlink resolution is **off** by default. Call
-    /// [`with_resolve_symlinks`](Self::with_resolve_symlinks) to enable it.
     pub fn new(allowed_prefixes: Vec<String>) -> Self {
         Self {
             allowed_prefixes,
-            resolve_symlinks: false,
+            resolve_symlinks: true,
         }
     }
 
     /// Enable or disable filesystem-level symlink resolution.
     ///
-    /// When enabled, the guard calls `std::fs::canonicalize()` to
-    /// resolve symlinks before checking prefixes. If the path does
-    /// not exist on disk (common for write-to-new-file), the guard
-    /// falls back to textual canonicalization.
+    /// When enabled, the guard resolves existing path components before
+    /// checking prefixes. If no component can be resolved on disk, the
+    /// guard falls back to textual canonicalization.
     #[must_use]
     pub fn with_resolve_symlinks(mut self, resolve: bool) -> Self {
         self.resolve_symlinks = resolve;
@@ -70,13 +62,13 @@ impl FsGuard {
             )));
         }
 
-        // Resolve the canonical path (optionally through the filesystem).
-        let canonical = self.resolve_path(path);
-
         // Reject path traversal attempts.
-        if contains_traversal(&canonical) {
+        if contains_traversal(&canonicalize_path(path)) {
             return Err(AcpProxyError::PathTraversal(path.to_string()));
         }
+
+        // Resolve the canonical path (optionally through the filesystem).
+        let canonical = self.resolve_path(path);
 
         // Fail-closed: deny if no prefix matches.
         if self.allowed_prefixes.is_empty() {
@@ -86,6 +78,10 @@ impl FsGuard {
         }
 
         for prefix in &self.allowed_prefixes {
+            let prefix = self.resolve_prefix(prefix);
+            if prefix.is_empty() || contains_traversal(&prefix) {
+                continue;
+            }
             if canonical.starts_with(prefix.as_str()) {
                 // Ensure the match is on a path boundary, not a substring.
                 // e.g. prefix "/home/user/project" must NOT match
@@ -107,20 +103,41 @@ impl FsGuard {
         )))
     }
 
-    /// Resolve a path to its canonical form.
-    ///
-    /// When `resolve_symlinks` is enabled, attempts filesystem-level
-    /// canonicalization first. Falls back to textual canonicalization
-    /// if the path does not exist or an I/O error occurs.
     fn resolve_path(&self, path: &str) -> String {
         if self.resolve_symlinks {
-            if let Ok(real) = std::fs::canonicalize(path) {
-                return real.to_string_lossy().into_owned();
+            if let Some(real) = resolve_existing_prefix(path) {
+                return real;
             }
-            // Fallback: path may not exist yet (e.g. new file writes).
         }
         canonicalize_path(path)
     }
+
+    fn resolve_prefix(&self, prefix: &str) -> String {
+        let normalized = canonicalize_path(prefix);
+        if !self.resolve_symlinks {
+            return normalized;
+        }
+        resolve_existing_prefix(prefix).unwrap_or(normalized)
+    }
+}
+
+fn resolve_existing_prefix(path: &str) -> Option<String> {
+    use std::path::PathBuf;
+
+    let mut original = PathBuf::new();
+    let mut resolved = PathBuf::new();
+
+    for component in std::path::Path::new(path).components() {
+        original.push(component.as_os_str());
+        if original.exists() {
+            let real = std::fs::canonicalize(&original).ok()?;
+            resolved = real;
+        } else {
+            resolved.push(component.as_os_str());
+        }
+    }
+
+    Some(canonicalize_path(&resolved.to_string_lossy()))
 }
 
 /// Normalize a path string for comparison.

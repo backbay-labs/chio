@@ -217,7 +217,7 @@ fn pq_required_loads_pq_only_after_verified_self_quote() {
 fn kernel_helper_routes_hybrid_signing_through_self_quote_gate() {
     let kp = Keypair::generate();
     let classical_pk = kp.public_key();
-    let kernel = ChioKernel::new(kernel_config(kp));
+    let mut kernel = ChioKernel::new(kernel_config(kp));
     let verifier = AcceptingVerifier::new();
     let seen_pk = verifier.seen_classical_pk.clone();
     let calls = verifier.call_count.clone();
@@ -244,7 +244,7 @@ fn kernel_helper_routes_hybrid_signing_through_self_quote_gate() {
 #[test]
 fn kernel_helper_rejects_hybrid_signing_when_self_quote_rejects() {
     let kp = Keypair::generate();
-    let kernel = ChioKernel::new(kernel_config(kp));
+    let mut kernel = ChioKernel::new(kernel_config(kp));
     let verifier = RejectingVerifier::new("self-quote-report-data-mismatch");
     let pq_seed = fixture_pq_seed();
     let hybrid = HybridSigningConfig {

@@ -1889,6 +1889,113 @@ fn task_augmented_tool_call_completes_via_tasks_result_and_tracks_status() {
 }
 
 #[test]
+fn task_with_zero_ttl_expires_before_get() {
+    let mut edge = make_streaming_edge(10);
+    edge.set_session_auth_context(SessionAuthContext::streamable_http_static_bearer(
+        "agent",
+        "fingerprint",
+        None,
+    ));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    }));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    }));
+
+    let create = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "stream_file",
+                "arguments": {},
+                "task": { "ttl": 0 }
+            }
+        }))
+        .unwrap();
+    let task_id = create["result"]["task"]["taskId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let get = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tasks/get",
+            "params": { "taskId": task_id }
+        }))
+        .unwrap();
+
+    assert!(get["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("task not found"));
+}
+
+#[test]
+fn task_creation_rejects_deferred_task_map_over_cap() {
+    let mut edge = make_streaming_edge(10);
+    edge.set_session_auth_context(SessionAuthContext::streamable_http_static_bearer(
+        "agent",
+        "fingerprint",
+        None,
+    ));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    }));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    }));
+
+    for index in 0..1_024 {
+        let create = edge
+            .handle_jsonrpc(json!({
+                "jsonrpc": "2.0",
+                "id": index + 10,
+                "method": "tools/call",
+                "params": {
+                    "name": "stream_file",
+                    "arguments": {},
+                    "task": {}
+                }
+            }))
+            .unwrap();
+        assert_eq!(create["result"]["task"]["status"], "working");
+    }
+
+    let rejected = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2_000,
+            "method": "tools/call",
+            "params": {
+                "name": "stream_file",
+                "arguments": {},
+                "task": {}
+            }
+        }))
+        .unwrap();
+
+    assert!(rejected["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("too many deferred tasks"));
+}
+
+#[test]
 fn tasks_cancel_marks_working_task_cancelled_and_result_returns_error_payload() {
     let mut edge = make_streaming_edge(10);
     let _ = edge.handle_jsonrpc(json!({

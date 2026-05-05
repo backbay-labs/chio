@@ -186,6 +186,7 @@ struct DeferredAcpTask {
     request: CrossProtocolExecutionRequest,
     task: AcpInvocationTask,
     result: Option<AcpInvocationResult>,
+    expires_at_ms: u64,
 }
 
 /// Execution context required for kernel-mediated ACP invocations.
@@ -232,6 +233,8 @@ static MCP_TARGET_EXECUTOR: McpTargetExecutor = McpTargetExecutor {
     peer_supports_chio_tool_streaming: false,
 };
 static OPENAI_TARGET_EXECUTOR: OpenAiTargetExecutor = OpenAiTargetExecutor;
+const MAX_DEFERRED_ACP_TASKS: usize = 1024;
+const DEFERRED_ACP_TASK_TTL_MILLIS: u64 = 5 * 60 * 1000;
 
 #[derive(Debug, Clone)]
 struct CapabilityBinding {
@@ -360,6 +363,23 @@ impl ChioAcpEdge {
         let next = self.task_counter.get() + 1;
         self.task_counter.set(next);
         format!("acp-task-{next}")
+    }
+
+    fn prune_deferred_tasks(&self) {
+        let now = current_unix_millis();
+        self.tasks.borrow_mut().retain(|_, task| {
+            task.task.status == AcpTaskStatus::Working && task.expires_at_ms > now
+        });
+    }
+
+    fn ensure_deferred_task_capacity(&self) -> Result<(), AcpEdgeError> {
+        self.prune_deferred_tasks();
+        if self.tasks.borrow().len() >= MAX_DEFERRED_ACP_TASKS {
+            return Err(AcpEdgeError::InvalidRequest(
+                "too many deferred tasks are pending".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn capability_binding(&self, capability_id: &str) -> Result<CapabilityBinding, AcpEdgeError> {
@@ -900,7 +920,9 @@ impl ChioAcpEdge {
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationTask, AcpEdgeError> {
         let binding = self.capability_binding(capability_id)?;
+        self.ensure_deferred_task_capacity()?;
         let task_id = self.next_task_id();
+        let expires_at_ms = current_unix_millis().saturating_add(DEFERRED_ACP_TASK_TTL_MILLIS);
         let request = self.build_execution_request(
             capability_id,
             arguments,
@@ -925,6 +947,7 @@ impl ChioAcpEdge {
                 request,
                 task: task.clone(),
                 result: None,
+                expires_at_ms,
             },
         );
         Ok(task)
@@ -935,6 +958,7 @@ impl ChioAcpEdge {
         task_id: &str,
         execution: &AcpKernelExecutionContext,
     ) -> Result<AcpInvocationTask, AcpEdgeError> {
+        self.prune_deferred_tasks();
         let mut tasks = self.tasks.borrow_mut();
         let task = tasks
             .get_mut(task_id)
@@ -951,7 +975,9 @@ impl ChioAcpEdge {
                 task.task.metadata = Some(cancelled_stream_task_metadata(
                     "cross_protocol_orchestrator",
                 ));
-                Ok(task.task.clone())
+                let task_view = task.task.clone();
+                tasks.remove(task_id);
+                Ok(task_view)
             }
             AcpTaskStatus::Cancelled => Ok(task.task.clone()),
             status => Err(AcpEdgeError::InvalidRequest(format!(
@@ -966,6 +992,7 @@ impl ChioAcpEdge {
         kernel: &ChioKernel,
         execution: &AcpKernelExecutionContext,
     ) -> Result<(AcpInvocationTask, Value), AcpEdgeError> {
+        self.prune_deferred_tasks();
         let task_snapshot = {
             let tasks = self.tasks.borrow();
             let task = tasks
@@ -993,10 +1020,10 @@ impl ChioAcpEdge {
                 task.task.status_message = result.error.clone();
                 task.task.metadata = result.metadata.clone();
                 task.result = Some(result.clone());
-                return Ok((
-                    task.task.clone(),
-                    serde_json::to_value(&result).unwrap_or(Value::Null),
-                ));
+                let task_view = task.task.clone();
+                let result_value = serde_json::to_value(&result).unwrap_or(Value::Null);
+                tasks.remove(task_id);
+                return Ok((task_view, result_value));
             }
         }
 
@@ -1153,6 +1180,12 @@ fn current_unix_timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+fn current_unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis() as u64)
 }
 
 fn execute_orchestrated_acp_request(
@@ -2692,6 +2725,119 @@ mod tests {
             Some(true)
         );
         assert!(resumed["result"]["result"]["data"]["content"].is_array());
+    }
+
+    #[test]
+    fn jsonrpc_resume_removes_completed_deferred_task() {
+        let edge = ChioAcpEdge::new(AcpEdgeConfig::default(), vec![streaming_manifest()]).unwrap();
+        let config = test_kernel_config();
+        let issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(MockToolServer {
+            server_id: "streaming-srv".to_string(),
+            tools: vec!["search_stream".to_string()],
+            response: json!({"content": [{"text": "chunk-1"}]}),
+        }));
+        let subject = Keypair::generate();
+        let execution = AcpKernelExecutionContext {
+            capability: capability_for_tool(&issuer, &subject, "streaming-srv", "search_stream"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+
+        let created = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 30,
+                "method": "tool/stream",
+                "params": {
+                    "capabilityId": "search_stream",
+                    "arguments": {"query": "test"}
+                }
+            }),
+            &kernel,
+            &execution,
+        );
+        let task_id = created["result"]["task"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let resumed = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "tool/resume",
+                "params": { "taskId": task_id.clone() }
+            }),
+            &kernel,
+            &execution,
+        );
+
+        assert_eq!(
+            resumed["result"]["task"]["status"].as_str(),
+            Some("completed")
+        );
+        assert!(!edge.tasks.borrow().contains_key(&task_id));
+    }
+
+    #[test]
+    fn jsonrpc_stream_rejects_deferred_task_map_over_cap() {
+        let edge = ChioAcpEdge::new(AcpEdgeConfig::default(), vec![streaming_manifest()]).unwrap();
+        let config = test_kernel_config();
+        let issuer = config.keypair.clone();
+        let kernel = ChioKernel::new(config);
+        let subject = Keypair::generate();
+        let execution = AcpKernelExecutionContext {
+            capability: capability_for_tool(&issuer, &subject, "streaming-srv", "search_stream"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+
+        for index in 0..1_024 {
+            let response = edge.handle_jsonrpc(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": index,
+                    "method": "tool/stream",
+                    "params": {
+                        "capabilityId": "search_stream",
+                        "arguments": {"query": "test"}
+                    }
+                }),
+                &kernel,
+                &execution,
+            );
+            assert_eq!(
+                response["result"]["task"]["status"].as_str(),
+                Some("working")
+            );
+        }
+
+        let rejected = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2_000,
+                "method": "tool/stream",
+                "params": {
+                    "capabilityId": "search_stream",
+                    "arguments": {"query": "test"}
+                }
+            }),
+            &kernel,
+            &execution,
+        );
+
+        assert!(rejected["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("too many deferred tasks"));
     }
 
     #[test]

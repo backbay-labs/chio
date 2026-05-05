@@ -24,6 +24,7 @@ use zeroize::Zeroizing;
 use crate::alerting::{derive_severity, AlertSeverity};
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+use crate::exporters::require_https_endpoint;
 use chio_core::receipt::Decision;
 
 /// Authentication mode for the webhook exporter.
@@ -84,7 +85,7 @@ impl Default for WebhookRetry {
 /// Configuration for the webhook exporter.
 #[derive(Debug, Clone)]
 pub struct WebhookConfig {
-    /// Target URL. Must be non-empty.
+    /// Target HTTPS URL. Must be non-empty.
     pub url: String,
     /// HTTP method. Default: [`WebhookMethod::Post`].
     pub method: WebhookMethod,
@@ -131,11 +132,33 @@ pub struct WebhookExporter {
 impl WebhookExporter {
     /// Create a new `WebhookExporter`.
     ///
-    /// Returns an error if `url` is empty or if the HTTP client cannot be
-    /// built. URL scheme is not validated here; plain HTTP is permitted
-    /// because webhook targets such as internal notifiers commonly run on
-    /// `http://` inside private networks.
+    /// Returns an error if `url` is empty, not HTTPS, or if the HTTP client
+    /// cannot be built.
     pub fn new(config: WebhookConfig) -> Result<Self, ExportError> {
+        if config.url.trim().is_empty() {
+            return Err(ExportError::HttpError(
+                "Webhook url must not be empty".to_string(),
+            ));
+        }
+        require_https_endpoint(
+            &config.url,
+            "Webhook receipt export requires an https endpoint",
+        )?;
+
+        let client = reqwest::Client::builder()
+            .timeout(config.timeout)
+            .build()
+            .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
+
+        Ok(Self { config, client })
+    }
+
+    /// Create a `WebhookExporter` without TLS scheme validation.
+    ///
+    /// This constructor is intended for integration tests that run against a
+    /// local mock server over plain HTTP. Do NOT use this in production code:
+    /// it bypasses the HTTPS enforcement that protects receipt export.
+    pub fn new_plaintext_for_tests(config: WebhookConfig) -> Result<Self, ExportError> {
         if config.url.trim().is_empty() {
             return Err(ExportError::HttpError(
                 "Webhook url must not be empty".to_string(),
@@ -367,6 +390,19 @@ mod tests {
             ..WebhookConfig::default()
         };
         assert!(WebhookExporter::new(cfg).is_err());
+    }
+
+    #[test]
+    fn new_rejects_plain_http_url() {
+        let cfg = WebhookConfig {
+            url: "http://example.test/receipts".to_string(),
+            ..WebhookConfig::default()
+        };
+        let Err(error) = WebhookExporter::new(cfg) else {
+            panic!("plain HTTP webhook endpoint should be rejected");
+        };
+
+        assert!(error.to_string().contains("https"));
     }
 
     #[test]

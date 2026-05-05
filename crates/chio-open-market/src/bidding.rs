@@ -23,7 +23,9 @@ use crate::capability::{
     CapabilityToken, CapabilityTokenBody, ChioScope, MonetaryAmount, Operation, ToolGrant,
 };
 use crate::crypto::{sha256_hex, Keypair, PublicKey};
-use crate::listing::{canonical_json_bytes, normalize_namespace, GenericListingStatus, Listing};
+use crate::listing::{
+    canonical_json_bytes, normalize_namespace, provider_signing_key, GenericListingStatus, Listing,
+};
 use crate::receipt::SignedExportEnvelope;
 
 /// Schema for bid requests that the marketplace signs canonically.
@@ -65,6 +67,10 @@ pub enum BiddingError {
     WindowOutOfBounds,
     #[error("max_total_cost overflow: advertised price * max_invocations exceeds u64")]
     TotalCostOverflow,
+    #[error("listing, pricing, or issuer authority is not bound to the provider")]
+    AuthorityMismatch,
+    #[error("capability token offer signature is not verifiable")]
+    TokenSignatureInvalid,
 }
 
 /// A bid request issued by an agent.
@@ -247,6 +253,17 @@ pub fn bid(
     {
         return Err(BiddingError::ListingMismatch);
     }
+    if listing.pricing.body.provider_operator_id != listing.publisher.operator_id
+        || listing.pricing.body.provider_operator_id
+            != listing.listing.body.namespace_ownership.owner_id
+        || listing.pricing.signer_key != listing.listing.body.namespace_ownership.signer_public_key
+        || listing.listing.signer_key != listing.listing.body.namespace_ownership.signer_public_key
+    {
+        return Err(BiddingError::AuthorityMismatch);
+    }
+    if context.issuer_keypair.public_key() != *provider_signing_key(listing) {
+        return Err(BiddingError::AuthorityMismatch);
+    }
 
     // Fail-closed: revoked/retired/suspended listings can never be minted.
     if !matches!(listing.listing.body.status, GenericListingStatus::Active) {
@@ -357,6 +374,18 @@ pub fn accept(
     match ask.verify_signature() {
         Ok(true) => {}
         _ => return Err(BiddingError::PricingSignatureInvalid),
+    }
+    if ask.body.token_offer.issuer != ask.signer_key {
+        return Err(BiddingError::AuthorityMismatch);
+    }
+    match ask.body.token_offer.verify_signature() {
+        Ok(true) => {}
+        _ => return Err(BiddingError::TokenSignatureInvalid),
+    }
+    if ask.body.token_offer.issued_at > ask.body.issued_at
+        || ask.body.token_offer.expires_at < ask.body.expires_at
+    {
+        return Err(BiddingError::WindowOutOfBounds);
     }
     if accepted_at < ask.body.issued_at {
         return Err(BiddingError::InvalidRequest(
@@ -552,7 +581,7 @@ mod tests {
     }
 
     fn listing_entry(
-        registry_keypair: &Keypair,
+        _registry_keypair: &Keypair,
         operator_keypair: &Keypair,
         status: GenericListingStatus,
         price_units: u64,
@@ -561,7 +590,7 @@ mod tests {
     ) -> Listing {
         Listing {
             rank: 1,
-            listing: listing(registry_keypair, "listing-1", status),
+            listing: listing(operator_keypair, "listing-1", status),
             pricing: pricing(
                 operator_keypair,
                 "listing-1",
@@ -613,7 +642,7 @@ mod tests {
     fn bid_happy_path_mints_scoped_capability_token() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let listing = listing_entry(
             &registry_keypair,
@@ -672,10 +701,41 @@ mod tests {
     }
 
     #[test]
+    fn bid_rejects_unbound_token_issuer() {
+        let registry_keypair = Keypair::generate();
+        let operator_keypair = Keypair::generate();
+        let attacker_issuer = Keypair::generate();
+        let agent_keypair = Keypair::generate();
+        let listing = listing_entry(
+            &registry_keypair,
+            &operator_keypair,
+            GenericListingStatus::Active,
+            100,
+            110,
+            600,
+        );
+        let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+
+        let error = bid(
+            &request,
+            BidMintContext {
+                listing: &listing,
+                issuer_keypair: &attacker_issuer,
+                agent_subject: agent_keypair.public_key(),
+                token_id: "token-1".to_string(),
+                now: 120,
+            },
+        )
+        .test_expect_err("unbound issuer rejected");
+
+        assert_eq!(error, BiddingError::AuthorityMismatch);
+    }
+
+    #[test]
     fn bid_rejects_scope_widening_outside_listing_server() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let listing = listing_entry(
             &registry_keypair,
@@ -707,7 +767,7 @@ mod tests {
     fn bid_fails_closed_on_revoked_listing() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let listing = listing_entry(
             &registry_keypair,
@@ -737,7 +797,7 @@ mod tests {
     fn bid_fails_closed_on_stale_pricing_hint() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         // Pricing hint expires at 200.
         let listing = listing_entry(
@@ -768,7 +828,7 @@ mod tests {
     fn bid_fails_closed_on_tampered_listing_signature() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let mut listing = listing_entry(
             &registry_keypair,
@@ -800,7 +860,7 @@ mod tests {
     fn bid_fails_closed_when_max_price_below_advertised() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let listing = listing_entry(
             &registry_keypair,
@@ -831,7 +891,7 @@ mod tests {
     fn accept_records_receipt_and_verifies_ask_signature() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let listing = listing_entry(
             &registry_keypair,
@@ -867,7 +927,7 @@ mod tests {
     fn accept_rejects_tampered_ask_signature() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let listing = listing_entry(
             &registry_keypair,
@@ -896,10 +956,44 @@ mod tests {
     }
 
     #[test]
+    fn accept_rejects_tampered_token_offer_signature() {
+        let registry_keypair = Keypair::generate();
+        let operator_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
+        let agent_keypair = Keypair::generate();
+        let listing = listing_entry(
+            &registry_keypair,
+            &operator_keypair,
+            GenericListingStatus::Active,
+            100,
+            110,
+            600,
+        );
+        let request = signed_bid_request(&agent_keypair, "agent-alpha", 200, 300, 120);
+        let mut ask = bid(
+            &request,
+            BidMintContext {
+                listing: &listing,
+                issuer_keypair: &issuer_keypair,
+                agent_subject: agent_keypair.public_key(),
+                token_id: "token-1".to_string(),
+                now: 120,
+            },
+        )
+        .test_expect("bid succeeds");
+        ask.body.token_offer.expires_at = ask.body.expires_at + 1;
+        ask = SignedAskResponse::sign(ask.body, &issuer_keypair).test_expect("re-sign ask");
+
+        let error =
+            accept(&ask, "receipt-42", 130).test_expect_err("tampered token offer rejected");
+        assert_eq!(error, BiddingError::TokenSignatureInvalid);
+    }
+
+    #[test]
     fn accept_rejects_expired_ask() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let listing = listing_entry(
             &registry_keypair,
@@ -930,7 +1024,7 @@ mod tests {
     fn bid_rejects_tampered_bid_signature() {
         let registry_keypair = Keypair::generate();
         let operator_keypair = Keypair::generate();
-        let issuer_keypair = Keypair::generate();
+        let issuer_keypair = operator_keypair.clone();
         let agent_keypair = Keypair::generate();
         let listing = listing_entry(
             &registry_keypair,

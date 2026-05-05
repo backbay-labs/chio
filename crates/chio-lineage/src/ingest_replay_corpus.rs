@@ -5,11 +5,15 @@
 //! the recursive-CTE query layer and the differential mode. Receipts
 //! read from the corpus carry `Observed` evidence class because the
 //! corpus is the canonical kernel-emitted ground truth; signed receipt-
-//! lineage statements observed in the corpus upgrade to `Verified`.
+//! lineage statements upgrade to `Verified` only after signature and
+//! parent/child binding verification.
 //!
 //! Corpus rows are not mutated by ingest; this module only projects.
 
 use serde::{Deserialize, Serialize};
+
+use chio_core_types::capability::ProvenanceEvidenceClass;
+use chio_core_types::receipt::ReceiptLineageStatement;
 
 use crate::schema::{EdgeKind, EvidenceClass, LineageEdge, LineageGraph, LineageNode, NodeKind};
 
@@ -31,10 +35,15 @@ pub struct CorpusReceiptRow {
     pub tenant_id: Option<String>,
     #[serde(default)]
     pub recorded_at: Option<i64>,
-    /// True when the corpus row carries a signed receipt-lineage
-    /// statement linking parent_receipt_id to receipt_id.
+    /// Legacy hint retained for old corpora. It is never sufficient to mark
+    /// lineage verified; ingest requires `signed_lineage_statement`.
     #[serde(default)]
     pub has_signed_lineage_statement: bool,
+    /// Signed receipt-lineage statement linking parent_receipt_id to
+    /// receipt_id. This is the only field that can upgrade replay-corpus
+    /// receipt lineage from observed to verified.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_lineage_statement: Option<ReceiptLineageStatement>,
 }
 
 /// Ingest errors.
@@ -182,9 +191,7 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
                     source_id: Some(parent.clone()),
                 },
             );
-            // Verified only when the corpus row attests to a signed
-            // receipt-lineage statement. Otherwise observed.
-            let evidence = if row.has_signed_lineage_statement {
+            let evidence = if signed_lineage_statement_verifies(row, parent) {
                 EvidenceClass::Verified
             } else {
                 EvidenceClass::Observed
@@ -208,6 +215,16 @@ pub fn ingest_corpus(rows: &[CorpusReceiptRow]) -> LineageGraph {
     graph
 }
 
+fn signed_lineage_statement_verifies(row: &CorpusReceiptRow, parent: &str) -> bool {
+    let Some(statement) = row.signed_lineage_statement.as_ref() else {
+        return false;
+    };
+    statement.parent_receipt_id == parent
+        && statement.child_receipt_id == row.receipt_id
+        && statement.evidence_class == ProvenanceEvidenceClass::Verified
+        && matches!(statement.verify_signature(), Ok(true))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn signed_lineage_statement_upgrades_to_verified() {
+    fn boolean_lineage_hint_does_not_upgrade_to_verified() {
         let rows = vec![CorpusReceiptRow {
             receipt_id: "child".into(),
             parent_receipt_id: Some("parent".into()),
@@ -230,6 +247,56 @@ mod tests {
             tenant_id: None,
             recorded_at: None,
             has_signed_lineage_statement: true,
+            signed_lineage_statement: None,
+        }];
+        let g = ingest_corpus(&rows);
+        let edge = g
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::ReceiptLineageParent);
+        assert!(edge.is_some());
+        if let Some(e) = edge {
+            assert_eq!(e.evidence_class, EvidenceClass::Observed);
+        }
+    }
+
+    #[test]
+    fn signed_lineage_statement_upgrades_to_verified() {
+        use chio_core_types::crypto::Keypair;
+        use chio_core_types::receipt::{
+            ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatementBody,
+        };
+        use chio_core_types::session::{RequestId, SessionAnchorReference};
+
+        let keypair = Keypair::generate();
+        let statement = ReceiptLineageStatement::sign(
+            ReceiptLineageStatementBody::new(
+                "stmt-1",
+                ReceiptLineageEndpoints::new(
+                    "parent",
+                    "child",
+                    RequestId::new("parent-request"),
+                    RequestId::new("child-request"),
+                    SessionAnchorReference::new("parent-anchor", "parent-hash"),
+                    SessionAnchorReference::new("child-anchor", "child-hash"),
+                ),
+                ReceiptLineageRelationKind::LocalChild,
+                1,
+                keypair.public_key(),
+            ),
+            &keypair,
+        )
+        .expect("sign lineage statement");
+        let rows = vec![CorpusReceiptRow {
+            receipt_id: "child".into(),
+            parent_receipt_id: Some("parent".into()),
+            capability_id: None,
+            parent_capability_id: None,
+            tool_name: None,
+            tenant_id: None,
+            recorded_at: None,
+            has_signed_lineage_statement: true,
+            signed_lineage_statement: Some(statement),
         }];
         let g = ingest_corpus(&rows);
         let edge = g
@@ -243,6 +310,53 @@ mod tests {
     }
 
     #[test]
+    fn signed_lineage_statement_with_wrong_child_stays_observed() {
+        use chio_core_types::crypto::Keypair;
+        use chio_core_types::receipt::{
+            ReceiptLineageEndpoints, ReceiptLineageRelationKind, ReceiptLineageStatementBody,
+        };
+        use chio_core_types::session::{RequestId, SessionAnchorReference};
+
+        let keypair = Keypair::generate();
+        let statement = ReceiptLineageStatement::sign(
+            ReceiptLineageStatementBody::new(
+                "stmt-1",
+                ReceiptLineageEndpoints::new(
+                    "parent",
+                    "other-child",
+                    RequestId::new("parent-request"),
+                    RequestId::new("child-request"),
+                    SessionAnchorReference::new("parent-anchor", "parent-hash"),
+                    SessionAnchorReference::new("child-anchor", "child-hash"),
+                ),
+                ReceiptLineageRelationKind::LocalChild,
+                1,
+                keypair.public_key(),
+            ),
+            &keypair,
+        )
+        .expect("sign lineage statement");
+        let rows = vec![CorpusReceiptRow {
+            receipt_id: "child".into(),
+            parent_receipt_id: Some("parent".into()),
+            capability_id: None,
+            parent_capability_id: None,
+            tool_name: None,
+            tenant_id: None,
+            recorded_at: None,
+            has_signed_lineage_statement: true,
+            signed_lineage_statement: Some(statement),
+        }];
+        let g = ingest_corpus(&rows);
+        let edge = g
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::ReceiptLineageParent)
+            .expect("lineage edge present");
+        assert_eq!(edge.evidence_class, EvidenceClass::Observed);
+    }
+
+    #[test]
     fn ingest_is_deterministic_and_idempotent() {
         let row = CorpusReceiptRow {
             receipt_id: "r1".into(),
@@ -253,6 +367,7 @@ mod tests {
             tenant_id: Some("t".into()),
             recorded_at: Some(1),
             has_signed_lineage_statement: false,
+            signed_lineage_statement: None,
         };
         let rows = vec![row.clone(), row.clone(), row];
         let g = ingest_corpus(&rows);

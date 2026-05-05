@@ -4,16 +4,52 @@
 
 //! Smoke tests for libFuzzer targets.
 //!
-//! Each target gets a `<target>_smoke` test that loads its seed corpus and
-//! exercises the corresponding entry point, catching panics introduced by
-//! upstream changes between scheduled fuzz campaigns.
+//! Corpus-backed targets get a `<target>_smoke` test that loads their seed
+//! corpus and exercises the corresponding entry point, catching panics
+//! introduced by upstream changes between scheduled fuzz campaigns.
 //!
 //! The harness panics if a corpus directory is missing, unreadable, or empty
 //! - a renamed directory or typo'd target name would otherwise produce a
 //! silent vacuous pass without feeding any bytes through the entry point.
+//!
+//! The inventory tests below keep this honest: every cargo-fuzz binary must
+//! appear in the scheduled workflow matrix, and every scheduled target must
+//! be declared either as corpus-smoked here or as intentionally outside this
+//! reusable smoke harness.
 
 use std::fs;
 use std::path::PathBuf;
+
+const CORPUS_SMOKE_TARGETS: &[&str] = &[
+    "a2a_envelope_decode",
+    "acp_envelope_decode",
+    "anchor_bundle_verify",
+    "chio_yaml_parse",
+    "did_resolve",
+    "jwt_vc_verify",
+    "mcp_envelope_decode",
+    "oid4vp_presentation",
+    "openapi_ingest",
+    "receipt_log_replay",
+    "wasm_guard_escape",
+    "wasm_preinstantiate_validate",
+    "wit_host_call_boundary",
+];
+
+const NO_CORPUS_SMOKE_TARGETS: &[&str] = &[
+    "attest_verify",
+    "canonical_json",
+    "capability_receipt",
+    "eval_receipt_bundle",
+    "federation_trust_establishment",
+    "fuzz_merkle_checkpoint",
+    "fuzz_policy_parse_compile",
+    "fuzz_sql_parser",
+    "fuzz_tool_action",
+    "manifest_roundtrip",
+    "revocation_oracle_merkle",
+    "underwriting_policy_input",
+];
 
 /// Resolve a seed-corpus directory by target name. Lives under
 /// `<CARGO_MANIFEST_DIR>/corpus/<name>` per the cargo-fuzz layout.
@@ -56,6 +92,91 @@ fn assert_seed_floor<F: FnMut(&[u8])>(target: &str, f: F) {
         processed > 0,
         "smoke test for {target} processed zero seed files; corpus dir is empty (expected at least one .bin under fuzz/corpus/{target}/)"
     );
+}
+
+fn repo_file(path: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(path)
+}
+
+fn cargo_fuzz_bins() -> Vec<String> {
+    let manifest = fs::read_to_string(repo_file("fuzz/Cargo.toml")).unwrap();
+    let mut in_bin = false;
+    let mut bins = Vec::new();
+    for line in manifest.lines() {
+        if line.trim() == "[[bin]]" {
+            in_bin = true;
+            continue;
+        }
+        if !in_bin {
+            continue;
+        }
+        if let Some(name) = line
+            .trim()
+            .strip_prefix("name = \"")
+            .and_then(|rest| rest.strip_suffix('"'))
+        {
+            bins.push(name.to_owned());
+            in_bin = false;
+        }
+    }
+    bins
+}
+
+fn workflow_fuzz_targets() -> Vec<String> {
+    let workflow = fs::read_to_string(repo_file(".github/workflows/fuzz.yml")).unwrap();
+    let mut targets = Vec::new();
+    let mut in_target_matrix = false;
+    for line in workflow.lines() {
+        if line == "        target:" {
+            in_target_matrix = true;
+            continue;
+        }
+        if !in_target_matrix {
+            continue;
+        }
+        if let Some(target) = line.trim().strip_prefix("- ") {
+            targets.push(target.to_owned());
+            continue;
+        }
+        if !line.trim().is_empty() {
+            break;
+        }
+    }
+    targets
+}
+
+fn sorted(mut values: Vec<String>) -> Vec<String> {
+    values.sort();
+    values
+}
+
+#[test]
+fn fuzz_workflow_matrix_matches_cargo_bins() {
+    assert_eq!(sorted(cargo_fuzz_bins()), sorted(workflow_fuzz_targets()));
+}
+
+#[test]
+fn all_matrix_targets_have_declared_smoke_posture() {
+    let mut declared: Vec<String> = CORPUS_SMOKE_TARGETS
+        .iter()
+        .chain(NO_CORPUS_SMOKE_TARGETS.iter())
+        .map(|target| (*target).to_owned())
+        .collect();
+    declared.sort();
+    declared.dedup();
+
+    assert_eq!(declared, sorted(workflow_fuzz_targets()));
+
+    for target in CORPUS_SMOKE_TARGETS {
+        let processed = each_seed(target, |_| {});
+        assert!(
+            processed > 0,
+            "corpus-smoked target {target} has no seed files"
+        );
+    }
 }
 
 #[test]
@@ -107,6 +228,12 @@ fn wasm_preinstantiate_validate_smoke() {
         "wasm_preinstantiate_validate",
         fuzz_wasm_preinstantiate_validate,
     );
+}
+
+#[test]
+fn wasm_guard_escape_smoke() {
+    use chio_wasm_guards::fuzz::fuzz_wasm_guard_escape;
+    assert_seed_floor("wasm_guard_escape", fuzz_wasm_guard_escape);
 }
 
 #[test]

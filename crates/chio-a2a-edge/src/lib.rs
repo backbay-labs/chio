@@ -21,6 +21,7 @@
 //! can cancel a deferred task before execution.
 
 use std::collections::BTreeMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
     CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
@@ -236,6 +237,7 @@ struct DeferredA2aTask {
     owner_agent_id: String,
     request: CrossProtocolExecutionRequest,
     response: TaskResponse,
+    expires_at_ms: u64,
 }
 
 /// Execution context required for kernel-mediated A2A invocations.
@@ -285,6 +287,14 @@ static MCP_TARGET_EXECUTOR: McpTargetExecutor = McpTargetExecutor {
     peer_supports_chio_tool_streaming: false,
 };
 static OPENAI_TARGET_EXECUTOR: OpenAiTargetExecutor = OpenAiTargetExecutor;
+const MAX_DEFERRED_A2A_TASKS: usize = 1024;
+const DEFERRED_A2A_TASK_TTL_MILLIS: u64 = 5 * 60 * 1000;
+
+fn unix_now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis() as u64)
+}
 
 #[derive(Debug, Clone)]
 struct SkillBinding {
@@ -546,6 +556,23 @@ impl ChioA2aEdge {
         format!("a2a-task-{}", self.task_counter)
     }
 
+    fn prune_deferred_tasks(&mut self) {
+        let now = unix_now_millis();
+        self.tasks.retain(|_, task| {
+            task.response.status == TaskStatus::Working && task.expires_at_ms > now
+        });
+    }
+
+    fn ensure_deferred_task_capacity(&mut self) -> Result<(), A2aEdgeError> {
+        self.prune_deferred_tasks();
+        if self.tasks.len() >= MAX_DEFERRED_A2A_TASKS {
+            return Err(A2aEdgeError::InvalidRequest(
+                "too many deferred tasks are pending".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Handle a SendMessage request by routing it through the Chio kernel.
     ///
     /// The caller is responsible for registering the bound tool server with the
@@ -589,7 +616,9 @@ impl ChioA2aEdge {
         execution: &A2aKernelExecutionContext,
     ) -> Result<TaskResponse, A2aEdgeError> {
         let binding = self.resolve_skill_binding(skill_id)?;
+        self.ensure_deferred_task_capacity()?;
         let task_id = self.next_task_id();
+        let expires_at_ms = unix_now_millis().saturating_add(DEFERRED_A2A_TASK_TTL_MILLIS);
         let orchestrated_request = CrossProtocolExecutionRequest {
             origin_request_id: task_id.clone(),
             kernel_request_id: format!("a2a-stream-{task_id}"),
@@ -622,6 +651,7 @@ impl ChioA2aEdge {
                 owner_agent_id: execution.agent_id.clone(),
                 request: orchestrated_request,
                 response: response.clone(),
+                expires_at_ms,
             },
         );
         Ok(response)
@@ -930,6 +960,7 @@ impl ChioA2aEdge {
         kernel: &ChioKernel,
         execution: &A2aKernelExecutionContext,
     ) -> Value {
+        self.prune_deferred_tasks();
         let Some(task_id) = params.get("taskId").and_then(Value::as_str) else {
             return json!({
                 "jsonrpc": "2.0",
@@ -982,6 +1013,7 @@ impl ChioA2aEdge {
         if let Some(task) = self.tasks.get_mut(task_id) {
             task.response = response.clone();
         }
+        self.tasks.remove(task_id);
         json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -995,6 +1027,7 @@ impl ChioA2aEdge {
         params: Value,
         execution: &A2aKernelExecutionContext,
     ) -> Value {
+        self.prune_deferred_tasks();
         let Some(task_id) = params.get("taskId").and_then(Value::as_str) else {
             return json!({
                 "jsonrpc": "2.0",
@@ -1026,10 +1059,12 @@ impl ChioA2aEdge {
                     "cross_protocol_orchestrator",
                     "deferred_task_poll",
                 ));
+                let response = task.response.clone();
+                self.tasks.remove(task_id);
                 json!({
                     "jsonrpc": "2.0",
                     "id": id,
-                    "result": serde_json::to_value(&task.response).unwrap_or(Value::Null)
+                    "result": serde_json::to_value(&response).unwrap_or(Value::Null)
                 })
             }
             TaskStatus::Cancelled => json!({
@@ -2702,6 +2737,112 @@ mod tests {
             .as_array()
             .expect("resolved task should contain parts");
         assert_eq!(parts.len(), 2);
+    }
+
+    #[test]
+    fn jsonrpc_task_get_removes_completed_deferred_task() {
+        let mut edge = ChioA2aEdge::new(A2aEdgeConfig::default(), vec![stream_manifest()]).unwrap();
+        let config = test_kernel_config();
+        let kernel_issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(StreamingToolServer));
+        let subject = Keypair::generate();
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&kernel_issuer, &subject, "stream-srv", "stream"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+
+        let created = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 30,
+                "method": "message/stream",
+                "params": {
+                    "message": {
+                        "role": "user",
+                        "parts": [{"type": "text", "text": "start"}]
+                    }
+                }
+            }),
+            &kernel,
+            &execution,
+        );
+        let task_id = created["result"]["id"].as_str().unwrap().to_string();
+
+        let resolved = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "task/get",
+                "params": { "taskId": task_id.clone() }
+            }),
+            &kernel,
+            &execution,
+        );
+
+        assert_eq!(resolved["result"]["status"].as_str(), Some("completed"));
+        assert!(!edge.tasks.contains_key(&task_id));
+    }
+
+    #[test]
+    fn jsonrpc_stream_rejects_deferred_task_map_over_cap() {
+        let mut edge = ChioA2aEdge::new(A2aEdgeConfig::default(), vec![stream_manifest()]).unwrap();
+        let config = test_kernel_config();
+        let kernel_issuer = config.keypair.clone();
+        let kernel = ChioKernel::new(config);
+        let subject = Keypair::generate();
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&kernel_issuer, &subject, "stream-srv", "stream"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+
+        for index in 0..1_024 {
+            let response = edge.handle_jsonrpc(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": index,
+                    "method": "message/stream",
+                    "params": {
+                        "message": {
+                            "role": "user",
+                            "parts": [{"type": "text", "text": "start"}]
+                        }
+                    }
+                }),
+                &kernel,
+                &execution,
+            );
+            assert_eq!(response["result"]["status"].as_str(), Some("working"));
+        }
+
+        let rejected = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2_000,
+                "method": "message/stream",
+                "params": {
+                    "message": {
+                        "role": "user",
+                        "parts": [{"type": "text", "text": "start"}]
+                    }
+                }
+            }),
+            &kernel,
+            &execution,
+        );
+
+        assert!(rejected["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("too many deferred tasks"));
     }
 
     #[test]

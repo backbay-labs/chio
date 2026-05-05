@@ -31,13 +31,13 @@ impl TerminalGuard {
             ));
         }
 
-        // Extract the base command name (strip any directory prefix).
-        let base = command.rsplit('/').next().unwrap_or(command);
+        if command.is_empty() {
+            return Err(AcpProxyError::AccessDenied(
+                "terminal denied: empty command".to_string(),
+            ));
+        }
 
-        let allowed = self
-            .allowed_commands
-            .iter()
-            .any(|c| c == base || c == command);
+        let allowed = self.allowed_commands.iter().any(|c| c == command);
 
         if !allowed {
             return Err(AcpProxyError::AccessDenied(format!(

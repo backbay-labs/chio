@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+use crate::exporters::require_https_endpoint;
 use crate::ocsf::receipt_to_ocsf;
 
 const DEFAULT_OCSF_TIMEOUT: Duration = Duration::from_secs(30);
@@ -93,20 +94,28 @@ impl OcsfExporter {
         Ok(Self { config, client })
     }
 
+    /// Construct an [`OcsfExporter`] without TLS scheme validation.
+    ///
+    /// This constructor is intended for integration tests that run against a
+    /// local mock server over plain HTTP. Do NOT use this in production code:
+    /// it bypasses the HTTPS enforcement that protects receipt export.
+    pub fn new_plaintext_for_tests(config: OcsfExporterConfig) -> Result<Self, ExportError> {
+        let client = reqwest::Client::builder()
+            .timeout(config.timeout)
+            .build()
+            .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
+        Ok(Self { config, client })
+    }
+
     fn validate_endpoint_security(config: &OcsfExporterConfig) -> Result<(), ExportError> {
-        if config.endpoint.trim().is_empty() || config.bearer_token.is_none() {
+        if config.endpoint.trim().is_empty() {
             return Ok(());
         }
 
-        let parsed = url::Url::parse(&config.endpoint)
-            .map_err(|e| ExportError::HttpError(format!("invalid OCSF sink endpoint URL: {e}")))?;
-        if parsed.scheme().eq_ignore_ascii_case("https") {
-            return Ok(());
-        }
-
-        Err(ExportError::HttpError(
-            "OCSF bearer-token export requires an https endpoint".to_string(),
-        ))
+        require_https_endpoint(
+            &config.endpoint,
+            "OCSF receipt export requires an https endpoint",
+        )
     }
 
     /// Produce one OCSF JSON object per receipt without performing I/O.
@@ -227,5 +236,18 @@ mod tests {
         let cfg = OcsfExporterConfig::default();
         assert!(cfg.endpoint.is_empty());
         assert!(cfg.bearer_token.is_none());
+    }
+
+    #[test]
+    fn new_rejects_plain_http_endpoint_without_bearer_token() {
+        let cfg = OcsfExporterConfig {
+            endpoint: "http://example.test/ocsf".to_string(),
+            ..OcsfExporterConfig::default()
+        };
+        let Err(error) = OcsfExporter::new(cfg) else {
+            panic!("plain HTTP OCSF endpoint should be rejected");
+        };
+
+        assert!(error.to_string().contains("https"));
     }
 }

@@ -92,7 +92,7 @@ async fn webhook_posts_with_bearer_auth() {
         },
         ..WebhookConfig::default()
     };
-    let exporter = WebhookExporter::new(config).expect("builds");
+    let exporter = WebhookExporter::new_plaintext_for_tests(config).expect("builds");
 
     let events = vec![SiemEvent::from_receipt(allow_receipt("wh-001"))];
     let result = exporter.export_batch(&events).await;
@@ -141,7 +141,7 @@ async fn webhook_retries_on_5xx_then_succeeds() {
         },
         ..WebhookConfig::default()
     };
-    let exporter = WebhookExporter::new(config).expect("builds");
+    let exporter = WebhookExporter::new_plaintext_for_tests(config).expect("builds");
 
     let events = vec![SiemEvent::from_receipt(allow_receipt("wh-retry"))];
     let result = exporter.export_batch(&events).await;
@@ -176,7 +176,7 @@ async fn webhook_fails_fast_on_400() {
         },
         ..WebhookConfig::default()
     };
-    let exporter = WebhookExporter::new(config).expect("builds");
+    let exporter = WebhookExporter::new_plaintext_for_tests(config).expect("builds");
 
     let events = vec![SiemEvent::from_receipt(allow_receipt("wh-400"))];
     let result = exporter.export_batch(&events).await;
@@ -210,7 +210,7 @@ async fn webhook_errors_redact_url_secrets() {
         },
         ..WebhookConfig::default()
     };
-    let exporter = WebhookExporter::new(config).expect("builds");
+    let exporter = WebhookExporter::new_plaintext_for_tests(config).expect("builds");
 
     let events = vec![SiemEvent::from_receipt(allow_receipt("wh-redact-url"))];
     let result = exporter.export_batch(&events).await;
@@ -252,7 +252,7 @@ async fn webhook_filters_by_min_severity() {
         },
         ..WebhookConfig::default()
     };
-    let exporter = WebhookExporter::new(config).expect("builds");
+    let exporter = WebhookExporter::new_plaintext_for_tests(config).expect("builds");
 
     // Allow receipts sit at Info severity, below the High threshold.
     let events = vec![SiemEvent::from_receipt(allow_receipt("wh-filtered"))];
@@ -281,7 +281,7 @@ async fn webhook_exclude_guards_drops_matching_events() {
         },
         ..WebhookConfig::default()
     };
-    let exporter = WebhookExporter::new(config).expect("builds");
+    let exporter = WebhookExporter::new_plaintext_for_tests(config).expect("builds");
 
     let events = vec![SiemEvent::from_receipt(deny_receipt(
         "wh-excl",

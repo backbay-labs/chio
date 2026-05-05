@@ -160,7 +160,7 @@ fn pricing_hint_with_scope(
 }
 
 fn listing_entry(
-    registry_keypair: &Keypair,
+    _registry_keypair: &Keypair,
     operator_keypair: &Keypair,
     status: GenericListingStatus,
     price_units: u64,
@@ -168,7 +168,7 @@ fn listing_entry(
 ) -> Listing {
     Listing {
         rank: 1,
-        listing: signed_listing(registry_keypair, "listing-1", status),
+        listing: signed_listing(operator_keypair, "listing-1", status),
         pricing: pricing_hint(
             operator_keypair,
             "listing-1",
@@ -223,7 +223,7 @@ fn resign_bid_request(agent_keypair: &Keypair, request: &BidRequest) -> SignedBi
 fn bid_happy_path_mints_token_and_accept_records_settlement() {
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     let listing = listing_entry(
         &registry_keypair,
@@ -263,7 +263,7 @@ fn bid_happy_path_mints_token_and_accept_records_settlement() {
 fn accept_rejects_timestamp_before_ask_issuance() {
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     let listing = listing_entry(
         &registry_keypair,
@@ -297,7 +297,7 @@ fn accept_rejects_timestamp_before_ask_issuance() {
 fn bid_fails_closed_on_stale_listing_freshness() {
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     let mut listing = listing_entry(
         &registry_keypair,
@@ -326,7 +326,7 @@ fn bid_fails_closed_on_stale_listing_freshness() {
 fn bid_fails_closed_on_revoked_listing() {
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     let listing = listing_entry(
         &registry_keypair,
@@ -354,7 +354,7 @@ fn bid_fails_closed_on_revoked_listing() {
 fn bid_refuses_mismatched_listing_id() {
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     let listing = listing_entry(
         &registry_keypair,
@@ -385,7 +385,7 @@ fn bid_refuses_mismatched_listing_id() {
 fn bid_allows_deeper_scope_prefix_without_rewriting_tool_name() {
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     let mut listing = listing_entry(
         &registry_keypair,
@@ -427,7 +427,7 @@ fn bid_allows_deeper_scope_prefix_without_rewriting_tool_name() {
 fn bid_rejects_sibling_scope_prefixes() {
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     let listing = listing_entry(
         &registry_keypair,
@@ -460,7 +460,7 @@ fn bid_rejects_sibling_scope_prefixes() {
 fn accept_refuses_empty_bid_receipt_id() {
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     let listing = listing_entry(
         &registry_keypair,
@@ -493,7 +493,7 @@ fn bid_rejects_max_total_cost_overflow_instead_of_silently_saturating() {
     // u64::MAX rather than rejecting the bid.
     let registry_keypair = Keypair::generate();
     let operator_keypair = Keypair::generate();
-    let issuer_keypair = Keypair::generate();
+    let issuer_keypair = operator_keypair.clone();
     let agent_keypair = Keypair::generate();
     // Advertise a price near the top of u64; any non-trivial
     // max_invocations will overflow the multiplication.
