@@ -46,13 +46,18 @@ import json, sys
 with open(sys.argv[1]) as fh:
     doc = json.load(fh)
 for t in doc.get("threats", []):
-    tid = t.get("id", "")
-    state = t.get("coverage_state", "")
-    deferred_to = t.get("deferred_to", "")
+    tid = (t.get("id") or "").strip()
+    state = (t.get("coverage_state") or "").strip()
+    # Treat JSON null and whitespace-only strings as missing; the
+    # schema also enforces minLength=1, this is the runtime backstop.
+    deferred_to = (t.get("deferred_to") or "").strip()
     print(f"{tid}\t{state}\t{deferred_to}")
 PY
     elif command -v jq >/dev/null 2>&1; then
-        jq -r '.threats[] | "\(.id)\t\(.coverage_state // "")\t\(.deferred_to // "")"' "$THREAT_MODEL"
+        # `// ""` collapses null AND missing into empty string; the
+        # gsub then strips leading/trailing whitespace so a
+        # whitespace-only deferred_to still fails the gate.
+        jq -r '.threats[] | "\(.id // "" | gsub("^\\s+|\\s+$"; ""))\t\(.coverage_state // "" | gsub("^\\s+|\\s+$"; ""))\t\(.deferred_to // "" | gsub("^\\s+|\\s+$"; ""))"' "$THREAT_MODEL"
     else
         echo "error: need python3 or jq to parse threat-model JSON" >&2
         exit 1

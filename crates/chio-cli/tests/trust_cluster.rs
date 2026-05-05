@@ -636,6 +636,20 @@ fn wait_for_cluster_leader_convergence(
                 let Some(current_leader) = health.get("leaderUrl").and_then(Value::as_str) else {
                     return false;
                 };
+                // Also require the internal cluster status endpoint to be queryable on every
+                // node and to agree on the same leader. Without this, callers can race between
+                // /health (which is up early) and /v1/internal/cluster/status (which depends on
+                // the cluster state machine being initialized) and observe a transient None.
+                let Some(status) = try_internal_cluster_status(client, base_url, service_token)
+                else {
+                    return false;
+                };
+                if status.get("leaderUrl").and_then(Value::as_str) != Some(current_leader) {
+                    return false;
+                }
+                if status.get("hasQuorum").and_then(Value::as_bool) != Some(true) {
+                    return false;
+                }
                 if let Some(expected_leader) = observed.as_deref() {
                     if expected_leader != current_leader {
                         return false;
@@ -650,6 +664,38 @@ fn wait_for_cluster_leader_convergence(
         || cluster_status_diagnostics(client, urls, service_token),
     );
     converged_leader.expect("converged leader url")
+}
+
+/// Polls `try_internal_cluster_status` against `base_url` until it returns `Some`.
+///
+/// The internal cluster status endpoint can transiently fail with HTTP errors during cluster
+/// state transitions (initial bring-up, leader failover, follower restart) even when the node's
+/// `/health` endpoint is already up. Single-shot callers that immediately panic on `None` are
+/// the source of intermittent flakes (see the `initial cluster status` failure on PR #528 CI).
+/// This helper bounds the wait with a deadline and returns the first non-`None` snapshot.
+fn wait_for_internal_cluster_status(
+    client: &Client,
+    base_url: &str,
+    token: &str,
+    label: &str,
+) -> Value {
+    let timeout = Duration::from_secs(30);
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if let Some(status) = try_internal_cluster_status(client, base_url, token) {
+            return status;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let diagnostics = json!({
+        "baseUrl": base_url,
+        "health": try_get_json(client, &format!("{base_url}/health"), token),
+        "clusterStatus": try_internal_cluster_status(client, base_url, token),
+    });
+    panic!(
+        "internal cluster status `{label}` did not become available before timeout\n{}",
+        serde_json::to_string_pretty(&diagnostics).expect("serialize timeout diagnostics")
+    );
 }
 
 fn sample_receipt(id: &str, capability_id: &str) -> ChioReceipt {
@@ -2009,8 +2055,8 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         "initial authority leader convergence",
     );
     assert_eq!(initial_leader, url_a);
-    let initial_status = try_internal_cluster_status(&client, &url_b, service_token)
-        .expect("initial cluster status");
+    let initial_status =
+        wait_for_internal_cluster_status(&client, &url_b, service_token, "initial cluster status");
     let initial_term = initial_status["authorityLease"]["term"]
         .as_u64()
         .expect("initial authority lease term");
@@ -2040,8 +2086,12 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         || cluster_status_diagnostics(&client, &majority_urls, service_token),
     );
 
-    let failover_status = try_internal_cluster_status(&client, &url_b, service_token)
-        .expect("failover status after leader loss");
+    let failover_status = wait_for_internal_cluster_status(
+        &client,
+        &url_b,
+        service_token,
+        "failover status after leader loss",
+    );
     let failover_term = failover_status["authorityLease"]["term"]
         .as_u64()
         .expect("failover authority term");
@@ -2070,8 +2120,12 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         &urls,
         "restarted cluster reconverges after old leader returns",
     );
-    let restarted_status = try_internal_cluster_status(&client, &restarted_leader, service_token)
-        .expect("restarted cluster status");
+    let restarted_status = wait_for_internal_cluster_status(
+        &client,
+        &restarted_leader,
+        service_token,
+        "restarted cluster status",
+    );
     let restarted_term = restarted_status["authorityLease"]["term"]
         .as_u64()
         .expect("restarted authority term");

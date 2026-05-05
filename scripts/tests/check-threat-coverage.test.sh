@@ -93,4 +93,41 @@ write_stub "pending_missing_deferred_threat" 'unimplemented!("missing deferred_t
 assert_fails "pending without deferred_to"
 grep -q "pending without deferred_to" "$ERR"
 
+# Edge case: whitespace-only deferred_to must be rejected; the schema
+# enforces minLength=1 but this runtime gate is the second backstop.
+reset_fixture
+python3 - "$MODEL" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as fh:
+    json.dump({"threats": [{
+        "id": "pending_whitespace_deferred",
+        "name": "Pending Whitespace Deferred",
+        "surfaces": ["native_chio"],
+        "coverage_state": "pending",
+        "deferred_to": "   ",
+    }]}, fh)
+    fh.write("\n")
+PY
+write_stub "pending_whitespace_deferred" 'unimplemented!("whitespace deferred_to");'
+assert_fails "pending with whitespace-only deferred_to"
+grep -q "pending without deferred_to" "$ERR"
+
+# Edge case: JSON null deferred_to must be rejected the same as missing.
+reset_fixture
+python3 - "$MODEL" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as fh:
+    json.dump({"threats": [{
+        "id": "pending_null_deferred",
+        "name": "Pending Null Deferred",
+        "surfaces": ["native_chio"],
+        "coverage_state": "pending",
+        "deferred_to": None,
+    }]}, fh)
+    fh.write("\n")
+PY
+write_stub "pending_null_deferred" 'unimplemented!("null deferred_to");'
+assert_fails "pending with null deferred_to"
+grep -q "pending without deferred_to" "$ERR"
+
 echo "PASS: check-threat-coverage state matrix"

@@ -23,6 +23,7 @@ on:
       - "crates/chio-conformance/tests/threats/**"
       - "crates/chio-spec-codegen/src/threat_model.rs"
       - "scripts/check-threat-coverage.sh"
+      - "scripts/tests/check-threat-coverage.test.sh"
       - ".github/workflows/threat-model-coverage.yml"
   push:
     branches:
@@ -57,6 +58,9 @@ jobs:
 
       - name: Run threat-model coverage gate
         run: bash scripts/check-threat-coverage.sh
+
+      - name: Self-test the coverage gate (state matrix)
+        run: bash scripts/tests/check-threat-coverage.test.sh
 
       - name: Cargo test - threat_model_schema_test
         run: cargo test -p chio-spec-codegen --test threat_model_schema_test

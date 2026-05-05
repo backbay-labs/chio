@@ -33,6 +33,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         with:
           targets: wasm32-unknown-unknown
+      # rust-toolchain.toml pins the channel (e.g. 1.93.0) and overrides the
+      # `stable` toolchain that dtolnay/rust-toolchain installs above. The
+      # action installs wasm32-unknown-unknown for stable; we also need it
+      # for the pinned channel that cargo will actually invoke. Idempotent.
+      - name: Ensure wasm32 target on pinned toolchain
+        run: rustup target add wasm32-unknown-unknown
       - name: Install wasm-pack (pinned)
         run: cargo install wasm-pack --version "$(cat .tooling/wasm-pack.version)" --locked
       - name: Install wasm-bindgen-cli (pinned)
@@ -125,6 +131,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         with:
           targets: wasm32-unknown-unknown
+      - name: Ensure wasm32 target on pinned toolchain
+        run: rustup target add wasm32-unknown-unknown
       - name: Install wasm-pack (pinned)
         run: cargo install wasm-pack --version "$(cat .tooling/wasm-pack.version)" --locked
       - name: Browser canonical JSON differential

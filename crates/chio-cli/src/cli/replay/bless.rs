@@ -75,7 +75,29 @@ mod replay_bless_tests {
     use chio_tee_frame::{Frame, FrameInputs, Otel, Provenance, Upstream, UpstreamSystem, Verdict};
     use chio_tool_call_fabric::{Principal, ProvenanceStamp, ProviderId, ToolInvocation};
     use ed25519_dalek::{Signer, SigningKey};
+    use std::sync::{Mutex, OnceLock};
     use std::time::SystemTime;
+
+    fn replay_bless_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct ReplayBlessEnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl Drop for ReplayBlessEnvGuard {
+        fn drop(&mut self) {
+            std::env::remove_var(REPLAY_BLESS_CAPABILITY_ENV);
+        }
+    }
+
+    fn set_replay_bless_capability() -> ReplayBlessEnvGuard {
+        let lock = replay_bless_env_lock().lock().unwrap();
+        std::env::set_var(REPLAY_BLESS_CAPABILITY_ENV, REPLAY_BLESS_CAPABILITY);
+        ReplayBlessEnvGuard { _lock: lock }
+    }
 
     fn signing_keypair() -> SigningKey {
         SigningKey::from_bytes(&[19u8; 32])
@@ -146,6 +168,7 @@ mod replay_bless_tests {
 
     #[test]
     fn bless_dispatch_writes_fixture_when_capability_is_present() {
+        let _env_guard = set_replay_bless_capability();
         let tmp = tempfile::TempDir::new().unwrap();
         let keypair = signing_keypair();
         let pubkey = tmp.path().join("tenant.pub");
@@ -153,7 +176,6 @@ mod replay_bless_tests {
         let capture = tmp.path().join("capture.ndjson");
         fs::write(&capture, format!("{}\n", frame_json(&keypair))).unwrap();
         let into = tmp.path().join("family").join("name");
-        std::env::set_var(REPLAY_BLESS_CAPABILITY_ENV, REPLAY_BLESS_CAPABILITY);
 
         let args = ReplayArgs {
             log: Some(capture.clone()),
@@ -168,7 +190,6 @@ mod replay_bless_tests {
         };
 
         cmd_replay_bless(&args, &capture).unwrap();
-        std::env::remove_var(REPLAY_BLESS_CAPABILITY_ENV);
 
         assert!(into.join(chio_replay_corpus::RECEIPTS_FILENAME).is_file());
         let receipts =
@@ -179,12 +200,12 @@ mod replay_bless_tests {
 
     #[test]
     fn bless_dispatch_requires_tenant_pubkey() {
+        let _env_guard = set_replay_bless_capability();
         let tmp = tempfile::TempDir::new().unwrap();
         let keypair = signing_keypair();
         let capture = tmp.path().join("capture.ndjson");
         fs::write(&capture, format!("{}\n", frame_json(&keypair))).unwrap();
         let into = tmp.path().join("family").join("name");
-        std::env::set_var(REPLAY_BLESS_CAPABILITY_ENV, REPLAY_BLESS_CAPABILITY);
 
         let args = ReplayArgs {
             log: Some(capture.clone()),
@@ -199,7 +220,6 @@ mod replay_bless_tests {
         };
 
         let err = cmd_replay_bless(&args, &capture).unwrap_err();
-        std::env::remove_var(REPLAY_BLESS_CAPABILITY_ENV);
 
         assert!(err
             .to_string()

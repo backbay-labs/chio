@@ -2997,6 +2997,50 @@ mod attestation_and_telemetry_tests {
     }
 
     #[test]
+    fn compliance_certificate_rejects_mixed_kernel_keys() {
+        let signer_a = Keypair::generate();
+        let signer_b = Keypair::generate();
+        assert_ne!(signer_a.public_key(), signer_b.public_key());
+        let config = ComplianceConfig::default();
+        let now = now_secs();
+        let entries = vec![
+            ComplianceReceiptEntry {
+                receipt: make_receipt(
+                    &signer_a,
+                    "receipt-a",
+                    now,
+                    "fs/read_text_file",
+                    Decision::Allow,
+                    Vec::new(),
+                ),
+                seq: 0,
+            },
+            ComplianceReceiptEntry {
+                receipt: make_receipt(
+                    &signer_b,
+                    "receipt-b",
+                    now + 1,
+                    "fs/read_text_file",
+                    Decision::Allow,
+                    Vec::new(),
+                ),
+                seq: 1,
+            },
+        ];
+        let result =
+            generate_compliance_certificate("session-mixed-keys", &entries, &config, &signer_a);
+        assert!(
+            matches!(
+                result,
+                Err(ComplianceCertificateError::KernelKeyMismatch { ref receipt_id })
+                if receipt_id == "receipt-b"
+            ),
+            "expected KernelKeyMismatch on heterogeneous kernel keys, got: {:?}",
+            result.as_ref().err()
+        );
+    }
+
+    #[test]
     fn compliance_certificate_round_trips_and_detects_full_bundle_tampering() {
         let signer = Keypair::generate();
         let now = now_secs();
