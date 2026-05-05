@@ -32,8 +32,21 @@ thread_local! {
 /// The caller must ensure that `ptr` and `len` describe a valid region of
 /// guest memory containing a UTF-8 JSON-encoded `GuardRequest`. The host
 /// writes this data via the WASM memory export before calling `evaluate`.
+///
+/// As a defense-in-depth measure, this function rejects non-positive `ptr`
+/// values and negative `len` values with a deserialization error rather
+/// than dereferencing them. A negative `len` cast to `usize` would otherwise
+/// produce an enormous slice and trigger undefined behavior. Guard authors
+/// should still treat the function as `unsafe` because the host is trusted
+/// to keep ptr/len within the guest's linear memory.
 #[inline]
 pub unsafe fn read_request(ptr: i32, len: i32) -> Result<GuardRequest, String> {
+    if ptr <= 0 || len < 0 {
+        return Err("invalid guest request pointer or length".to_owned());
+    }
+    if len == 0 {
+        return serde_json::from_slice(&[]).map_err(|e| e.to_string());
+    }
     let slice = core::slice::from_raw_parts(ptr as *const u8, len as usize);
     serde_json::from_slice(slice).map_err(|e| e.to_string())
 }
@@ -232,6 +245,32 @@ mod tests {
         let bad_json = b"not valid json";
         let result = serde_json::from_slice::<GuardRequest>(bad_json);
         assert!(result.is_err(), "Invalid JSON should fail deserialization");
+    }
+
+    #[test]
+    fn read_request_rejects_negative_length() {
+        // Defense-in-depth: a hostile or buggy host that supplies a negative
+        // `len` must not dereference the resulting slice. The function is
+        // documented unsafe but should still reject this without UB.
+        let result = unsafe { super::read_request(0x1000, -1) };
+        assert!(
+            result.is_err(),
+            "negative length should fail-closed without dereferencing"
+        );
+    }
+
+    #[test]
+    fn read_request_rejects_zero_or_negative_pointer() {
+        let result = unsafe { super::read_request(0, 4) };
+        assert!(
+            result.is_err(),
+            "zero pointer should fail-closed without dereferencing"
+        );
+        let result = unsafe { super::read_request(-1, 4) };
+        assert!(
+            result.is_err(),
+            "negative pointer should fail-closed without dereferencing"
+        );
     }
 
     #[test]
