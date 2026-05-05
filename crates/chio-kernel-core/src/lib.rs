@@ -51,6 +51,7 @@
 
 extern crate alloc;
 
+pub mod budget_split;
 pub mod capability_verify;
 pub mod clock;
 pub mod evaluate;
@@ -67,6 +68,10 @@ pub mod revocation_view;
 pub mod rng;
 pub mod scope;
 
+pub use budget_split::{
+    BudgetRegistry, BudgetSplit, BudgetSplitError, InMemoryBudgetRegistry, NoopBudgetRegistry,
+    MAX_BUDGET_SHARE_BPS,
+};
 pub use capability_verify::{
     verify_capability, verify_capability_with_floor, verify_capability_with_floor_and_resolver,
     verify_capability_with_floor_and_trust_root, verify_capability_with_negotiated_floor,
@@ -74,7 +79,8 @@ pub use capability_verify::{
 };
 pub use clock::{Clock, FixedClock};
 pub use evaluate::{
-    evaluate, evaluate_with_crypto_floor, EvaluateInput, EvaluationVerdict, KernelCoreError,
+    evaluate, evaluate_with_crypto_floor, evaluate_with_crypto_floor_and_budgets, EvaluateInput,
+    EvaluationVerdict, KernelCoreError,
 };
 pub use guard::{Guard, GuardContext, PortableToolCallRequest};
 pub use normalized::{

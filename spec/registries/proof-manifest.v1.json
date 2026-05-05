@@ -52,6 +52,17 @@
       ]
     },
     {
+      "id": "manifest.capability.budget_split",
+      "claim_ref": "claim.capability.budget_split",
+      "introduced_by": "trajectory-4/W1.2",
+      "evidence": [
+        {"kind": "lean_theorem", "ref": "theorem.budget.sibling_sum_soundness"},
+        {"kind": "rust_test", "ref": "crates/chio-kernel-core/src/budget_split.rs::second_oversubscribed_sibling_is_rejected"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs::parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs::parent_5000_child_4000_two_grandchildren_3000_each_second_rejected"}
+      ]
+    },
+    {
       "id": "manifest.capability.attenuation_proof",
       "claim_ref": "claim.capability.attenuation_proof",
       "introduced_by": "trajectory-4/W1.1",

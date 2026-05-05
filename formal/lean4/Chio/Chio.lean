@@ -15,4 +15,5 @@ import Chio.Proofs.AeneasEquivalence
 import Chio.Proofs.FormalClosure
 import Chio.Proofs.AttenuationWitness
 import Chio.Proofs.HandshakeNegotiation
+import Chio.Proofs.SiblingSumBudget
 import Chio.Capability.Delegation

@@ -353,6 +353,9 @@ pub fn verify_capability(
             CapabilityError::AttenuationViolation(message) => ChioMobileError::InvalidCapability {
                 message: format!("capability rejected by chain binding: {message}"),
             },
+            CapabilityError::BudgetSplitRejected(err) => ChioMobileError::InvalidCapability {
+                message: format!("capability rejected by sibling-sum budget split: {err}"),
+            },
             CapabilityError::Internal(msg) => ChioMobileError::Internal {
                 message: format!("capability verification failed: {msg}"),
             },

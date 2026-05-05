@@ -275,12 +275,12 @@
     {
       "id": "C-4",
       "title": "SubAgentBudgetPropagation",
-      "bucket": "NONE",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
-      "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs",
+      "theorem_status": "proposed",
+      "wave": "03",
+      "notes": "W1.2: BudgetRegistry trait + InMemoryBudgetRegistry shipped at chio-kernel-core/src/budget_split.rs; ChioKernel wires a process-scoped registry into evaluate_portable_verdict; cross-hop enforcement covered by budget_split_cross_hop_rejects_amplification.rs; theorem.budget.sibling_sum_soundness at formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean (status=assumed pending Lean toolchain)"
     },
     {
       "id": "C-5",
@@ -1385,12 +1385,12 @@
     {
       "id": "close-bar-#16",
       "title": "SubAgentBudgetPropagation enforced at join, using fixed-point integer share units",
-      "bucket": "NONE",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs",
+      "theorem_status": "proposed",
       "wave": "03",
-      "notes": "BudgetSplit not in v2 token; integer-fixed-point representation not yet shipped"
+      "notes": "W1.2: BudgetSplit type + BudgetRegistry trait shipped; verifier consults registry on every delegated child via verify_capability_with_floor; ChioKernel wires InMemoryBudgetRegistry into evaluate_portable_verdict; fixed-point u16 basis-point share representation enforced at admit time"
     },
     {
       "id": "close-bar-#17",

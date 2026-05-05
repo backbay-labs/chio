@@ -415,6 +415,44 @@ The Lean theorem `theorem.attenuation.witness_soundness` in
 chain-binding check, and the Rust shell is exercised by
 `crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`.
 
+#### Sibling-Sum Budget Enforcement (W1.2)
+
+The `<= 10000 bps` per-token cap is necessary but not sufficient: a parent
+at `5000 bps` could mint two children at `4000 bps` each, and per-token
+validation would happily accept both, letting the children jointly claim
+80% of the parent's authority while the parent itself only owns 50%. The
+W1.2 fix closes that gap with a registry hook at the verifier:
+
+- The portable verifier maintains a per-parent `BudgetRegistry` (in-process
+  by default, via `chio_kernel_core::InMemoryBudgetRegistry`).
+- When the verifier admits a freshly delegated child token, it asks the
+  registry whether the parent has enough remaining headroom. If the
+  running sum of admitted sibling shares plus the new child's share
+  would exceed the parent's share, the registry rejects the child and
+  verification fails closed with
+  `CapabilityError::BudgetSplitRejected(BudgetSplitError::OversubscribedSiblings)`.
+- The check composes across hops: a grandchild's admission is checked
+  against its immediate parent's admitted share, not just the root, so
+  cross-hop amplification (parent 5000, child 4000, two grandchildren
+  3000 each) is rejected fail-closed at the second grandchild.
+- Idempotency: re-admitting the same child id with the same share is a
+  silent success; a different share for the same id is a hard failure
+  because it would let an attacker rewrite the split after the fact.
+- Overflow safety: the running sum is computed in `u32` so two
+  `u16::MAX` siblings cannot wrap around the cap.
+
+The kernel-side entry point is
+`chio_kernel_core::evaluate_with_crypto_floor_and_budgets(input,
+crypto_floor, &mut dyn BudgetRegistry)`. Hosted callers
+(`chio-kernel`) instantiate a process-scoped `InMemoryBudgetRegistry`
+and pass it through; portable callers can supply their own
+`BudgetRegistry` implementation against external storage. The Lean
+theorem `theorem.budget.sibling_sum_soundness` in
+`formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean` models the
+admit check, and the Rust shell is exercised by
+`crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
+and `crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
+
 ### 5.2 Governed Transaction Extensions
 
 Tool-call requests may attach two optional governed artifacts:

@@ -1072,6 +1072,14 @@ pub struct ChioKernel {
     /// shape is feature-flag agnostic; consultation is gated by
     /// `cfg(feature = "delegation_v2")` on the read path.
     revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
+    /// W1.2 sibling-sum budget registry. Tracks admitted child shares
+    /// against each parent capability so a delegated chain cannot mint
+    /// two children whose `budget_share_bps` jointly exceed the parent's
+    /// own share. Wrapped in `Mutex` because the registry interface
+    /// takes `&mut dyn BudgetRegistry`; contention is negligible
+    /// because the lock is held only for the duration of one
+    /// `try_admit_child` call inside the verifier.
+    budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
 }
 
 #[derive(Clone, Copy)]
@@ -1452,6 +1460,7 @@ impl ChioKernel {
             signing_task,
             settlement_observer: None,
             revocation_view: None,
+            budget_registry: Mutex::new(chio_kernel_core::InMemoryBudgetRegistry::new()),
         }
     }
 
@@ -3633,7 +3642,16 @@ impl ChioKernel {
         session_filesystem_roots: Option<&'a [String]>,
     ) -> chio_kernel_core::EvaluationVerdict {
         let trusted = self.trusted_issuer_keys();
-        chio_kernel_core::evaluate_with_crypto_floor(
+        // W1.2 sibling-sum enforcement: hold the budget-registry lock
+        // for the duration of the verify step so two concurrent
+        // delegations cannot both observe the same residual headroom
+        // and admit beyond the parent's share. The registry is internally
+        // a deterministic BTreeMap; no async work happens under the lock.
+        let mut budgets = match self.budget_registry.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        chio_kernel_core::evaluate_with_crypto_floor_and_budgets(
             chio_kernel_core::EvaluateInput {
                 request,
                 capability,
@@ -3643,7 +3661,38 @@ impl ChioKernel {
                 session_filesystem_roots,
             },
             capability_crypto_floor(self.capability_crypto_floor),
+            &mut *budgets,
         )
+    }
+
+    /// W1.2: register a parent capability's `budget_share_bps` so
+    /// subsequent delegations are admitted against it. Hosted callers
+    /// should invoke this when a fresh capability enters the system
+    /// (issuance, federation gossip). Re-registering the same parent
+    /// with the same share is idempotent. The registry is the same one
+    /// consulted by [`Self::evaluate_portable_verdict`].
+    pub fn register_budget_parent(
+        &self,
+        parent_token_id: String,
+        parent_share_bps: u16,
+    ) -> Result<(), chio_kernel_core::BudgetSplitError> {
+        use chio_kernel_core::BudgetRegistry;
+        let mut budgets = match self.budget_registry.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        budgets.register_parent(parent_token_id, parent_share_bps)
+    }
+
+    /// W1.2: drop a parent's split from the registry. Idempotent on
+    /// unknown ids so revocation races do not abort verification.
+    pub fn evict_budget_parent(&self, parent_token_id: &str) {
+        use chio_kernel_core::BudgetRegistry;
+        let mut budgets = match self.budget_registry.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        budgets.evict_parent(parent_token_id);
     }
 
     /// Check the revocation store for the capability and its entire

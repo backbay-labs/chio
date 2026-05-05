@@ -477,6 +477,11 @@ fn capability_error_message(error: &chio_kernel_core::CapabilityError) -> String
             out.push_str(msg);
             out
         }
+        chio_kernel_core::CapabilityError::BudgetSplitRejected(err) => {
+            let mut out = String::from("capability rejected by sibling-sum budget split: ");
+            out.push_str(&err.to_string());
+            out
+        }
         chio_kernel_core::CapabilityError::Internal(msg) => {
             let mut out = String::from("capability verification failed: ");
             out.push_str(msg);
