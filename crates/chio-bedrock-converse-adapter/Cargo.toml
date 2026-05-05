@@ -25,6 +25,7 @@ aws-sdk-bedrockruntime = { workspace = true }
 aws-sdk-sts = "1"
 chio-attest-verify = { path = "../chio-attest-verify" }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-provider-adapter-core = { path = "../chio-provider-adapter-core" }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

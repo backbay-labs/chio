@@ -147,6 +147,7 @@ mod tests {
             tenant_id: None,
             recorded_at: Some(1),
             has_signed_lineage_statement: true,
+            signed_lineage_statement: None,
         }])
     }
 

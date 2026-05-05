@@ -13,3 +13,6 @@ Cargo.lock merge=cargo-lock-regen
 
 # Release audit reports are binary publication artifacts.
 releases/audit-reports/*.pdf binary
+
+# Mobile xcframework static archives are generated release artifacts.
+sdks/swift/Frameworks/ChioKernel.xcframework/**/*.a filter=lfs diff=lfs merge=lfs -text

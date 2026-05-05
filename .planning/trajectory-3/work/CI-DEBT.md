@@ -10,8 +10,8 @@ contains the merge commit of every PR below.
 
 ## Consolidated replay anchor
 
-- target_main_sha: TODO_TRJ3_1_CLOSE_SHA   (parent agent fills this in at trajectory-3.1 close)
-- target_run_url:  TODO_TRJ3_1_CLOSE_RUN   (parent agent fills this in once CI greens on the close commit)
+- target_main_sha: a9006addb7d0217727ef748e9a469b97617e6279
+- target_run_url:  https://github.com/bb-connor/arc/actions/runs/25354905044
 - replay_method:   consolidated-main-green-via-trajectory-3-1
 - replay_rationale: |
   Per the trajectory-3.1 prompt strategy 2-3, "trigger workflows on main

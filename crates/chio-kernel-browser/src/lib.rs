@@ -461,6 +461,11 @@ fn capability_error_message(error: &chio_kernel_core::CapabilityError) -> String
         chio_kernel_core::CapabilityError::InvalidSignature => {
             "capability signature did not verify".to_string()
         }
+        chio_kernel_core::CapabilityError::CryptoFloorRejected(msg) => {
+            let mut out = String::from("capability rejected by crypto floor: ");
+            out.push_str(msg);
+            out
+        }
         chio_kernel_core::CapabilityError::NotYetValid => {
             "capability is not yet valid (clock is before issued_at)".to_string()
         }

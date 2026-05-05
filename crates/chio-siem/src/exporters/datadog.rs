@@ -20,6 +20,7 @@ use std::time::Duration;
 use crate::alerting::{derive_severity, AlertSeverity};
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+use crate::redaction::redact_for_operator_log;
 use chio_core::receipt::Decision;
 
 /// Configuration for the Datadog Logs exporter.
@@ -169,6 +170,7 @@ impl DatadogExporter {
                 Decision::Cancelled { reason } => (false, "cancelled", reason.clone()),
                 Decision::Incomplete { reason } => (false, "incomplete", reason.clone()),
             };
+            let reason = redact_for_operator_log(reason);
 
             let severity = derive_severity(receipt);
 
@@ -247,6 +249,7 @@ impl Exporter for DatadogExporter {
                 .text()
                 .await
                 .unwrap_or_else(|_| "<unreadable body>".to_string());
+            let body = redact_for_operator_log(body);
             Err(ExportError::HttpError(format!(
                 "Datadog returned {status}: {body}"
             )))

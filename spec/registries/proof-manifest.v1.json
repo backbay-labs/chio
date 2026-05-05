@@ -57,47 +57,44 @@
       "id": "manifest.capability.attenuation_proof",
       "claim_ref": "claim.capability.attenuation_proof",
       "introduced_by": "trajectory-4/T1.1",
-      "evidence_proposed": [
+      "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_soundness"},
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_completeness"},
-        {"kind": "kani_harness", "ref": "crates/chio-core-types/kani/attenuation_witness.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/capability_v2_attenuation_proof.rs"}
+        {"kind": "rust_test", "ref": "crates/chio-core-types/src/capability.rs::attenuation_witness_roundtrip_and_forgery_rejection"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"}
       ]
     },
     {
       "id": "manifest.receipt.body_hash_addressing",
       "claim_ref": "claim.receipt.body_hash_addressing",
       "introduced_by": "trajectory-4/T1.2",
-      "evidence_proposed": [
+      "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.receipt.body_hash_input_set_pinned"},
         {"kind": "lean_theorem", "ref": "theorem.receipt.body_hash_collision_resistance"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_v2_body_hash_mismatch.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_v2_self_referential_hash.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_v2_legacy_id_tamper_no_replay_effect.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_v2_signature_without_body_hash_commit.rs"}
+        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_v2_body_hash_and_signature_fail_closed"},
+        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_v2_legacy_alias_does_not_affect_replay_identity"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::receipt_v2_negative_conformance_cases"}
       ]
     },
     {
       "id": "manifest.receipt.dag_acyclicity",
       "claim_ref": "claim.receipt.dag_acyclicity",
       "introduced_by": "trajectory-4/T1.2",
-      "evidence_proposed": [
+      "evidence": [
         {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"},
         {"kind": "lean_theorem", "ref": "theorem.receipt.dag_acyclicity"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_dag_cross_kernel_cycle_rejected.rs"}
+        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_v2_dag_rejects_non_increasing_ordinal"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::receipt_v2_dag_cycle_shape_rejected"}
       ]
     },
     {
       "id": "manifest.anchor.batch_continuity",
       "claim_ref": "claim.anchor.batch_continuity",
       "introduced_by": "trajectory-4/T1.3",
-      "evidence_proposed": [
+      "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.anchor.merkle_inclusion"},
         {"kind": "lean_theorem", "ref": "theorem.anchor.public_witness_anti_equivocation"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_forged_root.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_misordered_proof.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_witness_impersonation.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_stale_witness_fallback.rs"},
+        {"kind": "rust_test", "ref": "crates/chio-anchor/src/batch.rs::anchor_batch_roundtrip_and_negative_roots"},
         {"kind": "doc", "ref": "docs/security/public-witness-semantics.md"}
       ]
     },
@@ -105,10 +102,10 @@
       "id": "manifest.handshake.capability_negotiation",
       "claim_ref": "claim.handshake.capability_negotiation",
       "introduced_by": "trajectory-4/T1.0",
-      "evidence_proposed": [
+      "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.handshake.negotiation_safety"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/handshake_capability_negotiation_v1_v2_interop.rs"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/capability_v2_unknown_schema_rejected.rs"}
+        {"kind": "rust_test", "ref": "crates/chio-core-types/src/capability.rs::capability_negotiation_intersection_rejects_malformed_feature"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::capability_v2_unknown_schema_rejected"}
       ]
     },
     {
@@ -118,7 +115,21 @@
       "evidence_proposed": [
         {"kind": "lean_theorem", "ref": "theorem.signature.hybrid_soundness"},
         {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/capability_token_hybrid_round_trip.rs"},
+        {"kind": "schema_test", "ref": "crates/chio-core-types/tests/wire_protocol_schema.rs::capability_token_schema_accepts_live_hybrid_wire_values"},
         {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/cross_surface_hybrid_pq_interop.rs"}
+      ]
+    },
+    {
+      "id": "manifest.federation.conformance_tier",
+      "claim_ref": "claim.federation.conformance_tier",
+      "introduced_by": "trajectory-4/T2.1",
+      "evidence_proposed": [
+        {"kind": "lean_theorem", "ref": "theorem.federation.conformance_tier_gate"},
+        {"kind": "rust_test", "ref": "crates/chio-federation/tests/trust_establishment.rs::quorum_policy_rejects_peer_below_min_tier"},
+        {"kind": "rust_test", "ref": "crates/chio-federation/tests/trust_establishment.rs::conformance_tier_is_signed_and_pinned_at_handshake"},
+        {"kind": "conformance_fixture", "ref": "crates/chio-conformance/tests/cross_surface/t2_1_mcp_wrapped_no_bypass.json"},
+        {"kind": "conformance_fixture", "ref": "crates/chio-conformance/tests/cross_surface/t2_1_hosted_native_http_no_bypass.json"},
+        {"kind": "conformance_fixture", "ref": "crates/chio-conformance/tests/cross_surface/t2_1_a2a_http_edge_no_bypass.json"}
       ]
     }
   ]

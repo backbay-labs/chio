@@ -6,7 +6,7 @@ pub use chio_control_plane::{
     reputation, require_control_token, rotate_authority_keypair, scim_lifecycle, trust_control,
     CliError,
 };
-pub use chio_hosted_mcp as remote_mcp;
+pub use chio_mcp_remote as remote_mcp;
 
 use std::fs;
 use std::io::Write;
@@ -2656,6 +2656,20 @@ enum ReceiptCommands {
         /// Cursor for pagination (seq value to start after).
         #[arg(long)]
         cursor: Option<u64>,
+    },
+    /// Explain why a receipt was allowed or denied.
+    Explain {
+        /// Legacy receipt ID (`rcpt_...`) or v2 body_hash.
+        receipt_id: String,
+        /// Optional JSON file containing one v1 or v2 receipt.
+        #[arg(long)]
+        input_file: Option<PathBuf>,
+        /// Maximum parent depth to render.
+        #[arg(long, default_value_t = 8)]
+        depth: usize,
+        /// Maximum fanout siblings to render per level.
+        #[arg(long, default_value_t = 32)]
+        fanout_limit: usize,
     },
 }
 

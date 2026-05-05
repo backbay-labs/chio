@@ -6,8 +6,4 @@ pub use chio_control_plane::{
     enterprise_federation, issue_default_capabilities, load_or_create_authority_keypair, policy,
     rotate_authority_keypair, trust_control, CliError, JwtProviderProfile,
 };
-
-#[path = "../../chio-cli/src/remote_mcp.rs"]
-mod remote_mcp_impl;
-
-pub use remote_mcp_impl::{serve_http, RemoteServeHttpConfig};
+pub use chio_mcp_remote::{serve_http, RemoteServeHttpConfig};

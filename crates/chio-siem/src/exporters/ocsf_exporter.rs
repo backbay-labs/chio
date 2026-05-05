@@ -24,6 +24,7 @@ use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
 use crate::ocsf::receipt_to_ocsf;
+use crate::redaction::redact_for_operator_log;
 
 const DEFAULT_OCSF_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -212,6 +213,7 @@ impl Exporter for OcsfExporter {
                     .text()
                     .await
                     .unwrap_or_else(|_| "<unreadable body>".to_string());
+                let body_text = redact_for_operator_log(body_text);
                 return Err(ExportError::HttpError(format!(
                     "OCSF sink returned {status}: {body_text}"
                 )));

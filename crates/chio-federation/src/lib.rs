@@ -26,9 +26,13 @@ pub use revocation_gossip::{
     REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA, REVOCATION_ROOT_GOSSIP_SCHEMA,
 };
 pub use trust_establishment::{
-    FederationPeer, FederationPeerStore, HandshakeChallenge, InMemoryPeerStore,
-    KernelTrustExchange, KernelTrustExchangeConfig, PeerHandshakeEnvelope, PeerHandshakeError,
-    DEFAULT_HANDSHAKE_MAX_SKEW_SECS, DEFAULT_ROTATION_WINDOW_SECS, FEDERATION_HANDSHAKE_SCHEMA,
+    ConformanceEvidence, ConformanceTier, FederationPeer, FederationPeerStore, HandshakeChallenge,
+    InMemoryPeerStore, KernelTrustExchange, KernelTrustExchangeConfig, PeerHandshakeEnvelope,
+    PeerHandshakeError, QuorumPolicy, CONFORMANCE_BPS_DENOMINATOR, DEFAULT_HANDSHAKE_MAX_SKEW_SECS,
+    DEFAULT_ROTATION_WINDOW_SECS, FEDERATION_HANDSHAKE_SCHEMA, GOLD_MIN_KANI_TRUST_BOUNDARY_CRATES,
+    GOLD_MIN_MUTATION_KILL_BPS, GOLD_MIN_THREAT_COVERAGE_BPS,
+    SILVER_MIN_KANI_TRUST_BOUNDARY_CRATES, SILVER_MIN_MUTATION_KILL_BPS,
+    SILVER_MIN_THREAT_COVERAGE_BPS,
 };
 
 use std::collections::HashSet;

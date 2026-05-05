@@ -19,10 +19,12 @@
 //! and an issuer-side revocation hook. P1 only proves the verifier path
 //! returns typed `Err(_)` for malformed assertions.
 
-use webauthn_rs::prelude::{PasskeyAuthentication, PublicKeyCredential, Url, Webauthn};
-use webauthn_rs::WebauthnBuilder;
-
+#[cfg(feature = "passkey")]
 use crate::error::CustodyError;
+#[cfg(feature = "passkey")]
+use webauthn_rs::prelude::{PasskeyAuthentication, PublicKeyCredential, Url, Webauthn};
+#[cfg(feature = "passkey")]
+use webauthn_rs::WebauthnBuilder;
 
 /// Output of a successful assertion verification.
 ///
@@ -45,10 +47,12 @@ pub struct VerifiedAssertion {
 /// state. Per-assertion state (the [`PasskeyAuthentication`] handed back by
 /// `start_passkey_authentication`) is the caller's responsibility to
 /// persist across the issuer round trip.
+#[cfg(feature = "passkey")]
 pub struct PasskeyVerifier {
     inner: Webauthn,
 }
 
+#[cfg(feature = "passkey")]
 impl PasskeyVerifier {
     /// Build a verifier from a relying-party id and origin.
     ///
@@ -101,12 +105,13 @@ impl PasskeyVerifier {
 ///
 /// Uses `base64ct`'s constant-time encoder; padding is stripped because the
 /// WebAuthn spec encodes credential ids without padding.
+#[cfg(feature = "passkey")]
 fn base64_url_no_pad(bytes: &[u8]) -> String {
     use base64ct::{Base64UrlUnpadded, Encoding};
     Base64UrlUnpadded::encode_string(bytes)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "passkey"))]
 mod tests {
     use super::*;
 

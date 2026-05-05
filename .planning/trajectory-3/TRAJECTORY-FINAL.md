@@ -184,8 +184,8 @@ trajectory-3.1 to allow workflow YAML edits.
 
 ## Trajectory-3.1 close commit and replay anchor
 
-- **Trajectory-3.1 close main HEAD:** TODO_TRJ3_1_CLOSE_SHA
-- **Consolidated CI green run URL:** TODO_TRJ3_1_CLOSE_RUN
+- **Trajectory-3.1 close main HEAD:** `a9006addb7d0217727ef748e9a469b97617e6279`
+- **Consolidated CI green run URL:** `https://github.com/bb-connor/arc/actions/runs/25354905044`
 
 These two pointers are filled in once the trajectory-3.1 wave PRs all
 merge and a hosted CI run on the resulting main HEAD lands green. They

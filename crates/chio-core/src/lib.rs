@@ -31,6 +31,7 @@ pub use chio_core_types::message;
 pub use chio_core_types::pq;
 pub use chio_core_types::receipt;
 pub use chio_core_types::session;
+pub use chio_core_types::signed_artifact;
 pub use chio_listing as listing;
 pub use chio_market as market;
 pub use chio_open_market as open_market;
@@ -386,3 +387,8 @@ pub use web3::{
 
 pub use capability::{validate_attenuation, validate_delegation_chain};
 pub use chio_core_types::{AgentId, CapabilityId, ServerId};
+pub use signed_artifact::{
+    built_in_signed_artifact_registry, is_supported_signed_artifact_schema,
+    validate_signed_artifact_schema, SignedArtifactSchemaEntry, CHIO_ANCHOR_BATCH_V1_SCHEMA,
+    KNOWN_SIGNED_ARTIFACT_SCHEMAS,
+};

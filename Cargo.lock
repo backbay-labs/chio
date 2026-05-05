@@ -2518,6 +2518,7 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-manifest",
+ "chio-provider-adapter-core",
  "chio-tool-call-fabric",
  "serde",
  "serde_json",
@@ -2643,6 +2644,7 @@ dependencies = [
  "aws-sdk-sts",
  "chio-attest-verify",
  "chio-core-types",
+ "chio-provider-adapter-core",
  "chio-tool-call-fabric",
  "serde",
  "serde_json",
@@ -2699,6 +2701,7 @@ dependencies = [
  "chio-lineage",
  "chio-listing",
  "chio-mcp-adapter",
+ "chio-mcp-remote",
  "chio-open-market",
  "chio-policy",
  "chio-replay-corpus",
@@ -2751,6 +2754,7 @@ name = "chio-cohere-tools-adapter"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-provider-adapter-core",
  "chio-tool-call-fabric",
  "serde",
  "serde_json",
@@ -2772,16 +2776,24 @@ dependencies = [
 name = "chio-conformance"
 version = "0.1.0"
 dependencies = [
+ "base64ct",
  "chio-adversarial-suite",
  "chio-core-types",
+ "chio-custody-hw",
+ "chio-guards",
+ "chio-http-core",
+ "chio-http-session",
  "chio-kernel",
  "chio-kernel-browser",
  "chio-weights",
  "chrono",
+ "coset",
+ "jsonwebtoken",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
  "tiny_http",
  "toml 0.8.23",
@@ -3120,6 +3132,7 @@ name = "chio-gemini-tools-adapter"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-provider-adapter-core",
  "chio-tool-call-fabric",
  "serde",
  "serde_json",
@@ -3142,6 +3155,7 @@ name = "chio-groq-tools-adapter"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-provider-adapter-core",
  "chio-tool-call-fabric",
  "serde",
  "serde_json",
@@ -3216,6 +3230,7 @@ dependencies = [
  "chio-core-types",
  "chio-kernel",
  "chio-mcp-adapter",
+ "chio-mcp-remote",
  "chio-siem",
  "chio-store-sqlite",
  "p256 0.13.2",
@@ -3250,6 +3265,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 1.0.69",
  "tokio",
+ "url",
  "uuid",
 ]
 
@@ -3280,7 +3296,9 @@ dependencies = [
  "chio-kernel-core",
  "chio-link",
  "chio-listing",
+ "chio-log-redact",
  "chio-market",
+ "chio-metrics-spec",
  "chio-open-market",
  "chio-settle",
  "chio-store-sqlite",
@@ -3341,11 +3359,13 @@ name = "chio-kernel-mobile"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-custody-hw",
  "chio-kernel-core",
  "getrandom 0.2.17",
  "hex",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "uniffi",
 ]
 
@@ -3384,6 +3404,16 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-log-redact"
+version = "0.1.0"
+dependencies = [
+ "chio-data-guards-redactors-default",
+ "thiserror 1.0.69",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3475,6 +3505,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-mcp-remote"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "axum 0.8.8",
+ "base64 0.22.1",
+ "chio-control-plane",
+ "chio-core-types",
+ "chio-kernel",
+ "chio-mcp-adapter",
+ "chio-siem",
+ "chio-store-sqlite",
+ "p256 0.13.2",
+ "p384",
+ "reqwest 0.13.2",
+ "rsa",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "subtle",
+ "tokio",
+ "tracing",
+ "ureq 2.12.1",
+ "url",
+]
+
+[[package]]
 name = "chio-mercury"
 version = "0.1.0"
 dependencies = [
@@ -3512,10 +3570,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-metrics-spec"
+version = "0.1.0"
+
+[[package]]
 name = "chio-mistral-tools-adapter"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-provider-adapter-core",
  "chio-tool-call-fabric",
  "serde",
  "serde_json",
@@ -3527,6 +3590,7 @@ name = "chio-ollama-tools-adapter"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-provider-adapter-core",
  "chio-tool-call-fabric",
  "serde",
  "serde_json",
@@ -3621,6 +3685,15 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 1.0.69",
  "uuid",
+]
+
+[[package]]
+name = "chio-provider-adapter-core"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-tool-call-fabric",
+ "serde_json",
 ]
 
 [[package]]
@@ -3734,6 +3807,7 @@ name = "chio-siem"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-log-redact",
  "reqwest 0.13.2",
  "rusqlite",
  "serde",
@@ -3811,7 +3885,9 @@ dependencies = [
 name = "chio-tee-frame"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-core-types",
+ "chrono",
  "proptest",
  "serde",
  "serde_json",
@@ -13141,6 +13217,7 @@ dependencies = [
  "lazy_static",
  "nom",
  "oid-registry 0.7.1",
+ "ring",
  "rusticata-macros",
  "thiserror 1.0.69",
  "time",

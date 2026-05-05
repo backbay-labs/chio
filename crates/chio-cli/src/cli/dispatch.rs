@@ -1528,6 +1528,25 @@ fn main() {
                     control_token: control_token.as_deref(),
                 },
             ),
+            ReceiptCommands::Explain {
+                receipt_id,
+                input_file,
+                depth,
+                fanout_limit,
+            } => cmd_receipt_explain(
+                ReceiptExplainArgs {
+                    receipt_id: &receipt_id,
+                    input_file: input_file.as_deref(),
+                    depth,
+                    fanout_limit,
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
         },
         Commands::Evidence { command } => match command {
             EvidenceCommands::Export {

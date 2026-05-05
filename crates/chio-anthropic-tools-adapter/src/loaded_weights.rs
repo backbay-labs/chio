@@ -1,6 +1,5 @@
-use std::borrow::Cow;
-
-use chio_core::{LoadedWeights, LoadedWeightsUnavailable};
+use chio_core::LoadedWeightsUnavailable;
+use chio_provider_adapter_core::impl_unavailable_loaded_weights;
 
 use crate::AnthropicAdapter;
 
@@ -9,15 +8,7 @@ const UNAVAILABLE_REASON: &str =
     "Anthropic Messages API does not expose runtime loaded model bytes";
 
 pub fn loaded_weights_unavailable() -> LoadedWeightsUnavailable {
-    LoadedWeightsUnavailable::new(PROVIDER_NAME, UNAVAILABLE_REASON)
+    chio_provider_adapter_core::loaded_weights_unavailable(PROVIDER_NAME, UNAVAILABLE_REASON)
 }
 
-impl LoadedWeights for AnthropicAdapter {
-    fn provider_name(&self) -> &'static str {
-        PROVIDER_NAME
-    }
-
-    fn loaded_weights_bytes(&self) -> Result<Cow<'_, [u8]>, LoadedWeightsUnavailable> {
-        Err(loaded_weights_unavailable())
-    }
-}
+impl_unavailable_loaded_weights!(AnthropicAdapter, PROVIDER_NAME, UNAVAILABLE_REASON);

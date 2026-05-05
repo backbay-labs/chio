@@ -19,7 +19,6 @@ extern crate alloc;
 pub mod canonical;
 pub mod capability;
 pub mod crypto;
-#[cfg(feature = "delegation_v2")]
 pub mod delegation_receipt;
 pub mod error;
 pub mod hashing;
@@ -34,23 +33,27 @@ pub mod pq;
 pub mod receipt;
 pub mod runtime_attestation;
 pub mod session;
+pub mod signed_artifact;
 
 pub use canonical::{
     canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
 };
-#[cfg(feature = "delegation_v2")]
 pub use capability::delegate;
 pub use capability::{
-    canonicalize_attestation_verifier, validate_attenuation, validate_delegation_chain,
-    Attenuation, AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule,
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, ContentReviewTier, DelegationLink,
+    canonicalize_attestation_verifier, compute_attenuation_witness, scope_hash,
+    validate_attenuation, validate_attenuation_proof, validate_delegation_chain,
+    verify_attenuation_witness, Attenuation, AttenuationProof, AttenuationWitness,
+    AttestationTrustError, AttestationTrustPolicy, AttestationTrustRule, CapabilityNegotiation,
+    CapabilityToken, CapabilityTokenBody, CapabilityTokenSigningBody, CapabilityTokenV2Body,
+    Caveat, CaveatKind, ChioScope, Constraint, ContentReviewTier, DelegationLink,
     DelegationLinkBody, GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
     GovernedAutonomyContext, GovernedAutonomyTier, GovernedCallChainContext,
-    GovernedCommerceContext, GovernedTransactionIntent, MeteredBillingContext, MeteredBillingQuote,
-    MeteredSettlementMode, ModelMetadata, ModelSafetyTier, MonetaryAmount, Operation, PromptGrant,
-    ResolvedRuntimeAssurance, ResourceGrant, RuntimeAssuranceTier, RuntimeAttestationEvidence,
-    SqlOperationClass, ToolGrant, WorkloadCredentialKind, WorkloadIdentity, WorkloadIdentityError,
-    WorkloadIdentityScheme,
+    GovernedCommerceContext, GovernedTransactionIntent, GrantSubsetRelation, MeteredBillingContext,
+    MeteredBillingQuote, MeteredSettlementMode, ModelMetadata, ModelSafetyTier, MonetaryAmount,
+    Operation, PromptGrant, ResolvedRuntimeAssurance, ResourceGrant, RuntimeAssuranceTier,
+    RuntimeAttestationEvidence, ScopeHash, SqlOperationClass, ToolGrant, WorkloadCredentialKind,
+    WorkloadIdentity, WorkloadIdentityError, WorkloadIdentityScheme, CHIO_CAPABILITIES_SCHEMA,
+    CHIO_CAPABILITY_V1_SCHEMA, CHIO_CAPABILITY_V2_SCHEMA,
 };
 pub use crypto::{
     sha256_hex, Ed25519Backend, Keypair, PublicKey, Signature, SigningAlgorithm, SigningBackend,
@@ -59,7 +62,6 @@ pub use crypto::{
 pub use crypto::{HybridBackend, MlDsa65Backend};
 #[cfg(feature = "fips")]
 pub use crypto::{P256Backend, P384Backend};
-#[cfg(feature = "delegation_v2")]
 pub use delegation_receipt::{DelegationReceipt, ScopeAttenuation};
 pub use error::{Error, Result};
 pub use hashing::{sha256, Hash};
@@ -77,8 +79,9 @@ pub use plan::{
     StepVerdict, StepVerdictKind,
 };
 pub use receipt::{
-    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, Decision,
-    EconomicAmountBoundsReceiptMetadata, EconomicAuthorizationMode,
+    canonical_parent_receipt_ids, parent_set_hash, receipt_v2_body_hash, verify_receipt_v2_dag,
+    ChildRequestReceipt, ChildRequestReceiptBody, ChioReceipt, ChioReceiptBody, ChioReceiptV2,
+    Decision, EconomicAmountBoundsReceiptMetadata, EconomicAuthorizationMode,
     EconomicAuthorizationReceiptMetadata, EconomicAuthorizationReceiptMetadataVersion,
     EconomicBudgetReceiptMetadata, EconomicLiabilityReceiptMetadata,
     EconomicMerchantReceiptMetadata, EconomicMeteringReceiptMetadata, EconomicPayeeReceiptMetadata,
@@ -86,9 +89,11 @@ pub use receipt::{
     EconomicSettlementReceiptMetadata, FinancialReceiptMetadata, GovernedApprovalReceiptMetadata,
     GovernedAutonomyReceiptMetadata, GovernedCommerceReceiptMetadata,
     GovernedTransactionReceiptMetadata, GuardEvidence, MeteredBillingReceiptMetadata,
-    MeteredUsageEvidenceReceiptMetadata, ReceiptAttributionMetadata,
+    MeteredUsageEvidenceReceiptMetadata, ReceiptAttributionMetadata, ReceiptDagParent,
+    ReceiptHybridLogicalClock, ReceiptLineageStatementV2, ReceiptLineageStatementV2Body,
+    ReceiptV2BodyHashInput, ReceiptV2ReplaySet, ReceiptV2SigningBody,
     RuntimeAssuranceReceiptMetadata, SettlementStatus, SignedExportEnvelope, ToolCallAction,
-    TrustLevel,
+    TrustLevel, CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA, CHIO_RECEIPT_V2_SCHEMA,
 };
 pub use runtime_attestation::{
     verifier_family_for_attestation_schema, AttestationVerifierFamily,
@@ -108,6 +113,11 @@ pub use session::{
     ResourceUriClassification, RootDefinition, SamplingMessage, SamplingTool, SamplingToolChoice,
     SessionAuthContext, SessionAuthMethod, SessionId, SessionOperation, SessionTransport,
     StreamOwner, TaskOwnershipSnapshot, ToolCallOperation, WorkOwner,
+};
+pub use signed_artifact::{
+    built_in_signed_artifact_registry, is_supported_signed_artifact_schema,
+    validate_signed_artifact_schema, SignedArtifactSchemaEntry, CHIO_ANCHOR_BATCH_V1_SCHEMA,
+    KNOWN_SIGNED_ARTIFACT_SCHEMAS,
 };
 
 /// Opaque agent identifier. In practice this is a hex-encoded Ed25519 public key

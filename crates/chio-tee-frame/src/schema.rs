@@ -13,6 +13,9 @@
 //! published JSON-Schema, so downstream consumers can layer schema-level
 //! validation on top without contradicting these checks.
 
+use base64::Engine;
+use chio_core::crypto::{PublicKey, Signature};
+
 use crate::frame::{Frame, UpstreamSystem, Verdict};
 
 /// Pinned schema version literal. The wire field is the string `"1"`,
@@ -54,6 +57,10 @@ pub enum SchemaError {
     DenyReasonGate { verdict: Verdict },
     #[error("tenant_sig must be ed25519:<base64>, got {0:?}")]
     TenantSig(String),
+    #[error("tenant_sig signing payload failed: {0}")]
+    TenantSigPayload(String),
+    #[error("tenant_sig verification failed: {0}")]
+    TenantSigVerification(String),
 }
 
 /// Validate a frame against every v1 invariant. Returns `Ok(())` if the
@@ -77,6 +84,52 @@ pub fn validate(frame: &Frame) -> Result<(), SchemaError> {
     validate_deny_reason_gate(frame)?;
     validate_tenant_sig(&frame.tenant_sig)?;
     Ok(())
+}
+
+/// Validate structural invariants and the Ed25519 tenant signature.
+///
+/// `tenant_public_key_bytes` is the raw 32-byte Ed25519 public key resolved by
+/// the caller. A missing or mismatched key fails closed.
+pub fn validate_signed(
+    frame: &Frame,
+    tenant_public_key_bytes: &[u8; 32],
+) -> Result<(), SchemaError> {
+    validate(frame)?;
+    verify_tenant_sig(frame, tenant_public_key_bytes)
+}
+
+/// Build the byte payload committed by `tenant_sig`: canonical JSON of every
+/// frame field except `tenant_sig`.
+pub fn signing_payload(frame: &Frame) -> Result<Vec<u8>, SchemaError> {
+    let mut value = serde_json::to_value(frame)
+        .map_err(|error| SchemaError::TenantSigPayload(error.to_string()))?;
+    let Some(map) = value.as_object_mut() else {
+        return Err(SchemaError::TenantSigPayload(
+            "frame did not serialize as a JSON object".to_string(),
+        ));
+    };
+    map.remove("tenant_sig");
+    chio_core::canonical::canonical_json_bytes(&value)
+        .map_err(|error| SchemaError::TenantSigPayload(error.to_string()))
+}
+
+/// Verify the embedded `tenant_sig` against the canonical signing payload.
+pub fn verify_tenant_sig(
+    frame: &Frame,
+    tenant_public_key_bytes: &[u8; 32],
+) -> Result<(), SchemaError> {
+    let payload = signing_payload(frame)?;
+    let sig_bytes = decode_tenant_sig(&frame.tenant_sig)?;
+    let signature = Signature::from_bytes(&sig_bytes);
+    let public_key = PublicKey::from_bytes(tenant_public_key_bytes)
+        .map_err(|error| SchemaError::TenantSigVerification(error.to_string()))?;
+    if public_key.verify(&payload, &signature) {
+        Ok(())
+    } else {
+        Err(SchemaError::TenantSigVerification(
+            "signature did not verify for frame payload".to_string(),
+        ))
+    }
 }
 
 fn validate_schema_version(value: &str) -> Result<(), SchemaError> {
@@ -145,6 +198,8 @@ fn validate_timestamp(value: &str) -> Result<(), SchemaError> {
             return Err(SchemaError::Timestamp(value.to_string()));
         }
     }
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map_err(|_| SchemaError::Timestamp(value.to_string()))?;
     Ok(())
 }
 
@@ -305,6 +360,24 @@ fn validate_tenant_sig(value: &str) -> Result<(), SchemaError> {
     Ok(())
 }
 
+fn decode_tenant_sig(value: &str) -> Result<[u8; 64], SchemaError> {
+    let payload = value
+        .strip_prefix("ed25519:")
+        .ok_or_else(|| SchemaError::TenantSig(value.to_string()))?;
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|error| SchemaError::TenantSig(error.to_string()))?;
+    if raw.len() != 64 {
+        return Err(SchemaError::TenantSig(format!(
+            "expected 64 decoded signature bytes, got {}",
+            raw.len()
+        )));
+    }
+    let mut out = [0u8; 64];
+    out.copy_from_slice(&raw);
+    Ok(out)
+}
+
 fn is_base64_std(c: char) -> bool {
     matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '+' | '/' | '=')
 }
@@ -352,6 +425,22 @@ mod tests {
         }
     }
 
+    fn signed_frame() -> (Frame, [u8; 32]) {
+        let keypair = chio_core::crypto::Keypair::from_seed(&[7u8; 32]);
+        let public_key = *keypair.public_key().as_bytes();
+        let mut frame = good_frame();
+        frame.tenant_sig = format!(
+            "ed25519:{}",
+            base64::engine::general_purpose::STANDARD.encode([0u8; 64])
+        );
+        let payload = signing_payload(&frame).unwrap();
+        frame.tenant_sig = format!(
+            "ed25519:{}",
+            base64::engine::general_purpose::STANDARD.encode(keypair.sign(&payload).to_bytes())
+        );
+        (frame, public_key)
+    }
+
     #[test]
     fn good_frame_validates() {
         validate(&good_frame()).unwrap();
@@ -383,6 +472,13 @@ mod tests {
     fn timestamp_must_have_millis() {
         let mut f = good_frame();
         f.ts = "2026-04-25T18:02:11Z".to_string();
+        assert!(matches!(validate(&f), Err(SchemaError::Timestamp(_))));
+    }
+
+    #[test]
+    fn timestamp_must_parse_as_real_rfc3339() {
+        let mut f = good_frame();
+        f.ts = "2026-13-99T25:99:99.999Z".to_string();
         assert!(matches!(validate(&f), Err(SchemaError::Timestamp(_))));
     }
 
@@ -435,6 +531,29 @@ mod tests {
         let mut f = good_frame();
         f.tenant_sig = "A".repeat(86);
         assert!(matches!(validate(&f), Err(SchemaError::TenantSig(_))));
+    }
+
+    #[test]
+    fn signed_validation_accepts_valid_signature() {
+        let (frame, public_key) = signed_frame();
+        validate_signed(&frame, &public_key).unwrap();
+    }
+
+    #[test]
+    fn signed_validation_rejects_tampered_body() {
+        let (mut frame, public_key) = signed_frame();
+        frame.request_blob_sha256 = "c".repeat(64);
+        let err = validate_signed(&frame, &public_key).unwrap_err();
+        assert!(matches!(err, SchemaError::TenantSigVerification(_)));
+    }
+
+    #[test]
+    fn signed_validation_rejects_wrong_key() {
+        let (frame, _) = signed_frame();
+        let wrong_keypair = chio_core::crypto::Keypair::from_seed(&[8u8; 32]);
+        let wrong_public_key = *wrong_keypair.public_key().as_bytes();
+        let err = validate_signed(&frame, &wrong_public_key).unwrap_err();
+        assert!(matches!(err, SchemaError::TenantSigVerification(_)));
     }
 
     #[test]

@@ -20,7 +20,10 @@ pub use frame::{
     canonicalize, parse, Frame, FrameError, FrameInputs, Otel, Provenance, Upstream,
     UpstreamSystem, Verdict,
 };
-pub use schema::{validate, SchemaError, SCHEMA_ID, SCHEMA_VERSION};
+pub use schema::{
+    signing_payload, validate, validate_signed, verify_tenant_sig, SchemaError, SCHEMA_ID,
+    SCHEMA_VERSION,
+};
 
 /// Frame schema version label. The on-the-wire field [`SCHEMA_VERSION`] is
 /// the literal `"1"`; [`FRAME_VERSION`] is the textual schema name.

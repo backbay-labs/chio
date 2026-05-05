@@ -4,8 +4,8 @@
 
 use chio_core_types::crypto::Keypair;
 use chio_federation::{
-    KernelTrustExchange, KernelTrustExchangeConfig, PeerHandshakeEnvelope, PeerHandshakeError,
-    DEFAULT_HANDSHAKE_MAX_SKEW_SECS,
+    ConformanceEvidence, ConformanceTier, KernelTrustExchange, KernelTrustExchangeConfig,
+    PeerHandshakeEnvelope, PeerHandshakeError, QuorumPolicy, DEFAULT_HANDSHAKE_MAX_SKEW_SECS,
 };
 
 #[test]
@@ -37,6 +37,8 @@ fn handshake_succeeds_and_pins_both_sides() {
 
     assert_eq!(peer_b.kernel_id, "kernel.org-b");
     assert_eq!(peer_a.kernel_id, "kernel.org-a");
+    assert_eq!(peer_b.conformance_tier, ConformanceTier::Bronze);
+    assert_eq!(peer_a.conformance_tier, ConformanceTier::Bronze);
     assert!(peer_b.rotation_due > now);
     assert!(peer_a.rotation_due > now);
 
@@ -190,4 +192,137 @@ fn accept_rejects_untrusted_first_contact() {
         .accept_envelope(&envelope_b, "kernel.org-b", now)
         .expect_err("untrusted first contact must be rejected");
     assert!(matches!(err, PeerHandshakeError::MissingTrustAnchor(_)));
+}
+
+#[test]
+fn conformance_tier_is_signed_and_pinned_at_handshake() {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let now: u64 = 1_800_000_000;
+    let policy = QuorumPolicy {
+        min_tier: ConformanceTier::Silver,
+    };
+
+    let exchange_a = KernelTrustExchange::new("kernel.org-a", kp_a.clone())
+        .with_trusted_peer("kernel.org-b", kp_b.public_key());
+    let exchange_b = KernelTrustExchange::new("kernel.org-b", kp_b)
+        .with_conformance_tier(ConformanceTier::Silver);
+
+    let envelope_b = exchange_b
+        .local_envelope("kernel.org-a", "nonce-tier", now)
+        .unwrap();
+    assert_eq!(
+        envelope_b.challenge.conformance_tier,
+        ConformanceTier::Silver
+    );
+
+    let peer_b = exchange_a
+        .accept_envelope_with_policy(&envelope_b, "kernel.org-b", now, &policy)
+        .unwrap();
+    assert_eq!(peer_b.conformance_tier, ConformanceTier::Silver);
+}
+
+#[test]
+fn quorum_policy_rejects_peer_below_min_tier() {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let now: u64 = 1_800_000_000;
+    let policy = QuorumPolicy {
+        min_tier: ConformanceTier::Silver,
+    };
+
+    let exchange = KernelTrustExchange::new("kernel.org-a", kp_a)
+        .with_trusted_peer("kernel.org-b", kp_b.public_key());
+    let envelope_b =
+        PeerHandshakeEnvelope::sign("kernel.org-b", "kernel.org-a", "nonce-b", now, &kp_b).unwrap();
+
+    let err = exchange
+        .accept_envelope_with_policy(&envelope_b, "kernel.org-b", now, &policy)
+        .expect_err("bronze peer must not satisfy silver policy");
+    assert!(matches!(
+        err,
+        PeerHandshakeError::ConformanceTierBelowMinimum {
+            actual: ConformanceTier::Bronze,
+            minimum: ConformanceTier::Silver,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn conformance_evidence_derives_tiers_from_thresholds() {
+    let bronze = ConformanceEvidence {
+        threat_coverage_bps: 8_999,
+        mutation_kill_bps: 10_000,
+        kani_trust_boundary_crates: 8,
+    };
+    assert_eq!(bronze.derive_tier().unwrap(), ConformanceTier::Bronze);
+
+    let silver = ConformanceEvidence {
+        threat_coverage_bps: 9_000,
+        mutation_kill_bps: 6_500,
+        kani_trust_boundary_crates: 4,
+    };
+    assert_eq!(silver.derive_tier().unwrap(), ConformanceTier::Silver);
+
+    let gold = ConformanceEvidence {
+        threat_coverage_bps: 10_000,
+        mutation_kill_bps: 8_000,
+        kani_trust_boundary_crates: 8,
+    };
+    assert_eq!(gold.derive_tier().unwrap(), ConformanceTier::Gold);
+}
+
+#[test]
+fn conformance_evidence_rejects_impossible_percentages() {
+    let invalid = ConformanceEvidence {
+        threat_coverage_bps: 10_001,
+        mutation_kill_bps: 0,
+        kani_trust_boundary_crates: 0,
+    };
+    assert!(matches!(
+        invalid.derive_tier(),
+        Err(PeerHandshakeError::InvalidConformanceEvidence(_))
+    ));
+}
+
+#[cfg(feature = "pq")]
+#[test]
+fn handshake_accepts_hybrid_signing_backend() {
+    use chio_core_types::crypto::{
+        Ed25519Backend, HybridBackend, MlDsa65Backend, SigningAlgorithm,
+    };
+
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::from_seed(&[9u8; 32]);
+    let pq_b = MlDsa65Backend::from_seed(&[4u8; 32]);
+    let hybrid_b = HybridBackend::new(Box::new(Ed25519Backend::new(kp_b)), pq_b).unwrap();
+    let now: u64 = 1_800_000_000;
+
+    let exchange_b = KernelTrustExchange::new_with_backend("kernel.org-b", Box::new(hybrid_b))
+        .with_conformance_tier(ConformanceTier::Silver);
+    let exchange_a = KernelTrustExchange::new("kernel.org-a", kp_a)
+        .with_trusted_peer("kernel.org-b", exchange_b.local_public_key());
+
+    let envelope_b = exchange_b
+        .local_envelope("kernel.org-a", "nonce-hybrid", now)
+        .unwrap();
+    assert_eq!(
+        envelope_b.declared_public_key.algorithm(),
+        SigningAlgorithm::Hybrid
+    );
+    assert_eq!(envelope_b.signature.algorithm(), SigningAlgorithm::Hybrid);
+
+    let peer_b = exchange_a
+        .accept_envelope_with_policy(
+            &envelope_b,
+            "kernel.org-b",
+            now,
+            &QuorumPolicy {
+                min_tier: ConformanceTier::Silver,
+            },
+        )
+        .unwrap();
+    assert_eq!(peer_b.public_key.algorithm(), SigningAlgorithm::Hybrid);
+    assert_eq!(peer_b.conformance_tier, ConformanceTier::Silver);
 }

@@ -21,6 +21,7 @@ computer_use_beta = "computer-use-2025-01-24"
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-manifest = { path = "../chio-manifest" }
+chio-provider-adapter-core = { path = "../chio-provider-adapter-core" }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

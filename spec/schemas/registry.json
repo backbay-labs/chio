@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/signed-artifact-registry/v1",
+  "schema": "chio.signed_artifact_registry.v1",
+  "description": "Verifier-facing registry of signed artifact schema IDs. Load-time and verify-time code must reject signed artifacts whose schema is not listed here.",
+  "artifacts": [
+    {
+      "schema": "chio.capabilities.v1",
+      "artifactKind": "capability_negotiation",
+      "introducedBy": "trajectory-4/T1.0",
+      "schemaFile": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json"
+    },
+    {
+      "schema": "chio.capability.v1",
+      "artifactKind": "capability_token",
+      "introducedBy": "trajectory-4/T1.0",
+      "schemaFile": "spec/schemas/chio-wire/v1/capability/token.v1.schema.json"
+    },
+    {
+      "schema": "chio.capability.v2",
+      "artifactKind": "capability_token",
+      "introducedBy": "trajectory-4/T1.0",
+      "schemaFile": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json"
+    },
+    {
+      "schema": "chio.receipt.v1",
+      "artifactKind": "receipt",
+      "introducedBy": "trajectory-1/M01",
+      "schemaFile": "spec/schemas/chio-wire/v1/receipt/record.schema.json"
+    },
+    {
+      "schema": "chio.receipt.v2",
+      "artifactKind": "receipt",
+      "introducedBy": "trajectory-4/T1.2",
+      "schemaFile": "spec/schemas/chio-wire/v1/receipt/v2.schema.json"
+    },
+    {
+      "schema": "chio.receipt_lineage_statement.v1",
+      "artifactKind": "receipt_lineage",
+      "introducedBy": "trajectory-3/M04",
+      "schemaFile": "spec/schemas/chio-wire/v1/receipt/record.schema.json"
+    },
+    {
+      "schema": "chio.receipt_lineage_statement.v2",
+      "artifactKind": "receipt_lineage",
+      "introducedBy": "trajectory-4/T1.2",
+      "schemaFile": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json"
+    },
+    {
+      "schema": "chio.anchor_batch.v1",
+      "artifactKind": "anchor_batch",
+      "introducedBy": "trajectory-4/T1.3",
+      "schemaFile": "spec/schemas/chio-wire/v1/anchor/batch.schema.json"
+    }
+  ]
+}

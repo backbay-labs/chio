@@ -9,6 +9,7 @@ use std::time::Duration;
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
+use crate::redaction::redact_for_operator_log;
 
 const DEFAULT_HEC_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_HEC_RESPONSE_BODY_BYTES: usize = 64 * 1024;
@@ -158,6 +159,7 @@ impl Exporter for SplunkHecExporter {
             let body = read_hec_response_body(&mut response).await?;
 
             if !status.is_success() {
+                let body = redact_for_operator_log(body);
                 return Err(ExportError::HttpError(format!(
                     "HEC returned {status}: {body}"
                 )));
@@ -227,7 +229,10 @@ fn classify_hec_response(body: &str, batch_size: usize) -> Result<usize, ExportE
             return Err(ExportError::PartialFailure {
                 succeeded: 0,
                 failed: batch_size,
-                details: format!("HEC 2xx with non-JSON body: {body}"),
+                details: format!(
+                    "HEC 2xx with non-JSON body: {}",
+                    redact_for_operator_log(body)
+                ),
             });
         }
     };
@@ -262,6 +267,7 @@ fn classify_hec_response(body: &str, batch_size: usize) -> Result<usize, ExportE
         .as_ref()
         .map(|invalid_events| format!(" invalid-event-number={invalid_events}"))
         .unwrap_or_default();
+    let text = redact_for_operator_log(text);
     Err(ExportError::PartialFailure {
         succeeded,
         failed,

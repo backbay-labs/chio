@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use chio_core::{loaded_weights_hash_of, LoadedWeights, LoadedWeightsUnavailable};
+use chio_provider_adapter_core::impl_unavailable_loaded_weights;
 
 use crate::OllamaAdapter;
 
@@ -9,18 +10,13 @@ const ADAPTER_UNAVAILABLE_REASON: &str =
     "Ollama adapter handle does not own the local loaded model bytes";
 
 pub fn loaded_weights_unavailable() -> LoadedWeightsUnavailable {
-    LoadedWeightsUnavailable::new(PROVIDER_NAME, ADAPTER_UNAVAILABLE_REASON)
+    chio_provider_adapter_core::loaded_weights_unavailable(
+        PROVIDER_NAME,
+        ADAPTER_UNAVAILABLE_REASON,
+    )
 }
 
-impl LoadedWeights for OllamaAdapter {
-    fn provider_name(&self) -> &'static str {
-        PROVIDER_NAME
-    }
-
-    fn loaded_weights_bytes(&self) -> Result<Cow<'_, [u8]>, LoadedWeightsUnavailable> {
-        Err(loaded_weights_unavailable())
-    }
-}
+impl_unavailable_loaded_weights!(OllamaAdapter, PROVIDER_NAME, ADAPTER_UNAVAILABLE_REASON);
 
 #[derive(Debug, Clone)]
 pub struct OllamaLoadedWeights<'a> {

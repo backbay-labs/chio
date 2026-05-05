@@ -95,6 +95,41 @@ fn make_token(kp: &Keypair) -> CapabilityToken {
     .expect("token signs")
 }
 
+#[cfg(feature = "pq")]
+fn make_hybrid_token() -> CapabilityToken {
+    use chio_core_types::crypto::{Ed25519Backend, HybridBackend, MlDsa65Backend, SigningBackend};
+
+    let classical = Ed25519Backend::new(Keypair::from_seed(&[5; 32]));
+    let pq = MlDsa65Backend::from_seed(&[6; 32]);
+    let backend = HybridBackend::new(Box::new(classical), pq).expect("hybrid backend");
+    CapabilityToken::sign_with_backend(
+        CapabilityTokenBody {
+            id: "cap-wire-hybrid-001".to_string(),
+            issuer: backend.public_key(),
+            subject: backend.public_key(),
+            scope: ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: "srv".to_string(),
+                    tool_name: "echo".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: vec![],
+                    max_invocations: None,
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                }],
+                resource_grants: vec![],
+                prompt_grants: vec![],
+            },
+            issued_at: 1_710_000_000,
+            expires_at: 1_710_000_600,
+            delegation_chain: vec![],
+        },
+        &backend,
+    )
+    .expect("hybrid token signs")
+}
+
 fn make_receipt(kp: &Keypair, decision: Decision) -> ChioReceipt {
     ChioReceipt::sign(
         ChioReceiptBody {
@@ -385,4 +420,21 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
     for (schema_path, instance) in cases {
         assert_schema_accepts(schema_path, &instance);
     }
+}
+
+#[cfg(feature = "pq")]
+#[test]
+fn capability_token_schema_accepts_live_hybrid_wire_values() {
+    let token = make_hybrid_token();
+    let instance = to_json(&token);
+    assert_eq!(instance["algorithm"], "hybrid");
+    assert!(instance["issuer"]
+        .as_str()
+        .expect("issuer string")
+        .starts_with("hybrid:"));
+    assert!(instance["signature"]
+        .as_str()
+        .expect("signature string")
+        .starts_with("hybrid:"));
+    assert_schema_accepts("capability/token.schema.json", &instance);
 }

@@ -5,21 +5,15 @@
 //! `tool_calls` parts (which arrive whole on Groq's wire) and gate the
 //! emission on a kernel verdict before forwarding bytes downstream.
 
-use chio_tool_call_fabric::{DenyReason, ProviderError, ToolInvocation, VerdictResult};
+use chio_provider_adapter_core::{
+    ensure_streaming_allow_no_redactions, parse_sse_frames, GatedStream, SseParseOptions,
+};
+use chio_tool_call_fabric::{ProviderError, ToolInvocation, VerdictResult};
 use serde_json::Value;
 
 use crate::{native::FunctionCallPart, openai_tool_call_to_function_call, GroqAdapter};
 
-/// Result of gating one Groq stream payload.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GatedSseStream {
-    /// SSE bytes that are safe to forward downstream.
-    pub bytes: Vec<u8>,
-    /// Tool invocations evaluated when each `tool_calls` part finalised.
-    pub invocations: Vec<ToolInvocation>,
-    /// Verdicts returned for each invocation in stream order.
-    pub verdicts: Vec<VerdictResult>,
-}
+pub type GatedSseStream = GatedStream;
 
 impl GroqAdapter {
     /// Gate a deterministic Groq SSE payload.
@@ -31,7 +25,7 @@ impl GroqAdapter {
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
-        let frames = parse_sse_frames(raw)?;
+        let frames = parse_sse_frames(raw, SseParseOptions::ignoring_unknown("Groq"))?;
         let mut output: Vec<u8> = Vec::new();
         let mut invocations = Vec::new();
         let mut verdicts = Vec::new();
@@ -48,7 +42,13 @@ impl GroqAdapter {
             for call in extract_stream_function_calls(data)? {
                 let invocation = self.invocation_from_function_call(&call)?;
                 let verdict = evaluate(&invocation)?;
-                ensure_streaming_allow(&call, &verdict)?;
+                ensure_streaming_allow_no_redactions(
+                    "Groq",
+                    "functionCall",
+                    &call.name,
+                    None,
+                    &verdict,
+                )?;
                 invocations.push(invocation);
                 verdicts.push(verdict);
             }
@@ -61,76 +61,6 @@ impl GroqAdapter {
             verdicts,
         })
     }
-}
-
-#[derive(Debug, Clone)]
-struct SseFrame {
-    data: Option<Value>,
-    raw: Vec<u8>,
-}
-
-fn parse_sse_frames(raw: &[u8]) -> Result<Vec<SseFrame>, ProviderError> {
-    let text = std::str::from_utf8(raw).map_err(|error| {
-        ProviderError::Malformed(format!("Groq SSE bytes were not UTF-8: {error}"))
-    })?;
-    let mut frames = Vec::new();
-    let mut lines: Vec<String> = Vec::new();
-
-    for line in text.lines() {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        if line.is_empty() {
-            if !lines.is_empty() {
-                frames.push(parse_sse_frame(&lines)?);
-                lines.clear();
-            }
-        } else {
-            lines.push(line.to_string());
-        }
-    }
-    if !lines.is_empty() {
-        frames.push(parse_sse_frame(&lines)?);
-    }
-    Ok(frames)
-}
-
-fn parse_sse_frame(lines: &[String]) -> Result<SseFrame, ProviderError> {
-    let mut data_lines: Vec<String> = Vec::new();
-    let mut raw: Vec<u8> = Vec::new();
-
-    for line in lines {
-        raw.extend_from_slice(line.as_bytes());
-        raw.push(b'\n');
-
-        if line.starts_with(':') {
-            continue;
-        }
-        // Per the WHATWG EventStream spec, lines without a colon are
-        // treated as a field with an empty value; unknown field names are
-        // silently ignored. Reject only `data` payloads downstream.
-        let (field, value) = match line.split_once(':') {
-            Some((f, v)) => (f, v),
-            None => (line.as_str(), ""),
-        };
-        let value = value.strip_prefix(' ').unwrap_or(value);
-        // Spec: only the `data` field contributes to the message body;
-        // `event`, `id`, `retry`, and any unknown fields are silently
-        // ignored.
-        if field == "data" {
-            data_lines.push(value.to_string());
-        }
-    }
-    raw.push(b'\n');
-
-    let data = if data_lines.is_empty() {
-        None
-    } else {
-        let text = data_lines.join("\n");
-        Some(serde_json::from_str::<Value>(&text).map_err(|error| {
-            ProviderError::Malformed(format!("Groq SSE data was not JSON: {error}"))
-        })?)
-    };
-
-    Ok(SseFrame { data, raw })
 }
 
 fn extract_stream_function_calls(data: &Value) -> Result<Vec<FunctionCallPart>, ProviderError> {
@@ -184,35 +114,4 @@ fn extract_stream_function_calls(data: &Value) -> Result<Vec<FunctionCallPart>, 
         }
     }
     Ok(out)
-}
-
-fn ensure_streaming_allow(
-    call: &FunctionCallPart,
-    verdict: &VerdictResult,
-) -> Result<(), ProviderError> {
-    match verdict {
-        VerdictResult::Allow { redactions, .. } if redactions.is_empty() => Ok(()),
-        VerdictResult::Allow { .. } => Err(ProviderError::Malformed(format!(
-            "Groq streaming functionCall `{}` allow verdict requested redactions; fail-closed",
-            call.name
-        ))),
-        VerdictResult::Deny { reason, receipt_id } => Err(ProviderError::Malformed(format!(
-            "Groq streaming functionCall `{}` denied: {} (receipt {})",
-            call.name,
-            deny_reason_text(reason),
-            receipt_id.0
-        ))),
-    }
-}
-
-fn deny_reason_text(reason: &DenyReason) -> String {
-    match reason {
-        DenyReason::PolicyDeny { rule_id } => format!("policy_deny:{rule_id}"),
-        DenyReason::GuardDeny { guard_id, detail } => {
-            format!("guard_deny:{guard_id}:{detail}")
-        }
-        DenyReason::CapabilityExpired => "capability_expired".to_string(),
-        DenyReason::PrincipalUnknown => "principal_unknown".to_string(),
-        DenyReason::BudgetExceeded => "budget_exceeded".to_string(),
-    }
 }

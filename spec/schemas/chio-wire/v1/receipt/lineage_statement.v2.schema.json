@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/lineage_statement.v2",
+  "title": "Chio receipt lineage statement v2",
+  "description": "Signed multi-parent lineage statement. parentReceiptIds are v2 body_hash values, canonical sorted and deduplicated, with parentSetHash = H(canonical(parentReceiptIds)).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "childBodyHash",
+    "chainId",
+    "parentReceiptIds",
+    "parentSetHash",
+    "issuedAt",
+    "kernelKey",
+    "signature"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "chio.receipt_lineage_statement.v2"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "childBodyHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "chainId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentReceiptIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "uniqueItems": true
+    },
+    "parentSetHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "issuedAt": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "kernelKey": {
+      "type": "string",
+      "minLength": 64
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+    }
+  }
+}

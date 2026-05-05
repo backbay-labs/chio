@@ -57,4 +57,6 @@ pub use revocation::{
     credential_revocation_nonce, CredentialRevocationOracle, InMemoryCredentialRevocationOracle,
     CREDENTIAL_REVOCATION_NONCE_VALUE,
 };
-pub use verifier::{PasskeyVerifier, VerifiedAssertion};
+#[cfg(feature = "passkey")]
+pub use verifier::PasskeyVerifier;
+pub use verifier::VerifiedAssertion;

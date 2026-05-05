@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/v2",
+  "title": "Chio receipt v2",
+  "description": "Content-addressed v2 receipt. bodyHash is H(canonical_jcs(ReceiptV2BodyHashInput)); receiptId is a non-authoritative legacy UUIDv7 tooling alias and is not used for replay.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["receiptId", "bodyHash", "body", "signature"],
+  "properties": {
+    "receiptId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bodyHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "body": {
+      "$ref": "#/$defs/receiptV2BodyHashInput"
+    },
+    "algorithm": {
+      "type": "string",
+      "enum": ["ed25519", "p256", "p384", "hybrid"]
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+    }
+  },
+  "$defs": {
+    "receiptV2BodyHashInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "timestamp",
+        "capabilityId",
+        "toolServer",
+        "toolName",
+        "action",
+        "decision",
+        "contentHash",
+        "policyHash",
+        "chainId",
+        "parentSetHash",
+        "dagOrdinal",
+        "hlc",
+        "kernelKey"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "chio.receipt.v2"
+        },
+        "timestamp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capabilityId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolServer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "decision": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "contentHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "metadata": true,
+        "trustLevel": {
+          "type": "string",
+          "enum": ["mediated", "verified", "advisory"]
+        },
+        "tenantId": {
+          "type": "string"
+        },
+        "chainId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentReceiptIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "uniqueItems": true,
+          "description": "Canonical sorted and deduplicated parent body_hash values."
+        },
+        "parentSetHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "dagOrdinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hlc": {
+          "$ref": "#/$defs/hlc"
+        },
+        "kernelKey": {
+          "type": "string",
+          "minLength": 64
+        }
+      }
+    },
+    "hlc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wallSeconds", "logical", "kernelId"],
+      "properties": {
+        "wallSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "logical": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kernelId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

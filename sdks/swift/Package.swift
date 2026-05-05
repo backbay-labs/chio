@@ -2,11 +2,8 @@
 
 import PackageDescription
 
-// TRAJECTORY-3.1 reclassification: M07 is design-only and the
-// `ChioKernel.xcframework` binary artifact is not produced in this
-// trajectory. The `binaryTarget` reference has been removed pending
-// the trajectory-4 real-attestation deliverable. See
-// `sdks/swift/README.md` for the deferral note.
+// TRAJECTORY-4: the local ChioKernel xcframework is produced by
+// `scripts/build-ios-framework.sh` and committed under Frameworks/.
 
 let package = Package(
     name: "Chio",
@@ -20,6 +17,10 @@ let package = Package(
         )
     ],
     targets: [
+        .binaryTarget(
+            name: "ChioKernel",
+            path: "Frameworks/ChioKernel.xcframework"
+        ),
         .systemLibrary(
             name: "ChioFFI",
             path: "Sources/ChioFFI"
@@ -27,6 +28,7 @@ let package = Package(
         .target(
             name: "Chio",
             dependencies: [
+                "ChioKernel",
                 "ChioFFI"
             ]
         ),

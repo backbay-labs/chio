@@ -19,6 +19,7 @@ gemini_api_version = "v1beta"
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-provider-adapter-core = { path = "../chio-provider-adapter-core" }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

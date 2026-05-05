@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/anchor/batch",
+  "title": "Chio anchor batch v1",
+  "description": "Signed additive Merkle batch over receipts or checkpoints. Local receipt signatures remain authoritative; the batch adds continuity and public-witness timestamping.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signature"],
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/body"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+    }
+  },
+  "$defs": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "treeRoot",
+        "checkpointIds",
+        "inclusions",
+        "witness",
+        "issuedAt",
+        "signerKey"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "chio.anchor_batch.v1"
+        },
+        "treeRoot": {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-f]{64}$"
+        },
+        "checkpointIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "inclusions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/inclusion"
+          }
+        },
+        "witness": {
+          "$ref": "#/$defs/witness"
+        },
+        "issuedAt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signerKey": {
+          "type": "string",
+          "minLength": 64
+        }
+      }
+    },
+    "inclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkpointId", "leafHash", "proof"],
+      "properties": {
+        "checkpointId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "leafHash": {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-f]{64}$"
+        },
+        "proof": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "witnessId", "root"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["rekor", "ots", "solana_memo"]
+        },
+        "witnessId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root": {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-f]{64}$"
+        },
+        "observedAt": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

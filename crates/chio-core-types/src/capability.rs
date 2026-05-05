@@ -24,6 +24,176 @@ use crate::runtime_attestation::{
 };
 use crate::session::SessionAnchorReference;
 
+/// Capability-negotiation schema exchanged during federation handshakes.
+pub const CHIO_CAPABILITIES_SCHEMA: &str = "chio.capabilities.v1";
+
+/// Frozen v1 capability-token schema. Legacy tokens that omit `schema`
+/// deserialize to this value.
+pub const CHIO_CAPABILITY_V1_SCHEMA: &str = "chio.capability.v1";
+
+/// Capability-token v2 schema with typed caveats and attenuation witnesses.
+pub const CHIO_CAPABILITY_V2_SCHEMA: &str = "chio.capability.v2";
+
+fn default_capability_schema() -> String {
+    CHIO_CAPABILITY_V1_SCHEMA.to_string()
+}
+
+fn capability_v1_schema() -> String {
+    CHIO_CAPABILITY_V1_SCHEMA.to_string()
+}
+
+fn capabilities_schema() -> String {
+    CHIO_CAPABILITIES_SCHEMA.to_string()
+}
+
+fn is_empty_capability_features(features: &BTreeMap<String, bool>) -> bool {
+    features.is_empty()
+}
+
+fn is_none_or_empty<T>(value: &Option<Vec<T>>) -> bool {
+    value.as_ref().is_none_or(Vec::is_empty)
+}
+
+fn is_none_or_empty_attenuation_proof(value: &Option<AttenuationProof>) -> bool {
+    value.as_ref().is_none_or(|proof| {
+        proof.normalized_subset_proof.subset_relations.is_empty()
+            && proof
+                .normalized_subset_proof
+                .restricted_predicates
+                .is_empty()
+    })
+}
+
+/// Stable feature names used by `chio.capabilities.v1`.
+pub mod capability_features {
+    pub const ACCEPTS_CAPABILITY_V2: &str = "accepts_capability_v2";
+    pub const ACCEPTS_RECEIPT_V2: &str = "accepts_receipt_v2";
+    pub const ACCEPTS_ANCHOR_BATCH_V1: &str = "accepts_anchor_batch_v1";
+    pub const ACCEPTS_HYBRID_SIGNATURES: &str = "accepts_hybrid_signatures";
+}
+
+/// Peer-advertised protocol feature bitset.
+///
+/// The map is intentionally string-keyed so new additive features can be
+/// introduced without a flag-day enum release. Validation still rejects
+/// malformed names fail-closed before any negotiated feature is used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CapabilityNegotiation {
+    #[serde(default = "capabilities_schema")]
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "is_empty_capability_features")]
+    pub features: BTreeMap<String, bool>,
+    #[serde(default = "capability_v1_schema")]
+    pub max_capability_schema: String,
+}
+
+impl Default for CapabilityNegotiation {
+    fn default() -> Self {
+        Self::v1_default()
+    }
+}
+
+impl CapabilityNegotiation {
+    /// Baseline peer profile: v1 capability tokens only.
+    #[must_use]
+    pub fn v1_default() -> Self {
+        Self {
+            schema: CHIO_CAPABILITIES_SCHEMA.to_string(),
+            features: BTreeMap::new(),
+            max_capability_schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
+        }
+    }
+
+    /// T1 peer profile: v2 capability, receipt v2, and anchor batches.
+    #[must_use]
+    pub fn t1_default() -> Self {
+        let mut features = BTreeMap::new();
+        features.insert(capability_features::ACCEPTS_CAPABILITY_V2.to_string(), true);
+        features.insert(capability_features::ACCEPTS_RECEIPT_V2.to_string(), true);
+        features.insert(
+            capability_features::ACCEPTS_ANCHOR_BATCH_V1.to_string(),
+            true,
+        );
+        Self {
+            schema: CHIO_CAPABILITIES_SCHEMA.to_string(),
+            features,
+            max_capability_schema: CHIO_CAPABILITY_V2_SCHEMA.to_string(),
+        }
+    }
+
+    /// Return whether a named feature is explicitly advertised.
+    #[must_use]
+    pub fn supports(&self, feature: &str) -> bool {
+        self.features.get(feature).copied().unwrap_or(false)
+    }
+
+    /// Validate schema and feature-name shape before negotiation.
+    pub fn validate(&self) -> Result<()> {
+        if self.schema != CHIO_CAPABILITIES_SCHEMA {
+            return Err(Error::CanonicalJson(format!(
+                "unsupported capability negotiation schema: {}",
+                self.schema
+            )));
+        }
+        if self.max_capability_schema != CHIO_CAPABILITY_V1_SCHEMA
+            && self.max_capability_schema != CHIO_CAPABILITY_V2_SCHEMA
+        {
+            return Err(Error::CanonicalJson(format!(
+                "unsupported max capability schema: {}",
+                self.max_capability_schema
+            )));
+        }
+        for feature in self.features.keys() {
+            validate_capability_feature_name(feature)?;
+        }
+        Ok(())
+    }
+
+    /// Intersect two negotiated feature sets.
+    pub fn negotiated_with(&self, remote: &Self) -> Result<Self> {
+        self.validate()?;
+        remote.validate()?;
+        let mut features = BTreeMap::new();
+        for (feature, enabled) in &self.features {
+            if *enabled && remote.features.get(feature).copied().unwrap_or(false) {
+                features.insert(feature.clone(), true);
+            }
+        }
+        let max_capability_schema = if self.max_capability_schema == CHIO_CAPABILITY_V2_SCHEMA
+            && remote.max_capability_schema == CHIO_CAPABILITY_V2_SCHEMA
+            && features
+                .get(capability_features::ACCEPTS_CAPABILITY_V2)
+                .copied()
+                .unwrap_or(false)
+        {
+            CHIO_CAPABILITY_V2_SCHEMA
+        } else {
+            CHIO_CAPABILITY_V1_SCHEMA
+        };
+        Ok(Self {
+            schema: CHIO_CAPABILITIES_SCHEMA.to_string(),
+            features,
+            max_capability_schema: max_capability_schema.to_string(),
+        })
+    }
+}
+
+fn validate_capability_feature_name(feature: &str) -> Result<()> {
+    let valid = !feature.is_empty()
+        && feature.len() <= 96
+        && feature
+            .bytes()
+            .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.' | b'-'));
+    if valid {
+        Ok(())
+    } else {
+        Err(Error::CanonicalJson(format!(
+            "malformed capability negotiation feature: {feature}"
+        )))
+    }
+}
+
 /// Minimum cryptographic posture enforced by the capability validator.
 ///
 /// Mirrors the wire form of `chio_policy::CryptoFloor` and the kernel-side
@@ -182,6 +352,10 @@ impl core::error::Error for CapabilityFloorVerifyError {
 /// to the introduction of [`SigningAlgorithm`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CapabilityToken {
+    /// Versioned signed-artifact schema. Legacy v1 wire tokens that omit
+    /// this field default to `chio.capability.v1`.
+    #[serde(default = "default_capability_schema")]
+    pub schema: String,
     /// Unique token ID (UUIDv7 recommended, used for revocation).
     pub id: String,
     /// Capability Authority (or delegating agent) that issued this token.
@@ -200,6 +374,19 @@ pub struct CapabilityToken {
     /// Signing algorithm. Absent means Ed25519 for backward compatibility.
     #[serde(default, skip_serializing_if = "is_default_optional_algorithm")]
     pub algorithm: Option<SigningAlgorithm>,
+    /// Typed v2 caveats. Empty for v1 and omitted on the wire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caveats: Vec<Caveat>,
+    /// High-level attenuation request exposed on v2 tokens. Empty for v1.
+    #[serde(default, skip_serializing_if = "is_none_or_empty")]
+    pub scope_attenuations: Option<Vec<Attenuation>>,
+    /// Wire witness proving child-scope attenuation.
+    #[serde(default, skip_serializing_if = "is_none_or_empty_attenuation_proof")]
+    pub attenuation_proof: Option<AttenuationProof>,
+    /// Fixed-point sub-agent budget share in basis points. Values above
+    /// 10000 are rejected by v2 validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_share_bps: Option<u16>,
     /// Signature over canonical JSON of all fields above.
     pub signature: Signature,
 }
@@ -223,6 +410,92 @@ pub struct CapabilityTokenBody {
     pub delegation_chain: Vec<DelegationLink>,
 }
 
+/// Schema-aware capability-token signing input used by newly-issued tokens.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilityTokenSigningBody {
+    pub schema: String,
+    #[serde(flatten)]
+    pub body: CapabilityTokenBody,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caveats: Vec<Caveat>,
+    #[serde(default, skip_serializing_if = "is_none_or_empty")]
+    pub scope_attenuations: Option<Vec<Attenuation>>,
+    #[serde(default, skip_serializing_if = "is_none_or_empty_attenuation_proof")]
+    pub attenuation_proof: Option<AttenuationProof>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_share_bps: Option<u16>,
+}
+
+/// V2 capability signing input with attenuation and caveat fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilityTokenV2Body {
+    #[serde(flatten)]
+    pub body: CapabilityTokenBody,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caveats: Vec<Caveat>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scope_attenuations: Vec<Attenuation>,
+    pub attenuation_proof: AttenuationProof,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_share_bps: Option<u16>,
+}
+
+/// First-party caveat attached to a v2 capability.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Caveat {
+    pub kind: CaveatKind,
+    pub predicate: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sig: Option<Signature>,
+}
+
+/// Built-in first-party caveat kinds. Third-party discharges are deferred.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaveatKind {
+    RestrictTool,
+    BindSession,
+    RestrictAudience,
+    RestrictGeo,
+    RestrictTimeWindow,
+}
+
+/// Hash of a canonicalized scope, encoded as lowercase SHA-256 hex.
+pub type ScopeHash = String;
+
+/// Per-grant subset relation recorded in an attenuation witness.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GrantSubsetRelation {
+    pub grant_kind: String,
+    pub child_index: u32,
+    pub parent_index: u32,
+    pub subset: bool,
+}
+
+/// On-wire attenuation witness. The normalized scope encodings are included
+/// so verifiers can hash and check the already-normalized relation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttenuationWitness {
+    pub normalized_parent_scope: String,
+    pub normalized_child_scope: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subset_relations: Vec<GrantSubsetRelation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub restricted_predicates: Vec<String>,
+}
+
+/// Wire proof carried by `CapabilityToken.attenuation_proof`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttenuationProof {
+    pub parent_scope_hash: ScopeHash,
+    pub child_scope_hash: ScopeHash,
+    pub normalized_subset_proof: AttenuationWitness,
+}
+
 impl CapabilityToken {
     /// Extract the body (everything except the signature) for re-verification.
     #[must_use]
@@ -238,14 +511,83 @@ impl CapabilityToken {
         }
     }
 
+    /// Extract the schema-aware body used for newly-issued signatures.
+    #[must_use]
+    pub fn signing_body(&self) -> CapabilityTokenSigningBody {
+        CapabilityTokenSigningBody {
+            schema: self.schema.clone(),
+            body: self.body(),
+            caveats: self.caveats.clone(),
+            scope_attenuations: self.scope_attenuations.clone(),
+            attenuation_proof: self.attenuation_proof.clone(),
+            budget_share_bps: self.budget_share_bps,
+        }
+    }
+
+    /// Reject unknown schema IDs and v2 budget amplification.
+    pub fn validate_schema(&self) -> Result<()> {
+        if self.schema != CHIO_CAPABILITY_V1_SCHEMA && self.schema != CHIO_CAPABILITY_V2_SCHEMA {
+            return Err(Error::CanonicalJson(format!(
+                "unsupported capability token schema: {}",
+                self.schema
+            )));
+        }
+        if self.schema == CHIO_CAPABILITY_V1_SCHEMA
+            && (!self.caveats.is_empty()
+                || self
+                    .scope_attenuations
+                    .as_ref()
+                    .is_some_and(|items| !items.is_empty())
+                || self.attenuation_proof.is_some()
+                || self.budget_share_bps.is_some())
+        {
+            return Err(Error::CanonicalJson(
+                "capability v1 token must not carry v2 attenuation fields".to_string(),
+            ));
+        }
+        if let Some(share) = self.budget_share_bps {
+            if share > 10_000 {
+                return Err(Error::AttenuationViolation {
+                    reason: format!(
+                        "budget_share_bps {share} exceeds the 10000 bps parent budget ceiling"
+                    ),
+                });
+            }
+        }
+        if let Some(proof) = self.attenuation_proof.as_ref() {
+            let child_hash = scope_hash(&self.scope)?;
+            if proof.child_scope_hash != child_hash {
+                return Err(Error::AttenuationViolation {
+                    reason: "attenuation_proof child_scope_hash does not match token scope"
+                        .to_string(),
+                });
+            }
+            verify_attenuation_witness(
+                &proof.parent_scope_hash,
+                &proof.child_scope_hash,
+                &proof.normalized_subset_proof,
+            )?;
+        }
+        Ok(())
+    }
+
     /// Sign a capability token body with the given Ed25519 keypair.
     ///
     /// This is the historical signing entry point and produces a
     /// byte-identical artifact to pre-`SigningBackend` Chio releases: the
     /// `algorithm` envelope field is omitted from the serialized output.
     pub fn sign(body: CapabilityTokenBody, keypair: &Keypair) -> Result<Self> {
-        let (signature, _bytes) = keypair.sign_canonical(&body)?;
+        let signing_body = CapabilityTokenSigningBody {
+            schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
+            body: body.clone(),
+            caveats: Vec::new(),
+            scope_attenuations: None,
+            attenuation_proof: None,
+            budget_share_bps: None,
+        };
+        let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
         Ok(Self {
+            schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
             id: body.id,
             issuer: body.issuer,
             subject: body.subject,
@@ -254,6 +596,59 @@ impl CapabilityToken {
             expires_at: body.expires_at,
             delegation_chain: body.delegation_chain,
             algorithm: None,
+            caveats: Vec::new(),
+            scope_attenuations: None,
+            attenuation_proof: None,
+            budget_share_bps: None,
+            signature,
+        })
+    }
+
+    /// Sign a v2 capability token with caveats and an attenuation proof.
+    pub fn sign_v2(body: CapabilityTokenV2Body, keypair: &Keypair) -> Result<Self> {
+        let child_hash = scope_hash(&body.body.scope)?;
+        if body.attenuation_proof.child_scope_hash != child_hash {
+            return Err(Error::AttenuationViolation {
+                reason: "attenuation_proof child_scope_hash does not match token scope".to_string(),
+            });
+        }
+        validate_attenuation_proof(
+            &body.attenuation_proof.parent_scope_hash,
+            &body.attenuation_proof.child_scope_hash,
+            &body.attenuation_proof.normalized_subset_proof,
+        )?;
+        if let Some(share) = body.budget_share_bps {
+            if share > 10_000 {
+                return Err(Error::AttenuationViolation {
+                    reason: format!(
+                        "budget_share_bps {share} exceeds the 10000 bps parent budget ceiling"
+                    ),
+                });
+            }
+        }
+        let signing_body = CapabilityTokenSigningBody {
+            schema: CHIO_CAPABILITY_V2_SCHEMA.to_string(),
+            body: body.body.clone(),
+            caveats: body.caveats.clone(),
+            scope_attenuations: Some(body.scope_attenuations.clone()),
+            attenuation_proof: Some(body.attenuation_proof.clone()),
+            budget_share_bps: body.budget_share_bps,
+        };
+        let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
+        Ok(Self {
+            schema: CHIO_CAPABILITY_V2_SCHEMA.to_string(),
+            id: body.body.id,
+            issuer: body.body.issuer,
+            subject: body.body.subject,
+            scope: body.body.scope,
+            issued_at: body.body.issued_at,
+            expires_at: body.body.expires_at,
+            delegation_chain: body.body.delegation_chain,
+            algorithm: None,
+            caveats: body.caveats,
+            scope_attenuations: Some(body.scope_attenuations),
+            attenuation_proof: Some(body.attenuation_proof),
+            budget_share_bps: body.budget_share_bps,
             signature,
         })
     }
@@ -271,8 +666,17 @@ impl CapabilityToken {
         body: CapabilityTokenBody,
         backend: &dyn SigningBackend,
     ) -> Result<Self> {
-        let (signature, _bytes) = sign_canonical_with_backend(backend, &body)?;
+        let signing_body = CapabilityTokenSigningBody {
+            schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
+            body: body.clone(),
+            caveats: Vec::new(),
+            scope_attenuations: None,
+            attenuation_proof: None,
+            budget_share_bps: None,
+        };
+        let (signature, _bytes) = sign_canonical_with_backend(backend, &signing_body)?;
         Ok(Self {
+            schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
             id: body.id,
             issuer: body.issuer,
             subject: body.subject,
@@ -281,6 +685,10 @@ impl CapabilityToken {
             expires_at: body.expires_at,
             delegation_chain: body.delegation_chain,
             algorithm: Some(backend.algorithm()),
+            caveats: Vec::new(),
+            scope_attenuations: None,
+            attenuation_proof: None,
+            budget_share_bps: None,
             signature,
         })
     }
@@ -291,8 +699,24 @@ impl CapabilityToken {
     /// For FIPS algorithms, the `fips` feature must be enabled at the crate
     /// level or verification returns `Ok(false)`.
     pub fn verify_signature(&self) -> Result<bool> {
-        let body = self.body();
-        self.issuer.verify_canonical(&body, &self.signature)
+        self.validate_schema()?;
+        let signing_body = self.signing_body();
+        if self
+            .issuer
+            .verify_canonical(&signing_body, &self.signature)?
+        {
+            return Ok(true);
+        }
+        if self.schema == CHIO_CAPABILITY_V1_SCHEMA
+            && self.caveats.is_empty()
+            && self.scope_attenuations.as_ref().is_none_or(Vec::is_empty)
+            && self.attenuation_proof.is_none()
+            && self.budget_share_bps.is_none()
+        {
+            let legacy_body = self.body();
+            return self.issuer.verify_canonical(&legacy_body, &self.signature);
+        }
+        Ok(false)
     }
 
     /// Verify the token's signature and enforce the kernel-side
@@ -366,11 +790,30 @@ impl CapabilityToken {
             });
         }
 
-        // Step 3: cryptographic verification.
-        let body = self.body();
-        self.issuer
-            .verify_canonical(&body, &self.signature)
-            .map_err(CapabilityFloorVerifyError::Crypto)
+        // Step 3: schema and cryptographic verification.
+        self.validate_schema()
+            .map_err(CapabilityFloorVerifyError::Crypto)?;
+        let signing_body = self.signing_body();
+        if self
+            .issuer
+            .verify_canonical(&signing_body, &self.signature)
+            .map_err(CapabilityFloorVerifyError::Crypto)?
+        {
+            return Ok(true);
+        }
+        if self.schema == CHIO_CAPABILITY_V1_SCHEMA
+            && self.caveats.is_empty()
+            && self.scope_attenuations.as_ref().is_none_or(Vec::is_empty)
+            && self.attenuation_proof.is_none()
+            && self.budget_share_bps.is_none()
+        {
+            let legacy_body = self.body();
+            return self
+                .issuer
+                .verify_canonical(&legacy_body, &self.signature)
+                .map_err(CapabilityFloorVerifyError::Crypto);
+        }
+        Ok(false)
     }
 
     /// Check whether this token is expired at the given unix timestamp.
@@ -2459,7 +2902,147 @@ pub fn validate_attenuation(parent: &ChioScope, child: &ChioScope) -> Result<()>
     }
 }
 
-#[cfg(feature = "delegation_v2")]
+/// Compute the stable SHA-256 hash of a canonicalized scope.
+pub fn scope_hash(scope: &ChioScope) -> Result<ScopeHash> {
+    let canonical = canonical_json_bytes(scope)?;
+    Ok(sha256_hex(&canonical))
+}
+
+fn canonical_scope_string(scope: &ChioScope) -> Result<String> {
+    let canonical = canonical_json_bytes(scope)?;
+    core::str::from_utf8(&canonical)
+        .map(ToString::to_string)
+        .map_err(|err| Error::CanonicalJson(format!("canonical scope utf8 error: {err}")))
+}
+
+/// Compute an on-wire witness for a parent-to-child attenuation.
+pub fn compute_attenuation_witness(
+    parent: &ChioScope,
+    child: &ChioScope,
+) -> Result<AttenuationWitness> {
+    validate_attenuation(parent, child)?;
+
+    let mut subset_relations = Vec::new();
+    let mut restricted_predicates = Vec::new();
+
+    for (child_index, child_grant) in child.grants.iter().enumerate() {
+        let Some(parent_index) = parent
+            .grants
+            .iter()
+            .position(|parent_grant| child_grant.is_subset_of(parent_grant))
+        else {
+            return Err(Error::AttenuationViolation {
+                reason: format!("tool grant {child_index} has no parent subset witness"),
+            });
+        };
+        subset_relations.push(GrantSubsetRelation {
+            grant_kind: "tool".to_string(),
+            child_index: u32::try_from(child_index).unwrap_or(u32::MAX),
+            parent_index: u32::try_from(parent_index).unwrap_or(u32::MAX),
+            subset: true,
+        });
+        let parent_grant = &parent.grants[parent_index];
+        for constraint in &child_grant.constraints {
+            if !parent_grant.constraints.contains(constraint) {
+                restricted_predicates.push(format!(
+                    "tool:{}:{}:constraint:{:?}",
+                    child_grant.server_id, child_grant.tool_name, constraint
+                ));
+            }
+        }
+        for operation in &parent_grant.operations {
+            if !child_grant.operations.contains(operation) {
+                restricted_predicates.push(format!(
+                    "tool:{}:{}:removed_operation:{:?}",
+                    child_grant.server_id, child_grant.tool_name, operation
+                ));
+            }
+        }
+    }
+
+    for (child_index, child_grant) in child.resource_grants.iter().enumerate() {
+        let Some(parent_index) = parent
+            .resource_grants
+            .iter()
+            .position(|parent_grant| child_grant.is_subset_of(parent_grant))
+        else {
+            return Err(Error::AttenuationViolation {
+                reason: format!("resource grant {child_index} has no parent subset witness"),
+            });
+        };
+        subset_relations.push(GrantSubsetRelation {
+            grant_kind: "resource".to_string(),
+            child_index: u32::try_from(child_index).unwrap_or(u32::MAX),
+            parent_index: u32::try_from(parent_index).unwrap_or(u32::MAX),
+            subset: true,
+        });
+    }
+
+    for (child_index, child_grant) in child.prompt_grants.iter().enumerate() {
+        let Some(parent_index) = parent
+            .prompt_grants
+            .iter()
+            .position(|parent_grant| child_grant.is_subset_of(parent_grant))
+        else {
+            return Err(Error::AttenuationViolation {
+                reason: format!("prompt grant {child_index} has no parent subset witness"),
+            });
+        };
+        subset_relations.push(GrantSubsetRelation {
+            grant_kind: "prompt".to_string(),
+            child_index: u32::try_from(child_index).unwrap_or(u32::MAX),
+            parent_index: u32::try_from(parent_index).unwrap_or(u32::MAX),
+            subset: true,
+        });
+    }
+
+    Ok(AttenuationWitness {
+        normalized_parent_scope: canonical_scope_string(parent)?,
+        normalized_child_scope: canonical_scope_string(child)?,
+        subset_relations,
+        restricted_predicates,
+    })
+}
+
+/// Verify a previously-computed attenuation witness against scope hashes.
+pub fn verify_attenuation_witness(
+    parent_hash: &ScopeHash,
+    child_hash: &ScopeHash,
+    witness: &AttenuationWitness,
+) -> Result<()> {
+    validate_attenuation_proof(parent_hash, child_hash, witness)
+}
+
+/// Verify the wire `attenuation_proof` payload.
+pub fn validate_attenuation_proof(
+    parent_hash: &ScopeHash,
+    child_hash: &ScopeHash,
+    witness: &AttenuationWitness,
+) -> Result<()> {
+    let computed_parent_hash = sha256_hex(witness.normalized_parent_scope.as_bytes());
+    if &computed_parent_hash != parent_hash {
+        return Err(Error::AttenuationViolation {
+            reason: "attenuation witness parent_scope_hash mismatch".to_string(),
+        });
+    }
+    let computed_child_hash = sha256_hex(witness.normalized_child_scope.as_bytes());
+    if &computed_child_hash != child_hash {
+        return Err(Error::AttenuationViolation {
+            reason: "attenuation witness child_scope_hash mismatch".to_string(),
+        });
+    }
+    if witness
+        .subset_relations
+        .iter()
+        .any(|relation| !relation.subset)
+    {
+        return Err(Error::AttenuationViolation {
+            reason: "attenuation witness carries a non-subset relation".to_string(),
+        });
+    }
+    Ok(())
+}
+
 fn scope_allows_delegation(scope: &ChioScope) -> bool {
     scope
         .grants
@@ -2497,7 +3080,6 @@ fn scope_allows_delegation(scope: &ChioScope) -> bool {
 ///
 /// This function is gated behind the `delegation_v2` feature flag (M04
 /// SDK breakage audit). Callers must opt in explicitly.
-#[cfg(feature = "delegation_v2")]
 pub fn delegate(
     parent: &CapabilityToken,
     child_scope: &ChioScope,
@@ -2849,6 +3431,101 @@ mod tests {
             vec![Operation::Invoke, Operation::Delegate],
         )]);
         assert!(validate_attenuation(&parent, &child).is_err());
+    }
+
+    #[test]
+    fn attenuation_witness_roundtrip_and_forgery_rejection() {
+        let parent = make_scope(vec![make_grant(
+            "srv",
+            "tool",
+            vec![Operation::Invoke, Operation::ReadResult],
+        )]);
+        let child = make_scope(vec![make_grant("srv", "tool", vec![Operation::Invoke])]);
+
+        let witness = compute_attenuation_witness(&parent, &child).unwrap();
+        let parent_hash = scope_hash(&parent).unwrap();
+        let child_hash = scope_hash(&child).unwrap();
+
+        verify_attenuation_witness(&parent_hash, &child_hash, &witness).unwrap();
+        let forged = "00".repeat(32);
+        assert!(verify_attenuation_witness(&forged, &child_hash, &witness).is_err());
+    }
+
+    #[test]
+    fn capability_v2_schema_and_budget_fail_closed() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let parent = make_scope(vec![make_grant(
+            "srv",
+            "tool",
+            vec![Operation::Invoke, Operation::Delegate],
+        )]);
+        let child = make_scope(vec![make_grant("srv", "tool", vec![Operation::Invoke])]);
+        let witness = compute_attenuation_witness(&parent, &child).unwrap();
+        let proof = AttenuationProof {
+            parent_scope_hash: scope_hash(&parent).unwrap(),
+            child_scope_hash: scope_hash(&child).unwrap(),
+            normalized_subset_proof: witness,
+        };
+        let body = CapabilityTokenBody {
+            id: "cap-v2".to_string(),
+            issuer: issuer.public_key(),
+            subject: subject.public_key(),
+            scope: child,
+            issued_at: 10,
+            expires_at: 20,
+            delegation_chain: vec![],
+        };
+        let token = CapabilityToken::sign_v2(
+            CapabilityTokenV2Body {
+                body: body.clone(),
+                caveats: vec![Caveat {
+                    kind: CaveatKind::RestrictTool,
+                    predicate: "srv/tool".to_string(),
+                    sig: None,
+                }],
+                scope_attenuations: vec![Attenuation::RemoveOperation {
+                    server_id: "srv".to_string(),
+                    tool_name: "tool".to_string(),
+                    operation: Operation::ReadResult,
+                }],
+                attenuation_proof: proof.clone(),
+                budget_share_bps: Some(5_000),
+            },
+            &issuer,
+        )
+        .unwrap();
+        assert_eq!(token.schema, CHIO_CAPABILITY_V2_SCHEMA);
+        assert!(token.verify_signature().unwrap());
+
+        let mut bad_schema = token.clone();
+        bad_schema.schema = "chio.capability.v999".to_string();
+        assert!(bad_schema.verify_signature().is_err());
+
+        let bad_budget = CapabilityToken::sign_v2(
+            CapabilityTokenV2Body {
+                body,
+                caveats: vec![],
+                scope_attenuations: vec![],
+                attenuation_proof: proof,
+                budget_share_bps: Some(10_001),
+            },
+            &issuer,
+        );
+        assert!(bad_budget.is_err());
+    }
+
+    #[test]
+    fn capability_negotiation_intersection_rejects_malformed_feature() {
+        let local = CapabilityNegotiation::t1_default();
+        let remote = CapabilityNegotiation::v1_default();
+        let negotiated = local.negotiated_with(&remote).unwrap();
+        assert_eq!(negotiated.max_capability_schema, CHIO_CAPABILITY_V1_SCHEMA);
+        assert!(!negotiated.supports(capability_features::ACCEPTS_CAPABILITY_V2));
+
+        let mut malformed = CapabilityNegotiation::t1_default();
+        malformed.features.insert("bad feature".to_string(), true);
+        assert!(local.negotiated_with(&malformed).is_err());
     }
 
     fn make_signed_link(

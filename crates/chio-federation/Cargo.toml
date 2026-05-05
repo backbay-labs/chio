@@ -11,6 +11,9 @@ publish = false
 [lib]
 name = "chio_federation"
 
+[features]
+pq = ["chio-core-types/pq"]
+
 [dependencies]
 chio-core-types = { path = "../chio-core-types" }
 chio-listing = { path = "../chio-listing" }

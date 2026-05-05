@@ -14,6 +14,7 @@ use zeroize::Zeroizing;
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
+use crate::redaction::redact_for_operator_log;
 
 /// Authentication configuration for the Elasticsearch exporter.
 ///
@@ -175,6 +176,7 @@ impl Exporter for ElasticsearchExporter {
                     .text()
                     .await
                     .unwrap_or_else(|_| "<unreadable body>".to_string());
+                let body_text = redact_for_operator_log(body_text);
                 return Err(ExportError::HttpError(format!(
                     "Elasticsearch returned {status}: {body_text}"
                 )));
@@ -219,7 +221,7 @@ impl Exporter for ElasticsearchExporter {
                                 .and_then(|err| err.get("reason"))
                                 .and_then(|r| r.as_str())
                                 .unwrap_or("unknown error");
-                            first_error = reason.to_string();
+                            first_error = redact_for_operator_log(reason);
                         }
                     }
                 }

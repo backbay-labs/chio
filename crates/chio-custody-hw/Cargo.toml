@@ -12,7 +12,12 @@ publish = false
 name = "chio_custody_hw"
 
 [features]
-default = []
+default = ["passkey"]
+# Passkey/WebAuthn relying-party verification is enabled for the custody
+# issuer by default. Mobile attestation consumers can disable default
+# features to avoid pulling the OpenSSL-backed webauthn-rs graph into iOS
+# staticlib builds.
+passkey = ["dep:webauthn-rs", "dep:webauthn-rs-proto"]
 # Enable post-quantum HybridBackend signing for issuer mint paths. The
 # `pq` feature pulls in `chio-core-types/pq` (ML-DSA-65 via FIPS 204).
 # Classical-only deployments leave this disabled and use the Ed25519 /
@@ -41,9 +46,9 @@ der = { workspace = true }
 hex = { workspace = true }
 jsonwebtoken = { workspace = true }
 sha2 = { workspace = true }
-webauthn-rs = { workspace = true }
-webauthn-rs-proto = { workspace = true }
-x509-parser = { workspace = true }
+webauthn-rs = { workspace = true, optional = true }
+webauthn-rs-proto = { workspace = true, optional = true }
+x509-parser = { workspace = true, features = ["verify"] }
 url = { workspace = true }
 rusqlite = { workspace = true, optional = true }
 

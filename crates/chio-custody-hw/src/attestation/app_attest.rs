@@ -1,18 +1,32 @@
 //! Apple App Attest verifier.
 //!
-//! P2 accepts a compact CBOR map fixture shape that mirrors the fields
-//! Chio consumes from Apple's WebAuthn-style App Attest object. Real
-//! device fixtures land later in the milestone, but this verifier is
-//! already fail-closed on CBOR shape, app binding, challenge binding,
-//! key binding, and the pinned Apple App Attestation root fingerprint.
+//! The production path accepts Apple's WebAuthn-style attestation object:
+//! `fmt`, `authData`, and `attStmt.x5c`. It validates the certificate
+//! chain to the pinned Apple App Attestation root, binds the server
+//! challenge through Apple's nonce extension, checks the app id hash,
+//! enforces counter monotonicity when the caller supplies a prior
+//! counter, and requires the credential id to match the platform key id.
+//!
+//! Synthetic fixtures stay available only when the caller explicitly sets
+//! `allow_development_fixture`; production callers should leave that flag
+//! false so compact maps cannot bypass the x5c path.
 
+use base64ct::{Base64UrlUnpadded, Encoding};
 use coset::cbor::Value as CborValue;
 use sha2::{Digest, Sha256};
+use x509_parser::prelude::*;
 
-use super::apple_root::{validate_pinned_apple_root, APPLE_APP_ATTEST_ROOT_SHA256};
+use super::apple_root::{
+    apple_app_attest_root_der, validate_pinned_apple_root, APPLE_APP_ATTEST_ROOT_SHA256,
+};
 use super::errors::AttestationError;
 
 pub const APP_ATTEST_FORMAT: &str = "apple-appattest";
+const APP_ATTEST_NONCE_EXTENSION_OID: &str = "1.2.840.113635.100.8.2";
+const AUTH_DATA_HEADER_LEN: usize = 37;
+const AAGUID_LEN: usize = 16;
+const CREDENTIAL_ID_LEN_BYTES: usize = 2;
+const FLAG_ATTESTED_CREDENTIAL_DATA: u8 = 0x40;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppAttestVerificationInput<'a> {
@@ -20,12 +34,15 @@ pub struct AppAttestVerificationInput<'a> {
     pub key_id: &'a str,
     pub challenge: &'a [u8],
     pub app_id: &'a str,
+    pub previous_counter: Option<u32>,
+    pub allow_development_fixture: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedAppAttest {
     pub key_id: String,
     pub app_id: String,
+    pub counter: u32,
     pub app_id_hash_hex: String,
     pub challenge_hash_hex: String,
     pub root_fingerprint_sha256_hex: String,
@@ -48,36 +65,96 @@ pub fn verify_app_attest(
         }
     };
 
-    let format = text_field(&map, "format")?;
+    if field_optional(&map, "fmt").is_some() {
+        return verify_webauthn_app_attest(input, &map);
+    }
+
+    verify_development_fixture(input, &map)
+}
+
+fn verify_webauthn_app_attest(
+    input: AppAttestVerificationInput<'_>,
+    map: &[(CborValue, CborValue)],
+) -> Result<VerifiedAppAttest, AttestationError> {
+    let format = text_field(map, "fmt")?;
     if format != APP_ATTEST_FORMAT {
         return Err(AttestationError::UnsupportedFormat(format.to_string()));
     }
 
-    let key_id = text_field(&map, "key_id")?;
+    let auth_data = bytes_field(map, "authData")?;
+    let parsed_auth_data = parse_auth_data(auth_data)?;
+    let expected_app_hash = sha256(input.app_id.as_bytes());
+    if parsed_auth_data.app_id_hash != expected_app_hash {
+        return Err(AttestationError::AppIdentifierMismatch);
+    }
+    enforce_counter(input.previous_counter, parsed_auth_data.counter)?;
+    let key_id_bytes = decode_key_id(input.key_id)?;
+    if key_id_bytes != parsed_auth_data.credential_id {
+        return Err(AttestationError::KeyIdMismatch);
+    }
+    parse_cose_key(parsed_auth_data.credential_public_key)?;
+
+    let challenge_hash = sha256(input.challenge);
+    let expected_nonce = apple_nonce(auth_data, &challenge_hash);
+    let att_stmt = map_field(map, "attStmt")?;
+    let cert_chain = x5c_field(att_stmt)?;
+    validate_apple_cert_chain(&cert_chain, &expected_nonce)?;
+
+    Ok(VerifiedAppAttest {
+        key_id: input.key_id.to_string(),
+        app_id: input.app_id.to_string(),
+        counter: parsed_auth_data.counter,
+        app_id_hash_hex: hex::encode(parsed_auth_data.app_id_hash),
+        challenge_hash_hex: hex::encode(challenge_hash),
+        root_fingerprint_sha256_hex: hex::encode(APPLE_APP_ATTEST_ROOT_SHA256),
+        credential_public_key_sha256_hex: hex::encode(sha256(
+            parsed_auth_data.credential_public_key,
+        )),
+    })
+}
+
+fn verify_development_fixture(
+    input: AppAttestVerificationInput<'_>,
+    map: &[(CborValue, CborValue)],
+) -> Result<VerifiedAppAttest, AttestationError> {
+    if !input.allow_development_fixture {
+        return Err(AttestationError::InvalidCbor(
+            "development fixture format is disabled".to_string(),
+        ));
+    }
+
+    let format = text_field(map, "format")?;
+    if format != APP_ATTEST_FORMAT {
+        return Err(AttestationError::UnsupportedFormat(format.to_string()));
+    }
+
+    let key_id = text_field(map, "key_id")?;
     if key_id != input.key_id {
         return Err(AttestationError::KeyIdMismatch);
     }
 
-    let app_id_hash = bytes_field(&map, "app_id_hash")?;
+    let app_id_hash = bytes_field(map, "app_id_hash")?;
     let expected_app_hash = sha256(input.app_id.as_bytes());
     if app_id_hash != expected_app_hash {
         return Err(AttestationError::AppIdentifierMismatch);
     }
 
-    let challenge_hash = bytes_field(&map, "challenge_hash")?;
+    let challenge_hash = bytes_field(map, "challenge_hash")?;
     let expected_challenge_hash = sha256(input.challenge);
     if challenge_hash != expected_challenge_hash {
         return Err(AttestationError::ChallengeMismatch);
     }
 
-    let root_fingerprint = bytes_field(&map, "root_fingerprint_sha256")?;
+    let root_fingerprint = bytes_field(map, "root_fingerprint_sha256")?;
     if root_fingerprint != APPLE_APP_ATTEST_ROOT_SHA256 {
         return Err(AttestationError::InvalidRoot(
             "attestation root fingerprint mismatch".to_string(),
         ));
     }
+    let counter = u32_field(map, "counter")?;
+    enforce_counter(input.previous_counter, counter)?;
 
-    let credential_public_key = bytes_field(&map, "credential_public_key")?;
+    let credential_public_key = bytes_field(map, "credential_public_key")?;
     if credential_public_key.is_empty() {
         return Err(AttestationError::InvalidCbor(
             "credential_public_key must not be empty".to_string(),
@@ -87,11 +164,254 @@ pub fn verify_app_attest(
     Ok(VerifiedAppAttest {
         key_id: key_id.to_string(),
         app_id: input.app_id.to_string(),
+        counter,
         app_id_hash_hex: hex::encode(app_id_hash),
         challenge_hash_hex: hex::encode(challenge_hash),
         root_fingerprint_sha256_hex: hex::encode(root_fingerprint),
         credential_public_key_sha256_hex: hex::encode(sha256(credential_public_key)),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedAuthData<'a> {
+    app_id_hash: &'a [u8],
+    counter: u32,
+    credential_id: Vec<u8>,
+    credential_public_key: &'a [u8],
+}
+
+fn parse_auth_data(auth_data: &[u8]) -> Result<ParsedAuthData<'_>, AttestationError> {
+    let min_len = AUTH_DATA_HEADER_LEN + AAGUID_LEN + CREDENTIAL_ID_LEN_BYTES;
+    if auth_data.len() < min_len {
+        return Err(AttestationError::InvalidCbor(format!(
+            "authData must be at least {min_len} bytes"
+        )));
+    }
+    let flags = auth_data[32];
+    if flags & FLAG_ATTESTED_CREDENTIAL_DATA == 0 {
+        return Err(AttestationError::MissingField("attestedCredentialData"));
+    }
+    let counter = u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
+    let credential_len_offset = AUTH_DATA_HEADER_LEN + AAGUID_LEN;
+    let credential_len = u16::from_be_bytes([
+        auth_data[credential_len_offset],
+        auth_data[credential_len_offset + 1],
+    ]) as usize;
+    let credential_id_offset = credential_len_offset + CREDENTIAL_ID_LEN_BYTES;
+    let credential_key_offset = credential_id_offset + credential_len;
+    if credential_len == 0 || auth_data.len() <= credential_key_offset {
+        return Err(AttestationError::InvalidCbor(
+            "authData credential id or public key is empty".to_string(),
+        ));
+    }
+
+    Ok(ParsedAuthData {
+        app_id_hash: &auth_data[..32],
+        counter,
+        credential_id: auth_data[credential_id_offset..credential_key_offset].to_vec(),
+        credential_public_key: &auth_data[credential_key_offset..],
+    })
+}
+
+fn parse_cose_key(bytes: &[u8]) -> Result<(), AttestationError> {
+    let value: CborValue = coset::cbor::de::from_reader(bytes).map_err(|error| {
+        AttestationError::InvalidCbor(format!("credential public key: {error}"))
+    })?;
+    match value {
+        CborValue::Map(map) if !map.is_empty() => Ok(()),
+        CborValue::Map(_) => Err(AttestationError::InvalidCbor(
+            "credential public key map is empty".to_string(),
+        )),
+        _ => Err(AttestationError::InvalidCbor(
+            "credential public key must be a COSE key map".to_string(),
+        )),
+    }
+}
+
+fn enforce_counter(previous_counter: Option<u32>, counter: u32) -> Result<(), AttestationError> {
+    if let Some(previous) = previous_counter {
+        if counter <= previous {
+            return Err(AttestationError::CounterRollback);
+        }
+    }
+    Ok(())
+}
+
+fn decode_key_id(key_id: &str) -> Result<Vec<u8>, AttestationError> {
+    if key_id.trim().is_empty() {
+        return Err(AttestationError::KeyIdMismatch);
+    }
+    if key_id.len().is_multiple_of(2) && key_id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return hex::decode(key_id).map_err(|_| AttestationError::KeyIdMismatch);
+    }
+    Base64UrlUnpadded::decode_vec(key_id).map_err(|_| AttestationError::KeyIdMismatch)
+}
+
+fn apple_nonce(auth_data: &[u8], challenge_hash: &[u8; 32]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(auth_data);
+    hasher.update(challenge_hash);
+    hasher.finalize().into()
+}
+
+fn validate_apple_cert_chain(
+    cert_chain: &[&[u8]],
+    expected_nonce: &[u8; 32],
+) -> Result<(), AttestationError> {
+    if cert_chain.is_empty() {
+        return Err(AttestationError::MissingField("attStmt.x5c"));
+    }
+    let root_der = apple_app_attest_root_der()?;
+    let (_, root) = X509Certificate::from_der(&root_der).map_err(|error| {
+        AttestationError::CertificateChainInvalid(format!("Apple root DER parse failed: {error}"))
+    })?;
+    let certs = parse_cert_chain(cert_chain)?;
+    let leaf = certs
+        .first()
+        .ok_or(AttestationError::MissingField("attStmt.x5c"))?;
+    validate_cert_time(leaf)?;
+    validate_leaf_nonce(leaf, expected_nonce)?;
+
+    for window in certs.windows(2) {
+        let child = &window[0];
+        let issuer = &window[1];
+        validate_cert_time(issuer)?;
+        if child.issuer().to_string() != issuer.subject().to_string() {
+            return Err(AttestationError::CertificateChainInvalid(
+                "certificate issuer does not match parent subject".to_string(),
+            ));
+        }
+        child
+            .verify_signature(Some(&issuer.tbs_certificate.subject_pki))
+            .map_err(|error| {
+                AttestationError::CertificateChainInvalid(format!(
+                    "certificate signature failed: {error}"
+                ))
+            })?;
+    }
+
+    let last = certs
+        .last()
+        .ok_or(AttestationError::MissingField("attStmt.x5c"))?;
+    let last_der = cert_chain
+        .last()
+        .ok_or(AttestationError::MissingField("attStmt.x5c"))?;
+    let last_fingerprint: [u8; 32] = Sha256::digest(last_der).into();
+    if last_fingerprint == APPLE_APP_ATTEST_ROOT_SHA256 {
+        if certs.len() == 1 {
+            return Err(AttestationError::CertificateChainInvalid(
+                "x5c must contain a leaf certificate, not only the root".to_string(),
+            ));
+        }
+        last.verify_signature(None).map_err(|error| {
+            AttestationError::CertificateChainInvalid(format!(
+                "Apple root self-signature failed: {error}"
+            ))
+        })?;
+        return Ok(());
+    }
+
+    if last.issuer().to_string() != root.subject().to_string() {
+        return Err(AttestationError::CertificateChainInvalid(
+            "certificate chain does not terminate at Apple App Attestation Root CA".to_string(),
+        ));
+    }
+    last.verify_signature(Some(&root.tbs_certificate.subject_pki))
+        .map_err(|error| {
+            AttestationError::CertificateChainInvalid(format!(
+                "certificate signature to Apple root failed: {error}"
+            ))
+        })?;
+    Ok(())
+}
+
+fn parse_cert_chain<'a>(
+    cert_chain: &[&'a [u8]],
+) -> Result<Vec<X509Certificate<'a>>, AttestationError> {
+    let mut certs = Vec::with_capacity(cert_chain.len());
+    for der in cert_chain {
+        let (_, cert) = X509Certificate::from_der(der).map_err(|error| {
+            AttestationError::CertificateChainInvalid(format!("x5c DER parse failed: {error}"))
+        })?;
+        certs.push(cert);
+    }
+    Ok(certs)
+}
+
+fn validate_cert_time(cert: &X509Certificate<'_>) -> Result<(), AttestationError> {
+    if !cert.validity().is_valid() {
+        return Err(AttestationError::CertificateChainInvalid(format!(
+            "certificate is outside validity window: {}",
+            cert.subject()
+        )));
+    }
+    Ok(())
+}
+
+fn validate_leaf_nonce(
+    leaf: &X509Certificate<'_>,
+    expected_nonce: &[u8; 32],
+) -> Result<(), AttestationError> {
+    let extension = leaf
+        .extensions()
+        .iter()
+        .find(|extension| extension.oid.to_id_string() == APP_ATTEST_NONCE_EXTENSION_OID)
+        .ok_or(AttestationError::MissingField("apple nonce extension"))?;
+    if !der_contains_octet_string(extension.value, expected_nonce, 0) {
+        return Err(AttestationError::ChallengeMismatch);
+    }
+    Ok(())
+}
+
+fn der_contains_octet_string(input: &[u8], expected: &[u8], depth: u8) -> bool {
+    if depth > 8 {
+        return false;
+    }
+    let mut rest = input;
+    while !rest.is_empty() {
+        let Some((tag, value, next)) = read_der_tlv(rest) else {
+            return false;
+        };
+        if tag == 0x04 && value == expected {
+            return true;
+        }
+        if tag & 0xC0 == 0x80 && value == expected {
+            return true;
+        }
+        if tag & 0x20 != 0 && der_contains_octet_string(value, expected, depth + 1) {
+            return true;
+        }
+        rest = next;
+    }
+    false
+}
+
+fn read_der_tlv(input: &[u8]) -> Option<(u8, &[u8], &[u8])> {
+    if input.len() < 2 {
+        return None;
+    }
+    let tag = input[0];
+    let len_byte = input[1];
+    let (len, value_offset) = if len_byte & 0x80 == 0 {
+        (usize::from(len_byte), 2)
+    } else {
+        let len_len = usize::from(len_byte & 0x7f);
+        if len_len == 0 || len_len > 4 || input.len() < 2 + len_len {
+            return None;
+        }
+        let mut parsed_len = 0usize;
+        for byte in &input[2..2 + len_len] {
+            parsed_len = parsed_len
+                .checked_mul(256)?
+                .checked_add(usize::from(*byte))?;
+        }
+        (parsed_len, 2 + len_len)
+    };
+    let end = value_offset.checked_add(len)?;
+    if input.len() < end {
+        return None;
+    }
+    Some((tag, &input[value_offset..end], &input[end..]))
 }
 
 fn text_field<'a>(
@@ -118,16 +438,67 @@ fn bytes_field<'a>(
     }
 }
 
+fn u32_field(map: &[(CborValue, CborValue)], name: &'static str) -> Result<u32, AttestationError> {
+    match field(map, name)? {
+        CborValue::Integer(value) => {
+            let as_i128 = i128::from(*value);
+            if as_i128 < 0 || as_i128 > i128::from(u32::MAX) {
+                return Err(AttestationError::InvalidCbor(format!(
+                    "{name} must fit in u32"
+                )));
+            }
+            Ok(as_i128 as u32)
+        }
+        _ => Err(AttestationError::InvalidCbor(format!(
+            "{name} must be an integer"
+        ))),
+    }
+}
+
+fn map_field<'a>(
+    map: &'a [(CborValue, CborValue)],
+    name: &'static str,
+) -> Result<&'a [(CborValue, CborValue)], AttestationError> {
+    match field(map, name)? {
+        CborValue::Map(value) => Ok(value.as_slice()),
+        _ => Err(AttestationError::InvalidCbor(format!("{name} must be map"))),
+    }
+}
+
+fn x5c_field(map: &[(CborValue, CborValue)]) -> Result<Vec<&[u8]>, AttestationError> {
+    let value = field(map, "x5c")?;
+    let CborValue::Array(entries) = value else {
+        return Err(AttestationError::InvalidCbor(
+            "attStmt.x5c must be array".to_string(),
+        ));
+    };
+    let mut certs = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let CborValue::Bytes(bytes) = entry else {
+            return Err(AttestationError::InvalidCbor(
+                "attStmt.x5c entries must be bytes".to_string(),
+            ));
+        };
+        certs.push(bytes.as_slice());
+    }
+    Ok(certs)
+}
+
 fn field<'a>(
     map: &'a [(CborValue, CborValue)],
     name: &'static str,
 ) -> Result<&'a CborValue, AttestationError> {
-    map.iter()
-        .find_map(|(key, value)| match key {
-            CborValue::Text(text) if text == name => Some(value),
-            _ => None,
-        })
-        .ok_or(AttestationError::MissingField(name))
+    field_optional(map, name).ok_or(AttestationError::MissingField(name))
+}
+
+fn field_optional<'a>(
+    map: &'a [(CborValue, CborValue)],
+    name: &'static str,
+) -> Option<&'a CborValue> {
+    map.iter().find_map(|(key, value)| match key {
+        CborValue::Text(text) if text == name => Some(value),
+        _ => None,
+    })
 }
 
 fn sha256(bytes: &[u8]) -> [u8; 32] {

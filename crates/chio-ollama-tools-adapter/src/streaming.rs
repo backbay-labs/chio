@@ -6,7 +6,8 @@
 //! `done: true` for the assistant message) and gates emission on a kernel
 //! verdict before forwarding bytes downstream.
 
-use chio_tool_call_fabric::{DenyReason, ProviderError, ToolInvocation, VerdictResult};
+use chio_provider_adapter_core::ensure_streaming_allow_no_redactions;
+use chio_tool_call_fabric::{ProviderError, ToolInvocation, VerdictResult};
 use serde_json::Value;
 
 use crate::{native::ToolCallPart, OllamaAdapter};
@@ -63,7 +64,13 @@ impl OllamaAdapter {
                         })?;
                     let invocation = self.invocation_from_tool_call(tool_index, &parsed)?;
                     let verdict = evaluate(&invocation)?;
-                    ensure_streaming_allow(&parsed, &verdict)?;
+                    ensure_streaming_allow_no_redactions(
+                        "Ollama",
+                        "tool_call",
+                        &parsed.function.name,
+                        None,
+                        &verdict,
+                    )?;
                     invocations.push(invocation);
                     verdicts.push(verdict);
                     tool_index += 1;
@@ -79,36 +86,5 @@ impl OllamaAdapter {
             invocations,
             verdicts,
         })
-    }
-}
-
-fn ensure_streaming_allow(
-    call: &ToolCallPart,
-    verdict: &VerdictResult,
-) -> Result<(), ProviderError> {
-    match verdict {
-        VerdictResult::Allow { redactions, .. } if redactions.is_empty() => Ok(()),
-        VerdictResult::Allow { .. } => Err(ProviderError::Malformed(format!(
-            "Ollama streaming tool_call `{}` allow verdict requested redactions; fail-closed",
-            call.function.name
-        ))),
-        VerdictResult::Deny { reason, receipt_id } => Err(ProviderError::Malformed(format!(
-            "Ollama streaming tool_call `{}` denied: {} (receipt {})",
-            call.function.name,
-            deny_reason_text(reason),
-            receipt_id.0
-        ))),
-    }
-}
-
-fn deny_reason_text(reason: &DenyReason) -> String {
-    match reason {
-        DenyReason::PolicyDeny { rule_id } => format!("policy_deny:{rule_id}"),
-        DenyReason::GuardDeny { guard_id, detail } => {
-            format!("guard_deny:{guard_id}:{detail}")
-        }
-        DenyReason::CapabilityExpired => "capability_expired".to_string(),
-        DenyReason::PrincipalUnknown => "principal_unknown".to_string(),
-        DenyReason::BudgetExceeded => "budget_exceeded".to_string(),
     }
 }

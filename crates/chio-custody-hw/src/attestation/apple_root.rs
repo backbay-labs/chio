@@ -28,9 +28,8 @@ oyFraWVIyd/dganmrduC1bmTBGwD\n\
 -----END CERTIFICATE-----\n";
 
 pub fn validate_pinned_apple_root() -> Result<(), AttestationError> {
-    let (_, pem) = parse_x509_pem(APPLE_APP_ATTEST_ROOT_PEM.as_bytes())
-        .map_err(|error| AttestationError::InvalidRoot(format!("PEM parse failed: {error}")))?;
-    let (_, cert) = X509Certificate::from_der(&pem.contents)
+    let root_der = apple_app_attest_root_der()?;
+    let (_, cert) = X509Certificate::from_der(&root_der)
         .map_err(|error| AttestationError::InvalidRoot(format!("DER parse failed: {error}")))?;
     let subject = cert.subject().to_string();
     if !subject.contains("Apple App Attestation Root CA") {
@@ -38,11 +37,17 @@ pub fn validate_pinned_apple_root() -> Result<(), AttestationError> {
             "unexpected subject {subject}"
         )));
     }
-    let actual: [u8; 32] = Sha256::digest(&pem.contents).into();
+    let actual: [u8; 32] = Sha256::digest(&root_der).into();
     if actual != APPLE_APP_ATTEST_ROOT_SHA256 {
         return Err(AttestationError::InvalidRoot(
             "root SHA-256 fingerprint mismatch".to_string(),
         ));
     }
     Ok(())
+}
+
+pub fn apple_app_attest_root_der() -> Result<Vec<u8>, AttestationError> {
+    let (_, pem) = parse_x509_pem(APPLE_APP_ATTEST_ROOT_PEM.as_bytes())
+        .map_err(|error| AttestationError::InvalidRoot(format!("PEM parse failed: {error}")))?;
+    Ok(pem.contents)
 }

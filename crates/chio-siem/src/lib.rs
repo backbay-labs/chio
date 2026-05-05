@@ -22,6 +22,7 @@ pub mod exporters;
 pub mod manager;
 pub mod ocsf;
 pub mod ratelimit;
+mod redaction;
 
 pub use alerting::{
     derive_severity, Alert, AlertBackend, AlertSeverity, AlertingConfig, AlertingExporter,

@@ -122,3 +122,10 @@ m09_hitrust_i1_readiness_package:
   public_landing_page: docs/external-attestation/hitrust-i1/index.md
   note: "HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an audit. Real HITRUST i1 certification is a trajectory-4 deliverable. Calendar estimate per realist analysis: 12-36 weeks."
 """
+
+[trajectory_4]
+trj3_1_release_tag = "v3.18.1-trj3.1"
+trj3_1_release_sha = "a9006addb7d0217727ef748e9a469b97617e6279"
+trj3_1_release_binaries_run_url = "https://github.com/bb-connor/arc/actions/runs/25355058222"
+trj3_1_reproducible_build_run_url = "https://github.com/bb-connor/arc/actions/runs/25355058217"
+trj3_1_slsa_trigger = "workflow_run after Release Binaries succeeds"

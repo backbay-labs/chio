@@ -2,32 +2,24 @@
 //!
 //! # Trust contract
 //!
-//! The fixture verifier shipped here validates a JWS-shaped envelope against
-//! a pinned symmetric key in [`super::google_root`]. Real production
-//! deployments MUST swap the decoding key for Google's JWKS before this is
-//! reachable from the FFI; the surface returns
-//! [`AttestationError::PlayIntegrityInvalidToken`] on every parse failure so
-//! the fail-closed path is identical regardless of which key is wired.
+//! The verifier takes the current Google JWKS document from the caller,
+//! selects the JWK by token `kid`, validates the JWS under the selected
+//! key's advertised algorithm, and then enforces the Play Integrity
+//! claim contract:
 //!
-//! Even with the fixture key, the verifier enforces:
-//!
-//! - `exp` claim, when present, must be in the future. A token whose `exp`
-//!   has elapsed is rejected fail-closed; this keeps the fixture path from
-//!   silently accepting a stale token replayed past the issuer's retention
-//!   window.
-//! - Server-supplied `nonce` must match `expected_nonce` byte-for-byte.
+//! - `aud` must match `expected_audience`.
+//! - `exp` is required and must be in the future.
+//! - Server-supplied nonce must match `expected_nonce` byte-for-byte.
 //! - `app_integrity.package_name` must match `expected_package_name`.
 //! - `app_integrity.app_recognition_verdict` must equal [`PLAY_RECOGNIZED`].
 //! - `device_integrity.device_recognition_verdict` must contain
 //!   [`MEETS_DEVICE_INTEGRITY`].
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use jsonwebtoken::{decode, Algorithm, Validation};
+use jsonwebtoken::jwk::{Jwk, JwkSet, KeyAlgorithm};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
 use super::errors::AttestationError;
-use super::google_root::play_integrity_decoding_key;
 
 pub const PLAY_RECOGNIZED: &str = "PLAY_RECOGNIZED";
 pub const MEETS_DEVICE_INTEGRITY: &str = "MEETS_DEVICE_INTEGRITY";
@@ -37,6 +29,8 @@ pub struct PlayIntegrityVerificationInput<'a> {
     pub token: &'a str,
     pub expected_nonce: &'a str,
     pub expected_package_name: &'a str,
+    pub expected_audience: &'a str,
+    pub jwks_json: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,11 +44,14 @@ pub struct VerifiedPlayIntegrity {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayIntegrityClaims {
-    pub nonce: String,
+    #[serde(default)]
+    pub nonce: Option<String>,
+    #[serde(default)]
+    pub request_details: Option<RequestDetailsClaims>,
     pub app_integrity: AppIntegrityClaims,
     pub device_integrity: DeviceIntegrityClaims,
-    #[serde(default)]
-    pub exp: Option<u64>,
+    pub aud: String,
+    pub exp: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -70,34 +67,54 @@ pub struct DeviceIntegrityClaims {
     pub device_recognition_verdict: Vec<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestDetailsClaims {
+    pub nonce: String,
+    #[serde(default)]
+    pub request_package_name: Option<String>,
+    #[serde(default)]
+    pub timestamp_millis: Option<u64>,
+}
+
 pub fn verify_play_integrity(
     input: PlayIntegrityVerificationInput<'_>,
 ) -> Result<VerifiedPlayIntegrity, AttestationError> {
-    let mut validation = Validation::new(Algorithm::HS256);
-    // `jsonwebtoken`'s built-in `exp` validator requires the claim to be
-    // present and rejects future-skewed tokens with a non-stable error
-    // shape. We do the check by hand against a fail-closed clock so the
-    // rejection URN stays
-    // `urn:chio:error:custody:play-integrity-invalid-token` for both
-    // signature failures and stale tokens, and so the verifier still
-    // accepts fixture tokens whose claim set omits `exp`.
-    validation.validate_exp = false;
-    validation.required_spec_claims.clear();
-    let token =
-        decode::<PlayIntegrityClaims>(input.token, &play_integrity_decoding_key(), &validation)
-            .map_err(|error| AttestationError::PlayIntegrityInvalidToken(error.to_string()))?;
-    let claims = token.claims;
-
-    if let Some(exp) = claims.exp {
-        let now = current_unix_seconds()?;
-        if exp < now {
-            return Err(AttestationError::PlayIntegrityInvalidToken(format!(
-                "token exp {exp} is before now {now}"
-            )));
-        }
+    if input.expected_audience.trim().is_empty() {
+        return Err(AttestationError::PlayIntegrityInvalidToken(
+            "expected audience must not be empty".to_string(),
+        ));
+    }
+    let header = decode_header(input.token)
+        .map_err(|error| AttestationError::PlayIntegrityInvalidToken(error.to_string()))?;
+    let kid = header.kid.as_deref().ok_or_else(|| {
+        AttestationError::PlayIntegrityInvalidToken("token header is missing kid".to_string())
+    })?;
+    let jwks: JwkSet = serde_json::from_str(input.jwks_json)
+        .map_err(|error| AttestationError::PlayIntegrityInvalidToken(format!("JWKS: {error}")))?;
+    let jwk = jwks.find(kid).ok_or_else(|| {
+        AttestationError::PlayIntegrityInvalidToken(format!("JWKS has no key for kid {kid}"))
+    })?;
+    let algorithm = jwk_algorithm(jwk)?;
+    if header.alg != algorithm {
+        return Err(AttestationError::PlayIntegrityInvalidToken(format!(
+            "token alg {:?} does not match JWKS alg {:?}",
+            header.alg, algorithm
+        )));
     }
 
-    if claims.nonce != input.expected_nonce {
+    let decoding_key = DecodingKey::from_jwk(jwk)
+        .map_err(|error| AttestationError::PlayIntegrityInvalidToken(error.to_string()))?;
+    let mut validation = Validation::new(algorithm);
+    validation.set_audience(&[input.expected_audience]);
+    validation.required_spec_claims.insert("aud".to_string());
+    validation.required_spec_claims.insert("exp".to_string());
+    let token = decode::<PlayIntegrityClaims>(input.token, &decoding_key, &validation)
+        .map_err(|error| AttestationError::PlayIntegrityInvalidToken(error.to_string()))?;
+    let claims = token.claims;
+    let nonce = claim_nonce(&claims)?.to_string();
+
+    if nonce != input.expected_nonce {
         return Err(AttestationError::PlayIntegrityNonceMismatch);
     }
     if claims.app_integrity.package_name != input.expected_package_name {
@@ -117,22 +134,49 @@ pub fn verify_play_integrity(
 
     Ok(VerifiedPlayIntegrity {
         package_name: claims.app_integrity.package_name,
-        nonce: claims.nonce,
+        nonce,
         app_recognition_verdict: claims.app_integrity.app_recognition_verdict,
         device_recognition_verdict: claims.device_integrity.device_recognition_verdict,
     })
 }
 
-/// Resolve the current Unix time in seconds for the `exp` check.
-///
-/// Failure to read the system clock surfaces as
-/// `PlayIntegrityInvalidToken` rather than a silently-accepted token; a
-/// system clock that pre-dates the Unix epoch is fail-closed.
-fn current_unix_seconds() -> Result<u64, AttestationError> {
-    let elapsed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| {
-            AttestationError::PlayIntegrityInvalidToken(format!("system clock pre-1970: {err}"))
-        })?;
-    Ok(elapsed.as_secs())
+fn claim_nonce(claims: &PlayIntegrityClaims) -> Result<&str, AttestationError> {
+    match (&claims.nonce, &claims.request_details) {
+        (Some(top_level), Some(details)) if top_level != &details.nonce => {
+            Err(AttestationError::PlayIntegrityInvalidToken(
+                "top-level nonce and requestDetails.nonce differ".to_string(),
+            ))
+        }
+        (Some(top_level), _) => Ok(top_level.as_str()),
+        (None, Some(details)) => Ok(details.nonce.as_str()),
+        (None, None) => Err(AttestationError::PlayIntegrityInvalidToken(
+            "token has no nonce".to_string(),
+        )),
+    }
+}
+
+fn jwk_algorithm(jwk: &Jwk) -> Result<Algorithm, AttestationError> {
+    let algorithm = jwk.common.key_algorithm.ok_or_else(|| {
+        AttestationError::PlayIntegrityInvalidToken("JWKS key has no alg".to_string())
+    })?;
+    match algorithm {
+        KeyAlgorithm::HS256 => Ok(Algorithm::HS256),
+        KeyAlgorithm::HS384 => Ok(Algorithm::HS384),
+        KeyAlgorithm::HS512 => Ok(Algorithm::HS512),
+        KeyAlgorithm::ES256 => Ok(Algorithm::ES256),
+        KeyAlgorithm::ES384 => Ok(Algorithm::ES384),
+        KeyAlgorithm::RS256 => Ok(Algorithm::RS256),
+        KeyAlgorithm::RS384 => Ok(Algorithm::RS384),
+        KeyAlgorithm::RS512 => Ok(Algorithm::RS512),
+        KeyAlgorithm::PS256 => Ok(Algorithm::PS256),
+        KeyAlgorithm::PS384 => Ok(Algorithm::PS384),
+        KeyAlgorithm::PS512 => Ok(Algorithm::PS512),
+        KeyAlgorithm::EdDSA => Ok(Algorithm::EdDSA),
+        KeyAlgorithm::RSA1_5 | KeyAlgorithm::RSA_OAEP | KeyAlgorithm::RSA_OAEP_256 => {
+            Err(AttestationError::PlayIntegrityInvalidToken(format!(
+                "unsupported JWKS signing alg {:?}",
+                algorithm
+            )))
+        }
+    }
 }

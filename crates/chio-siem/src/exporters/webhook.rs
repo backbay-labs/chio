@@ -25,6 +25,7 @@ use crate::alerting::{derive_severity, AlertSeverity};
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
+use crate::redaction::redact_for_operator_log;
 use chio_core::receipt::Decision;
 
 /// Authentication mode for the webhook exporter.
@@ -269,6 +270,7 @@ impl WebhookExporter {
                         .text()
                         .await
                         .unwrap_or_else(|_| "<unreadable body>".to_string());
+                    let body = redact_for_operator_log(body);
                     let err = ExportError::HttpError(format!(
                         "webhook endpoint returned {status}: {body} ({})",
                         self.safe_endpoint_label()

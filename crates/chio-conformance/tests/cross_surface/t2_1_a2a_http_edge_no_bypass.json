@@ -1,0 +1,15 @@
+{
+  "schema": "chio.cross_surface_conformance.negative.v1",
+  "id": "trj4-t2-1-a2a-http-edge-no-bypass",
+  "surface": "a2a_http_edge",
+  "negativeClass": "adapter_bypass_denied",
+  "expected": {
+    "verdict": "deny",
+    "denyReceiptEmitted": true,
+    "lineageClass": "preserved",
+    "revocationPropagates": true,
+    "budgetEnforced": true,
+    "noAdapterBypass": true,
+    "signedNegativeConformance": true
+  }
+}

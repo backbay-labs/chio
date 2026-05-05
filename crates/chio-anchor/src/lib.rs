@@ -11,6 +11,7 @@
 #![cfg(feature = "web3")]
 
 mod automation;
+mod batch;
 mod bitcoin;
 mod bundle;
 mod discovery;
@@ -35,6 +36,10 @@ pub use automation::{
     assess_anchor_automation_execution, build_anchor_publication_job, AnchorAutomationExecution,
     AnchorAutomationExecutionOutcome, AnchorAutomationForwarder, AnchorAutomationJob,
     AnchorAutomationTriggerKind, CHIO_ANCHOR_AUTOMATION_JOB_SCHEMA,
+};
+pub use batch::{
+    build_anchor_batch, build_anchor_batch_body, verify_anchor_batch, AnchorBatch, AnchorBatchBody,
+    AnchorBatchInclusion, AnchorBatchWitness, AnchorBatchWitnessKind,
 };
 pub use bitcoin::{
     attach_bitcoin_anchor, inspect_ots_proof, prepare_ots_submission,

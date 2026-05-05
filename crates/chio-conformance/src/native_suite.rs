@@ -870,18 +870,18 @@ fn generate_native_markdown_report(results: &[NativeScenarioResult]) -> String {
 }
 
 enum NativeFixture {
-    Capability(CapabilityToken),
+    Capability(Box<CapabilityToken>),
     Delegation {
-        parent: CapabilityToken,
-        child: CapabilityToken,
+        parent: Box<CapabilityToken>,
+        child: Box<CapabilityToken>,
     },
     Receipt {
-        valid: ChioReceipt,
-        tampered: ChioReceipt,
+        valid: Box<ChioReceipt>,
+        tampered: Box<ChioReceipt>,
     },
     Dpop {
-        proof: DpopProof,
-        capability: CapabilityToken,
+        proof: Box<DpopProof>,
+        capability: Box<CapabilityToken>,
         expected_tool_server: String,
         expected_tool_name: String,
         expected_action_hash: String,
@@ -901,7 +901,7 @@ impl NativeFixture {
 
     fn delegation_pair(&self) -> Result<(&CapabilityToken, &CapabilityToken), NativeSuiteError> {
         match self {
-            Self::Delegation { parent, child } => Ok((parent, child)),
+            Self::Delegation { parent, child } => Ok((parent.as_ref(), child.as_ref())),
             _ => Err(NativeSuiteError::Http(
                 "fixture is not a delegation pair".to_string(),
             )),
@@ -910,7 +910,7 @@ impl NativeFixture {
 
     fn valid_receipt(&self) -> Result<&ChioReceipt, NativeSuiteError> {
         match self {
-            Self::Receipt { valid, .. } => Ok(valid),
+            Self::Receipt { valid, .. } => Ok(valid.as_ref()),
             _ => Err(NativeSuiteError::Http(
                 "fixture is not a receipt".to_string(),
             )),
@@ -919,7 +919,7 @@ impl NativeFixture {
 
     fn tampered_receipt(&self) -> Result<&ChioReceipt, NativeSuiteError> {
         match self {
-            Self::Receipt { tampered, .. } => Ok(tampered),
+            Self::Receipt { tampered, .. } => Ok(tampered.as_ref()),
             _ => Err(NativeSuiteError::Http(
                 "fixture is not a receipt".to_string(),
             )),
@@ -935,7 +935,7 @@ impl NativeFixture {
                 expected_tool_name,
                 expected_action_hash,
             } => Ok(DpopCase {
-                proof,
+                proof: proof.as_ref(),
                 capability,
                 expected_tool_server,
                 expected_tool_name,
@@ -965,10 +965,15 @@ struct DpopCase<'a> {
 
 fn build_fixture(id: &str) -> Result<NativeFixture, NativeSuiteError> {
     match id {
-        "valid_capability" => Ok(NativeFixture::Capability(build_valid_capability())),
+        "valid_capability" => Ok(NativeFixture::Capability(
+            Box::new(build_valid_capability()),
+        )),
         "delegation_pair" => {
             let (parent, child) = build_delegation_pair();
-            Ok(NativeFixture::Delegation { parent, child })
+            Ok(NativeFixture::Delegation {
+                parent: Box::new(parent),
+                child: Box::new(child),
+            })
         }
         "signed_receipt" => {
             let valid = build_receipt(
@@ -981,7 +986,10 @@ fn build_fixture(id: &str) -> Result<NativeFixture, NativeSuiteError> {
             );
             let mut tampered = valid.clone();
             tampered.tool_name = "tampered".to_string();
-            Ok(NativeFixture::Receipt { valid, tampered })
+            Ok(NativeFixture::Receipt {
+                valid: Box::new(valid),
+                tampered: Box::new(tampered),
+            })
         }
         "valid_dpop" => {
             let capability = build_dpop_capability();
@@ -1005,8 +1013,8 @@ fn build_fixture(id: &str) -> Result<NativeFixture, NativeSuiteError> {
             )
             .map_err(|error| NativeSuiteError::Http(error.to_string()))?;
             Ok(NativeFixture::Dpop {
-                proof,
-                capability,
+                proof: Box::new(proof),
+                capability: Box::new(capability),
                 expected_tool_server: "conformance".to_string(),
                 expected_tool_name: "transfer".to_string(),
                 expected_action_hash: action_hash,

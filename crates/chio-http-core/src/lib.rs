@@ -8,6 +8,7 @@
 pub mod approvals;
 mod authority;
 pub mod compliance;
+mod egress;
 pub mod emergency;
 mod evaluation;
 mod identity;
@@ -34,6 +35,7 @@ pub use compliance::{
     handle_compliance_score, ComplianceScoreError, ComplianceScoreRequest, ComplianceScoreResponse,
     ComplianceScoreWindow, ComplianceSource, ComplianceSourceResult,
 };
+pub use egress::{HttpEgressContract, HttpEgressError, ValidatedHttpEgressTarget};
 pub use emergency::{
     handle_emergency_resume, handle_emergency_status, handle_emergency_stop, EmergencyAdmin,
     EmergencyHandlerError, EmergencyResumeResponse, EmergencyStatusResponse, EmergencyStopRequest,

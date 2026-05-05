@@ -40,6 +40,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use chio_core_types::canonical::canonical_json_bytes;
+use chio_core_types::capability::CapabilityNegotiation;
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, Signature, SigningBackend};
 use serde::{Deserialize, Serialize};
 
@@ -56,12 +57,114 @@ pub const DEFAULT_ROTATION_WINDOW_SECS: u64 = 12 * 60 * 60;
 /// are rejected.
 pub const DEFAULT_HANDSHAKE_MAX_SKEW_SECS: u64 = 5 * 60;
 
+/// Basis-point denominator used for conformance evidence percentages.
+pub const CONFORMANCE_BPS_DENOMINATOR: u32 = 10_000;
+/// Minimum threat-coverage score for the Silver federation conformance tier.
+pub const SILVER_MIN_THREAT_COVERAGE_BPS: u32 = 9_000;
+/// Minimum mutation-kill score for the Silver federation conformance tier.
+pub const SILVER_MIN_MUTATION_KILL_BPS: u32 = 6_500;
+/// Minimum Kani trust-boundary crate count for Silver.
+pub const SILVER_MIN_KANI_TRUST_BOUNDARY_CRATES: u32 = 4;
+/// Minimum threat-coverage score for the Gold federation conformance tier.
+pub const GOLD_MIN_THREAT_COVERAGE_BPS: u32 = CONFORMANCE_BPS_DENOMINATOR;
+/// Minimum mutation-kill score for the Gold federation conformance tier.
+pub const GOLD_MIN_MUTATION_KILL_BPS: u32 = 8_000;
+/// Minimum Kani trust-boundary crate count for Gold.
+pub const GOLD_MIN_KANI_TRUST_BOUNDARY_CRATES: u32 = 8;
+
+/// Cross-surface conformance tier advertised during federation handshakes.
+///
+/// The order is intentional: `Gold > Silver > Bronze`, so policy checks can
+/// use ordinary ordering to fail closed when a peer is below the configured
+/// floor.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ConformanceTier {
+    /// Schema-valid evidence is present but the peer does not meet Silver.
+    #[default]
+    Bronze,
+    /// Threat coverage >= 90%, mutation kill >= 65%, and >= 4 Kani
+    /// trust-boundary crate harnesses.
+    Silver,
+    /// Threat coverage = 100%, mutation kill >= 80%, and >= 8 Kani
+    /// trust-boundary crate harnesses.
+    Gold,
+}
+
+/// Evidence inputs used to derive a federation conformance tier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConformanceEvidence {
+    pub threat_coverage_bps: u32,
+    pub mutation_kill_bps: u32,
+    pub kani_trust_boundary_crates: u32,
+}
+
+impl ConformanceEvidence {
+    /// Derive a stable Bronze/Silver/Gold tier from the evidence metrics.
+    pub fn derive_tier(&self) -> Result<ConformanceTier, PeerHandshakeError> {
+        if self.threat_coverage_bps > CONFORMANCE_BPS_DENOMINATOR {
+            return Err(PeerHandshakeError::InvalidConformanceEvidence(format!(
+                "threat_coverage_bps must be <= {CONFORMANCE_BPS_DENOMINATOR}"
+            )));
+        }
+        if self.mutation_kill_bps > CONFORMANCE_BPS_DENOMINATOR {
+            return Err(PeerHandshakeError::InvalidConformanceEvidence(format!(
+                "mutation_kill_bps must be <= {CONFORMANCE_BPS_DENOMINATOR}"
+            )));
+        }
+
+        if self.threat_coverage_bps >= GOLD_MIN_THREAT_COVERAGE_BPS
+            && self.mutation_kill_bps >= GOLD_MIN_MUTATION_KILL_BPS
+            && self.kani_trust_boundary_crates >= GOLD_MIN_KANI_TRUST_BOUNDARY_CRATES
+        {
+            return Ok(ConformanceTier::Gold);
+        }
+        if self.threat_coverage_bps >= SILVER_MIN_THREAT_COVERAGE_BPS
+            && self.mutation_kill_bps >= SILVER_MIN_MUTATION_KILL_BPS
+            && self.kani_trust_boundary_crates >= SILVER_MIN_KANI_TRUST_BOUNDARY_CRATES
+        {
+            return Ok(ConformanceTier::Silver);
+        }
+        Ok(ConformanceTier::Bronze)
+    }
+}
+
+/// Policy applied when admitting a federation peer into a quorum set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct QuorumPolicy {
+    pub min_tier: ConformanceTier,
+}
+
+impl Default for QuorumPolicy {
+    fn default() -> Self {
+        Self {
+            min_tier: ConformanceTier::Bronze,
+        }
+    }
+}
+
+impl QuorumPolicy {
+    /// Return true when `actual` satisfies this policy's tier floor.
+    #[must_use]
+    pub fn accepts_tier(&self, actual: ConformanceTier) -> bool {
+        actual >= self.min_tier
+    }
+}
+
 /// Pinned federation peer entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FederationPeer {
     pub kernel_id: String,
     pub public_key: PublicKey,
+    /// Cross-surface conformance tier that was signed into the peer's most
+    /// recent accepted handshake.
+    #[serde(default)]
+    pub conformance_tier: ConformanceTier,
     /// Unix seconds at which the peer was last pinned via a successful
     /// handshake.
     pub established_at: u64,
@@ -69,6 +172,10 @@ pub struct FederationPeer {
     /// peer is treated as stale and MUST be re-handshaked before any
     /// federation-level operation is accepted against it.
     pub rotation_due: u64,
+    /// Peer-advertised protocol feature bitset. Missing on legacy peers
+    /// defaults to v1-only capability tokens.
+    #[serde(default)]
+    pub capabilities: CapabilityNegotiation,
 }
 
 impl FederationPeer {
@@ -88,6 +195,10 @@ pub struct HandshakeChallenge {
     pub remote_kernel_id: String,
     pub nonce: String,
     pub timestamp: u64,
+    #[serde(default, skip_serializing_if = "is_default_capability_negotiation")]
+    pub capabilities: CapabilityNegotiation,
+    #[serde(default)]
+    pub conformance_tier: ConformanceTier,
 }
 
 impl HandshakeChallenge {
@@ -97,18 +208,49 @@ impl HandshakeChallenge {
         nonce: impl Into<String>,
         timestamp: u64,
     ) -> Self {
+        Self::new_with_conformance_tier(
+            local_kernel_id,
+            remote_kernel_id,
+            nonce,
+            timestamp,
+            ConformanceTier::Bronze,
+        )
+    }
+
+    pub fn new_with_conformance_tier(
+        local_kernel_id: impl Into<String>,
+        remote_kernel_id: impl Into<String>,
+        nonce: impl Into<String>,
+        timestamp: u64,
+        conformance_tier: ConformanceTier,
+    ) -> Self {
         Self {
             schema: FEDERATION_HANDSHAKE_SCHEMA.to_string(),
             local_kernel_id: local_kernel_id.into(),
             remote_kernel_id: remote_kernel_id.into(),
             nonce: nonce.into(),
             timestamp,
+            capabilities: CapabilityNegotiation::t1_default(),
+            conformance_tier,
         }
     }
 
+    #[must_use]
+    pub fn with_capabilities(mut self, capabilities: CapabilityNegotiation) -> Self {
+        self.capabilities = capabilities;
+        self
+    }
+
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, PeerHandshakeError> {
+        self.capabilities
+            .validate()
+            .map_err(|e| PeerHandshakeError::CapabilityNegotiation(e.to_string()))?;
         canonical_json_bytes(self).map_err(|e| PeerHandshakeError::CanonicalJson(e.to_string()))
     }
+}
+
+fn is_default_capability_negotiation(capabilities: &CapabilityNegotiation) -> bool {
+    *capabilities == CapabilityNegotiation::v1_default()
 }
 
 /// Envelope one kernel sends to the other during a handshake.
@@ -129,18 +271,90 @@ impl PeerHandshakeEnvelope {
         timestamp: u64,
         local_keypair: &Keypair,
     ) -> Result<Self, PeerHandshakeError> {
-        let challenge =
-            HandshakeChallenge::new(local_kernel_id, remote_kernel_id, nonce, timestamp);
-        let bytes = challenge.canonical_bytes()?;
         let backend = Ed25519Backend::new(local_keypair.clone());
-        let signature = backend
+        Self::sign_with_backend(
+            local_kernel_id,
+            remote_kernel_id,
+            nonce,
+            timestamp,
+            ConformanceTier::Bronze,
+            &backend,
+        )
+    }
+
+    /// Build a signed handshake envelope from `local` addressed to `remote`
+    /// using any Chio signing backend.
+    pub fn sign_with_backend(
+        local_kernel_id: &str,
+        remote_kernel_id: &str,
+        nonce: &str,
+        timestamp: u64,
+        conformance_tier: ConformanceTier,
+        local_backend: &dyn SigningBackend,
+    ) -> Result<Self, PeerHandshakeError> {
+        Self::sign_with_backend_and_capabilities(
+            local_kernel_id,
+            remote_kernel_id,
+            nonce,
+            timestamp,
+            conformance_tier,
+            local_backend,
+            CapabilityNegotiation::t1_default(),
+        )
+    }
+
+    /// Build a signed handshake envelope with a signing backend, conformance
+    /// tier, and explicit feature bitset.
+    pub fn sign_with_backend_and_capabilities(
+        local_kernel_id: &str,
+        remote_kernel_id: &str,
+        nonce: &str,
+        timestamp: u64,
+        conformance_tier: ConformanceTier,
+        local_backend: &dyn SigningBackend,
+        capabilities: CapabilityNegotiation,
+    ) -> Result<Self, PeerHandshakeError> {
+        capabilities
+            .validate()
+            .map_err(|e| PeerHandshakeError::CapabilityNegotiation(e.to_string()))?;
+        let challenge = HandshakeChallenge::new_with_conformance_tier(
+            local_kernel_id,
+            remote_kernel_id,
+            nonce,
+            timestamp,
+            conformance_tier,
+        )
+        .with_capabilities(capabilities);
+        let bytes = challenge.canonical_bytes()?;
+        let signature = local_backend
             .sign_bytes(&bytes)
             .map_err(|e| PeerHandshakeError::SigningFailed(e.to_string()))?;
         Ok(Self {
             challenge,
-            declared_public_key: local_keypair.public_key(),
+            declared_public_key: local_backend.public_key(),
             signature,
         })
+    }
+
+    /// Build a signed handshake envelope with an explicit feature bitset.
+    pub fn sign_with_capabilities(
+        local_kernel_id: &str,
+        remote_kernel_id: &str,
+        nonce: &str,
+        timestamp: u64,
+        local_keypair: &Keypair,
+        capabilities: CapabilityNegotiation,
+    ) -> Result<Self, PeerHandshakeError> {
+        let backend = Ed25519Backend::new(local_keypair.clone());
+        Self::sign_with_backend_and_capabilities(
+            local_kernel_id,
+            remote_kernel_id,
+            nonce,
+            timestamp,
+            ConformanceTier::Bronze,
+            &backend,
+            capabilities,
+        )
     }
 
     /// Verify this envelope in isolation (signature valid for declared
@@ -154,6 +368,10 @@ impl PeerHandshakeEnvelope {
                 self.challenge.schema.clone(),
             ));
         }
+        self.challenge
+            .capabilities
+            .validate()
+            .map_err(|e| PeerHandshakeError::CapabilityNegotiation(e.to_string()))?;
         let bytes = self.challenge.canonical_bytes()?;
         if !self.declared_public_key.verify(&bytes, &self.signature) {
             return Err(PeerHandshakeError::InvalidSignature);
@@ -177,6 +395,9 @@ pub enum PeerHandshakeError {
 
     #[error("remote handshake signature is invalid")]
     InvalidSignature,
+
+    #[error("capability negotiation failed closed: {0}")]
+    CapabilityNegotiation(String),
 
     #[error("remote envelope is addressed to kernel_id {addressed_to} but we are {actual}")]
     AddressMismatch {
@@ -209,6 +430,16 @@ pub enum PeerHandshakeError {
         expected: String,
         actual: String,
     },
+
+    #[error("peer {kernel_id} conformance tier {actual:?} is below required {minimum:?}")]
+    ConformanceTierBelowMinimum {
+        kernel_id: String,
+        actual: ConformanceTier,
+        minimum: ConformanceTier,
+    },
+
+    #[error("invalid conformance evidence: {0}")]
+    InvalidConformanceEvidence(String),
 
     #[error("trust store is poisoned and cannot service requests")]
     StorePoisoned,
@@ -293,10 +524,12 @@ impl Default for KernelTrustExchangeConfig {
 /// and pin the remote peer.
 pub struct KernelTrustExchange {
     local_kernel_id: String,
-    local_keypair: Keypair,
+    local_signing_backend: Box<dyn SigningBackend>,
+    local_conformance_tier: ConformanceTier,
     config: KernelTrustExchangeConfig,
     store: Box<dyn FederationPeerStore>,
     trusted_peers: HashMap<String, PublicKey>,
+    local_capabilities: CapabilityNegotiation,
 }
 
 impl core::fmt::Debug for KernelTrustExchange {
@@ -310,12 +543,24 @@ impl core::fmt::Debug for KernelTrustExchange {
 
 impl KernelTrustExchange {
     pub fn new(local_kernel_id: impl Into<String>, local_keypair: Keypair) -> Self {
+        Self::new_with_backend(
+            local_kernel_id,
+            Box::new(Ed25519Backend::new(local_keypair)),
+        )
+    }
+
+    pub fn new_with_backend(
+        local_kernel_id: impl Into<String>,
+        local_signing_backend: Box<dyn SigningBackend>,
+    ) -> Self {
         Self {
             local_kernel_id: local_kernel_id.into(),
-            local_keypair,
+            local_signing_backend,
+            local_conformance_tier: ConformanceTier::Bronze,
             config: KernelTrustExchangeConfig::default(),
             store: Box::new(InMemoryPeerStore::new()),
             trusted_peers: HashMap::new(),
+            local_capabilities: CapabilityNegotiation::t1_default(),
         }
     }
 
@@ -329,6 +574,11 @@ impl KernelTrustExchange {
         self
     }
 
+    pub fn with_conformance_tier(mut self, conformance_tier: ConformanceTier) -> Self {
+        self.local_conformance_tier = conformance_tier;
+        self
+    }
+
     pub fn with_trusted_peer(
         mut self,
         kernel_id: impl Into<String>,
@@ -338,12 +588,25 @@ impl KernelTrustExchange {
         self
     }
 
+    pub fn with_capabilities(mut self, capabilities: CapabilityNegotiation) -> Self {
+        self.local_capabilities = capabilities;
+        self
+    }
+
     pub fn local_kernel_id(&self) -> &str {
         &self.local_kernel_id
     }
 
     pub fn local_public_key(&self) -> PublicKey {
-        self.local_keypair.public_key()
+        self.local_signing_backend.public_key()
+    }
+
+    pub fn local_conformance_tier(&self) -> ConformanceTier {
+        self.local_conformance_tier
+    }
+
+    pub fn local_capabilities(&self) -> &CapabilityNegotiation {
+        &self.local_capabilities
     }
 
     pub fn rotation_window_secs(&self) -> u64 {
@@ -357,12 +620,33 @@ impl KernelTrustExchange {
         nonce: &str,
         now: u64,
     ) -> Result<PeerHandshakeEnvelope, PeerHandshakeError> {
-        PeerHandshakeEnvelope::sign(
+        PeerHandshakeEnvelope::sign_with_backend_and_capabilities(
             &self.local_kernel_id,
             remote_kernel_id,
             nonce,
             now,
-            &self.local_keypair,
+            self.local_conformance_tier,
+            self.local_signing_backend.as_ref(),
+            self.local_capabilities.clone(),
+        )
+    }
+
+    /// Build the local kernel's signed envelope with explicit capabilities.
+    pub fn local_envelope_with_capabilities(
+        &self,
+        remote_kernel_id: &str,
+        nonce: &str,
+        now: u64,
+        capabilities: CapabilityNegotiation,
+    ) -> Result<PeerHandshakeEnvelope, PeerHandshakeError> {
+        PeerHandshakeEnvelope::sign_with_backend_and_capabilities(
+            &self.local_kernel_id,
+            remote_kernel_id,
+            nonce,
+            now,
+            self.local_conformance_tier,
+            self.local_signing_backend.as_ref(),
+            capabilities,
         )
     }
 
@@ -377,6 +661,22 @@ impl KernelTrustExchange {
         expected_remote_kernel_id: &str,
         now: u64,
     ) -> Result<FederationPeer, PeerHandshakeError> {
+        self.accept_envelope_with_policy(
+            envelope,
+            expected_remote_kernel_id,
+            now,
+            &QuorumPolicy::default(),
+        )
+    }
+
+    /// Accept an envelope while enforcing a federation quorum tier floor.
+    pub fn accept_envelope_with_policy(
+        &self,
+        envelope: &PeerHandshakeEnvelope,
+        expected_remote_kernel_id: &str,
+        now: u64,
+        quorum_policy: &QuorumPolicy,
+    ) -> Result<FederationPeer, PeerHandshakeError> {
         envelope.verify_signature()?;
 
         if envelope.challenge.remote_kernel_id != self.local_kernel_id {
@@ -389,6 +689,14 @@ impl KernelTrustExchange {
             return Err(PeerHandshakeError::KernelIdMismatch {
                 declared: envelope.challenge.local_kernel_id.clone(),
                 expected: expected_remote_kernel_id.to_string(),
+            });
+        }
+
+        if !quorum_policy.accepts_tier(envelope.challenge.conformance_tier) {
+            return Err(PeerHandshakeError::ConformanceTierBelowMinimum {
+                kernel_id: expected_remote_kernel_id.to_string(),
+                actual: envelope.challenge.conformance_tier,
+                minimum: quorum_policy.min_tier,
             });
         }
 
@@ -423,8 +731,13 @@ impl KernelTrustExchange {
         let peer = FederationPeer {
             kernel_id: expected_remote_kernel_id.to_string(),
             public_key: envelope.declared_public_key.clone(),
+            conformance_tier: envelope.challenge.conformance_tier,
             established_at: now,
             rotation_due: now.saturating_add(self.config.rotation_window_secs),
+            capabilities: self
+                .local_capabilities
+                .negotiated_with(&envelope.challenge.capabilities)
+                .map_err(|e| PeerHandshakeError::CapabilityNegotiation(e.to_string()))?,
         };
         self.store.insert(peer.clone())?;
         Ok(peer)

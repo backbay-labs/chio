@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/capabilities/v1",
+  "title": "Chio capability negotiation v1",
+  "description": "Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed before peers negotiate capability v2, receipt v2, or anchor-batch support.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "maxCapabilitySchema"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "chio.capabilities.v1"
+    },
+    "features": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9_.-]{1,96}$"
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      },
+      "description": "String-keyed feature bitset. Peers proceed only with the intersection of true values advertised by both sides."
+    },
+    "maxCapabilitySchema": {
+      "type": "string",
+      "enum": ["chio.capability.v1", "chio.capability.v2"]
+    }
+  }
+}

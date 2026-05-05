@@ -1,5 +1,7 @@
 #![allow(clippy::result_large_err)]
 
+pub use chio_control_plane::{CliError, JwtProviderProfile};
+
 #[path = "remote_mcp/admin.rs"]
 mod remote_mcp_admin;
 

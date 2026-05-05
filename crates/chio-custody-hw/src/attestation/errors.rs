@@ -8,6 +8,10 @@ pub const URN_APP_ATTEST_APP_MISMATCH: &str = "urn:chio:error:custody:app-attest
 pub const URN_APP_ATTEST_CHALLENGE_MISMATCH: &str =
     "urn:chio:error:custody:app-attest-challenge-mismatch";
 pub const URN_APP_ATTEST_KEY_MISMATCH: &str = "urn:chio:error:custody:app-attest-key-mismatch";
+pub const URN_APP_ATTEST_COUNTER_ROLLBACK: &str =
+    "urn:chio:error:custody:app-attest-counter-rollback";
+pub const URN_APP_ATTEST_CERT_CHAIN_INVALID: &str =
+    "urn:chio:error:custody:app-attest-cert-chain-invalid";
 pub const URN_PLAY_INTEGRITY_INVALID_TOKEN: &str =
     "urn:chio:error:custody:play-integrity-invalid-token";
 pub const URN_PLAY_INTEGRITY_NONCE_MISMATCH: &str =
@@ -29,6 +33,10 @@ pub enum AttestationError {
     ChallengeMismatch,
     #[error("app attest: key id mismatch")]
     KeyIdMismatch,
+    #[error("app attest: counter rollback")]
+    CounterRollback,
+    #[error("app attest: certificate chain invalid: {0}")]
+    CertificateChainInvalid(String),
     #[error("app attest: missing field {0}")]
     MissingField(&'static str),
     #[error("app attest: unsupported format {0}")]
@@ -56,6 +64,8 @@ impl AttestationError {
             Self::AppIdentifierMismatch => URN_APP_ATTEST_APP_MISMATCH,
             Self::ChallengeMismatch => URN_APP_ATTEST_CHALLENGE_MISMATCH,
             Self::KeyIdMismatch => URN_APP_ATTEST_KEY_MISMATCH,
+            Self::CounterRollback => URN_APP_ATTEST_COUNTER_ROLLBACK,
+            Self::CertificateChainInvalid(_) => URN_APP_ATTEST_CERT_CHAIN_INVALID,
             Self::PlayIntegrityInvalidToken(_) => URN_PLAY_INTEGRITY_INVALID_TOKEN,
             Self::PlayIntegrityNonceMismatch => URN_PLAY_INTEGRITY_NONCE_MISMATCH,
             Self::PlayIntegrityAppRejected | Self::PlayIntegrityPackageMismatch => {

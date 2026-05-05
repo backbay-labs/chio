@@ -83,27 +83,48 @@ namespace chio_kernel_mobile {
         i64 now_secs
     );
 
-    // Produce an App Attest evidence envelope bound to a server challenge.
+    // Produce an App Attest challenge envelope bound to a server challenge.
     //
-    // P1 exposes the stable UDL entry with fail-closed validation. The
-    // platform verifier lands in M07 P2 and replaces the temporary
-    // ChioMobileError.AttestationUnavailable response.
+    // The iOS host app obtains the platform attestation object through
+    // DeviceCheck and sends it to verify_app_attest_evidence.
     [Throws=ChioMobileError]
     string attest_app_attest(string key_id, string challenge_hex);
 
-    // Produce a Play Integrity evidence envelope bound to an issuer nonce.
+    // Verify an Apple App Attest attestation object.
     //
-    // P1 exposes the stable UDL entry with fail-closed validation. The
-    // platform verifier lands in M07 P3 and replaces the temporary
-    // ChioMobileError.AttestationUnavailable response.
+    // `previous_counter` is optional by convention: pass -1 when no prior
+    // counter exists, otherwise pass the last accepted counter. The verifier
+    // rejects same-or-lower counters fail-closed.
+    [Throws=ChioMobileError]
+    string verify_app_attest_evidence(
+        string key_id,
+        string challenge_hex,
+        string app_id,
+        string attestation_cbor_hex,
+        i64 previous_counter
+    );
+
+    // Produce a Play Integrity challenge envelope bound to an issuer nonce.
+    //
+    // The Android host app obtains the platform JWS through Play Integrity
+    // and sends it to verify_play_integrity_evidence.
     [Throws=ChioMobileError]
     string attest_play_integrity(string nonce_hex);
 
+    // Verify a Play Integrity JWS against an issuer nonce and JWKS.
+    [Throws=ChioMobileError]
+    string verify_play_integrity_evidence(
+        string token,
+        string expected_nonce,
+        string expected_package_name,
+        string expected_audience,
+        string jwks_json
+    );
+
     // Verify a mobile receipt against App Attest or Play Integrity evidence.
     //
-    // P1 validates the receipt and evidence envelopes as JSON before
-    // returning ChioMobileError.AttestationUnavailable. M07 P4 wires
-    // this entry to the shared receipt-chain verifier.
+    // Validates the receipt and evidence envelopes as JSON and delegates to
+    // the shared receipt-chain verifier.
     [Throws=ChioMobileError]
     string verify_mobile_receipt(string receipt_json, string evidence_json);
 };
@@ -151,6 +172,7 @@ interface ChioMobileError {
     InvalidCapability(string message);
     InvalidPassport(string message);
     AttestationUnavailable(string message);
+    AttestationRejected(string message);
     KernelKeyMismatch(string message);
     SigningFailed(string message);
     EvaluationDenied(string message);

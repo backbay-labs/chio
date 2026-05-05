@@ -70,12 +70,10 @@ std = [
 # `aws-lc-rs` itself is std-only.
 fips = ["dep:aws-lc-rs", "std"]
 pq = ["dep:fips204"]
-# Recursive-delegation primitive. Default OFF so callers opt in
-# explicitly to the new mint helper, the `DelegationReceipt` envelope,
-# and the `ScopeAttenuation` request type. Implies `std` because the
-# receipt envelope's canonical-JSON round-trip path uses
-# `serde_json::to_value`, which requires the std hash-map backend.
-delegation_v2 = ["std"]
+# Recursive-delegation primitive retained as a compatibility feature name.
+# The T1.1 wire primitive is now always available, including no-default
+# builds; this feature is a no-op for downstream manifests that still enable it.
+delegation_v2 = []
 
 [dev-dependencies]
 jsonschema = { version = "0.46.0", default-features = false }

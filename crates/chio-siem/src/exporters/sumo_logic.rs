@@ -22,6 +22,7 @@ use std::time::Duration;
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
+use crate::redaction::redact_for_operator_log;
 use chio_core::receipt::Decision;
 
 /// On-the-wire format for the Sumo Logic batch body.
@@ -141,6 +142,7 @@ impl SumoLogicExporter {
     }
 
     fn format_event(&self, event: &SiemEvent) -> Result<String, ExportError> {
+        let reason = redact_for_operator_log(decision_reason(&event.receipt.decision));
         match self.config.format {
             SumoLogicFormat::Json => serde_json::to_string(event).map_err(|e| {
                 ExportError::SerializationError(format!(
@@ -155,7 +157,7 @@ impl SumoLogicExporter {
                 event.receipt.tool_name,
                 event.receipt.tool_server,
                 decision_label(&event.receipt.decision),
-                decision_reason(&event.receipt.decision).replace('\n', " "),
+                reason.replace('\n', " "),
             )),
             SumoLogicFormat::KeyValue => Ok(format!(
                 "receipt_id={} timestamp={} tool={} tool_server={} capability={} decision={} reason=\"{}\"",
@@ -165,7 +167,7 @@ impl SumoLogicExporter {
                 event.receipt.tool_server,
                 event.receipt.capability_id,
                 decision_label(&event.receipt.decision),
-                decision_reason(&event.receipt.decision).replace('"', "'"),
+                reason.replace('"', "'"),
             )),
         }
     }
@@ -228,6 +230,7 @@ impl Exporter for SumoLogicExporter {
                 .text()
                 .await
                 .unwrap_or_else(|_| "<unreadable body>".to_string());
+            let body_text = redact_for_operator_log(body_text);
             Err(ExportError::HttpError(format!(
                 "Sumo Logic returned {status}: {body_text}"
             )))

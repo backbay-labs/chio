@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
 use chio_appraisal::VerifiedRuntimeAttestationRecord;
+use chio_log_redact::redacted;
 use dashmap::DashMap;
 
 use self::responses::FinalizeToolOutputCostContext;
@@ -1839,7 +1840,7 @@ impl ChioKernel {
         self.emergency_stopped.store(true, Ordering::SeqCst);
 
         warn!(
-            reason = %reason,
+            reason = %redacted!(reason),
             timestamp = now,
             "emergency stop engaged -- all evaluations will be denied"
         );
@@ -2558,7 +2559,7 @@ impl ChioKernel {
 
         if let Err(reason) = self.verify_capability_signature(cap) {
             let msg = format!("signature verification failed: {reason}");
-            warn!(request_id = %request.request_id, %msg, "capability rejected");
+            warn!(request_id = %request.request_id, msg = %redacted!(&msg), "capability rejected");
             return self.build_deny_response_with_metadata(
                 request,
                 &msg,
@@ -2570,7 +2571,7 @@ impl ChioKernel {
 
         if let Err(e) = check_time_bounds(cap, now) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response_with_metadata(
                 request,
                 &msg,
@@ -2582,7 +2583,7 @@ impl ChioKernel {
 
         if let Err(e) = self.check_revocation(cap) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response_with_metadata(
                 request,
                 &msg,
@@ -2594,7 +2595,7 @@ impl ChioKernel {
 
         if let Err(e) = self.validate_delegation_admission(cap) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response_with_metadata(
                 request,
                 &msg,
@@ -2606,7 +2607,7 @@ impl ChioKernel {
 
         if let Err(e) = check_subject_binding(cap, &request.agent_id) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response_with_metadata(
                 request,
                 &msg,
@@ -2630,7 +2631,7 @@ impl ChioKernel {
                     server: request.server_id.clone(),
                 };
                 let msg = e.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
                 return self.build_deny_response_with_metadata(
                     request,
                     &msg,
@@ -2641,7 +2642,7 @@ impl ChioKernel {
             }
             Err(e) => {
                 let msg = e.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
                 return self.build_deny_response_with_metadata(
                     request,
                     &msg,
@@ -2661,7 +2662,7 @@ impl ChioKernel {
         {
             if let Err(e) = self.verify_dpop_for_request(request, cap) {
                 let msg = e.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "DPoP verification failed");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "DPoP verification failed");
                 return self.build_deny_response_with_metadata(
                     request,
                     &msg,
@@ -2674,7 +2675,7 @@ impl ChioKernel {
 
         if let Err(e) = self.ensure_registered_tool_target(request) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "tool target not registered");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool target not registered");
             return self.build_deny_response_with_metadata(
                 request,
                 &msg,
@@ -2686,7 +2687,7 @@ impl ChioKernel {
 
         if let Err(error) = self.record_observed_capability_snapshot(cap) {
             let msg = error.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "failed to persist capability lineage");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "failed to persist capability lineage");
             return self.build_deny_response_with_metadata(
                 request,
                 &msg,
@@ -2696,26 +2697,29 @@ impl ChioKernel {
             );
         }
 
-        let (matched_grant_index, charge_result) =
-            match self.check_and_increment_budget(&request.request_id, cap, &matching_grants) {
-                Ok(result) => result,
-                Err(e) => {
-                    let msg = e.to_string();
-                    warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
-                    // For monetary budget exhaustion, build a denial receipt with financial metadata.
-                    return self.build_monetary_deny_response_with_metadata(
-                        request,
-                        &msg,
-                        now,
-                        &matching_grants,
-                        cap,
-                        self.merge_budget_receipt_metadata(
-                            extra_metadata.clone(),
-                            self.budget_backend_receipt_metadata()?,
-                        ),
-                    );
-                }
-            };
+        let (matched_grant_index, charge_result) = match self.check_and_increment_budget(
+            &request.request_id,
+            cap,
+            &matching_grants,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                let msg = e.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
+                // For monetary budget exhaustion, build a denial receipt with financial metadata.
+                return self.build_monetary_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    &matching_grants,
+                    cap,
+                    self.merge_budget_receipt_metadata(
+                        extra_metadata.clone(),
+                        self.budget_backend_receipt_metadata()?,
+                    ),
+                );
+            }
+        };
 
         let matched_grant = matching_grants
             .iter()
@@ -2738,7 +2742,7 @@ impl ChioKernel {
             Ok(validated_governed_admission) => validated_governed_admission,
             Err(error) => {
                 let msg = error.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "governed transaction denied");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "governed transaction denied");
                 if let Some(ref charge) = charge_result {
                     let reverse = self.reverse_budget_charge(&cap.id, charge)?;
                     return self.build_pre_execution_monetary_deny_response_with_metadata(
@@ -2791,7 +2795,7 @@ impl ChioKernel {
             Some(matched_grant_index),
         ) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "guard denied");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "guard denied");
             if let Some(ref charge) = charge_result {
                 let reverse = self.reverse_budget_charge(&cap.id, charge)?;
                 return self.build_pre_execution_monetary_deny_response_with_metadata(
@@ -2819,145 +2823,147 @@ impl ChioKernel {
             );
         }
 
-        let payment_authorization =
-            match self.authorize_payment_if_needed(request, charge_result.as_ref()) {
-                Ok(authorization) => authorization,
-                Err(error) => {
-                    let msg = format!("payment authorization failed: {error}");
-                    warn!(request_id = %request.request_id, reason = %msg, "payment denied");
-                    if let Some(ref charge) = charge_result {
-                        let reverse = self.reverse_budget_charge(&cap.id, charge)?;
-                        return self.build_pre_execution_monetary_deny_response_with_metadata(
-                            request,
-                            &msg,
-                            now,
-                            charge,
-                            reverse.committed_cost_units_after,
-                            cap,
-                            self.merge_budget_receipt_metadata(
-                                extra_metadata.clone(),
-                                self.budget_execution_receipt_metadata(
-                                    charge,
-                                    Some(("reversed", &reverse)),
-                                ),
-                            ),
-                        );
-                    }
-                    return self.build_deny_response_with_metadata(
+        let payment_authorization = match self
+            .authorize_payment_if_needed(request, charge_result.as_ref())
+        {
+            Ok(authorization) => authorization,
+            Err(error) => {
+                let msg = format!("payment authorization failed: {error}");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "payment denied");
+                if let Some(ref charge) = charge_result {
+                    let reverse = self.reverse_budget_charge(&cap.id, charge)?;
+                    return self.build_pre_execution_monetary_deny_response_with_metadata(
                         request,
                         &msg,
                         now,
-                        Some(matched_grant_index),
-                        extra_metadata.clone(),
+                        charge,
+                        reverse.committed_cost_units_after,
+                        cap,
+                        self.merge_budget_receipt_metadata(
+                            extra_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", &reverse)),
+                            ),
+                        ),
                     );
                 }
-            };
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    extra_metadata.clone(),
+                );
+            }
+        };
 
         let tool_started_at = Instant::now();
         let has_monetary = charge_result.is_some();
-        let (tool_output, reported_cost) =
-            match self.dispatch_tool_call_with_cost_sync(request, has_monetary) {
-                Ok(result) => result,
-                Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
-                    let _ = self.unwind_aborted_monetary_invocation(
-                        request,
-                        cap,
-                        charge_result.as_ref(),
-                        payment_authorization.as_ref(),
-                    )?;
-                    warn!(
-                        request_id = %request.request_id,
-                        reason = %error,
-                        "tool call requires URL elicitation"
-                    );
-                    return Err(error);
-                }
-                Err(KernelError::RequestCancelled { reason, .. }) => {
-                    let unwind = self.unwind_aborted_monetary_invocation(
-                        request,
-                        cap,
-                        charge_result.as_ref(),
-                        payment_authorization.as_ref(),
-                    )?;
-                    warn!(
-                        request_id = %request.request_id,
-                        reason = %reason,
-                        "tool call cancelled"
-                    );
-                    return self.build_cancelled_response_with_metadata(
-                        request,
-                        &reason,
-                        now,
-                        Some(matched_grant_index),
-                        match (charge_result.as_ref(), unwind.as_ref()) {
-                            (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                                extra_metadata.clone(),
-                                self.budget_execution_receipt_metadata(
-                                    charge,
-                                    Some(("reversed", reverse)),
-                                ),
+        let (tool_output, reported_cost) = match self
+            .dispatch_tool_call_with_cost_sync(request, has_monetary)
+        {
+            Ok(result) => result,
+            Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+                let _ = self.unwind_aborted_monetary_invocation(
+                    request,
+                    cap,
+                    charge_result.as_ref(),
+                    payment_authorization.as_ref(),
+                )?;
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&error),
+                    "tool call requires URL elicitation"
+                );
+                return Err(error);
+            }
+            Err(KernelError::RequestCancelled { reason, .. }) => {
+                let unwind = self.unwind_aborted_monetary_invocation(
+                    request,
+                    cap,
+                    charge_result.as_ref(),
+                    payment_authorization.as_ref(),
+                )?;
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&reason),
+                    "tool call cancelled"
+                );
+                return self.build_cancelled_response_with_metadata(
+                    request,
+                    &reason,
+                    now,
+                    Some(matched_grant_index),
+                    match (charge_result.as_ref(), unwind.as_ref()) {
+                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
+                            extra_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", reverse)),
                             ),
-                            _ => extra_metadata.clone(),
-                        },
-                    );
-                }
-                Err(KernelError::RequestIncomplete(reason)) => {
-                    let unwind = self.unwind_aborted_monetary_invocation(
-                        request,
-                        cap,
-                        charge_result.as_ref(),
-                        payment_authorization.as_ref(),
-                    )?;
-                    warn!(
-                        request_id = %request.request_id,
-                        reason = %reason,
-                        "tool call incomplete"
-                    );
-                    return self.build_incomplete_response_with_output_and_metadata(
-                        request,
-                        None,
-                        &reason,
-                        now,
-                        Some(matched_grant_index),
-                        match (charge_result.as_ref(), unwind.as_ref()) {
-                            (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                                extra_metadata.clone(),
-                                self.budget_execution_receipt_metadata(
-                                    charge,
-                                    Some(("reversed", reverse)),
-                                ),
+                        ),
+                        _ => extra_metadata.clone(),
+                    },
+                );
+            }
+            Err(KernelError::RequestIncomplete(reason)) => {
+                let unwind = self.unwind_aborted_monetary_invocation(
+                    request,
+                    cap,
+                    charge_result.as_ref(),
+                    payment_authorization.as_ref(),
+                )?;
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&reason),
+                    "tool call incomplete"
+                );
+                return self.build_incomplete_response_with_output_and_metadata(
+                    request,
+                    None,
+                    &reason,
+                    now,
+                    Some(matched_grant_index),
+                    match (charge_result.as_ref(), unwind.as_ref()) {
+                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
+                            extra_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", reverse)),
                             ),
-                            _ => extra_metadata.clone(),
-                        },
-                    );
-                }
-                Err(e) => {
-                    let unwind = self.unwind_aborted_monetary_invocation(
-                        request,
-                        cap,
-                        charge_result.as_ref(),
-                        payment_authorization.as_ref(),
-                    )?;
-                    let msg = e.to_string();
-                    warn!(request_id = %request.request_id, reason = %msg, "tool server error");
-                    return self.build_deny_response_with_metadata(
-                        request,
-                        &msg,
-                        now,
-                        Some(matched_grant_index),
-                        match (charge_result.as_ref(), unwind.as_ref()) {
-                            (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
-                                extra_metadata.clone(),
-                                self.budget_execution_receipt_metadata(
-                                    charge,
-                                    Some(("reversed", reverse)),
-                                ),
+                        ),
+                        _ => extra_metadata.clone(),
+                    },
+                );
+            }
+            Err(e) => {
+                let unwind = self.unwind_aborted_monetary_invocation(
+                    request,
+                    cap,
+                    charge_result.as_ref(),
+                    payment_authorization.as_ref(),
+                )?;
+                let msg = e.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    match (charge_result.as_ref(), unwind.as_ref()) {
+                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
+                            extra_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", reverse)),
                             ),
-                            _ => extra_metadata.clone(),
-                        },
-                    );
-                }
-            };
+                        ),
+                        _ => extra_metadata.clone(),
+                    },
+                );
+            }
+        };
         self.finalize_budgeted_tool_output_with_cost_and_metadata(
             request,
             tool_output,
@@ -3012,31 +3018,31 @@ impl ChioKernel {
 
         if let Err(reason) = self.verify_capability_signature(cap) {
             let msg = format!("signature verification failed: {reason}");
-            warn!(request_id = %request.request_id, %msg, "capability rejected");
+            warn!(request_id = %request.request_id, msg = %redacted!(&msg), "capability rejected");
             return self.build_deny_response(request, &msg, now, None);
         }
 
         if let Err(e) = check_time_bounds(cap, now) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response(request, &msg, now, None);
         }
 
         if let Err(e) = self.check_revocation(cap) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response(request, &msg, now, None);
         }
 
         if let Err(e) = self.validate_delegation_admission(cap) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response(request, &msg, now, None);
         }
 
         if let Err(e) = check_subject_binding(cap, &request.agent_id) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response(request, &msg, now, None);
         }
 
@@ -3054,12 +3060,12 @@ impl ChioKernel {
                     server: request.server_id.clone(),
                 };
                 let msg = e.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
                 return self.build_deny_response(request, &msg, now, None);
             }
             Err(e) => {
                 let msg = e.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
                 return self.build_deny_response(request, &msg, now, None);
             }
         };
@@ -3073,39 +3079,42 @@ impl ChioKernel {
         {
             if let Err(e) = self.verify_dpop_for_request(request, cap) {
                 let msg = e.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "DPoP verification failed");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "DPoP verification failed");
                 return self.build_deny_response(request, &msg, now, None);
             }
         }
 
         if let Err(e) = self.ensure_registered_tool_target(request) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "tool target not registered");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool target not registered");
             return self.build_deny_response(request, &msg, now, None);
         }
 
         if let Err(error) = self.record_observed_capability_snapshot(cap) {
             let msg = error.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "failed to persist capability lineage");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "failed to persist capability lineage");
             return self.build_deny_response(request, &msg, now, None);
         }
 
-        let (matched_grant_index, charge_result) =
-            match self.check_and_increment_budget(&request.request_id, cap, &matching_grants) {
-                Ok(result) => result,
-                Err(e) => {
-                    let msg = e.to_string();
-                    warn!(request_id = %request.request_id, reason = %msg, "capability rejected");
-                    return self.build_monetary_deny_response_with_metadata(
-                        request,
-                        &msg,
-                        now,
-                        &matching_grants,
-                        cap,
-                        Some(self.budget_backend_receipt_metadata()?),
-                    );
-                }
-            };
+        let (matched_grant_index, charge_result) = match self.check_and_increment_budget(
+            &request.request_id,
+            cap,
+            &matching_grants,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                let msg = e.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
+                return self.build_monetary_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    &matching_grants,
+                    cap,
+                    Some(self.budget_backend_receipt_metadata()?),
+                );
+            }
+        };
 
         let matched_grant = matching_grants
             .iter()
@@ -3128,7 +3137,7 @@ impl ChioKernel {
             Ok(validated_governed_admission) => validated_governed_admission,
             Err(error) => {
                 let msg = error.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "governed transaction denied");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "governed transaction denied");
                 if let Some(ref charge) = charge_result {
                     let reverse = self.reverse_budget_charge(&cap.id, charge)?;
                     return self.build_pre_execution_monetary_deny_response_with_metadata(
@@ -3175,7 +3184,7 @@ impl ChioKernel {
             Some(matched_grant_index),
         ) {
             let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %msg, "guard denied");
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "guard denied");
             if let Some(ref charge) = charge_result {
                 let reverse = self.reverse_budget_charge(&cap.id, charge)?;
                 return self.build_pre_execution_monetary_deny_response_with_metadata(
@@ -3196,30 +3205,31 @@ impl ChioKernel {
             return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
         }
 
-        let payment_authorization =
-            match self.authorize_payment_if_needed(request, charge_result.as_ref()) {
-                Ok(authorization) => authorization,
-                Err(error) => {
-                    let msg = format!("payment authorization failed: {error}");
-                    warn!(request_id = %request.request_id, reason = %msg, "payment denied");
-                    if let Some(ref charge) = charge_result {
-                        let reverse = self.reverse_budget_charge(&cap.id, charge)?;
-                        return self.build_pre_execution_monetary_deny_response_with_metadata(
-                            request,
-                            &msg,
-                            now,
+        let payment_authorization = match self
+            .authorize_payment_if_needed(request, charge_result.as_ref())
+        {
+            Ok(authorization) => authorization,
+            Err(error) => {
+                let msg = format!("payment authorization failed: {error}");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "payment denied");
+                if let Some(ref charge) = charge_result {
+                    let reverse = self.reverse_budget_charge(&cap.id, charge)?;
+                    return self.build_pre_execution_monetary_deny_response_with_metadata(
+                        request,
+                        &msg,
+                        now,
+                        charge,
+                        reverse.committed_cost_units_after,
+                        cap,
+                        Some(self.budget_execution_receipt_metadata(
                             charge,
-                            reverse.committed_cost_units_after,
-                            cap,
-                            Some(self.budget_execution_receipt_metadata(
-                                charge,
-                                Some(("reversed", &reverse)),
-                            )),
-                        );
-                    }
-                    return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
+                            Some(("reversed", &reverse)),
+                        )),
+                    );
                 }
-            };
+                return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
+            }
+        };
 
         let tool_started_at = Instant::now();
         let mut child_receipts = Vec::new();
@@ -3271,7 +3281,7 @@ impl ChioKernel {
                 )?;
                 warn!(
                     request_id = %request.request_id,
-                    reason = %error,
+                    reason = %redacted!(&error),
                     "tool call requires URL elicitation"
                 );
                 return Err(error);
@@ -3291,7 +3301,7 @@ impl ChioKernel {
                 }
                 warn!(
                     request_id = %request.request_id,
-                    reason = %reason,
+                    reason = %redacted!(&reason),
                     "tool call cancelled"
                 );
                 return self.build_cancelled_response_with_metadata(
@@ -3319,7 +3329,7 @@ impl ChioKernel {
                 )?;
                 warn!(
                     request_id = %request.request_id,
-                    reason = %reason,
+                    reason = %redacted!(&reason),
                     "tool call incomplete"
                 );
                 return self.build_incomplete_response_with_output_and_metadata(
@@ -3347,7 +3357,7 @@ impl ChioKernel {
                     payment_authorization.as_ref(),
                 )?;
                 let msg = error.to_string();
-                warn!(request_id = %request.request_id, reason = %msg, "tool server error");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
                 return self.build_deny_response_with_metadata(
                     request,
                     &msg,
@@ -3450,7 +3460,7 @@ impl ChioKernel {
                 Ok(mut server_events) => events.append(&mut server_events),
                 Err(error) => warn!(
                     server_id = %server_id,
-                    reason = %error,
+                    reason = %redacted!(&error),
                     "failed to drain tool server events"
                 ),
             }
@@ -4139,7 +4149,7 @@ impl ChioKernel {
                         request_id = %request.request_id,
                         reported_currency = %cost.currency,
                         charged_currency = %charge.currency,
-                        reason = %error,
+                        reason = %redacted!(&error),
                         "cross-currency reconciliation failed; closing hold at authorized exposure"
                     );
                     cross_currency_note = Some(serde_json::json!({
@@ -4228,7 +4238,7 @@ impl ChioKernel {
                     Err(error) => {
                         warn!(
                             request_id = %request.request_id,
-                            reason = %error,
+                            reason = %redacted!(&error),
                             "post-execution payment settlement failed"
                         );
                         ReceiptSettlement {

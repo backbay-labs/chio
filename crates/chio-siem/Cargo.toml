@@ -13,6 +13,7 @@ name = "chio_siem"
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-log-redact = { path = "../chio-log-redact" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

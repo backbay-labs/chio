@@ -61,17 +61,17 @@ use tokio::sync::{broadcast, Mutex};
 use tracing::{error, info, warn};
 use url::Url;
 
-use crate::policy::load_policy;
-use crate::trust_control::{self, ChildReceiptQuery, RevocationQuery, ToolReceiptQuery};
-use crate::JwtProviderProfile;
-use crate::{
+use chio_control_plane::policy::{load_policy, LoadedPolicy};
+use chio_control_plane::trust_control::{
+    self, ChildReceiptQuery, RevocationQuery, ToolReceiptQuery,
+};
+use chio_control_plane::{
     authority_public_key_from_seed_file, build_kernel, configure_budget_store,
     configure_capability_authority, configure_receipt_store, configure_revocation_store,
     enterprise_federation::{
         EnterpriseProviderKind, EnterpriseProviderRecord, EnterpriseProviderRegistry,
     },
     issue_default_capabilities, load_or_create_authority_keypair, rotate_authority_keypair,
-    CliError,
 };
 
 const MCP_ENDPOINT_PATH: &str = "/mcp";
@@ -1570,9 +1570,7 @@ fn fingerprint_remote_auth_contract(config: &RemoteServeHttpConfig) -> Result<St
     Ok(sha256_hex(&encoded))
 }
 
-fn fingerprint_remote_policy_contract(
-    loaded_policy: &crate::policy::LoadedPolicy,
-) -> Result<String, CliError> {
+fn fingerprint_remote_policy_contract(loaded_policy: &LoadedPolicy) -> Result<String, CliError> {
     let fingerprint = json!({
         "format": loaded_policy.format_name(),
         "identity": {

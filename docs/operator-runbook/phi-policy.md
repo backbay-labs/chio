@@ -51,6 +51,22 @@ PagerDuty summaries must contain only:
 Never include patient name, MRN, SSN, ICD-10 code, address, phone number,
 email, date of birth, or free-text clinical content in PagerDuty.
 
+## Log Redaction Enforcement
+
+Operator-facing tracing that can carry payloads, response bodies, prompts,
+tool arguments, tool output, user messages, or downstream response text must
+use `chio-log-redact`.
+
+- Wrap sensitive fields with `redacted!(value)` before logging.
+- Install `RedactionLayer` as the sink-facing tracing layer for deployment
+  logs that leave the process boundary.
+- CI runs `scripts/check-log-redaction.sh` to block raw `%reason`, `%body`, and
+  sensitive-arm log fields in the SRE-owned kernel and SIEM surfaces.
+
+If redaction fails, `redacted!()` emits `[REDACTION-FAILED]` rather than the
+original value. Treat that as a fail-closed operator signal and investigate the
+redactor configuration before continuing cutover.
+
 ## Audit Export Rule
 
 OCSF JSON remains the canonical export. CEF is the M01 SOC text format. Both

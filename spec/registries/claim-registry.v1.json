@@ -33,17 +33,17 @@
   "trj4_proposed_claims": [
     {
       "id": "claim.capability.attenuation_proof",
-      "status": "proposed",
-      "schema_artifact_proposed": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json",
-      "summary": "A v2 CapabilityToken carries an on-the-wire attenuation_proof witness; verifiers skip scope normalization.",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json",
+      "summary": "A v2 CapabilityToken carries an on-the-wire attenuation_proof witness; verifiers check the witness hashes and subset relation fail closed.",
       "introduced_by": "trajectory-4/T1.1",
       "depends_on_theorems": ["theorem.attenuation.witness_soundness"],
       "proof_manifest_ref": "manifest.capability.attenuation_proof"
     },
     {
       "id": "claim.receipt.body_hash_addressing",
-      "status": "proposed",
-      "schema_artifact_proposed": "spec/schemas/chio-wire/v1/receipt/v2.schema.json",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/v2.schema.json",
       "summary": "A v2 receipt is content-addressed by body_hash := H(canonical_jcs(ReceiptV2BodyHashInput)) where the input set strictly excludes body_hash, signature, and the legacy UUIDv7 receipt_id.",
       "introduced_by": "trajectory-4/T1.2",
       "depends_on_theorems": ["theorem.receipt.body_hash_input_set_pinned"],
@@ -51,8 +51,8 @@
     },
     {
       "id": "claim.receipt.dag_acyclicity",
-      "status": "proposed",
-      "schema_artifact_proposed": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json",
       "summary": "Multi-parent receipt lineage carries a signed dag_ordinal + HLC triple; verifier predicate child.dag_ordinal > max(parent.dag_ordinal) rejects cycles across independent kernel clock domains.",
       "introduced_by": "trajectory-4/T1.2",
       "depends_on_theorems": ["theorem.receipt.dag_acyclicity"],
@@ -60,8 +60,8 @@
     },
     {
       "id": "claim.anchor.batch_continuity",
-      "status": "proposed",
-      "schema_artifact_proposed": "spec/schemas/chio-wire/v1/anchor/batch.schema.json",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/anchor/batch.schema.json",
       "summary": "A chio.anchor_batch.v1 publishes a Merkle root over N receipts/checkpoints to a public witness lane (Rekor / OTS / Solana memo). Per-receipt local sign stays unchanged; the batch upgrades continuity and non-repudiation, additive over per-receipt verification.",
       "introduced_by": "trajectory-4/T1.3",
       "depends_on_theorems": ["theorem.anchor.merkle_inclusion", "theorem.anchor.public_witness_anti_equivocation"],
@@ -69,8 +69,8 @@
     },
     {
       "id": "claim.handshake.capability_negotiation",
-      "status": "proposed",
-      "schema_artifact_proposed": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json",
       "summary": "Peers exchange a feature bitset at handshake time so additive protocol changes do not force flag-day rollouts.",
       "introduced_by": "trajectory-4/T1.0",
       "depends_on_theorems": ["theorem.handshake.negotiation_safety"],
@@ -79,11 +79,21 @@
     {
       "id": "claim.signature.hybrid_pq",
       "status": "proposed",
-      "schema_artifact_proposed": "spec/schemas/signature.v1.json",
+      "schema_artifact_proposed": "spec/schemas/chio-wire/v1/capability/token.schema.json",
+      "related_schema_artifacts": ["spec/schemas/signature.v1.json"],
       "summary": "Capability tokens, federation handshake envelopes, and receipts accept a hybrid:<classical>:<pq>:<alg_set> signature wire format with the algorithm enum value 'hybrid'.",
       "introduced_by": "trajectory-4/T2.1",
       "depends_on_theorems": ["theorem.signature.hybrid_soundness"],
       "proof_manifest_ref": "manifest.signature.hybrid_pq"
+    },
+    {
+      "id": "claim.federation.conformance_tier",
+      "status": "proposed",
+      "schema_artifact_proposed": "crates/chio-federation/src/trust_establishment.rs",
+      "summary": "Federation handshakes bind a Bronze, Silver, or Gold conformance tier into the signed challenge, and quorum policy rejects peers below min_tier before admission.",
+      "introduced_by": "trajectory-4/T2.1",
+      "depends_on_theorems": ["theorem.federation.conformance_tier_gate"],
+      "proof_manifest_ref": "manifest.federation.conformance_tier"
     }
   ]
 }

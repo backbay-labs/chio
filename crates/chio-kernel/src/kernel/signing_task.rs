@@ -67,7 +67,7 @@ use crate::{ChioReceipt, ChioReceiptBody, KernelError, Keypair};
 /// can override via [`SigningTaskHandle::with_capacity`] until a config
 /// knob lands in a later phase.
 pub const DEFAULT_SIGNING_CHANNEL_CAPACITY: usize = 256;
-pub const METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL: &str = "chio_signing_queue_block_total";
+pub use chio_metrics_spec::CHIO_SIGNING_QUEUE_BLOCK_TOTAL as METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL;
 static SIGNING_QUEUE_BLOCK_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn signing_queue_block_total() -> u64 {

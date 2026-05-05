@@ -17,6 +17,7 @@ chio-control-plane = { path = "../chio-control-plane" }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-kernel = { path = "../chio-kernel" }
 chio-mcp-adapter = { path = "../chio-mcp-adapter" }
+chio-mcp-remote = { path = "../chio-mcp-remote" }
 chio-store-sqlite = { path = "../chio-store-sqlite" }
 serde = { workspace = true }
 serde_json = { workspace = true }

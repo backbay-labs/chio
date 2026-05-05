@@ -26,6 +26,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # app process with no IPC boundary. Every FFI entry point is JSON-in /
 # JSON-out so we do not have to reproduce the full Chio type graph in UDL.
 [dependencies]
+chio-custody-hw = { path = "../chio-custody-hw", default-features = false }
 chio-kernel-core = { path = "../chio-kernel-core" }
 # chio-core-types is pulled with default features because mobile targets
 # always have the `std` runtime available; the portable subset lives in
@@ -34,6 +35,7 @@ chio-core-types = { path = "../chio-core-types" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 hex = { workspace = true }
+sha2 = { workspace = true }
 # UniFFI ties the FFI scaffolding + bindings generator to the crate:
 # `build.rs` calls `uniffi::generate_scaffolding`, and `uniffi-bindgen`
 # (installed separately on the operator's machine) reads the UDL to emit

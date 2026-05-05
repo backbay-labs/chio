@@ -20,6 +20,7 @@ rand_core = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 thiserror = { workspace = true }
+url = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 chio-core-types = { path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }

@@ -14,7 +14,7 @@ fb7f0ae9a9819cb1ddc01a36cdbc345c7a146e26f17abf29bdc9ee1bd6d8b25f  spec/schemas/c
 74c6f29cc16d234945f53a06016593790ecbe59807dc4486cbac165213bac7bf  spec/schemas/chio-wire/v1/agent/tool_call_request.schema.json
 c335d848e09a550dc0517486e6a4fe2f1a46a2276f05d6e742b9797af2f59cd7  spec/schemas/chio-wire/v1/capability/grant.schema.json
 c82facc94429ecfb61ebe93dd63f58a50ef2cae4b946cffd861e5b8d2b6f575f  spec/schemas/chio-wire/v1/capability/revocation.schema.json
-873ffdaabbac48525745393fe415332f963b2d3d409a9473cde9d5a4755a85e2  spec/schemas/chio-wire/v1/capability/token.schema.json
+8fd97ceea261e7849c5b500a47f023966e80608051e0f81805e0bbe2bc31a830  spec/schemas/chio-wire/v1/capability/token.schema.json
 f37af6918a80b5520a4ff0f906597a4bceaa9dad94b2c9dba6e35cd66c7d03db  spec/schemas/chio-wire/v1/error/capability_denied.schema.json
 c2294ed17e1346c080939aae047b0d57f0d1ca5b59412832fe4d76c082f3fdfb  spec/schemas/chio-wire/v1/error/capability_expired.schema.json
 022d8b6f263b7e0c4933db0f353c0fe2473a75d2e9ea7a5f5dec51b28cb03631  spec/schemas/chio-wire/v1/error/capability_revoked.schema.json

@@ -11,8 +11,9 @@
 //! allows, and denied tool uses all fail closed before any bytes for the
 //! tool-use block are released.
 
+use chio_provider_adapter_core::ensure_streaming_allow_no_redactions;
 use chio_tool_call_fabric::{
-    BlockKind, DenyReason, ProviderError, StreamEvent, StreamPhase, ToolInvocation, VerdictResult,
+    BlockKind, ProviderError, StreamEvent, StreamPhase, ToolInvocation, VerdictResult,
     DEFAULT_MAX_BUFFERED_BLOCK_BYTES, DEFAULT_MAX_BUFFERED_RAW_FRAMES,
 };
 use serde_json::{json, Value};
@@ -507,31 +508,13 @@ fn ensure_streaming_allow(
     block: &ToolUseBlock,
     verdict: &VerdictResult,
 ) -> Result<(), ProviderError> {
-    match verdict {
-        VerdictResult::Allow { redactions, .. } if redactions.is_empty() => Ok(()),
-        VerdictResult::Allow { .. } => Err(ProviderError::Malformed(format!(
-            "Bedrock streaming toolUse `{}` allow verdict requested redactions; fail-closed",
-            block.tool_use_id
-        ))),
-        VerdictResult::Deny { reason, receipt_id } => Err(ProviderError::Malformed(format!(
-            "Bedrock streaming toolUse `{}` denied at contentBlockStop: {} (receipt {})",
-            block.tool_use_id,
-            deny_reason_text(reason),
-            receipt_id.0
-        ))),
-    }
-}
-
-fn deny_reason_text(reason: &DenyReason) -> String {
-    match reason {
-        DenyReason::PolicyDeny { rule_id } => format!("policy_deny:{rule_id}"),
-        DenyReason::GuardDeny { guard_id, detail } => {
-            format!("guard_deny:{guard_id}:{detail}")
-        }
-        DenyReason::CapabilityExpired => "capability_expired".to_string(),
-        DenyReason::PrincipalUnknown => "principal_unknown".to_string(),
-        DenyReason::BudgetExceeded => "budget_exceeded".to_string(),
-    }
+    ensure_streaming_allow_no_redactions(
+        "Bedrock",
+        "toolUse",
+        &block.tool_use_id,
+        Some("contentBlockStop"),
+        verdict,
+    )
 }
 
 fn transition(phase: &StreamPhase, event: StreamEvent) -> Result<StreamPhase, ProviderError> {

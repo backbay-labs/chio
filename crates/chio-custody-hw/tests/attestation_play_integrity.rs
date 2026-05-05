@@ -1,7 +1,8 @@
 use std::error::Error;
 
 use chio_custody_hw::attestation::google_root::{
-    play_integrity_encoding_key, play_integrity_root_sha256_hex, GOOGLE_PLAY_INTEGRITY_ROOT_KID,
+    play_integrity_encoding_key, play_integrity_jwks_json, play_integrity_root_sha256_hex,
+    GOOGLE_PLAY_INTEGRITY_ISSUER, GOOGLE_PLAY_INTEGRITY_ROOT_KID,
 };
 use chio_custody_hw::{
     verify_mobile_receipt_chain, verify_play_integrity, AttestationError,
@@ -12,6 +13,7 @@ use serde::Serialize;
 
 const PACKAGE: &str = "dev.chio.patient";
 const NONCE: &str = "issuer-nonce-1";
+const AUDIENCE: &str = "chio-mobile-issuer";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +21,8 @@ struct TestClaims {
     nonce: String,
     app_integrity: TestAppIntegrity,
     device_integrity: TestDeviceIntegrity,
+    aud: String,
+    iss: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     exp: Option<u64>,
 }
@@ -43,6 +47,8 @@ fn play_integrity_verifier_accepts_signed_fixture() -> Result<(), Box<dyn Error>
         token: &token,
         expected_nonce: NONCE,
         expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &play_integrity_jwks_json(),
     })?;
 
     assert_eq!(verified.nonce, NONCE);
@@ -67,6 +73,8 @@ fn play_integrity_verifier_rejects_nonce_replay() -> Result<(), Box<dyn Error>> 
         token: &token,
         expected_nonce: "other-nonce",
         expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &play_integrity_jwks_json(),
     })
     .err()
     .ok_or("expected nonce mismatch")?;
@@ -86,6 +94,8 @@ fn play_integrity_verifier_rejects_unrecognized_app() -> Result<(), Box<dyn Erro
         token: &token,
         expected_nonce: NONCE,
         expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &play_integrity_jwks_json(),
     })
     .err()
     .ok_or("expected app rejection")?;
@@ -110,7 +120,13 @@ fn signed_token(
     app_verdict: &str,
     device_verdicts: &[&str],
 ) -> Result<String, Box<dyn Error>> {
-    signed_token_with_exp(nonce, package_name, app_verdict, device_verdicts, None)
+    signed_token_with_exp(
+        nonce,
+        package_name,
+        app_verdict,
+        device_verdicts,
+        Some(future_exp()?),
+    )
 }
 
 fn signed_token_with_exp(
@@ -120,7 +136,25 @@ fn signed_token_with_exp(
     device_verdicts: &[&str],
     exp: Option<u64>,
 ) -> Result<String, Box<dyn Error>> {
-    let mut header = Header::new(Algorithm::HS256);
+    signed_token_with_alg(
+        nonce,
+        package_name,
+        app_verdict,
+        device_verdicts,
+        exp,
+        Algorithm::HS256,
+    )
+}
+
+fn signed_token_with_alg(
+    nonce: &str,
+    package_name: &str,
+    app_verdict: &str,
+    device_verdicts: &[&str],
+    exp: Option<u64>,
+    algorithm: Algorithm,
+) -> Result<String, Box<dyn Error>> {
+    let mut header = Header::new(algorithm);
     header.kid = Some(GOOGLE_PLAY_INTEGRITY_ROOT_KID.to_string());
     let claims = TestClaims {
         nonce: nonce.to_string(),
@@ -134,6 +168,8 @@ fn signed_token_with_exp(
                 .map(|verdict| (*verdict).to_string())
                 .collect(),
         },
+        aud: AUDIENCE.to_string(),
+        iss: GOOGLE_PLAY_INTEGRITY_ISSUER.to_string(),
         exp,
     };
     encode(&header, &claims, &play_integrity_encoding_key()).map_err(Into::into)
@@ -157,6 +193,8 @@ fn play_integrity_verifier_rejects_expired_token_fail_closed() -> Result<(), Box
         token: &token,
         expected_nonce: NONCE,
         expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &play_integrity_jwks_json(),
     })
     .err()
     .ok_or("expected expired-token rejection")?;
@@ -175,24 +213,74 @@ fn play_integrity_verifier_rejects_expired_token_fail_closed() -> Result<(), Box
 fn play_integrity_verifier_accepts_future_exp() -> Result<(), Box<dyn Error>> {
     // A token whose `exp` claim is far in the future must still verify so
     // legitimate tokens with their own freshness window keep working.
-    let far_future = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() + 3_600)
-        .map_err(|err| format!("clock pre-1970: {err}"))?;
     let token = signed_token_with_exp(
         NONCE,
         PACKAGE,
         PLAY_RECOGNIZED,
         &[MEETS_DEVICE_INTEGRITY],
-        Some(far_future),
+        Some(future_exp()?),
     )?;
     let verified = verify_play_integrity(PlayIntegrityVerificationInput {
         token: &token,
         expected_nonce: NONCE,
         expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &play_integrity_jwks_json(),
     })?;
     assert_eq!(verified.nonce, NONCE);
     Ok(())
+}
+
+#[test]
+fn play_integrity_verifier_rejects_wrong_audience() -> Result<(), Box<dyn Error>> {
+    let token = signed_token(NONCE, PACKAGE, PLAY_RECOGNIZED, &[MEETS_DEVICE_INTEGRITY])?;
+    let error = verify_play_integrity(PlayIntegrityVerificationInput {
+        token: &token,
+        expected_nonce: NONCE,
+        expected_package_name: PACKAGE,
+        expected_audience: "other-audience",
+        jwks_json: &play_integrity_jwks_json(),
+    })
+    .err()
+    .ok_or("expected audience rejection")?;
+    assert!(matches!(
+        error,
+        AttestationError::PlayIntegrityInvalidToken(_)
+    ));
+    Ok(())
+}
+
+#[test]
+fn play_integrity_verifier_rejects_alg_downgrade() -> Result<(), Box<dyn Error>> {
+    let token = signed_token_with_alg(
+        NONCE,
+        PACKAGE,
+        PLAY_RECOGNIZED,
+        &[MEETS_DEVICE_INTEGRITY],
+        Some(future_exp()?),
+        Algorithm::HS384,
+    )?;
+    let error = verify_play_integrity(PlayIntegrityVerificationInput {
+        token: &token,
+        expected_nonce: NONCE,
+        expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &play_integrity_jwks_json(),
+    })
+    .err()
+    .ok_or("expected algorithm rejection")?;
+    assert!(matches!(
+        error,
+        AttestationError::PlayIntegrityInvalidToken(_)
+    ));
+    Ok(())
+}
+
+fn future_exp() -> Result<u64, Box<dyn Error>> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() + 3_600)
+        .map_err(Into::into)
 }
 
 #[test]

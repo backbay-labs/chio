@@ -59,6 +59,22 @@ Not counted against Chio error budget:
 - SOC collector outage.
 - Planned design-partner maintenance window.
 
+## Metrics and Alerts
+
+The authoritative metric taxonomy lives in `crates/chio-metrics-spec`.
+Operators should load the Prometheus rule pack under `deploy/prometheus/`:
+
+- `chio-recording-rules.yml` defines p95 latency and error-ratio series for
+  mediation, receipt writes, alert dispatch, SOC export, guard evaluation,
+  federation hops, and anchor rounds.
+- `chio-alert-rules.yml` defines dual-window burn alerts using 14.4x over 1
+  hour and 6x over 6 hours. Receipt-write failures use the 99.9% objective;
+  sidecar availability uses 99.5%; alert dispatch and SOC export use 99.0%.
+- `ChioFailOpenSuspected` pages immediately because fail-open behavior violates
+  the kernel safety contract.
+- Alert labels `notification_route`, `opsgenie`, and `severity` are consumed by
+  the existing `chio-siem` alerting path for PagerDuty and OpsGenie routing.
+
 ## Receipt and Export Objectives
 
 Every evaluated request must end with one of these outcomes:

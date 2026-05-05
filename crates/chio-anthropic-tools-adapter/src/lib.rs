@@ -126,6 +126,16 @@ impl AnthropicAdapter {
     }
 }
 
+impl chio_provider_adapter_core::Provider for AnthropicAdapter {
+    fn provider_id(&self) -> ProviderId {
+        self.provider()
+    }
+
+    fn api_version(&self) -> &str {
+        self.api_version()
+    }
+}
+
 /// Adapter-local error taxonomy.
 #[derive(Debug, Error)]
 pub enum AnthropicAdapterError {

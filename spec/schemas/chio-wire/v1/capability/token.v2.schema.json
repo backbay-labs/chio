@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token.v2",
+  "title": "Chio CapabilityToken v2",
+  "description": "Schema-tagged v2 capability token with typed caveats, first-class attenuation fields, an attenuation_proof witness, and a reserved hybrid algorithm enum value for the T2.1 compatibility path.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issuer",
+    "subject",
+    "scope",
+    "issued_at",
+    "expires_at",
+    "attenuation_proof",
+    "signature"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "chio.capability.v2"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issuer": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+    },
+    "subject": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "ChioScope. The Rust verifier hashes the RFC 8785 canonical form for attenuation_proof.childScopeHash."
+    },
+    "issued_at": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "expires_at": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "delegation_chain": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "algorithm": {
+      "type": "string",
+      "enum": ["ed25519", "p256", "p384", "hybrid"]
+    },
+    "caveats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/caveat"
+      }
+    },
+    "scope_attenuations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "attenuation_proof": {
+      "$ref": "#/$defs/attenuationProof"
+    },
+    "budget_share_bps": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000,
+      "description": "Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed."
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+    }
+  },
+  "$defs": {
+    "caveat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "predicate"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "restrict_tool",
+            "bind_session",
+            "restrict_audience",
+            "restrict_geo",
+            "restrict_time_window"
+          ]
+        },
+        "predicate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+        }
+      }
+    },
+    "attenuationProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parentScopeHash",
+        "childScopeHash",
+        "normalizedSubsetProof"
+      ],
+      "properties": {
+        "parentScopeHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "childScopeHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "normalizedSubsetProof": {
+          "$ref": "#/$defs/attenuationWitness"
+        }
+      }
+    },
+    "attenuationWitness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalizedParentScope", "normalizedChildScope"],
+      "properties": {
+        "normalizedParentScope": {
+          "type": "string",
+          "minLength": 2
+        },
+        "normalizedChildScope": {
+          "type": "string",
+          "minLength": 2
+        },
+        "subsetRelations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/grantSubsetRelation"
+          }
+        },
+        "restrictedPredicates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "grantSubsetRelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grantKind", "childIndex", "parentIndex", "subset"],
+      "properties": {
+        "grantKind": {
+          "type": "string",
+          "enum": ["tool", "resource", "prompt"]
+        },
+        "childIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "parentIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "subset": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+groups:
+  - name: chio-sre-recording
+    interval: 30s
+    rules:
+      - record: chio:decision_latency:histogram_quantile_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(chio_kernel_decision_latency_seconds_bucket[5m]))
+          )
+
+      - record: chio:receipt_write_latency:histogram_quantile_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(chio_receipt_write_latency_seconds_bucket[5m]))
+          )
+
+      - record: chio:receipt_write_error_ratio_5m
+        expr: |
+          sum(rate(chio_receipt_write_total{outcome!="success"}[5m]))
+          /
+          clamp_min(sum(rate(chio_receipt_write_total[5m])), 1)
+
+      - record: chio:receipt_write_error_ratio_1h
+        expr: |
+          sum(rate(chio_receipt_write_total{outcome!="success"}[1h]))
+          /
+          clamp_min(sum(rate(chio_receipt_write_total[1h])), 1)
+
+      - record: chio:receipt_write_error_ratio_6h
+        expr: |
+          sum(rate(chio_receipt_write_total{outcome!="success"}[6h]))
+          /
+          clamp_min(sum(rate(chio_receipt_write_total[6h])), 1)
+
+      - record: chio:sidecar_error_ratio_1h
+        expr: |
+          sum(rate(chio_sidecar_requests_total{outcome!="success"}[1h]))
+          /
+          clamp_min(sum(rate(chio_sidecar_requests_total[1h])), 1)
+
+      - record: chio:sidecar_error_ratio_6h
+        expr: |
+          sum(rate(chio_sidecar_requests_total{outcome!="success"}[6h]))
+          /
+          clamp_min(sum(rate(chio_sidecar_requests_total[6h])), 1)
+
+      - record: chio:alert_dispatch_error_ratio_1h
+        expr: |
+          sum(rate(chio_alert_dispatch_total{outcome!="success"}[1h]))
+          /
+          clamp_min(sum(rate(chio_alert_dispatch_total[1h])), 1)
+
+      - record: chio:alert_dispatch_error_ratio_6h
+        expr: |
+          sum(rate(chio_alert_dispatch_total{outcome!="success"}[6h]))
+          /
+          clamp_min(sum(rate(chio_alert_dispatch_total[6h])), 1)
+
+      - record: chio:soc_export_error_ratio_1h
+        expr: |
+          sum(rate(chio_soc_export_total{outcome!="success"}[1h]))
+          /
+          clamp_min(sum(rate(chio_soc_export_total[1h])), 1)
+
+      - record: chio:soc_export_error_ratio_6h
+        expr: |
+          sum(rate(chio_soc_export_total{outcome!="success"}[6h]))
+          /
+          clamp_min(sum(rate(chio_soc_export_total[6h])), 1)
+
+      - record: chio:anchor_round_latency:histogram_quantile_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(chio_anchor_round_latency_seconds_bucket[5m]))
+          )
+
+      - record: chio:federation_hop_latency:histogram_quantile_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(chio_federation_hop_latency_seconds_bucket[5m]))
+          )
+
+      - record: chio:guard_eval_latency:histogram_quantile_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(chio_guard_eval_duration_seconds_bucket[5m]))
+          )
+
+      - record: chio:alert_dispatch_latency:histogram_quantile_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(chio_alert_dispatch_latency_seconds_bucket[5m]))
+          )

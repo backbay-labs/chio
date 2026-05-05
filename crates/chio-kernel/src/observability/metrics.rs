@@ -1,36 +1,18 @@
 //! Prometheus text exposition for guard metrics.
 
-use crate::kernel::signing_task::{
-    signing_queue_block_total, METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+use chio_metrics_spec::{
+    CHIO_GUARD_DENY_TOTAL, CHIO_GUARD_EVAL_DURATION_SECONDS, CHIO_GUARD_FUEL_CONSUMED_TOTAL,
+    CHIO_GUARD_HOST_CALL_DURATION_SECONDS, CHIO_GUARD_MODULE_BYTES, CHIO_GUARD_RELOAD_TOTAL,
+    CHIO_GUARD_VERDICT_TOTAL, CHIO_SIGNING_QUEUE_BLOCK_TOTAL, GUARD_EVAL_DURATION_BUCKETS_SECONDS,
+    GUARD_HOST_CALL_DURATION_BUCKETS_SECONDS,
 };
+
+use crate::kernel::signing_task::signing_queue_block_total;
+
+pub use chio_metrics_spec::MetricKind as PrometheusMetricKind;
 
 pub const GUARD_METRICS_PATH: &str = "/metrics";
 pub const PROMETHEUS_TEXT_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
-
-const EVAL_DURATION_BUCKETS_SECONDS: &[&str] = &[
-    "0.0001", "0.0005", "0.001", "0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0",
-];
-const HOST_CALL_DURATION_BUCKETS_SECONDS: &[&str] = &[
-    "0.00001", "0.00005", "0.0001", "0.0005", "0.001", "0.005", "0.01", "0.05", "0.1",
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PrometheusMetricKind {
-    Counter,
-    Gauge,
-    Histogram,
-}
-
-impl PrometheusMetricKind {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Counter => "counter",
-            Self::Gauge => "gauge",
-            Self::Histogram => "histogram",
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GuardMetricFamily {
@@ -50,49 +32,49 @@ const LABELS_GUARD_EPOCH: &[&str] = &["guard_id", "epoch"];
 
 pub const GUARD_METRIC_FAMILIES: &[GuardMetricFamily] = &[
     GuardMetricFamily {
-        name: "chio_guard_eval_duration_seconds",
+        name: CHIO_GUARD_EVAL_DURATION_SECONDS,
         help: "WASM guard evaluation duration in seconds.",
         kind: PrometheusMetricKind::Histogram,
         labels: LABELS_GUARD_VERDICT,
-        buckets: EVAL_DURATION_BUCKETS_SECONDS,
+        buckets: GUARD_EVAL_DURATION_BUCKETS_SECONDS,
     },
     GuardMetricFamily {
-        name: "chio_guard_fuel_consumed_total",
+        name: CHIO_GUARD_FUEL_CONSUMED_TOTAL,
         help: "Total WASM guard fuel units consumed.",
         kind: PrometheusMetricKind::Counter,
         labels: LABELS_GUARD_ONLY,
         buckets: &[],
     },
     GuardMetricFamily {
-        name: "chio_guard_verdict_total",
+        name: CHIO_GUARD_VERDICT_TOTAL,
         help: "Total WASM guard verdicts by guard and verdict.",
         kind: PrometheusMetricKind::Counter,
         labels: LABELS_GUARD_VERDICT,
         buckets: &[],
     },
     GuardMetricFamily {
-        name: "chio_guard_deny_total",
+        name: CHIO_GUARD_DENY_TOTAL,
         help: "Total WASM guard denies by reason class.",
         kind: PrometheusMetricKind::Counter,
         labels: LABELS_GUARD_REASON_CLASS,
         buckets: &[],
     },
     GuardMetricFamily {
-        name: "chio_guard_reload_total",
+        name: CHIO_GUARD_RELOAD_TOTAL,
         help: "Total WASM guard reload outcomes.",
         kind: PrometheusMetricKind::Counter,
         labels: LABELS_GUARD_OUTCOME,
         buckets: &[],
     },
     GuardMetricFamily {
-        name: "chio_guard_host_call_duration_seconds",
+        name: CHIO_GUARD_HOST_CALL_DURATION_SECONDS,
         help: "WASM guard host-call duration in seconds.",
         kind: PrometheusMetricKind::Histogram,
         labels: LABELS_GUARD_HOST_FN,
-        buckets: HOST_CALL_DURATION_BUCKETS_SECONDS,
+        buckets: GUARD_HOST_CALL_DURATION_BUCKETS_SECONDS,
     },
     GuardMetricFamily {
-        name: "chio_guard_module_bytes",
+        name: CHIO_GUARD_MODULE_BYTES,
         help: "Loaded WASM guard module size in bytes.",
         kind: PrometheusMetricKind::Gauge,
         labels: LABELS_GUARD_EPOCH,
@@ -100,12 +82,12 @@ pub const GUARD_METRIC_FAMILIES: &[GuardMetricFamily] = &[
     },
 ];
 
-pub const METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
-pub const METRIC_CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
+pub use chio_metrics_spec::CHIO_OTEL_INGRESS_DROP_TOTAL as METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL;
+pub use chio_metrics_spec::CHIO_OTEL_SINK_DROP_TOTAL as METRIC_CHIO_OTEL_SINK_DROP_TOTAL;
 
 const RUNTIME_METRIC_FAMILIES: &[GuardMetricFamily] = &[
     GuardMetricFamily {
-        name: METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+        name: CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
         help: "Total receipt signing requests blocked by bounded queue capacity.",
         kind: PrometheusMetricKind::Counter,
         labels: &[],
@@ -183,7 +165,7 @@ fn render_scalar_family(output: &mut String, family: &GuardMetricFamily) {
 
 fn scalar_metric_value(family: &GuardMetricFamily) -> u64 {
     match family.name {
-        METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL => signing_queue_block_total(),
+        CHIO_SIGNING_QUEUE_BLOCK_TOTAL => signing_queue_block_total(),
         _ => 0,
     }
 }

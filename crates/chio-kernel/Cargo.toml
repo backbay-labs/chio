@@ -51,6 +51,8 @@ chio-credit = { path = "../chio-credit" }
 chio-federation = { path = "../chio-federation" }
 chio-governance = { path = "../chio-governance" }
 chio-link = { path = "../chio-link", default-features = false }
+chio-log-redact = { path = "../chio-log-redact" }
+chio-metrics-spec = { path = "../chio-metrics-spec" }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
 lru = "0.16.3"
 chio-listing = { path = "../chio-listing" }

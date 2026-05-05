@@ -37,6 +37,7 @@ chio-lineage = { path = "../chio-lineage" }
 chio-listing = { path = "../chio-listing" }
 chio-policy = { path = "../chio-policy" }
 chio-mcp-adapter = { path = "../chio-mcp-adapter" }
+chio-mcp-remote = { path = "../chio-mcp-remote" }
 chio-attest-verify = { path = "../chio-attest-verify" }
 chio-weights = { path = "../chio-weights" }
 chio-conformance = { path = "../chio-conformance" }

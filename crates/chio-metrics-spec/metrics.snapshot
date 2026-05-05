@@ -1,0 +1,27 @@
+chio_alert_dispatch_latency_seconds|histogram|route,outcome|0.25,0.5,1.0,2.5,5.0,10.0|PagerDuty or OpsGenie alert dispatch latency in seconds.
+chio_alert_dispatch_total|counter|route,outcome||Total PagerDuty or OpsGenie alert dispatch outcomes.
+chio_anchor_round_latency_seconds|histogram|witness,outcome|0.1,0.5,1.0,2.5,5.0,10.0|Anchor round latency in seconds.
+chio_capability_revocation_lag_seconds|histogram|authority|1,5,15,30,60,120,300|Capability revocation propagation lag in seconds.
+chio_dispatch_failure_total|counter|surface,outcome||Total tool-dispatch failures that did not bypass mediation.
+chio_dlq_depth|gauge|exporter||Dead-letter queue depth by exporter.
+chio_fail_open_suspected_total|counter|surface||Total suspected fail-open paths detected by SRE guards.
+chio_federation_hop_latency_seconds|histogram|result|0.01,0.025,0.05,0.1,0.25,0.5,1.0|Federation hop latency in seconds.
+chio_federation_hop_total|counter|result||Total federation hop outcomes.
+chio_guard_deny_total|counter|guard_id,reason_class||Total WASM guard denies by reason class.
+chio_guard_eval_duration_seconds|histogram|guard_id,verdict|0.0001,0.0005,0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1.0|WASM guard evaluation duration in seconds.
+chio_guard_evaluations_total|counter|guard,outcome||Total guard evaluation outcomes across native and WASM guards.
+chio_guard_fuel_consumed_total|counter|guard_id||Total WASM guard fuel units consumed.
+chio_guard_host_call_duration_seconds|histogram|guard_id,host_fn|0.00001,0.00005,0.0001,0.0005,0.001,0.005,0.01,0.05,0.1|WASM guard host-call duration in seconds.
+chio_guard_module_bytes|gauge|guard_id,epoch||Loaded WASM guard module size in bytes.
+chio_guard_reload_total|counter|guard_id,outcome||Total WASM guard reload outcomes.
+chio_guard_verdict_total|counter|guard_id,verdict||Total WASM guard verdicts by guard and verdict.
+chio_kernel_decision_latency_seconds|histogram|surface,outcome|0.025,0.05,0.075,0.1,0.25,0.5,1.0,2.5|Kernel mediation decision latency in seconds.
+chio_otel_ingress_drop_total|counter|||Total OTEL ingress batches dropped by bounded queue admission.
+chio_otel_sink_drop_total|counter|||Total OTEL receipt sink batches dropped before append.
+chio_receipt_write_latency_seconds|histogram|store,outcome|0.01,0.025,0.05,0.1,0.25,0.5,1.0|Receipt write latency at the local store boundary in seconds.
+chio_receipt_write_total|counter|outcome||Total receipt write outcomes after policy or guard evaluation.
+chio_sidecar_requests_total|counter|outcome||Total sidecar request outcomes at the mediation edge.
+chio_signing_queue_block_total|counter|||Total receipt signing requests blocked by bounded queue capacity.
+chio_soc_export_lag_seconds|histogram|exporter,severity|30,60,120,300,600,1800|SOC export lag in seconds from receipt persistence to sink acknowledgement.
+chio_soc_export_total|counter|exporter,outcome||Total SOC export outcomes for audit rows.
+chio_trust_control_ready|gauge|||Trust-control readiness state, where 1 is ready and 0 is not ready.

@@ -1,0 +1,102 @@
+groups:
+  - name: chio-sre-alerts
+    rules:
+      - alert: ChioReceiptWriteErrorBudgetBurn1h
+        expr: |
+          chio:receipt_write_error_ratio_1h > (14.4 * 0.001)
+          and
+          chio:receipt_write_error_ratio_6h > (6 * 0.001)
+        for: 2m
+        labels:
+          severity: p1
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: receipt-write
+        annotations:
+          summary: Chio receipt writes are burning error budget
+          runbook: docs/operator-runbook/slo.md
+
+      - alert: ChioSidecarErrorBudgetBurn1h
+        expr: |
+          chio:sidecar_error_ratio_1h > (14.4 * 0.005)
+          and
+          chio:sidecar_error_ratio_6h > (6 * 0.005)
+        for: 2m
+        labels:
+          severity: p2
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: sidecar-availability
+        annotations:
+          summary: Chio sidecar availability is burning error budget
+          runbook: docs/operator-runbook/slo.md
+
+      - alert: ChioAlertDispatchErrorBudgetBurn1h
+        expr: |
+          chio:alert_dispatch_error_ratio_1h > (14.4 * 0.01)
+          and
+          chio:alert_dispatch_error_ratio_6h > (6 * 0.01)
+        for: 2m
+        labels:
+          severity: p1
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: pagerduty-dispatch
+        annotations:
+          summary: Chio alert dispatch is burning error budget
+          runbook: docs/operator-runbook/slo.md
+
+      - alert: ChioSocExportErrorBudgetBurn1h
+        expr: |
+          chio:soc_export_error_ratio_1h > (14.4 * 0.01)
+          and
+          chio:soc_export_error_ratio_6h > (6 * 0.01)
+        for: 5m
+        labels:
+          severity: p2
+          notification_route: opsgenie
+          opsgenie: "true"
+          slo: soc-export
+        annotations:
+          summary: Chio SOC export is burning error budget
+          runbook: docs/operator-runbook/slo.md
+
+      - alert: ChioFailOpenSuspected
+        expr: increase(chio_fail_open_suspected_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: p0
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: fail-closed
+        annotations:
+          summary: Chio observed a suspected fail-open path
+          runbook: docs/operator-runbook/slo.md
+
+      - alert: ChioDispatchFailure
+        expr: increase(chio_dispatch_failure_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: p1
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: dispatch
+        annotations:
+          summary: Chio dispatch failures are above zero
+          runbook: docs/operator-runbook/slo.md
+
+      - alert: ChioRevocationLagHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(chio_capability_revocation_lag_seconds_bucket[5m]))
+          ) > 30
+        for: 10m
+        labels:
+          severity: p1
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: revocation
+        annotations:
+          summary: Chio capability revocation p95 lag is above 30 seconds
+          runbook: docs/operator-runbook/slo.md

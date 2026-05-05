@@ -1,0 +1,25 @@
+[package]
+name = "chio-log-redact"
+description = "Tracing log redaction layer and macro for Chio operator surfaces"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_log_redact"
+
+[dependencies]
+chio-data-guards-redactors-default = { path = "../chio-data-guards/redactors/default" }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["registry"] }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true, features = ["registry"] }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

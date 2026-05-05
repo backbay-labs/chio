@@ -1,30 +1,42 @@
-// DO NOT EDIT - regenerate via 'make regen-rust' or 'cargo xtask codegen rust'.
-//
-// Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Tool:   typify =0.4.3 (see xtask/codegen-tools.lock.toml)
-// Crate:  chio-spec-codegen
-//
-// Manual edits will be overwritten by the next regeneration; the
-// `_generated_check` integration test enforces this header on every file
-// under `crates/chio-core-types/src/_generated/`.
+//! Threat test for threat ID `pii_phi_exposure`.
+//!
+//! Coverage strategy: exercise the in-tree response sanitization guard against
+//! definite PHI/PII markers and assert both block and redact modes fail closed
+//! before raw identifiers reach downstream consumers.
 
-//! Stub test for threat ID `pii_phi_exposure` (PII or PHI exposure in responses).
-//!
-//! Surfaces: tool_response_pipeline.
-//!
-//! Owner: M05.P5.T2 (codegen) and M05.P5.T3 (test bodies for the
-//! six initial threat IDs). Until M05.P5.T3 lands a real test body
-//! the stub fails closed via `unimplemented!()` so the
-//! threat-model-coverage CI gate (M05.P5.T4) flags this threat ID
-//! as not-yet-covered.
-//!
-//! When you fill in the body, replace the `unimplemented!()` call
-//! with assertions that the relevant adversarial vector or escape
-//! class denies in the expected way and cite the threat ID in the
-//! comment header above the assertion.
+use chio_guards::{ResponseSanitizationGuard, SanitizationAction, ScanResult, SensitivityLevel};
 
 #[test]
 fn threat_pii_phi_exposure_is_covered() {
-// covers: pii_phi_exposure
-unimplemented!("M05.P5.T3 must populate the test body for threat \"pii_phi_exposure\"");
+    // covers: pii_phi_exposure
+    let payload = serde_json::json!({
+        "patient": "Jane Doe",
+        "mrn": "MRN 123456789",
+        "ssn": "123-45-6789"
+    });
+
+    let blocking =
+        ResponseSanitizationGuard::new(SensitivityLevel::High, SanitizationAction::Block);
+    match blocking.scan_response(&payload) {
+        ScanResult::Blocked(findings) => {
+            assert!(findings.iter().any(|(name, _)| name == "MRN"));
+            assert!(findings.iter().any(|(name, _)| name == "SSN"));
+        }
+        other => panic!("PHI payload must block, got {other:?}"),
+    }
+
+    let redacting =
+        ResponseSanitizationGuard::new(SensitivityLevel::High, SanitizationAction::Redact);
+    match redacting.scan_response(&payload) {
+        ScanResult::Redacted {
+            redacted_text,
+            redaction_count,
+            ..
+        } => {
+            assert!(redaction_count >= 2);
+            assert!(!redacted_text.contains("123-45-6789"));
+            assert!(!redacted_text.contains("MRN 123456789"));
+        }
+        other => panic!("PHI payload must redact, got {other:?}"),
+    }
 }

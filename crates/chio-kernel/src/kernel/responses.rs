@@ -1,5 +1,7 @@
 use std::sync::atomic::Ordering;
 
+use chio_log_redact::redacted;
+
 use super::*;
 
 pub(crate) struct FinalizeToolOutputCostContext<'a> {
@@ -395,7 +397,7 @@ impl ChioKernel {
                             request_id = %request.request_id,
                             reported_currency = %cost.currency,
                             charged_currency = %charge.currency,
-                            reason = %error,
+                            reason = %redacted!(&error),
                             "cross-currency reconciliation failed; keeping provisional charge"
                         );
                         cross_currency_note = Some(serde_json::json!({
@@ -479,7 +481,7 @@ impl ChioKernel {
                     Err(error) => {
                         warn!(
                             request_id = %request.request_id,
-                            reason = %error,
+                            reason = %redacted!(&error),
                             "post-execution payment settlement failed"
                         );
                         ReceiptSettlement {

@@ -1,0 +1,21 @@
+[package]
+name = "chio-provider-adapter-core"
+description = "Shared provider-adapter primitives for Chio native tool adapters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_provider_adapter_core"
+
+[dependencies]
+chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
+serde_json = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

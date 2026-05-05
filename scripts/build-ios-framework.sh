@@ -30,8 +30,37 @@ require_tool() {
 }
 
 require_tool cargo
-require_tool uniffi-bindgen
+require_tool lipo
 require_tool xcodebuild
+
+run_uniffi_bindgen() {
+  if command -v uniffi-bindgen >/dev/null 2>&1; then
+    uniffi-bindgen "$@"
+    return
+  fi
+
+  local shim_dir="${TARGET_DIR}/uniffi-bindgen-shim"
+  mkdir -p "${shim_dir}/src"
+  cat > "${shim_dir}/Cargo.toml" <<'TOML'
+[package]
+name = "chio-mobile-uniffi-bindgen-shim"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+uniffi = { version = "0.28", features = ["cli"] }
+
+[workspace]
+TOML
+  cat > "${shim_dir}/src/main.rs" <<'RS'
+fn main() {
+    uniffi::uniffi_bindgen_main();
+}
+RS
+
+  cargo run --manifest-path "${shim_dir}/Cargo.toml" -- "$@"
+}
 
 mkdir -p "${OUT_DIR}" "${SWIFT_OUT}"
 
@@ -40,14 +69,19 @@ CARGO_TARGET_DIR="${TARGET_DIR}" cargo build --release --target aarch64-apple-io
 CARGO_TARGET_DIR="${TARGET_DIR}" cargo build --release --target aarch64-apple-ios-sim -p chio-kernel-mobile
 CARGO_TARGET_DIR="${TARGET_DIR}" cargo build --release --target x86_64-apple-ios -p chio-kernel-mobile
 
-uniffi-bindgen generate --language swift --out-dir "${SWIFT_OUT}" "${UDL}"
+run_uniffi_bindgen generate --language swift --out-dir "${SWIFT_OUT}" "${UDL}"
+
+SIM_UNIVERSAL="${TARGET_DIR}/ios-sim-universal/release"
+mkdir -p "${SIM_UNIVERSAL}"
+lipo -create \
+  "${TARGET_DIR}/aarch64-apple-ios-sim/release/libchio_kernel_mobile.a" \
+  "${TARGET_DIR}/x86_64-apple-ios/release/libchio_kernel_mobile.a" \
+  -output "${SIM_UNIVERSAL}/libchio_kernel_mobile.a"
 
 rm -rf "${FRAMEWORK_OUT}"
 xcodebuild -create-xcframework \
   -library "${TARGET_DIR}/aarch64-apple-ios/release/libchio_kernel_mobile.a" \
   -headers "${SWIFT_OUT}" \
-  -library "${TARGET_DIR}/aarch64-apple-ios-sim/release/libchio_kernel_mobile.a" \
-  -headers "${SWIFT_OUT}" \
-  -library "${TARGET_DIR}/x86_64-apple-ios/release/libchio_kernel_mobile.a" \
+  -library "${SIM_UNIVERSAL}/libchio_kernel_mobile.a" \
   -headers "${SWIFT_OUT}" \
   -output "${FRAMEWORK_OUT}"
