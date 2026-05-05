@@ -1,6 +1,10 @@
 //! Integration test for M09 P5.T6 anchor pinning.
 
-use chio_lineage::anchor::{frontier_digest, pin_frontier, CanonicalSource, SigningState};
+use chio_core_types::crypto::Keypair;
+use chio_lineage::anchor::{
+    frontier_digest, frontier_signature_message, pin_frontier, pin_frontier_signed,
+    verify_frontier_signature, CanonicalSource, SigningState,
+};
 use chio_lineage::ingest_replay_corpus::{ingest_corpus, CorpusReceiptRow};
 
 fn fixture_graph() -> chio_lineage::schema::LineageGraph {
@@ -43,12 +47,40 @@ fn missing_m03_signer_records_unsigned_state_and_exits_cleanly() {
 }
 
 #[test]
-fn signer_hint_is_recorded_for_m10_consumption() {
+fn signer_hint_without_signature_is_unsigned_stub() {
+    // A signer hint without an actual signature payload must NOT promote
+    // the artifact to `Signed`. Verifiers checking `is_signed()` would
+    // otherwise be tricked into trusting an unsigned anchor (lineage
+    // tamper, fail-closed contract).
     let g = fixture_graph();
     let pinned = pin_frontier(&g, Some("hybrid-ed25519-mldsa65"));
-    if let SigningState::Signed { algorithm, .. } = pinned.signing {
+    if let SigningState::UnsignedSignerStubbed { algorithm } = &pinned.signing {
         assert_eq!(algorithm, "hybrid-ed25519-mldsa65");
     } else {
-        panic!("signer hint should produce Signed state");
+        panic!("signer hint without signature should produce UnsignedSignerStubbed state");
     }
+    assert!(!pinned.is_signed());
+}
+
+#[test]
+fn pin_frontier_signed_with_unverified_payload_fails_closed() {
+    let g = fixture_graph();
+    let keypair = Keypair::from_seed(&[7_u8; 32]);
+    let err = pin_frontier_signed(&g, "ed25519", &keypair.public_key(), "deadbeef")
+        .err()
+        .unwrap_or_else(|| panic!("unverified payload must fail closed"));
+    assert!(format!("{err}").contains("signature payload is invalid"));
+}
+
+#[test]
+fn pin_frontier_signed_verifies_with_trusted_key() {
+    let g = fixture_graph();
+    let keypair = Keypair::from_seed(&[7_u8; 32]);
+    let signature = keypair.sign(&frontier_signature_message(&g));
+    let pinned = pin_frontier_signed(&g, "ed25519", &keypair.public_key(), &signature.to_hex())
+        .unwrap_or_else(|error| panic!("signed pin should verify: {error}"));
+
+    assert!(!pinned.is_signed());
+    assert!(pinned.is_signed_by(&g, &keypair.public_key()));
+    assert!(verify_frontier_signature(&pinned, &g, &keypair.public_key()).is_ok());
 }
