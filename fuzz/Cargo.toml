@@ -36,6 +36,7 @@ chio-core = { path = "../crates/chio-core" }
 # directly.
 chio-core-types = { path = "../crates/chio-core-types" }
 chio-data-guards = { path = "../crates/chio-data-guards" }
+chio-eval-receipt = { path = "../crates/chio-eval-receipt" }
 chio-guards = { path = "../crates/chio-guards" }
 chio-kernel = { path = "../crates/chio-kernel" }
 chio-manifest = { path = "../crates/chio-manifest" }
@@ -133,6 +134,13 @@ bench = false
 [[bin]]
 name = "receipt_log_replay"
 path = "fuzz_targets/receipt_log_replay.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "eval_receipt_bundle"
+path = "fuzz_targets/eval_receipt_bundle.rs"
 test = false
 doc = false
 bench = false

@@ -15,7 +15,10 @@ pub use export::{
     Receipt, ReceiptEntry, ReceiptEvidence, ReceiptParts, VERDICT_MATRIX_CORPUS_SHA256,
     VERDICT_MATRIX_MANIFEST_PATH, VERDICT_MATRIX_SCENARIO_COUNT,
 };
-pub use verify::{test_signature_for_bundle_json, verify_bundle, BundleError, VerifiedBundle};
+pub use verify::{
+    test_signature_for_bundle_json, verify_bundle, verify_fixture_bundle, BundleError,
+    VerifiedBundle,
+};
 
 /// Schema id reserved for the eval-report receipt bundle.
 pub const BUNDLE_SCHEMA_ID: &str = "chio.eval-report.bundle.v1";

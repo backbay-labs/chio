@@ -120,20 +120,65 @@ fn spawn_trust_service(
     ServerGuard { child }
 }
 
-fn wait_for_trust_service(client: &Client, base_url: &str, service: &mut ServerGuard) {
+fn try_wait_for_trust_service(
+    client: &Client,
+    base_url: &str,
+    service: &mut ServerGuard,
+) -> Result<(), String> {
     for _ in 0..300 {
         if let Some(status) = service.child.try_wait().expect("poll trust service child") {
-            panic!(
+            return Err(format!(
                 "trust service exited before becoming ready (status {status}): {}",
                 read_child_stderr(&mut service.child)
-            );
+            ));
         }
         match client.get(format!("{base_url}/health")).send() {
-            Ok(response) if response.status() == reqwest::StatusCode::OK => return,
+            Ok(response) if response.status() == reqwest::StatusCode::OK => return Ok(()),
             Ok(_) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(100)),
         }
     }
-    panic!("trust service did not become ready");
+    Err("trust service did not become ready".to_string())
+}
+
+fn spawn_ready_trust_service(
+    service_token: &str,
+    policy_path: &Path,
+    federation_policies_file: &Path,
+    receipt_db_path: &Path,
+    revocation_db_path: &Path,
+    authority_db_path: &Path,
+    budget_db_path: &Path,
+) -> (Client, std::net::SocketAddr, String, ServerGuard) {
+    let client = Client::builder().build().expect("build reqwest client");
+    let mut last_bind_error = None;
+
+    for _ in 0..10 {
+        let listen = reserve_listen_addr();
+        let base_url = format!("http://{listen}");
+        let mut service = spawn_trust_service(
+            listen,
+            service_token,
+            policy_path,
+            federation_policies_file,
+            receipt_db_path,
+            revocation_db_path,
+            authority_db_path,
+            budget_db_path,
+        );
+
+        match try_wait_for_trust_service(&client, &base_url, &mut service) {
+            Ok(()) => return (client, listen, base_url, service),
+            Err(error) if error.contains("Address already in use") => {
+                last_bind_error = Some(error);
+            }
+            Err(error) => panic!("{error}"),
+        }
+    }
+
+    panic!(
+        "{}",
+        last_bind_error.unwrap_or_else(|| "trust service did not become ready".to_string())
+    );
 }
 
 fn sample_artifact_reference(
@@ -500,11 +545,8 @@ fn trust_service_evaluates_permissionless_federation_policy_with_reputation_gate
         seed_subject_history(&receipt_db_path, &budget_db_path, &admitted_subject);
     let denied_subject_key = Keypair::generate().public_key().to_hex();
 
-    let listen = reserve_listen_addr();
     let service_token = "federation-policy-service-token";
-    let base_url = format!("http://{listen}");
-    let mut service = spawn_trust_service(
-        listen,
+    let (client, _listen, base_url, _service) = spawn_ready_trust_service(
         service_token,
         &policy_path,
         &federation_policies_file,
@@ -513,9 +555,6 @@ fn trust_service_evaluates_permissionless_federation_policy_with_reputation_gate
         &authority_db_path,
         &budget_db_path,
     );
-
-    let client = Client::builder().build().expect("build reqwest client");
-    wait_for_trust_service(&client, &base_url, &mut service);
 
     let admitted_score =
         local_reputation_score(&client, &base_url, service_token, &admitted_subject_key);
@@ -611,11 +650,8 @@ fn trust_service_enforces_permissionless_federation_anti_sybil_controls() {
     let subject = Keypair::generate();
     let subject_key = seed_subject_history(&receipt_db_path, &budget_db_path, &subject);
 
-    let listen = reserve_listen_addr();
     let service_token = "federation-anti-sybil-token";
-    let base_url = format!("http://{listen}");
-    let mut service = spawn_trust_service(
-        listen,
+    let (client, _listen, base_url, _service) = spawn_ready_trust_service(
         service_token,
         &policy_path,
         &federation_policies_file,
@@ -624,9 +660,6 @@ fn trust_service_enforces_permissionless_federation_anti_sybil_controls() {
         &authority_db_path,
         &budget_db_path,
     );
-
-    let client = Client::builder().build().expect("build reqwest client");
-    wait_for_trust_service(&client, &base_url, &mut service);
 
     let record = make_policy_record(
         "policy-anti-sybil",
