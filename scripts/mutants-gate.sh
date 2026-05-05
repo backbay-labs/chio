@@ -225,9 +225,8 @@ if [[ -f "${outcomes_json}" ]]; then
             "${observed_successes}" "${required_successes}" >&2
     fi
 elif (( EXIT_CODE == 0 )); then
-    printf 'mutants-gate: package=%s exit=0 posture=blocking verdict=pass (cycle_end_tag=%s target=%s%% activation_threshold=%s%% outcomes_json=missing)\n' \
-        "${PACKAGE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}"
-    exit 0
+    printf 'mutants-gate: package=%s exit=0 posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% activation_threshold=%s%% outcomes_json=missing; refusing to trust cargo-mutants success without score data)\n' \
+        "${PACKAGE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}" >&2
 else
     printf 'mutants-gate: package=%s exit=%s posture=blocking verdict=fail (cycle_end_tag=%s target=%s%% activation_threshold=%s%% outcomes_json=missing)\n' \
         "${PACKAGE}" "${EXIT_CODE}" "${cycle_end_tag}" "${target_percent}" "${threshold_percent}" >&2

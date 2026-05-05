@@ -1,9 +1,4 @@
 # tuf-rebake.yml - Quarterly TUF trust-root re-bake (M09-owned).
-#
-# The actual re-bake target lives inside chio-attest-verify and lands
-# in M09 P3. This workflow scaffold runs a stub job on a quarterly
-# cron today; once P3 merges the stub gets replaced with the real
-# re-bake invocation against the crate's TUF root.
 
 name: tuf-rebake
 
@@ -22,15 +17,25 @@ concurrency:
 
 jobs:
   rebake:
-    name: tuf-rebake (stub; M09 P3 wires real target)
+    name: tuf-rebake
     # owner: M09
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - name: Stub - awaiting M09 P3 chio-attest-verify
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - name: Re-bake Sigstore TUF root
         run: |
           set -euo pipefail
-          echo "tuf-rebake: stub run; chio-attest-verify lands in M09 P3"
-          echo "When P3 merges, replace this step with:"
-          echo "  cargo run -p chio-attest-verify --bin tuf-rebake -- --target prod"
+          scripts/tuf-rebake.sh --write
+          scripts/tuf-rebake.sh --check
+      - name: Verify embedded trust root still constructs
+        run: |
+          set -euo pipefail
+          cargo test -p chio-attest-verify --test integration constructor_loads_embedded_trust_root -- --exact
+      - name: Fail closed on uncommitted trust-root drift
+        run: |
+          set -euo pipefail
+          git diff -- crates/chio-attest-verify/sigstore-root
+          git diff --exit-code -- crates/chio-attest-verify/sigstore-root

@@ -5,13 +5,19 @@
 # Pinned release: apalache-mc 0.50.x (see decisions.yml id=apalache-vs-tlc).
 # This script is idempotent. It downloads the release tarball, extracts
 # it under ~/.local/share/apalache, and links the launcher into
-# ~/.local/bin/apalache-mc. Re-running with the pinned version is a
-# no-op.
+# ~/.local/bin/apalache-mc. Reusing an existing launcher is an explicit
+# local opt-in with APALACHE_TRUST_EXISTING=1. CI always reinstalls through
+# the pinned checksum gate.
 
 set -euo pipefail
 
 APALACHE_VERSION="0.50.1"
 APALACHE_RELEASE="v${APALACHE_VERSION}"
+# Pinned SHA256 of apalache-${APALACHE_VERSION}.tgz from the upstream GitHub
+# release. Apalache does not publish a separate checksum file, so we hard-pin
+# the digest here to defend against tampering of the release asset or
+# in-transit substitution. Refresh in lockstep with APALACHE_VERSION.
+APALACHE_SHA256="4601ae8d1ac3f5e226ce8dc1db2df3d1bbdb9d904f3763eb982a244ed9f6ea6b"
 
 uname_s="$(uname -s)"
 uname_m="$(uname -m)"
@@ -41,8 +47,19 @@ case ":${PATH}:" in
     *) echo "warning: ${bin_dir} is not on PATH; add it before invoking apalache-mc" >&2 ;;
 esac
 
+ci_mode=0
+case "${CI:-}" in
+    ""|0|false|False|FALSE) ;;
+    *) ci_mode=1 ;;
+esac
+
+trust_existing=0
+if [[ "${APALACHE_TRUST_EXISTING:-}" == "1" && "${ci_mode}" -eq 0 ]]; then
+    trust_existing=1
+fi
+
 current_version=""
-if [[ -x "${symlink}" ]]; then
+if [[ "${trust_existing}" -eq 1 && -x "${symlink}" ]]; then
     # Probe the existing launcher non-fatally. Any failure here (wrong Java
     # version, corrupted install, transient runtime error) must NOT abort
     # the script under `set -euo pipefail`; the installer recovers by
@@ -54,15 +71,22 @@ if [[ -x "${symlink}" ]]; then
         || true)"
 fi
 
-if [[ "${current_version}" == "${APALACHE_VERSION}" ]]; then
+if [[ "${trust_existing}" -eq 1 && "${current_version}" == "${APALACHE_VERSION}" ]]; then
     echo "apalache-mc ${APALACHE_VERSION} already installed at ${symlink}"
     exit 0
 fi
 
-if [[ ! -x "${launcher}" ]]; then
+if [[ "${trust_existing}" -eq 0 && -x "${symlink}" ]]; then
+    echo "reinstalling apalache-mc ${APALACHE_VERSION}; existing launcher is not trusted"
+fi
+
+if [[ "${trust_existing}" -eq 0 || ! -x "${launcher}" ]]; then
     echo "installing apalache-mc ${APALACHE_VERSION}"
     asset="apalache-${APALACHE_VERSION}.tgz"
-    url="https://github.com/apalache-mc/apalache/releases/download/${APALACHE_RELEASE}/${asset}"
+    # APALACHE_DOWNLOAD_URL is a test seam; defaults to the upstream release.
+    # The checksum verification below is the real defense, so an attacker
+    # controlling this variable cannot bypass the gate.
+    url="${APALACHE_DOWNLOAD_URL:-https://github.com/apalache-mc/apalache/releases/download/${APALACHE_RELEASE}/${asset}}"
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "${tmp_dir}"' EXIT
     # Retry the download explicitly so a single transient curl failure does
@@ -81,6 +105,25 @@ if [[ ! -x "${launcher}" ]]; then
         echo "warning: curl failed (attempt ${curl_attempts}/${curl_max_attempts}); retrying" >&2
         sleep $((curl_attempts * 2))
     done
+    # Verify the pinned SHA256 before extraction. Reject any mismatch to
+    # defend against supply-chain tampering (release-asset substitution,
+    # MITM, or upstream re-tag). shasum is part of macOS base; sha256sum is
+    # standard on Linux. Try the GNU tool first to keep error output short.
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual_sha="$(sha256sum "${tmp_dir}/${asset}" | awk '{print $1}')"
+    elif command -v shasum >/dev/null 2>&1; then
+        actual_sha="$(shasum -a 256 "${tmp_dir}/${asset}" | awk '{print $1}')"
+    else
+        echo "error: neither sha256sum nor shasum is available to verify ${asset}" >&2
+        exit 6
+    fi
+    if [[ "${actual_sha}" != "${APALACHE_SHA256}" ]]; then
+        echo "error: ${asset} sha256 mismatch" >&2
+        echo "  expected: ${APALACHE_SHA256}" >&2
+        echo "  actual:   ${actual_sha}" >&2
+        exit 7
+    fi
+    rm -rf "${install_dir}"
     tar -xzf "${tmp_dir}/${asset}" -C "${share_dir}"
     if [[ ! -x "${launcher}" ]]; then
         echo "error: extracted tree missing launcher at ${launcher}" >&2
