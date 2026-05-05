@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use base64ct::{Base64UrlUnpadded, Encoding};
 use chio_custody_hw::attestation::google_root::{
     play_integrity_encoding_key, play_integrity_jwks_json, play_integrity_root_sha256_hex,
     GOOGLE_PLAY_INTEGRITY_ISSUER, GOOGLE_PLAY_INTEGRITY_ROOT_KID,
@@ -8,7 +9,7 @@ use chio_custody_hw::{
     verify_mobile_receipt_chain, verify_play_integrity, AttestationError,
     PlayIntegrityVerificationInput, MEETS_DEVICE_INTEGRITY, PLAY_RECOGNIZED,
 };
-use jsonwebtoken::{encode, Algorithm, Header};
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::Serialize;
 
 const PACKAGE: &str = "dev.chio.patient";
@@ -142,7 +143,7 @@ fn signed_token_with_exp(
         app_verdict,
         device_verdicts,
         exp,
-        Algorithm::HS256,
+        Algorithm::RS256,
     )
 }
 
@@ -176,7 +177,7 @@ fn signed_token_with_alg(
 }
 
 fn signed_token_with_issuer(issuer: &str) -> Result<String, Box<dyn Error>> {
-    let mut header = Header::new(Algorithm::HS256);
+    let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(GOOGLE_PLAY_INTEGRITY_ROOT_KID.to_string());
     let claims = TestClaims {
         nonce: NONCE.to_string(),
@@ -290,12 +291,9 @@ fn play_integrity_verifier_rejects_wrong_audience() -> Result<(), Box<dyn Error>
 
 #[test]
 fn play_integrity_verifier_rejects_alg_downgrade() -> Result<(), Box<dyn Error>> {
-    let token = signed_token_with_alg(
-        NONCE,
-        PACKAGE,
-        PLAY_RECOGNIZED,
-        &[MEETS_DEVICE_INTEGRITY],
-        Some(future_exp()?),
+    let token = signed_symmetric_token_with_alg(
+        b"attacker-controlled-play-integrity-secret",
+        GOOGLE_PLAY_INTEGRITY_ROOT_KID,
         Algorithm::HS384,
     )?;
     let error = verify_play_integrity(PlayIntegrityVerificationInput {
@@ -312,6 +310,67 @@ fn play_integrity_verifier_rejects_alg_downgrade() -> Result<(), Box<dyn Error>>
         AttestationError::PlayIntegrityInvalidToken(_)
     ));
     Ok(())
+}
+
+#[test]
+fn play_integrity_verifier_rejects_symmetric_jwks_fail_closed() -> Result<(), Box<dyn Error>> {
+    let secret = b"attacker-controlled-play-integrity-secret";
+    let kid = "attacker-hmac";
+    let token = signed_symmetric_token(secret, kid)?;
+    let jwks = serde_json::json!({
+        "keys": [
+            {
+                "kty": "oct",
+                "alg": "HS256",
+                "kid": kid,
+                "use": "sig",
+                "k": Base64UrlUnpadded::encode_string(secret)
+            }
+        ]
+    })
+    .to_string();
+
+    let error = verify_play_integrity(PlayIntegrityVerificationInput {
+        token: &token,
+        expected_nonce: NONCE,
+        expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &jwks,
+    })
+    .err()
+    .ok_or("expected symmetric JWKS rejection")?;
+    assert!(matches!(
+        error,
+        AttestationError::PlayIntegrityInvalidToken(_)
+    ));
+    Ok(())
+}
+
+fn signed_symmetric_token(secret: &[u8], kid: &str) -> Result<String, Box<dyn Error>> {
+    signed_symmetric_token_with_alg(secret, kid, Algorithm::HS256)
+}
+
+fn signed_symmetric_token_with_alg(
+    secret: &[u8],
+    kid: &str,
+    algorithm: Algorithm,
+) -> Result<String, Box<dyn Error>> {
+    let mut header = Header::new(algorithm);
+    header.kid = Some(kid.to_string());
+    let claims = TestClaims {
+        nonce: NONCE.to_string(),
+        app_integrity: TestAppIntegrity {
+            app_recognition_verdict: PLAY_RECOGNIZED.to_string(),
+            package_name: PACKAGE.to_string(),
+        },
+        device_integrity: TestDeviceIntegrity {
+            device_recognition_verdict: vec![MEETS_DEVICE_INTEGRITY.to_string()],
+        },
+        aud: AUDIENCE.to_string(),
+        iss: GOOGLE_PLAY_INTEGRITY_ISSUER.to_string(),
+        exp: Some(future_exp()?),
+    };
+    encode(&header, &claims, &EncodingKey::from_secret(secret)).map_err(Into::into)
 }
 
 fn future_exp() -> Result<u64, Box<dyn Error>> {

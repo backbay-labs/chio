@@ -9,15 +9,33 @@ import re
 import sys
 
 EXEMPTION_HEADER = re.compile(r"^\s*\[\[exemptions\.([^\]]+)\]\]\s*$")
+VERSION_LINE = re.compile(r"^\s*version\s*=\s*[\"']([^\"']+)[\"']\s*$")
 
 
-def exemption_names(path: pathlib.Path) -> set[str]:
-    names: set[str] = set()
+def exemption_entries(path: pathlib.Path) -> set[str]:
+    entries: set[str] = set()
+    current_name: str | None = None
+    current_version: str | None = None
+
+    def flush_current() -> None:
+        nonlocal current_name, current_version
+        if current_name is not None:
+            version = current_version or "<missing-version>"
+            entries.add(f"{current_name}@{version}")
+        current_name = None
+        current_version = None
+
     for line in path.read_text(encoding="utf-8").splitlines():
         match = EXEMPTION_HEADER.match(line)
         if match:
-            names.add(match.group(1).strip().strip('"'))
-    return names
+            flush_current()
+            current_name = match.group(1).strip().strip('"')
+            continue
+        version_match = VERSION_LINE.match(line)
+        if current_name is not None and version_match:
+            current_version = version_match.group(1).strip()
+    flush_current()
+    return entries
 
 
 def main() -> int:
@@ -28,8 +46,8 @@ def main() -> int:
     parser.add_argument("--head", required=True, type=pathlib.Path)
     args = parser.parse_args()
 
-    base_exemptions = exemption_names(args.base)
-    head_exemptions = exemption_names(args.head)
+    base_exemptions = exemption_entries(args.base)
+    head_exemptions = exemption_entries(args.head)
     base_count = len(base_exemptions)
     head_count = len(head_exemptions)
     added = sorted(head_exemptions - base_exemptions)

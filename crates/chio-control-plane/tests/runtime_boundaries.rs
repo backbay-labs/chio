@@ -19,11 +19,11 @@ fn line_count(relative: &str) -> usize {
 
 #[test]
 fn runtime_entrypoints_remain_decomposed_and_reexported() {
-    // After the 304-01 refactor, the re-export moved from main.rs to cli/types.rs.
+    // Remote MCP now lives in chio-mcp-remote; chio-hosted-mcp is a compatibility shell.
     let cli_types = read_repo_file("crates/chio-cli/src/cli/types.rs");
     assert!(
-        cli_types.contains("pub use chio_hosted_mcp as remote_mcp;"),
-        "chio-cli cli/types.rs must keep re-exporting the hosted MCP crate",
+        cli_types.contains("pub use chio_mcp_remote as remote_mcp;"),
+        "chio-cli cli/types.rs must keep re-exporting the remote MCP crate",
     );
     let main = read_repo_file("crates/chio-cli/src/main.rs");
     assert!(
@@ -37,8 +37,8 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
 
     let hosted_lib = read_repo_file("crates/chio-hosted-mcp/src/lib.rs");
     assert!(
-        hosted_lib.contains("#[path = \"../../chio-cli/src/remote_mcp.rs\"]"),
-        "chio-hosted-mcp must remain the runtime owner of remote_mcp.rs",
+        hosted_lib.contains("pub use chio_mcp_remote::{serve_http, RemoteServeHttpConfig};"),
+        "chio-hosted-mcp must remain a compatibility re-export of chio-mcp-remote",
     );
 
     let control_plane_lib = read_repo_file("crates/chio-control-plane/src/lib.rs");
@@ -55,14 +55,9 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
         "chio-control-plane must keep the extracted scim lifecycle boundary",
     );
 
-    let remote_mcp = read_repo_file("crates/chio-cli/src/remote_mcp.rs");
-    assert!(
-        remote_mcp.contains("#[path = \"remote_mcp/admin.rs\"]"),
-        "remote_mcp.rs must keep its admin boundary extracted",
-    );
     assert!(
         repo_root()
-            .join("crates/chio-cli/src/remote_mcp/admin.rs")
+            .join("crates/chio-mcp-remote/src/remote_mcp/admin.rs")
             .exists(),
         "remote_mcp admin boundary file must exist",
     );
@@ -126,8 +121,8 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
     );
 
     assert!(
-        line_count("crates/chio-cli/src/remote_mcp.rs") <= 7300,
-        "remote_mcp.rs regrew past the phase-180 ceiling",
+        line_count("crates/chio-mcp-remote/src/remote_mcp/http_service.rs") <= 2600,
+        "remote_mcp http_service.rs regrew past the phase-180 ceiling",
     );
     assert!(
         line_count("crates/chio-cli/src/trust_control.rs") <= 21500,
@@ -146,7 +141,7 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
 #[test]
 fn runtime_boundary_map_is_present() {
     let doc = read_repo_file("docs/architecture/CHIO_RUNTIME_BOUNDARIES.md");
-    assert!(doc.contains("remote_mcp/admin.rs"));
+    assert!(doc.contains("crates/chio-mcp-remote/src/remote_mcp/admin.rs"));
     assert!(doc.contains("trust_control/health.rs"));
     assert!(doc.contains("federation_policy.rs"));
     assert!(doc.contains("scim_lifecycle.rs"));
