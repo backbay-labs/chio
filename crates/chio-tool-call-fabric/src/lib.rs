@@ -30,7 +30,10 @@ use std::time::SystemTime;
 use thiserror::Error;
 
 pub use provenance::{sign_provenance, verify_signed_provenance, SignedProvenance};
-pub use stream::{BlockKind, BufferedBlock, StreamError, StreamEvent, StreamPhase};
+pub use stream::{
+    BlockKind, BufferedBlock, StreamError, StreamEvent, StreamPhase,
+    DEFAULT_MAX_BUFFERED_BLOCK_BYTES, DEFAULT_MAX_BUFFERED_RAW_FRAMES,
+};
 
 /// Compatibility marker. The wire-level `provider` field uses the snake-case
 /// serde rendering of [`ProviderId`]; this constant exists so build systems

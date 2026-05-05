@@ -7,7 +7,8 @@
 
 use chio_tool_call_fabric::{
     BlockKind, BufferedBlock, DenyReason, ProviderError, ProviderRequest, StreamEvent, StreamPhase,
-    ToolInvocation, VerdictResult,
+    ToolInvocation, VerdictResult, DEFAULT_MAX_BUFFERED_BLOCK_BYTES,
+    DEFAULT_MAX_BUFFERED_RAW_FRAMES,
 };
 use serde_json::{json, Value};
 
@@ -103,8 +104,7 @@ impl<'a> StreamGate<'a> {
         }
 
         let Some(event) = frame.event.as_deref() else {
-            self.forward_or_buffer(frame);
-            return Ok(());
+            return self.forward_or_buffer(frame);
         };
 
         match event {
@@ -117,10 +117,7 @@ impl<'a> StreamGate<'a> {
                 "OpenAI SSE error event: {}",
                 frame.data_text()
             ))),
-            _ => {
-                self.forward_or_buffer(frame);
-                Ok(())
-            }
+            _ => self.forward_or_buffer(frame),
         }
     }
 
@@ -157,7 +154,7 @@ impl<'a> StreamGate<'a> {
             call.name,
             call.arguments,
             frame,
-        ));
+        )?);
         Ok(())
     }
 
@@ -178,7 +175,7 @@ impl<'a> StreamGate<'a> {
                 chunk: delta.as_bytes().to_vec(),
             },
         )?;
-        active.frames.push(frame);
+        active.push_frame(frame)?;
         Ok(())
     }
 
@@ -194,7 +191,7 @@ impl<'a> StreamGate<'a> {
 
         let arguments = argument_done_text(&frame)?;
         active.record_argument_done(arguments, buffered.as_ref())?;
-        active.frames.push(frame);
+        active.push_frame(frame)?;
         Ok(())
     }
 
@@ -209,7 +206,7 @@ impl<'a> StreamGate<'a> {
         let data = frame.required_data("response.output_item.done")?;
         let item = data.get("item");
 
-        let Some(mut active) = self.active.take() else {
+        let Some(active) = self.active.take() else {
             if item.is_some_and(is_tool_call_item) {
                 return Err(ProviderError::Malformed(
                     "OpenAI output_item.done tool call arrived without an active tool call"
@@ -254,10 +251,10 @@ impl<'a> StreamGate<'a> {
         self.invocations.push(invocation);
         self.verdicts.push(verdict);
         self.buffered_blocks.push(buffered);
-        active.frames.push(frame);
         for frame in active.frames {
             self.output.extend_from_slice(&frame.raw);
         }
+        self.output.extend_from_slice(&frame.raw);
         Ok(())
     }
 
@@ -277,12 +274,13 @@ impl<'a> StreamGate<'a> {
         Ok(())
     }
 
-    fn forward_or_buffer(&mut self, frame: SseFrame) {
+    fn forward_or_buffer(&mut self, frame: SseFrame) -> Result<(), ProviderError> {
         if let Some(active) = self.active.as_mut() {
-            active.frames.push(frame);
-            return;
+            active.push_frame(frame)?;
+            return Ok(());
         }
         self.output.extend_from_slice(&frame.raw);
+        Ok(())
     }
 
     fn invocation_from_call(
@@ -339,6 +337,8 @@ struct ActiveToolBlock {
     start_arguments: Option<String>,
     saw_argument_delta: bool,
     done_arguments: Option<String>,
+    raw_frame_count: usize,
+    raw_frame_bytes: usize,
     frames: Vec<SseFrame>,
 }
 
@@ -350,8 +350,8 @@ impl ActiveToolBlock {
         name: Option<String>,
         start_arguments: Option<String>,
         first: SseFrame,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ProviderError> {
+        let mut block = Self {
             output_index,
             item_id,
             call_id,
@@ -359,8 +359,34 @@ impl ActiveToolBlock {
             start_arguments,
             saw_argument_delta: false,
             done_arguments: None,
-            frames: vec![first],
+            raw_frame_count: 0,
+            raw_frame_bytes: 0,
+            frames: Vec::new(),
+        };
+        block.push_frame(first)?;
+        Ok(block)
+    }
+
+    fn push_frame(&mut self, frame: SseFrame) -> Result<(), ProviderError> {
+        let next_count = self.raw_frame_count.saturating_add(1);
+        if next_count > DEFAULT_MAX_BUFFERED_RAW_FRAMES {
+            return Err(ProviderError::Malformed(format!(
+                "OpenAI tool call `{}` raw frame count {next_count} exceeded limit {}",
+                self.call_id, DEFAULT_MAX_BUFFERED_RAW_FRAMES
+            )));
         }
+        let frame_bytes = frame.raw.len();
+        let projected = self.raw_frame_bytes.saturating_add(frame_bytes);
+        if projected > DEFAULT_MAX_BUFFERED_BLOCK_BYTES {
+            return Err(ProviderError::Malformed(format!(
+                "OpenAI tool call `{}` raw frame bytes would grow from {} to {projected}, exceeding limit {}",
+                self.call_id, self.raw_frame_bytes, DEFAULT_MAX_BUFFERED_BLOCK_BYTES
+            )));
+        }
+        self.raw_frame_count = next_count;
+        self.raw_frame_bytes = projected;
+        self.frames.push(frame);
+        Ok(())
     }
 
     fn record_argument_delta(&mut self) -> Result<(), ProviderError> {

@@ -8,7 +8,7 @@ use chio_anthropic_tools_adapter::transport::MockTransport;
 use chio_anthropic_tools_adapter::{AnthropicAdapter, AnthropicAdapterConfig};
 use chio_tool_call_fabric::{
     DenyReason, ProviderAdapter, ProviderError, ProviderId, ProviderRequest, ReceiptId, Redaction,
-    ToolResult, VerdictResult,
+    ToolResult, VerdictResult, DEFAULT_MAX_BUFFERED_RAW_FRAMES,
 };
 use serde_json::{json, Value};
 
@@ -315,4 +315,89 @@ fn evaluator_errors_fail_closed() {
         .expect_err("verdict evaluator errors should fail closed");
 
     assert!(err.to_string().contains("verdict latency budget exceeded"));
+}
+
+#[test]
+fn zero_length_input_json_deltas_count_toward_buffered_frame_limit() {
+    let adapter = adapter();
+    let mut stream = String::from(concat!(
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_many_empty\",\"name\":\"get_weather\",\"input\":{}}}\n\n",
+    ));
+    for _ in 0..4097 {
+        stream.push_str(concat!(
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\"}}\n\n",
+        ));
+    }
+    stream.push_str(concat!(
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+    ));
+
+    let err = adapter
+        .gate_sse_stream(stream.as_bytes(), |_invocation| Ok(allow_verdict()))
+        .expect_err("too many buffered raw frames should fail closed");
+
+    assert!(matches!(err, ProviderError::Malformed(_)));
+    assert!(err.to_string().contains("raw frame count"));
+}
+
+#[test]
+fn content_block_stop_is_forwarded_when_pre_verdict_frames_reach_limit() {
+    let adapter = adapter();
+    let mut stream = String::from(concat!(
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_limit\",\"name\":\"get_weather\",\"input\":{}}}\n\n",
+    ));
+    for _ in 0..(DEFAULT_MAX_BUFFERED_RAW_FRAMES - 1) {
+        stream.push_str(concat!(
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\"}}\n\n",
+        ));
+    }
+    stream.push_str(concat!(
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    ));
+
+    let mut calls = 0;
+    let gated = adapter
+        .gate_sse_stream(stream.as_bytes(), |invocation| {
+            calls += 1;
+            assert_eq!(invocation.provenance.request_id, "toolu_limit");
+            Ok(allow_verdict())
+        })
+        .unwrap();
+
+    assert_eq!(calls, 1);
+    assert_eq!(gated.invocations.len(), 1);
+    assert_eq!(gated.verdicts, vec![allow_verdict()]);
+    let forwarded = String::from_utf8(gated.bytes).unwrap();
+    assert!(forwarded.contains("event: content_block_stop"));
+    assert!(forwarded.contains("event: message_stop"));
+}
+
+#[test]
+fn non_append_start_frame_bytes_count_toward_buffered_raw_byte_limit() {
+    let adapter = adapter();
+    let padding = "x".repeat(2 * 1024 * 1024 + 2048);
+    let stream = format!(
+        concat!(
+            "event: content_block_start\n",
+            "data: {{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{{\"type\":\"tool_use\",\"id\":\"toolu_huge_start\",\"name\":\"get_weather\",\"input\":{{}},\"padding\":\"{}\"}}}}\n\n",
+            "event: content_block_stop\n",
+            "data: {{\"type\":\"content_block_stop\",\"index\":0}}\n\n",
+        ),
+        padding
+    );
+
+    let err = adapter
+        .gate_sse_stream(stream.as_bytes(), |_invocation| Ok(allow_verdict()))
+        .expect_err("oversized non-append raw frame should fail closed");
+
+    assert!(matches!(err, ProviderError::Malformed(_)));
+    assert!(err.to_string().contains("raw frame bytes"));
 }

@@ -13,6 +13,7 @@
 
 use chio_tool_call_fabric::{
     BlockKind, DenyReason, ProviderError, StreamEvent, StreamPhase, ToolInvocation, VerdictResult,
+    DEFAULT_MAX_BUFFERED_BLOCK_BYTES, DEFAULT_MAX_BUFFERED_RAW_FRAMES,
 };
 use serde_json::{json, Value};
 
@@ -137,7 +138,7 @@ impl<'a> StreamGate<'a> {
                 kind: BlockKind::ToolCall,
             },
         )?;
-        self.active = Some(ActiveToolBlock::new(index, block, event.raw));
+        self.active = Some(ActiveToolBlock::new(index, block, event.raw)?);
         Ok(())
     }
 
@@ -163,7 +164,7 @@ impl<'a> StreamGate<'a> {
             },
         )?;
         active.input_json.push_str(input);
-        active.frames.push(event.raw);
+        active.push_frame(event.raw)?;
         Ok(())
     }
 
@@ -176,7 +177,7 @@ impl<'a> StreamGate<'a> {
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
         let index = content_block_index(&event.payload, "contentBlockStop")?;
-        let Some(mut active) = self.active.take() else {
+        let Some(active) = self.active.take() else {
             self.forward(event);
             return Ok(());
         };
@@ -189,8 +190,8 @@ impl<'a> StreamGate<'a> {
         self.phase = transition(&self.phase, StreamEvent::FinishBlock)?;
         self.invocations.push(invocation);
         self.verdicts.push(verdict);
-        active.frames.push(event.raw);
         self.output.extend(active.frames);
+        self.output.push(event.raw);
         Ok(())
     }
 
@@ -237,17 +238,51 @@ struct ActiveToolBlock {
     index: u64,
     block: ToolUseBlock,
     input_json: String,
+    raw_frame_count: usize,
+    raw_frame_bytes: usize,
     frames: Vec<Value>,
 }
 
 impl ActiveToolBlock {
-    fn new(index: u64, block: ToolUseBlock, first: Value) -> Self {
-        Self {
+    fn new(index: u64, block: ToolUseBlock, first: Value) -> Result<Self, ProviderError> {
+        let mut active = Self {
             index,
             block,
             input_json: String::new(),
-            frames: vec![first],
+            raw_frame_count: 0,
+            raw_frame_bytes: 0,
+            frames: Vec::new(),
+        };
+        active.push_frame(first)?;
+        Ok(active)
+    }
+
+    fn push_frame(&mut self, frame: Value) -> Result<(), ProviderError> {
+        let next_count = self.raw_frame_count.saturating_add(1);
+        if next_count > DEFAULT_MAX_BUFFERED_RAW_FRAMES {
+            return Err(ProviderError::Malformed(format!(
+                "Bedrock content block {} raw frame count {next_count} exceeded limit {}",
+                self.index, DEFAULT_MAX_BUFFERED_RAW_FRAMES
+            )));
         }
+        let frame_bytes = serde_json::to_vec(&frame)
+            .map_err(|error| {
+                ProviderError::Malformed(format!(
+                    "Bedrock buffered raw frame failed JSON encoding: {error}"
+                ))
+            })?
+            .len();
+        let projected = self.raw_frame_bytes.saturating_add(frame_bytes);
+        if projected > DEFAULT_MAX_BUFFERED_BLOCK_BYTES {
+            return Err(ProviderError::Malformed(format!(
+                "Bedrock content block {} raw frame bytes would grow from {} to {projected}, exceeding limit {}",
+                self.index, self.raw_frame_bytes, DEFAULT_MAX_BUFFERED_BLOCK_BYTES
+            )));
+        }
+        self.raw_frame_count = next_count;
+        self.raw_frame_bytes = projected;
+        self.frames.push(frame);
+        Ok(())
     }
 
     fn ensure_index(&self, index: u64, event: &str) -> Result<(), ProviderError> {

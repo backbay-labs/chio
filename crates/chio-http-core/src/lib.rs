@@ -28,7 +28,7 @@ pub use approvals::{
 };
 pub use authority::{
     HttpAuthority, HttpAuthorityError, HttpAuthorityEvaluation, HttpAuthorityInput,
-    HttpAuthorityPolicy, PreparedHttpEvaluation,
+    HttpAuthorityPolicy, PreparedHttpEvaluation, TransportDenyInput,
 };
 pub use compliance::{
     handle_compliance_score, ComplianceScoreError, ComplianceScoreRequest, ComplianceScoreResponse,

@@ -47,4 +47,4 @@ pub use kernel_service::{
     TenantConcurrencyLimitService, TenantId,
 };
 pub use layer::ChioLayer;
-pub use service::ChioService;
+pub use service::{ChioService, DEFAULT_MAX_BODY_BYTES};

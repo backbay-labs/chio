@@ -3,13 +3,21 @@
 use std::collections::HashMap;
 use std::task::{Context, Poll};
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes, BytesMut};
 use http_body::Body;
-use http_body_util::BodyExt;
 use sha2::{Digest, Sha256};
 use tower_service::Service;
 
 use crate::evaluator::{ChioEvaluator, EvaluationInput};
+
+/// Default upper bound on buffered request body size (8 MiB).
+///
+/// The middleware needs to inspect request bodies to compute content hashes
+/// for receipts; without a cap a single oversized request could exhaust host
+/// memory before the inner service ever sees it. Callers can override this
+/// via [`ChioService::with_max_body_bytes`] when a deployment expects larger
+/// payloads.
+pub const DEFAULT_MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 
 /// Tower `Service` that evaluates HTTP requests against the Chio kernel.
 ///
@@ -25,12 +33,28 @@ use crate::evaluator::{ChioEvaluator, EvaluationInput};
 pub struct ChioService<S> {
     inner: S,
     evaluator: ChioEvaluator,
+    max_body_bytes: usize,
 }
 
 impl<S> ChioService<S> {
     /// Create a new Chio service wrapping the inner service.
     pub fn new(inner: S, evaluator: ChioEvaluator) -> Self {
-        Self { inner, evaluator }
+        Self {
+            inner,
+            evaluator,
+            max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+        }
+    }
+
+    /// Override the maximum body size buffered for hashing.
+    ///
+    /// Requests whose advertised or observed body size exceeds this limit are
+    /// rejected with `413 Payload Too Large` before reaching the inner
+    /// service. Defaults to [`DEFAULT_MAX_BODY_BYTES`].
+    #[must_use]
+    pub fn with_max_body_bytes(mut self, max_body_bytes: usize) -> Self {
+        self.max_body_bytes = max_body_bytes;
+        self
     }
 }
 
@@ -42,7 +66,7 @@ where
     ReqBody: Body + From<Bytes> + Send + 'static,
     ReqBody::Data: Send,
     ReqBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-    ResBody: Default + Send + 'static,
+    ResBody: Default + From<Bytes> + Send + 'static,
 {
     type Response = http::Response<ResBody>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -57,6 +81,7 @@ where
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         let evaluator = self.evaluator.clone();
         let mut inner = self.inner.clone();
+        let max_body_bytes = self.max_body_bytes;
 
         Box::pin(async move {
             let method = req.method().as_str().to_string();
@@ -71,11 +96,28 @@ where
                 })
                 .unwrap_or_default();
             let headers = req.headers().clone();
-            let (req, body_hash, body_length) = buffer_request_body(req).await?;
 
-            // Extract caller identity.
+            // Extract caller identity up front. The transport-layer body-size
+            // guard signs a deny receipt that records the caller's identity
+            // hash even if buffering aborts before the kernel ever runs, so
+            // we resolve the identity before pulling any body bytes.
             let identity_fn = evaluator.identity_extractor();
             let caller = identity_fn(&headers);
+
+            let (req, body_hash, body_length) = match buffer_request_body(req, max_body_bytes).await
+            {
+                Ok(parts) => parts,
+                Err(BufferBodyError::TooLarge) => {
+                    return Ok(build_payload_too_large_response::<ResBody>(
+                        &evaluator,
+                        &method,
+                        &path,
+                        &caller,
+                        max_body_bytes,
+                    ));
+                }
+                Err(BufferBodyError::Inner(error)) => return Err(error),
+            };
 
             // Evaluate the request.
             let prepared = match evaluator.prepare(EvaluationInput {
@@ -143,16 +185,151 @@ fn denied_status(verdict: &chio_http_core::Verdict) -> http::StatusCode {
     }
 }
 
+/// Guard name attached to the deny verdict the middleware emits when a
+/// request body exceeds the configured `max_body_bytes` limit.
+const TRANSPORT_BODY_SIZE_GUARD: &str = "chio_tower_request_body_size";
+
+/// Build the `413 Payload Too Large` response that fronts an oversized
+/// request body. The response carries:
+///
+/// - A signed [`HttpReceipt`] (in the response extensions and as the JSON
+///   body) so an auditor can verify the rejection was a Chio decision and
+///   not a stray network-layer 413.
+/// - The receipt id in the `x-chio-receipt-id` header.
+///
+/// If signing fails (which shouldn't happen for a well-formed kernel
+/// keypair), the function falls back to an empty body so the deny path is
+/// never blocked by a signing error.
+fn build_payload_too_large_response<ResBody>(
+    evaluator: &ChioEvaluator,
+    method: &str,
+    path: &str,
+    caller: &chio_http_core::CallerIdentity,
+    max_body_bytes: usize,
+) -> http::Response<ResBody>
+where
+    ResBody: Default + From<Bytes>,
+{
+    use chio_http_core::TransportDenyInput;
+
+    let status = http::StatusCode::PAYLOAD_TOO_LARGE;
+    let caller_identity_hash = caller.identity_hash().ok();
+
+    let receipt = match (
+        crate::evaluator::parse_method(method),
+        caller_identity_hash.as_deref(),
+    ) {
+        (Ok(http_method), Some(caller_hash)) => {
+            let route_pattern = (evaluator.route_resolver())(method, path);
+            let verdict = chio_http_core::Verdict::deny_with_status(
+                format!("request body exceeds {max_body_bytes}-byte limit for chio_tower"),
+                TRANSPORT_BODY_SIZE_GUARD,
+                status.as_u16(),
+            );
+            let request_id = uuid::Uuid::now_v7().to_string();
+            evaluator
+                .sign_transport_deny_receipt(TransportDenyInput {
+                    request_id: &request_id,
+                    route_pattern: &route_pattern,
+                    method: http_method,
+                    caller_identity_hash: caller_hash,
+                    content_hash: None,
+                    verdict,
+                })
+                .ok()
+        }
+        _ => None,
+    };
+
+    let mut response = http::Response::new(ResBody::default());
+    *response.status_mut() = status;
+
+    if let Some(receipt) = receipt {
+        if let Ok(val) = http::HeaderValue::from_str(&receipt.id) {
+            response.headers_mut().insert("x-chio-receipt-id", val);
+        }
+        if let Ok(body_bytes) = serde_json::to_vec(&receipt) {
+            *response.body_mut() = ResBody::from(Bytes::from(body_bytes));
+            response.headers_mut().insert(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static("application/json"),
+            );
+        }
+        response.extensions_mut().insert(receipt);
+    }
+
+    response
+}
+
+/// Result of a failed body buffer operation.
+enum BufferBodyError {
+    /// The request body exceeded the configured limit. The middleware reports
+    /// this as 413 Payload Too Large rather than passing it to the inner
+    /// service.
+    TooLarge,
+    /// The underlying body or inner service produced an error.
+    Inner(Box<dyn std::error::Error + Send + Sync>),
+}
+
 async fn buffer_request_body<ReqBody>(
     req: http::Request<ReqBody>,
-) -> Result<(http::Request<ReqBody>, Option<String>, u64), Box<dyn std::error::Error + Send + Sync>>
+    max_body_bytes: usize,
+) -> Result<(http::Request<ReqBody>, Option<String>, u64), BufferBodyError>
 where
     ReqBody: Body + From<Bytes>,
     ReqBody::Data: Send,
     ReqBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
+    // Reject early when the body advertises a size beyond the cap. This avoids
+    // pulling any bytes for clearly-oversized payloads.
+    if let Some(upper) = req.body().size_hint().upper() {
+        if upper > max_body_bytes as u64 {
+            return Err(BufferBodyError::TooLarge);
+        }
+    }
+
+    // Pull frames one at a time and abort as soon as the running buffer would
+    // exceed `max_body_bytes`. The previous implementation called
+    // `body.collect()` which buffered every byte of the request before
+    // checking the size, so an attacker could exhaust host memory with a
+    // single oversized POST whose declared size hint hid the true length.
+    // Streaming the frames bounds peak buffer use to `max_body_bytes` plus
+    // the size of one in-flight frame.
     let (parts, body) = req.into_parts();
-    let collected = body.collect().await.map_err(Into::into)?.to_bytes();
+    let mut body = std::pin::pin!(body);
+    let mut buffer = BytesMut::new();
+    let limit = max_body_bytes;
+
+    loop {
+        let frame = std::future::poll_fn(|cx| body.as_mut().poll_frame(cx)).await;
+        let frame = match frame {
+            Some(Ok(frame)) => frame,
+            Some(Err(error)) => return Err(BufferBodyError::Inner(error.into())),
+            None => break,
+        };
+        let mut data = match frame.into_data() {
+            Ok(data) => data,
+            // Trailers and other non-data frames carry no body bytes and are
+            // dropped: the kernel's content hash and length only cover the
+            // request payload, not HTTP/2 trailers.
+            Err(_non_data) => continue,
+        };
+        let chunk_len = data.remaining();
+        if buffer.len().saturating_add(chunk_len) > limit {
+            return Err(BufferBodyError::TooLarge);
+        }
+        // `ReqBody::Data: Buf` may expose the chunk as multiple slices, so
+        // drain the buffer slice-by-slice rather than relying on a single
+        // contiguous `chunk()` view.
+        while data.has_remaining() {
+            let slice = data.chunk();
+            let slice_len = slice.len();
+            buffer.extend_from_slice(slice);
+            data.advance(slice_len);
+        }
+    }
+
+    let collected = buffer.freeze();
     let body_length = collected.len() as u64;
     let body_hash = if collected.is_empty() {
         None
@@ -173,7 +350,7 @@ mod tests {
     use chio_core_types::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
     use chio_core_types::crypto::Keypair;
     use chio_http_core::{http_status_scope, HttpReceipt, CHIO_HTTP_STATUS_SCOPE_FINAL};
-    use http_body_util::Full;
+    use http_body_util::{BodyExt, Full};
     use tower::ServiceExt;
 
     type TestBody = Full<Bytes>;
@@ -334,9 +511,12 @@ mod tests {
             .body(Full::new(payload.clone()))
             .unwrap_or_else(|e| panic!("build failed: {e}"));
 
-        let (req, body_hash, body_length) = buffer_request_body(req)
-            .await
-            .unwrap_or_else(|e| panic!("buffer failed: {e}"));
+        let (req, body_hash, body_length) =
+            match buffer_request_body(req, DEFAULT_MAX_BODY_BYTES).await {
+                Ok(parts) => parts,
+                Err(BufferBodyError::TooLarge) => panic!("body unexpectedly too large"),
+                Err(BufferBodyError::Inner(error)) => panic!("buffer failed: {error}"),
+            };
 
         let replayed = req
             .into_body()
@@ -351,5 +531,354 @@ mod tests {
         assert_eq!(body_length, payload.len() as u64);
         assert_eq!(body_hash, Some(hex::encode(expected.finalize())));
         assert_eq!(replayed, payload);
+    }
+
+    #[tokio::test]
+    async fn buffer_request_body_rejects_oversized_payload() {
+        let payload = Bytes::from(vec![b'a'; 32]);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/oversized")
+            .body(Full::new(payload))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let result = buffer_request_body(req, 16).await;
+        assert!(matches!(result, Err(BufferBodyError::TooLarge)));
+    }
+
+    /// Regression for Codex P1 "enforce body limit during collection": a
+    /// streaming body whose size hint hides its true length must abort as
+    /// soon as the running buffer crosses the configured cap, so an attacker
+    /// cannot exhaust host RAM by streaming chunks one at a time.
+    #[tokio::test]
+    async fn buffer_request_body_aborts_streaming_body_during_collection() {
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        struct StreamingBody {
+            chunks: Vec<Bytes>,
+        }
+
+        impl Body for StreamingBody {
+            type Data = Bytes;
+            type Error = std::convert::Infallible;
+
+            fn poll_frame(
+                mut self: Pin<&mut Self>,
+                _cx: &mut Context<'_>,
+            ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+                if self.chunks.is_empty() {
+                    Poll::Ready(None)
+                } else {
+                    let chunk = self.chunks.remove(0);
+                    Poll::Ready(Some(Ok(http_body::Frame::data(chunk))))
+                }
+            }
+
+            // Deliberately advertise no upper bound so the size_hint short
+            // circuit cannot reject the request before the streaming loop runs.
+            fn size_hint(&self) -> http_body::SizeHint {
+                http_body::SizeHint::default()
+            }
+        }
+
+        // Wrapper that lets `From<Bytes>` work for the replay path the
+        // production code never reaches in this test (the call must abort).
+        struct AdaptedBody(StreamingBody);
+        impl Body for AdaptedBody {
+            type Data = Bytes;
+            type Error = std::convert::Infallible;
+            fn poll_frame(
+                mut self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+            ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+                Pin::new(&mut self.0).poll_frame(cx)
+            }
+            fn size_hint(&self) -> http_body::SizeHint {
+                self.0.size_hint()
+            }
+        }
+        impl From<Bytes> for AdaptedBody {
+            fn from(_value: Bytes) -> Self {
+                AdaptedBody(StreamingBody { chunks: Vec::new() })
+            }
+        }
+
+        let chunks = vec![
+            Bytes::from(vec![b'x'; 8]),
+            Bytes::from(vec![b'x'; 8]),
+            Bytes::from(vec![b'x'; 8]),
+            Bytes::from(vec![b'x'; 8]),
+        ];
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/streaming-oversized")
+            .body(AdaptedBody(StreamingBody {
+                chunks: chunks.clone(),
+            }))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        // Cap at 16 bytes, total payload is 32 bytes split across four frames.
+        // The streaming loop should reject the third frame (running total 24),
+        // before the fourth chunk is ever pulled.
+        let result = buffer_request_body(req, 16).await;
+        assert!(
+            matches!(result, Err(BufferBodyError::TooLarge)),
+            "streaming body exceeding the cap during collection must abort"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_returns_413_when_body_exceeds_limit() {
+        let (_kp, evaluator) = make_service();
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/pets")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    /// Regression for Codex P2 "attach a signed receipt to oversized-body
+    /// denials": the 413 response must carry a Chio-signed deny receipt as
+    /// its JSON body (and as an extension), so an auditor can verify the
+    /// rejection was a Chio decision rather than a stray network 413.
+    #[tokio::test]
+    async fn service_413_response_has_signed_receipt_body() {
+        let (_kp, evaluator) = make_service();
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/pets")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
+
+        // The Chio receipt must be present in extensions for in-process
+        // consumers (auditors, the upstream layer that records receipts).
+        let receipt = resp
+            .extensions()
+            .get::<HttpReceipt>()
+            .unwrap_or_else(|| panic!("missing receipt extension on 413"))
+            .clone();
+        assert_eq!(receipt.response_status, 413);
+        assert!(
+            receipt.is_denied(),
+            "413 receipt must record a Deny verdict"
+        );
+        assert!(
+            receipt
+                .verify_signature()
+                .unwrap_or_else(|e| panic!("verify failed: {e}")),
+            "413 receipt signature must verify under embedded kernel key"
+        );
+
+        // The receipt id header must mirror the body so out-of-band auditors
+        // can correlate without parsing the body.
+        let header_id = resp
+            .headers()
+            .get("x-chio-receipt-id")
+            .unwrap_or_else(|| panic!("missing x-chio-receipt-id header on 413"))
+            .to_str()
+            .unwrap_or_else(|e| panic!("header was not utf-8: {e}"))
+            .to_string();
+        assert_eq!(header_id, receipt.id);
+
+        // The response body must carry the same signed receipt as JSON.
+        assert_eq!(
+            resp.headers()
+                .get(http::header::CONTENT_TYPE)
+                .map(|v| v.to_str().unwrap_or_else(|e| panic!("ctype utf8: {e}"))),
+            Some("application/json"),
+        );
+        let body_bytes = resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap_or_else(|e| panic!("collect failed: {e}"))
+            .to_bytes();
+        assert!(
+            !body_bytes.is_empty(),
+            "413 response body must not be empty"
+        );
+        let parsed: HttpReceipt = serde_json::from_slice(&body_bytes)
+            .unwrap_or_else(|e| panic!("response body must be a serialised HttpReceipt: {e}"));
+        assert_eq!(parsed.id, receipt.id);
+        assert_eq!(parsed.response_status, 413);
+        assert!(
+            parsed
+                .verify_signature()
+                .unwrap_or_else(|e| panic!("verify failed: {e}")),
+            "deserialised receipt body must verify under the embedded kernel key"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_413_without_receipt_body_omits_json_content_type() {
+        let (_kp, evaluator) = make_service();
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("BREW")
+            .uri("/pets")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(resp.extensions().get::<HttpReceipt>().is_none());
+        assert!(resp.headers().get(http::header::CONTENT_TYPE).is_none());
+        assert!(resp.headers().get("x-chio-receipt-id").is_none());
+
+        let body_bytes = resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap_or_else(|e| panic!("collect failed: {e}"))
+            .to_bytes();
+        assert!(body_bytes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn service_413_unsupported_method_rejects_before_route_resolver() {
+        fn route_resolver(_method: &str, _path: &str) -> String {
+            panic!("route resolver must not run for unsupported HTTP methods");
+        }
+
+        let (_kp, evaluator) = make_service();
+        let evaluator = evaluator.with_route_resolver(route_resolver);
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("BREW")
+            .uri("/pets")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(resp.extensions().get::<HttpReceipt>().is_none());
+        assert!(resp.headers().get(http::header::CONTENT_TYPE).is_none());
+        assert!(resp.headers().get("x-chio-receipt-id").is_none());
+    }
+
+    #[tokio::test]
+    async fn service_413_receipt_uses_route_resolver_pattern() {
+        fn route_resolver(_method: &str, path: &str) -> String {
+            if path.starts_with("/pets/") {
+                "/pets/{petId}".to_string()
+            } else {
+                path.to_string()
+            }
+        }
+
+        let (_kp, evaluator) = make_service();
+        let evaluator = evaluator.with_route_resolver(route_resolver);
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/pets/secret-id")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        let receipt = resp
+            .extensions()
+            .get::<HttpReceipt>()
+            .unwrap_or_else(|| panic!("missing receipt extension on 413"));
+        assert_eq!(receipt.route_pattern, "/pets/{petId}");
     }
 }
