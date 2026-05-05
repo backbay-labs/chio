@@ -62,22 +62,63 @@ pub enum ConfigError {
 
 /// Sidecar TOML schema fragment.
 ///
-/// Only the `[tee]` table is parsed; other tables pass through.
+/// Only the `[tee]` table is parsed; other tables pass through. The top
+/// level intentionally does NOT use `deny_unknown_fields`, so the same
+/// file can be shared with other tools that mount tables alongside
+/// `[tee]`. The `[tee]` table itself IS strict (see [`SidecarTeeSection`]):
+/// a typo in a key name there silently downgrading to the implicit
+/// `verdict-only` default would be a fail-open misconfiguration vector
+/// for the trust-boundary that decides shadow/enforce participation.
 #[derive(Debug, Default, Deserialize)]
 struct SidecarConfig {
     #[serde(default)]
     tee: SidecarTeeSection,
 }
 
+/// Strict `[tee]` table.
+///
+/// `deny_unknown_fields` catches typos in the operator-supplied config
+/// (e.g. `Mode = "enforce"` instead of `mode = "enforce"`) at load time
+/// rather than silently treating the table as empty and defaulting to
+/// `verdict-only`. The non-`mode` fields below are accepted but not
+/// consumed by the resolver today; they are pinned here so the example
+/// sidecar TOML in `examples/tee-sidecar/chio-tee.toml` continues to
+/// load while the deployment-shape fields are wired up in later tasks.
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SidecarTeeSection {
     #[serde(default)]
     mode: Option<String>,
+    /// Reserved: runtime working directory (consumed by the not-yet-
+    /// implemented main; documented in the example). Held to keep the
+    /// example sidecar TOML loadable under `deny_unknown_fields`.
+    #[serde(default)]
+    #[allow(dead_code)]
+    runtime_dir: Option<String>,
+    /// Reserved: persistent spool directory.
+    #[serde(default)]
+    #[allow(dead_code)]
+    spool_dir: Option<String>,
+    /// Reserved: spool size cap in bytes.
+    #[serde(default)]
+    #[allow(dead_code)]
+    max_spool_bytes: Option<u64>,
+    /// Reserved: pinned wire format identifier.
+    #[serde(default)]
+    #[allow(dead_code)]
+    frame_format: Option<String>,
+    /// Reserved: redaction-pass identifier.
+    #[serde(default)]
+    #[allow(dead_code)]
+    redaction_pass: Option<String>,
 }
 
 /// Tenant manifest schema fragment.
 ///
-/// Parsed locally until `chio-manifest` exposes a shared type.
+/// Parsed locally until `chio-manifest` exposes a shared type. Same
+/// strictness rationale as [`SidecarConfig`]: the top level is
+/// permissive (the manifest carries many tables), but the
+/// `[tenant.tee]` table itself is strict.
 #[derive(Debug, Default, Deserialize)]
 struct TenantManifest {
     #[serde(default)]
@@ -90,7 +131,9 @@ struct TenantSection {
     tee: TenantTeeSection,
 }
 
+/// Strict `[tenant.tee]` table. See [`SidecarTeeSection`] for rationale.
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TenantTeeSection {
     #[serde(default)]
     mode: Option<String>,
@@ -273,6 +316,73 @@ mod tests {
     fn tenant_parse_table() {
         let raw = "[tenant.tee]\nmode = \"shadow\"\n";
         let mode = load_tenant_manifest_mode_from_str(&PathBuf::from("manifest.toml"), raw)
+            .unwrap()
+            .unwrap();
+        assert_eq!(mode, Mode::Shadow);
+    }
+
+    /// Regression: a typo in the `[tee]` table key (e.g. capitalised
+    /// `Mode`) MUST fail-closed at load time. Without
+    /// `deny_unknown_fields` on the table, the parser would silently
+    /// treat the layer as unset, the resolver would fall through to the
+    /// implicit `verdict-only` default, and the operator's intent to run
+    /// in `enforce` would be lost without any signal.
+    #[test]
+    fn toml_rejects_typo_in_tee_table_key() {
+        let raw = "[tee]\nMode = \"enforce\"\n";
+        let result = parse_toml_mode_from_str(&PathBuf::from("test.toml"), raw);
+        assert!(
+            matches!(result, Err(ConfigError::Toml { .. })),
+            "typo in [tee] key must fail-closed; got {result:?}"
+        );
+    }
+
+    #[test]
+    fn toml_rejects_unknown_key_in_tee_table() {
+        let raw = "[tee]\nmode = \"shadow\"\nunknown_key = \"value\"\n";
+        let result = parse_toml_mode_from_str(&PathBuf::from("test.toml"), raw);
+        assert!(
+            matches!(result, Err(ConfigError::Toml { .. })),
+            "unknown key in [tee] must fail-closed; got {result:?}"
+        );
+    }
+
+    #[test]
+    fn tenant_rejects_unknown_key_in_tee_table() {
+        let raw = "[tenant.tee]\nmode = \"enforce\"\nrogue = true\n";
+        let result = load_tenant_manifest_mode_from_str(&PathBuf::from("manifest.toml"), raw);
+        assert!(
+            matches!(result, Err(ConfigError::Toml { .. })),
+            "unknown key in [tenant.tee] must fail-closed; got {result:?}"
+        );
+    }
+
+    /// Top-level tables outside `[tee]` are tolerated so the same file
+    /// can host adjacent configuration for other tools.
+    #[test]
+    fn toml_top_level_remains_permissive() {
+        let raw = "[tee]\nmode = \"shadow\"\n\n[other_tool]\nfoo = \"bar\"\n";
+        let mode = parse_toml_mode_from_str(&PathBuf::from("test.toml"), raw)
+            .unwrap()
+            .unwrap();
+        assert_eq!(mode, Mode::Shadow);
+    }
+
+    /// The deployment-shape fields documented in
+    /// `examples/tee-sidecar/chio-tee.toml` are accepted today (they
+    /// are wired in a later task) so the example continues to load.
+    #[test]
+    fn toml_accepts_documented_deployment_fields() {
+        let raw = r#"
+[tee]
+mode = "shadow"
+runtime_dir = "/run/chio-tee"
+spool_dir = "/var/lib/chio/tee/spool"
+max_spool_bytes = 67108864
+frame_format = "chio-tee-frame.v1"
+redaction_pass = "chio:guards/redact@0.1.0"
+"#;
+        let mode = parse_toml_mode_from_str(&PathBuf::from("test.toml"), raw)
             .unwrap()
             .unwrap();
         assert_eq!(mode, Mode::Shadow);
