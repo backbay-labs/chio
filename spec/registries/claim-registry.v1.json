@@ -28,6 +28,15 @@
       "summary": "A delegated child capability scope is a subset of its parent (no privilege amplification).",
       "introduced_in": "trajectory-2.M04",
       "proof_manifest_ref": "manifest.attenuation.subset"
+    },
+    {
+      "id": "claim.handshake.capability_negotiation",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json",
+      "summary": "Peers exchange a feature bitset and a maximum capability-token schema at handshake time. The verifier rejects inbound tokens whose schema exceeds the negotiated ceiling, blocking a v1-only Mallory from forcing a v2-aware Alice to parse v2-only fields.",
+      "introduced_in": "trajectory-4/W1.3",
+      "depends_on_theorems": ["theorem.handshake.negotiation_safety"],
+      "proof_manifest_ref": "manifest.handshake.capability_negotiation"
     }
   ],
   "trj4_proposed_claims": [
@@ -66,15 +75,6 @@
       "introduced_by": "trajectory-4/T1.3",
       "depends_on_theorems": ["theorem.anchor.merkle_inclusion", "theorem.anchor.public_witness_anti_equivocation"],
       "proof_manifest_ref": "manifest.anchor.batch_continuity"
-    },
-    {
-      "id": "claim.handshake.capability_negotiation",
-      "status": "enforced",
-      "schema_artifact": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json",
-      "summary": "Peers exchange a feature bitset at handshake time so additive protocol changes do not force flag-day rollouts.",
-      "introduced_by": "trajectory-4/T1.0",
-      "depends_on_theorems": ["theorem.handshake.negotiation_safety"],
-      "proof_manifest_ref": "manifest.handshake.capability_negotiation"
     },
     {
       "id": "claim.signature.hybrid_pq",

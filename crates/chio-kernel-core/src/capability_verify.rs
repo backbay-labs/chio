@@ -24,7 +24,8 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use chio_core_types::capability::{
-    CapabilityCryptoFloor, CapabilityFloorVerifyError, CapabilityToken, ChioScope,
+    CapabilityCryptoFloor, CapabilityFloorVerifyError, CapabilityNegotiation, CapabilityToken,
+    ChioScope, CHIO_CAPABILITY_V2_SCHEMA,
 };
 use chio_core_types::crypto::PublicKey;
 
@@ -78,6 +79,15 @@ pub enum CapabilityError {
     Expired,
     /// An internal invariant was violated (e.g. canonical-JSON failure).
     Internal(String),
+    /// Token's declared schema is above the schema ceiling negotiated with
+    /// the federated peer. This blocks a v1-only Mallory from forcing a
+    /// v2-aware Alice to accept v2-only fields (downgrade-attack defense).
+    SchemaExceedsNegotiatedCeiling {
+        /// The schema ID declared on the inbound token.
+        token_schema: String,
+        /// The peer-negotiated maximum capability schema ID.
+        peer_max: String,
+    },
 }
 
 /// Verify the signature, issuer trust, and time-bounds of a capability token.
@@ -148,6 +158,42 @@ pub fn verify_capability_with_floor(
         expires_at: token.expires_at,
         evaluated_at: now,
     })
+}
+
+/// Verify a capability token while enforcing both the configured crypto
+/// floor and the schema ceiling negotiated with the federated peer.
+///
+/// Closes the W1.3 downgrade attack: a v1-only Mallory must not be able
+/// to force a v2-aware Alice to accept v2-only fields. The peer's
+/// `max_capability_schema` (populated by
+/// [`CapabilityNegotiation::negotiated_with`]) acts as a ceiling: a v2
+/// token presented across a v1-negotiated link is rejected before any
+/// signature, time, or floor check runs.
+///
+/// Symmetric direction is preserved: a v1 token presented across a
+/// v2-negotiated link still verifies, because v1 remains the universal
+/// floor of the schema lattice.
+pub fn verify_capability_with_negotiated_floor(
+    token: &CapabilityToken,
+    trusted_issuers: &[PublicKey],
+    clock: &dyn Clock,
+    crypto_floor: CapabilityCryptoFloor,
+    peer: &CapabilityNegotiation,
+) -> Result<VerifiedCapability, CapabilityError> {
+    // Schema-ceiling check: reject v2 tokens when the peer-negotiated
+    // ceiling is below v2. This runs before signature verification so a
+    // v1-only Mallory cannot force a v2-aware Alice to parse v2-only
+    // fields. v1 tokens are always admitted regardless of peer ceiling.
+    if token.schema == CHIO_CAPABILITY_V2_SCHEMA
+        && peer.max_capability_schema != CHIO_CAPABILITY_V2_SCHEMA
+    {
+        return Err(CapabilityError::SchemaExceedsNegotiatedCeiling {
+            token_schema: token.schema.clone(),
+            peer_max: peer.max_capability_schema.clone(),
+        });
+    }
+
+    verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor)
 }
 
 /// Convenience wrapper around [`verify_capability`] that returns the

@@ -353,6 +353,14 @@ pub fn verify_capability(
             CapabilityError::Internal(msg) => ChioMobileError::Internal {
                 message: format!("capability verification failed: {msg}"),
             },
+            CapabilityError::SchemaExceedsNegotiatedCeiling {
+                token_schema,
+                peer_max,
+            } => ChioMobileError::InvalidCapability {
+                message: format!(
+                    "capability token schema {token_schema} exceeds peer-negotiated ceiling {peer_max}"
+                ),
+            },
         })?;
 
     let scope_json =

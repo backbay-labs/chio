@@ -319,6 +319,9 @@ fn capability_error_message(error: &CapabilityError) -> &'static str {
         CapabilityError::Expired => "token has expired",
         CapabilityError::CryptoFloorRejected(_) => "capability crypto floor rejected",
         CapabilityError::Internal(_) => "internal verification error",
+        CapabilityError::SchemaExceedsNegotiatedCeiling { .. } => {
+            "token schema exceeds peer-negotiated ceiling"
+        }
     }
 }
 

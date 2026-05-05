@@ -367,6 +367,12 @@ fn verify_capability_json_str(
             CapabilityError::Internal(message) => {
                 KernelFfiError::Internal(format!("capability verification failed: {message}"))
             }
+            CapabilityError::SchemaExceedsNegotiatedCeiling {
+                token_schema,
+                peer_max,
+            } => KernelFfiError::InvalidCapability(format!(
+                "capability token schema {token_schema} exceeds peer-negotiated ceiling {peer_max}"
+            )),
         })?;
 
     let scope_json = serde_json::to_string(&verified.scope)

@@ -302,6 +302,32 @@ Peers that do not advertise the bitset stay on the v1 default. This prevents a
 flag-day rollout for additive capability, receipt, anchor, and signature
 changes.
 
+#### Negotiated Schema Ceiling (W1.3)
+
+The negotiated `maxCapabilitySchema` is enforced by the verifier as a
+schema ceiling on every inbound capability token. Concretely:
+
+- `FederationTrustExchange.negotiated_with(...)` derives the per-peer
+  ceiling and stores it on `FederationPeer.capabilities`.
+- The portable verifier entrypoint
+  `chio_kernel_core::verify_capability_with_negotiated_floor(token,
+  trusted_issuers, clock, crypto_floor, peer)` rejects with
+  `CapabilityError::SchemaExceedsNegotiatedCeiling { token_schema,
+  peer_max }` when `token.schema == chio.capability.v2` and
+  `peer.max_capability_schema != chio.capability.v2`.
+- The check runs before signature, time, and crypto-floor checks. It
+  costs nothing on the happy path and closes the downgrade attack
+  where a v1-only Mallory presents a v2 token to a v2-aware Alice in
+  order to force Alice to parse v2-only fields.
+- The symmetric direction (a v1 token presented to a v2-aware peer) is
+  always admitted: v1 is the universal floor of the schema lattice and
+  raising the ceiling never invalidates legacy tokens.
+
+The Lean theorem `theorem.handshake.negotiation_safety` in
+`formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean` models the
+ceiling check, and the Rust shell is exercised by
+`crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs`.
+
 ### Signed-Artifact Registry
 
 `spec/schemas/registry.json` is the signed-artifact compatibility registry.

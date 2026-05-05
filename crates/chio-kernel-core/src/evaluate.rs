@@ -149,6 +149,16 @@ impl KernelCoreError {
                     out.push_str(msg);
                     out
                 }
+                CapabilityError::SchemaExceedsNegotiatedCeiling {
+                    token_schema,
+                    peer_max,
+                } => {
+                    let mut out = String::from("capability token schema ");
+                    out.push_str(token_schema);
+                    out.push_str(" exceeds peer-negotiated ceiling ");
+                    out.push_str(peer_max);
+                    out
+                }
             },
             KernelCoreError::SubjectMismatch { expected, actual } => {
                 let mut out = String::from("request agent ");

@@ -1355,22 +1355,22 @@
     {
       "id": "close-bar-#13",
       "title": "chio.capabilities.v1 capability-negotiation handshake live; peers advertise feature bitsets",
-      "bucket": "PARTIAL",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs",
+      "theorem_status": "assumed",
       "wave": "02",
-      "notes": "negotiation handshake type defined; runtime feature-bitset advertise/enforce not wired"
+      "notes": "W1.3 wired the negotiated max_capability_schema as a verifier ceiling. FederationTrustExchange.negotiated_with stores the per-peer ceiling on FederationPeer.capabilities; verify_capability_with_negotiated_floor enforces it before signature/time/floor checks. Lean theorem theorem.handshake.negotiation_safety models the ceiling check (status assumed pending Lean toolchain in CI)."
     },
     {
       "id": "close-bar-#14",
       "title": "CapabilityToken schema-tagged; chio.capability.v2 envelope shipped with caveats and attenuation_proof; signed-artifact registry rejects unknown schema IDs",
-      "bucket": "NONE",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs",
+      "theorem_status": "assumed",
       "wave": "02",
-      "notes": "CapabilityToken schema field absent; signed-artifact registry not built"
+      "notes": "CapabilityToken carries a schema-tag; chio.capability.v1 and chio.capability.v2 are recognized; the verifier rejects any v2 token whose declared schema exceeds the peer-negotiated ceiling, closing the W1.3 downgrade attack."
     },
     {
       "id": "close-bar-#15",

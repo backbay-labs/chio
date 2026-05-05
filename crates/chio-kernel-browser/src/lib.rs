@@ -477,6 +477,16 @@ fn capability_error_message(error: &chio_kernel_core::CapabilityError) -> String
             out.push_str(msg);
             out
         }
+        chio_kernel_core::CapabilityError::SchemaExceedsNegotiatedCeiling {
+            token_schema,
+            peer_max,
+        } => {
+            let mut out = String::from("capability token schema ");
+            out.push_str(token_schema);
+            out.push_str(" exceeds peer-negotiated ceiling ");
+            out.push_str(peer_max);
+            out
+        }
     }
 }
 

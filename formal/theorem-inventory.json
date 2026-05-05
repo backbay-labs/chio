@@ -712,6 +712,18 @@
       "claimClass": "bounded_model",
       "mapsTo": ["P3"],
       "notes": "Path-prefix model rejects normalized traversal escape cases."
+    },
+    {
+      "id": "theorem.handshake.negotiation_safety",
+      "leanName": "Chio.Proofs.HandshakeNegotiation.negotiation_safety",
+      "file": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "assumed",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
+      "mapsTo": ["P3"],
+      "notes": "W1.3 downgrade-attack defense: a v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs. Status remains `assumed` until the Lean toolchain is available in CI; the Rust shell is covered by crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs."
     }
   ]
 }

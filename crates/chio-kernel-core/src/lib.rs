@@ -68,7 +68,8 @@ pub mod rng;
 pub mod scope;
 
 pub use capability_verify::{
-    verify_capability, verify_capability_with_floor, CapabilityError, VerifiedCapability,
+    verify_capability, verify_capability_with_floor, verify_capability_with_negotiated_floor,
+    CapabilityError, VerifiedCapability,
 };
 pub use clock::{Clock, FixedClock};
 pub use evaluate::{
