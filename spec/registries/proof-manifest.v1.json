@@ -1,0 +1,125 @@
+{
+  "$schema": "https://chio-protocol.dev/schemas/registries/proof-manifest/v1",
+  "version": "v1",
+  "description": "Mapping from each verifiable claim in the claim registry to the evidence that backs it: Lean theorems, Apalache modules, Kani harnesses, conformance tests, or signed assertions. Authoritative reference for the trajectory-4 Evidence Gate.",
+  "owner": "protocol-eng",
+  "bootstrapped_by": "trajectory-4/TRJ4-000",
+  "manifests": [
+    {
+      "id": "manifest.capability.signed_authority",
+      "claim_ref": "claim.capability.signed_authority",
+      "evidence": [
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.capability.signature_correctness"
+        },
+        {
+          "kind": "kani_harness",
+          "ref": "crates/chio-core-types/kani/capability_token_signature.rs"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/chio-conformance/tests/threats/capability_token_theft.rs"
+        }
+      ]
+    },
+    {
+      "id": "manifest.receipt.signed_decision",
+      "claim_ref": "claim.receipt.signed_decision",
+      "evidence": [
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.receipt.signature_correctness"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/chio-conformance/tests/threats/kernel_impersonation.rs"
+        }
+      ]
+    },
+    {
+      "id": "manifest.attenuation.subset",
+      "claim_ref": "claim.attenuation.subset",
+      "evidence": [
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.attenuation.subset_correctness"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs"
+        }
+      ]
+    }
+  ],
+  "trj4_proposed_manifests": [
+    {
+      "id": "manifest.capability.attenuation_proof",
+      "claim_ref": "claim.capability.attenuation_proof",
+      "introduced_by": "trajectory-4/T1.1",
+      "evidence_proposed": [
+        {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_soundness"},
+        {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_completeness"},
+        {"kind": "kani_harness", "ref": "crates/chio-core-types/kani/attenuation_witness.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/capability_v2_attenuation_proof.rs"}
+      ]
+    },
+    {
+      "id": "manifest.receipt.body_hash_addressing",
+      "claim_ref": "claim.receipt.body_hash_addressing",
+      "introduced_by": "trajectory-4/T1.2",
+      "evidence_proposed": [
+        {"kind": "lean_theorem", "ref": "theorem.receipt.body_hash_input_set_pinned"},
+        {"kind": "lean_theorem", "ref": "theorem.receipt.body_hash_collision_resistance"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_v2_body_hash_mismatch.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_v2_self_referential_hash.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_v2_legacy_id_tamper_no_replay_effect.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_v2_signature_without_body_hash_commit.rs"}
+      ]
+    },
+    {
+      "id": "manifest.receipt.dag_acyclicity",
+      "claim_ref": "claim.receipt.dag_acyclicity",
+      "introduced_by": "trajectory-4/T1.2",
+      "evidence_proposed": [
+        {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"},
+        {"kind": "lean_theorem", "ref": "theorem.receipt.dag_acyclicity"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/receipt_dag_cross_kernel_cycle_rejected.rs"}
+      ]
+    },
+    {
+      "id": "manifest.anchor.batch_continuity",
+      "claim_ref": "claim.anchor.batch_continuity",
+      "introduced_by": "trajectory-4/T1.3",
+      "evidence_proposed": [
+        {"kind": "lean_theorem", "ref": "theorem.anchor.merkle_inclusion"},
+        {"kind": "lean_theorem", "ref": "theorem.anchor.public_witness_anti_equivocation"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_forged_root.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_misordered_proof.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_witness_impersonation.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_stale_witness_fallback.rs"},
+        {"kind": "doc", "ref": "docs/security/public-witness-semantics.md"}
+      ]
+    },
+    {
+      "id": "manifest.handshake.capability_negotiation",
+      "claim_ref": "claim.handshake.capability_negotiation",
+      "introduced_by": "trajectory-4/T1.0",
+      "evidence_proposed": [
+        {"kind": "lean_theorem", "ref": "theorem.handshake.negotiation_safety"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/handshake_capability_negotiation_v1_v2_interop.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/capability_v2_unknown_schema_rejected.rs"}
+      ]
+    },
+    {
+      "id": "manifest.signature.hybrid_pq",
+      "claim_ref": "claim.signature.hybrid_pq",
+      "introduced_by": "trajectory-4/T2.1",
+      "evidence_proposed": [
+        {"kind": "lean_theorem", "ref": "theorem.signature.hybrid_soundness"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/capability_token_hybrid_round_trip.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/cross_surface_hybrid_pq_interop.rs"}
+      ]
+    }
+  ]
+}
