@@ -175,4 +175,40 @@ assert_fails "row count below threshold" "$T7" "$S7" 145
 grep -q "expected >= 145" "$ERR" \
     || { echo "FAIL: missing diagnostic for short tracker"; cat "$ERR"; exit 1; }
 
+# ---- Case 7: DONE + Cargo.toml as test path fails (path allowlist) ---------
+# A row pointing at Cargo.toml or any other non-test/evidence path must be
+# rejected as "not a recognised test/evidence path", even when the file
+# exists on disk.
+T8="$TMP_DIR/done-cargo-toml.md"
+S8="$TMP_DIR/done-cargo-toml.snapshot.json"
+write_tracker "$T8" \
+    "row-1 | t1 | DONE | y | Cargo.toml | n-a | 04 | DONE pointing at Cargo.toml"
+write_snapshot "$S8" \
+    "row-1 | t1 | NONE | n | NONE | n-a | 04 | placeholder"
+assert_fails "DONE + Cargo.toml as test path" "$T8" "$S8" 1
+grep -q "not a recognised test/evidence path" "$ERR" \
+    || { echo "FAIL: missing diagnostic for Cargo.toml as test"; cat "$ERR"; exit 1; }
+
+# ---- Case 8: DONE + README.md as test path fails (path allowlist) ----------
+T9="$TMP_DIR/done-readme.md"
+S9="$TMP_DIR/done-readme.snapshot.json"
+write_tracker "$T9" \
+    "row-1 | t1 | DONE | y | README.md | n-a | 04 | DONE pointing at README.md"
+write_snapshot "$S9" \
+    "row-1 | t1 | NONE | n | NONE | n-a | 04 | placeholder"
+assert_fails "DONE + README.md as test path" "$T9" "$S9" 1
+grep -q "not a recognised test/evidence path" "$ERR" \
+    || { echo "FAIL: missing diagnostic for README.md as test"; cat "$ERR"; exit 1; }
+
+# ---- Case 9: DONE + recognised scripts/*.sh path passes --------------------
+# The path allowlist accepts scripts/*.sh; pointing at the gate script itself
+# is a real on-disk file and matches the allowlist, so this row should pass.
+T10="$TMP_DIR/done-allowed.md"
+S10="$TMP_DIR/done-allowed.snapshot.json"
+write_tracker "$T10" \
+    "row-1 | t1 | DONE | y | scripts/check-close-bar-tracker.sh | n-a | 04 | DONE with allowlisted test"
+write_snapshot "$S10" \
+    "row-1 | t1 | NONE | n | NONE | n-a | 04 | placeholder"
+assert_passes "DONE + allowlisted scripts/*.sh path" "$T10" "$S10" 1
+
 echo "PASS: check-close-bar-tracker integration test"

@@ -449,7 +449,7 @@ def main() -> None:
     for num, title in CLOSE_BAR:
         rows.append(closebar_row(num, title))
 
-    assert len(rows) >= 145, f"expected >=145 rows, got {len(rows)}"
+    assert len(rows) >= 153, f"expected >=153 rows, got {len(rows)}"
 
     # ---- Render markdown ----
     repo_root = Path(__file__).resolve().parents[3]
@@ -465,7 +465,7 @@ state mirrors the audit findings on the trj4-planning baseline.
 
 The tracker is consumed by `scripts/check-close-bar-tracker.sh`, which:
 
-- asserts >= 145 rows;
+- asserts >= 153 rows;
 - catches the audit's "types-only" pattern (`Bucket=DONE` + `Wired runtime path=n`);
 - requires every `Bucket=DONE` row to point at a real negative-conformance test;
 - requires every `Theorem status=proven` row to point at a present file;

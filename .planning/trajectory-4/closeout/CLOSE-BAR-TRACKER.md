@@ -8,7 +8,7 @@ state mirrors the audit findings on the trj4-planning baseline.
 
 The tracker is consumed by `scripts/check-close-bar-tracker.sh`, which:
 
-- asserts >= 145 rows;
+- asserts >= 153 rows;
 - catches the audit's "types-only" pattern (`Bucket=DONE` + `Wired runtime path=n`);
 - requires every `Bucket=DONE` row to point at a real negative-conformance test;
 - requires every `Theorem status=proven` row to point at a present file;

@@ -7,12 +7,14 @@
 # audits/evidence/close-bar-current.json for downstream tooling.
 #
 # Failure modes (any one fails the gate):
-#   1. tracker has fewer than 145 rows;
+#   1. tracker has fewer than 153 rows;
 #   2. any row has Bucket=DONE and Wired runtime path=n (audit's "types-only" pattern);
 #   3. any Bucket=DONE row has Negative conformance test=NONE;
 #   4. any Bucket=DONE row points at a Negative conformance test file that is missing on disk;
-#   5. any Theorem status=proven row points at a missing file;
-#   6. any row regresses against the snapshot (DONE -> PARTIAL/NONE, PARTIAL -> NONE).
+#   5. any Bucket=DONE row points at a Negative conformance test path that is not in the
+#      recognised test/evidence allowlist (rejects e.g. Cargo.toml, README.md);
+#   6. any Theorem status=proven row points at a missing file;
+#   7. any row regresses against the snapshot (DONE -> PARTIAL/NONE, PARTIAL -> NONE).
 #
 # Environment overrides (used by the integration tests in scripts/tests):
 #   CHIO_CLOSE_BAR_TRACKER       path to the tracker markdown
@@ -27,7 +29,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TRACKER="${CHIO_CLOSE_BAR_TRACKER:-$REPO_ROOT/.planning/trajectory-4/closeout/CLOSE-BAR-TRACKER.md}"
 SNAPSHOT="${CHIO_CLOSE_BAR_SNAPSHOT:-$REPO_ROOT/audits/evidence/close-bar-snapshot.json}"
 CURRENT_OUT="${CHIO_CLOSE_BAR_CURRENT_OUT:-$REPO_ROOT/audits/evidence/close-bar-current.json}"
-MIN_ROWS="${CHIO_CLOSE_BAR_MIN_ROWS:-145}"
+MIN_ROWS="${CHIO_CLOSE_BAR_MIN_ROWS:-153}"
 
 if [[ ! -f "$TRACKER" ]]; then
     echo "ERROR: tracker not found: $TRACKER" >&2
@@ -41,6 +43,7 @@ fi
 mkdir -p "$(dirname "$CURRENT_OUT")"
 
 python3 - "$TRACKER" "$SNAPSHOT" "$CURRENT_OUT" "$MIN_ROWS" "$REPO_ROOT" <<'PY'
+import fnmatch
 import json
 import os
 import sys
@@ -54,6 +57,29 @@ ALLOWED_THEOREM = {"proven", "proposed", "n-a"}
 
 # Higher = closer to closure. Used for regression detection.
 BUCKET_RANK = {"NONE": 0, "PARTIAL": 1, "DONE": 2}
+
+# Recognised test/evidence path patterns for Negative conformance test cells.
+# A DONE row whose path does not match any of these is rejected (rule 5).
+# Patterns use fnmatch glob semantics with `**` expanded to match any depth.
+ALLOWED_TEST_GLOBS = (
+    "crates/*/tests/*.rs",
+    "crates/*/tests/*/*.rs",
+    "crates/*/tests/*/*/*.rs",
+    "crates/*/tests/*/*/*/*.rs",
+    "scripts/*.sh",
+    "scripts/tests/*.sh",
+    "scripts/tests/*.bats",
+    "formal/lean4/*.lean",
+    "formal/lean4/*/*.lean",
+    "formal/lean4/*/*/*.lean",
+    "formal/tla/*.tla",
+    "formal/tla/*/*.tla",
+)
+
+
+def is_recognised_test_path(path: str) -> bool:
+    return any(fnmatch.fnmatchcase(path, pat) for pat in ALLOWED_TEST_GLOBS)
+
 
 errors = []
 
@@ -130,10 +156,18 @@ for r in rows:
         )
     # 4. DONE + neg-test path missing on disk
     if r["bucket"] == "DONE" and r["negative_conformance_test"] != "NONE":
-        path = os.path.join(repo_root, r["negative_conformance_test"])
+        rel_path = r["negative_conformance_test"]
+        path = os.path.join(repo_root, rel_path)
         if not os.path.isfile(path):
             errors.append(
-                f"{r['id']}: Bucket=DONE but Negative conformance test path missing on disk: {r['negative_conformance_test']}"
+                f"{r['id']}: Bucket=DONE but Negative conformance test path missing on disk: {rel_path}"
+            )
+        # 5. DONE + neg-test path not in recognised test/evidence allowlist.
+        # Rejects e.g. Cargo.toml, README.md, and other non-test paths so a row
+        # cannot be marked DONE with arbitrary file content as the "test".
+        if not is_recognised_test_path(rel_path):
+            errors.append(
+                f"{r['id']}: Bucket=DONE but Negative conformance test path is not a recognised test/evidence path: {rel_path}"
             )
     # 5. theorem proven + missing file
     if r["theorem_status"] == "proven":

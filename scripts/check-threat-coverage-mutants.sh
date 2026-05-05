@@ -55,20 +55,49 @@
 #   - `missing_evidence` - audits/evidence/threats/<id>.json is missing
 #   - `zero_kills`       - the evidence file records caught == 0
 #   - `no_coveredby`     - no coveredBy / covered_by_tests cross-link
-#   - `bootstrap_placeholder` - needs_real_run is true (informational)
+#   - `bootstrap_placeholder` - needs_real_run is true (informational, only
+#     while the bootstrap accommodation is still in date)
+#   - `bootstrap_expired` - needs_real_run is true but today >=
+#     BOOTSTRAP_EXPIRES_DATE; the accommodation has expired and the
+#     row is now a real failure
+#   - `inconsistent_bootstrap` - needs_real_run is true with a non-1970
+#     `ran_at` timestamp (the audit's P3 finding); a real timestamp
+#     contradicts the placeholder claim
 #
 # Modes:
 #   - default: any non-bootstrap downgrade hint causes exit 1.
 #   - --dry-run: every downgrade hint is reported but exit code is 0,
-#     so authors can iterate locally before wiring evidence.
+#     so authors can iterate locally before wiring evidence. NOTE:
+#     --dry-run is refused when CI=true so a CI run cannot land a PR
+#     by relying on the lenient mode.
+#
+# Bootstrap expiry:
+#   The `needs_real_run: true` accommodation is bounded by
+#   BOOTSTRAP_EXPIRES_DATE (default 2026-08-01, 90 days out from
+#   wave-0.5 hardening). After that date the script treats every
+#   `needs_real_run: true` evidence file as a bootstrap_expired
+#   failure. CHIO_BOOTSTRAP_EXPIRY=YYYY-MM-DD overrides for local
+#   development and tests.
 #
 # Exit codes:
 #   0 - all covered rows have caught >= 1 evidence (or every offending
 #       row is a bootstrap placeholder, or --dry-run).
 #   1 - one or more covered rows are missing real evidence and we are
 #       not in --dry-run.
+#   2 - argument or config error (unknown flag, --dry-run in CI,
+#       invalid CHIO_BOOTSTRAP_EXPIRY, or missing python3).
 
 set -euo pipefail
+
+# Hard expiry for the bootstrap-placeholder accommodation. After this date,
+# `needs_real_run: true` evidence files are treated as a HARD FAIL (reason
+# `bootstrap_expired`) rather than an informational hint, so a slipped Wave 4
+# cannot leave 20 covered threats green forever.
+#
+# Local development can override this via the CHIO_BOOTSTRAP_EXPIRY env var
+# (ISO-8601 date, YYYY-MM-DD).
+BOOTSTRAP_EXPIRES_DATE="2026-08-01"
+BOOTSTRAP_EXPIRES_DATE="${CHIO_BOOTSTRAP_EXPIRY:-$BOOTSTRAP_EXPIRES_DATE}"
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -88,11 +117,40 @@ for arg in "$@"; do
     esac
 done
 
+# Refuse --dry-run in CI: a CI run cannot rely on the lenient mode to land a
+# PR. Local iteration is fine; CI is fail-closed.
+if [[ "${CI:-}" == "true" && "$DRY_RUN" == "1" ]]; then
+    echo "error: --dry-run is not allowed in CI" >&2
+    exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 THREAT_MODEL="${CHIO_THREAT_MODEL_PATH:-$REPO_ROOT/spec/security/chio-threat-model.v1.json}"
 EVIDENCE_DIR="${CHIO_THREAT_EVIDENCE_DIR:-$REPO_ROOT/audits/evidence/threats}"
+
+# Decide whether the bootstrap-placeholder accommodation has expired. Use
+# python3 to compare ISO-8601 dates portably (date-only, no clock-skew
+# math). A bare `today` string lets us inject a fake "today" via env var
+# in tests if we ever need to.
+BOOTSTRAP_EXPIRED=0
+if ! BOOTSTRAP_EXPIRED="$(python3 - "$BOOTSTRAP_EXPIRES_DATE" <<'PY'
+import datetime
+import sys
+
+expiry_str = sys.argv[1]
+try:
+    expiry = datetime.date.fromisoformat(expiry_str)
+except ValueError:
+    print(f"error: invalid CHIO_BOOTSTRAP_EXPIRY {expiry_str!r}; expected YYYY-MM-DD", file=sys.stderr)
+    sys.exit(2)
+print(1 if datetime.date.today() >= expiry else 0)
+PY
+)"; then
+    echo "error: could not evaluate bootstrap expiry" >&2
+    exit 2
+fi
 
 if [[ ! -f "$THREAT_MODEL" ]]; then
     echo "error: threat model not found at $THREAT_MODEL" >&2
@@ -126,7 +184,7 @@ for t in doc.get("threats", []):
 PY
 }
 
-# Read the evidence file and emit `<caught>\t<needs_real_run>` where
+# Read the evidence file and emit `<caught>\t<needs_real_run>\t<ran_at>` where
 # needs_real_run is "1" or "0". Returns nonzero exit if file missing.
 read_evidence() {
     local evidence_file="$1"
@@ -142,7 +200,8 @@ with open(sys.argv[1]) as fh:
 
 caught = int(data.get("caught", 0))
 needs_real_run = bool(data.get("needs_real_run", False))
-print(f"{caught}\t{1 if needs_real_run else 0}")
+ran_at = (data.get("ran_at") or "").strip()
+print(f"{caught}\t{1 if needs_real_run else 0}\t{ran_at}")
 PY
 }
 
@@ -176,9 +235,26 @@ while IFS=$'\t' read -r tid state has_coveredby; do
 
     caught="$(printf '%s' "$evidence_record" | cut -f1)"
     needs_real_run="$(printf '%s' "$evidence_record" | cut -f2)"
+    ran_at="$(printf '%s' "$evidence_record" | cut -f3)"
 
     if [[ "$needs_real_run" == "1" ]]; then
-        # Bootstrap placeholder. Emit hint but DO NOT raise fail.
+        # Bootstrap placeholder consistency: the audit's P3 finding requires
+        # `ran_at: 1970-01-01T00:00:00Z` whenever needs_real_run is true, so
+        # a real cargo-mutants run timestamp combined with needs_real_run=true
+        # is internally inconsistent.
+        if [[ "$ran_at" != "1970-01-01T00:00:00Z" ]]; then
+            weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=inconsistent_bootstrap (needs_real_run=true requires ran_at=1970-01-01T00:00:00Z, got ${ran_at:-<missing>})")
+            fail=1
+            continue
+        fi
+        # Hard expiry: after BOOTSTRAP_EXPIRES_DATE, bootstrap placeholders
+        # become a real failure (reason=bootstrap_expired).
+        if [[ "$BOOTSTRAP_EXPIRED" == "1" ]]; then
+            weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=bootstrap_expired (bootstrap accommodation expired on $BOOTSTRAP_EXPIRES_DATE)")
+            fail=1
+            continue
+        fi
+        # Bootstrap placeholder still valid. Emit hint but DO NOT raise fail.
         bootstrap_hints+=("WEAK: $tid should be marked weak_coverage; reason=bootstrap_placeholder")
         continue
     fi

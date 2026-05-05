@@ -66,15 +66,26 @@ PY
 }
 
 write_evidence() {
-    # write_evidence <id> <caught> [<needs_real_run>=false]
+    # write_evidence <id> <caught> [<needs_real_run>=false] [<ran_at_override>]
+    # Bootstrap placeholders (needs_real_run=true) require ran_at to be the
+    # 1970 epoch sentinel; real-run rows record the actual timestamp.
     local id="$1"
     local caught="$2"
     local needs_real_run="${3:-false}"
+    local ran_at_override="${4:-}"
+    local ran_at
+    if [[ -n "$ran_at_override" ]]; then
+        ran_at="$ran_at_override"
+    elif [[ "$needs_real_run" == "true" ]]; then
+        ran_at="1970-01-01T00:00:00Z"
+    else
+        ran_at="2026-05-05T00:00:00Z"
+    fi
     cat > "$EVIDENCE_DIR/$id.json" <<JSON
 {
   "caught": $caught,
   "survivors": [],
-  "ran_at": "2026-05-05T00:00:00Z",
+  "ran_at": "$ran_at",
   "needs_real_run": $needs_real_run
 }
 JSON
@@ -176,5 +187,38 @@ write_model_single "no_coveredby_threat" "covered" 0
 write_evidence "no_coveredby_threat" 5 false
 assert_fails "no coveredBy fails the gate" run_mutants_gate
 grep -q "WEAK: no_coveredby_threat should be marked weak_coverage; reason=no_coveredby" "$ERR"
+
+# Case 7 (wave-0.5 hardening): bootstrap placeholder AFTER expiry FAILS with
+# reason=bootstrap_expired. CHIO_BOOTSTRAP_EXPIRY=1970-01-01 forces the
+# accommodation to be expired regardless of today's date.
+reset_fixture
+write_model_single "expired_bootstrap_threat" "covered"
+write_evidence "expired_bootstrap_threat" 0 true
+CHIO_BOOTSTRAP_EXPIRY="1970-01-01" \
+    assert_fails "bootstrap_expired fails after expiry date" run_mutants_gate
+grep -q "WEAK: expired_bootstrap_threat should be marked weak_coverage; reason=bootstrap_expired" "$ERR" \
+    || { echo "FAIL: missing bootstrap_expired diagnostic"; cat "$ERR"; exit 1; }
+
+# Case 7b: same input WITHOUT the expiry override still passes (the default
+# expiry is well in the future at the time this test was written).
+CHIO_BOOTSTRAP_EXPIRY="2099-01-01" \
+    assert_passes "bootstrap placeholder still valid before expiry" run_mutants_gate
+
+# Case 8 (wave-0.5 hardening): needs_real_run=true with non-1970 ran_at is
+# rejected as inconsistent_bootstrap.
+reset_fixture
+write_model_single "inconsistent_bootstrap_threat" "covered"
+write_evidence "inconsistent_bootstrap_threat" 0 true "2026-05-05T12:00:00Z"
+assert_fails "inconsistent bootstrap (real ran_at + needs_real_run) fails" run_mutants_gate
+grep -q "WEAK: inconsistent_bootstrap_threat should be marked weak_coverage; reason=inconsistent_bootstrap" "$ERR" \
+    || { echo "FAIL: missing inconsistent_bootstrap diagnostic"; cat "$ERR"; exit 1; }
+
+# Case 9 (wave-0.5 hardening): CI=true + --dry-run is rejected (exit 2).
+reset_fixture
+write_model_single "ci_dryrun_threat" "covered"
+write_evidence "ci_dryrun_threat" 1 false
+CI=true assert_fails "CI=true forbids --dry-run" run_mutants_gate --dry-run
+grep -q "dry-run is not allowed in CI" "$ERR" \
+    || { echo "FAIL: missing CI dry-run diagnostic"; cat "$ERR"; exit 1; }
 
 echo "PASS: check-threat-coverage-mutants evidence matrix"
