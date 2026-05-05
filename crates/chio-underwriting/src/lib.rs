@@ -1097,9 +1097,15 @@ fn premium_quote_for_outcome(
 }
 
 fn quote_premium_amount(exposure: &MonetaryAmount, basis_points: u32) -> MonetaryAmount {
+    // u128 keeps the intermediate multiplication exact for any u64 exposure
+    // and any u32 basis_points. The conversion back to u64 saturates so a
+    // future caller passing basis_points >= 10_000 cannot truncate silently;
+    // an overflow here surfaces as the largest representable premium and is
+    // preferred over wrap-around.
     let units = (u128::from(exposure.units) * u128::from(basis_points)).div_ceil(10_000_u128);
+    let saturated_units = u64::try_from(units).unwrap_or(u64::MAX);
     MonetaryAmount {
-        units: units as u64,
+        units: saturated_units,
         currency: exposure.currency.clone(),
     }
 }
@@ -1180,6 +1186,33 @@ fn dedupe_findings(findings: &mut Vec<UnderwritingDecisionFinding>) {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quote_premium_amount_saturates_when_basis_points_force_overflow() {
+        // Regression: a basis_points value that forces the u128
+        // intermediate above u64::MAX must saturate rather than truncate.
+        let exposure = MonetaryAmount {
+            units: u64::MAX,
+            currency: "USD".to_string(),
+        };
+        // 20_000 bps = 2x the exposure; (u64::MAX * 20000 / 10000) > u64::MAX.
+        let quoted = quote_premium_amount(&exposure, 20_000);
+        assert_eq!(quoted.units, u64::MAX);
+        assert_eq!(quoted.currency, "USD");
+    }
+
+    #[test]
+    fn quote_premium_amount_uses_ceil_for_partial_basis_points() {
+        // Ensure the div_ceil behavior is preserved: 1 unit at 1 bp must
+        // round up to 1 minor unit so a charged premium is never zero-priced
+        // when bps is non-zero.
+        let exposure = MonetaryAmount {
+            units: 1,
+            currency: "USD".to_string(),
+        };
+        let quoted = quote_premium_amount(&exposure, 1);
+        assert_eq!(quoted.units, 1);
+    }
 
     #[test]
     fn underwriting_query_requires_anchor() {

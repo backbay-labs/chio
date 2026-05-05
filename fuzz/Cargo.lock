@@ -1347,6 +1347,7 @@ dependencies = [
  "chio-openapi-mcp-bridge",
  "chio-policy",
  "chio-revocation-oracle",
+ "chio-underwriting",
  "chio-wasm-guards",
  "libfuzzer-sys",
  "openssl",

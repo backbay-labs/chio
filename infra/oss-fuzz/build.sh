@@ -35,6 +35,7 @@ TARGETS=(
     capability_receipt
     manifest_roundtrip
     federation_trust_establishment
+    underwriting_policy_input
     fuzz_policy_parse_compile
     fuzz_sql_parser
     fuzz_merkle_checkpoint

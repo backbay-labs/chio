@@ -87,3 +87,7 @@ path  = "crates/chio-revocation-oracle"
 [targets.federation_trust_establishment]
 crate = "chio-federation"
 path  = "crates/chio-federation"
+
+[targets.underwriting_policy_input]
+crate = "chio-underwriting"
+path  = "crates/chio-underwriting"
