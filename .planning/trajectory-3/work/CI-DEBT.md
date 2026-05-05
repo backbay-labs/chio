@@ -83,7 +83,7 @@ the same CI suite gates them.
 - PR #512: trajectory-3.1 wave entry. Replayed via consolidated-main anchor (see above). Original-skip-reason: auto-merged before 2026-05-03 branch protection tightening.
 - PR #513: trajectory-3.1 wave entry. Replayed via consolidated-main anchor (see above). Original-skip-reason: auto-merged before 2026-05-03 branch protection tightening.
 - PR #514: trajectory-3.1 wave entry. Replayed via consolidated-main anchor (see above). Original-skip-reason: auto-merged before 2026-05-03 branch protection tightening.
-- PR #515: trajectory-3.1 wave entry. Replayed via consolidated-main anchor (see above). Original-skip-reason: auto-merged before 2026-05-03 branch protection tightening.
+- PR #515: trajectory-3.1 wave entry. Closed unmerged; superseded by PR #523 for the `Dockerfile.tee` workspace-copy fix. Not counted as auto-merged or replay-anchored.
 - PR #516: trajectory-3.1 wave entry. Replayed via consolidated-main anchor (see above). Original-skip-reason: auto-merged before 2026-05-03 branch protection tightening.
 - PR #517: trajectory-3.1 wave entry. Replayed via consolidated-main anchor (see above). Original-skip-reason: auto-merged before 2026-05-03 branch protection tightening.
 - PR #518: trajectory-3.1 wave entry. Replayed via consolidated-main anchor (see above). Original-skip-reason: auto-merged before 2026-05-03 branch protection tightening.

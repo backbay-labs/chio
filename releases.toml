@@ -114,6 +114,7 @@ m09_hitrust_i1_readiness_package:
   trj3_1_reclassified_from: issued_certificate
   certificate_id: ""
   package_path: compliance/hitrust/readiness-package/readiness-package.md
+  package_sha256: a41918aacd4ae06a94a3b05fdb1718cece732a68c42bab7c2802cd58e20bef90
   audit_doc: .planning/trajectory-3/audits/M09-vendor-evidence.md
   scope: "Chio v3.18 plus M01 healthcare design-partner deployment (readiness scope; not assessor scope)"
   external_assessor_engagement: deferred

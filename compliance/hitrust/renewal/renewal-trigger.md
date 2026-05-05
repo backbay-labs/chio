@@ -1,12 +1,18 @@
 # HITRUST i1 Renewal Trigger
 
-**Certificate id:** HITRUST-i1-CHIO-V318-DP-2026-0502
-**Issuance date:** 2026-05-02
-**Expiration date:** 2027-05-02
-**Renewal window opens:** 2027-02-01
-**Latest renewal kickoff:** 2027-03-03
+> **Disclaimer:** This is a renewal-trigger plan tied to the
+> readiness-package draft, not to an issued HITRUST certificate. No
+> HITRUST-authorized External Assessor has performed an audit. Real
+> HITRUST i1 certification (and therefore a real renewal cadence) is a
+> trajectory-4 deliverable (M09-followup). The dates below are
+> placeholders that activate only once a real engagement begins.
+
+**Status:** placeholder (no HITRUST i1 certificate issued)
+**Target issuance date:** TODO(trajectory-4.M09-followup): pending real audit
+**Target expiration date:** TODO(trajectory-4.M09-followup): pending real audit
+**Renewal window opens:** issuance + 9 months (placeholder rule)
+**Latest renewal kickoff:** issuance + 10 months (placeholder rule)
 **Owner:** trajectory-4 compliance planning
-**Status:** filed
 
 ## Trigger Rule
 
