@@ -44,6 +44,14 @@ pub enum CoverageState {
     Covered,
     Partial,
     Pending,
+    /// A backing test file exists but mutation-testing evidence is
+    /// missing or shows zero kills, so the row is treated as
+    /// gameable until real mutants are run. The
+    /// `check-threat-coverage-mutants.sh` gate is the runtime
+    /// backstop that elevates a row from `covered` to
+    /// `weak_coverage` when its evidence file is missing or
+    /// records zero kills.
+    WeakCoverage,
 }
 
 impl CoverageState {
@@ -52,6 +60,7 @@ impl CoverageState {
             "covered" => Ok(Self::Covered),
             "partial" => Ok(Self::Partial),
             "pending" => Ok(Self::Pending),
+            "weak_coverage" => Ok(Self::WeakCoverage),
             other => Err(CodegenError::Registry(
                 source_path.to_path_buf(),
                 format!("unknown coverage_state {other:?}"),
@@ -64,6 +73,7 @@ impl CoverageState {
             Self::Covered => "Covered",
             Self::Partial => "Partial",
             Self::Pending => "Pending",
+            Self::WeakCoverage => "Weak Coverage",
         }
     }
 }
@@ -170,20 +180,30 @@ pub fn render_threat_coverage_doc(
     body.push_str(
         "Coverage states:\n\
          - `Covered` - the threat ID has a populated test body at \
-           `crates/chio-conformance/tests/threats/<id>.rs`.\n\
+           `crates/chio-conformance/tests/threats/<id>.rs` AND a \
+           mutation-testing evidence file at \
+           `audits/evidence/threats/<id>.json` recording at least \
+           one caught mutant.\n\
          - `Partial` - a backing test exists but defends only part of \
            the attack surface; the residual gap is documented in the \
            milestone audit doc that owns the partial coverage.\n\
          - `Pending` - no backing test yet; the threat-model-coverage \
            CI gate accepts the entry because it is explicitly marked \
            `pending` in the JSON, but a green test must land before \
-           the owning milestone closes.\n\n",
+           the owning milestone closes.\n\
+         - `Weak Coverage` - a backing test file exists but mutation-\
+           testing evidence is missing or shows zero kills. The row \
+           must be raised to `Covered` with real evidence under \
+           `audits/evidence/threats/<id>.json` or downgraded to \
+           `Pending` with a `deferred_to` reference before the \
+           threat-model-coverage gate accepts it.\n\n",
     );
 
     for state in [
         CoverageState::Covered,
         CoverageState::Partial,
         CoverageState::Pending,
+        CoverageState::WeakCoverage,
     ] {
         let Some(threats) = sections.get(&state) else {
             continue;
@@ -306,6 +326,10 @@ mod tests {
         assert_eq!(
             CoverageState::parse(Some("pending"), Path::new("threat-model.json")).unwrap(),
             CoverageState::Pending
+        );
+        assert_eq!(
+            CoverageState::parse(Some("weak_coverage"), Path::new("threat-model.json")).unwrap(),
+            CoverageState::WeakCoverage
         );
         assert_eq!(
             CoverageState::parse(None, Path::new("threat-model.json")).unwrap(),

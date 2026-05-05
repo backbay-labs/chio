@@ -6,10 +6,24 @@ Live gate state is tracked by `scripts/check-threat-coverage.sh`. At time of wri
 
 **Wave 4 hardening note**: 9 of the 20 covered rows currently pass the gate on file-exists + no-`unimplemented!()` alone, with weak or meta-only assertions in the backing test. Wave 4 of the trj4 closeout plan (see `/Users/connor/.claude/plans/typed-coalescing-hejlsberg.md` and `.planning/trajectory-4/TRAJECTORY-4-CLOSEOUT-ERRATUM.md`) hardens these rows by adding per-row cargo-mutants requirements and real negative-conformance bodies; the gate stays at 20 covered through that work.
 
+## Per-row cargo-mutants gate (trajectory-4 wave-0 / E0.4)
+
+The trajectory-4 closeout audit found that the original `scripts/check-threat-coverage.sh` only enforces "the threat-stub file exists and does not call `unimplemented!()`", which means a one-line `assert!(true)` body satisfies the 20/0/0 gate without exercising any defensive logic. To close that loophole, every covered row now also needs an evidence file at `audits/evidence/threats/<id>.json` recording at least one caught mutant from a recent cargo-mutants run. The runtime backstop is `scripts/check-threat-coverage-mutants.sh`, which:
+
+- reads each threat's `coveredBy` (or legacy `covered_by_tests`) cross-link list,
+- looks up the evidence file and asserts `caught >= 1`,
+- emits a `WEAK: <id> should be marked weak_coverage; reason=<missing_evidence|zero_kills|no_coveredby>` downgrade hint when the evidence is missing or empty, and
+- exits non-zero unless invoked with `--dry-run`.
+
+The schema enum gains a new `weak_coverage` state for rows whose tests exist but whose mutation-testing evidence is missing or shows zero kills; the existing `check-threat-coverage.sh` fails closed on that state with a clear message naming the row.
+
+To allow the new gate to land alongside placeholder evidence, the bootstrap files set `"needs_real_run": true` and the per-row script reports them as informational (`reason=bootstrap_placeholder`) without failing the build. Trajectory-4 wave 4 backfills real cargo-mutants results for each row and removes the `needs_real_run` flag.
+
 Coverage states:
-- `Covered` - the threat ID has a populated test body at `crates/chio-conformance/tests/threats/<id>.rs`.
+- `Covered` - the threat ID has a populated test body at `crates/chio-conformance/tests/threats/<id>.rs` AND a mutation-testing evidence file at `audits/evidence/threats/<id>.json` recording at least one caught mutant.
 - `Partial` - a backing test exists but defends only part of the attack surface; the residual gap is documented in the milestone audit doc that owns the partial coverage.
 - `Pending` - no backing test yet; the threat-model-coverage CI gate accepts the entry because it is explicitly marked `pending` in the JSON, but a green test must land before the owning milestone closes.
+- `Weak Coverage` - a backing test file exists but mutation-testing evidence is missing or shows zero kills. The row must be raised back to `Covered` with real evidence under `audits/evidence/threats/<id>.json` or downgraded to `Pending` with a `deferred_to` reference before the threat-model-coverage gate accepts it.
 
 # Covered (20)
 

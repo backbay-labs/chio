@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# Self-test for scripts/check-threat-coverage-mutants.sh.
+#
+# Owner: trajectory-4 wave-0 / E0.4.
+#
+# Exercises the four scenarios spelled out in the E0.4 plan:
+#
+#   1. A row with valid evidence (caught >= 1) PASSES.
+#   2. A row with `needs_real_run: true` produces a downgrade hint
+#      (`bootstrap_placeholder`) but does NOT fail the gate.
+#   3. A row with `coverage_state: weak_coverage` in the JSON
+#      causes `check-threat-coverage.sh` (the file-existence gate
+#      that owns enum policy) to FAIL with a clear message naming
+#      the row.
+#   4. A missing evidence file produces a downgrade hint
+#      (`missing_evidence`) and FAILS the gate (without --dry-run)
+#      while passing under --dry-run.
+#
+# We also lock in two extra invariants:
+#   - `caught: 0` without `needs_real_run` produces `zero_kills`
+#     and FAILS.
+#   - A covered row with no `coveredBy`/`covered_by_tests` produces
+#     `no_coveredby` and FAILS.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+MODEL="$TMP_DIR/threat-model.json"
+EVIDENCE_DIR="$TMP_DIR/evidence"
+STUBS="$TMP_DIR/stubs"
+OUT="$TMP_DIR/out"
+ERR="$TMP_DIR/err"
+
+reset_fixture() {
+    rm -rf "$EVIDENCE_DIR" "$STUBS"
+    mkdir -p "$EVIDENCE_DIR" "$STUBS"
+}
+
+write_model_single() {
+    # write_model_single <id> <state> [<has_coveredby>=1]
+    local id="$1"
+    local state="$2"
+    local has_coveredby="${3:-1}"
+    python3 - "$MODEL" "$id" "$state" "$has_coveredby" <<'PY'
+import json
+import sys
+
+path, threat_id, state, has_coveredby = sys.argv[1:5]
+threat = {
+    "id": threat_id,
+    "name": threat_id.replace("_", " ").title(),
+    "surfaces": ["native_chio"],
+    "coverage_state": state,
+}
+if has_coveredby == "1":
+    threat["coveredBy"] = [f"crates/chio-conformance/tests/threats/{threat_id}.rs"]
+
+with open(path, "w") as fh:
+    json.dump({"threats": [threat]}, fh)
+    fh.write("\n")
+PY
+}
+
+write_evidence() {
+    # write_evidence <id> <caught> [<needs_real_run>=false]
+    local id="$1"
+    local caught="$2"
+    local needs_real_run="${3:-false}"
+    cat > "$EVIDENCE_DIR/$id.json" <<JSON
+{
+  "caught": $caught,
+  "survivors": [],
+  "ran_at": "2026-05-05T00:00:00Z",
+  "needs_real_run": $needs_real_run
+}
+JSON
+}
+
+write_stub() {
+    local id="$1"
+    local body="$2"
+    printf '%s\n' '#[test]' "fn ${id}_stub() {" "    ${body}" '}' > "$STUBS/$id.rs"
+}
+
+run_mutants_gate() {
+    local extra_args=("$@")
+    CHIO_THREAT_MODEL_PATH="$MODEL" \
+    CHIO_THREAT_EVIDENCE_DIR="$EVIDENCE_DIR" \
+        bash "$REPO_ROOT/scripts/check-threat-coverage-mutants.sh" "${extra_args[@]}" \
+        >"$OUT" 2>"$ERR"
+}
+
+run_file_gate() {
+    CHIO_THREAT_MODEL_PATH="$MODEL" \
+    CHIO_THREAT_STUBS_DIR="$STUBS" \
+        bash "$REPO_ROOT/scripts/check-threat-coverage.sh" >"$OUT" 2>"$ERR"
+}
+
+assert_passes() {
+    local label="$1"; shift
+    if ! "$@"; then
+        echo "FAIL: expected pass for $label" >&2
+        echo "--- stdout ---" >&2
+        cat "$OUT" >&2
+        echo "--- stderr ---" >&2
+        cat "$ERR" >&2
+        exit 1
+    fi
+}
+
+assert_fails() {
+    local label="$1"; shift
+    if "$@"; then
+        echo "FAIL: expected failure for $label" >&2
+        echo "--- stdout ---" >&2
+        cat "$OUT" >&2
+        echo "--- stderr ---" >&2
+        cat "$ERR" >&2
+        exit 1
+    fi
+}
+
+# Case 1: valid evidence (caught >= 1) PASSES.
+reset_fixture
+write_model_single "valid_threat" "covered"
+write_evidence "valid_threat" 7 false
+assert_passes "valid evidence passes" run_mutants_gate
+grep -q "passed: 1" "$OUT"
+
+# Case 2: bootstrap placeholder produces hint but does NOT fail.
+reset_fixture
+write_model_single "bootstrap_threat" "covered"
+write_evidence "bootstrap_threat" 0 true
+assert_passes "bootstrap placeholder does not fail" run_mutants_gate
+grep -q "bootstrap placeholders: 1" "$OUT"
+grep -q "WEAK: bootstrap_threat should be marked weak_coverage; reason=bootstrap_placeholder" "$OUT"
+
+# Case 2b: same input, dry-run, also passes.
+assert_passes "bootstrap placeholder passes under --dry-run" run_mutants_gate --dry-run
+grep -q "bootstrap placeholders: 1" "$OUT"
+
+# Case 3: weak_coverage in JSON FAILS the file-existence gate with a
+# clear message naming the row.
+reset_fixture
+write_model_single "weak_threat" "weak_coverage"
+write_stub "weak_threat" "assert!(true);"
+assert_fails "weak_coverage state fails the file-existence gate" run_file_gate
+grep -q "weak_threat (coverage_state weak_coverage" "$ERR"
+
+# Case 4: missing evidence file produces hint and FAILS by default,
+# but PASSES under --dry-run.
+reset_fixture
+write_model_single "missing_evidence_threat" "covered"
+# Intentionally do NOT write evidence file.
+assert_fails "missing evidence fails by default" run_mutants_gate
+grep -q "WEAK: missing_evidence_threat should be marked weak_coverage; reason=missing_evidence" "$ERR"
+
+assert_passes "missing evidence passes under --dry-run" run_mutants_gate --dry-run
+grep -q "WEAK: missing_evidence_threat should be marked weak_coverage; reason=missing_evidence" "$ERR"
+
+# Case 5 (extra): caught: 0 without needs_real_run FAILS with zero_kills.
+reset_fixture
+write_model_single "zero_kills_threat" "covered"
+write_evidence "zero_kills_threat" 0 false
+assert_fails "zero kills fails the gate" run_mutants_gate
+grep -q "WEAK: zero_kills_threat should be marked weak_coverage; reason=zero_kills" "$ERR"
+
+# Case 6 (extra): no coveredBy/covered_by_tests FAILS with no_coveredby.
+reset_fixture
+write_model_single "no_coveredby_threat" "covered" 0
+# Even with valid evidence, missing coveredBy should still flag.
+write_evidence "no_coveredby_threat" 5 false
+assert_fails "no coveredBy fails the gate" run_mutants_gate
+grep -q "WEAK: no_coveredby_threat should be marked weak_coverage; reason=no_coveredby" "$ERR"
+
+echo "PASS: check-threat-coverage-mutants evidence matrix"

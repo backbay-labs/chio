@@ -1,0 +1,7 @@
+{
+  "caught": 0,
+  "needs_real_run": true,
+  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
+  "ran_at": "1970-01-01T00:00:00Z",
+  "survivors": []
+}
