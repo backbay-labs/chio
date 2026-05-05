@@ -92,7 +92,7 @@ pub fn webauthn_fixture(
     auth_data.extend_from_slice(&sha256(app_id.as_bytes()));
     auth_data.push(0x40);
     auth_data.extend_from_slice(&1_u32.to_be_bytes());
-    auth_data.extend_from_slice(&[0_u8; 16]);
+    auth_data.extend_from_slice(b"appattest\0\0\0\0\0\0\0");
     auth_data.extend_from_slice(&(credential_id.len() as u16).to_be_bytes());
     auth_data.extend_from_slice(credential_id);
     auth_data.extend_from_slice(&cose_key()?);
