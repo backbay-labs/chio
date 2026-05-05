@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::SystemTime;
 
 use chio_guard_registry::{
     expected_identity_from_config, AttestError, AttestVerifier, ExpectedIdentity,
@@ -50,6 +51,48 @@ impl AttestVerifier for BundleErrorVerifier {
             ))),
             _ => Err(AttestError::SignatureMismatch),
         }
+    }
+}
+
+struct BundleSuccessVerifier {
+    rekor_inclusion_verified: bool,
+}
+
+impl AttestVerifier for BundleSuccessVerifier {
+    fn verify_blob(
+        &self,
+        _artifact: &Path,
+        _signature: &Path,
+        _certificate: &Path,
+        _expected: &ExpectedIdentity,
+    ) -> Result<VerifiedAttestation, AttestError> {
+        Err(AttestError::Malformed("verify_blob unused".to_owned()))
+    }
+
+    fn verify_bytes(
+        &self,
+        _artifact: &[u8],
+        _signature: &[u8],
+        _certificate_pem: &[u8],
+        _expected: &ExpectedIdentity,
+    ) -> Result<VerifiedAttestation, AttestError> {
+        Err(AttestError::Malformed("verify_bytes unused".to_owned()))
+    }
+
+    fn verify_bundle(
+        &self,
+        _artifact: &[u8],
+        _bundle_json: &[u8],
+        expected: &ExpectedIdentity,
+    ) -> Result<VerifiedAttestation, AttestError> {
+        Ok(VerifiedAttestation {
+            subject_digest_sha256: [1u8; 32],
+            certificate_identity: expected.certificate_identity_regexp.clone(),
+            certificate_oidc_issuer: expected.certificate_oidc_issuer.clone(),
+            rekor_log_index: 42,
+            rekor_inclusion_verified: self.rekor_inclusion_verified,
+            signed_at: SystemTime::UNIX_EPOCH,
+        })
     }
 }
 
@@ -171,6 +214,43 @@ fn bundle_missing_rekor_and_trust_root_map_distinctly() {
         trust_root_result,
         Err(GuardRegistryError::VerifyTrustRoot)
     ));
+}
+
+#[test]
+fn bundle_admission_denies_unverified_rekor_inclusion() {
+    let expected = expected_identity();
+    let verifier = BundleSuccessVerifier {
+        rekor_inclusion_verified: false,
+    };
+
+    let result = GuardSigstoreVerifier::new(&verifier, &expected).verify_bundle(b"wasm", b"bundle");
+
+    assert!(matches!(
+        result,
+        Err(GuardRegistryError::VerifyMissingRekorProof)
+    ));
+}
+
+#[test]
+fn bundle_report_only_preserves_unverified_rekor_inclusion_bit() {
+    let expected = expected_identity();
+    let verifier = BundleSuccessVerifier {
+        rekor_inclusion_verified: false,
+    };
+
+    let attestation = match GuardSigstoreVerifier::new(&verifier, &expected)
+        .verify_bundle_report_only(b"wasm", b"bundle")
+    {
+        Ok(attestation) => attestation,
+        Err(error) => panic!("report-only Sigstore verification should preserve metadata: {error}"),
+    };
+
+    assert!(!attestation.rekor_inclusion_verified);
+    assert_eq!(attestation.rekor_log_index, 42);
+    assert_eq!(
+        attestation.certificate_oidc_issuer,
+        expected.certificate_oidc_issuer
+    );
 }
 
 #[test]
