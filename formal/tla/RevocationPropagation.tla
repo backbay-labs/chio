@@ -340,18 +340,23 @@ SafetyInv ==
 (* the propagation-lag clause in spec/PROTOCOL.md.                         *)
 (*                                                                          *)
 (* Statement (PROCS/CAPS are integer-count CONSTANTS in this module so    *)
-(* the pair-quantifier ranges over ProcSet/CapSet rather than the         *)
-(* constants directly):                                                     *)
+(* ProcSet and CapSet are finite): if any authority observes a non-zero   *)
+(* local revocation epoch, the model eventually reaches a state where     *)
+(* every authority has caught up to every observed revocation epoch.       *)
 (*                                                                          *)
-(*   For every pair of authorities (a, b) and every capability c, if a's  *)
-(*   local revocation epoch for c becomes non-zero (a has revoked, or has *)
-(*   already absorbed a Revoke message for c), then b's local revocation  *)
-(*   epoch for c eventually catches up to at least a's value.              *)
+(* The original direct form quantified over a, b, and c outside the       *)
+(* leads-to operator. Apalache 0.50.1 failed that encoding with           *)
+(* "SubstRule: Variable a$1 is not assigned a value". The named state     *)
+(* predicates below keep the same finite catch-up obligation but present  *)
+(* a single leads-to property with no temporal-bound variables.            *)
 (*                                                                          *)
 (* The leads-to (~>) operator is shorthand for                             *)
 (*   P ~> Q  ==  [](P => <>Q)                                              *)
-(* so the property reads: in every state where rev_epoch[a][c] is         *)
-(* non-zero, some later state satisfies rev_epoch[b][c] >= rev_epoch[a][c].*)
+(* so the property reads: once any revocation has been observed, some     *)
+(* later state satisfies the global catch-up predicate. The model admits  *)
+(* only finitely many Revoke actions per bounded (authority, capability)  *)
+(* pair, so this aggregate property is equivalent to the per-pair         *)
+(* eventual catch-up obligation under the weak fairness assumption below. *)
 (*                                                                          *)
 (* The property is gated on WF_vars(PropagateAny) declared in Spec above. *)
 (* Without that fairness conjunct the model admits behaviors where         *)
@@ -362,9 +367,16 @@ SafetyInv ==
 (* rev_epoch[a][c]) and is left in the quantifier rather than excluded so *)
 (* the statement matches the phase doc verbatim.                            *)
 (***************************************************************************)
-RevocationEventuallySeen ==
+AnyRevocationObserved ==
+    \E a \in ProcSet, c \in CapSet :
+        rev_epoch[a][c] # 0
+
+AllObservedRevocationsCaughtUp ==
     \A a, b \in ProcSet :
         \A c \in CapSet :
-            rev_epoch[a][c] # 0 ~> rev_epoch[b][c] >= rev_epoch[a][c]
+            rev_epoch[a][c] # 0 => rev_epoch[b][c] >= rev_epoch[a][c]
+
+RevocationEventuallySeen ==
+    AnyRevocationObserved ~> AllObservedRevocationsCaughtUp
 
 ==================================================================================

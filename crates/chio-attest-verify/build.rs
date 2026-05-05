@@ -14,7 +14,7 @@ fn main() {
             panic!(
                 "chio-attest-verify build aborted: missing embedded Sigstore \
                  trust-root file `{}`. Run the quarterly re-bake job or copy \
-                 the canonical files from sigstore-rs `trust_root/prod/`.",
+                 refreshed materials with `scripts/tuf-rebake.sh --write`.",
                 required.display()
             );
         }

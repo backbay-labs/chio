@@ -12,8 +12,9 @@
 #                     no --in-diff scope. Wall budget: <= 4 h per crate.
 #                     Uploads mutants.out/ as a workflow artifact.
 #
-# Both jobs share the 1,800 GHA runner-min/30d cap with the fuzz lanes;
-# scripts/check-fuzz-budget.sh is invoked first so the cap acts as a hard halt.
+# Both jobs share the 1,800 GHA runner-min/30d cap with the fuzz lanes.
+# mutants-pr treats the cap as a hard halt; mutants-nightly keeps an
+# advisory measurement posture so dashboard evidence continues flowing.
 #
 # Cutover rule:
 #   The lane flips after two consecutive nightly runs report >= 80 caught
@@ -145,13 +146,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
-          GH_FUZZ_BUDGET_CAP_MODE: warn
         run: |
           set -euo pipefail
           # Mutation runs share the 1,800 min/30d envelope with fuzz.
-          # PR runs use --in-diff scoping, so over-cap usage is surfaced as
-          # a warning rather than making every scoped mutation check red.
-          # Full nightly sweeps keep the hard halt.
+          # PR runs use --in-diff scoping but are still release
+          # qualification gates, so over-cap usage is a hard halt.
+          # Full nightly sweeps keep their advisory measurement posture.
           if [[ -x scripts/check-fuzz-budget.sh ]]; then
             scripts/check-fuzz-budget.sh "${{ github.repository }}"
           else

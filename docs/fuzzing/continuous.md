@@ -34,11 +34,15 @@ The continuous-fuzzing program self-caps at 1,800 min/30d for fuzz-related
 runs (200 min/month headroom for everything else). Enforcement:
 
 - `scripts/check-fuzz-budget.sh` queries the trailing-30d billed-second
-  total for `cflite_pr.yml` and `cflite_batch.yml`, sums them, and exits
-  non-zero when the sum crosses the cap.
-- The script runs as a step inside `cflite_batch.yml` so the cap acts as a
-  hard halt rather than a soft warning. Any future fuzz-budget-consuming
-  workflow must invoke the same script.
+  total for `cflite_pr.yml`, `cflite_batch.yml`, `fuzz.yml`,
+  `mutants.yml`, and `mutants-fuzz-cocoverage.yml`, sums them, and exits
+  non-zero when the sum crosses the cap unless a scheduled measurement lane
+  explicitly opts into `GH_FUZZ_BUDGET_CAP_MODE=warn`.
+- PR-time fuzz and mutation gates hard halt when the cap is crossed. These
+  gates are release qualification signals and must not run warn-only.
+- Scheduled measurement lanes may use `GH_FUZZ_BUDGET_CAP_MODE=warn` to keep
+  producing dashboard evidence after the trailing window is already over cap;
+  those workflows must document the advisory posture in the step comment.
 - Override during incident triage: `GH_FUZZ_BUDGET_MINUTES=900` (or any
   lower value) in the workflow env. Do not raise the cap above 1,800
   without re-opening the locked decision.
@@ -150,8 +154,11 @@ window and remains the documented permanent fallback after acceptance lands:
   the weekly-soak Tier-A plan was dropped along with Tier A, and OSS-Fuzz
   is the post-acceptance soak path.
 
-Both workflows invoke `scripts/check-fuzz-budget.sh` before any fuzz step
-so the 1,800 GHA min/30d cap acts as a hard halt rather than a soft warning.
+PR-time fuzz and mutation workflows invoke `scripts/check-fuzz-budget.sh`
+before any fuzz or mutation step so the 1,800 GHA min/30d cap acts as a hard
+halt rather than a soft warning. Scheduled fuzz, CFLite rotation, mutants
+nightly, and mutants fuzz-cocoverage lanes may stay warning-only when their
+purpose is measurement continuity rather than PR or release qualification.
 
 The CFLite builder image lives under `.clusterfuzzlite/`:
 
