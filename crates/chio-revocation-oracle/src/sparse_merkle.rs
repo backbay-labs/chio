@@ -53,12 +53,17 @@ impl InMemoryRevocationOracle {
     }
 
     pub fn verify_inclusion(proof: &InclusionProof) -> Result<()> {
+        let leaf_hash = Self::leaf_hash(&proof.key)?;
+        if leaf_hash != proof.leaf_hash {
+            return Err(RevocationOracleError::InvalidProof);
+        }
+
         let parsed = MerkleProof::<Sha256>::from_bytes(&proof.proof_bytes)
             .map_err(|_| RevocationOracleError::InvalidProof)?;
         let ok = parsed.verify(
             proof.epoch_root.root_hash,
             &[proof.leaf_index],
-            &[proof.leaf_hash],
+            &[leaf_hash],
             proof.epoch_root.leaf_count,
         );
         if ok {
@@ -158,7 +163,14 @@ impl RevocationOracle for InMemoryRevocationOracle {
         self.append_leaf(hash);
         self.records.insert(key, LeafRecord { index, hash });
         self.epoch = self.epoch.saturating_add(1);
-        self.issued_at_unix_ms = now_unix_ms;
+        // Clamp issued_at to a monotone non-decreasing floor. Wall-clock
+        // skew (NTP correction, leap-second roll-back) MUST NOT make a
+        // newer epoch carry an earlier `issued_at_unix_ms` than a prior
+        // one: downstream freshness caches that track "latest seen
+        // issued_at" as a replay-protection floor would otherwise accept
+        // a root issued strictly before the previous epoch as still
+        // fresh. Fail-closed on the time field by taking the max.
+        self.issued_at_unix_ms = self.issued_at_unix_ms.max(now_unix_ms);
         Ok(self.epoch_root())
     }
 
@@ -222,6 +234,22 @@ mod tests {
     }
 
     #[test]
+    fn inclusion_proof_rejects_tampered_key() -> Result<()> {
+        let mut oracle = InMemoryRevocationOracle::new();
+        let key = RevocationKey::new(SubjectId::from("subject-a"), EpochNonce::new(7));
+
+        oracle.insert(key.clone(), 10)?;
+        let mut proof = oracle.inclusion_proof(&key)?;
+        proof.key = RevocationKey::new(SubjectId::from("subject-b"), EpochNonce::new(7));
+
+        assert_eq!(
+            InMemoryRevocationOracle::verify_inclusion(&proof),
+            Err(RevocationOracleError::InvalidProof)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn non_inclusion_proof_fails_closed_after_insert() -> Result<()> {
         let mut oracle = InMemoryRevocationOracle::new();
         let key = RevocationKey::new(SubjectId::from("subject-a"), EpochNonce::new(7));
@@ -243,5 +271,33 @@ mod tests {
         let signed = oracle.signed_epoch_root(&signer)?;
 
         signed.verify(&signer)
+    }
+
+    /// Regression: clock skew backward across `insert` calls must not
+    /// decrease `issued_at_unix_ms`. A downstream cache that uses the
+    /// latest-seen `issued_at` as a freshness floor would otherwise
+    /// accept the new root (with an earlier timestamp) as still in-grace
+    /// and silently observe a torn ordering between the two epochs.
+    #[test]
+    fn issued_at_is_monotone_under_clock_skew() -> Result<()> {
+        let mut oracle = InMemoryRevocationOracle::new();
+        let key_a = RevocationKey::new(SubjectId::from("subject-a"), EpochNonce::new(1));
+        let key_b = RevocationKey::new(SubjectId::from("subject-b"), EpochNonce::new(2));
+
+        let root_one = oracle.insert(key_a, 1_000)?;
+        // Wall-clock has skewed backwards (NTP correction or leap-second
+        // roll-back). The new epoch MUST still carry a non-decreasing
+        // `issued_at_unix_ms`.
+        let root_two = oracle.insert(key_b, 500)?;
+
+        assert!(root_two.epoch > root_one.epoch);
+        assert!(
+            root_two.issued_at_unix_ms >= root_one.issued_at_unix_ms,
+            "issued_at must be monotone non-decreasing across inserts: \
+             root_one={} root_two={}",
+            root_one.issued_at_unix_ms,
+            root_two.issued_at_unix_ms,
+        );
+        Ok(())
     }
 }

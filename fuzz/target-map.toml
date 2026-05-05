@@ -247,6 +247,17 @@ triggers = [
 seeds    = "fuzz/corpus/fuzz_merkle_checkpoint"
 notes    = "Merkle tree inclusion proofs and signed checkpoint validation."
 
+[targets.revocation_oracle_merkle]
+crate    = "chio-revocation-oracle"
+path     = "fuzz/fuzz_targets/revocation_oracle_merkle.rs"
+triggers = [
+    "crates/chio-revocation-oracle/**",
+    "fuzz/fuzz_targets/revocation_oracle_merkle.rs",
+    "fuzz/corpus/revocation_oracle_merkle/**",
+]
+seeds    = "fuzz/corpus/revocation_oracle_merkle"
+notes    = "Revocation oracle sparse-Merkle insert, inclusion, and non-inclusion proof surface."
+
 [targets.fuzz_tool_action]
 crate    = "chio-guards"
 path     = "fuzz/fuzz_targets/tool_action.rs"

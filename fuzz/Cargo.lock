@@ -1353,6 +1353,7 @@ dependencies = [
  "chio-mcp-edge",
  "chio-openapi-mcp-bridge",
  "chio-policy",
+ "chio-revocation-oracle",
  "chio-wasm-guards",
  "libfuzzer-sys",
  "serde_json",
