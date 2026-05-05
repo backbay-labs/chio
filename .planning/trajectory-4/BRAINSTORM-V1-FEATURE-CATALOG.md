@@ -16,7 +16,7 @@ For ideas explicitly rejected by their proposing agent, see `REJECTED-IDEAS.md`.
 | `crates/chio-tee/` is TEE attestation | **`chio-tee/` is the streaming-tap crate**; TEE attestation lives in `chio-attest-verify` (TDX + SEV-SNP + Nitro already implemented). Naming collision worth flagging. |
 | `chio-core` is the core crate | `chio-core` is a 12-line `pub use` umbrella; `chio-core-types` (35 KLOC, 112 in-tree dependents) is the real substrate |
 
-**Execution note:** the integrated trj4 branch moved the threat gate from the planning baseline to 20 covered / 0 pending / 0 uncovered, completed the mobile verifier paths, and burned cargo-vet exemptions to the 819 -> 769 target. Keep this catalog as the idea source, not the live close-state ledger.
+**Execution note (retracted):** the integrated trj4 branch moved the threat gate from the planning baseline to 20 covered / 0 pending / 0 uncovered, landed mobile verifier paths, and burned cargo-vet exemptions to the 819 -> 769 target. The previously-recorded interpretation that this constituted closure of the underlying brainstorm IDs is retracted by [`TRAJECTORY-4-CLOSEOUT-ERRATUM.md`](./TRAJECTORY-4-CLOSEOUT-ERRATUM.md): structural framing landed but runtime wiring did not, and 9 of the 20 covered threat rows have weak or meta-only coverage. Keep this catalog as the idea source, not the live close-state ledger; the wave plan at `/Users/connor/.claude/plans/typed-coalescing-hejlsberg.md` is the close-state source of truth.
 
 ## Cross-cutting convergence
 
