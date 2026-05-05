@@ -80,12 +80,26 @@ pub fn verify_proof_bundle(
             ));
         }
         let inspection = verify_bitcoin_anchor_for_proof(&bundle.primary_proof)?;
-        let bitcoin_height = bundle
+        // The `is_some()` guard above already proved bitcoin_anchor is
+        // present, so the `.as_ref()` map is the live branch in
+        // practice; the inspection-derived fallback exists only so this
+        // expression is total without panicking on direct indexing.
+        let bitcoin_height = match bundle
             .primary_proof
             .bitcoin_anchor
             .as_ref()
             .map(|anchor| anchor.bitcoin_block_height)
-            .unwrap_or_else(|| inspection.bitcoin_attestation_heights[0]);
+        {
+            Some(height) => height,
+            None => match inspection.bitcoin_attestation_heights.first().copied() {
+                Some(height) => height,
+                None => {
+                    return Err(AnchorError::Verification(
+                        "OTS proof has no Bitcoin attestation height to record".to_string(),
+                    ));
+                }
+            },
+        };
         lanes.push(AnchorVerificationLane {
             lane: AnchorLaneKind::BitcoinOts,
             verified: true,

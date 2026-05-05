@@ -186,14 +186,20 @@ jobs:
           # --in-diff scopes mutation generation to lines changed against
           # the PR base ref. cargo-mutants 25.x reads the supplied path as
           # a unified-diff text file (not a git ref). --no-shuffle keeps
-          # reproducibility across runs; --timeout caps any single mutant
-          # under sensible wall-time per the source-doc CI shape.
+          # reproducibility across runs; --timeout leaves enough room for
+          # cold trust-boundary crate builds while the job timeout stays the
+          # outer wall-time cap. Load the focused per-crate config and keep
+          # the test scope crate-local for PR lanes; the workspace-root config
+          # is for nightly full sweeps and adds a full-workspace baseline
+          # before any scoped mutants run.
           mutants_exit=0
           cargo mutants \
+            --config "crates/${{ matrix.package }}/mutants.toml" \
             --package "${{ matrix.package }}" \
+            --test-workspace false \
             --in-diff "${{ steps.diff.outputs.diff_file }}" \
             --no-shuffle \
-            --timeout 120 \
+            --timeout 300 \
             --jobs 2 \
             --output mutants-out/${{ matrix.package }} \
             --json \
