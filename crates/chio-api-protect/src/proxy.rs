@@ -15,6 +15,7 @@ use axum::Router;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -1150,7 +1151,14 @@ fn sidecar_control_bearer_token_matches(
                 None
             }
         })
-        .is_some_and(|token| token == expected_bearer_token)
+        // Constant-time compare so callers cannot recover the configured token
+        // through response timing differences.
+        .is_some_and(|token| {
+            token
+                .as_bytes()
+                .ct_eq(expected_bearer_token.as_bytes())
+                .into()
+        })
 }
 
 fn sidecar_control_forbidden_response(remote_auth_configured: bool) -> Response {
@@ -3484,6 +3492,40 @@ paths:
             .test_unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).test_unwrap();
         assert_eq!(json["error"], "chio_control_forbidden");
+    }
+
+    #[test]
+    fn sidecar_control_bearer_token_compare_is_constant_time_safe() {
+        // Regression test: bearer-token comparison must use a constant-time
+        // primitive so callers cannot recover the configured token through
+        // response timing differences. We exercise both equal and prefix-
+        // matching tokens to confirm the byte compare path is reached.
+        let request = |header: &str| {
+            Request::builder()
+                .method("POST")
+                .uri("/v1/capabilities/mint")
+                .header("authorization", header)
+                .body(Body::empty())
+                .test_unwrap()
+        };
+
+        let configured = "cluster-control-token";
+        assert!(sidecar_control_bearer_token_matches(
+            &request(&format!("Bearer {configured}")),
+            configured,
+        ));
+        assert!(!sidecar_control_bearer_token_matches(
+            &request("Bearer cluster-control-toxen"),
+            configured,
+        ));
+        assert!(!sidecar_control_bearer_token_matches(
+            &request("Bearer cluster-control"),
+            configured,
+        ));
+        assert!(!sidecar_control_bearer_token_matches(
+            &request("Bearer "),
+            configured,
+        ));
     }
 
     #[tokio::test]
