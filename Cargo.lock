@@ -2484,6 +2484,7 @@ name = "chio-ag-ui-proxy"
 version = "0.1.0"
 dependencies = [
  "chio-core",
+ "chio-kernel-core",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
