@@ -63,6 +63,8 @@ pub enum BiddingError {
     ScopeOutsideListing,
     #[error("requested window is outside the allowed bounds")]
     WindowOutOfBounds,
+    #[error("max_total_cost overflow: advertised price * max_invocations exceeds u64")]
+    TotalCostOverflow,
 }
 
 /// A bid request issued by an agent.
@@ -293,12 +295,16 @@ pub fn bid(
                 constraints: Vec::new(),
                 max_invocations: request.body.requested_scope.max_invocations,
                 max_cost_per_invocation: Some(advertised_price.clone()),
-                max_total_cost: request.body.requested_scope.max_invocations.map(|count| {
-                    MonetaryAmount {
-                        units: advertised_price.units.saturating_mul(u64::from(count)),
+                max_total_cost: match request.body.requested_scope.max_invocations {
+                    Some(count) => Some(MonetaryAmount {
+                        units: advertised_price
+                            .units
+                            .checked_mul(u64::from(count))
+                            .ok_or(BiddingError::TotalCostOverflow)?,
                         currency: advertised_price.currency.clone(),
-                    }
-                }),
+                    }),
+                    None => None,
+                },
                 dpop_required: None,
             }],
             resource_grants: Vec::new(),

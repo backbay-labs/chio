@@ -4,6 +4,10 @@
 //! beginning, step validation, step recording, and finalization into a
 //! signed `WorkflowReceipt`.
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Mutex;
+
 use chio_core::capability::MonetaryAmount;
 use chio_core::crypto::Keypair;
 use tracing::debug;
@@ -76,6 +80,8 @@ pub struct WorkflowExecution {
     pub session_id: Option<String>,
     /// Capability ID.
     pub capability_id: String,
+    /// Whether this execution reserved capacity from a limited grant.
+    limited_execution_reserved: bool,
     /// Unix timestamp when execution started.
     pub started_at: u64,
     /// Steps completed so far.
@@ -98,6 +104,12 @@ pub struct StepExecutionRecordInput {
     pub output_hash: Option<String>,
 }
 
+#[derive(Debug, Default)]
+struct LimitedExecutionCount {
+    completed: u32,
+    in_flight: u32,
+}
+
 impl WorkflowExecution {
     /// Return the number of completed steps.
     #[must_use]
@@ -112,8 +124,15 @@ impl WorkflowExecution {
 /// Workflow authority that validates and manages skill executions.
 pub struct WorkflowAuthority {
     signing_key: Keypair,
-    /// Number of executions completed (for limit tracking).
-    execution_count: u32,
+    /// Number of workflow executions successfully started.
+    execution_count: AtomicU32,
+    /// Per-capability reservations for grants with an execution limit.
+    limited_execution_counts: Mutex<HashMap<String, LimitedExecutionCount>>,
+    /// Monotonic counter incremented on every `begin()` call. Used to
+    /// disambiguate execution ids when multiple `begin()` invocations land
+    /// in the same wall-clock second on the same authority. Stored as an
+    /// atomic so `begin()` can keep its `&self` receiver.
+    begin_counter: AtomicU64,
 }
 
 impl WorkflowAuthority {
@@ -121,7 +140,9 @@ impl WorkflowAuthority {
     pub fn new(signing_key: Keypair) -> Self {
         Self {
             signing_key,
-            execution_count: 0,
+            execution_count: AtomicU32::new(0),
+            limited_execution_counts: Mutex::new(HashMap::new()),
+            begin_counter: AtomicU64::new(0),
         }
     }
 
@@ -143,12 +164,6 @@ impl WorkflowAuthority {
             });
         }
 
-        if let Some(limit) = grant.max_executions {
-            if self.execution_count >= limit {
-                return Err(WorkflowError::ExecutionLimitReached { limit });
-            }
-        }
-
         for step in &manifest.steps {
             if !grant.authorizes_step(&step.server_id, &step.tool_name) {
                 return Err(WorkflowError::UnauthorizedStep {
@@ -158,6 +173,10 @@ impl WorkflowAuthority {
                 });
             }
         }
+
+        let limited_execution_reserved =
+            self.reserve_execution(&capability_id, grant.max_executions)?;
+        self.execution_count.fetch_add(1, Ordering::AcqRel);
 
         let budget_limit = grant
             .budget_envelope
@@ -174,13 +193,23 @@ impl WorkflowAuthority {
             "beginning workflow execution"
         );
 
+        // Mix a monotonic per-call counter and the agent id into the id so
+        // that multiple `begin()` calls within the same wall-clock second
+        // on the same authority do not collide. Receipts are downstream-
+        // keyed off this id; collisions would let one execution shadow
+        // another. We use an atomic so `begin()` can keep `&self`, and
+        // increment per call (not per finalize) so back-to-back `begin()`
+        // calls before any `finalize()` still produce distinct ids.
+        let seq = self.begin_counter.fetch_add(1, Ordering::Relaxed);
+        let id = format!("wf-{now}-{seq}-{agent_id}");
         Ok(WorkflowExecution {
-            id: format!("wf-{}", now),
+            id,
             skill_id: manifest.skill_id.clone(),
             skill_version: manifest.version.clone(),
             agent_id,
             session_id,
             capability_id,
+            limited_execution_reserved,
             started_at: now,
             step_records: Vec::new(),
             budget_spent: 0,
@@ -247,6 +276,16 @@ impl WorkflowAuthority {
             ));
         }
 
+        let step_budget_exceeded = input.cost.as_ref().and_then(|cost| {
+            step.budget_limit.as_ref().and_then(|limit| {
+                if cost.currency != limit.currency || cost.units > limit.units {
+                    Some((limit.units, cost.units, limit.currency.clone()))
+                } else {
+                    None
+                }
+            })
+        });
+
         // Track budget
         if let Some(ref c) = input.cost {
             execution.budget_spent = execution.budget_spent.saturating_add(c.units);
@@ -267,6 +306,19 @@ impl WorkflowAuthority {
         };
 
         execution.step_records.push(record);
+
+        if let Some((limit_units, spent_units, currency)) = step_budget_exceeded {
+            execution.active = false;
+            execution.budget_limit = Some(MonetaryAmount {
+                units: limit_units,
+                currency: currency.clone(),
+            });
+            return Err(WorkflowError::BudgetExceeded {
+                limit_units,
+                spent_units,
+                currency,
+            });
+        }
 
         // Check budget envelope after recording so that finalize() includes
         // the offending step in the receipt.
@@ -290,10 +342,11 @@ impl WorkflowAuthority {
 
     /// Finalize a workflow execution and produce a signed receipt.
     pub fn finalize(
-        &mut self,
+        &self,
         mut execution: WorkflowExecution,
     ) -> Result<WorkflowReceipt, WorkflowError> {
         execution.active = false;
+        let capability_id = execution.capability_id.clone();
 
         let completed_at = current_unix_secs();
         let duration_ms = completed_at
@@ -331,21 +384,58 @@ impl WorkflowAuthority {
         let receipt = WorkflowReceipt::sign(body, &self.signing_key)
             .map_err(|e| WorkflowError::SigningFailed(e.to_string()))?;
 
-        self.execution_count = self.execution_count.saturating_add(1);
-
         debug!(
             receipt_id = %receipt.id,
             skill_id = %receipt.skill_id,
             "workflow receipt signed"
         );
 
+        if execution.limited_execution_reserved {
+            self.complete_execution(&capability_id)?;
+        }
+
         Ok(receipt)
     }
 
-    /// Return the number of completed executions.
+    /// Return the number of workflow executions successfully started.
     #[must_use]
     pub fn execution_count(&self) -> u32 {
-        self.execution_count
+        self.execution_count.load(Ordering::Acquire)
+    }
+
+    fn reserve_execution(
+        &self,
+        capability_id: &str,
+        max_executions: Option<u32>,
+    ) -> Result<bool, WorkflowError> {
+        let Some(limit) = max_executions else {
+            return Ok(false);
+        };
+        let mut counts = self
+            .limited_execution_counts
+            .lock()
+            .map_err(|_| WorkflowError::InvalidState("execution counters are poisoned".into()))?;
+        let count = counts.entry(capability_id.to_string()).or_default();
+        if count.completed.saturating_add(count.in_flight) >= limit {
+            return Err(WorkflowError::ExecutionLimitReached { limit });
+        }
+        count.in_flight = count.in_flight.saturating_add(1);
+        Ok(true)
+    }
+
+    fn complete_execution(&self, capability_id: &str) -> Result<(), WorkflowError> {
+        let mut counts = self
+            .limited_execution_counts
+            .lock()
+            .map_err(|_| WorkflowError::InvalidState("execution counters are poisoned".into()))?;
+        let Some(count) = counts.get_mut(capability_id) else {
+            return Ok(());
+        };
+        if count.in_flight > 0 {
+            count.in_flight = count.in_flight.saturating_sub(1);
+        }
+        count.completed = count.completed.saturating_add(1);
+        Ok(())
     }
 }
 
@@ -457,7 +547,7 @@ mod tests {
     fn successful_workflow_execution() {
         let manifest = make_manifest();
         let grant = make_grant();
-        let mut authority = WorkflowAuthority::new(Keypair::generate());
+        let authority = WorkflowAuthority::new(Keypair::generate());
 
         let mut execution = authority
             .begin(
@@ -623,6 +713,67 @@ mod tests {
     }
 
     #[test]
+    fn step_budget_limit_is_enforced_when_recording_step_cost() {
+        let mut manifest = make_manifest();
+        manifest.steps[0].budget_limit = Some(MonetaryAmount {
+            units: 25,
+            currency: "USD".to_string(),
+        });
+        let mut grant = make_grant();
+        grant.budget_envelope = Some(MonetaryAmount {
+            units: 1_000,
+            currency: "USD".to_string(),
+        });
+
+        let authority = WorkflowAuthority::new(Keypair::generate());
+        let mut execution = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+
+        let result = authority.record_step(
+            &mut execution,
+            &manifest.steps[0],
+            StepExecutionRecordInput {
+                outcome: StepOutcome::Success,
+                duration_ms: 100,
+                cost: Some(MonetaryAmount {
+                    units: 50,
+                    currency: "USD".to_string(),
+                }),
+                tool_receipt_id: None,
+                output_hash: None,
+            },
+        );
+
+        assert!(matches!(
+            result,
+            Err(WorkflowError::BudgetExceeded {
+                limit_units: 25,
+                spent_units: 50,
+                ..
+            })
+        ));
+        assert_eq!(execution.step_records.len(), 1);
+        assert!(!execution.active);
+
+        let receipt = authority.finalize(execution).unwrap();
+        assert!(matches!(
+            receipt.outcome,
+            WorkflowOutcome::BudgetExceeded {
+                limit_units: 25,
+                spent_units: 50,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn step_order_enforcement() {
         let manifest = make_manifest();
         let grant = make_grant();
@@ -705,7 +856,7 @@ mod tests {
             "1.0.0".to_string(),
             vec!["srv:tool".to_string()],
         );
-        let mut authority = WorkflowAuthority::new(Keypair::generate());
+        let authority = WorkflowAuthority::new(Keypair::generate());
 
         let mut execution = authority
             .begin(
@@ -741,7 +892,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_limit_reached() {
+    fn execution_limit_denies_reuse_after_finalize() {
         let manifest = SkillManifest::new(
             "limited".to_string(),
             "1.0.0".to_string(),
@@ -765,7 +916,7 @@ mod tests {
         );
         grant.max_executions = Some(1);
 
-        let mut authority = WorkflowAuthority::new(Keypair::generate());
+        let authority = WorkflowAuthority::new(Keypair::generate());
 
         // First execution should work
         let mut execution = authority
@@ -786,12 +937,206 @@ mod tests {
             .unwrap();
         authority.finalize(execution).unwrap();
 
-        // Second execution should be rejected
+        // Finalize completes the lifetime execution, so reuse is denied.
         let result = authority.begin(&manifest, &grant, "a".to_string(), "c".to_string(), None);
         assert!(matches!(
             result,
             Err(WorkflowError::ExecutionLimitReached { .. })
         ));
+    }
+
+    #[test]
+    fn execution_limit_reserved_at_begin() {
+        let manifest = SkillManifest::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            "Limited".to_string(),
+            vec![SkillStep {
+                index: 0,
+                server_id: "srv".to_string(),
+                tool_name: "tool".to_string(),
+                label: None,
+                input_contract: None,
+                output_contract: None,
+                budget_limit: None,
+                retryable: false,
+                max_retries: None,
+            }],
+        );
+        let mut grant = SkillGrant::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            vec!["srv:tool".to_string()],
+        );
+        grant.max_executions = Some(1);
+
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let _execution = authority
+            .begin(&manifest, &grant, "a".to_string(), "c".to_string(), None)
+            .unwrap();
+
+        let result = authority.begin(&manifest, &grant, "a".to_string(), "c".to_string(), None);
+        assert!(
+            matches!(result, Err(WorkflowError::ExecutionLimitReached { .. })),
+            "limit must be consumed when begin starts, not only after finalize"
+        );
+    }
+
+    #[test]
+    fn execution_limit_tracks_completed_and_in_flight_executions() {
+        let manifest = SkillManifest::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            "Limited".to_string(),
+            vec![SkillStep {
+                index: 0,
+                server_id: "srv".to_string(),
+                tool_name: "tool".to_string(),
+                label: None,
+                input_contract: None,
+                output_contract: None,
+                budget_limit: None,
+                retryable: false,
+                max_retries: None,
+            }],
+        );
+        let mut grant = SkillGrant::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            vec!["srv:tool".to_string()],
+        );
+        grant.max_executions = Some(2);
+
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let execution = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-a".to_string(),
+                "cap-reused".to_string(),
+                None,
+            )
+            .unwrap();
+
+        let execution_2 = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-b".to_string(),
+                "cap-reused".to_string(),
+                None,
+            )
+            .unwrap();
+
+        let blocked = authority.begin(
+            &manifest,
+            &grant,
+            "agent-c".to_string(),
+            "cap-reused".to_string(),
+            None,
+        );
+        assert!(matches!(
+            blocked,
+            Err(WorkflowError::ExecutionLimitReached { .. })
+        ));
+
+        authority.finalize(execution).unwrap();
+
+        let still_blocked = authority.begin(
+            &manifest,
+            &grant,
+            "agent-d".to_string(),
+            "cap-reused".to_string(),
+            None,
+        );
+        assert!(matches!(
+            still_blocked,
+            Err(WorkflowError::ExecutionLimitReached { .. })
+        ));
+
+        authority.finalize(execution_2).unwrap();
+
+        let exhausted = authority.begin(
+            &manifest,
+            &grant,
+            "agent-e".to_string(),
+            "cap-reused".to_string(),
+            None,
+        );
+        assert!(matches!(
+            exhausted,
+            Err(WorkflowError::ExecutionLimitReached { .. })
+        ));
+    }
+
+    #[test]
+    fn unlimited_finalize_does_not_release_limited_reservation() {
+        let manifest = SkillManifest::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            "Limited".to_string(),
+            vec![SkillStep {
+                index: 0,
+                server_id: "srv".to_string(),
+                tool_name: "tool".to_string(),
+                label: None,
+                input_contract: None,
+                output_contract: None,
+                budget_limit: None,
+                retryable: false,
+                max_retries: None,
+            }],
+        );
+        let unlimited_grant = SkillGrant::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            vec!["srv:tool".to_string()],
+        );
+        let mut limited_grant = SkillGrant::new(
+            "limited".to_string(),
+            "1.0.0".to_string(),
+            vec!["srv:tool".to_string()],
+        );
+        limited_grant.max_executions = Some(1);
+
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let unlimited_execution = authority
+            .begin(
+                &manifest,
+                &unlimited_grant,
+                "agent-a".to_string(),
+                "cap-shared".to_string(),
+                None,
+            )
+            .unwrap();
+
+        authority
+            .begin(
+                &manifest,
+                &limited_grant,
+                "agent-b".to_string(),
+                "cap-shared".to_string(),
+                None,
+            )
+            .unwrap();
+
+        authority.finalize(unlimited_execution).unwrap();
+
+        let result = authority.begin(
+            &manifest,
+            &limited_grant,
+            "agent-b".to_string(),
+            "cap-shared".to_string(),
+            None,
+        );
+        assert!(matches!(
+            result,
+            Err(WorkflowError::ExecutionLimitReached { .. })
+        ));
+        assert_eq!(authority.execution_count(), 2);
     }
 
     #[test]
@@ -915,5 +1260,98 @@ mod tests {
             .unwrap();
 
         assert!(!execution.active);
+    }
+
+    #[test]
+    fn execution_ids_do_not_collide_within_a_single_second() {
+        // Regression: `begin()` previously formatted the id as `wf-<now>`
+        // with second resolution. Two `begin()` calls in the same second on
+        // the same authority would collide and produce shadowed receipts.
+        let manifest = make_manifest();
+        let grant = make_grant();
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let exec_a = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+        // Finalize to bump the execution counter without invoking the
+        // sleep that would otherwise change `now`.
+        let _ = authority.finalize(exec_a).unwrap();
+
+        let exec_b = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-2".to_string(),
+                None,
+            )
+            .unwrap();
+        let exec_c = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-2".to_string(),
+                "cap-3".to_string(),
+                None,
+            )
+            .unwrap();
+
+        assert_ne!(
+            exec_b.id, exec_c.id,
+            "executions started in the same second must not share an id"
+        );
+    }
+
+    #[test]
+    fn rapid_begin_calls_produce_distinct_ids_for_same_agent() {
+        // Regression: with the previous fix, the id mixed in `execution_count`
+        // (only incremented in `finalize()`) plus the agent id. Two back-to-
+        // back `begin()` calls for the same agent within one second, with no
+        // intervening `finalize()`, would still collide because both `now`
+        // and `execution_count` were unchanged. The atomic per-call counter
+        // ensures every `begin()` produces a fresh id regardless of finalize
+        // ordering.
+        let manifest = make_manifest();
+        let grant = make_grant();
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let exec_a = authority
+            .begin(
+                &manifest,
+                &grant,
+                "same-agent".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+        let exec_b = authority
+            .begin(
+                &manifest,
+                &grant,
+                "same-agent".to_string(),
+                "cap-2".to_string(),
+                None,
+            )
+            .unwrap();
+        let exec_c = authority
+            .begin(
+                &manifest,
+                &grant,
+                "same-agent".to_string(),
+                "cap-3".to_string(),
+                None,
+            )
+            .unwrap();
+
+        assert_ne!(exec_a.id, exec_b.id);
+        assert_ne!(exec_b.id, exec_c.id);
+        assert_ne!(exec_a.id, exec_c.id);
     }
 }

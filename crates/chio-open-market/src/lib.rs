@@ -12,14 +12,15 @@ pub use bidding::{
 use serde::{Deserialize, Serialize};
 
 use crate::capability::MonetaryAmount;
-use crate::crypto::sha256_hex;
+use crate::crypto::{sha256_hex, PublicKey};
 use crate::governance::{
     GenericGovernanceCaseKind, GenericGovernanceCaseState, SignedGenericGovernanceCase,
     SignedGenericGovernanceCharter,
 };
 use crate::listing::{
-    normalize_namespace, GenericListingActorKind, GenericRegistryPublisher,
-    GenericTrustAdmissionClass, SignedGenericListing, SignedGenericTrustActivation,
+    ensure_generic_listing_signed_by_namespace_owner, normalize_namespace, GenericListingActorKind,
+    GenericRegistryPublisher, GenericTrustAdmissionClass, SignedGenericListing,
+    SignedGenericTrustActivation,
 };
 use crate::receipt::SignedExportEnvelope;
 
@@ -500,8 +501,24 @@ pub fn build_open_market_penalty_artifact(
     local_operator_id: &str,
     request: &OpenMarketPenaltyIssueRequest,
     issued_at: u64,
+    trusted_local_operator_signer: &PublicKey,
+) -> Result<OpenMarketPenaltyArtifact, String> {
+    build_open_market_penalty_artifact_with_trusted_signers(
+        local_operator_id,
+        request,
+        issued_at,
+        std::slice::from_ref(trusted_local_operator_signer),
+    )
+}
+
+pub fn build_open_market_penalty_artifact_with_trusted_signers(
+    local_operator_id: &str,
+    request: &OpenMarketPenaltyIssueRequest,
+    issued_at: u64,
+    trusted_local_operator_signers: &[PublicKey],
 ) -> Result<OpenMarketPenaltyArtifact, String> {
     request.validate()?;
+    ensure_open_market_issue_authority_signers(request, trusted_local_operator_signers)?;
     validate_non_empty(local_operator_id, "local_operator_id")?;
     if request.fee_schedule.body.governing_operator_id != local_operator_id
         || request.charter.body.governing_operator_id != local_operator_id
@@ -575,6 +592,19 @@ pub fn build_open_market_penalty_artifact(
 pub fn evaluate_open_market_penalty(
     request: &OpenMarketPenaltyEvaluationRequest,
     now: u64,
+    trusted_local_operator_signer: &PublicKey,
+) -> Result<OpenMarketPenaltyEvaluation, String> {
+    evaluate_open_market_penalty_with_trusted_signers(
+        request,
+        now,
+        std::slice::from_ref(trusted_local_operator_signer),
+    )
+}
+
+pub fn evaluate_open_market_penalty_with_trusted_signers(
+    request: &OpenMarketPenaltyEvaluationRequest,
+    now: u64,
+    trusted_local_operator_signers: &[PublicKey],
 ) -> Result<OpenMarketPenaltyEvaluation, String> {
     request.validate()?;
     let evaluated_at = request.evaluated_at.unwrap_or(now);
@@ -645,6 +675,17 @@ pub fn evaluate_open_market_penalty(
                 Some(&request.fee_schedule.body),
             ));
         }
+    }
+    if let Err(error) =
+        ensure_open_market_evaluation_authority_signers(request, trusted_local_operator_signers)
+    {
+        return Ok(open_market_failure(
+            request,
+            evaluated_at,
+            OpenMarketFindingCode::GovernanceCaseAuthorityInvalid,
+            &error,
+            Some(&request.fee_schedule.body),
+        ));
     }
 
     let listing = &request.listing.body;
@@ -1000,14 +1041,7 @@ fn open_market_failure(
 }
 
 fn verify_signed_listing(listing: &SignedGenericListing, label: &str) -> Result<(), String> {
-    listing.body.validate()?;
-    if !listing
-        .verify_signature()
-        .map_err(|error| error.to_string())?
-    {
-        return Err(format!("{label} signature is invalid"));
-    }
-    Ok(())
+    ensure_generic_listing_signed_by_namespace_owner(listing, label)
 }
 
 fn verify_signed_activation(activation: &SignedGenericTrustActivation) -> Result<(), String> {
@@ -1058,6 +1092,68 @@ fn verify_signed_penalty(penalty: &SignedOpenMarketPenalty) -> Result<(), String
         .map_err(|error| error.to_string())?
     {
         return Err("penalty signature is invalid".to_string());
+    }
+    Ok(())
+}
+
+fn ensure_open_market_issue_authority_signers(
+    request: &OpenMarketPenaltyIssueRequest,
+    trusted_signers: &[PublicKey],
+) -> Result<(), String> {
+    ensure_matching_signer_key(
+        "open-market fee schedule",
+        &request.fee_schedule.signer_key,
+        trusted_signers,
+    )?;
+    ensure_matching_signer_key(
+        "governance charter",
+        &request.charter.signer_key,
+        trusted_signers,
+    )?;
+    ensure_matching_signer_key("governance case", &request.case.signer_key, trusted_signers)?;
+    if let Some(activation) = request.activation.as_ref() {
+        ensure_matching_signer_key("trust activation", &activation.signer_key, trusted_signers)?;
+    }
+    Ok(())
+}
+
+fn ensure_open_market_evaluation_authority_signers(
+    request: &OpenMarketPenaltyEvaluationRequest,
+    trusted_signers: &[PublicKey],
+) -> Result<(), String> {
+    ensure_matching_signer_key(
+        "open-market fee schedule",
+        &request.fee_schedule.signer_key,
+        trusted_signers,
+    )?;
+    ensure_matching_signer_key(
+        "governance charter",
+        &request.charter.signer_key,
+        trusted_signers,
+    )?;
+    ensure_matching_signer_key("governance case", &request.case.signer_key, trusted_signers)?;
+    ensure_matching_signer_key("penalty", &request.penalty.signer_key, trusted_signers)?;
+    if let Some(activation) = request.activation.as_ref() {
+        ensure_matching_signer_key("trust activation", &activation.signer_key, trusted_signers)?;
+    }
+    if let Some(prior_penalty) = request.prior_penalty.as_ref() {
+        ensure_matching_signer_key("prior penalty", &prior_penalty.signer_key, trusted_signers)?;
+    }
+    Ok(())
+}
+
+fn ensure_matching_signer_key(
+    label: &str,
+    signer_key: &PublicKey,
+    trusted_signers: &[PublicKey],
+) -> Result<(), String> {
+    if !trusted_signers
+        .iter()
+        .any(|trusted_signer| trusted_signer == signer_key)
+    {
+        return Err(format!(
+            "{label} signer does not match a trusted open-market governing authority signer"
+        ));
     }
     Ok(())
 }
@@ -1424,6 +1520,7 @@ mod tests {
                 note: None,
             },
             204,
+            &signing_keypair.public_key(),
         )
         .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
@@ -1442,6 +1539,7 @@ mod tests {
                 evaluated_at: Some(205),
             },
             205,
+            &signing_keypair.public_key(),
         )
         .test_expect("evaluate open market");
 
@@ -1467,6 +1565,37 @@ mod tests {
                 .bond_class,
             OpenMarketBondClass::Listing
         );
+    }
+
+    #[test]
+    fn open_market_penalty_issue_accepts_rotated_trusted_authority_signers() {
+        let previous_keypair = Keypair::from_seed(&[7_u8; 32]);
+        let current_keypair = Keypair::from_seed(&[8_u8; 32]);
+        let owner_id = "https://registry.chio.example";
+        let listing = sample_listing(owner_id, &previous_keypair);
+        let activation = sample_activation(owner_id, &current_keypair, &listing);
+        let charter = sample_charter(owner_id, &current_keypair);
+        let governance_case =
+            sample_sanction_case(owner_id, &current_keypair, &listing, &activation, &charter);
+        let fee_schedule = sample_fee_schedule(owner_id, &previous_keypair);
+        let request = sample_penalty_issue_request(
+            owner_id,
+            fee_schedule,
+            charter,
+            governance_case,
+            listing,
+            Some(activation),
+        );
+
+        let artifact = build_open_market_penalty_artifact_with_trusted_signers(
+            owner_id,
+            &request,
+            204,
+            &[previous_keypair.public_key(), current_keypair.public_key()],
+        )
+        .test_expect("rotated trusted signer set should issue penalty");
+
+        assert_eq!(artifact.governing_operator_id, owner_id);
     }
 
     #[test]
@@ -1513,6 +1642,7 @@ mod tests {
                 note: None,
             },
             204,
+            &signing_keypair.public_key(),
         )
         .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
@@ -1531,6 +1661,7 @@ mod tests {
                 evaluated_at: Some(205),
             },
             205,
+            &signing_keypair.public_key(),
         )
         .test_expect("evaluate open market");
 
@@ -1623,6 +1754,7 @@ mod tests {
                 note: None,
             },
             204,
+            &signing_keypair.public_key(),
         )
         .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
@@ -1641,6 +1773,7 @@ mod tests {
                 evaluated_at: Some(205),
             },
             205,
+            &signing_keypair.public_key(),
         )
         .test_expect("evaluate open market");
 
@@ -1661,7 +1794,7 @@ mod tests {
         forged_activation_body.local_operator_id = "https://remote.chio.example".to_string();
         forged_activation_body.local_operator_name = Some("Remote Operator".to_string());
         let forged_activation =
-            SignedGenericTrustActivation::sign(forged_activation_body, &Keypair::generate())
+            SignedGenericTrustActivation::sign(forged_activation_body, &signing_keypair)
                 .test_expect("sign forged activation");
         let charter = sample_charter(owner_id, &signing_keypair);
         let governance_case =
@@ -1699,6 +1832,7 @@ mod tests {
                 note: None,
             },
             204,
+            &signing_keypair.public_key(),
         )
         .test_expect_err("non-local activation authority rejected");
         assert!(error.contains("issued by the governing operator"));
@@ -1745,6 +1879,7 @@ mod tests {
                 note: None,
             },
             204,
+            &signing_keypair.public_key(),
         )
         .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
@@ -1753,7 +1888,7 @@ mod tests {
         forged_activation_body.local_operator_id = "https://remote.chio.example".to_string();
         forged_activation_body.local_operator_name = Some("Remote Operator".to_string());
         let forged_activation =
-            SignedGenericTrustActivation::sign(forged_activation_body, &Keypair::generate())
+            SignedGenericTrustActivation::sign(forged_activation_body, &signing_keypair)
                 .test_expect("sign forged activation");
 
         let evaluation = evaluate_open_market_penalty(
@@ -1769,6 +1904,7 @@ mod tests {
                 evaluated_at: Some(205),
             },
             205,
+            &signing_keypair.public_key(),
         )
         .test_expect("evaluate open market");
 
@@ -1943,6 +2079,41 @@ mod tests {
     }
 
     #[test]
+    fn open_market_penalty_issue_request_rejects_mismatched_authority_signer() {
+        let signing_keypair = Keypair::from_seed(&[7_u8; 32]);
+        let attacker_keypair = Keypair::from_seed(&[8_u8; 32]);
+        let owner_id = "https://registry.chio.example";
+        let listing = sample_listing(owner_id, &signing_keypair);
+        let activation = sample_activation(owner_id, &signing_keypair, &listing);
+        let charter = sample_charter(owner_id, &signing_keypair);
+        let governance_case =
+            sample_sanction_case(owner_id, &signing_keypair, &listing, &activation, &charter);
+        let forged_charter =
+            SignedGenericGovernanceCharter::sign(charter.body.clone(), &attacker_keypair)
+                .test_expect("sign forged charter");
+        let fee_schedule = sample_fee_schedule(owner_id, &signing_keypair);
+
+        let request = sample_penalty_issue_request(
+            owner_id,
+            fee_schedule,
+            forged_charter,
+            governance_case,
+            listing,
+            Some(activation),
+        );
+
+        let error = build_open_market_penalty_artifact(
+            owner_id,
+            &request,
+            204,
+            &signing_keypair.public_key(),
+        )
+        .test_expect_err("mismatched governing signer rejected");
+
+        assert!(error.contains("governing authority signer"));
+    }
+
+    #[test]
     fn build_open_market_fee_schedule_artifact_uses_request_issued_at() {
         let owner_id = "https://registry.chio.example";
         let mut request = OpenMarketFeeScheduleIssueRequest {
@@ -2022,6 +2193,7 @@ mod tests {
                 Some(activation.clone()),
             ),
             204,
+            &signing_keypair.public_key(),
         )
         .test_expect("build penalty");
         let penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &signing_keypair)
@@ -2042,6 +2214,7 @@ mod tests {
                 evaluated_at: Some(205),
             },
             205,
+            &signing_keypair.public_key(),
         )
         .test_expect("evaluate open market");
 
@@ -2049,5 +2222,60 @@ mod tests {
             evaluation.findings[0].code,
             OpenMarketFindingCode::PenaltyUnverifiable
         );
+    }
+
+    #[test]
+    fn open_market_evaluation_rejects_mismatched_authority_signer() {
+        let signing_keypair = Keypair::from_seed(&[7_u8; 32]);
+        let attacker_keypair = Keypair::from_seed(&[8_u8; 32]);
+        let owner_id = "https://registry.chio.example";
+        let listing = sample_listing(owner_id, &signing_keypair);
+        let activation = sample_activation(owner_id, &signing_keypair, &listing);
+        let charter = sample_charter(owner_id, &signing_keypair);
+        let governance_case =
+            sample_sanction_case(owner_id, &signing_keypair, &listing, &activation, &charter);
+        let fee_schedule = sample_fee_schedule(owner_id, &signing_keypair);
+        let penalty_artifact = build_open_market_penalty_artifact(
+            owner_id,
+            &sample_penalty_issue_request(
+                owner_id,
+                fee_schedule.clone(),
+                charter.clone(),
+                governance_case.clone(),
+                listing.clone(),
+                Some(activation.clone()),
+            ),
+            204,
+            &signing_keypair.public_key(),
+        )
+        .test_expect("build penalty");
+        let forged_penalty = SignedOpenMarketPenalty::sign(penalty_artifact, &attacker_keypair)
+            .test_expect("sign forged penalty");
+
+        let evaluation = evaluate_open_market_penalty(
+            &OpenMarketPenaltyEvaluationRequest {
+                fee_schedule,
+                listing,
+                current_publisher: sample_publisher(owner_id),
+                activation: Some(activation),
+                charter,
+                case: governance_case,
+                penalty: forged_penalty,
+                prior_penalty: None,
+                evaluated_at: Some(205),
+            },
+            205,
+            &signing_keypair.public_key(),
+        )
+        .test_expect("evaluate open market");
+
+        assert_eq!(evaluation.findings.len(), 1);
+        assert_eq!(
+            evaluation.findings[0].code,
+            OpenMarketFindingCode::GovernanceCaseAuthorityInvalid
+        );
+        assert!(evaluation.findings[0]
+            .message
+            .contains("governing authority signer"));
     }
 }

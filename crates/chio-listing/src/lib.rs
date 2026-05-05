@@ -704,14 +704,10 @@ pub struct GenericTrustActivationIssueRequest {
 
 impl GenericTrustActivationIssueRequest {
     pub fn validate(&self) -> Result<(), String> {
-        self.listing.body.validate()?;
-        if !self
-            .listing
-            .verify_signature()
-            .map_err(|error| error.to_string())?
-        {
-            return Err("trust activation listing signature is invalid".to_string());
-        }
+        ensure_generic_listing_signed_by_namespace_owner(
+            &self.listing,
+            "trust activation listing",
+        )?;
         self.review_context.validate()?;
         self.eligibility.validate(self.admission_class)?;
         validate_non_empty(&self.requested_by, "requested_by")?;
@@ -830,6 +826,7 @@ pub fn build_generic_trust_activation_artifact(
 pub fn evaluate_generic_trust_activation(
     request: &GenericTrustActivationEvaluationRequest,
     now: u64,
+    trusted_local_operator_signer: &PublicKey,
 ) -> Result<GenericTrustActivationEvaluation, String> {
     request.validate()?;
     let mut evaluation = GenericTrustActivationEvaluation {
@@ -843,14 +840,13 @@ pub fn evaluate_generic_trust_activation(
         findings: Vec::new(),
     };
 
-    if !request
-        .listing
-        .verify_signature()
-        .map_err(|error| error.to_string())?
-    {
+    if let Err(error) = ensure_generic_listing_signed_by_namespace_owner(
+        &request.listing,
+        "trust activation listing",
+    ) {
         evaluation.findings.push(GenericTrustActivationFinding {
             code: GenericTrustActivationFindingCode::ListingUnverifiable,
-            message: "listing signature is invalid".to_string(),
+            message: error,
         });
         return Ok(evaluation);
     }
@@ -871,6 +867,13 @@ pub fn evaluate_generic_trust_activation(
         evaluation.findings.push(GenericTrustActivationFinding {
             code: GenericTrustActivationFindingCode::ActivationUnverifiable,
             message: "trust activation signature is invalid".to_string(),
+        });
+        return Ok(evaluation);
+    }
+    if activation.signer_key != *trusted_local_operator_signer {
+        evaluation.findings.push(GenericTrustActivationFinding {
+            code: GenericTrustActivationFindingCode::ActivationUnverifiable,
+            message: "trust activation signer is not trusted by this local operator".to_string(),
         });
         return Ok(evaluation);
     }
@@ -1065,6 +1068,25 @@ fn generic_listing_body_sha256(listing: &SignedGenericListing) -> Result<String,
     Ok(sha256_hex(
         &canonical_json_bytes(&listing.body).map_err(|error| error.to_string())?,
     ))
+}
+
+pub fn ensure_generic_listing_signed_by_namespace_owner(
+    listing: &SignedGenericListing,
+    label: &str,
+) -> Result<(), String> {
+    listing.body.validate()?;
+    if !listing
+        .verify_signature()
+        .map_err(|error| error.to_string())?
+    {
+        return Err(format!("{label} signature is invalid"));
+    }
+    if listing.signer_key != listing.body.namespace_ownership.signer_public_key {
+        return Err(format!(
+            "{label} signer does not match the declared namespace ownership signer"
+        ));
+    }
+    Ok(())
 }
 
 pub fn ensure_generic_listing_namespace_consistency<'a>(
@@ -1344,6 +1366,12 @@ fn validate_generic_listing_report(report: &GenericListingReport) -> Result<(), 
                 listing.body.listing_id
             ));
         }
+        if listing.signer_key != listing.body.namespace_ownership.signer_public_key {
+            return Err(format!(
+                "listing `{}` signer does not match the declared namespace ownership signer",
+                listing.body.listing_id
+            ));
+        }
         if normalize_namespace(&listing.body.namespace)
             != normalize_namespace(&report.namespace.namespace)
         {
@@ -1618,7 +1646,7 @@ mod tests {
         admission_class: GenericTrustAdmissionClass,
         disposition: GenericTrustActivationDisposition,
     ) -> SignedGenericTrustActivation {
-        let authority_keypair = Keypair::generate();
+        let authority_keypair = sample_authority_keypair();
         let artifact = require_ok(
             build_generic_trust_activation_artifact(
                 "https://operator.chio.example",
@@ -1632,6 +1660,10 @@ mod tests {
             SignedGenericTrustActivation::sign(artifact, &authority_keypair),
             "sign activation",
         )
+    }
+
+    fn sample_authority_keypair() -> Keypair {
+        Keypair::from_seed(&[42_u8; 32])
     }
 
     fn evaluation_request(
@@ -1991,6 +2023,34 @@ mod tests {
     }
 
     #[test]
+    fn generic_trust_activation_issue_request_rejects_listing_signer_mismatch() {
+        let namespace_keypair = Keypair::generate();
+        let attacker_keypair = Keypair::generate();
+        let listing = require_ok(
+            SignedGenericListing::sign(
+                sample_listing(
+                    "https://registry.chio.example",
+                    &namespace_keypair,
+                    "artifact-1",
+                    "deadbeef",
+                ),
+                &attacker_keypair,
+            ),
+            "sign listing with mismatched signer",
+        );
+        let request = issue_request_for(
+            listing,
+            GenericTrustAdmissionClass::Reviewable,
+            GenericTrustActivationDisposition::Approved,
+        );
+
+        assert!(
+            require_err(request.validate(), "listing signer mismatch rejected")
+                .contains("namespace ownership signer")
+        );
+    }
+
+    #[test]
     fn build_generic_trust_activation_artifact_defaults_reviewed_at_for_approved() {
         let signing_keypair = Keypair::generate();
         let listing = signed_sample_listing(
@@ -2180,6 +2240,7 @@ mod tests {
     #[test]
     fn generic_trust_activation_requires_explicit_artifact() {
         let signing_keypair = Keypair::generate();
+        let authority_keypair = sample_authority_keypair();
         let listing = signed_sample_listing(
             "https://registry.chio.example",
             &signing_keypair,
@@ -2205,6 +2266,7 @@ mod tests {
                     evaluated_at: Some(150),
                 },
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate missing activation",
         );
@@ -2264,6 +2326,7 @@ mod tests {
                     evaluated_at: Some(150),
                 },
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate activation",
         );
@@ -2323,6 +2386,7 @@ mod tests {
                     evaluated_at: Some(700),
                 },
                 700,
+                &authority_keypair.public_key(),
             ),
             "evaluate stale listing",
         );
@@ -2381,6 +2445,7 @@ mod tests {
                     evaluated_at: Some(150),
                 },
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate public_untrusted",
         );
@@ -2394,6 +2459,7 @@ mod tests {
     #[test]
     fn generic_trust_activation_flags_unverifiable_listing_signature() {
         let signing_keypair = Keypair::generate();
+        let authority_keypair = sample_authority_keypair();
         let mut listing = signed_sample_listing(
             "https://registry.chio.example",
             &signing_keypair,
@@ -2413,6 +2479,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate invalid listing signature",
         );
@@ -2421,6 +2488,49 @@ mod tests {
             report.findings[0].code,
             GenericTrustActivationFindingCode::ListingUnverifiable
         );
+    }
+
+    #[test]
+    fn generic_trust_activation_flags_listing_signer_mismatch() {
+        let namespace_keypair = Keypair::generate();
+        let attacker_keypair = Keypair::generate();
+        let authority_keypair = sample_authority_keypair();
+        let listing = require_ok(
+            SignedGenericListing::sign(
+                sample_listing(
+                    "https://registry.chio.example",
+                    &namespace_keypair,
+                    "artifact-1",
+                    "deadbeef",
+                ),
+                &attacker_keypair,
+            ),
+            "sign listing with mismatched signer",
+        );
+
+        let report = require_ok(
+            evaluate_generic_trust_activation(
+                &evaluation_request(
+                    listing,
+                    None,
+                    GenericListingFreshnessState::Fresh,
+                    GenericRegistryPublisherRole::Origin,
+                    "origin-a",
+                    150,
+                ),
+                150,
+                &authority_keypair.public_key(),
+            ),
+            "evaluate mismatched listing signer",
+        );
+
+        assert_eq!(
+            report.findings[0].code,
+            GenericTrustActivationFindingCode::ListingUnverifiable
+        );
+        assert!(report.findings[0]
+            .message
+            .contains("namespace ownership signer"));
     }
 
     #[test]
@@ -2437,6 +2547,7 @@ mod tests {
             GenericTrustAdmissionClass::Reviewable,
             GenericTrustActivationDisposition::Approved,
         );
+        let trusted_signer = activation.signer_key.clone();
         activation.body.local_operator_id = "https://tampered.chio.example".to_string();
 
         let report = require_ok(
@@ -2450,6 +2561,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &trusted_signer,
             ),
             "evaluate invalid activation signature",
         );
@@ -2500,6 +2612,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate invalid activation body",
         );
@@ -2550,6 +2663,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate mismatched activation",
         );
@@ -2563,6 +2677,7 @@ mod tests {
     #[test]
     fn generic_trust_activation_rejects_divergent_listing_context() {
         let signing_keypair = Keypair::generate();
+        let authority_keypair = sample_authority_keypair();
         let listing = signed_sample_listing(
             "https://registry.chio.example",
             &signing_keypair,
@@ -2586,6 +2701,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate divergent listing",
         );
@@ -2600,6 +2716,7 @@ mod tests {
     fn generic_trust_activation_rejects_expired_pending_and_denied_activations() {
         let signing_keypair = Keypair::generate();
         let authority_keypair = Keypair::generate();
+        let default_authority_keypair = sample_authority_keypair();
         let listing = signed_sample_listing(
             "https://registry.chio.example",
             &signing_keypair,
@@ -2636,6 +2753,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate expired activation",
         );
@@ -2660,6 +2778,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &default_authority_keypair.public_key(),
             ),
             "evaluate pending activation",
         );
@@ -2689,6 +2808,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &default_authority_keypair.public_key(),
             ),
             "evaluate denied activation",
         );
@@ -2739,6 +2859,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate actor ineligible",
         );
@@ -2777,6 +2898,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate publisher ineligible",
         );
@@ -2805,6 +2927,7 @@ mod tests {
             GenericTrustAdmissionClass::Reviewable,
             GenericTrustActivationDisposition::Approved,
         );
+        let default_authority_keypair = sample_authority_keypair();
         let status_report = require_ok(
             evaluate_generic_trust_activation(
                 &evaluation_request(
@@ -2816,6 +2939,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &default_authority_keypair.public_key(),
             ),
             "evaluate status ineligible",
         );
@@ -2853,6 +2977,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate operator ineligible",
         );
@@ -2903,6 +3028,7 @@ mod tests {
                     150,
                 ),
                 150,
+                &authority_keypair.public_key(),
             ),
             "evaluate bond-backed activation",
         );

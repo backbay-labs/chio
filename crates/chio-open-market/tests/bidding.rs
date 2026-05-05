@@ -484,3 +484,40 @@ fn accept_refuses_empty_bid_receipt_id() {
     let error = accept(&ask, "", 130).test_expect_err("empty receipt rejected");
     matches!(error, BiddingError::InvalidRequest(_));
 }
+
+#[test]
+fn bid_rejects_max_total_cost_overflow_instead_of_silently_saturating() {
+    // Regression: minting a token must fail-closed when
+    // `advertised_price * max_invocations` overflows u64. Earlier code used
+    // saturating arithmetic, which silently capped the cost ceiling at
+    // u64::MAX rather than rejecting the bid.
+    let registry_keypair = Keypair::generate();
+    let operator_keypair = Keypair::generate();
+    let issuer_keypair = Keypair::generate();
+    let agent_keypair = Keypair::generate();
+    // Advertise a price near the top of u64; any non-trivial
+    // max_invocations will overflow the multiplication.
+    let listing = listing_entry(
+        &registry_keypair,
+        &operator_keypair,
+        GenericListingStatus::Active,
+        u64::MAX / 2,
+        600,
+    );
+    let mut bid_body = bid_request("agent-alpha", u64::MAX, 300, 120);
+    bid_body.requested_scope.max_invocations = Some(u32::MAX);
+    let request = SignedBidRequest::sign(bid_body, &agent_keypair).test_expect("sign overflow bid");
+
+    let error = bid(
+        &request,
+        BidMintContext {
+            listing: &listing,
+            issuer_keypair: &issuer_keypair,
+            agent_subject: agent_keypair.public_key(),
+            token_id: "token-overflow".to_string(),
+            now: 120,
+        },
+    )
+    .test_expect_err("overflowing total cost is rejected");
+    assert_eq!(error, BiddingError::TotalCostOverflow);
+}

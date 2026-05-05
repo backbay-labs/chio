@@ -305,7 +305,8 @@ pub use merkle::{MerkleProof, MerkleTree};
 pub use message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};
 pub use open_market::{
     build_open_market_fee_schedule_artifact, build_open_market_penalty_artifact,
-    evaluate_open_market_penalty, OpenMarketAbuseClass, OpenMarketBondClass,
+    build_open_market_penalty_artifact_with_trusted_signers, evaluate_open_market_penalty,
+    evaluate_open_market_penalty_with_trusted_signers, OpenMarketAbuseClass, OpenMarketBondClass,
     OpenMarketBondRequirement, OpenMarketCollateralReferenceKind, OpenMarketEconomicsScope,
     OpenMarketEvidenceKind, OpenMarketEvidenceReference, OpenMarketFeeScheduleArtifact,
     OpenMarketFeeScheduleIssueRequest, OpenMarketFinding, OpenMarketFindingCode,
