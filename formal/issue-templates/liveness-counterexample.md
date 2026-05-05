@@ -12,8 +12,8 @@ assignees: []
 
 <!--
 This template is for liveness counterexamples produced by the nightly
-`formal-tla-liveness` job (see `.github/workflows/nightly.yml`, wired in
-M03.P3.T4) checking `formal/tla/RevocationPropagation.tla`. It is NOT for
+`formal-tla-liveness` job (see `.github/workflows/apalache-temporal.yml`)
+checking `formal/tla/RevocationPropagation.tla`. It is NOT for
 safety violations of `NoAllowAfterRevoke`, `MonotoneLog`, or
 `AttenuationPreserving` -- those are separate; file those against the
 property-counterexample template (M03.P3.T5).
@@ -61,7 +61,7 @@ invariants):
 apalache-mc check \
     --temporal=RevocationEventuallySeen \
     --length=<N> \
-    --config=formal/tla/MCRevocationPropagation.cfg \
+    --config=formal/tla/MCRevocationPropagationTemporal.cfg \
     formal/tla/RevocationPropagation.tla
 ```
 

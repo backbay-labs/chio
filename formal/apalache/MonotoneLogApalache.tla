@@ -2,6 +2,16 @@
 (***************************************************************************)
 (* Apalache-shaped port of RevocationPropagation.tla MonotoneLog.          *)
 (* Receipt timestamps must strictly increase for each authority.            *)
+(*                                                                          *)
+(* Known modeling bound (trj3.2 review, 2026-05-03):                        *)
+(*   `Evaluate` is the only writer of `receipt_log` and increments the      *)
+(*   shared `clock` on every step, so monotonicity holds by construction in *)
+(*   this bounded port. The `clock < EpochMax` guard caps real activity at  *)
+(*   EpochMax - 1 = 3 evaluate steps before only Stutter remains; the       *)
+(*   length=6 bound therefore exercises 3 active steps and 3 stutters. The  *)
+(*   richer surface (interleaved Revoke/Propagate/Evaluate from the parent  *)
+(*   RevocationPropagation.tla MonotoneLog) is checked by the TLC nightly   *)
+(*   lane on MCRevocationPropagation.cfg.                                   *)
 (***************************************************************************)
 
 EXTENDS Naturals, Sequences, Common

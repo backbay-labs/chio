@@ -40,7 +40,8 @@ apalache-mc check --length=6 --config=<MC*.cfg> <Spec>.tla
 
 The workflow dispatch also preserves the same command shape for all four
 safety invariants. The temporal `RevocationEventuallySeen` check remains in
-`.github/workflows/apalache-nightly.yml` as the existing TLA+ liveness lane.
+`.github/workflows/apalache-temporal.yml` as the fail-closed nightly TLA+
+liveness lane.
 
 ## Bounds
 

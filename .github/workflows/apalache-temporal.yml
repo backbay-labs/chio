@@ -5,9 +5,8 @@ name: apalache-temporal
 #
 # This job is scheduled/manual only and is NOT a required PR gate while the
 # trajectory-3.1 temporal lane gathers green history. Safety invariants for
-# RevocationPropagation run in ci.yml with MCRevocationPropagation.cfg at the PR
-# length bound. This workflow uses a temporal-only config so the advisory
-# length-24 liveness check does not duplicate the safety sweep.
+# RevocationPropagation run in ci.yml at the PR length bound and in this
+# length-24 temporal config so deep safety regressions remain covered.
 #
 # Do not promote this workflow to a required check until the underlying
 # property is fixed and the run is reliably green.
@@ -21,15 +20,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-temporal', github.ref) || format('main-{0}-apalache-temporal', github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ format('{0}-{1}-apalache-temporal', github.event_name, github.sha) }}
 
 jobs:
   revocation-eventually-seen:
-    name: revocation-eventually-seen (advisory)
+    name: formal-tla-liveness
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -53,7 +50,7 @@ jobs:
           command -v apalache-mc
           apalache-mc version || true
 
-      - name: RevocationEventuallySeen temporal check (advisory)
+      - name: RevocationEventuallySeen temporal check
         shell: bash
         run: |
           set -euo pipefail
