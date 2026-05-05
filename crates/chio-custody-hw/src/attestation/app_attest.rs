@@ -11,7 +11,7 @@
 //! `allow_development_fixture`; production callers should leave that flag
 //! false so compact maps cannot bypass the x5c path.
 
-use base64ct::{Base64UrlUnpadded, Encoding};
+use base64ct::{Base64, Base64UrlUnpadded, Encoding};
 use coset::cbor::Value as CborValue;
 use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
@@ -27,6 +27,9 @@ const AUTH_DATA_HEADER_LEN: usize = 37;
 const AAGUID_LEN: usize = 16;
 const CREDENTIAL_ID_LEN_BYTES: usize = 2;
 const FLAG_ATTESTED_CREDENTIAL_DATA: u8 = 0x40;
+const APP_ATTEST_PRODUCTION_AAGUID: &[u8; AAGUID_LEN] = b"appattest\0\0\0\0\0\0\0";
+const APP_ATTEST_SANDBOX_AAGUID: &[u8; AAGUID_LEN] = b"appattestsandbox";
+const APP_ATTEST_DEVELOPMENT_AAGUID: &[u8; AAGUID_LEN] = b"appattestdevelop";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppAttestVerificationInput<'a> {
@@ -87,7 +90,7 @@ fn verify_webauthn_app_attest(
     if parsed_auth_data.app_id_hash != expected_app_hash {
         return Err(AttestationError::AppIdentifierMismatch);
     }
-    enforce_counter(input.previous_counter, parsed_auth_data.counter)?;
+    enforce_attestation_counter(input.previous_counter, parsed_auth_data.counter)?;
     let key_id_bytes = decode_key_id(input.key_id)?;
     if key_id_bytes != parsed_auth_data.credential_id {
         return Err(AttestationError::KeyIdMismatch);
@@ -192,6 +195,8 @@ fn parse_auth_data(auth_data: &[u8]) -> Result<ParsedAuthData<'_>, AttestationEr
         return Err(AttestationError::MissingField("attestedCredentialData"));
     }
     let counter = u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
+    let aaguid = &auth_data[AUTH_DATA_HEADER_LEN..AUTH_DATA_HEADER_LEN + AAGUID_LEN];
+    validate_app_attest_aaguid(aaguid)?;
     let credential_len_offset = AUTH_DATA_HEADER_LEN + AAGUID_LEN;
     let credential_len = u16::from_be_bytes([
         auth_data[credential_len_offset],
@@ -237,14 +242,44 @@ fn enforce_counter(previous_counter: Option<u32>, counter: u32) -> Result<(), At
     Ok(())
 }
 
+fn enforce_attestation_counter(
+    previous_counter: Option<u32>,
+    counter: u32,
+) -> Result<(), AttestationError> {
+    if previous_counter.is_none() && counter != 0 {
+        return Err(AttestationError::InvalidCbor(
+            "attestation counter must be zero".to_string(),
+        ));
+    }
+    enforce_counter(previous_counter, counter)
+}
+
+fn validate_app_attest_aaguid(aaguid: &[u8]) -> Result<(), AttestationError> {
+    if aaguid == APP_ATTEST_PRODUCTION_AAGUID
+        || aaguid == APP_ATTEST_SANDBOX_AAGUID
+        || aaguid == APP_ATTEST_DEVELOPMENT_AAGUID
+    {
+        return Ok(());
+    }
+    Err(AttestationError::InvalidCbor(
+        "authData AAGUID is not an Apple App Attest environment".to_string(),
+    ))
+}
+
 fn decode_key_id(key_id: &str) -> Result<Vec<u8>, AttestationError> {
     if key_id.trim().is_empty() {
         return Err(AttestationError::KeyIdMismatch);
     }
+    if let Ok(decoded) = Base64UrlUnpadded::decode_vec(key_id) {
+        return Ok(decoded);
+    }
+    if let Ok(decoded) = Base64::decode_vec(key_id) {
+        return Ok(decoded);
+    }
     if key_id.len().is_multiple_of(2) && key_id.bytes().all(|b| b.is_ascii_hexdigit()) {
         return hex::decode(key_id).map_err(|_| AttestationError::KeyIdMismatch);
     }
-    Base64UrlUnpadded::decode_vec(key_id).map_err(|_| AttestationError::KeyIdMismatch)
+    Err(AttestationError::KeyIdMismatch)
 }
 
 fn apple_nonce(auth_data: &[u8], challenge_hash: &[u8; 32]) -> [u8; 32] {

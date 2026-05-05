@@ -55,13 +55,7 @@ fn is_none_or_empty<T>(value: &Option<Vec<T>>) -> bool {
 }
 
 fn is_none_or_empty_attenuation_proof(value: &Option<AttenuationProof>) -> bool {
-    value.as_ref().is_none_or(|proof| {
-        proof.normalized_subset_proof.subset_relations.is_empty()
-            && proof
-                .normalized_subset_proof
-                .restricted_predicates
-                .is_empty()
-    })
+    value.is_none()
 }
 
 /// Stable feature names used by `chio.capabilities.v1`.
@@ -544,6 +538,11 @@ impl CapabilityToken {
             return Err(Error::CanonicalJson(
                 "capability v1 token must not carry v2 attenuation fields".to_string(),
             ));
+        }
+        if self.schema == CHIO_CAPABILITY_V2_SCHEMA && self.attenuation_proof.is_none() {
+            return Err(Error::AttenuationViolation {
+                reason: "capability v2 token must carry attenuation_proof".to_string(),
+            });
         }
         if let Some(share) = self.budget_share_bps {
             if share > 10_000 {
@@ -3040,6 +3039,19 @@ pub fn validate_attenuation_proof(
             reason: "attenuation witness carries a non-subset relation".to_string(),
         });
     }
+    let parent_scope: ChioScope =
+        serde_json::from_str(&witness.normalized_parent_scope).map_err(|err| {
+            Error::AttenuationViolation {
+                reason: format!("attenuation witness parent scope is invalid: {err}"),
+            }
+        })?;
+    let child_scope: ChioScope =
+        serde_json::from_str(&witness.normalized_child_scope).map_err(|err| {
+            Error::AttenuationViolation {
+                reason: format!("attenuation witness child scope is invalid: {err}"),
+            }
+        })?;
+    validate_attenuation(&parent_scope, &child_scope)?;
     Ok(())
 }
 
@@ -3513,6 +3525,108 @@ mod tests {
             &issuer,
         );
         assert!(bad_budget.is_err());
+    }
+
+    #[test]
+    fn capability_v2_requires_attenuation_proof() -> Result<()> {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let parent = make_scope(vec![make_grant(
+            "srv",
+            "tool",
+            vec![Operation::Invoke, Operation::Delegate],
+        )]);
+        let child = make_scope(vec![make_grant("srv", "tool", vec![Operation::Invoke])]);
+        let proof = AttenuationProof {
+            parent_scope_hash: scope_hash(&parent)?,
+            child_scope_hash: scope_hash(&child)?,
+            normalized_subset_proof: compute_attenuation_witness(&parent, &child)?,
+        };
+        let body = CapabilityTokenBody {
+            id: "cap-v2".to_string(),
+            issuer: issuer.public_key(),
+            subject: subject.public_key(),
+            scope: child,
+            issued_at: 10,
+            expires_at: 20,
+            delegation_chain: vec![],
+        };
+        let mut token = CapabilityToken::sign_v2(
+            CapabilityTokenV2Body {
+                body,
+                caveats: vec![],
+                scope_attenuations: vec![],
+                attenuation_proof: proof,
+                budget_share_bps: None,
+            },
+            &issuer,
+        )?;
+        token.attenuation_proof = None;
+
+        assert!(token.verify_signature().is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn empty_child_scope_attenuation_proof_survives_serialization() -> Result<()> {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let parent = make_scope(vec![make_grant(
+            "srv",
+            "tool",
+            vec![Operation::Invoke, Operation::Delegate],
+        )]);
+        let child = ChioScope::default();
+        let proof = AttenuationProof {
+            parent_scope_hash: scope_hash(&parent)?,
+            child_scope_hash: scope_hash(&child)?,
+            normalized_subset_proof: compute_attenuation_witness(&parent, &child)?,
+        };
+        let body = CapabilityTokenBody {
+            id: "cap-v2-empty-child".to_string(),
+            issuer: issuer.public_key(),
+            subject: subject.public_key(),
+            scope: child,
+            issued_at: 10,
+            expires_at: 20,
+            delegation_chain: vec![],
+        };
+        let token = CapabilityToken::sign_v2(
+            CapabilityTokenV2Body {
+                body,
+                caveats: vec![],
+                scope_attenuations: vec![],
+                attenuation_proof: proof,
+                budget_share_bps: None,
+            },
+            &issuer,
+        )?;
+
+        let value = serde_json::to_value(&token)?;
+        assert!(value.get("attenuation_proof").is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn attenuation_proof_validation_rejects_non_subset_scope() -> Result<()> {
+        let parent = ChioScope::default();
+        let child = make_scope(vec![make_grant("srv", "tool", vec![Operation::Invoke])]);
+        let witness = AttenuationWitness {
+            normalized_parent_scope: canonical_scope_string(&parent)?,
+            normalized_child_scope: canonical_scope_string(&child)?,
+            subset_relations: vec![GrantSubsetRelation {
+                grant_kind: "tool".to_string(),
+                child_index: 0,
+                parent_index: 0,
+                subset: true,
+            }],
+            restricted_predicates: vec![],
+        };
+
+        let parent_hash = scope_hash(&parent)?;
+        let child_hash = scope_hash(&child)?;
+        assert!(validate_attenuation_proof(&parent_hash, &child_hash, &witness).is_err());
+        Ok(())
     }
 
     #[test]

@@ -130,7 +130,7 @@ impl HttpEgressContract {
         self.enforce_host_class(&host)?;
 
         let authority = normalized_url_authority(&url)?;
-        if !self.allowed_authority_set.contains(&authority) {
+        if !self.authority_is_allowed(&url, &authority)? {
             return Err(HttpEgressError::AuthorityDenied { authority });
         }
 
@@ -235,6 +235,17 @@ impl HttpEgressContract {
             });
         }
         Ok(())
+    }
+
+    fn authority_is_allowed(&self, url: &Url, authority: &str) -> Result<bool, HttpEgressError> {
+        if self.allowed_authority_set.contains(authority) {
+            return Ok(true);
+        }
+        if let Some(default_port) = url.port_or_known_default() {
+            let default_port_authority = format!("{authority}:{default_port}");
+            return Ok(self.allowed_authority_set.contains(&default_port_authority));
+        }
+        Ok(false)
     }
 }
 

@@ -1170,7 +1170,7 @@ impl ChioKernel {
                 warn!(
                     store = %store,
                     key = %key,
-                    error = %error,
+                    error = %redacted!(&error),
                     "memory provenance lookup failed; marking read unverified"
                 );
                 return Some(memory_read_unverified_metadata(
@@ -1196,7 +1196,7 @@ impl ChioKernel {
                     store = %store,
                     key = %key,
                     entry_id = %entry.entry_id,
-                    error = %error,
+                    error = %redacted!(&error),
                     "memory provenance verification failed; marking read unverified"
                 );
                 return Some(memory_read_unverified_metadata(

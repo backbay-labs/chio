@@ -1,13 +1,3 @@
-// DO NOT EDIT - regenerate via 'make regen-rust' or 'cargo xtask codegen rust'.
-//
-// Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Tool:   typify =0.4.3 (see xtask/codegen-tools.lock.toml)
-// Crate:  chio-spec-codegen
-//
-// Manual edits will be overwritten by the next regeneration; the
-// `_generated_check` integration test enforces this header on every file
-// under `crates/chio-core-types/src/_generated/`.
-
 //! Threat test for threat ID `ssrf_via_http_substrate` (SSRF via HTTP substrate).
 //!
 //! Surfaces: hosted_mcp, kernel_to_tool.

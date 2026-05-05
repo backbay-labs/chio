@@ -40,6 +40,1052 @@ pub mod error {
         }
     }
 }
+///`AttenuationProof`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "childScopeHash",
+///    "normalizedSubsetProof",
+///    "parentScopeHash"
+///  ],
+///  "properties": {
+///    "childScopeHash": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
+///    },
+///    "normalizedSubsetProof": {
+///      "$ref": "#/$defs/attenuationWitness"
+///    },
+///    "parentScopeHash": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AttenuationProof {
+    #[serde(rename = "childScopeHash")]
+    pub child_scope_hash: AttenuationProofChildScopeHash,
+    #[serde(rename = "normalizedSubsetProof")]
+    pub normalized_subset_proof: AttenuationWitness,
+    #[serde(rename = "parentScopeHash")]
+    pub parent_scope_hash: AttenuationProofParentScopeHash,
+}
+impl ::std::convert::From<&AttenuationProof> for AttenuationProof {
+    fn from(value: &AttenuationProof) -> Self {
+        value.clone()
+    }
+}
+///`AttenuationProofChildScopeHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AttenuationProofChildScopeHash(::std::string::String);
+impl ::std::ops::Deref for AttenuationProofChildScopeHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AttenuationProofChildScopeHash> for ::std::string::String {
+    fn from(value: AttenuationProofChildScopeHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&AttenuationProofChildScopeHash>
+for AttenuationProofChildScopeHash {
+    fn from(value: &AttenuationProofChildScopeHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for AttenuationProofChildScopeHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AttenuationProofChildScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for AttenuationProofChildScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AttenuationProofChildScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AttenuationProofChildScopeHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`AttenuationProofParentScopeHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AttenuationProofParentScopeHash(::std::string::String);
+impl ::std::ops::Deref for AttenuationProofParentScopeHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AttenuationProofParentScopeHash> for ::std::string::String {
+    fn from(value: AttenuationProofParentScopeHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&AttenuationProofParentScopeHash>
+for AttenuationProofParentScopeHash {
+    fn from(value: &AttenuationProofParentScopeHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for AttenuationProofParentScopeHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AttenuationProofParentScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for AttenuationProofParentScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AttenuationProofParentScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AttenuationProofParentScopeHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`AttenuationWitness`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "normalizedChildScope",
+///    "normalizedParentScope"
+///  ],
+///  "properties": {
+///    "normalizedChildScope": {
+///      "type": "string",
+///      "minLength": 2
+///    },
+///    "normalizedParentScope": {
+///      "type": "string",
+///      "minLength": 2
+///    },
+///    "restrictedPredicates": {
+///      "type": "array",
+///      "items": {
+///        "type": "string"
+///      }
+///    },
+///    "subsetRelations": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/grantSubsetRelation"
+///      }
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AttenuationWitness {
+    #[serde(rename = "normalizedChildScope")]
+    pub normalized_child_scope: AttenuationWitnessNormalizedChildScope,
+    #[serde(rename = "normalizedParentScope")]
+    pub normalized_parent_scope: AttenuationWitnessNormalizedParentScope,
+    #[serde(
+        rename = "restrictedPredicates",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub restricted_predicates: ::std::vec::Vec<::std::string::String>,
+    #[serde(
+        rename = "subsetRelations",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub subset_relations: ::std::vec::Vec<GrantSubsetRelation>,
+}
+impl ::std::convert::From<&AttenuationWitness> for AttenuationWitness {
+    fn from(value: &AttenuationWitness) -> Self {
+        value.clone()
+    }
+}
+///`AttenuationWitnessNormalizedChildScope`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 2
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AttenuationWitnessNormalizedChildScope(::std::string::String);
+impl ::std::ops::Deref for AttenuationWitnessNormalizedChildScope {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AttenuationWitnessNormalizedChildScope>
+for ::std::string::String {
+    fn from(value: AttenuationWitnessNormalizedChildScope) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&AttenuationWitnessNormalizedChildScope>
+for AttenuationWitnessNormalizedChildScope {
+    fn from(value: &AttenuationWitnessNormalizedChildScope) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for AttenuationWitnessNormalizedChildScope {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 2usize {
+            return Err("shorter than 2 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AttenuationWitnessNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for AttenuationWitnessNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for AttenuationWitnessNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AttenuationWitnessNormalizedChildScope {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`AttenuationWitnessNormalizedParentScope`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 2
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct AttenuationWitnessNormalizedParentScope(::std::string::String);
+impl ::std::ops::Deref for AttenuationWitnessNormalizedParentScope {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<AttenuationWitnessNormalizedParentScope>
+for ::std::string::String {
+    fn from(value: AttenuationWitnessNormalizedParentScope) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&AttenuationWitnessNormalizedParentScope>
+for AttenuationWitnessNormalizedParentScope {
+    fn from(value: &AttenuationWitnessNormalizedParentScope) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for AttenuationWitnessNormalizedParentScope {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 2usize {
+            return Err("shorter than 2 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for AttenuationWitnessNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for AttenuationWitnessNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for AttenuationWitnessNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for AttenuationWitnessNormalizedParentScope {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`Body`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "checkpointIds",
+///    "inclusions",
+///    "issuedAt",
+///    "schema",
+///    "signerKey",
+///    "treeRoot",
+///    "witness"
+///  ],
+///  "properties": {
+///    "checkpointIds": {
+///      "type": "array",
+///      "items": {
+///        "type": "string",
+///        "minLength": 1
+///      },
+///      "minItems": 1
+///    },
+///    "inclusions": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/inclusion"
+///      },
+///      "minItems": 1
+///    },
+///    "issuedAt": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "schema": {
+///      "type": "string",
+///      "const": "chio.anchor_batch.v1"
+///    },
+///    "signerKey": {
+///      "type": "string",
+///      "minLength": 64
+///    },
+///    "treeRoot": {
+///      "type": "string",
+///      "pattern": "^(0x)?[0-9a-f]{64}$"
+///    },
+///    "witness": {
+///      "$ref": "#/$defs/witness"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Body {
+    #[serde(rename = "checkpointIds")]
+    pub checkpoint_ids: ::std::vec::Vec<BodyCheckpointIdsItem>,
+    pub inclusions: ::std::vec::Vec<Inclusion>,
+    #[serde(rename = "issuedAt")]
+    pub issued_at: u64,
+    pub schema: ::std::string::String,
+    #[serde(rename = "signerKey")]
+    pub signer_key: BodySignerKey,
+    #[serde(rename = "treeRoot")]
+    pub tree_root: BodyTreeRoot,
+    pub witness: Witness,
+}
+impl ::std::convert::From<&Body> for Body {
+    fn from(value: &Body) -> Self {
+        value.clone()
+    }
+}
+///`BodyCheckpointIdsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BodyCheckpointIdsItem(::std::string::String);
+impl ::std::ops::Deref for BodyCheckpointIdsItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BodyCheckpointIdsItem> for ::std::string::String {
+    fn from(value: BodyCheckpointIdsItem) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&BodyCheckpointIdsItem> for BodyCheckpointIdsItem {
+    fn from(value: &BodyCheckpointIdsItem) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for BodyCheckpointIdsItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BodyCheckpointIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for BodyCheckpointIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BodyCheckpointIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BodyCheckpointIdsItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`BodySignerKey`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 64
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BodySignerKey(::std::string::String);
+impl ::std::ops::Deref for BodySignerKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BodySignerKey> for ::std::string::String {
+    fn from(value: BodySignerKey) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&BodySignerKey> for BodySignerKey {
+    fn from(value: &BodySignerKey) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for BodySignerKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 64usize {
+            return Err("shorter than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BodySignerKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for BodySignerKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BodySignerKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BodySignerKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`BodyTreeRoot`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^(0x)?[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BodyTreeRoot(::std::string::String);
+impl ::std::ops::Deref for BodyTreeRoot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BodyTreeRoot> for ::std::string::String {
+    fn from(value: BodyTreeRoot) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&BodyTreeRoot> for BodyTreeRoot {
+    fn from(value: &BodyTreeRoot) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for BodyTreeRoot {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^(0x)?[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^(0x)?[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BodyTreeRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for BodyTreeRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BodyTreeRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BodyTreeRoot {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`Caveat`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "kind",
+///    "predicate"
+///  ],
+///  "properties": {
+///    "kind": {
+///      "type": "string",
+///      "enum": [
+///        "restrict_tool",
+///        "bind_session",
+///        "restrict_audience",
+///        "restrict_geo",
+///        "restrict_time_window"
+///      ]
+///    },
+///    "predicate": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "sig": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Caveat {
+    pub kind: CaveatKind,
+    pub predicate: CaveatPredicate,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub sig: ::std::option::Option<CaveatSig>,
+}
+impl ::std::convert::From<&Caveat> for Caveat {
+    fn from(value: &Caveat) -> Self {
+        value.clone()
+    }
+}
+///`CaveatKind`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "restrict_tool",
+///    "bind_session",
+///    "restrict_audience",
+///    "restrict_geo",
+///    "restrict_time_window"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum CaveatKind {
+    #[serde(rename = "restrict_tool")]
+    RestrictTool,
+    #[serde(rename = "bind_session")]
+    BindSession,
+    #[serde(rename = "restrict_audience")]
+    RestrictAudience,
+    #[serde(rename = "restrict_geo")]
+    RestrictGeo,
+    #[serde(rename = "restrict_time_window")]
+    RestrictTimeWindow,
+}
+impl ::std::convert::From<&Self> for CaveatKind {
+    fn from(value: &CaveatKind) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for CaveatKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::RestrictTool => f.write_str("restrict_tool"),
+            Self::BindSession => f.write_str("bind_session"),
+            Self::RestrictAudience => f.write_str("restrict_audience"),
+            Self::RestrictGeo => f.write_str("restrict_geo"),
+            Self::RestrictTimeWindow => f.write_str("restrict_time_window"),
+        }
+    }
+}
+impl ::std::str::FromStr for CaveatKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "restrict_tool" => Ok(Self::RestrictTool),
+            "bind_session" => Ok(Self::BindSession),
+            "restrict_audience" => Ok(Self::RestrictAudience),
+            "restrict_geo" => Ok(Self::RestrictGeo),
+            "restrict_time_window" => Ok(Self::RestrictTimeWindow),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaveatKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CaveatKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaveatKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`CaveatPredicate`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaveatPredicate(::std::string::String);
+impl ::std::ops::Deref for CaveatPredicate {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaveatPredicate> for ::std::string::String {
+    fn from(value: CaveatPredicate) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&CaveatPredicate> for CaveatPredicate {
+    fn from(value: &CaveatPredicate) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for CaveatPredicate {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaveatPredicate {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CaveatPredicate {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaveatPredicate {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaveatPredicate {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`CaveatSig`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaveatSig(::std::string::String);
+impl ::std::ops::Deref for CaveatSig {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaveatSig> for ::std::string::String {
+    fn from(value: CaveatSig) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&CaveatSig> for CaveatSig {
+    fn from(value: &CaveatSig) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for CaveatSig {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaveatSig {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CaveatSig {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaveatSig {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaveatSig {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`ChioAgentMessageHeartbeat`
 ///
 /// <details><summary>JSON schema</summary>
@@ -3230,6 +4276,131 @@ impl<'de> ::serde::Deserialize<'de> for ChioAgentMessageToolCallRequestTool {
             })
     }
 }
+///Signed additive Merkle batch over receipts or checkpoints. Local receipt signatures remain authoritative; the batch adds continuity and public-witness timestamping.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/anchor/batch",
+///  "title": "Chio anchor batch v1",
+///  "description": "Signed additive Merkle batch over receipts or checkpoints. Local receipt signatures remain authoritative; the batch adds continuity and public-witness timestamping.",
+///  "type": "object",
+///  "required": [
+///    "body",
+///    "signature"
+///  ],
+///  "properties": {
+///    "body": {
+///      "$ref": "#/$defs/body"
+///    },
+///    "signature": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioAnchorBatchV1 {
+    pub body: Body,
+    pub signature: ChioAnchorBatchV1Signature,
+}
+impl ::std::convert::From<&ChioAnchorBatchV1> for ChioAnchorBatchV1 {
+    fn from(value: &ChioAnchorBatchV1) -> Self {
+        value.clone()
+    }
+}
+///`ChioAnchorBatchV1Signature`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioAnchorBatchV1Signature(::std::string::String);
+impl ::std::ops::Deref for ChioAnchorBatchV1Signature {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioAnchorBatchV1Signature> for ::std::string::String {
+    fn from(value: ChioAnchorBatchV1Signature) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioAnchorBatchV1Signature> for ChioAnchorBatchV1Signature {
+    fn from(value: &ChioAnchorBatchV1Signature) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioAnchorBatchV1Signature {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioAnchorBatchV1Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioAnchorBatchV1Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioAnchorBatchV1Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioAnchorBatchV1Signature {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/chio-core-types/src/capability.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
 ///
 /// <details><summary>JSON schema</summary>
@@ -3278,6 +4449,232 @@ impl ::std::convert::From<ResourceGrant> for ChioCapabilityGrant {
 impl ::std::convert::From<PromptGrant> for ChioCapabilityGrant {
     fn from(value: PromptGrant) -> Self {
         Self::PromptGrant(value)
+    }
+}
+///Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed before peers negotiate capability v2, receipt v2, or anchor-batch support.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/capabilities/v1",
+///  "title": "Chio capability negotiation v1",
+///  "description": "Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed before peers negotiate capability v2, receipt v2, or anchor-batch support.",
+///  "type": "object",
+///  "required": [
+///    "maxCapabilitySchema",
+///    "schema"
+///  ],
+///  "properties": {
+///    "features": {
+///      "description": "String-keyed feature bitset. Peers proceed only with the intersection of true values advertised by both sides.",
+///      "type": "object",
+///      "additionalProperties": {
+///        "type": "boolean"
+///      },
+///      "propertyNames": {
+///        "type": "string",
+///        "pattern": "^[a-z0-9_.-]{1,96}$"
+///      }
+///    },
+///    "maxCapabilitySchema": {
+///      "type": "string",
+///      "enum": [
+///        "chio.capability.v1",
+///        "chio.capability.v2"
+///      ]
+///    },
+///    "schema": {
+///      "type": "string",
+///      "const": "chio.capabilities.v1"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioCapabilityNegotiationV1 {
+    ///String-keyed feature bitset. Peers proceed only with the intersection of true values advertised by both sides.
+    #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
+    pub features: ::std::collections::HashMap<
+        ChioCapabilityNegotiationV1FeaturesKey,
+        bool,
+    >,
+    #[serde(rename = "maxCapabilitySchema")]
+    pub max_capability_schema: ChioCapabilityNegotiationV1MaxCapabilitySchema,
+    pub schema: ::std::string::String,
+}
+impl ::std::convert::From<&ChioCapabilityNegotiationV1> for ChioCapabilityNegotiationV1 {
+    fn from(value: &ChioCapabilityNegotiationV1) -> Self {
+        value.clone()
+    }
+}
+///`ChioCapabilityNegotiationV1FeaturesKey`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[a-z0-9_.-]{1,96}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityNegotiationV1FeaturesKey(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityNegotiationV1FeaturesKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityNegotiationV1FeaturesKey>
+for ::std::string::String {
+    fn from(value: ChioCapabilityNegotiationV1FeaturesKey) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityNegotiationV1FeaturesKey>
+for ChioCapabilityNegotiationV1FeaturesKey {
+    fn from(value: &ChioCapabilityNegotiationV1FeaturesKey) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityNegotiationV1FeaturesKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[a-z0-9_.-]{1,96}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-z0-9_.-]{1,96}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityNegotiationV1FeaturesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioCapabilityNegotiationV1FeaturesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioCapabilityNegotiationV1FeaturesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityNegotiationV1FeaturesKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioCapabilityNegotiationV1MaxCapabilitySchema`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "chio.capability.v1",
+///    "chio.capability.v2"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioCapabilityNegotiationV1MaxCapabilitySchema {
+    #[serde(rename = "chio.capability.v1")]
+    ChioCapabilityV1,
+    #[serde(rename = "chio.capability.v2")]
+    ChioCapabilityV2,
+}
+impl ::std::convert::From<&Self> for ChioCapabilityNegotiationV1MaxCapabilitySchema {
+    fn from(value: &ChioCapabilityNegotiationV1MaxCapabilitySchema) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioCapabilityNegotiationV1MaxCapabilitySchema {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::ChioCapabilityV1 => f.write_str("chio.capability.v1"),
+            Self::ChioCapabilityV2 => f.write_str("chio.capability.v2"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityNegotiationV1MaxCapabilitySchema {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "chio.capability.v1" => Ok(Self::ChioCapabilityV1),
+            "chio.capability.v2" => Ok(Self::ChioCapabilityV2),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityNegotiationV1MaxCapabilitySchema {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioCapabilityNegotiationV1MaxCapabilitySchema {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioCapabilityNegotiationV1MaxCapabilitySchema {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///A single revocation entry recording that a previously issued capability token (identified by its `id`) is no longer valid as of `revoked_at`. Mirrors `RevocationRecord` in `crates/chio-kernel/src/revocation_store.rs` (the kernel's persisted revocation row), and is the wire-level companion to the `capability_revoked` kernel notification under `chio-wire/v1/kernel/capability_revoked.schema.json`. Operators read these entries from `/admin/revocations` (hosted edge) and from the trust-control revocation list.
@@ -3405,7 +4802,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
             })
     }
 }
-///A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
+///A Chio capability token: an Ed25519-signed, FIPS-algorithm, or hybrid PQ scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384), and renders hybrid keys as `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>`. Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms, and `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3413,13 +4810,14 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token/v1",
 ///  "title": "Chio CapabilityToken",
-///  "description": "A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.",
+///  "description": "A Chio capability token: an Ed25519-signed, FIPS-algorithm, or hybrid PQ scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384), and renders hybrid keys as `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>`. Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms, and `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.",
 ///  "type": "object",
 ///  "required": [
 ///    "expires_at",
 ///    "id",
 ///    "issued_at",
 ///    "issuer",
+///    "schema",
 ///    "scope",
 ///    "signature",
 ///    "subject"
@@ -3431,7 +4829,8 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 ///      "enum": [
 ///        "ed25519",
 ///        "p256",
-///        "p384"
+///        "p384",
+///        "hybrid"
 ///      ]
 ///    },
 ///    "delegation_chain": {
@@ -3457,22 +4856,27 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 ///      "minimum": 0.0
 ///    },
 ///    "issuer": {
-///      "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).",
+///      "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.",
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///    },
+///    "schema": {
+///      "description": "Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.",
+///      "type": "string",
+///      "const": "chio.capability.v1"
 ///    },
 ///    "scope": {
 ///      "$ref": "#/$defs/chioScope"
 ///    },
 ///    "signature": {
-///      "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///      "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "subject": {
 ///      "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.",
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -3494,10 +4898,12 @@ pub struct ChioCapabilityToken {
     pub id: ChioCapabilityTokenId,
     ///Unix timestamp (seconds) when the token was issued.
     pub issued_at: u64,
-    ///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
+    ///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.
     pub issuer: ChioCapabilityTokenIssuer,
+    ///Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+    pub schema: ::std::string::String,
     pub scope: ChioScope,
-    ///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+    ///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
     pub signature: ChioCapabilityTokenSignature,
     ///Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
     pub subject: ChioCapabilityTokenSubject,
@@ -3518,7 +4924,8 @@ impl ::std::convert::From<&ChioCapabilityToken> for ChioCapabilityToken {
 ///  "enum": [
 ///    "ed25519",
 ///    "p256",
-///    "p384"
+///    "p384",
+///    "hybrid"
 ///  ]
 ///}
 /// ```
@@ -3542,6 +4949,8 @@ pub enum ChioCapabilityTokenAlgorithm {
     P256,
     #[serde(rename = "p384")]
     P384,
+    #[serde(rename = "hybrid")]
+    Hybrid,
 }
 impl ::std::convert::From<&Self> for ChioCapabilityTokenAlgorithm {
     fn from(value: &ChioCapabilityTokenAlgorithm) -> Self {
@@ -3554,6 +4963,7 @@ impl ::std::fmt::Display for ChioCapabilityTokenAlgorithm {
             Self::Ed25519 => f.write_str("ed25519"),
             Self::P256 => f.write_str("p256"),
             Self::P384 => f.write_str("p384"),
+            Self::Hybrid => f.write_str("hybrid"),
         }
     }
 }
@@ -3566,6 +4976,7 @@ impl ::std::str::FromStr for ChioCapabilityTokenAlgorithm {
             "ed25519" => Ok(Self::Ed25519),
             "p256" => Ok(Self::P256),
             "p384" => Ok(Self::P384),
+            "hybrid" => Ok(Self::Hybrid),
             _ => Err("invalid value".into()),
         }
     }
@@ -3672,15 +5083,15 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenId {
             })
     }
 }
-///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
+///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).",
+///  "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -3711,13 +5122,13 @@ impl ::std::str::FromStr for ChioCapabilityTokenIssuer {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$\""
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -3760,15 +5171,15 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenIssuer {
             })
     }
 }
-///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///  "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -3799,12 +5210,14 @@ impl ::std::str::FromStr for ChioCapabilityTokenSignature {
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
-            ::regress::Regex::new("^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$")
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -3855,7 +5268,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenSignature {
 ///{
 ///  "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -3886,13 +5299,13 @@ impl ::std::str::FromStr for ChioCapabilityTokenSubject {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$\""
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -3924,6 +5337,1226 @@ impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenSubje
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenSubject {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token.v1",
+///  "title": "Chio CapabilityToken v1",
+///  "description": "A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.",
+///  "type": "object",
+///  "required": [
+///    "expires_at",
+///    "id",
+///    "issued_at",
+///    "issuer",
+///    "schema",
+///    "scope",
+///    "signature",
+///    "subject"
+///  ],
+///  "properties": {
+///    "algorithm": {
+///      "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
+///      "type": "string",
+///      "enum": [
+///        "ed25519",
+///        "p256",
+///        "p384"
+///      ]
+///    },
+///    "delegation_chain": {
+///      "description": "Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/delegationLink"
+///      }
+///    },
+///    "expires_at": {
+///      "description": "Unix timestamp (seconds) when the token expires.",
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "id": {
+///      "description": "Unique token ID (UUIDv7 recommended), used for revocation.",
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "issued_at": {
+///      "description": "Unix timestamp (seconds) when the token was issued.",
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "issuer": {
+///      "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).",
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///    },
+///    "schema": {
+///      "description": "Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.",
+///      "type": "string",
+///      "const": "chio.capability.v1"
+///    },
+///    "scope": {
+///      "$ref": "#/$defs/chioScope"
+///    },
+///    "signature": {
+///      "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
+///    },
+///    "subject": {
+///      "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.",
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioCapabilityTokenV1 {
+    ///Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub algorithm: ::std::option::Option<ChioCapabilityTokenV1Algorithm>,
+    ///Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub delegation_chain: ::std::vec::Vec<DelegationLink>,
+    ///Unix timestamp (seconds) when the token expires.
+    pub expires_at: u64,
+    ///Unique token ID (UUIDv7 recommended), used for revocation.
+    pub id: ChioCapabilityTokenV1Id,
+    ///Unix timestamp (seconds) when the token was issued.
+    pub issued_at: u64,
+    ///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
+    pub issuer: ChioCapabilityTokenV1Issuer,
+    ///Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+    pub schema: ::std::string::String,
+    pub scope: ChioScope,
+    ///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+    pub signature: ChioCapabilityTokenV1Signature,
+    ///Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
+    pub subject: ChioCapabilityTokenV1Subject,
+}
+impl ::std::convert::From<&ChioCapabilityTokenV1> for ChioCapabilityTokenV1 {
+    fn from(value: &ChioCapabilityTokenV1) -> Self {
+        value.clone()
+    }
+}
+///Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
+///  "type": "string",
+///  "enum": [
+///    "ed25519",
+///    "p256",
+///    "p384"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioCapabilityTokenV1Algorithm {
+    #[serde(rename = "ed25519")]
+    Ed25519,
+    #[serde(rename = "p256")]
+    P256,
+    #[serde(rename = "p384")]
+    P384,
+}
+impl ::std::convert::From<&Self> for ChioCapabilityTokenV1Algorithm {
+    fn from(value: &ChioCapabilityTokenV1Algorithm) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioCapabilityTokenV1Algorithm {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Ed25519 => f.write_str("ed25519"),
+            Self::P256 => f.write_str("p256"),
+            Self::P384 => f.write_str("p384"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV1Algorithm {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "ed25519" => Ok(Self::Ed25519),
+            "p256" => Ok(Self::P256),
+            "p384" => Ok(Self::P384),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Unique token ID (UUIDv7 recommended), used for revocation.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Unique token ID (UUIDv7 recommended), used for revocation.",
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV1Id(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV1Id {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV1Id> for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV1Id) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV1Id> for ChioCapabilityTokenV1Id {
+    fn from(value: &ChioCapabilityTokenV1Id) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV1Id {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Id {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).",
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV1Issuer(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV1Issuer {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV1Issuer> for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV1Issuer) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV1Issuer> for ChioCapabilityTokenV1Issuer {
+    fn from(value: &ChioCapabilityTokenV1Issuer) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV1Issuer {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Issuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Issuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Issuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Issuer {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV1Signature(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV1Signature {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV1Signature> for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV1Signature) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV1Signature>
+for ChioCapabilityTokenV1Signature {
+    fn from(value: &ChioCapabilityTokenV1Signature) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV1Signature {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new("^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$")
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Signature {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.",
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV1Subject(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV1Subject {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV1Subject> for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV1Subject) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV1Subject>
+for ChioCapabilityTokenV1Subject {
+    fn from(value: &ChioCapabilityTokenV1Subject) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV1Subject {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Subject {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Subject {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Subject {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Subject {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Schema-tagged v2 capability token with typed caveats, first-class attenuation fields, an attenuation_proof witness, and a reserved hybrid algorithm enum value for the T2.1 compatibility path.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token.v2",
+///  "title": "Chio CapabilityToken v2",
+///  "description": "Schema-tagged v2 capability token with typed caveats, first-class attenuation fields, an attenuation_proof witness, and a reserved hybrid algorithm enum value for the T2.1 compatibility path.",
+///  "type": "object",
+///  "required": [
+///    "attenuation_proof",
+///    "expires_at",
+///    "id",
+///    "issued_at",
+///    "issuer",
+///    "schema",
+///    "scope",
+///    "signature",
+///    "subject"
+///  ],
+///  "properties": {
+///    "algorithm": {
+///      "type": "string",
+///      "enum": [
+///        "ed25519",
+///        "p256",
+///        "p384",
+///        "hybrid"
+///      ]
+///    },
+///    "attenuation_proof": {
+///      "$ref": "#/$defs/attenuationProof"
+///    },
+///    "budget_share_bps": {
+///      "description": "Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed.",
+///      "type": "integer",
+///      "maximum": 10000.0,
+///      "minimum": 0.0
+///    },
+///    "caveats": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/caveat"
+///      }
+///    },
+///    "delegation_chain": {
+///      "type": "array",
+///      "items": {
+///        "type": "object"
+///      }
+///    },
+///    "expires_at": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "issued_at": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "issuer": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///    },
+///    "schema": {
+///      "type": "string",
+///      "const": "chio.capability.v2"
+///    },
+///    "scope": {
+///      "description": "ChioScope. The Rust verifier hashes the RFC 8785 canonical form for attenuation_proof.childScopeHash.",
+///      "type": "object",
+///      "additionalProperties": true
+///    },
+///    "scope_attenuations": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "type"
+///        ],
+///        "properties": {
+///          "type": {
+///            "type": "string",
+///            "minLength": 1
+///          }
+///        },
+///        "additionalProperties": true
+///      }
+///    },
+///    "signature": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///    },
+///    "subject": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioCapabilityTokenV2 {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub algorithm: ::std::option::Option<ChioCapabilityTokenV2Algorithm>,
+    pub attenuation_proof: AttenuationProof,
+    ///Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub budget_share_bps: ::std::option::Option<i64>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub caveats: ::std::vec::Vec<Caveat>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub delegation_chain: ::std::vec::Vec<
+        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    >,
+    pub expires_at: u64,
+    pub id: ChioCapabilityTokenV2Id,
+    pub issued_at: u64,
+    pub issuer: ChioCapabilityTokenV2Issuer,
+    pub schema: ::std::string::String,
+    ///ChioScope. The Rust verifier hashes the RFC 8785 canonical form for attenuation_proof.childScopeHash.
+    pub scope: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub scope_attenuations: ::std::vec::Vec<ChioCapabilityTokenV2ScopeAttenuationsItem>,
+    pub signature: ChioCapabilityTokenV2Signature,
+    pub subject: ChioCapabilityTokenV2Subject,
+}
+impl ::std::convert::From<&ChioCapabilityTokenV2> for ChioCapabilityTokenV2 {
+    fn from(value: &ChioCapabilityTokenV2) -> Self {
+        value.clone()
+    }
+}
+///`ChioCapabilityTokenV2Algorithm`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "ed25519",
+///    "p256",
+///    "p384",
+///    "hybrid"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioCapabilityTokenV2Algorithm {
+    #[serde(rename = "ed25519")]
+    Ed25519,
+    #[serde(rename = "p256")]
+    P256,
+    #[serde(rename = "p384")]
+    P384,
+    #[serde(rename = "hybrid")]
+    Hybrid,
+}
+impl ::std::convert::From<&Self> for ChioCapabilityTokenV2Algorithm {
+    fn from(value: &ChioCapabilityTokenV2Algorithm) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioCapabilityTokenV2Algorithm {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Ed25519 => f.write_str("ed25519"),
+            Self::P256 => f.write_str("p256"),
+            Self::P384 => f.write_str("p384"),
+            Self::Hybrid => f.write_str("hybrid"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV2Algorithm {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "ed25519" => Ok(Self::Ed25519),
+            "p256" => Ok(Self::P256),
+            "p384" => Ok(Self::P384),
+            "hybrid" => Ok(Self::Hybrid),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ChioCapabilityTokenV2Id`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV2Id(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV2Id {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV2Id> for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV2Id) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV2Id> for ChioCapabilityTokenV2Id {
+    fn from(value: &ChioCapabilityTokenV2Id) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV2Id {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Id {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioCapabilityTokenV2Issuer`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV2Issuer(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV2Issuer {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV2Issuer> for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV2Issuer) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV2Issuer> for ChioCapabilityTokenV2Issuer {
+    fn from(value: &ChioCapabilityTokenV2Issuer) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV2Issuer {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Issuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Issuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Issuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Issuer {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioCapabilityTokenV2ScopeAttenuationsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "type"
+///  ],
+///  "properties": {
+///    "type": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": true
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ChioCapabilityTokenV2ScopeAttenuationsItem {
+    #[serde(rename = "type")]
+    pub type_: ChioCapabilityTokenV2ScopeAttenuationsItemType,
+}
+impl ::std::convert::From<&ChioCapabilityTokenV2ScopeAttenuationsItem>
+for ChioCapabilityTokenV2ScopeAttenuationsItem {
+    fn from(value: &ChioCapabilityTokenV2ScopeAttenuationsItem) -> Self {
+        value.clone()
+    }
+}
+///`ChioCapabilityTokenV2ScopeAttenuationsItemType`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV2ScopeAttenuationsItemType(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV2ScopeAttenuationsItemType {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV2ScopeAttenuationsItemType>
+for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV2ScopeAttenuationsItemType) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV2ScopeAttenuationsItemType>
+for ChioCapabilityTokenV2ScopeAttenuationsItemType {
+    fn from(value: &ChioCapabilityTokenV2ScopeAttenuationsItemType) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV2ScopeAttenuationsItemType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2ScopeAttenuationsItemType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioCapabilityTokenV2ScopeAttenuationsItemType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioCapabilityTokenV2ScopeAttenuationsItemType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2ScopeAttenuationsItemType {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioCapabilityTokenV2Signature`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV2Signature(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV2Signature {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV2Signature> for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV2Signature) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV2Signature>
+for ChioCapabilityTokenV2Signature {
+    fn from(value: &ChioCapabilityTokenV2Signature) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV2Signature {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Signature {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioCapabilityTokenV2Subject`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenV2Subject(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenV2Subject {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenV2Subject> for ::std::string::String {
+    fn from(value: ChioCapabilityTokenV2Subject) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenV2Subject>
+for ChioCapabilityTokenV2Subject {
+    fn from(value: &ChioCapabilityTokenV2Subject) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenV2Subject {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Subject {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Subject {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Subject {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Subject {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -14960,6 +17593,681 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant3 {
         value.clone()
     }
 }
+///Signed multi-parent lineage statement. parentReceiptIds are v2 body_hash values, canonical sorted and deduplicated, with parentSetHash = H(canonical(parentReceiptIds)).
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/lineage_statement.v2",
+///  "title": "Chio receipt lineage statement v2",
+///  "description": "Signed multi-parent lineage statement. parentReceiptIds are v2 body_hash values, canonical sorted and deduplicated, with parentSetHash = H(canonical(parentReceiptIds)).",
+///  "type": "object",
+///  "required": [
+///    "chainId",
+///    "childBodyHash",
+///    "id",
+///    "issuedAt",
+///    "kernelKey",
+///    "parentReceiptIds",
+///    "parentSetHash",
+///    "schema",
+///    "signature"
+///  ],
+///  "properties": {
+///    "chainId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "childBodyHash": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
+///    },
+///    "id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "issuedAt": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "kernelKey": {
+///      "type": "string",
+///      "minLength": 64
+///    },
+///    "parentReceiptIds": {
+///      "type": "array",
+///      "items": {
+///        "type": "string",
+///        "pattern": "^[0-9a-f]{64}$"
+///      },
+///      "uniqueItems": true
+///    },
+///    "parentSetHash": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
+///    },
+///    "schema": {
+///      "type": "string",
+///      "const": "chio.receipt_lineage_statement.v2"
+///    },
+///    "signature": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioReceiptLineageStatementV2 {
+    #[serde(rename = "chainId")]
+    pub chain_id: ChioReceiptLineageStatementV2ChainId,
+    #[serde(rename = "childBodyHash")]
+    pub child_body_hash: ChioReceiptLineageStatementV2ChildBodyHash,
+    pub id: ChioReceiptLineageStatementV2Id,
+    #[serde(rename = "issuedAt")]
+    pub issued_at: u64,
+    #[serde(rename = "kernelKey")]
+    pub kernel_key: ChioReceiptLineageStatementV2KernelKey,
+    #[serde(rename = "parentReceiptIds")]
+    pub parent_receipt_ids: Vec<ChioReceiptLineageStatementV2ParentReceiptIdsItem>,
+    #[serde(rename = "parentSetHash")]
+    pub parent_set_hash: ChioReceiptLineageStatementV2ParentSetHash,
+    pub schema: ::std::string::String,
+    pub signature: ChioReceiptLineageStatementV2Signature,
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementV2>
+for ChioReceiptLineageStatementV2 {
+    fn from(value: &ChioReceiptLineageStatementV2) -> Self {
+        value.clone()
+    }
+}
+///`ChioReceiptLineageStatementV2ChainId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementV2ChainId(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementV2ChainId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementV2ChainId>
+for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementV2ChainId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementV2ChainId>
+for ChioReceiptLineageStatementV2ChainId {
+    fn from(value: &ChioReceiptLineageStatementV2ChainId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementV2ChainId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2ChainId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementV2ChainId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementV2ChainId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ChainId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptLineageStatementV2ChildBodyHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementV2ChildBodyHash(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementV2ChildBodyHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementV2ChildBodyHash>
+for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementV2ChildBodyHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementV2ChildBodyHash>
+for ChioReceiptLineageStatementV2ChildBodyHash {
+    fn from(value: &ChioReceiptLineageStatementV2ChildBodyHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementV2ChildBodyHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2ChildBodyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementV2ChildBodyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementV2ChildBodyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ChildBodyHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptLineageStatementV2Id`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementV2Id(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementV2Id {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementV2Id> for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementV2Id) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementV2Id>
+for ChioReceiptLineageStatementV2Id {
+    fn from(value: &ChioReceiptLineageStatementV2Id) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementV2Id {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementV2Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptLineageStatementV2Id {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2Id {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptLineageStatementV2KernelKey`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 64
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementV2KernelKey(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementV2KernelKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementV2KernelKey>
+for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementV2KernelKey) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementV2KernelKey>
+for ChioReceiptLineageStatementV2KernelKey {
+    fn from(value: &ChioReceiptLineageStatementV2KernelKey) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementV2KernelKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 64usize {
+            return Err("shorter than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2KernelKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementV2KernelKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementV2KernelKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2KernelKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptLineageStatementV2ParentReceiptIdsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementV2ParentReceiptIdsItem(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementV2ParentReceiptIdsItem>
+for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementV2ParentReceiptIdsItem) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementV2ParentReceiptIdsItem>
+for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+    fn from(value: &ChioReceiptLineageStatementV2ParentReceiptIdsItem) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptLineageStatementV2ParentSetHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementV2ParentSetHash(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementV2ParentSetHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementV2ParentSetHash>
+for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementV2ParentSetHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementV2ParentSetHash>
+for ChioReceiptLineageStatementV2ParentSetHash {
+    fn from(value: &ChioReceiptLineageStatementV2ParentSetHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementV2ParentSetHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2ParentSetHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementV2ParentSetHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementV2ParentSetHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ParentSetHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptLineageStatementV2Signature`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementV2Signature(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementV2Signature {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementV2Signature>
+for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementV2Signature) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementV2Signature>
+for ChioReceiptLineageStatementV2Signature {
+    fn from(value: &ChioReceiptLineageStatementV2Signature) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementV2Signature {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2Signature {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///Merkle inclusion proof for a single receipt leaf in a receipt-log Merkle tree. Mirrors the serde shape of `MerkleProof` in `crates/chio-core-types/src/merkle.rs`. The proof allows an auditor, holding only the published Merkle root and the original leaf bytes, to verify that the leaf was included in a tree of the given size at the given position. The audit path is the ordered list of sibling hashes encountered when walking from the leaf up to the root; siblings whose subtree was carried upward without pairing (the right-edge of an unbalanced level) are omitted. M04 deterministic-replay consumes this schema as the contract for golden-bundle inclusion artifacts under `tests/replay/goldens/<family>/<name>/`.
 ///
 /// <details><summary>JSON schema</summary>
@@ -16153,6 +19461,459 @@ impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordTrustLe
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///Content-addressed v2 receipt. bodyHash is H(canonical_jcs(ReceiptV2BodyHashInput)); receiptId is a non-authoritative legacy UUIDv7 tooling alias and is not used for replay.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/v2",
+///  "title": "Chio receipt v2",
+///  "description": "Content-addressed v2 receipt. bodyHash is H(canonical_jcs(ReceiptV2BodyHashInput)); receiptId is a non-authoritative legacy UUIDv7 tooling alias and is not used for replay.",
+///  "type": "object",
+///  "required": [
+///    "body",
+///    "bodyHash",
+///    "receiptId",
+///    "signature"
+///  ],
+///  "properties": {
+///    "algorithm": {
+///      "type": "string",
+///      "enum": [
+///        "ed25519",
+///        "p256",
+///        "p384",
+///        "hybrid"
+///      ]
+///    },
+///    "body": {
+///      "$ref": "#/$defs/receiptV2BodyHashInput"
+///    },
+///    "bodyHash": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
+///    },
+///    "receiptId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "signature": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioReceiptV2 {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub algorithm: ::std::option::Option<ChioReceiptV2Algorithm>,
+    pub body: ReceiptV2BodyHashInput,
+    #[serde(rename = "bodyHash")]
+    pub body_hash: ChioReceiptV2BodyHash,
+    #[serde(rename = "receiptId")]
+    pub receipt_id: ChioReceiptV2ReceiptId,
+    pub signature: ChioReceiptV2Signature,
+}
+impl ::std::convert::From<&ChioReceiptV2> for ChioReceiptV2 {
+    fn from(value: &ChioReceiptV2) -> Self {
+        value.clone()
+    }
+}
+///`ChioReceiptV2Algorithm`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "ed25519",
+///    "p256",
+///    "p384",
+///    "hybrid"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioReceiptV2Algorithm {
+    #[serde(rename = "ed25519")]
+    Ed25519,
+    #[serde(rename = "p256")]
+    P256,
+    #[serde(rename = "p384")]
+    P384,
+    #[serde(rename = "hybrid")]
+    Hybrid,
+}
+impl ::std::convert::From<&Self> for ChioReceiptV2Algorithm {
+    fn from(value: &ChioReceiptV2Algorithm) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioReceiptV2Algorithm {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Ed25519 => f.write_str("ed25519"),
+            Self::P256 => f.write_str("p256"),
+            Self::P384 => f.write_str("p384"),
+            Self::Hybrid => f.write_str("hybrid"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioReceiptV2Algorithm {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "ed25519" => Ok(Self::Ed25519),
+            "p256" => Ok(Self::P256),
+            "p384" => Ok(Self::P384),
+            "hybrid" => Ok(Self::Hybrid),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptV2Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptV2Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptV2Algorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ChioReceiptV2BodyHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptV2BodyHash(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptV2BodyHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptV2BodyHash> for ::std::string::String {
+    fn from(value: ChioReceiptV2BodyHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptV2BodyHash> for ChioReceiptV2BodyHash {
+    fn from(value: &ChioReceiptV2BodyHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptV2BodyHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptV2BodyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptV2BodyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptV2BodyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptV2BodyHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptV2ReceiptId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptV2ReceiptId(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptV2ReceiptId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptV2ReceiptId> for ::std::string::String {
+    fn from(value: ChioReceiptV2ReceiptId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptV2ReceiptId> for ChioReceiptV2ReceiptId {
+    fn from(value: &ChioReceiptV2ReceiptId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptV2ReceiptId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptV2ReceiptId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptV2ReceiptId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptV2ReceiptId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptV2ReceiptId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptV2Signature`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptV2Signature(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptV2Signature {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptV2Signature> for ::std::string::String {
+    fn from(value: ChioReceiptV2Signature) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptV2Signature> for ChioReceiptV2Signature {
+    fn from(value: &ChioReceiptV2Signature) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptV2Signature {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                    .into(),
+            );
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptV2Signature {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptV2Signature {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.",
+///  "type": "object",
+///  "properties": {
+///    "grants": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/toolGrant"
+///      }
+///    },
+///    "prompt_grants": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/promptGrant"
+///      }
+///    },
+///    "resource_grants": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/resourceGrant"
+///      }
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioScope {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub grants: ::std::vec::Vec<ToolGrant>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub prompt_grants: ::std::vec::Vec<PromptGrant>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub resource_grants: ::std::vec::Vec<ResourceGrant>,
+}
+impl ::std::convert::From<&ChioScope> for ChioScope {
+    fn from(value: &ChioScope) -> Self {
+        value.clone()
+    }
+}
+impl ::std::default::Default for ChioScope {
+    fn default() -> Self {
+        Self {
+            grants: Default::default(),
+            prompt_grants: Default::default(),
+            resource_grants: Default::default(),
+        }
     }
 }
 ///What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
@@ -20010,6 +23771,39 @@ impl ::std::convert::From<&Constraint> for Constraint {
         value.clone()
     }
 }
+///Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.",
+///  "type": "object",
+///  "required": [
+///    "type"
+///  ],
+///  "properties": {
+///    "type": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "value": true
+///  }
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct Constraint {
+    #[serde(rename = "type")]
+    pub type_: ConstraintType,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub value: ::std::option::Option<::serde_json::Value>,
+}
+impl ::std::convert::From<&Constraint> for Constraint {
+    fn from(value: &Constraint) -> Self {
+        value.clone()
+    }
+}
 ///`ConstraintType`
 ///
 /// <details><summary>JSON schema</summary>
@@ -20191,6 +23985,84 @@ pub enum Decision {
 }
 impl ::std::convert::From<&Self> for Decision {
     fn from(value: &Decision) -> Self {
+        value.clone()
+    }
+}
+///A single link in a delegation chain. Mirrors `DelegationLink`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A single link in a delegation chain. Mirrors `DelegationLink`.",
+///  "type": "object",
+///  "required": [
+///    "capability_id",
+///    "delegatee",
+///    "delegator",
+///    "signature",
+///    "timestamp"
+///  ],
+///  "properties": {
+///    "attenuations": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "type"
+///        ],
+///        "properties": {
+///          "type": {
+///            "type": "string",
+///            "minLength": 1
+///          }
+///        }
+///      }
+///    },
+///    "capability_id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "delegatee": {
+///      "description": "Receiving public key. Same encoding as the token-level `issuer`/`subject`.",
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///    },
+///    "delegator": {
+///      "description": "Delegating public key. Same encoding as the token-level `issuer`/`subject`.",
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///    },
+///    "signature": {
+///      "description": "Delegation-link signature. Same encoding as the token-level `signature`.",
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+///    },
+///    "timestamp": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct DelegationLink {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub attenuations: ::std::vec::Vec<DelegationLinkAttenuationsItem>,
+    pub capability_id: DelegationLinkCapabilityId,
+    ///Receiving public key. Same encoding as the token-level `issuer`/`subject`.
+    pub delegatee: DelegationLinkDelegatee,
+    ///Delegating public key. Same encoding as the token-level `issuer`/`subject`.
+    pub delegator: DelegationLinkDelegator,
+    ///Delegation-link signature. Same encoding as the token-level `signature`.
+    pub signature: DelegationLinkSignature,
+    pub timestamp: u64,
+}
+impl ::std::convert::From<&DelegationLink> for DelegationLink {
+    fn from(value: &DelegationLink) -> Self {
         value.clone()
     }
 }
@@ -20467,7 +24339,7 @@ impl<'de> ::serde::Deserialize<'de> for DelegationLinkCapabilityId {
 ///{
 ///  "description": "Receiving public key. Same encoding as the token-level `issuer`/`subject`.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -20498,13 +24370,13 @@ impl ::std::str::FromStr for DelegationLinkDelegatee {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$\""
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -20555,7 +24427,7 @@ impl<'de> ::serde::Deserialize<'de> for DelegationLinkDelegatee {
 ///{
 ///  "description": "Delegating public key. Same encoding as the token-level `issuer`/`subject`.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -20586,13 +24458,13 @@ impl ::std::str::FromStr for DelegationLinkDelegator {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$\""
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -20643,7 +24515,7 @@ impl<'de> ::serde::Deserialize<'de> for DelegationLinkDelegator {
 ///{
 ///  "description": "Delegation-link signature. Same encoding as the token-level `signature`.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -20673,12 +24545,14 @@ impl ::std::str::FromStr for DelegationLinkSignature {
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
-            ::regress::Regex::new("^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$")
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -20719,6 +24593,147 @@ impl<'de> ::serde::Deserialize<'de> for DelegationLinkSignature {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///`GrantSubsetRelation`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "childIndex",
+///    "grantKind",
+///    "parentIndex",
+///    "subset"
+///  ],
+///  "properties": {
+///    "childIndex": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "grantKind": {
+///      "type": "string",
+///      "enum": [
+///        "tool",
+///        "resource",
+///        "prompt"
+///      ]
+///    },
+///    "parentIndex": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "subset": {
+///      "type": "boolean",
+///      "const": true
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct GrantSubsetRelation {
+    #[serde(rename = "childIndex")]
+    pub child_index: u64,
+    #[serde(rename = "grantKind")]
+    pub grant_kind: GrantSubsetRelationGrantKind,
+    #[serde(rename = "parentIndex")]
+    pub parent_index: u64,
+    pub subset: bool,
+}
+impl ::std::convert::From<&GrantSubsetRelation> for GrantSubsetRelation {
+    fn from(value: &GrantSubsetRelation) -> Self {
+        value.clone()
+    }
+}
+///`GrantSubsetRelationGrantKind`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "tool",
+///    "resource",
+///    "prompt"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum GrantSubsetRelationGrantKind {
+    #[serde(rename = "tool")]
+    Tool,
+    #[serde(rename = "resource")]
+    Resource,
+    #[serde(rename = "prompt")]
+    Prompt,
+}
+impl ::std::convert::From<&Self> for GrantSubsetRelationGrantKind {
+    fn from(value: &GrantSubsetRelationGrantKind) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for GrantSubsetRelationGrantKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Tool => f.write_str("tool"),
+            Self::Resource => f.write_str("resource"),
+            Self::Prompt => f.write_str("prompt"),
+        }
+    }
+}
+impl ::std::str::FromStr for GrantSubsetRelationGrantKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "tool" => Ok(Self::Tool),
+            "resource" => Ok(Self::Resource),
+            "prompt" => Ok(Self::Prompt),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for GrantSubsetRelationGrantKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for GrantSubsetRelationGrantKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GrantSubsetRelationGrantKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///Evidence from a single guard's evaluation. Mirrors `GuardEvidence`.
@@ -20844,6 +24859,364 @@ impl<'de> ::serde::Deserialize<'de> for GuardEvidenceGuardName {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///`Hlc`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "kernelId",
+///    "logical",
+///    "wallSeconds"
+///  ],
+///  "properties": {
+///    "kernelId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "logical": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "wallSeconds": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Hlc {
+    #[serde(rename = "kernelId")]
+    pub kernel_id: HlcKernelId,
+    pub logical: u64,
+    #[serde(rename = "wallSeconds")]
+    pub wall_seconds: u64,
+}
+impl ::std::convert::From<&Hlc> for Hlc {
+    fn from(value: &Hlc) -> Self {
+        value.clone()
+    }
+}
+///`HlcKernelId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct HlcKernelId(::std::string::String);
+impl ::std::ops::Deref for HlcKernelId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<HlcKernelId> for ::std::string::String {
+    fn from(value: HlcKernelId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&HlcKernelId> for HlcKernelId {
+    fn from(value: &HlcKernelId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for HlcKernelId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for HlcKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for HlcKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for HlcKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for HlcKernelId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`Inclusion`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "checkpointId",
+///    "leafHash",
+///    "proof"
+///  ],
+///  "properties": {
+///    "checkpointId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "leafHash": {
+///      "type": "string",
+///      "pattern": "^(0x)?[0-9a-f]{64}$"
+///    },
+///    "proof": {
+///      "type": "object",
+///      "additionalProperties": true
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Inclusion {
+    #[serde(rename = "checkpointId")]
+    pub checkpoint_id: InclusionCheckpointId,
+    #[serde(rename = "leafHash")]
+    pub leaf_hash: InclusionLeafHash,
+    pub proof: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+}
+impl ::std::convert::From<&Inclusion> for Inclusion {
+    fn from(value: &Inclusion) -> Self {
+        value.clone()
+    }
+}
+///`InclusionCheckpointId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct InclusionCheckpointId(::std::string::String);
+impl ::std::ops::Deref for InclusionCheckpointId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<InclusionCheckpointId> for ::std::string::String {
+    fn from(value: InclusionCheckpointId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&InclusionCheckpointId> for InclusionCheckpointId {
+    fn from(value: &InclusionCheckpointId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for InclusionCheckpointId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for InclusionCheckpointId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for InclusionCheckpointId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for InclusionCheckpointId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for InclusionCheckpointId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`InclusionLeafHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^(0x)?[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct InclusionLeafHash(::std::string::String);
+impl ::std::ops::Deref for InclusionLeafHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<InclusionLeafHash> for ::std::string::String {
+    fn from(value: InclusionLeafHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&InclusionLeafHash> for InclusionLeafHash {
+    fn from(value: &InclusionLeafHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for InclusionLeafHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^(0x)?[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^(0x)?[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for InclusionLeafHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for InclusionLeafHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for InclusionLeafHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for InclusionLeafHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.",
+///  "type": "object",
+///  "required": [
+///    "currency",
+///    "units"
+///  ],
+///  "properties": {
+///    "currency": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "units": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct MonetaryAmount {
+    pub currency: MonetaryAmountCurrency,
+    pub units: u64,
+}
+impl ::std::convert::From<&MonetaryAmount> for MonetaryAmount {
+    fn from(value: &MonetaryAmount) -> Self {
+        value.clone()
     }
 }
 ///A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
@@ -21197,6 +25570,146 @@ impl ::std::convert::TryFrom<::std::string::String> for Operation {
         value.parse()
     }
 }
+///`Operation`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "enum": [
+///    "invoke",
+///    "read_result",
+///    "read",
+///    "subscribe",
+///    "get",
+///    "delegate"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum Operation {
+    #[serde(rename = "invoke")]
+    Invoke,
+    #[serde(rename = "read_result")]
+    ReadResult,
+    #[serde(rename = "read")]
+    Read,
+    #[serde(rename = "subscribe")]
+    Subscribe,
+    #[serde(rename = "get")]
+    Get,
+    #[serde(rename = "delegate")]
+    Delegate,
+}
+impl ::std::convert::From<&Self> for Operation {
+    fn from(value: &Operation) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for Operation {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Invoke => f.write_str("invoke"),
+            Self::ReadResult => f.write_str("read_result"),
+            Self::Read => f.write_str("read"),
+            Self::Subscribe => f.write_str("subscribe"),
+            Self::Get => f.write_str("get"),
+            Self::Delegate => f.write_str("delegate"),
+        }
+    }
+}
+impl ::std::str::FromStr for Operation {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "invoke" => Ok(Self::Invoke),
+            "read_result" => Ok(Self::ReadResult),
+            "read" => Ok(Self::Read),
+            "subscribe" => Ok(Self::Subscribe),
+            "get" => Ok(Self::Get),
+            "delegate" => Ok(Self::Delegate),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for Operation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for Operation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for Operation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.",
+///  "type": "object",
+///  "required": [
+///    "operations",
+///    "prompt_name"
+///  ],
+///  "properties": {
+///    "operations": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/operation"
+///      },
+///      "minItems": 1
+///    },
+///    "prompt_name": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PromptGrant {
+    pub operations: ::std::vec::Vec<Operation>,
+    pub prompt_name: PromptGrantPromptName,
+}
+impl ::std::convert::From<&PromptGrant> for PromptGrant {
+    fn from(value: &PromptGrant) -> Self {
+        value.clone()
+    }
+}
 ///Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
 ///
 /// <details><summary>JSON schema</summary>
@@ -21352,6 +25865,1025 @@ impl<'de> ::serde::Deserialize<'de> for PromptGrantPromptName {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///`ReceiptV2BodyHashInput`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "action",
+///    "capabilityId",
+///    "chainId",
+///    "contentHash",
+///    "dagOrdinal",
+///    "decision",
+///    "hlc",
+///    "kernelKey",
+///    "parentSetHash",
+///    "policyHash",
+///    "schema",
+///    "timestamp",
+///    "toolName",
+///    "toolServer"
+///  ],
+///  "properties": {
+///    "action": {
+///      "type": "object",
+///      "additionalProperties": true
+///    },
+///    "capabilityId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "chainId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "contentHash": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "dagOrdinal": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "decision": {
+///      "type": "object",
+///      "additionalProperties": true
+///    },
+///    "evidence": {
+///      "type": "array",
+///      "items": {
+///        "type": "object"
+///      }
+///    },
+///    "hlc": {
+///      "$ref": "#/$defs/hlc"
+///    },
+///    "kernelKey": {
+///      "type": "string",
+///      "minLength": 64
+///    },
+///    "metadata": true,
+///    "parentReceiptIds": {
+///      "description": "Canonical sorted and deduplicated parent body_hash values.",
+///      "type": "array",
+///      "items": {
+///        "type": "string",
+///        "pattern": "^[0-9a-f]{64}$"
+///      },
+///      "uniqueItems": true
+///    },
+///    "parentSetHash": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
+///    },
+///    "policyHash": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "schema": {
+///      "type": "string",
+///      "const": "chio.receipt.v2"
+///    },
+///    "tenantId": {
+///      "type": "string"
+///    },
+///    "timestamp": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "toolName": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "toolServer": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "trustLevel": {
+///      "type": "string",
+///      "enum": [
+///        "mediated",
+///        "verified",
+///        "advisory"
+///      ]
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ReceiptV2BodyHashInput {
+    pub action: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    #[serde(rename = "capabilityId")]
+    pub capability_id: ReceiptV2BodyHashInputCapabilityId,
+    #[serde(rename = "chainId")]
+    pub chain_id: ReceiptV2BodyHashInputChainId,
+    #[serde(rename = "contentHash")]
+    pub content_hash: ReceiptV2BodyHashInputContentHash,
+    #[serde(rename = "dagOrdinal")]
+    pub dag_ordinal: u64,
+    pub decision: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub evidence: ::std::vec::Vec<
+        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    >,
+    pub hlc: Hlc,
+    #[serde(rename = "kernelKey")]
+    pub kernel_key: ReceiptV2BodyHashInputKernelKey,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub metadata: ::std::option::Option<::serde_json::Value>,
+    ///Canonical sorted and deduplicated parent body_hash values.
+    #[serde(
+        rename = "parentReceiptIds",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub parent_receipt_ids: ::std::option::Option<
+        Vec<ReceiptV2BodyHashInputParentReceiptIdsItem>,
+    >,
+    #[serde(rename = "parentSetHash")]
+    pub parent_set_hash: ReceiptV2BodyHashInputParentSetHash,
+    #[serde(rename = "policyHash")]
+    pub policy_hash: ReceiptV2BodyHashInputPolicyHash,
+    pub schema: ::std::string::String,
+    #[serde(
+        rename = "tenantId",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub tenant_id: ::std::option::Option<::std::string::String>,
+    pub timestamp: u64,
+    #[serde(rename = "toolName")]
+    pub tool_name: ReceiptV2BodyHashInputToolName,
+    #[serde(rename = "toolServer")]
+    pub tool_server: ReceiptV2BodyHashInputToolServer,
+    #[serde(
+        rename = "trustLevel",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub trust_level: ::std::option::Option<ReceiptV2BodyHashInputTrustLevel>,
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInput> for ReceiptV2BodyHashInput {
+    fn from(value: &ReceiptV2BodyHashInput) -> Self {
+        value.clone()
+    }
+}
+///`ReceiptV2BodyHashInputCapabilityId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputCapabilityId(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputCapabilityId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputCapabilityId> for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputCapabilityId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputCapabilityId>
+for ReceiptV2BodyHashInputCapabilityId {
+    fn from(value: &ReceiptV2BodyHashInputCapabilityId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputCapabilityId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputCapabilityId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ReceiptV2BodyHashInputCapabilityId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReceiptV2BodyHashInputCapabilityId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputCapabilityId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputChainId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputChainId(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputChainId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputChainId> for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputChainId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputChainId>
+for ReceiptV2BodyHashInputChainId {
+    fn from(value: &ReceiptV2BodyHashInputChainId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputChainId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputChainId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ReceiptV2BodyHashInputChainId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReceiptV2BodyHashInputChainId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputChainId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputContentHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputContentHash(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputContentHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputContentHash> for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputContentHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputContentHash>
+for ReceiptV2BodyHashInputContentHash {
+    fn from(value: &ReceiptV2BodyHashInputContentHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputContentHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputContentHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ReceiptV2BodyHashInputContentHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReceiptV2BodyHashInputContentHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputContentHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputKernelKey`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 64
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputKernelKey(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputKernelKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputKernelKey> for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputKernelKey) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputKernelKey>
+for ReceiptV2BodyHashInputKernelKey {
+    fn from(value: &ReceiptV2BodyHashInputKernelKey) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputKernelKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 64usize {
+            return Err("shorter than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputKernelKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ReceiptV2BodyHashInputKernelKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReceiptV2BodyHashInputKernelKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputKernelKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputParentReceiptIdsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputParentReceiptIdsItem(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputParentReceiptIdsItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputParentReceiptIdsItem>
+for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputParentReceiptIdsItem) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputParentReceiptIdsItem>
+for ReceiptV2BodyHashInputParentReceiptIdsItem {
+    fn from(value: &ReceiptV2BodyHashInputParentReceiptIdsItem) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputParentReceiptIdsItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputParentReceiptIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ReceiptV2BodyHashInputParentReceiptIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReceiptV2BodyHashInputParentReceiptIdsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputParentReceiptIdsItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputParentSetHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputParentSetHash(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputParentSetHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputParentSetHash>
+for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputParentSetHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputParentSetHash>
+for ReceiptV2BodyHashInputParentSetHash {
+    fn from(value: &ReceiptV2BodyHashInputParentSetHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputParentSetHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputParentSetHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ReceiptV2BodyHashInputParentSetHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReceiptV2BodyHashInputParentSetHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputParentSetHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputPolicyHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputPolicyHash(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputPolicyHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputPolicyHash> for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputPolicyHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputPolicyHash>
+for ReceiptV2BodyHashInputPolicyHash {
+    fn from(value: &ReceiptV2BodyHashInputPolicyHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputPolicyHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputPolicyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ReceiptV2BodyHashInputPolicyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReceiptV2BodyHashInputPolicyHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputPolicyHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputToolName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputToolName(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputToolName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputToolName> for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputToolName) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputToolName>
+for ReceiptV2BodyHashInputToolName {
+    fn from(value: &ReceiptV2BodyHashInputToolName) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputToolName {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputToolName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ReceiptV2BodyHashInputToolName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReceiptV2BodyHashInputToolName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputToolName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputToolServer`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReceiptV2BodyHashInputToolServer(::std::string::String);
+impl ::std::ops::Deref for ReceiptV2BodyHashInputToolServer {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReceiptV2BodyHashInputToolServer> for ::std::string::String {
+    fn from(value: ReceiptV2BodyHashInputToolServer) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ReceiptV2BodyHashInputToolServer>
+for ReceiptV2BodyHashInputToolServer {
+    fn from(value: &ReceiptV2BodyHashInputToolServer) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputToolServer {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputToolServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ReceiptV2BodyHashInputToolServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReceiptV2BodyHashInputToolServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputToolServer {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReceiptV2BodyHashInputTrustLevel`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "mediated",
+///    "verified",
+///    "advisory"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ReceiptV2BodyHashInputTrustLevel {
+    #[serde(rename = "mediated")]
+    Mediated,
+    #[serde(rename = "verified")]
+    Verified,
+    #[serde(rename = "advisory")]
+    Advisory,
+}
+impl ::std::convert::From<&Self> for ReceiptV2BodyHashInputTrustLevel {
+    fn from(value: &ReceiptV2BodyHashInputTrustLevel) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ReceiptV2BodyHashInputTrustLevel {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Mediated => f.write_str("mediated"),
+            Self::Verified => f.write_str("verified"),
+            Self::Advisory => f.write_str("advisory"),
+        }
+    }
+}
+impl ::std::str::FromStr for ReceiptV2BodyHashInputTrustLevel {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "mediated" => Ok(Self::Mediated),
+            "verified" => Ok(Self::Verified),
+            "advisory" => Ok(Self::Advisory),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputTrustLevel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ReceiptV2BodyHashInputTrustLevel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ReceiptV2BodyHashInputTrustLevel {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.",
+///  "type": "object",
+///  "required": [
+///    "operations",
+///    "uri_pattern"
+///  ],
+///  "properties": {
+///    "operations": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/operation"
+///      },
+///      "minItems": 1
+///    },
+///    "uri_pattern": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ResourceGrant {
+    pub operations: ::std::vec::Vec<Operation>,
+    pub uri_pattern: ResourceGrantUriPattern,
+}
+impl ::std::convert::From<&ResourceGrant> for ResourceGrant {
+    fn from(value: &ResourceGrant) -> Self {
+        value.clone()
     }
 }
 ///Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
@@ -21792,6 +27324,87 @@ impl ::std::convert::From<&ToolGrant> for ToolGrant {
         value.clone()
     }
 }
+///Authorization to invoke a single tool. Mirrors `ToolGrant`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Authorization to invoke a single tool. Mirrors `ToolGrant`.",
+///  "type": "object",
+///  "required": [
+///    "operations",
+///    "server_id",
+///    "tool_name"
+///  ],
+///  "properties": {
+///    "constraints": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/constraint"
+///      }
+///    },
+///    "dpop_required": {
+///      "description": "If true, the kernel requires a valid DPoP proof for every invocation under this grant.",
+///      "type": "boolean"
+///    },
+///    "max_cost_per_invocation": {
+///      "$ref": "#/$defs/monetaryAmount"
+///    },
+///    "max_invocations": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "max_total_cost": {
+///      "$ref": "#/$defs/monetaryAmount"
+///    },
+///    "operations": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/operation"
+///      },
+///      "minItems": 1
+///    },
+///    "server_id": {
+///      "description": "Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).",
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "tool_name": {
+///      "description": "Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).",
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ToolGrant {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub constraints: ::std::vec::Vec<Constraint>,
+    ///If true, the kernel requires a valid DPoP proof for every invocation under this grant.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub dpop_required: ::std::option::Option<bool>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub max_cost_per_invocation: ::std::option::Option<MonetaryAmount>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub max_invocations: ::std::option::Option<u64>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub max_total_cost: ::std::option::Option<MonetaryAmount>,
+    pub operations: ::std::vec::Vec<Operation>,
+    ///Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).
+    pub server_id: ToolGrantServerId,
+    ///Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).
+    pub tool_name: ToolGrantToolName,
+}
+impl ::std::convert::From<&ToolGrant> for ToolGrant {
+    fn from(value: &ToolGrant) -> Self {
+        value.clone()
+    }
+}
 ///Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).
 ///
 /// <details><summary>JSON schema</summary>
@@ -21937,6 +27550,305 @@ impl ::std::convert::TryFrom<::std::string::String> for ToolGrantToolName {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ToolGrantToolName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`Witness`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "kind",
+///    "root",
+///    "witnessId"
+///  ],
+///  "properties": {
+///    "kind": {
+///      "type": "string",
+///      "enum": [
+///        "rekor",
+///        "ots",
+///        "solana_memo"
+///      ]
+///    },
+///    "observedAt": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "root": {
+///      "type": "string",
+///      "pattern": "^(0x)?[0-9a-f]{64}$"
+///    },
+///    "witnessId": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Witness {
+    pub kind: WitnessKind,
+    #[serde(
+        rename = "observedAt",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub observed_at: ::std::option::Option<u64>,
+    pub root: WitnessRoot,
+    #[serde(rename = "witnessId")]
+    pub witness_id: WitnessWitnessId,
+}
+impl ::std::convert::From<&Witness> for Witness {
+    fn from(value: &Witness) -> Self {
+        value.clone()
+    }
+}
+///`WitnessKind`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "rekor",
+///    "ots",
+///    "solana_memo"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum WitnessKind {
+    #[serde(rename = "rekor")]
+    Rekor,
+    #[serde(rename = "ots")]
+    Ots,
+    #[serde(rename = "solana_memo")]
+    SolanaMemo,
+}
+impl ::std::convert::From<&Self> for WitnessKind {
+    fn from(value: &WitnessKind) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for WitnessKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Rekor => f.write_str("rekor"),
+            Self::Ots => f.write_str("ots"),
+            Self::SolanaMemo => f.write_str("solana_memo"),
+        }
+    }
+}
+impl ::std::str::FromStr for WitnessKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "rekor" => Ok(Self::Rekor),
+            "ots" => Ok(Self::Ots),
+            "solana_memo" => Ok(Self::SolanaMemo),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for WitnessKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for WitnessKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for WitnessKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`WitnessRoot`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^(0x)?[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct WitnessRoot(::std::string::String);
+impl ::std::ops::Deref for WitnessRoot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<WitnessRoot> for ::std::string::String {
+    fn from(value: WitnessRoot) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&WitnessRoot> for WitnessRoot {
+    fn from(value: &WitnessRoot) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for WitnessRoot {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^(0x)?[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^(0x)?[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for WitnessRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for WitnessRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for WitnessRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for WitnessRoot {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`WitnessWitnessId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct WitnessWitnessId(::std::string::String);
+impl ::std::ops::Deref for WitnessWitnessId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<WitnessWitnessId> for ::std::string::String {
+    fn from(value: WitnessWitnessId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&WitnessWitnessId> for WitnessWitnessId {
+    fn from(value: &WitnessWitnessId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for WitnessWitnessId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for WitnessWitnessId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for WitnessWitnessId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for WitnessWitnessId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for WitnessWitnessId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,

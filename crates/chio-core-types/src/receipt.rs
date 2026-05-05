@@ -602,6 +602,12 @@ impl ReceiptLineageStatementV2Body {
 
 impl ReceiptLineageStatementV2 {
     pub fn sign(body: ReceiptLineageStatementV2Body, keypair: &Keypair) -> Result<Self> {
+        let normalized = canonical_parent_receipt_ids(body.parent_receipt_ids.clone());
+        if normalized != body.parent_receipt_ids {
+            return Err(Error::CanonicalJson(
+                "receipt lineage v2 parent_receipt_ids must be sorted and deduplicated".to_string(),
+            ));
+        }
         let expected = parent_set_hash_for_normalized(&body.parent_receipt_ids)?;
         if expected != body.parent_set_hash {
             return Err(Error::CanonicalJson(
@@ -642,6 +648,10 @@ impl ReceiptLineageStatementV2 {
                 "unsupported receipt lineage v2 schema: {}",
                 self.schema
             )));
+        }
+        let normalized = canonical_parent_receipt_ids(self.parent_receipt_ids.clone());
+        if normalized != self.parent_receipt_ids {
+            return Ok(false);
         }
         let expected = parent_set_hash_for_normalized(&self.parent_receipt_ids)?;
         if expected != self.parent_set_hash {
@@ -2405,6 +2415,54 @@ mod tests {
             decoded.continuation_token_id.as_deref(),
             Some("continuation-1")
         );
+    }
+
+    #[test]
+    fn receipt_lineage_v2_sign_rejects_uncanonical_parent_order() -> Result<()> {
+        let kp = Keypair::generate();
+        let parent_receipt_ids = vec![
+            "receipt-parent-b".to_string(),
+            "receipt-parent-a".to_string(),
+        ];
+        let body = ReceiptLineageStatementV2Body {
+            schema: CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA.to_string(),
+            id: "statement-v2-1".to_string(),
+            child_body_hash: "child-body-hash".to_string(),
+            chain_id: "chain-1".to_string(),
+            parent_set_hash: parent_set_hash_for_normalized(&parent_receipt_ids)?,
+            parent_receipt_ids,
+            issued_at: 1_710_000_000,
+            kernel_key: kp.public_key(),
+        };
+
+        assert!(ReceiptLineageStatementV2::sign(body, &kp).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_lineage_v2_verify_rejects_uncanonical_parent_order() -> Result<()> {
+        let kp = Keypair::generate();
+        let body = ReceiptLineageStatementV2Body::new(
+            "statement-v2-1",
+            "child-body-hash",
+            "chain-1",
+            vec![
+                "receipt-parent-a".to_string(),
+                "receipt-parent-b".to_string(),
+            ],
+            1_710_000_000,
+            kp.public_key(),
+        )?;
+        let mut statement = ReceiptLineageStatementV2::sign(body, &kp)?;
+
+        statement.parent_receipt_ids = vec![
+            "receipt-parent-b".to_string(),
+            "receipt-parent-a".to_string(),
+        ];
+        statement.parent_set_hash = parent_set_hash_for_normalized(&statement.parent_receipt_ids)?;
+
+        assert!(!statement.verify_signature()?);
+        Ok(())
     }
 
     #[test]

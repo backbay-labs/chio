@@ -2,6 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use chio_core_types::capability::CapabilityNegotiation;
 use chio_core_types::crypto::Keypair;
 use chio_federation::{
     ConformanceEvidence, ConformanceTier, KernelTrustExchange, KernelTrustExchangeConfig,
@@ -45,6 +46,40 @@ fn handshake_succeeds_and_pins_both_sides() {
     // Resolve while fresh succeeds.
     let resolved = exchange_a.resolve("kernel.org-b", now + 60).unwrap();
     assert_eq!(resolved.public_key.to_hex(), kp_b.public_key().to_hex());
+}
+
+#[test]
+fn default_handshake_omits_v1_compatibility_fields() {
+    let kp_b = Keypair::generate();
+    let now: u64 = 1_800_000_000;
+
+    let envelope =
+        PeerHandshakeEnvelope::sign("kernel.org-b", "kernel.org-a", "nonce-b", now, &kp_b).unwrap();
+    let challenge = serde_json::to_value(&envelope.challenge).unwrap();
+
+    assert!(challenge.get("capabilities").is_none());
+    assert!(challenge.get("conformanceTier").is_none());
+    envelope.verify_signature().unwrap();
+}
+
+#[test]
+fn explicit_t1_capabilities_are_signed_when_requested() {
+    let kp_b = Keypair::generate();
+    let now: u64 = 1_800_000_000;
+
+    let envelope = PeerHandshakeEnvelope::sign_with_capabilities(
+        "kernel.org-b",
+        "kernel.org-a",
+        "nonce-b",
+        now,
+        &kp_b,
+        CapabilityNegotiation::t1_default(),
+    )
+    .unwrap();
+    let challenge = serde_json::to_value(&envelope.challenge).unwrap();
+
+    assert!(challenge.get("capabilities").is_some());
+    envelope.verify_signature().unwrap();
 }
 
 #[test]
@@ -247,6 +282,25 @@ fn quorum_policy_rejects_peer_below_min_tier() {
             ..
         }
     ));
+}
+
+#[test]
+fn untrusted_peer_cannot_probe_quorum_tier_floor() {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let now: u64 = 1_800_000_000;
+    let policy = QuorumPolicy {
+        min_tier: ConformanceTier::Silver,
+    };
+
+    let exchange = KernelTrustExchange::new("kernel.org-a", kp_a);
+    let envelope_b =
+        PeerHandshakeEnvelope::sign("kernel.org-b", "kernel.org-a", "nonce-b", now, &kp_b).unwrap();
+
+    let err = exchange
+        .accept_envelope_with_policy(&envelope_b, "kernel.org-b", now, &policy)
+        .expect_err("untrusted first contact must not reveal tier floor");
+    assert!(matches!(err, PeerHandshakeError::MissingTrustAnchor(_)));
 }
 
 #[test]

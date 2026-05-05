@@ -175,6 +175,25 @@ fn signed_token_with_alg(
     encode(&header, &claims, &play_integrity_encoding_key()).map_err(Into::into)
 }
 
+fn signed_token_with_issuer(issuer: &str) -> Result<String, Box<dyn Error>> {
+    let mut header = Header::new(Algorithm::HS256);
+    header.kid = Some(GOOGLE_PLAY_INTEGRITY_ROOT_KID.to_string());
+    let claims = TestClaims {
+        nonce: NONCE.to_string(),
+        app_integrity: TestAppIntegrity {
+            app_recognition_verdict: PLAY_RECOGNIZED.to_string(),
+            package_name: PACKAGE.to_string(),
+        },
+        device_integrity: TestDeviceIntegrity {
+            device_recognition_verdict: vec![MEETS_DEVICE_INTEGRITY.to_string()],
+        },
+        aud: AUDIENCE.to_string(),
+        iss: issuer.to_string(),
+        exp: Some(future_exp()?),
+    };
+    encode(&header, &claims, &play_integrity_encoding_key()).map_err(Into::into)
+}
+
 #[test]
 fn play_integrity_verifier_rejects_expired_token_fail_closed() -> Result<(), Box<dyn Error>> {
     // A token whose `exp` claim is in the past must be rejected even when
@@ -206,6 +225,25 @@ fn play_integrity_verifier_rejects_expired_token_fail_closed() -> Result<(), Box
         error.urn(),
         "urn:chio:error:custody:play-integrity-invalid-token"
     );
+    Ok(())
+}
+
+#[test]
+fn play_integrity_verifier_rejects_wrong_issuer() -> Result<(), Box<dyn Error>> {
+    let token = signed_token_with_issuer("https://accounts.example.invalid")?;
+    let error = verify_play_integrity(PlayIntegrityVerificationInput {
+        token: &token,
+        expected_nonce: NONCE,
+        expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &play_integrity_jwks_json(),
+    })
+    .err()
+    .ok_or("expected issuer rejection")?;
+    assert!(matches!(
+        error,
+        AttestationError::PlayIntegrityInvalidToken(_)
+    ));
     Ok(())
 }
 

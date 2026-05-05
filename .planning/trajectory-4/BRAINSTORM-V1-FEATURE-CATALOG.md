@@ -16,6 +16,8 @@ For ideas explicitly rejected by their proposing agent, see `REJECTED-IDEAS.md`.
 | `crates/chio-tee/` is TEE attestation | **`chio-tee/` is the streaming-tap crate**; TEE attestation lives in `chio-attest-verify` (TDX + SEV-SNP + Nitro already implemented). Naming collision worth flagging. |
 | `chio-core` is the core crate | `chio-core` is a 12-line `pub use` umbrella; `chio-core-types` (35 KLOC, 112 in-tree dependents) is the real substrate |
 
+**Execution note:** the integrated trj4 branch moved the threat gate from the planning baseline to 20 covered / 0 pending / 0 uncovered, completed the mobile verifier paths, and burned cargo-vet exemptions to the 819 -> 769 target. Keep this catalog as the idea source, not the live close-state ledger.
+
 ## Cross-cutting convergence
 
 ### 4-way consensus: macaroon-style capability attenuation
@@ -43,7 +45,7 @@ Same primitive, different motivations: CPU savings (ML-DSA-65 sign cost 200-400u
 - **Hybrid PQ as plumbing, not invention** (trust-graph T-8): `HybridBackend` exists in `chio-core-types::pq`; signature wire format already declared in `signature.v1.json` (algorithm enum `["ed25519","p256","p384","hybrid"]`; wire-value strings of the form `hybrid:<classical>:<pq>:<alg_set>`); `KernelTrustExchange` stores a concrete local `Keypair` and needs to accept generic `SigningBackend`. The capability-token schema (`spec/schemas/chio-wire/v1/capability/token.schema.json`) currently only enumerates `["ed25519","p256","p384"]` and is missing the `hybrid` variant; T2.1 adds it plus wire-pattern updates so the hybrid prefix is accepted on `issuer` / `subject` / signature fields.
 - **Workspace-public surfaces with no dependents** (archaeology X-3): `chio-tower` (2738 LOC), `chio-envoy-ext-authz` (1434), `chio-ag-ui-proxy` (830), `chio-openapi-mcp-bridge` (815). Either ship example wiring or demote to `integrations/`.
 - **Threat-model coverage gate is built and PASS at 11 covered / 9 pending-with-`deferred_to` / 0 uncovered** (archaeology + observability): the gate keys on `coverage_state` (not `coveredBy`); the 9 pending split into 6 `unimplemented!()` stubs and 3 mobile rows whose `deferred_to` already points at `trajectory-4.M07.real-attestation`. Concrete trj4 work to claim 100%: fill 6 stubs, land 3 mobile tests (Tier 0 Phase C), add `covered_by_tests` linkage to `weights_hash_spoof`.
-- **Multi-modal / agentic-browser gap** (AI-frontier A-5, capability C-1): browser/mobile kernels are stubs (clock + rng only); current `ToolInvocation::arguments: Vec<u8>` for canonical JSON only.
+- **Multi-modal / agentic-browser gap** (AI-frontier A-5, capability C-1): browser-kernel functionality is still narrow and mobile has only the attestation/receipt verifier slice completed; current `ToolInvocation::arguments: Vec<u8>` for canonical JSON only.
 - **Receipt explanation surface** (DX-2 + AI-frontier A-12): both lenses propose the same primitive - a tool that walks a receipt's policy clauses, guards, scope, parent chain, and produces human-readable rationale. CLI `chio explain` first; web explorer (DX-3) later.
 
 ---

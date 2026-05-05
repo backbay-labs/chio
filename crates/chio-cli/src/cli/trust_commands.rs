@@ -2471,26 +2471,45 @@ fn load_receipt_for_explain(
     receipt_id: &str,
     backend: &QueryBackend<'_>,
 ) -> Result<serde_json::Value, CliError> {
+    const RECEIPT_EXPLAIN_PAGE_LIMIT: usize = 1000;
+
     if let Some(url) = backend.control_url {
         let token = require_control_token(backend.control_token)?;
         let client = trust_control::build_client(url, token)?;
-        let query = trust_control::ReceiptQueryHttpQuery {
-            capability_id: None,
-            tool_server: None,
-            tool_name: None,
-            outcome: None,
-            since: None,
-            until: None,
-            min_cost: None,
-            max_cost: None,
-            cursor: None,
-            limit: Some(1000),
-            agent_subject: None,
-        };
-        let response = client.query_receipts(&query)?;
-        return select_receipt_for_explain(
+        let mut cursor = None;
+        let mut matches = Vec::new();
+        loop {
+            let query = trust_control::ReceiptQueryHttpQuery {
+                capability_id: None,
+                tool_server: None,
+                tool_name: None,
+                outcome: None,
+                since: None,
+                until: None,
+                min_cost: None,
+                max_cost: None,
+                cursor,
+                limit: Some(RECEIPT_EXPLAIN_PAGE_LIMIT),
+                agent_subject: None,
+            };
+            let response = client.query_receipts(&query)?;
+            push_receipt_explain_matches(receipt_id, response.receipts, &mut matches)?;
+            match response.next_cursor {
+                Some(next_cursor) => {
+                    if cursor == Some(next_cursor) {
+                        return Err(CliError::cli_other_error(
+                            "control plane receipt query returned a non-advancing cursor"
+                                .to_string(),
+                        ));
+                    }
+                    cursor = Some(next_cursor);
+                }
+                None => break,
+            }
+        }
+        return finish_receipt_for_explain(
             receipt_id,
-            response.receipts,
+            matches,
             "control plane receipt query",
         );
     }
@@ -2500,47 +2519,83 @@ fn load_receipt_for_explain(
         )
     })?;
     let store = chio_store_sqlite::SqliteReceiptStore::open(path)?;
-    let result = store.query_receipts(&chio_kernel::ReceiptQuery {
-        capability_id: None,
-        tool_server: None,
-        tool_name: None,
-        outcome: None,
-        since: None,
-        until: None,
-        min_cost: None,
-        max_cost: None,
-        cursor: None,
-        limit: 1000,
-        agent_subject: None,
-        tenant_filter: None,
-    })?;
-    let receipts = result
-        .receipts
-        .into_iter()
-        .map(|stored| serde_json::to_value(stored.receipt))
-        .collect::<Result<Vec<_>, _>>()?;
-    select_receipt_for_explain(receipt_id, receipts, "local receipt store")
+    let mut cursor = None;
+    let mut matches = Vec::new();
+    loop {
+        let result = store.query_receipts(&chio_kernel::ReceiptQuery {
+            capability_id: None,
+            tool_server: None,
+            tool_name: None,
+            outcome: None,
+            since: None,
+            until: None,
+            min_cost: None,
+            max_cost: None,
+            cursor,
+            limit: RECEIPT_EXPLAIN_PAGE_LIMIT,
+            agent_subject: None,
+            tenant_filter: None,
+        })?;
+        let receipts = result
+            .receipts
+            .into_iter()
+            .map(|stored| serde_json::to_value(stored.receipt))
+            .collect::<Result<Vec<_>, _>>()?;
+        push_receipt_explain_matches(receipt_id, receipts, &mut matches)?;
+        match result.next_cursor {
+            Some(next_cursor) => {
+                if cursor == Some(next_cursor) {
+                    return Err(CliError::cli_other_error(
+                        "local receipt store returned a non-advancing cursor".to_string(),
+                    ));
+                }
+                cursor = Some(next_cursor);
+            }
+            None => break,
+        }
+    }
+    finish_receipt_for_explain(receipt_id, matches, "local receipt store")
 }
 
+#[cfg(test)]
 fn select_receipt_for_explain(
     receipt_id: &str,
     receipts: Vec<serde_json::Value>,
     source: &str,
 ) -> Result<serde_json::Value, CliError> {
-    let mut matches = receipts
-        .into_iter()
-        .filter(|receipt| receipt_value_matches_id(receipt, receipt_id))
-        .collect::<Vec<_>>();
+    let mut matches = Vec::new();
+    push_receipt_explain_matches(receipt_id, receipts, &mut matches)?;
+    finish_receipt_for_explain(receipt_id, matches, source)
+}
+
+fn push_receipt_explain_matches(
+    receipt_id: &str,
+    receipts: Vec<serde_json::Value>,
+    matches: &mut Vec<serde_json::Value>,
+) -> Result<(), CliError> {
+    for receipt in receipts {
+        if receipt_value_matches_id(&receipt, receipt_id) {
+            matches.push(receipt);
+            if matches.len() > 1 {
+                return Err(CliError::cli_other_error(format!(
+                    "receipt ID prefix `{receipt_id}` is ambiguous"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn finish_receipt_for_explain(
+    receipt_id: &str,
+    mut matches: Vec<serde_json::Value>,
+    source: &str,
+) -> Result<serde_json::Value, CliError> {
     if matches.len() == 1 {
         return Ok(matches.remove(0));
     }
-    if matches.len() > 1 {
-        return Err(CliError::cli_other_error(format!(
-            "receipt ID prefix `{receipt_id}` is ambiguous"
-        )));
-    }
     Err(CliError::cli_other_error(format!(
-        "receipt `{receipt_id}` not found in first 1000 receipt rows from {source}; use --input-file for direct v2 body_hash lookup"
+        "receipt `{receipt_id}` not found in paginated receipt rows from {source}; use --input-file for direct v2 body_hash lookup"
     )))
 }
 
@@ -2745,6 +2800,26 @@ mod receipt_explain_tests {
             "test source",
         );
         assert!(missing.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_explain_match_collection_spans_pages() -> Result<(), CliError> {
+        let mut matches = Vec::new();
+        push_receipt_explain_matches(
+            "receipt-b",
+            vec![serde_json::json!({"id": "receipt-a"})],
+            &mut matches,
+        )?;
+        push_receipt_explain_matches(
+            "receipt-b",
+            vec![serde_json::json!({"id": "receipt-b"})],
+            &mut matches,
+        )?;
+
+        let selected = finish_receipt_for_explain("receipt-b", matches, "test source")?;
+        assert_eq!(selected["id"].as_str(), Some("receipt-b"));
 
         Ok(())
     }

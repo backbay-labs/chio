@@ -16,23 +16,30 @@ db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
 # The ignore list exceeds the ~6-entry soft cap for structural reasons: the
-# advisory db carries 4 rustls-webpki CVEs against a single 0.103.9 pin, plus
-# several unmaintained advisories. Each cluster collapses to one upstream-dep bump:
-#   - bump rustls-webpki 0.103.9 -> >=0.103.10 (clears RUSTSEC-2026-0049/0098/0099/0104)
+# advisory db carried 4 rustls-webpki CVEs against a single 0.103.9 pin,
+# plus several unmaintained advisories. The 0.103 path was bumped to 0.103.13
+# in the trajectory-4 readiness sweep. The remaining rustls-webpki hits are
+# through the AWS SDK rustls 0.21 path and require an AWS stack migration,
+# not a direct lockfile bump.
+# Each cluster collapses to one upstream-dep bump:
+#   - migrate the AWS SDK rustls 0.21 path off rustls-webpki 0.101.x
 #   - migrate off rustls-pemfile, bincode 1, fxhash, paste, serde_yml
 #   - bump rsa to clear RUSTSEC-2023-0071 (Marvin) once an upstream fix lands
 # Prune the corresponding entries here when those bumps land.
 # M06.P4 refresh: last-checked = 2026-05-02. Each ignore below is either
 # closed by a lockfile bump in this phase or re-justified with a dated status.
 ignore = [
-    # --- rustls-webpki 0.103.9 cluster: all clear via bump to >=0.103.10. ---
-    # last-checked = 2026-05-02; CRLs not considered authoritative by Distribution Point (faulty match). Fix: >=0.103.10.
-    "RUSTSEC-2026-0049",
-    # last-checked = 2026-05-02; Name constraints for URI names incorrectly accepted (rustls-webpki). Fix: >=0.103.10.
+    # --- rustls-webpki cluster. ---
+    # last-checked = 2026-05-05; rustls-webpki 0.103.9 was bumped to 0.103.13.
+    # The remaining exposure is the AWS SDK rustls 0.21 path on rustls-webpki 0.101.x.
+    # last-checked = 2026-05-05; Name constraints for URI names incorrectly accepted on the AWS rustls 0.21 path.
+    # Fix requires migrating that path to a rustls stack with rustls-webpki >=0.103.12.
     "RUSTSEC-2026-0098",
-    # last-checked = 2026-05-02; Name constraints accepted for certificates asserting a wildcard name. Fix: >=0.103.10.
+    # last-checked = 2026-05-05; Name constraints accepted for certificates asserting a wildcard name on the AWS rustls 0.21 path.
+    # Fix requires migrating that path to a rustls stack with rustls-webpki >=0.103.12.
     "RUSTSEC-2026-0099",
-    # last-checked = 2026-05-02; Reachable panic in CRL parsing (rustls-webpki). Fix: >=0.103.10.
+    # last-checked = 2026-05-05; Reachable panic in CRL parsing on the AWS rustls 0.21 path.
+    # Fix requires migrating that path to a rustls stack with rustls-webpki >=0.103.13.
     "RUSTSEC-2026-0104",
 
     # --- unmaintained / unsound clusters: each requires a dep migration. ---

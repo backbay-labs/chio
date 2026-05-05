@@ -45,6 +45,7 @@ use zeroize::Zeroizing;
 
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
+use crate::redaction::redact_for_operator_log;
 use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence};
 
 // -- Severity -----------------------------------------------------------------
@@ -573,7 +574,7 @@ impl Exporter for AlertingExporter {
                         tracing::warn!(
                             backend = backend.name(),
                             receipt_id = %event.receipt.id,
-                            error = %err,
+                            error = %redact_for_operator_log(&err),
                             "alert backend dispatch failed"
                         );
                     }

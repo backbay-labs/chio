@@ -106,7 +106,7 @@ fi
 #-- 7. No open trj3.2/* PRs ----------------------------------------------------
 section "trj3.2 PR cascade"
 if command -v gh > /dev/null 2>&1; then
-    open_count=$(gh pr list --state open --json headRefName --jq '[.[] | select(.headRefName | startswith("trj3.2/"))] | length' 2>/dev/null || echo "?")
+    open_count=$(gh pr list --state open --limit 200 --json headRefName --jq '[.[] | select(.headRefName | startswith("trj3.2/"))] | length' 2>/dev/null || echo "?")
     if [[ "${open_count}" == "0" ]]; then
         pass "zero open trj3.2/* PRs"
     elif [[ "${open_count}" == "?" ]]; then

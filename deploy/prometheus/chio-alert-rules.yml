@@ -16,6 +16,18 @@ groups:
           summary: Chio receipt writes are burning error budget
           runbook: docs/operator-runbook/slo.md
 
+      - alert: ChioReceiptWriteMetricsMissing
+        expr: absent_over_time(chio_receipt_write_total[10m])
+        for: 2m
+        labels:
+          severity: p1
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: receipt-write
+        annotations:
+          summary: Chio receipt-write outcome counter is missing
+          runbook: docs/operator-runbook/slo.md
+
       - alert: ChioSidecarErrorBudgetBurn1h
         expr: |
           chio:sidecar_error_ratio_1h > (14.4 * 0.005)
@@ -29,6 +41,18 @@ groups:
           slo: sidecar-availability
         annotations:
           summary: Chio sidecar availability is burning error budget
+          runbook: docs/operator-runbook/slo.md
+
+      - alert: ChioSidecarMetricsMissing
+        expr: absent_over_time(chio_sidecar_requests_total[10m])
+        for: 2m
+        labels:
+          severity: p2
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: sidecar-availability
+        annotations:
+          summary: Chio sidecar request counter is missing
           runbook: docs/operator-runbook/slo.md
 
       - alert: ChioAlertDispatchErrorBudgetBurn1h
@@ -46,6 +70,18 @@ groups:
           summary: Chio alert dispatch is burning error budget
           runbook: docs/operator-runbook/slo.md
 
+      - alert: ChioAlertDispatchMetricsMissing
+        expr: absent_over_time(chio_alert_dispatch_total[10m])
+        for: 2m
+        labels:
+          severity: p1
+          notification_route: pagerduty
+          opsgenie: "true"
+          slo: pagerduty-dispatch
+        annotations:
+          summary: Chio alert dispatch outcome counter is missing
+          runbook: docs/operator-runbook/slo.md
+
       - alert: ChioSocExportErrorBudgetBurn1h
         expr: |
           chio:soc_export_error_ratio_1h > (14.4 * 0.01)
@@ -59,6 +95,18 @@ groups:
           slo: soc-export
         annotations:
           summary: Chio SOC export is burning error budget
+          runbook: docs/operator-runbook/slo.md
+
+      - alert: ChioSocExportMetricsMissing
+        expr: absent_over_time(chio_soc_export_total[10m])
+        for: 5m
+        labels:
+          severity: p2
+          notification_route: opsgenie
+          opsgenie: "true"
+          slo: soc-export
+        annotations:
+          summary: Chio SOC export outcome counter is missing
           runbook: docs/operator-runbook/slo.md
 
       - alert: ChioFailOpenSuspected

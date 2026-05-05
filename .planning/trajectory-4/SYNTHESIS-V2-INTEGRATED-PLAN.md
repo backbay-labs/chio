@@ -72,7 +72,7 @@ Items the trj3 closeout posture filed under M01/M02/M08/M09/M10 that need engine
 Two cross-cutting consensus moves drive trj4:
 
 1. **4-way consensus**: macaroon-style capability attenuation. The substrate already has `CapabilityToken.delegation_chain`, `Attenuation` step structure, and `validate_attenuation`. trj4 promotes these from `delegation_v2` feature-gated primitives to negotiated, schema-tagged, on-the-wire token v2 with caveats and `attenuation_proof`.
-2. **2-way consensus**: anchor-batch Merkle trees. Additive over per-receipt signing; the immediate local receipt remains independently verifiable. Closes per the Evidence Gate (claim registry + proof manifest + public-witness semantics + negative conformance), not on the strength of the artifact alone.
+2. **2-way consensus**: anchor-batch Merkle trees. Additive over per-receipt signing; the immediate local receipt remains independently verifiable. Moves toward closing the transparency ceiling only when paired with the Evidence Gate (claim registry + proof manifest + public-witness semantics + negative conformance), not on the strength of the artifact alone.
 
 These two combine with the floor's mobile-attestation work to make the trust boundary multi-agent-aware, hardware-rooted, and publicly anchorable.
 
@@ -291,7 +291,7 @@ All must hold simultaneously, evidenced in `releases.toml` and reproducible from
 5. Equivalence property test passing 1M cases nightly, zero divergence.
 6. `trust_control_cluster_multi_region_partition_qualification` 100/100 runs at 20 partition/heal cycles.
 7. Mobile attestation entry points return real verdicts on real fixtures; xcframework binary in tree.
-8. **Threat-model coverage at 20/20** per `scripts/check-threat-coverage.sh`. Starting from 11 covered / 9 pending-with-`deferred_to` / 0 uncovered (gate PASS today): trj4 fills the 6 `unimplemented!()` stubs (`pending -> covered`), lands tests for the 3 mobile rows (`pending -> covered`, deferral resolved this trajectory), and adds `covered_by_tests` linkage for `weights_hash_spoof`. End state: 20 covered / 0 pending / 0 uncovered, gate stays PASS.
+8. **Threat-model coverage at 20 covered / 0 pending / 0 uncovered** per `scripts/check-threat-coverage.sh`. Starting from 11 covered / 9 pending-with-`deferred_to` / 0 uncovered (gate PASS at planning time): trj4 fills the 6 `unimplemented!()` stubs (`pending -> covered`), lands tests for the 3 mobile rows (`pending -> covered`, deferral resolved this trajectory), and adds `covered_by_tests` linkage for `weights_hash_spoof`. End state: 20 covered / 0 pending / 0 uncovered, gate stays PASS.
 9. `v3.18.1-trj3.1` tag shipped with green release-binaries + slsa + reproducible-build artifacts.
 10. `TRAJECTORY-FINAL.md` committed with real close SHA.
 11. `HttpEgressContract` enforced on every kernel/guard/adapter outbound HTTP path; SSRF negative conformance tests pass.

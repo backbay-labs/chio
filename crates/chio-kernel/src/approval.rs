@@ -24,6 +24,7 @@ use chio_core::capability::{
     GovernedTransactionIntent, MonetaryAmount,
 };
 use chio_core::crypto::{sha256_hex, PublicKey};
+use chio_log_redact::redacted;
 use serde::{Deserialize, Serialize};
 
 use crate::runtime::{ToolCallRequest, Verdict};
@@ -700,7 +701,7 @@ impl ApprovalGuard {
                     tracing::warn!(
                         approval_id = %request.approval_id,
                         channel = %channel.name(),
-                        error = %err,
+                        error = %redacted!(&err),
                         "approval channel dispatch failed; request remains pending"
                     );
                 }

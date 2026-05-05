@@ -20,6 +20,7 @@ use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
 use super::errors::AttestationError;
+use super::google_root::GOOGLE_PLAY_INTEGRITY_ISSUER;
 
 pub const PLAY_RECOGNIZED: &str = "PLAY_RECOGNIZED";
 pub const MEETS_DEVICE_INTEGRITY: &str = "MEETS_DEVICE_INTEGRITY";
@@ -51,6 +52,7 @@ pub struct PlayIntegrityClaims {
     pub app_integrity: AppIntegrityClaims,
     pub device_integrity: DeviceIntegrityClaims,
     pub aud: String,
+    pub iss: String,
     pub exp: u64,
 }
 
@@ -107,7 +109,9 @@ pub fn verify_play_integrity(
         .map_err(|error| AttestationError::PlayIntegrityInvalidToken(error.to_string()))?;
     let mut validation = Validation::new(algorithm);
     validation.set_audience(&[input.expected_audience]);
+    validation.set_issuer(&[GOOGLE_PLAY_INTEGRITY_ISSUER]);
     validation.required_spec_claims.insert("aud".to_string());
+    validation.required_spec_claims.insert("iss".to_string());
     validation.required_spec_claims.insert("exp".to_string());
     let token = decode::<PlayIntegrityClaims>(input.token, &decoding_key, &validation)
         .map_err(|error| AttestationError::PlayIntegrityInvalidToken(error.to_string()))?;

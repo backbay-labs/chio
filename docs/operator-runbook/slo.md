@@ -68,7 +68,8 @@ Operators should load the Prometheus rule pack under `deploy/prometheus/`:
   mediation, receipt writes, alert dispatch, SOC export, guard evaluation,
   federation hops, and anchor rounds.
 - `chio-alert-rules.yml` defines dual-window burn alerts using 14.4x over 1
-  hour and 6x over 6 hours. Receipt-write failures use the 99.9% objective;
+  hour and 6x over 6 hours, plus missing-data alerts for every counter used by
+  those burn-rate rules. Receipt-write failures use the 99.9% objective;
   sidecar availability uses 99.5%; alert dispatch and SOC export use 99.0%.
 - `ChioFailOpenSuspected` pages immediately because fail-open behavior violates
   the kernel safety contract.

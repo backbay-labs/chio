@@ -28,12 +28,12 @@
     },
     "issuer": {
       "type": "string",
-      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:.+:[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
       "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ."
     },
     "subject": {
       "type": "string",
-      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:.+:[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
       "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`."
     },
     "scope": {
@@ -63,7 +63,7 @@
     },
     "signature": {
       "type": "string",
-      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:.+:[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
       "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream."
     }
   },
@@ -232,12 +232,12 @@
         },
         "delegator": {
           "type": "string",
-          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:.+:[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
           "description": "Delegating public key. Same encoding as the token-level `issuer`/`subject`."
         },
         "delegatee": {
           "type": "string",
-          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:.+:[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
           "description": "Receiving public key. Same encoding as the token-level `issuer`/`subject`."
         },
         "attenuations": {
@@ -259,7 +259,7 @@
         },
         "signature": {
           "type": "string",
-          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:.+:[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
           "description": "Delegation-link signature. Same encoding as the token-level `signature`."
         }
       }

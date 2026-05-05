@@ -50,7 +50,7 @@ These remain in `CLOSEOUT-BLOCKERS.md` as carry-forward to a later trajectory.
 ## Phase D (W8-10) - meta-improvements
 
 17. **Threat-coverage cargo-mutants per-row gate.** Every threat marked `covered` must have a cargo-mutants sweep proving its named test actually kills relevant survivors. Auto-downgrade to `weak_coverage` on zero kills.
-18. **Feature archeology.** Grep the 119 workspace members + 5 SDKs + 8 tools-adapters for any with zero in-tree call sites or zero test coverage. Deprecate or document.
+18. **Feature archeology.** Grep the 89 `chio-*` crates plus workspace tools, integrations, examples, SDKs, and provider adapters for surfaces with zero in-tree call sites or zero test coverage. Deprecate or document.
 19. **Fail-closed philosophy audit doc.** Inventory every `?` propagation crossing a trust boundary; confirm it lands at a `Deny` not a `pass-through`. Code-style guide entry.
 20. **CI-DEBT.md final pass.** Confirm zero entries remain in `requires-individual-replay-or-deferral` once cascade settles.
 

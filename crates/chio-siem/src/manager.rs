@@ -11,6 +11,7 @@ use crate::dlq::{DeadLetterQueue, FailedEvent};
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, Exporter};
 use crate::ratelimit::{ExportRateLimiter, RateLimitConfig};
+use crate::redaction::redact_for_operator_log;
 
 const MAX_RETRY_BACKOFF_MS: u64 = 60_000;
 
@@ -145,7 +146,7 @@ impl ExporterManager {
             tokio::select! {
                 _ = interval.tick() => {
                     if let Err(e) = self.poll_once().await {
-                        tracing::error!(error = %e, "SIEM poll cycle failed");
+                        tracing::error!(error = %redact_for_operator_log(&e), "SIEM poll cycle failed");
                     }
                 }
                 _ = cancel.changed() => {
@@ -214,7 +215,11 @@ impl ExporterManager {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(seq = seq, error = %e, "Failed to deserialize receipt -- skipping");
+                    tracing::warn!(
+                        seq = seq,
+                        error = %redact_for_operator_log(&e),
+                        "Failed to deserialize receipt -- skipping"
+                    );
                     // Still advance past malformed rows.
                     if *seq > max_seq {
                         max_seq = *seq;
@@ -265,7 +270,7 @@ impl ExporterManager {
 
                 tracing::warn!(
                     exporter = exporter_name,
-                    error = %e,
+                    error = %redact_for_operator_log(&e),
                     dlq_len = self.dlq.len(),
                     "All retries exhausted -- events pushed to DLQ"
                 );
@@ -317,7 +322,7 @@ impl ExporterManager {
                     tracing::warn!(
                         exporter = exporter.name(),
                         attempt = attempt,
-                        error = %e,
+                        error = %redact_for_operator_log(&e),
                         "Export attempt failed"
                     );
                     last_err = Some(e);

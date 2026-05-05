@@ -8,15 +8,16 @@ import pathlib
 import re
 import sys
 
-EXEMPTION_HEADER = re.compile(r"^\s*\[\[exemptions\.[^\]]+\]\]\s*$")
+EXEMPTION_HEADER = re.compile(r"^\s*\[\[exemptions\.([^\]]+)\]\]\s*$")
 
 
-def exemption_count(path: pathlib.Path) -> int:
-    return sum(
-        1
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if EXEMPTION_HEADER.match(line)
-    )
+def exemption_names(path: pathlib.Path) -> set[str]:
+    names: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = EXEMPTION_HEADER.match(line)
+        if match:
+            names.add(match.group(1).strip().strip('"'))
+    return names
 
 
 def main() -> int:
@@ -27,13 +28,20 @@ def main() -> int:
     parser.add_argument("--head", required=True, type=pathlib.Path)
     args = parser.parse_args()
 
-    base_count = exemption_count(args.base)
-    head_count = exemption_count(args.head)
+    base_exemptions = exemption_names(args.base)
+    head_exemptions = exemption_names(args.head)
+    base_count = len(base_exemptions)
+    head_count = len(head_exemptions)
+    added = sorted(head_exemptions - base_exemptions)
     print(f"cargo-vet exemption count: base={base_count} head={head_count}")
 
-    if head_count > base_count:
+    if added:
         print(
-            "net-new cargo-vet exemptions are blocked; add real audits or get an "
+            "net-new cargo-vet exemptions are blocked: " + ", ".join(added),
+            file=sys.stderr,
+        )
+        print(
+            "add real audits or get an "
             "explicit cargo-vet-exemption-justification PR comment",
             file=sys.stderr,
         )

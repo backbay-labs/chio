@@ -36,6 +36,19 @@ fn allows_declared_public_authority() {
 }
 
 #[test]
+fn allows_default_port_authority_entry() {
+    let mut contract = strict_contract();
+    contract.allowed_authority_set = BTreeSet::from(["api.example.com:443".to_string()]);
+
+    let target = match contract.enforce_attempt("https://api.example.com:443/v1/tools", 0, None) {
+        Ok(target) => target,
+        Err(error) => panic!("default-port authority should pass: {error}"),
+    };
+
+    assert_eq!(target.authority, "api.example.com");
+}
+
+#[test]
 fn missing_contract_fails_closed() {
     let err = match HttpEgressContract::enforce_required(
         None,

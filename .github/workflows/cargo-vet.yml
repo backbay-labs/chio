@@ -66,8 +66,26 @@ jobs:
             --head supply-chain/config.toml; then
             exit 0
           fi
-          if gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[].body' \
-            | grep -Eiq '^cargo-vet-exemption-justification:'; then
+
+          has_authorized_justification() {
+            local endpoint="$1"
+            gh api "$endpoint" --paginate --jq '
+              .[]
+              | select(
+                  (
+                    .author_association == "OWNER"
+                    or .author_association == "MEMBER"
+                    or .author_association == "COLLABORATOR"
+                  )
+                  and ((.body // "") | test("^cargo-vet-exemption-justification:"; "i"))
+                )
+              | .id
+            ' | grep -q .
+          }
+
+          if has_authorized_justification "repos/$REPO/issues/$PR_NUMBER/comments" \
+            || has_authorized_justification "repos/$REPO/pulls/$PR_NUMBER/comments" \
+            || has_authorized_justification "repos/$REPO/pulls/$PR_NUMBER/reviews"; then
             echo "cargo-vet exemption increase accepted by explicit PR justification comment"
             exit 0
           fi
@@ -75,6 +93,8 @@ jobs:
             echo "Net-new cargo-vet exemptions require a reviewer comment that starts with:"
             echo
             echo "cargo-vet-exemption-justification: <reason>"
+            echo
+            echo "Accepted locations: issue comments, pull request review comments, or pull request reviews from OWNER, MEMBER, or COLLABORATOR accounts."
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 

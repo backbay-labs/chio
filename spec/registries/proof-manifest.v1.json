@@ -14,8 +14,8 @@
           "ref": "theorem.capability.signature_correctness"
         },
         {
-          "kind": "kani_harness",
-          "ref": "crates/chio-core-types/kani/capability_token_signature.rs"
+          "kind": "rust_test",
+          "ref": "crates/chio-core-types/src/capability.rs::capability_token_signature_verification"
         },
         {
           "kind": "conformance_test",

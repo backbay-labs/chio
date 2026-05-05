@@ -197,7 +197,7 @@ pub struct HandshakeChallenge {
     pub timestamp: u64,
     #[serde(default, skip_serializing_if = "is_default_capability_negotiation")]
     pub capabilities: CapabilityNegotiation,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_conformance_tier")]
     pub conformance_tier: ConformanceTier,
 }
 
@@ -230,7 +230,7 @@ impl HandshakeChallenge {
             remote_kernel_id: remote_kernel_id.into(),
             nonce: nonce.into(),
             timestamp,
-            capabilities: CapabilityNegotiation::t1_default(),
+            capabilities: CapabilityNegotiation::v1_default(),
             conformance_tier,
         }
     }
@@ -251,6 +251,10 @@ impl HandshakeChallenge {
 
 fn is_default_capability_negotiation(capabilities: &CapabilityNegotiation) -> bool {
     *capabilities == CapabilityNegotiation::v1_default()
+}
+
+fn is_default_conformance_tier(tier: &ConformanceTier) -> bool {
+    *tier == ConformanceTier::Bronze
 }
 
 /// Envelope one kernel sends to the other during a handshake.
@@ -299,7 +303,7 @@ impl PeerHandshakeEnvelope {
             timestamp,
             conformance_tier,
             local_backend,
-            CapabilityNegotiation::t1_default(),
+            CapabilityNegotiation::v1_default(),
         )
     }
 
@@ -560,7 +564,7 @@ impl KernelTrustExchange {
             config: KernelTrustExchangeConfig::default(),
             store: Box::new(InMemoryPeerStore::new()),
             trusted_peers: HashMap::new(),
-            local_capabilities: CapabilityNegotiation::t1_default(),
+            local_capabilities: CapabilityNegotiation::v1_default(),
         }
     }
 
@@ -692,14 +696,6 @@ impl KernelTrustExchange {
             });
         }
 
-        if !quorum_policy.accepts_tier(envelope.challenge.conformance_tier) {
-            return Err(PeerHandshakeError::ConformanceTierBelowMinimum {
-                kernel_id: expected_remote_kernel_id.to_string(),
-                actual: envelope.challenge.conformance_tier,
-                minimum: quorum_policy.min_tier,
-            });
-        }
-
         let envelope_ts = envelope.challenge.timestamp;
         let skew = self.config.max_handshake_skew_secs;
         let drift = envelope_ts.abs_diff(now);
@@ -725,6 +721,14 @@ impl KernelTrustExchange {
                 kernel_id: expected_remote_kernel_id.to_string(),
                 expected: expected_public_key.to_hex(),
                 actual: envelope.declared_public_key.to_hex(),
+            });
+        }
+
+        if !quorum_policy.accepts_tier(envelope.challenge.conformance_tier) {
+            return Err(PeerHandshakeError::ConformanceTierBelowMinimum {
+                kernel_id: expected_remote_kernel_id.to_string(),
+                actual: envelope.challenge.conformance_tier,
+                minimum: quorum_policy.min_tier,
             });
         }
 

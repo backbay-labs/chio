@@ -51,6 +51,7 @@ use chio_core::crypto::{
     canonical_json_shared_bytes, sign_shared_canonical_with_backend, Ed25519Backend, Signature,
     SigningAlgorithm, SigningBackend,
 };
+use chio_log_redact::redacted;
 use tokio::runtime::Handle;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -67,6 +68,7 @@ use crate::{ChioReceipt, ChioReceiptBody, KernelError, Keypair};
 /// can override via [`SigningTaskHandle::with_capacity`] until a config
 /// knob lands in a later phase.
 pub const DEFAULT_SIGNING_CHANNEL_CAPACITY: usize = 256;
+#[cfg_attr(test, allow(unused_imports))]
 pub use chio_metrics_spec::CHIO_SIGNING_QUEUE_BLOCK_TOTAL as METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL;
 static SIGNING_QUEUE_BLOCK_TOTAL: AtomicU64 = AtomicU64::new(0);
 
@@ -426,7 +428,7 @@ impl SigningTaskHandle {
                 debug!("signing task cancelled before shutdown completed");
             }
             Err(err) => {
-                warn!(error = %err, "signing task join failed (panic)");
+                warn!(error = %redacted!(&err), "signing task join failed (panic)");
             }
         }
     }

@@ -35,6 +35,8 @@
 use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence, TrustLevel};
 use serde_json::{json, Map, Value};
 
+use crate::redaction::redact_for_operator_log;
+
 /// OCSF schema version targeted by this mapper.
 pub const OCSF_SCHEMA_VERSION: &str = "1.3.0";
 
@@ -163,7 +165,7 @@ pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
         Err(err) => {
             tracing::warn!(
                 receipt_id = %receipt.id,
-                error = %err,
+                error = %redact_for_operator_log(&err),
                 "failed to serialize ChioReceipt to raw_data; emitting Unknown status",
             );
             event.insert("status_id".into(), json!(0));

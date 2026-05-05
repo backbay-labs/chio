@@ -16,7 +16,7 @@
     {
       "id": "claim.receipt.signed_decision",
       "status": "enforced",
-      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/v1.schema.json",
+      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/record.schema.json",
       "summary": "A receipt carries the kernel's signed verdict for a single mediated tool call.",
       "introduced_in": "trajectory-1.M01",
       "proof_manifest_ref": "manifest.receipt.signed_decision"

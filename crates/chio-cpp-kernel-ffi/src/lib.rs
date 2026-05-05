@@ -355,6 +355,9 @@ fn verify_capability_json_str(
             CapabilityError::InvalidSignature => KernelFfiError::InvalidCapability(
                 "capability signature failed to verify".to_string(),
             ),
+            CapabilityError::CryptoFloorRejected(message) => KernelFfiError::InvalidCapability(
+                format!("capability crypto floor rejected: {message}"),
+            ),
             CapabilityError::NotYetValid => {
                 KernelFfiError::InvalidCapability("capability is not yet valid".to_string())
             }
