@@ -70,6 +70,8 @@ rusqlite = { workspace = true }
 chio-underwriting = { path = "../chio-underwriting" }
 uuid = { workspace = true, features = ["v7"] }
 ureq = { version = "2.10", features = ["json"] }
+rand = { workspace = true }
+base64 = { workspace = true }
 
 [dev-dependencies]
 chio-store-sqlite = { path = "../chio-store-sqlite" }

@@ -2750,6 +2750,48 @@ fn open_session_assigns_unique_ids_across_kernel_instances() {
     assert_ne!(session_a, session_b);
 }
 
+/// Session ids are minted from the OS CSPRNG: assert structure (sess- prefix,
+/// 22 base64url chars, charset) rather than pinning to a literal value.
+#[test]
+fn open_session_id_has_csprng_structure() {
+    let kernel = ChioKernel::new(make_config());
+    let session_id = kernel.open_session("agent-a".to_string(), Vec::new());
+    let raw = session_id.as_str();
+
+    let suffix = raw
+        .strip_prefix("sess-")
+        .expect("session id must carry the sess- prefix");
+    // 16 bytes encoded as base64url-without-padding => 22 chars.
+    assert_eq!(suffix.len(), 22, "unexpected session id suffix length");
+    assert!(
+        suffix
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+        "session id suffix must use the base64url charset",
+    );
+}
+
+/// Across N=1024 freshly minted ids, none should collide. Sequential ids
+/// trivially satisfied this; the property is what keeps the random scheme
+/// honest in the face of a regression to a low-entropy generator.
+#[test]
+fn open_session_ids_do_not_collide_across_many_calls() {
+    let kernel = ChioKernel::new(make_config());
+    let mut seen = std::collections::HashSet::with_capacity(1024);
+    let mut last: Option<SessionId> = None;
+    for _ in 0..1024 {
+        let id = kernel.open_session("agent-a".to_string(), Vec::new());
+        if let Some(previous) = last.as_ref() {
+            assert_ne!(
+                &id, previous,
+                "consecutive session ids must not be equal"
+            );
+        }
+        assert!(seen.insert(id.clone()), "session id collision: {id}");
+        last = Some(id);
+    }
+}
+
 #[test]
 fn open_session_with_id_rejects_duplicate_ids() {
     let kernel = ChioKernel::new(make_config());

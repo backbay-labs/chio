@@ -3268,6 +3268,7 @@ name = "chio-kernel"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "base64 0.22.1",
  "chio-appraisal",
  "chio-core",
  "chio-core-types",
@@ -3293,6 +3294,7 @@ dependencies = [
  "lru",
  "opentelemetry-semantic-conventions",
  "proptest",
+ "rand 0.8.5",
  "regex",
  "rusqlite",
  "serde",
