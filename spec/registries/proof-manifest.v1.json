@@ -50,20 +50,21 @@
           "ref": "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs"
         }
       ]
-    }
-  ],
-  "trj4_proposed_manifests": [
+    },
     {
       "id": "manifest.capability.attenuation_proof",
       "claim_ref": "claim.capability.attenuation_proof",
-      "introduced_by": "trajectory-4/T1.1",
+      "introduced_by": "trajectory-4/W1.1",
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_soundness"},
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_completeness"},
         {"kind": "rust_test", "ref": "crates/chio-core-types/src/capability.rs::attenuation_witness_roundtrip_and_forgery_rejection"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"}
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs::v2_token_with_inflated_parent_scope_hash_is_rejected"}
       ]
-    },
+    }
+  ],
+  "trj4_proposed_manifests": [
     {
       "id": "manifest.receipt.body_hash_addressing",
       "claim_ref": "claim.receipt.body_hash_addressing",

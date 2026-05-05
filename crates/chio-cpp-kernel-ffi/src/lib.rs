@@ -364,6 +364,9 @@ fn verify_capability_json_str(
             CapabilityError::Expired => {
                 KernelFfiError::InvalidCapability("capability has expired".to_string())
             }
+            CapabilityError::AttenuationViolation(message) => KernelFfiError::InvalidCapability(
+                format!("capability rejected by chain binding: {message}"),
+            ),
             CapabilityError::Internal(message) => {
                 KernelFfiError::Internal(format!("capability verification failed: {message}"))
             }

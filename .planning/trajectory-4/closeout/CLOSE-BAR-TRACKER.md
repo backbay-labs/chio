@@ -74,13 +74,13 @@ Per the post-Wave-0 E0.1 demotion, all 9 trj4 theorems start as `proposed`.
 | P-5 | Branched lineage (multi-parent receipts) | NONE | n | NONE | n-a | 04 | EdgeKind::ReceiptLineageParent is single-parent; multi-parent ships with T1.2 |
 | P-6 | Federation handshake: post-quantum hybrid by default + SAS auth | PARTIAL | n | NONE | n-a | 07 | signature.v1.json declares hybrid; federation handshake not yet hybrid-by-default; SAS missing |
 | P-7 | Verifier capability profiles | NONE | n | NONE | n-a | 14 | audit-derived default; ship via P lens roadmap |
-| P-8 | Delegation attenuation proofs (P1 in receipts) | NONE | n | NONE | n-a | 03 | attenuation witness not yet generated/verified; ships with T1.1 |
+| P-8 | Delegation attenuation proofs (P1 in receipts) | DONE | y | crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs | proposed | 03 | W1.1: attenuation_proof witness shipped, chain-binding rule enforced via verify_capability_with_floor_and_trust_root, AttenuationViolation error mapped through caller crates; theorem.attenuation.witness_soundness at formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean (status=assumed pending Lean toolchain) |
 | P-9 | Redaction-preserving signatures on receipts | NONE | n | NONE | n-a | 14 | audit-derived default; ship via P lens roadmap |
 | P-10 | Hybrid logical clocks for timestamp + clock attestation | NONE | n | NONE | n-a | 14 | audit-derived default; ship via P lens roadmap |
 | P-11 | Capability-negotiation handshake (chio.capabilities.v1) | PARTIAL | n | NONE | n-a | 02 | spec/versions/chio-protocol-negotiation.v1.json exists; no runtime feature-bitset enforcement |
 | P-12 | Threat-model schema v2 with structured mitigations | NONE | n | NONE | n-a | 14 | audit-derived default; ship via P lens roadmap |
 | A-1 | Multi-Agent Receipt DAG with Fork/Join Semantics | NONE | n | NONE | n-a | 04 | single-parent v1 lineage today; DAG ships with T1.2 |
-| A-2 | Durable Agent Identity with Attenuated Sub-Agent Capabilities | PARTIAL | n | NONE | n-a | 03 | delegation_chain field exists; sub-agent attenuation not first-class on wire |
+| A-2 | Durable Agent Identity with Attenuated Sub-Agent Capabilities | DONE | y | crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs | proposed | 03 | W1.1: DelegationLink.scope_hash binds each hop to the canonical authorized scope; attenuation_proof.parent_scope_hash anchored to predecessor or trust root |
 | A-3 | Prompt-Injection Heuristic Guard Tier (chio-guards-injection) | NONE | n | NONE | n-a | 14 | audit-derived default; ship via A lens roadmap |
 | A-4 | Agentic-Deception Detector via Plan-vs-Action Diff | NONE | n | NONE | n-a | 14 | audit-derived default; ship via A lens roadmap |
 | A-5 | Multi-Modal Receipt Envelopes (Image/Audio/Video/Screen) | NONE | n | NONE | n-a | 14 | audit-derived default; ship via A lens roadmap |
@@ -149,7 +149,7 @@ Per the post-Wave-0 E0.1 demotion, all 9 trj4 theorems start as `proposed`.
 | X-14 | println!/eprintln! in 9 production crates | NONE | n | NONE | n-a | 13 | audit-derived default; ship via X lens roadmap |
 | X-15 | integrations/aws-bedrock/control-plane/ named chio-bedrock-control-plane lives outside crates/ | NONE | n | NONE | n-a | 13 | audit-derived default; ship via X lens roadmap |
 | T1.0.E | Evidence Gate for T1.0 capability negotiation + token versioning | NONE | n | NONE | n-a | 02 | T1.0 Evidence Gate (PROTOCOL.md, schemas, claim/proof/theorem registries, negative conformance) not yet closed |
-| T1.1.E | Evidence Gate for T1.1 macaroon capability attenuation | NONE | n | NONE | n-a | 03 | T1.1 Evidence Gate not yet closed |
+| T1.1.E | Evidence Gate for T1.1 macaroon capability attenuation | DONE | y | crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs | proposed | 03 | W1.1: claim.capability.attenuation_proof promoted to active; Lean theorem.attenuation.witness_soundness authored (status=assumed); conformance test DENY-asserts the inflated-parent attack |
 | T1.2.E | Evidence Gate for T1.2 multi-agent receipt DAG + receipt-id migration | NONE | n | NONE | n-a | 04 | T1.2 Evidence Gate not yet closed |
 | T1.3.E | Evidence Gate for T1.3 anchor-batch Merkle trees | NONE | n | NONE | n-a | 05 | T1.3 Evidence Gate not yet closed |
 | T2.1.E | Evidence Gate for T2.1 hybrid PQ end-to-end + cross-surface conformance | NONE | n | NONE | n-a | 07 | T2.1 Evidence Gate not yet closed |
@@ -167,7 +167,7 @@ Per the post-Wave-0 E0.1 demotion, all 9 trj4 theorems start as `proposed`.
 | close-bar-#12 | Policy/manifest semantic-diff gate live on every PR touching chio-policy or manifest schemas | NONE | n | NONE | n-a | 02 | policy/manifest semantic-diff CI gate not yet built |
 | close-bar-#13 | chio.capabilities.v1 capability-negotiation handshake live; peers advertise feature bitsets | PARTIAL | n | NONE | n-a | 02 | negotiation handshake type defined; runtime feature-bitset advertise/enforce not wired |
 | close-bar-#14 | CapabilityToken schema-tagged; chio.capability.v2 envelope shipped with caveats and attenuation_proof; signed-artifact registry rejects unknown schema IDs | NONE | n | NONE | n-a | 02 | CapabilityToken schema field absent; signed-artifact registry not built |
-| close-bar-#15 | delegation_v2 promoted default-on; Attenuation/ScopeAttenuation first-class; compute_attenuation_witness/verify_attenuation_witness ship; attenuation_proof on wire | PARTIAL | n | NONE | n-a | 03 | delegation_v2 substrate exists; default-off; witness API not yet authored |
+| close-bar-#15 | delegation_v2 promoted default-on; Attenuation/ScopeAttenuation first-class; compute_attenuation_witness/verify_attenuation_witness ship; attenuation_proof on wire | DONE | y | crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs | proposed | 03 | W1.1: attenuation witness API ships; chain-binding rule enforced; attenuation_proof.parent_scope_hash bound to trust root or last delegation link's scope_hash |
 | close-bar-#16 | SubAgentBudgetPropagation enforced at join, using fixed-point integer share units | NONE | n | NONE | n-a | 03 | BudgetSplit not in v2 token; integer-fixed-point representation not yet shipped |
 | close-bar-#17 | chio.receipt.v2 ships with signed body_hash; receipt_id_v2 = body_hash; legacy UUIDv7 verifies on v1; v1->v2 negotiation works | NONE | n | NONE | n-a | 04 | receipt_id today is UUIDv7 prefixed rcpt_; body_hash field absent |
 | close-bar-#18 | call_chain extended to DAG with cross-kernel-safe formal model; chio.receipt_lineage_statement.v2 deployed | NONE | n | NONE | n-a | 04 | lineage v1 single-parent; v2 multi-parent + dag_ordinal not yet shipped |

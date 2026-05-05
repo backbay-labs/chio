@@ -144,6 +144,11 @@ impl KernelCoreError {
                 }
                 CapabilityError::NotYetValid => "capability not yet valid".to_string(),
                 CapabilityError::Expired => "capability has expired".to_string(),
+                CapabilityError::AttenuationViolation(msg) => {
+                    let mut out = String::from("capability rejected by chain binding: ");
+                    out.push_str(msg);
+                    out
+                }
                 CapabilityError::Internal(msg) => {
                     let mut out = String::from("capability verification failed: ");
                     out.push_str(msg);

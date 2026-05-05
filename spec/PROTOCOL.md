@@ -382,6 +382,39 @@ matches the token scope, that the witness hashes match the normalized scopes,
 and that every recorded grant relation is a subset. Budget shares above 10000
 bps fail closed because they re-amplify parent authority.
 
+#### Chain-Binding Rule (W1.1)
+
+The `attenuation_proof.parent_scope_hash` field MUST be bound to the token's
+upstream lineage. Without this rule an issuer with true authority `scope_X`
+could mint a v2 token claiming `parent_scope = scope_BIGGER` and supply an
+internally consistent witness, because nothing tied `parent_scope_hash` to
+the issuer's actual upstream parent capability. Concretely:
+
+- Every v2 delegation hop carries a signed `DelegationLink.scope_hash` that
+  records the canonical hash of the scope authorized at that step.
+- A direct-issue v2 token (empty `delegation_chain`) MUST have
+  `attenuation_proof.parent_scope_hash` equal to the verifier's
+  trust-root scope hash for the issuing authority.
+- A delegated v2 token MUST have `attenuation_proof.parent_scope_hash`
+  equal to `delegation_chain.last().scope_hash`. The chain-link signature
+  binds that hash to the predecessor's key, transitively rooting the
+  witness in the trust-root authority.
+- A v2 chain whose hops omit `scope_hash` is rejected fail-closed; legacy
+  v1 hops do not carry it and v2 verifiers therefore reject mixed chains.
+
+The portable verifier entrypoint
+`chio_kernel_core::verify_capability_with_floor_and_trust_root(token,
+trusted_issuers, clock, crypto_floor, trust_root_scope_hash)` enforces
+the rule and rejects with `CapabilityError::AttenuationViolation` when
+`parent_scope_hash` is unbound. The check costs a single hash comparison
+on the happy path and runs after the basic signature, time, and crypto-
+floor checks (the chain binding is meaningful only once those succeed).
+
+The Lean theorem `theorem.attenuation.witness_soundness` in
+`formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean` models the
+chain-binding check, and the Rust shell is exercised by
+`crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`.
+
 ### 5.2 Governed Transaction Extensions
 
 Tool-call requests may attach two optional governed artifacts:

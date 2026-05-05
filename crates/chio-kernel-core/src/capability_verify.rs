@@ -25,7 +25,7 @@ use alloc::vec::Vec;
 
 use chio_core_types::capability::{
     CapabilityCryptoFloor, CapabilityFloorVerifyError, CapabilityNegotiation, CapabilityToken,
-    ChioScope, CHIO_CAPABILITY_V2_SCHEMA,
+    ChioScope, ScopeHash, CHIO_CAPABILITY_V2_SCHEMA,
 };
 use chio_core_types::crypto::PublicKey;
 
@@ -77,6 +77,11 @@ pub enum CapabilityError {
     NotYetValid,
     /// Token has expired.
     Expired,
+    /// W1.1: V2 capability token violated the chain-binding rule.
+    /// `attenuation_proof.parent_scope_hash` did not match either the
+    /// issuer's trust-root scope hash (direct issue) or the last
+    /// delegation link's `scope_hash` (delegated chain).
+    AttenuationViolation(String),
     /// An internal invariant was violated (e.g. canonical-JSON failure).
     Internal(String),
     /// Token's declared schema is above the schema ceiling negotiated with
@@ -223,6 +228,92 @@ where
 {
     let trusted: Vec<PublicKey> = trusted_issuers.into_iter().collect();
     verify_capability_with_floor(token, &trusted, clock, crypto_floor)
+}
+
+/// Resolver returning the trust-root scope hash bound to a given issuer
+/// public key. Kernels supply this so the verifier can bind
+/// `attenuation_proof.parent_scope_hash` to the issuing CA's authority
+/// hash on direct-issue tokens (W1.1 chain-binding rule).
+pub trait TrustRootResolver {
+    /// Resolve the trust-root scope hash for `issuer`, returning `None`
+    /// when the issuer has no registered authority hash. The verifier
+    /// treats `None` as a fail-closed deny for v2 tokens that require
+    /// chain binding.
+    fn trust_root_scope_hash(&self, issuer: &PublicKey) -> Option<ScopeHash>;
+}
+
+impl<F> TrustRootResolver for F
+where
+    F: Fn(&PublicKey) -> Option<ScopeHash>,
+{
+    fn trust_root_scope_hash(&self, issuer: &PublicKey) -> Option<ScopeHash> {
+        (self)(issuer)
+    }
+}
+
+/// W1.1 chain-binding entry point. Verify a capability token while also
+/// enforcing the v2 chain-binding rule that closes the P0 soundness gap.
+///
+/// In addition to the checks in [`verify_capability_with_floor`], this
+/// entry point requires that v2 tokens carry an `attenuation_proof`
+/// whose `parent_scope_hash` matches either:
+///
+/// - `trust_root_scope_hash` (when the delegation chain is empty: a
+///   direct issue from the trust-root authority binds the witness to the
+///   verifier-known authority hash); or
+/// - `delegation_chain.last().scope_hash` (when delegation has occurred:
+///   the witness binds to the predecessor's signed scope_hash).
+///
+/// V1 tokens are accepted unchanged. Callers that have not yet plumbed
+/// trust roots through their kernel should keep using
+/// [`verify_capability_with_floor`] but MUST NOT accept v2 tokens via
+/// that legacy entry point in production.
+pub fn verify_capability_with_floor_and_trust_root(
+    token: &CapabilityToken,
+    trusted_issuers: &[PublicKey],
+    clock: &dyn Clock,
+    crypto_floor: CapabilityCryptoFloor,
+    trust_root_scope_hash: &ScopeHash,
+) -> Result<VerifiedCapability, CapabilityError> {
+    let verified = verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor)?;
+
+    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
+        token
+            .validate_chain_binding(trust_root_scope_hash)
+            .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
+    }
+
+    Ok(verified)
+}
+
+/// Resolver-driven variant of [`verify_capability_with_floor_and_trust_root`].
+///
+/// Kernels that maintain a per-issuer trust-root registry pass a
+/// [`TrustRootResolver`] so the verifier can pick the correct authority
+/// hash without leaking the registry shape into the verifier surface.
+pub fn verify_capability_with_floor_and_resolver(
+    token: &CapabilityToken,
+    trusted_issuers: &[PublicKey],
+    clock: &dyn Clock,
+    crypto_floor: CapabilityCryptoFloor,
+    trust_root: &dyn TrustRootResolver,
+) -> Result<VerifiedCapability, CapabilityError> {
+    let verified = verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor)?;
+
+    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
+        let issuer_root = trust_root
+            .trust_root_scope_hash(&token.issuer)
+            .ok_or_else(|| {
+                CapabilityError::AttenuationViolation(
+                    "v2 chain-binding: no trust-root scope hash registered for issuer".to_string(),
+                )
+            })?;
+        token
+            .validate_chain_binding(&issuer_root)
+            .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
+    }
+
+    Ok(verified)
 }
 
 #[cfg(test)]

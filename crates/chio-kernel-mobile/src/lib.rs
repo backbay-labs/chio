@@ -350,6 +350,9 @@ pub fn verify_capability(
             CapabilityError::CryptoFloorRejected(message) => ChioMobileError::InvalidCapability {
                 message: format!("capability crypto floor rejected: {message}"),
             },
+            CapabilityError::AttenuationViolation(message) => ChioMobileError::InvalidCapability {
+                message: format!("capability rejected by chain binding: {message}"),
+            },
             CapabilityError::Internal(msg) => ChioMobileError::Internal {
                 message: format!("capability verification failed: {msg}"),
             },

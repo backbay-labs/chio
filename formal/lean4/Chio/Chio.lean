@@ -13,5 +13,6 @@ import Chio.Proofs.Evaluation
 import Chio.Proofs.Protocol
 import Chio.Proofs.AeneasEquivalence
 import Chio.Proofs.FormalClosure
+import Chio.Proofs.AttenuationWitness
 import Chio.Proofs.HandshakeNegotiation
 import Chio.Capability.Delegation

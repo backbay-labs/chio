@@ -445,12 +445,12 @@
     {
       "id": "P-8",
       "title": "Delegation attenuation proofs (P1 in receipts)",
-      "bucket": "NONE",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs",
+      "theorem_status": "proposed",
       "wave": "03",
-      "notes": "attenuation witness not yet generated/verified; ships with T1.1"
+      "notes": "W1.1: attenuation_proof witness shipped, chain-binding rule enforced via verify_capability_with_floor_and_trust_root, AttenuationViolation error mapped through caller crates; theorem.attenuation.witness_soundness at formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean (status=assumed pending Lean toolchain)"
     },
     {
       "id": "P-9",
@@ -505,12 +505,12 @@
     {
       "id": "A-2",
       "title": "Durable Agent Identity with Attenuated Sub-Agent Capabilities",
-      "bucket": "PARTIAL",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs",
+      "theorem_status": "proposed",
       "wave": "03",
-      "notes": "delegation_chain field exists; sub-agent attenuation not first-class on wire"
+      "notes": "W1.1: DelegationLink.scope_hash binds each hop to the canonical authorized scope; attenuation_proof.parent_scope_hash anchored to predecessor or trust root"
     },
     {
       "id": "A-3",
@@ -1195,12 +1195,12 @@
     {
       "id": "T1.1.E",
       "title": "Evidence Gate for T1.1 macaroon capability attenuation",
-      "bucket": "NONE",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs",
+      "theorem_status": "proposed",
       "wave": "03",
-      "notes": "T1.1 Evidence Gate not yet closed"
+      "notes": "W1.1: claim.capability.attenuation_proof promoted to active; Lean theorem.attenuation.witness_soundness authored (status=assumed); conformance test DENY-asserts the inflated-parent attack"
     },
     {
       "id": "T1.2.E",
@@ -1375,12 +1375,12 @@
     {
       "id": "close-bar-#15",
       "title": "delegation_v2 promoted default-on; Attenuation/ScopeAttenuation first-class; compute_attenuation_witness/verify_attenuation_witness ship; attenuation_proof on wire",
-      "bucket": "PARTIAL",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs",
+      "theorem_status": "proposed",
       "wave": "03",
-      "notes": "delegation_v2 substrate exists; default-off; witness API not yet authored"
+      "notes": "W1.1: attenuation witness API ships; chain-binding rule enforced; attenuation_proof.parent_scope_hash bound to trust root or last delegation link's scope_hash"
     },
     {
       "id": "close-bar-#16",

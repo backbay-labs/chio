@@ -318,6 +318,7 @@ fn capability_error_message(error: &CapabilityError) -> &'static str {
         CapabilityError::NotYetValid => "token is not yet valid",
         CapabilityError::Expired => "token has expired",
         CapabilityError::CryptoFloorRejected(_) => "capability crypto floor rejected",
+        CapabilityError::AttenuationViolation(_) => "capability rejected by chain binding",
         CapabilityError::Internal(_) => "internal verification error",
         CapabilityError::SchemaExceedsNegotiatedCeiling { .. } => {
             "token schema exceeds peer-negotiated ceiling"

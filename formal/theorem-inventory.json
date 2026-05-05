@@ -714,6 +714,18 @@
       "notes": "Path-prefix model rejects normalized traversal escape cases."
     },
     {
+      "id": "theorem.attenuation.witness_soundness",
+      "leanName": "Chio.Proofs.AttenuationWitness.witness_soundness",
+      "file": "formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "assumed",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean",
+      "mapsTo": ["P1"],
+      "notes": "W1.1 P0 chain-binding fix: a v2 capability token is admitted by the verifier iff its attenuation_proof.parent_scope_hash matches the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain). Closes the inflated-parent-scope soundness gap. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs and the protocol-side check is implemented in chio_core_types::capability::CapabilityToken::validate_chain_binding."
+    },
+    {
       "id": "theorem.handshake.negotiation_safety",
       "leanName": "Chio.Proofs.HandshakeNegotiation.negotiation_safety",
       "file": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",

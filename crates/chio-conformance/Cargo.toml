@@ -87,6 +87,8 @@ path = "verdict_matrix/tests/verdict_matrix_cross_language.rs"
 # M02.P5.T5: cross-language verdict-matrix oracle exercises the WASM
 # browser kernel through its native (non-wasm32) cargo test surface.
 chio-kernel-browser = { version = "0.1.0", path = "../chio-kernel-browser" }
+# W1.1: attenuation chain-binding conformance test exercises
+# verify_capability_with_floor_and_trust_root via chio-kernel-core directly.
 # W1.3: portable verifier surface for negotiated-floor capability tests.
 chio-kernel-core = { version = "0.1.0", path = "../chio-kernel-core" }
 chio-custody-hw = { version = "0.1.0", path = "../chio-custody-hw" }
