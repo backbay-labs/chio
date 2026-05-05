@@ -1,5 +1,6 @@
 //! Pinned Play Integrity verifier key material for deterministic tests.
 
+use base64ct::{Base64UrlUnpadded, Encoding};
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use sha2::{Digest, Sha256};
 
@@ -74,5 +75,9 @@ pub fn play_integrity_jwks_json() -> String {
 
 #[must_use]
 pub fn play_integrity_root_sha256_hex() -> String {
-    hex::encode(Sha256::digest(PLAY_INTEGRITY_FIXTURE_MODULUS_B64))
+    let modulus = match Base64UrlUnpadded::decode_vec(PLAY_INTEGRITY_FIXTURE_MODULUS_B64) {
+        Ok(bytes) => bytes,
+        Err(error) => panic!("invalid Play Integrity RSA fixture modulus: {error}"),
+    };
+    hex::encode(Sha256::digest(modulus))
 }
