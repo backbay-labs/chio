@@ -140,17 +140,70 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 		_ = resp.Body.Close()
 	}()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, &SidecarError{
+			Code:    ErrSidecarUnreachable,
+			Message: "failed to read verify response body: " + err.Error(),
+		}
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return false, nil
+		code := classifyVerifyNonOK(resp.StatusCode, respBody)
+		return false, &SidecarError{
+			Code:       code,
+			Message:    "sidecar verify returned non-200: " + resp.Status,
+			StatusCode: resp.StatusCode,
+		}
 	}
 
 	var result struct {
-		Valid bool `json:"valid"`
+		Valid *bool `json:"valid"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return false, nil
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return false, &SidecarError{
+			Code:    ErrEvaluationFailed,
+			Message: "failed to decode verify response: " + err.Error(),
+		}
 	}
-	return result.Valid, nil
+	if result.Valid == nil {
+		return false, &SidecarError{
+			Code:    ErrEvaluationFailed,
+			Message: "sidecar verify response missing boolean `valid` field",
+		}
+	}
+	return *result.Valid, nil
+}
+
+// isSidecarTransportFailure reports whether the HTTP status indicates a
+// sidecar (or upstream) infrastructure failure rather than a verdict about
+// the receipt. We treat 5xx and 408 (request timeout) as transport failures.
+func isSidecarTransportFailure(status int) bool {
+	if status == http.StatusRequestTimeout {
+		return true
+	}
+	return status >= 500 && status <= 599
+}
+
+func classifyVerifyNonOK(status int, body []byte) string {
+	if hasDefinitiveInvalidReceiptVerdict(body) {
+		return ErrInvalidReceipt
+	}
+	if isSidecarTransportFailure(status) || status == http.StatusNotFound || status == http.StatusTooManyRequests {
+		return ErrSidecarUnavailable
+	}
+	return ErrEvaluationFailed
+}
+
+func hasDefinitiveInvalidReceiptVerdict(body []byte) bool {
+	var result struct {
+		Valid *bool  `json:"valid"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return false
+	}
+	return (result.Valid != nil && !*result.Valid) || result.Error == ErrInvalidReceipt
 }
 
 // HealthCheck checks whether the sidecar is running.
