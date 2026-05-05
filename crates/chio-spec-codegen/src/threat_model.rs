@@ -108,8 +108,22 @@ pub fn load_threat_model(path: &Path) -> Result<ThreatModelDoc, CodegenError> {
 
 /// Render the stub source for a single threat ID. Public so callers can
 /// preview the codegen output without writing to disk.
+///
+/// `entry.name` and each entry of `entry.surfaces` are interpolated into
+/// generated Rust doc comments. Any ASCII control character (including
+/// `\n`, `\r`, and the comment-closing `*/` sequence) in those fields is
+/// replaced with a single space via [`sanitize_doc_comment`] so the
+/// freely-typed text cannot break out of the comment into top-level Rust
+/// code. The threat `id` is already constrained to snake_case by
+/// [`is_valid_id`].
 pub fn render_threat_stub(entry: &ThreatEntry) -> String {
-    let surfaces = entry.surfaces.join(", ");
+    let safe_name = sanitize_doc_comment(&entry.name);
+    let safe_surfaces = entry
+        .surfaces
+        .iter()
+        .map(|s| sanitize_doc_comment(s))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "{header}\n\
 //! Stub test for threat ID `{id}` ({name}).\n\
@@ -134,9 +148,38 @@ fn threat_{id}_is_covered() {{\n\
 }}\n",
         header = GENERATED_HEADER,
         id = entry.id,
-        name = entry.name,
-        surfaces = surfaces,
+        name = safe_name,
+        surfaces = safe_surfaces,
     )
+}
+
+/// Strip newlines, ASCII control characters, and the block-comment
+/// terminator `*/` from a free-form string before it is interpolated
+/// into a generated Rust doc comment. Replaces each offending character
+/// run with a single space so a malicious threat-model entry cannot
+/// inject top-level code by ending the doc comment early.
+fn sanitize_doc_comment(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut prev_was_space = false;
+    let mut chars = value.chars().peekable();
+    while let Some(ch) = chars.next() {
+        let unsafe_char = ch.is_control() || ch == '\u{2028}' || ch == '\u{2029}';
+        let unsafe_pair = ch == '*' && chars.peek() == Some(&'/');
+        if unsafe_char || unsafe_pair {
+            if unsafe_pair {
+                // Consume the '/'.
+                chars.next();
+            }
+            if !prev_was_space {
+                out.push(' ');
+                prev_was_space = true;
+            }
+            continue;
+        }
+        out.push(ch);
+        prev_was_space = false;
+    }
+    out
 }
 
 /// Render the `mod.rs` aggregator that pulls in every per-threat stub
@@ -231,6 +274,7 @@ fn is_valid_id(id: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -258,6 +302,60 @@ mod tests {
         assert!(!is_valid_id("CapabilityTokenTheft"));
         assert!(!is_valid_id("9starts_with_digit"));
         assert!(!is_valid_id("dashes-not-allowed"));
+    }
+
+    #[test]
+    fn render_stub_strips_doc_comment_escape_in_name() {
+        // P1 hardening: a threat-model entry with a newline (or `*/`) in
+        // its `name` must NOT be able to break out of the generated doc
+        // comment and inject top-level Rust into the stub.
+        let evil = ThreatEntry {
+            id: "evil_threat".to_string(),
+            name: "evil\n#[panic_handler] fn p(_: &core::panic::PanicInfo) -> ! { loop {} } //"
+                .to_string(),
+            surfaces: vec!["native_chio".to_string()],
+        };
+        let body = render_threat_stub(&evil);
+        // The injected attribute and item must not appear verbatim; the
+        // newline before `#[panic_handler]` must have been collapsed.
+        assert!(
+            !body.contains("\n#[panic_handler]"),
+            "doc-comment escape via newline must be neutralised: {body}"
+        );
+        // The stub must still parse as a valid Rust file.
+        let _file: syn::File =
+            syn::parse_str(&body).expect("sanitised stub must parse as Rust source");
+    }
+
+    #[test]
+    fn render_stub_strips_block_comment_terminator_in_surfaces() {
+        let evil = ThreatEntry {
+            id: "evil_threat".to_string(),
+            name: "Evil".to_string(),
+            // `*/` would close a hypothetical block comment; collapse to space.
+            surfaces: vec!["native_chio*/ #[no_mangle]".to_string()],
+        };
+        let body = render_threat_stub(&evil);
+        // The fixed `GENERATED_HEADER` legitimately contains `**/*.schema.json`,
+        // so check the post-header section only.
+        let after_header = body
+            .strip_prefix(GENERATED_HEADER)
+            .expect("body must start with the canonical header");
+        assert!(
+            !after_header.contains("*/"),
+            "block-comment terminator must be neutralised: {after_header}"
+        );
+        let _file: syn::File =
+            syn::parse_str(&body).expect("sanitised stub must parse as Rust source");
+    }
+
+    #[test]
+    fn sanitize_doc_comment_collapses_runs_of_unsafe_chars() {
+        assert_eq!(sanitize_doc_comment("hello"), "hello");
+        assert_eq!(sanitize_doc_comment("hello\nworld"), "hello world");
+        assert_eq!(sanitize_doc_comment("hello\r\n\tworld"), "hello world");
+        assert_eq!(sanitize_doc_comment("a*/b"), "a b");
+        assert_eq!(sanitize_doc_comment("\nfoo\n"), " foo ");
     }
 
     #[test]

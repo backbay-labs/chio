@@ -8,6 +8,24 @@
 //! All errors are surfaced via [`ValidateError`]; the crate never panics on
 //! malformed input. The workspace clippy lints (`unwrap_used`, `expect_used`)
 //! are enforced.
+//!
+//! # Trust boundary
+//!
+//! This crate is the gate between the **trusted** Chio schema set
+//! (committed under `spec/schemas/`) and **untrusted** documents
+//! (capability tokens, receipts, scenarios, wire artifacts). The
+//! `schema` argument to every entry point MUST be a Chio-controlled
+//! schema; user-supplied schemas are not in scope and may pull in
+//! arbitrary `file://` resources via `$ref`. The `doc` argument is the
+//! untrusted half: a document cannot trigger `$ref` resolution because
+//! validation only walks the schema's reference graph, not the
+//! instance's.
+//!
+//! The workspace pulls `jsonschema` with `default-features = false` and
+//! only the `resolve-file` feature enabled, so `http://` and `https://`
+//! `$ref` URIs always fail with `Unknown scheme` or
+//! "feature is required" rather than reaching the network. This is
+//! verified by the `http_ref_in_schema_does_not_fetch_network` test.
 
 use std::fmt;
 use std::fs;
@@ -125,4 +143,62 @@ fn schema_base_uri(schema_path: &Path) -> Option<String> {
         path_str.push('/');
     }
     Some(format!("file://{path_str}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Confirms the workspace `jsonschema` build does NOT pull in the
+    /// `resolve-http` feature: a schema that references an `http://`
+    /// URL must fail to compile rather than open a network connection.
+    /// If this test ever starts passing the schema build, the feature
+    /// flag has been re-enabled and the trust boundary documentation
+    /// in `lib.rs` is no longer accurate.
+    #[test]
+    fn http_ref_in_schema_does_not_fetch_network() {
+        let schema = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$ref": "http://example.invalid/should-not-resolve.json"
+        });
+        let doc = json!({});
+        let schema_path = std::path::PathBuf::from("<inline>");
+        let doc_path = std::path::PathBuf::from("<inline>");
+        let result = validate_value(&schema_path, &schema, &doc_path, &doc);
+        match result {
+            Err(ValidateError::SchemaCompile(_, msg)) => {
+                let lower = msg.to_ascii_lowercase();
+                // jsonschema 0.46 emits one of these messages when
+                // resolve-http is OFF and the retriever rejects the
+                // scheme.
+                assert!(
+                    lower.contains("resolve-http")
+                        || lower.contains("unknown scheme")
+                        || lower.contains("required to resolve"),
+                    "expected resolve-http rejection, got: {msg}"
+                );
+            }
+            Err(other) => panic!("expected SchemaCompile rejection, got {other}"),
+            Ok(()) => panic!(
+                "schema with http:// $ref unexpectedly compiled - resolve-http feature may be on"
+            ),
+        }
+    }
+
+    #[test]
+    fn unknown_scheme_in_schema_ref_is_rejected() {
+        let schema = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$ref": "ftp://example.invalid/whatever.json"
+        });
+        let doc = json!({});
+        let schema_path = std::path::PathBuf::from("<inline>");
+        let doc_path = std::path::PathBuf::from("<inline>");
+        let result = validate_value(&schema_path, &schema, &doc_path, &doc);
+        assert!(
+            matches!(result, Err(ValidateError::SchemaCompile(_, _))),
+            "ftp:// $ref must be rejected at schema-compile time"
+        );
+    }
 }
