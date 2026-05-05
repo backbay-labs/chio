@@ -185,6 +185,66 @@ fn signature_failure_propagates_fail_closed() {
 }
 
 #[test]
+fn issuer_mismatch_propagates_fail_closed() {
+    // The verifier surface returns IssuerMismatch when the policy
+    // signing certificate carries an OIDC issuer that does not match
+    // the operator-pinned signer identity. The loader MUST surface
+    // that error verbatim rather than swallowing it as a generic
+    // "policy invalid" outcome; auditors rely on the variant to know
+    // that the cert chained but the issuer was wrong.
+    let canonical = canonical_bytes_for(BOOTSTRAP_FIXTURE);
+    let verifier = RecordingVerifier::new(canonical, PLACEHOLDER_SIGNATURE.to_vec());
+    verifier.force_next_error(AttestError::IssuerMismatch);
+    let loader = TenantPolicyLoader::with_default_horizon();
+
+    let result = loader.load_signed(
+        &verifier,
+        &release_signer_identity(),
+        BOOTSTRAP_FIXTURE.as_bytes(),
+        STUB_CERTIFICATE_PEM,
+        fresh_now(),
+    );
+
+    match result {
+        Err(AttestError::IssuerMismatch) => {}
+        other => panic!("expected IssuerMismatch to propagate, got {other:?}"),
+    }
+    assert!(
+        verifier.was_called(),
+        "loader must invoke verifier before issuer rejection"
+    );
+}
+
+#[test]
+fn identity_mismatch_propagates_fail_closed() {
+    // IdentityMismatch from the verifier MUST also fail-closed at the
+    // loader. A tampered policy whose signing cert chains correctly
+    // but whose SAN does not match the pinned identity regex is a
+    // forged policy; the loader MUST refuse it.
+    let canonical = canonical_bytes_for(BOOTSTRAP_FIXTURE);
+    let verifier = RecordingVerifier::new(canonical, PLACEHOLDER_SIGNATURE.to_vec());
+    verifier.force_next_error(AttestError::IdentityMismatch);
+    let loader = TenantPolicyLoader::with_default_horizon();
+
+    let result = loader.load_signed(
+        &verifier,
+        &release_signer_identity(),
+        BOOTSTRAP_FIXTURE.as_bytes(),
+        STUB_CERTIFICATE_PEM,
+        fresh_now(),
+    );
+
+    match result {
+        Err(AttestError::IdentityMismatch) => {}
+        other => panic!("expected IdentityMismatch to propagate, got {other:?}"),
+    }
+    assert!(
+        verifier.was_called(),
+        "loader must invoke verifier before identity rejection"
+    );
+}
+
+#[test]
 fn stale_policy_rejected_at_default_horizon() {
     let canonical = canonical_bytes_for(BOOTSTRAP_FIXTURE);
     let verifier = RecordingVerifier::new(canonical, PLACEHOLDER_SIGNATURE.to_vec());

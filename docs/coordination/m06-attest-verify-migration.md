@@ -130,9 +130,12 @@ The Rust equivalent inside `chio-guard-registry` is a single
 
 The cached on-disk path is preferred. Use `verify_bundle` whenever the
 guard was resolved via `chio guard pull` (the common path). The returned
-`VerifiedAttestation::rekor_inclusion_verified` MUST be `true` for the
-on-disk bundle path; M06's `chio.guard.verify` event with `mode=sigstore`
-asserts this and falls into `result=fail` if it is not.
+`VerifiedAttestation::rekor_inclusion_verified` is currently `false`
+because `chio-attest-verify` validates Sigstore bundle consistency but
+does not yet verify Rekor Merkle inclusion or the Signed Entry Timestamp
+(SET). M06's `chio.guard.verify` event with `mode=sigstore` MUST fall into
+`result=fail` for policies that require Rekor inclusion until that field is
+truthfully `true`.
 
 ### Step 3: streamed-network path (M06 P2.T4)
 
@@ -150,7 +153,7 @@ The streamed path returns `VerifiedAttestation` with
 `rekor_inclusion_verified` possibly `false`; per the trait doc, audit
 consumers MUST treat that as a weaker assertion. M06's structured event
 records `mode=sigstore` with a `rekor_inclusion=false` field so dashboards
-can distinguish bundle-verified from raw-blob-verified loads.
+can distinguish verification that lacks Chio-verified Rekor inclusion.
 
 ### Step 4: ExpectedIdentity construction (M06 P2.T4)
 

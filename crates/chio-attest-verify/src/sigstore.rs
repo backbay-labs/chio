@@ -2,10 +2,13 @@
 //!
 //! Three verification surfaces are exposed:
 //!
-//! - [`SigstoreVerifier::verify_bundle`] performs the full keyless flow
+//! - [`SigstoreVerifier::verify_bundle`] performs the keyless flow
 //!   against a Sigstore protobuf Bundle (cert chain + signature + Rekor
-//!   transparency entry). This is the strongest assertion the crate
-//!   provides and is the recommended entry point for new consumers.
+//!   transparency entry). `sigstore-rs` validates the transparency entry
+//!   against the signing materials, but does not currently verify Rekor
+//!   Merkle inclusion or the Signed Entry Timestamp (SET). Until Chio
+//!   performs those checks itself, this path marks
+//!   [`VerifiedAttestation::rekor_inclusion_verified`] as `false`.
 //!
 //! - [`SigstoreVerifier::verify_blob`] and [`SigstoreVerifier::verify_bytes`]
 //!   verify a detached `(artifact, signature, leaf-cert)` triple against
@@ -239,7 +242,7 @@ impl AttestVerifier for SigstoreVerifier {
             certificate_identity: identity,
             certificate_oidc_issuer: expected.certificate_oidc_issuer.clone(),
             rekor_log_index,
-            rekor_inclusion_verified: true,
+            rekor_inclusion_verified: bundle_rekor_inclusion_verified(&bundle),
             signed_at,
         })
     }
@@ -509,6 +512,16 @@ fn bundle_rekor_metadata(bundle: &Bundle) -> (u64, SystemTime) {
     (index, signed_at)
 }
 
+fn bundle_rekor_inclusion_verified(_bundle: &Bundle) -> bool {
+    // `sigstore-rs` 0.13 checks that the Rekor transparency entry is
+    // consistent with the signing materials, but its verifier still leaves
+    // Merkle inclusion and SET verification unimplemented. Bundled proof
+    // fields are therefore evidence to be verified later, not a Chio-verified
+    // inclusion result. Keep this fail-closed for callers that require Rekor
+    // inclusion by reporting `false` until this crate performs both checks.
+    false
+}
+
 fn map_bundle_verification_error(err: sigstore::bundle::verify::VerificationError) -> AttestError {
     use sigstore::bundle::verify::VerificationError as VE;
 
@@ -622,3 +635,476 @@ impl VerificationPolicy for IssuerOnlyPolicy {
 // is intentional and stable.
 #[allow(unused_imports)]
 pub use sigstore::bundle::verify::policy::Identity as SigstoreIdentityPolicy;
+
+#[cfg(test)]
+mod sigstore_internal_tests {
+    //! Trust-boundary unit tests that exercise the private helpers
+    //! `match_identity`, `read_oidc_issuer_extension`,
+    //! `decode_oidc_issuer_value`, `parse_certificate_to_der`, and
+    //! `bundle_rekor_metadata` directly. The helpers cannot be reached
+    //! from the keyless integration paths without a real Fulcio-issued
+    //! cert (see `tests/integration.rs`); these tests build synthetic
+    //! certificates with `rcgen` and feed them through the helpers so
+    //! that a mutation in `==`, `!=`, branch arms, or the regex anchor
+    //! is killed by an assertion that the wrong-input path returns the
+    //! documented [`AttestError`] variant.
+    //!
+    //! No `unwrap` / `expect` is permitted under `src/`, so each fixture
+    //! is materialized through an explicit `match` and any unexpected
+    //! `Err` short-circuits the test through a `panic!` that names the
+    //! input. The lint allow-lists in `tests/` do not extend to this
+    //! module.
+    #![allow(clippy::panic)]
+    #![allow(clippy::missing_panics_doc)]
+
+    use super::*;
+    use const_oid::ObjectIdentifier;
+    use rcgen::{
+        BasicConstraints, CertificateParams, CustomExtension, DnType, Ia5String, IsCa,
+        KeyPair as RcgenKeyPair, SanType, PKCS_ECDSA_P256_SHA256,
+    };
+    use x509_cert::der::asn1::Utf8StringRef;
+    use x509_cert::der::{Decode, Encode};
+
+    const FULCIO_OIDC_ISSUER_OID_STR: &str = "1.3.6.1.4.1.57264.1.1";
+
+    fn build_leaf_with_san_and_issuer(
+        san_uri: &str,
+        oidc_issuer: Option<&str>,
+        wrap_issuer_as_der_utf8string: bool,
+    ) -> Vec<u8> {
+        let mut params = match CertificateParams::new(Vec::<String>::new()) {
+            Ok(p) => p,
+            Err(err) => panic!("rcgen params: {err}"),
+        };
+        params.is_ca = IsCa::NoCa;
+        params
+            .distinguished_name
+            .push(DnType::CommonName, "chio-attest-verify-test-leaf");
+        let san_value = match Ia5String::try_from(san_uri.to_owned()) {
+            Ok(value) => value,
+            Err(err) => panic!("invalid SAN ia5 string: {err}"),
+        };
+        params.subject_alt_names = vec![SanType::URI(san_value)];
+
+        if let Some(issuer_value) = oidc_issuer {
+            let oid_components = match parse_oid_components(FULCIO_OIDC_ISSUER_OID_STR) {
+                Some(parts) => parts,
+                None => panic!("oidc issuer oid string did not parse"),
+            };
+            let extension_bytes = if wrap_issuer_as_der_utf8string {
+                let utf8_ref = match Utf8StringRef::new(issuer_value) {
+                    Ok(value) => value,
+                    Err(err) => panic!("utf8 string ref: {err}"),
+                };
+                match utf8_ref.to_der() {
+                    Ok(bytes) => bytes,
+                    Err(err) => panic!("utf8 string der encode: {err}"),
+                }
+            } else {
+                issuer_value.as_bytes().to_vec()
+            };
+            params
+                .custom_extensions
+                .push(CustomExtension::from_oid_content(
+                    &oid_components,
+                    extension_bytes,
+                ));
+        }
+
+        let mut root_params = match CertificateParams::new(Vec::<String>::new()) {
+            Ok(p) => p,
+            Err(err) => panic!("rcgen root params: {err}"),
+        };
+        root_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        root_params
+            .distinguished_name
+            .push(DnType::CommonName, "chio-attest-verify-test-root");
+
+        let root_key = match RcgenKeyPair::generate_for(&PKCS_ECDSA_P256_SHA256) {
+            Ok(k) => k,
+            Err(err) => panic!("rcgen root key: {err}"),
+        };
+        let root_cert = match root_params.self_signed(&root_key) {
+            Ok(c) => c,
+            Err(err) => panic!("rcgen root self-signed: {err}"),
+        };
+        let leaf_key = match RcgenKeyPair::generate_for(&PKCS_ECDSA_P256_SHA256) {
+            Ok(k) => k,
+            Err(err) => panic!("rcgen leaf key: {err}"),
+        };
+        let leaf = match params.signed_by(&leaf_key, &root_cert, &root_key) {
+            Ok(c) => c,
+            Err(err) => panic!("rcgen leaf signed: {err}"),
+        };
+        leaf.der().to_vec()
+    }
+
+    fn parse_oid_components(s: &str) -> Option<Vec<u64>> {
+        s.split('.').map(|c| c.parse::<u64>().ok()).collect()
+    }
+
+    fn parse_leaf(leaf_der: &[u8]) -> Certificate {
+        match Certificate::from_der(leaf_der) {
+            Ok(c) => c,
+            Err(err) => panic!("test leaf der parse: {err}"),
+        }
+    }
+
+    fn ghactions_identity(regex: &str) -> ExpectedIdentity {
+        ExpectedIdentity {
+            certificate_identity_regexp: regex.to_owned(),
+            certificate_oidc_issuer: "https://token.actions.githubusercontent.com".to_owned(),
+        }
+    }
+
+    #[test]
+    fn match_identity_accepts_san_uri_with_der_wrapped_issuer() {
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://github.com/bb-connor/arc/.github/workflows/release.yml@refs/tags/v1.0.0",
+            Some("https://token.actions.githubusercontent.com"),
+            true,
+        );
+        let cert = parse_leaf(&leaf_der);
+        let result = match_identity(
+            &cert,
+            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+        );
+        match result {
+            Ok(ident) => assert!(
+                ident.starts_with("https://github.com/bb-connor/arc/"),
+                "matched SAN must echo the URI: {ident}"
+            ),
+            Err(err) => panic!("expected SAN match, got {err:?}"),
+        }
+    }
+
+    #[test]
+    fn match_identity_accepts_san_uri_with_raw_utf8_issuer() {
+        // Some hand-rolled emitters embed the issuer URL as raw UTF-8
+        // bytes rather than wrapping it in a DER UTF8String. The
+        // verifier must accept both encodings.
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://github.com/bb-connor/arc/.github/workflows/release.yml@refs/tags/v1.0.0",
+            Some("https://token.actions.githubusercontent.com"),
+            false,
+        );
+        let cert = parse_leaf(&leaf_der);
+        let result = match_identity(
+            &cert,
+            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+        );
+        assert!(
+            result.is_ok(),
+            "raw-utf8 issuer extension must match: {result:?}"
+        );
+    }
+
+    #[test]
+    fn match_identity_fails_closed_on_issuer_mismatch() {
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://github.com/bb-connor/arc/x.yml@refs/tags/v1.0.0",
+            Some("https://other.example.com"),
+            true,
+        );
+        let cert = parse_leaf(&leaf_der);
+        let result = match_identity(
+            &cert,
+            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+        );
+        match result {
+            Err(AttestError::IssuerMismatch) => {}
+            other => panic!("expected IssuerMismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn match_identity_fails_closed_on_missing_issuer_extension() {
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://github.com/bb-connor/arc/x.yml@refs/tags/v1.0.0",
+            None,
+            true,
+        );
+        let cert = parse_leaf(&leaf_der);
+        let result = match_identity(
+            &cert,
+            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+        );
+        match result {
+            Err(AttestError::IssuerMismatch) => {}
+            other => panic!("expected IssuerMismatch on missing OIDC ext, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn match_identity_fails_closed_on_san_regex_mismatch() {
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://gitlab.com/some-org/x.yml@refs/tags/v1.0.0",
+            Some("https://token.actions.githubusercontent.com"),
+            true,
+        );
+        let cert = parse_leaf(&leaf_der);
+        let result = match_identity(
+            &cert,
+            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+        );
+        match result {
+            Err(AttestError::IdentityMismatch) => {}
+            other => panic!("expected IdentityMismatch on SAN regex miss, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn match_identity_anchors_regex_at_both_ends() {
+        // Caller-supplied regex omits anchors; verifier must inject
+        // `^...$`. A SAN that contains the pattern as a substring (but
+        // does not match end-to-end) MUST be rejected.
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://attacker.example.com/?wrap=https://github.com/bb-connor/arc/x.yml@refs/tags/v1#tail",
+            Some("https://token.actions.githubusercontent.com"),
+            true,
+        );
+        let cert = parse_leaf(&leaf_der);
+        let result = match_identity(
+            &cert,
+            &ghactions_identity(r"https://github\.com/bb-connor/arc/.*"),
+        );
+        match result {
+            Err(AttestError::IdentityMismatch) => {}
+            other => panic!("expected anchored regex to reject substring SAN, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_oidc_issuer_value_accepts_der_utf8string() {
+        // 0x0c is the DER tag for UTF8String. The decoder must prefer
+        // this path over raw UTF-8 because 0x0c is itself a valid ASCII
+        // byte (form feed) and would otherwise be mis-read as part of
+        // the issuer URL.
+        let issuer = "https://token.actions.githubusercontent.com";
+        let utf8_ref = match Utf8StringRef::new(issuer) {
+            Ok(v) => v,
+            Err(err) => panic!("utf8 ref: {err}"),
+        };
+        let der_bytes = match utf8_ref.to_der() {
+            Ok(b) => b,
+            Err(err) => panic!("utf8 der encode: {err}"),
+        };
+        match decode_oidc_issuer_value(&der_bytes) {
+            Ok(decoded) => assert_eq!(decoded, issuer),
+            Err(err) => panic!("DER UTF8String must decode: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_oidc_issuer_value_accepts_raw_utf8_url() {
+        let issuer = "https://token.actions.githubusercontent.com";
+        match decode_oidc_issuer_value(issuer.as_bytes()) {
+            Ok(decoded) => assert_eq!(decoded, issuer),
+            Err(err) => panic!("raw UTF-8 issuer must decode: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_oidc_issuer_value_rejects_empty_input() {
+        match decode_oidc_issuer_value(&[]) {
+            Err(AttestError::Malformed(_)) => {}
+            other => panic!("empty issuer extension must reject as Malformed: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_oidc_issuer_value_rejects_control_byte_payload() {
+        // Bytes that are valid UTF-8 but contain a control character
+        // are rejected. This guards the printable filter from being
+        // weakened by a mutant flipping `!is_control()` to
+        // `is_control()`.
+        match decode_oidc_issuer_value(b"https://issuer\x01attack") {
+            Err(AttestError::Malformed(_)) => {}
+            other => panic!("control byte payload must reject: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_certificate_to_der_accepts_pem() {
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://example.com/x.yml@refs/tags/v1",
+            Some("https://token.actions.githubusercontent.com"),
+            true,
+        );
+        let pem = pem::Pem::new("CERTIFICATE", leaf_der.clone());
+        let pem_bytes = pem::encode(&pem).into_bytes();
+        match parse_certificate_to_der(&pem_bytes) {
+            Ok(der) => assert_eq!(der, leaf_der, "PEM round-trip must yield original DER"),
+            Err(err) => panic!("PEM input must decode: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_certificate_to_der_accepts_raw_der() {
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://example.com/x.yml@refs/tags/v1",
+            Some("https://token.actions.githubusercontent.com"),
+            true,
+        );
+        match parse_certificate_to_der(&leaf_der) {
+            Ok(der) => assert_eq!(der, leaf_der),
+            Err(err) => panic!("raw DER input must decode: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_certificate_to_der_rejects_non_certificate_pem() {
+        // PEM tag mismatch (PUBLIC KEY) MUST fall through to the DER
+        // branch and then to the "neither PEM nor DER" error rather
+        // than silently accepting non-cert PEM as a leaf.
+        let pem = pem::Pem::new("PUBLIC KEY", b"\xAA\xBB\xCC".to_vec());
+        let pem_bytes = pem::encode(&pem).into_bytes();
+        match parse_certificate_to_der(&pem_bytes) {
+            Err(AttestError::Malformed(msg)) => assert!(
+                msg.contains("neither PEM nor DER"),
+                "unexpected message: {msg}"
+            ),
+            other => panic!("non-certificate PEM must reject: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_certificate_to_der_rejects_neither_pem_nor_der() {
+        // Bytes that do not start with the SEQUENCE tag (0x30) and do
+        // not parse as PEM must be rejected.
+        match parse_certificate_to_der(&[0x01, 0x02, 0x03]) {
+            Err(AttestError::Malformed(_)) => {}
+            other => panic!("garbage must reject: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn read_oidc_issuer_extension_returns_value_when_present() {
+        let leaf_der = build_leaf_with_san_and_issuer(
+            "https://example.com/x.yml@refs/tags/v1",
+            Some("https://token.actions.githubusercontent.com"),
+            true,
+        );
+        let cert = parse_leaf(&leaf_der);
+        match read_oidc_issuer_extension(&cert) {
+            Ok(value) => assert_eq!(value, "https://token.actions.githubusercontent.com"),
+            Err(err) => panic!("issuer extension must read: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn read_oidc_issuer_extension_fails_closed_when_absent() {
+        let leaf_der =
+            build_leaf_with_san_and_issuer("https://example.com/x.yml@refs/tags/v1", None, true);
+        let cert = parse_leaf(&leaf_der);
+        match read_oidc_issuer_extension(&cert) {
+            Err(AttestError::IssuerMismatch) => {}
+            other => panic!("missing extension must surface IssuerMismatch: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn issuer_only_policy_accepts_matching_issuer_and_rejects_mismatch() {
+        use sigstore::bundle::verify::policy::VerificationPolicy;
+
+        let matching_leaf = build_leaf_with_san_and_issuer(
+            "https://example.com/x.yml@refs/tags/v1",
+            Some("https://token.actions.githubusercontent.com"),
+            true,
+        );
+        let cert_match = parse_leaf(&matching_leaf);
+        let policy = IssuerOnlyPolicy {
+            expected_issuer: "https://token.actions.githubusercontent.com".to_owned(),
+        };
+        match policy.verify(&cert_match) {
+            Ok(()) => {}
+            Err(err) => panic!("matching issuer must accept: {err:?}"),
+        }
+
+        let mismatch_leaf = build_leaf_with_san_and_issuer(
+            "https://example.com/x.yml@refs/tags/v1",
+            Some("https://attacker.example.com"),
+            true,
+        );
+        let cert_mismatch = parse_leaf(&mismatch_leaf);
+        match policy.verify(&cert_mismatch) {
+            Err(_) => {}
+            Ok(()) => panic!("non-matching issuer must reject"),
+        }
+    }
+
+    #[test]
+    fn certificate_oid_constants_match_documented_values() {
+        // Guards the OID constants against accidental edits. The
+        // documented values are pinned by the Fulcio docs page cited
+        // in `src/sigstore.rs`.
+        assert_eq!(
+            OIDC_ISSUER_OID,
+            ObjectIdentifier::new_unwrap("1.3.6.1.4.1.57264.1.1")
+        );
+        assert_eq!(
+            OTHERNAME_OID,
+            ObjectIdentifier::new_unwrap("1.3.6.1.4.1.57264.1.7")
+        );
+        assert_eq!(
+            ID_KP_CODE_SIGNING,
+            ObjectIdentifier::new_unwrap("1.3.6.1.5.5.7.3.3")
+        );
+    }
+
+    #[test]
+    fn bundled_rekor_materials_do_not_imply_chio_inclusion_verification() {
+        use sigstore_protobuf_specs::dev::sigstore::{
+            bundle::v1::{verification_material, Bundle, VerificationMaterial},
+            common::v1::{LogId, X509Certificate},
+            rekor::v1::{
+                Checkpoint, InclusionPromise, InclusionProof, KindVersion, TransparencyLogEntry,
+            },
+        };
+
+        let bundle = Bundle {
+            media_type: "application/vnd.dev.sigstore.bundle+json;version=0.2".to_owned(),
+            content: None,
+            verification_material: Some(VerificationMaterial {
+                content: Some(verification_material::Content::Certificate(
+                    X509Certificate {
+                        raw_bytes: vec![0x30],
+                    },
+                )),
+                tlog_entries: vec![TransparencyLogEntry {
+                    log_index: 42,
+                    log_id: Some(LogId {
+                        key_id: vec![1, 2, 3],
+                    }),
+                    kind_version: Some(KindVersion {
+                        kind: "hashedrekord".to_owned(),
+                        version: "0.0.1".to_owned(),
+                    }),
+                    integrated_time: 1_700_000_000,
+                    inclusion_promise: Some(InclusionPromise {
+                        signed_entry_timestamp: vec![4, 5, 6],
+                    }),
+                    inclusion_proof: Some(InclusionProof {
+                        log_index: 42,
+                        root_hash: vec![7; 32],
+                        tree_size: 64,
+                        hashes: vec![vec![8; 32], vec![9; 32]],
+                        checkpoint: Some(Checkpoint {
+                            envelope:
+                                "rekor.sigstore.dev - 1193050959916656506\n64\nroot\n\n-signature"
+                                    .to_owned(),
+                        }),
+                    }),
+                    canonicalized_body: br#"{"kind":"hashedrekord"}"#.to_vec(),
+                }],
+                timestamp_verification_data: None,
+            }),
+        };
+
+        assert!(
+            !bundle_rekor_inclusion_verified(&bundle),
+            "Chio must not report Rekor inclusion as verified from bundled materials until it verifies the Merkle proof and SET itself"
+        );
+    }
+}

@@ -22,15 +22,18 @@ let expected = ExpectedIdentity {
     certificate_oidc_issuer: "https://token.actions.githubusercontent.com".into(),
 };
 let claims = verifier.verify_bundle(&artifact_bytes, &bundle_json_bytes, &expected)?;
-assert!(claims.rekor_inclusion_verified);
+assert!(!claims.rekor_inclusion_verified);
 ```
 
 ### `verify_bundle`
 
-The strongest assertion the crate provides. Consumes a Sigstore protobuf
-Bundle (cert chain + signature + Rekor transparency entry) and runs the
-full keyless flow against the embedded Fulcio trust root, including Rekor
-log-entry consistency.
+Consumes a Sigstore protobuf Bundle (cert chain + signature + Rekor
+transparency entry) and runs the keyless flow against the embedded Fulcio
+trust root, including Rekor log-entry consistency. `sigstore-rs` does not
+currently verify Rekor Merkle inclusion or the Signed Entry Timestamp
+(SET), so Chio marks `VerifiedAttestation.rekor_inclusion_verified =
+false` until this crate performs those checks itself. Callers that require
+Rekor inclusion verification MUST deny while this field is `false`.
 
 ### `verify_blob` / `verify_bytes`
 
@@ -38,8 +41,7 @@ For detached `(artifact, signature, leaf-cert)` triples that do not carry
 a Rekor inclusion proof. These paths perform certificate-chain validation
 against Fulcio, OIDC issuer match, identity SAN regex match, certificate
 validity-window check, and signature verification, but mark the resulting
-`VerifiedAttestation.rekor_inclusion_verified = false`. Callers that
-require the strongest keyless assertion should prefer `verify_bundle`.
+`VerifiedAttestation.rekor_inclusion_verified = false`.
 
 ## Embedded TUF trust root
 
