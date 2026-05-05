@@ -306,9 +306,12 @@ def rewrite(node, lifts: dict, prefix: str):
                     ):
                         properties[key] = copy.deepcopy(parent_properties[key])
 
-        # Recurse.
+        # Recurse. Do not rewrite enum arrays: their values are data, not
+        # schema nodes. In particular, boolean enums produced from
+        # `const: true` must stay `[true]`; rewriting that list to `[{}]`
+        # makes oapi-codegen emit invalid Go constants.
         for key, value in list(node.items()):
-            if key == "$defs":
+            if key in ("$defs", "enum"):
                 continue
             rewrite(value, lifts, prefix)
 

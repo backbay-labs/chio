@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 3ed943267c60942b5a63a39515fbbc1a553d614d895d142e307096a7a99c7da2
+# Schema sha256: 168c92102b530411f244aeff273362ff27544e7ce7b3c6623f51c9ecb4d58e62
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -10,22 +10,36 @@
 
 from __future__ import annotations
 
+from .capabilities_schema import ChioCapabilityNegotiationV1, MaxCapabilitySchema
 from .grant_schema import ChioCapabilityGrant, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
 from .revocation_schema import ChioCapabilityRevocationEntry
 from .token_schema import Algorithm, Attenuation, ChioCapabilitytoken, ChioScope, Constraint, DelegationLink, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
+from .token_v1_schema import Algorithm, Attenuation, ChioCapabilitytokenV1, ChioScope, Constraint, DelegationLink, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
+from .token_v2_schema import Algorithm, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytokenV2, GrantKind, GrantSubsetRelation, Kind, ScopeAttenuation
 
 __all__ = [
     "Algorithm",
     "Attenuation",
+    "AttenuationProof",
+    "AttenuationWitness",
+    "Caveat",
     "ChioCapabilityGrant",
+    "ChioCapabilityNegotiationV1",
     "ChioCapabilityRevocationEntry",
     "ChioCapabilitytoken",
+    "ChioCapabilitytokenV1",
+    "ChioCapabilitytokenV2",
     "ChioScope",
     "Constraint",
     "DelegationLink",
+    "GrantKind",
+    "GrantSubsetRelation",
+    "Kind",
+    "MaxCapabilitySchema",
     "MonetaryAmount",
     "Operation",
     "PromptGrant",
     "ResourceGrant",
+    "ScopeAttenuation",
     "ToolGrant",
 ]

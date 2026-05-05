@@ -8,18 +8,15 @@
 # spec-drift CI lane enforces this header on every file
 # under sdks/python/chio-sdk-python/src/chio_sdk/_generated/.
 
-
 from __future__ import annotations
 
-from typing import Literal
+from .batch_schema import Body, CheckpointId, ChioAnchorBatchV1, Inclusion, Kind, Witness
 
-from pydantic import BaseModel, ConfigDict, conint, constr
-
-
-class ChioToolcallresultCancelled(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    status: Literal["cancelled"]
-    reason: constr(min_length=1)
-    chunks_received: conint(ge=0)
+__all__ = [
+    "Body",
+    "CheckpointId",
+    "ChioAnchorBatchV1",
+    "Inclusion",
+    "Kind",
+    "Witness",
+]

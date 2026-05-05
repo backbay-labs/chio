@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 245eed29f21665ab1a611519bdd565a5c82f04d1811dc55bbce08461df9e8905
+// Schema SHA: fac53f665e6810ee845da66559d7701f03fa944299d4ddbf67e3dab88cd673e1
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -104,6 +104,64 @@ export namespace Agent_ToolCallRequest {
 }
 
 // -----------------------------------------------------------------------------
+// Source: spec/schemas/chio-wire/v1/anchor/batch.schema.json
+export namespace Anchor_Batch {
+  /**
+   * Signed additive Merkle batch over receipts or checkpoints. Local receipt signatures remain authoritative; the batch adds continuity and public-witness timestamping.
+   */
+  export interface ChioAnchorBatchV1 {
+    body: Body;
+    signature: string;
+  }
+  export interface Body {
+    schema: "chio.anchor_batch.v1";
+    treeRoot: string;
+    /**
+     * @minItems 1
+     */
+    checkpointIds: [string, ...string[]];
+    /**
+     * @minItems 1
+     */
+    inclusions: [Inclusion, ...Inclusion[]];
+    witness: Witness;
+    issuedAt: number;
+    signerKey: string;
+  }
+  export interface Inclusion {
+    checkpointId: string;
+    leafHash: string;
+    proof: {
+      [k: string]: unknown;
+    };
+  }
+  export interface Witness {
+    kind: "rekor" | "ots" | "solana_memo";
+    witnessId: string;
+    root: string;
+    observedAt?: number;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Source: spec/schemas/chio-wire/v1/capability/capabilities.schema.json
+export namespace Capability_Capabilities {
+  /**
+   * Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed before peers negotiate capability v2, receipt v2, or anchor-batch support.
+   */
+  export interface ChioCapabilityNegotiationV1 {
+    schema: "chio.capabilities.v1";
+    /**
+     * String-keyed feature bitset. Peers proceed only with the intersection of true values advertised by both sides.
+     */
+    features?: {
+      [k: string]: boolean;
+    };
+    maxCapabilitySchema: "chio.capability.v1" | "chio.capability.v2";
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Source: spec/schemas/chio-wire/v1/capability/grant.schema.json
 export namespace Capability_Grant {
   /**
@@ -197,9 +255,151 @@ export namespace Capability_Token {
   export type Operation = "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate";
 
   /**
-   * A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
+   * A Chio capability token: an Ed25519-signed, FIPS-algorithm, or hybrid PQ scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384), and renders hybrid keys as `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>`. Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms, and `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
    */
   export interface ChioCapabilityToken {
+    /**
+     * Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+     */
+    schema: "chio.capability.v1";
+    /**
+     * Unique token ID (UUIDv7 recommended), used for revocation.
+     */
+    id: string;
+    /**
+     * Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.
+     */
+    issuer: string;
+    /**
+     * Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
+     */
+    subject: string;
+    scope: ChioScope;
+    /**
+     * Unix timestamp (seconds) when the token was issued.
+     */
+    issued_at: number;
+    /**
+     * Unix timestamp (seconds) when the token expires.
+     */
+    expires_at: number;
+    /**
+     * Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.
+     */
+    delegation_chain?: DelegationLink[];
+    /**
+     * Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+     */
+    algorithm?: "ed25519" | "p256" | "p384" | "hybrid";
+    /**
+     * Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+     */
+    signature: string;
+  }
+  /**
+   * What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
+   */
+  export interface ChioScope {
+    grants?: ToolGrant[];
+    resource_grants?: ResourceGrant[];
+    prompt_grants?: PromptGrant[];
+  }
+  /**
+   * Authorization to invoke a single tool. Mirrors `ToolGrant`.
+   */
+  export interface ToolGrant {
+    /**
+     * Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).
+     */
+    server_id: string;
+    /**
+     * Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).
+     */
+    tool_name: string;
+    /**
+     * @minItems 1
+     */
+    operations: [Operation, ...Operation[]];
+    constraints?: Constraint[];
+    max_invocations?: number;
+    max_cost_per_invocation?: MonetaryAmount;
+    max_total_cost?: MonetaryAmount;
+    /**
+     * If true, the kernel requires a valid DPoP proof for every invocation under this grant.
+     */
+    dpop_required?: boolean;
+  }
+  /**
+   * Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.
+   */
+  export interface Constraint {
+    type: string;
+    value?: unknown;
+  }
+  /**
+   * A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
+   */
+  export interface MonetaryAmount {
+    units: number;
+    currency: string;
+  }
+  /**
+   * Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
+   */
+  export interface ResourceGrant {
+    uri_pattern: string;
+    /**
+     * @minItems 1
+     */
+    operations: [Operation, ...Operation[]];
+  }
+  /**
+   * Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
+   */
+  export interface PromptGrant {
+    prompt_name: string;
+    /**
+     * @minItems 1
+     */
+    operations: [Operation, ...Operation[]];
+  }
+  /**
+   * A single link in a delegation chain. Mirrors `DelegationLink`.
+   */
+  export interface DelegationLink {
+    capability_id: string;
+    /**
+     * Delegating public key. Same encoding as the token-level `issuer`/`subject`.
+     */
+    delegator: string;
+    /**
+     * Receiving public key. Same encoding as the token-level `issuer`/`subject`.
+     */
+    delegatee: string;
+    attenuations?: {
+      type: string;
+    }[];
+    timestamp: number;
+    /**
+     * Delegation-link signature. Same encoding as the token-level `signature`.
+     */
+    signature: string;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Source: spec/schemas/chio-wire/v1/capability/token.v1.schema.json
+export namespace Capability_TokenV1 {
+  export type Operation = "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate";
+
+  /**
+   * A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
+   */
+  export interface ChioCapabilityTokenV1 {
+    /**
+     * Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+     */
+    schema: "chio.capability.v1";
     /**
      * Unique token ID (UUIDv7 recommended), used for revocation.
      */
@@ -322,6 +522,63 @@ export namespace Capability_Token {
      * Delegation-link signature. Same encoding as the token-level `signature`.
      */
     signature: string;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Source: spec/schemas/chio-wire/v1/capability/token.v2.schema.json
+export namespace Capability_TokenV2 {
+  /**
+   * Schema-tagged v2 capability token with typed caveats, first-class attenuation fields, an attenuation_proof witness, and a reserved hybrid algorithm enum value for the T2.1 compatibility path.
+   */
+  export interface ChioCapabilityTokenV2 {
+    schema: "chio.capability.v2";
+    id: string;
+    issuer: string;
+    subject: string;
+    /**
+     * ChioScope. The Rust verifier hashes the RFC 8785 canonical form for attenuation_proof.childScopeHash.
+     */
+    scope: {
+      [k: string]: unknown;
+    };
+    issued_at: number;
+    expires_at: number;
+    delegation_chain?: {}[];
+    algorithm?: "ed25519" | "p256" | "p384" | "hybrid";
+    caveats?: Caveat[];
+    scope_attenuations?: {
+      type: string;
+      [k: string]: unknown;
+    }[];
+    attenuation_proof: AttenuationProof;
+    /**
+     * Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed.
+     */
+    budget_share_bps?: number;
+    signature: string;
+  }
+  export interface Caveat {
+    kind: "restrict_tool" | "bind_session" | "restrict_audience" | "restrict_geo" | "restrict_time_window";
+    predicate: string;
+    sig?: string;
+  }
+  export interface AttenuationProof {
+    parentScopeHash: string;
+    childScopeHash: string;
+    normalizedSubsetProof: AttenuationWitness;
+  }
+  export interface AttenuationWitness {
+    normalizedParentScope: string;
+    normalizedChildScope: string;
+    subsetRelations?: GrantSubsetRelation[];
+    restrictedPredicates?: string[];
+  }
+  export interface GrantSubsetRelation {
+    grantKind: "tool" | "resource" | "prompt";
+    childIndex: number;
+    parentIndex: number;
+    subset: true;
   }
 }
 
@@ -972,6 +1229,25 @@ export namespace Receipt_InclusionProof {
 }
 
 // -----------------------------------------------------------------------------
+// Source: spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json
+export namespace Receipt_LineageStatementV2 {
+  /**
+   * Signed multi-parent lineage statement. parentReceiptIds are v2 body_hash values, canonical sorted and deduplicated, with parentSetHash = H(canonical(parentReceiptIds)).
+   */
+  export interface ChioReceiptLineageStatementV2 {
+    schema: "chio.receipt_lineage_statement.v2";
+    id: string;
+    childBodyHash: string;
+    chainId: string;
+    parentReceiptIds: string[];
+    parentSetHash: string;
+    issuedAt: number;
+    kernelKey: string;
+    signature: string;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Source: spec/schemas/chio-wire/v1/receipt/record.schema.json
 export namespace Receipt_Record {
   /**
@@ -1103,6 +1379,54 @@ export namespace Receipt_Record {
      * Optional details about the guard's decision.
      */
     details?: string;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Source: spec/schemas/chio-wire/v1/receipt/v2.schema.json
+export namespace Receipt_V2 {
+  /**
+   * Content-addressed v2 receipt. bodyHash is H(canonical_jcs(ReceiptV2BodyHashInput)); receiptId is a non-authoritative legacy UUIDv7 tooling alias and is not used for replay.
+   */
+  export interface ChioReceiptV2 {
+    receiptId: string;
+    bodyHash: string;
+    body: ReceiptV2BodyHashInput;
+    algorithm?: "ed25519" | "p256" | "p384" | "hybrid";
+    signature: string;
+  }
+  export interface ReceiptV2BodyHashInput {
+    schema: "chio.receipt.v2";
+    timestamp: number;
+    capabilityId: string;
+    toolServer: string;
+    toolName: string;
+    action: {
+      [k: string]: unknown;
+    };
+    decision: {
+      [k: string]: unknown;
+    };
+    contentHash: string;
+    policyHash: string;
+    evidence?: {}[];
+    metadata?: unknown;
+    trustLevel?: "mediated" | "verified" | "advisory";
+    tenantId?: string;
+    chainId: string;
+    /**
+     * Canonical sorted and deduplicated parent body_hash values.
+     */
+    parentReceiptIds?: string[];
+    parentSetHash: string;
+    dagOrdinal: number;
+    hlc: Hlc;
+    kernelKey: string;
+  }
+  export interface Hlc {
+    wallSeconds: number;
+    logical: number;
+    kernelId: string;
   }
 }
 
