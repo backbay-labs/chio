@@ -152,7 +152,19 @@ for doc in EXECUTION-BOARD.md SYNTHESIS-V2-INTEGRATED-PLAN.md README.md BRAINSTO
     fi
 done
 
-#-- 10. Em-dash + trailing-whitespace gate -------------------------------------
+#-- 10. Close-bar tracker gate -------------------------------------------------
+section "close-bar tracker"
+if bash scripts/check-close-bar-tracker.sh > /tmp/trj4-preflight-close-bar.log 2>&1; then
+    rows=$(grep -E '^  rows:' /tmp/trj4-preflight-close-bar.log | awk '{print $2}')
+    done_=$(grep -E '^  DONE:' /tmp/trj4-preflight-close-bar.log | awk '{print $2}')
+    partial=$(grep -E '^  PARTIAL:' /tmp/trj4-preflight-close-bar.log | awk '{print $2}')
+    none=$(grep -E '^  NONE:' /tmp/trj4-preflight-close-bar.log | awk '{print $2}')
+    pass "scripts/check-close-bar-tracker.sh PASS at ${rows} rows (DONE=${done_} / PARTIAL=${partial} / NONE=${none})"
+else
+    fail "scripts/check-close-bar-tracker.sh did not return 0; see /tmp/trj4-preflight-close-bar.log"
+fi
+
+#-- 11. Em-dash + trailing-whitespace gate -------------------------------------
 section "doc-style gate"
 em_total=0
 ws_total=0

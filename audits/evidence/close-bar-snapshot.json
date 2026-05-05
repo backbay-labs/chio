@@ -1,0 +1,1536 @@
+{
+  "schema": "chio.close-bar-snapshot.v1",
+  "generated_from": ".planning/trajectory-4/closeout/build_tracker.py",
+  "rows": [
+    {
+      "id": "DX-1",
+      "title": "chio init interactive shape picker + golden-path templates",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-2",
+      "title": "chio explain <receipt-id> deep narrator",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "08",
+      "notes": "chio explain not yet a binary subcommand; ships with T1.6"
+    },
+    {
+      "id": "DX-3",
+      "title": "Receipt-chain explorer (web)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-4",
+      "title": "In-process kernel for SDK tests + golden-receipt assertions",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-5",
+      "title": "Polish vscode-chio + zed-chio extensions to publishable quality",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-6",
+      "title": "chio doctor upgrade with repair suggestions",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-7",
+      "title": "Mock kernel + fixture-replay harness with hot-reload (chio dev)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-8",
+      "title": "SDK idiomatic-pass: Python + TypeScript first",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-9",
+      "title": "Error catalog with stable codes + repair hints",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-10",
+      "title": "chio diff for policies, manifests, trust roots",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-11",
+      "title": "End-to-end demo apps that someone could actually deploy",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "DX-12",
+      "title": "chio trace <session> + OTel-receipts bridge",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "15",
+      "notes": "audit-derived default; ship via DX lens roadmap"
+    },
+    {
+      "id": "S-1",
+      "title": "Dispatch profile baseline + flame-graph CI artifact",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "dispatch profile baseline absent; M06 audit notes dhat measures placeholder"
+    },
+    {
+      "id": "S-2",
+      "title": "Coalesced PQ signing with Merkle batching at receipt boundary",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "05",
+      "notes": "chio-anchor checkpoint Merkle batching exists at chio-anchor/src/lib.rs:113-144; receipt-boundary coalesced PQ sign not implemented"
+    },
+    {
+      "id": "S-3",
+      "title": "Mediator hot-path lock-free verdict cache",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "S-4",
+      "title": "Anchor publication aggregator with adaptive flush",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "S-5",
+      "title": "TEE evaluator zero-copy chio-tee-frame with shared-memory transport",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "S-6",
+      "title": "Revocation oracle: rs_merkle re-hash to incremental sparse Merkle delta",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "S-7",
+      "title": "Tower service backpressure + load-shed middleware",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "Tower load-shed middleware not shipped"
+    },
+    {
+      "id": "S-8",
+      "title": "Per-tenant warm-ring autoscaling on guard pool",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "S-9",
+      "title": "Differential perf fuzzing across kernel ports",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "S-10",
+      "title": "Sampling-aware OTEL exporter",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "S-11",
+      "title": "Receipt cold-tier (S3) with hot SQLite + bloom-filter lookup",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "S-12",
+      "title": "Continuous benchmark dashboard + budget gates",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "12",
+      "notes": "audit-derived default; ship via S lens roadmap"
+    },
+    {
+      "id": "C-1",
+      "title": "ML-shim PromptInjectionGuard (classifier-backed)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-2",
+      "title": "AgentLoopBoundsGuard",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-3",
+      "title": "CapabilityAttenuationGuard with typed caveats",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "03",
+      "notes": "delegation_v2 substrate present; not negotiated/default-on; no witness API"
+    },
+    {
+      "id": "C-4",
+      "title": "SubAgentBudgetPropagation",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-5",
+      "title": "McpToolNamespacePinningGuard",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-6",
+      "title": "McpToolArgSchemaGuard",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-7",
+      "title": "Structured-PII redactor pack",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-8",
+      "title": "Code-Secrets redactor pack",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-9",
+      "title": "JailbreakPatternScanner with tracked corpus",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-10",
+      "title": "RoleAndTenantPolicyConditions",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-11",
+      "title": "ToolAdapter expansion: xAI Grok, DeepSeek, OpenRouter, Together",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-12",
+      "title": "Bedrock IAM-principal scoped guards",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "C-13",
+      "title": "TransparencyLogReceiptExporter (Rekor-style)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via C lens roadmap"
+    },
+    {
+      "id": "P-1",
+      "title": "Schema-tag the CapabilityToken",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "CapabilityToken still lacks a `schema` field; closes with T1.0"
+    },
+    {
+      "id": "P-2",
+      "title": "Macaroon-style first-party caveats on capabilities",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "03",
+      "notes": "macaroon caveats not present; gated on T1.0 + T1.1"
+    },
+    {
+      "id": "P-3",
+      "title": "Streaming receipts (chio.stream_receipt.v1)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via P lens roadmap"
+    },
+    {
+      "id": "P-4",
+      "title": "Anchor-batch Merkle trees with public-witness checkpoints",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "05",
+      "notes": "checkpoint Merkle batching present; chio.anchor_batch.v1 artifact + witness lane not yet shipped"
+    },
+    {
+      "id": "P-5",
+      "title": "Branched lineage (multi-parent receipts)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "04",
+      "notes": "EdgeKind::ReceiptLineageParent is single-parent; multi-parent ships with T1.2"
+    },
+    {
+      "id": "P-6",
+      "title": "Federation handshake: post-quantum hybrid by default + SAS auth",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "07",
+      "notes": "signature.v1.json declares hybrid; federation handshake not yet hybrid-by-default; SAS missing"
+    },
+    {
+      "id": "P-7",
+      "title": "Verifier capability profiles",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via P lens roadmap"
+    },
+    {
+      "id": "P-8",
+      "title": "Delegation attenuation proofs (P1 in receipts)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "03",
+      "notes": "attenuation witness not yet generated/verified; ships with T1.1"
+    },
+    {
+      "id": "P-9",
+      "title": "Redaction-preserving signatures on receipts",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via P lens roadmap"
+    },
+    {
+      "id": "P-10",
+      "title": "Hybrid logical clocks for timestamp + clock attestation",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via P lens roadmap"
+    },
+    {
+      "id": "P-11",
+      "title": "Capability-negotiation handshake (chio.capabilities.v1)",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "spec/versions/chio-protocol-negotiation.v1.json exists; no runtime feature-bitset enforcement"
+    },
+    {
+      "id": "P-12",
+      "title": "Threat-model schema v2 with structured mitigations",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via P lens roadmap"
+    },
+    {
+      "id": "A-1",
+      "title": "Multi-Agent Receipt DAG with Fork/Join Semantics",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "04",
+      "notes": "single-parent v1 lineage today; DAG ships with T1.2"
+    },
+    {
+      "id": "A-2",
+      "title": "Durable Agent Identity with Attenuated Sub-Agent Capabilities",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "03",
+      "notes": "delegation_chain field exists; sub-agent attenuation not first-class on wire"
+    },
+    {
+      "id": "A-3",
+      "title": "Prompt-Injection Heuristic Guard Tier (chio-guards-injection)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-4",
+      "title": "Agentic-Deception Detector via Plan-vs-Action Diff",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-5",
+      "title": "Multi-Modal Receipt Envelopes (Image/Audio/Video/Screen)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-6",
+      "title": "RAG Citation Attestation (Retrieved-Doc-to-Output-Span)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-7",
+      "title": "Per-Receipt Output Watermarking",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-8",
+      "title": "Cross-Model Lineage / Mid-Conversation Model Swap Attestation",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-9",
+      "title": "Capability-Aware Least-Privilege Agent Routing",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-10",
+      "title": "Capability-Checked Memory Access (Agent-Memory Governance)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-11",
+      "title": "Trustworthy Agent Marketplace v2: Conformance-Attested AgentDefs",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-12",
+      "title": "Tool-Use Chain Audit / Why-Was-This-Called Trace",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "08",
+      "notes": "tool-use chain audit not yet shipped; pairs with DX-2"
+    },
+    {
+      "id": "A-13",
+      "title": "Agent Reputation Chain Extending Per-Agent Identity",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-14",
+      "title": "Adversarial-Robustness Conformance Class",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "14",
+      "notes": "audit-derived default; ship via A lens roadmap"
+    },
+    {
+      "id": "A-15",
+      "title": "Loop-Detection Across Agent Graphs (Cycle Detection on Receipt DAG)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "04",
+      "notes": "no dag_ordinal yet; ships with T1.2 cross-kernel ordering"
+    },
+    {
+      "id": "H-1",
+      "title": "Apple Secure Enclave kernel-key backend",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-2",
+      "title": "TPM 2.0 quote backend (chio-attest-verify::tpm)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-3",
+      "title": "Azure MAA bridge",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-4",
+      "title": "GCP Confidential Space bridge",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-5",
+      "title": "AWS Nitro PCR-set policy + freshness window",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-6",
+      "title": "WebAuthn hardware-token claim binding",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-7",
+      "title": "RATS RFC 9334 evidence envelope (chio-attest-evidence)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-8",
+      "title": "Attestation freshness oracle + cache (chio-attest-cache)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-9",
+      "title": "TEE breakage / generation-deny list",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-10",
+      "title": "Reproducible-build to TEE-measurement binding",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-11",
+      "title": "Cross-cloud attestation router (chio-attest-router)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "H-12",
+      "title": "Confidential AI inference quote profile (NVIDIA H100 CC mode)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via H lens roadmap"
+    },
+    {
+      "id": "T-1",
+      "title": "Scoped attenuated cross-org delegation tokens",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "03",
+      "notes": "scoped delegation primitives in chio-core-types; FederationDelegationToken not yet shipped"
+    },
+    {
+      "id": "T-2",
+      "title": "M-of-N quorum-signed receipts",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-3",
+      "title": "Trust-anchor rotation ceremony with rotation attestation",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-4",
+      "title": "Governance attestation onto the trust graph",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-5",
+      "title": "Conformance-tier gating in handshake (Bronze/Silver/Gold)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-6",
+      "title": "Revocation gossip topology: epidemic + pull-catchup hybrid",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-7",
+      "title": "Sealed-evidence transfer (cross-org evidence pack)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-8",
+      "title": "Hybrid PQ handshake by default",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "07",
+      "notes": "HybridBackend exists in chio-core-types::pq; KernelTrustExchange not generic; capability-token schema missing hybrid"
+    },
+    {
+      "id": "T-9",
+      "title": "DID-bound agent identity in receipts",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-10",
+      "title": "Receipt-chain forks/joins across kernels",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-11",
+      "title": "Reputation/trust score derived from signed evidence",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "T-12",
+      "title": "Cross-cloud anchor bridging via discovery artifact",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "11",
+      "notes": "audit-derived default; ship via T lens roadmap"
+    },
+    {
+      "id": "O-1",
+      "title": "Workspace-wide metric taxonomy (chio-metrics-spec)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "no compile-time const-string registry; ships with T1.5"
+    },
+    {
+      "id": "O-2",
+      "title": "W3C trace-context propagation across receipts/anchors/federation",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-3",
+      "title": "Prometheus alert/recording rule pack",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "no burn-rate alert pack in deploy/prometheus/; ships with T1.5"
+    },
+    {
+      "id": "O-4",
+      "title": "Deep-health endpoint with kernel-integrity probe",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-5",
+      "title": "Per-tenant rate limit + noisy-neighbor cap in kernel",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-6",
+      "title": "Bench-regression CI gate with hard threshold",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-7",
+      "title": "Chaos-mesh experiment pack (deploy/chaos/)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-8",
+      "title": "Operational kill-switches via control-plane",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-9",
+      "title": "Profiling/flamegraph endpoint behind admin capability",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-10",
+      "title": "Dashboards-as-code expansion + linting",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-11",
+      "title": "Per-request cost attribution + per-tenant cost report",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-12",
+      "title": "Receipt-archive lifecycle with hot/warm/cold tiers",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-13",
+      "title": "Synthetic probe daemon (chio-synthetic)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "O-14",
+      "title": "Structured-log redaction layer (chio-log-redact)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "PHI logging only enforced by review; chio-log-redact not yet a tracing layer"
+    },
+    {
+      "id": "O-15",
+      "title": "DR drill harness with RTO/RPO assertion",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "audit-derived default; ship via O lens roadmap"
+    },
+    {
+      "id": "X-1",
+      "title": "chio-hosted-mcp 13-line #[path]-include of private chio-cli files",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-hosted-mcp/tests/cross_crate_pipeline.rs",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "extraction landed in trj3.2; lib.rs is pure pub-use of published library APIs; cross-crate pipeline test guards against re-introducing #[path] splice"
+    },
+    {
+      "id": "X-2",
+      "title": "Threat-model coverage push: 11/9/0 -> 20/0/0",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "scripts/check-threat-coverage.sh",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "live gate PASS at 11/9/0; trj4 flips 6 stubs + 3 mobile rows + 1 linkage; target 20/0/0"
+    },
+    {
+      "id": "X-3",
+      "title": "chio-tower / chio-envoy-ext-authz / chio-ag-ui-proxy / chio-openapi-mcp-bridge: zero in-tree dependents",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-4",
+      "title": "7 provider tools-adapters are 80% cookie-cutter; extract chio-provider-adapter-core",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-5",
+      "title": "chio-anchor gated behind #![cfg(feature = \"web3\")] with default = [\"web3\"]",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-6",
+      "title": "chio-core 12-line pub use umbrella re-exporting 11 domain crates",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-7",
+      "title": "chio-cli is 81 KLOC and growing; load-bearing god module",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-8",
+      "title": "8 large domain crates have token integration tests",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-9",
+      "title": "chio-spec-validate has only one in-tree consumer (xtask)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-10",
+      "title": "819 cargo-vet exemptions; CONTEXT mentioned 26->179",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "exemption count 819; no net-new gate not yet in CI; top-50 burn-down pending"
+    },
+    {
+      "id": "X-11",
+      "title": "unsafe blocks concentrated in 4 crates; many sites lack canonical SAFETY block",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-12",
+      "title": "62 of 89 crates have no README.md",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-13",
+      "title": "chio-rename has stale ARC residue in docs/research/ filenames",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-14",
+      "title": "println!/eprintln! in 9 production crates",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "X-15",
+      "title": "integrations/aws-bedrock/control-plane/ named chio-bedrock-control-plane lives outside crates/",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "audit-derived default; ship via X lens roadmap"
+    },
+    {
+      "id": "T1.0.E",
+      "title": "Evidence Gate for T1.0 capability negotiation + token versioning",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "T1.0 Evidence Gate (PROTOCOL.md, schemas, claim/proof/theorem registries, negative conformance) not yet closed"
+    },
+    {
+      "id": "T1.1.E",
+      "title": "Evidence Gate for T1.1 macaroon capability attenuation",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "03",
+      "notes": "T1.1 Evidence Gate not yet closed"
+    },
+    {
+      "id": "T1.2.E",
+      "title": "Evidence Gate for T1.2 multi-agent receipt DAG + receipt-id migration",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "04",
+      "notes": "T1.2 Evidence Gate not yet closed"
+    },
+    {
+      "id": "T1.3.E",
+      "title": "Evidence Gate for T1.3 anchor-batch Merkle trees",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "05",
+      "notes": "T1.3 Evidence Gate not yet closed"
+    },
+    {
+      "id": "T2.1.E",
+      "title": "Evidence Gate for T2.1 hybrid PQ end-to-end + cross-surface conformance",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "07",
+      "notes": "T2.1 Evidence Gate not yet closed"
+    },
+    {
+      "id": "close-bar-#1",
+      "title": "CI-DEBT fully reconciled",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "01",
+      "notes": "CI-DEBT.md still has trj3 entries; final pass scheduled in T0 phase D"
+    },
+    {
+      "id": "close-bar-#2",
+      "title": "Hosted nightly cargo-mutants kill rate >= 65% per trust-boundary, >= 80% on chio-attest-verify",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "hosted nightly cargo-mutants exists; per-crate kill-rate not yet >= thresholds"
+    },
+    {
+      "id": "close-bar-#3",
+      "title": "6/6 trust-boundary crates have Kani harnesses passing in nightly",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "Kani harnesses present for some trust-boundary crates; 6/6 nightly green not yet"
+    },
+    {
+      "id": "close-bar-#4",
+      "title": "RevocationCutCompleteness transitive + ReceiptBeforeAllow split landed; RevocationEventuallySeen apalache lane required",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "TLA+ rewrites pending; RevocationEventuallySeen apalache lane currently optional"
+    },
+    {
+      "id": "close-bar-#5",
+      "title": "Equivalence property test passing 1M cases nightly, zero divergence",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "hosted-vs-portable equivalence test exists; 1M nightly not yet green"
+    },
+    {
+      "id": "close-bar-#6",
+      "title": "trust_control_cluster_multi_region_partition_qualification 100/100 runs at 20 partition/heal cycles",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "trust_control_cluster_multi_region_partition_qualification flake-fix in progress"
+    },
+    {
+      "id": "close-bar-#7",
+      "title": "Mobile attestation entry points return real verdicts on real fixtures; xcframework binary in tree",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "Apple App Attest + Play Integrity verifiers return AttestationUnavailable; xcframework binary missing"
+    },
+    {
+      "id": "close-bar-#8",
+      "title": "Threat-model coverage at 20 covered / 0 pending / 0 uncovered",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "scripts/check-threat-coverage.sh",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "live gate PASS at 11 covered / 9 pending-with-deferred_to / 0 uncovered; target 20/0/0"
+    },
+    {
+      "id": "close-bar-#9",
+      "title": "v3.18.1-trj3.1 tag shipped with green release-binaries + slsa + reproducible-build artifacts",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "scripts/qualify-release.sh",
+      "theorem_status": "n-a",
+      "wave": "01",
+      "notes": "v3.18.1-trj3.1 tagged; release-binaries/slsa/reproducible-build workflows green at trj3 close; qualify-release.sh exits non-zero on missing artifacts"
+    },
+    {
+      "id": "close-bar-#10",
+      "title": "TRAJECTORY-FINAL.md committed with real close SHA",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "scripts/trj4-preflight.sh",
+      "theorem_status": "n-a",
+      "wave": "01",
+      "notes": "TRAJECTORY-FINAL.md committed; preflight enforces zero TODO/TBD/FIXME"
+    },
+    {
+      "id": "close-bar-#11",
+      "title": "HttpEgressContract enforced on every kernel/guard/adapter outbound HTTP path; SSRF negative conformance tests pass",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "HttpEgressContract not yet defined in chio-http-core"
+    },
+    {
+      "id": "close-bar-#12",
+      "title": "Policy/manifest semantic-diff gate live on every PR touching chio-policy or manifest schemas",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "policy/manifest semantic-diff CI gate not yet built"
+    },
+    {
+      "id": "close-bar-#13",
+      "title": "chio.capabilities.v1 capability-negotiation handshake live; peers advertise feature bitsets",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "negotiation handshake type defined; runtime feature-bitset advertise/enforce not wired"
+    },
+    {
+      "id": "close-bar-#14",
+      "title": "CapabilityToken schema-tagged; chio.capability.v2 envelope shipped with caveats and attenuation_proof; signed-artifact registry rejects unknown schema IDs",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "02",
+      "notes": "CapabilityToken schema field absent; signed-artifact registry not built"
+    },
+    {
+      "id": "close-bar-#15",
+      "title": "delegation_v2 promoted default-on; Attenuation/ScopeAttenuation first-class; compute_attenuation_witness/verify_attenuation_witness ship; attenuation_proof on wire",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "03",
+      "notes": "delegation_v2 substrate exists; default-off; witness API not yet authored"
+    },
+    {
+      "id": "close-bar-#16",
+      "title": "SubAgentBudgetPropagation enforced at join, using fixed-point integer share units",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "03",
+      "notes": "BudgetSplit not in v2 token; integer-fixed-point representation not yet shipped"
+    },
+    {
+      "id": "close-bar-#17",
+      "title": "chio.receipt.v2 ships with signed body_hash; receipt_id_v2 = body_hash; legacy UUIDv7 verifies on v1; v1->v2 negotiation works",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "04",
+      "notes": "receipt_id today is UUIDv7 prefixed rcpt_; body_hash field absent"
+    },
+    {
+      "id": "close-bar-#18",
+      "title": "call_chain extended to DAG with cross-kernel-safe formal model; chio.receipt_lineage_statement.v2 deployed",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "04",
+      "notes": "lineage v1 single-parent; v2 multi-parent + dag_ordinal not yet shipped"
+    },
+    {
+      "id": "close-bar-#19",
+      "title": "chio.anchor_batch.v1 published with witness lane; claim registry/proof manifest/public-witness semantics doc updated; negative conformance tests pass",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "05",
+      "notes": "anchor batch type substrate exists in chio-anchor; chio.anchor_batch.v1 wire artifact + witness + Evidence Gate items NONE"
+    },
+    {
+      "id": "close-bar-#20",
+      "title": "chio-hosted-mcp no longer #[path]-splices CLI internals",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-hosted-mcp/tests/cross_crate_pipeline.rs",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "chio-hosted-mcp extraction landed in trj3.2; lib.rs is pure pub-use of published library APIs; cross-crate pipeline test exercises real runtime path"
+    },
+    {
+      "id": "close-bar-#21",
+      "title": "Provider-adapter-core extracted; existing 7 adapters refactored to consume it",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "chio-provider-adapter-core not yet a crate; 7 adapters still cookie-cutter"
+    },
+    {
+      "id": "close-bar-#22",
+      "title": "Cargo-vet exemption count: no net-new during trj4; top-50 burn-down (target: 819 -> <= 769)",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "13",
+      "notes": "exemption count 819 today; no net-new gate not yet in CI; top-50 burn-down not yet started"
+    },
+    {
+      "id": "close-bar-#23",
+      "title": "T1 Evidence Gate enforced for every T1.x slice (PROTOCOL.md, schemas, claim registry, proof manifest, theorem inventory, proof report, negative conformance test)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "16",
+      "notes": "spec/registries/* present; per-T1 slice gate enforcement comes online with each slice close"
+    },
+    {
+      "id": "close-bar-#24",
+      "title": "chio-metrics-spec workspace-wide registry live; alert pack deployed (T1.5)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "chio-metrics-spec crate not yet authored"
+    },
+    {
+      "id": "close-bar-#25",
+      "title": "chio-log-redact enforces redaction at log layer with compile-time redacted!() macro (T1.5)",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "06",
+      "notes": "chio-log-redact crate not yet authored; redacted!() macro not yet defined"
+    },
+    {
+      "id": "close-bar-#26",
+      "title": "chio explain <receipt-id> CLI ships and renders DAG + attenuation chain + batch witness + repair hint",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "08",
+      "notes": "chio explain CLI subcommand not yet a binary; T1.6 work"
+    },
+    {
+      "id": "close-bar-#27",
+      "title": "KernelTrustExchange accepts generic SigningBackend; HybridBackend works in federation handshake",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "07",
+      "notes": "KernelTrustExchange currently stores concrete Keypair; HybridBackend type exists"
+    },
+    {
+      "id": "close-bar-#28",
+      "title": "Capability-token schema adds hybrid algorithm; wire-format encoder/decoder paths first-class",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "07",
+      "notes": "spec/schemas/chio-wire/v1/capability/token.schema.json algorithm enum still ed25519/p256/p384"
+    },
+    {
+      "id": "close-bar-#29",
+      "title": "Conformance-tier handshake gating live; tier derived from substrate evidence",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "09",
+      "notes": "FederationPeer.conformance_tier field not yet defined"
+    },
+    {
+      "id": "close-bar-#30",
+      "title": "Cross-surface conformance suite passes on MCP wrapped, hosted/native, and A2A/HTTP - deny receipts emit, lineage preserved, revocation propagates, budget enforced, no adapter bypass",
+      "bucket": "NONE",
+      "wired_runtime_path": "n",
+      "negative_conformance_test": "NONE",
+      "theorem_status": "n-a",
+      "wave": "10",
+      "notes": "cross-surface conformance suite not yet authored across MCP/hosted/native/A2A/HTTP"
+    }
+  ]
+}
