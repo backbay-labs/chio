@@ -8,11 +8,14 @@ import time
 import pytest
 from pydantic import ValidationError
 
+import chio_sdk._generated as generated_wire
+import chio_sdk._generated.capability as generated_capability
+from chio_sdk._generated.capability import token_schema, token_v1_schema
 from chio_sdk._generated import (
     CapabilityToken as GeneratedCapabilityToken,
     ChioCapabilitytoken,
 )
-from chio_sdk._generated.capability import Constraint as GeneratedConstraint
+from chio_sdk._generated.capability.grant_schema import Constraint as GeneratedConstraint
 from chio_sdk._generated.jsonrpc import ChioJsonRpc20Response
 from chio_sdk._generated.provenance import ChioProvenanceVerdictLink
 from chio_sdk.models import (
@@ -65,6 +68,11 @@ class TestOperation:
 class TestGeneratedWireModels:
     def test_top_level_capability_token_alias_is_canonical(self) -> None:
         assert GeneratedCapabilityToken is ChioCapabilitytoken
+
+    def test_ambiguous_generated_names_stay_module_scoped(self) -> None:
+        assert not hasattr(generated_wire, "Kind")
+        assert not hasattr(generated_capability, "DelegationLink")
+        assert token_schema.DelegationLink is not token_v1_schema.DelegationLink
 
     def test_constraint_value_payload_round_trips(self) -> None:
         constraint = GeneratedConstraint.model_validate(

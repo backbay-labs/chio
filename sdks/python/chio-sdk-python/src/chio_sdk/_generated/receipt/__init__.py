@@ -11,12 +11,11 @@
 from __future__ import annotations
 
 from .inclusion_proof_schema import ChioReceiptMerkleInclusionProof
-from .lineage_statement_v2_schema import ChioReceiptLineageStatementV2, ParentReceiptId
-from .record_schema import Algorithm, ChioReceiptRecord, Decision, Decision1, Decision2, Decision3, Decision4, GuardEvidence, ToolCallAction, TrustLevel
-from .v2_schema import Algorithm, ChioReceiptV2, Hlc, ParentReceiptId, ReceiptV2BodyHashInput, TrustLevel
+from .lineage_statement_v2_schema import ChioReceiptLineageStatementV2
+from .record_schema import ChioReceiptRecord, Decision, Decision1, Decision2, Decision3, Decision4, GuardEvidence, ToolCallAction
+from .v2_schema import ChioReceiptV2, Hlc, ReceiptV2BodyHashInput
 
 __all__ = [
-    "Algorithm",
     "ChioReceiptLineageStatementV2",
     "ChioReceiptMerkleInclusionProof",
     "ChioReceiptRecord",
@@ -28,8 +27,6 @@ __all__ = [
     "Decision4",
     "GuardEvidence",
     "Hlc",
-    "ParentReceiptId",
     "ReceiptV2BodyHashInput",
     "ToolCallAction",
-    "TrustLevel",
 ]

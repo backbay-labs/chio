@@ -11,15 +11,13 @@
 from __future__ import annotations
 
 from .capabilities_schema import ChioCapabilityNegotiationV1, MaxCapabilitySchema
-from .grant_schema import ChioCapabilityGrant, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
+from .grant_schema import ChioCapabilityGrant
 from .revocation_schema import ChioCapabilityRevocationEntry
-from .token_schema import Algorithm, Attenuation, ChioCapabilitytoken, ChioScope, Constraint, DelegationLink, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
-from .token_v1_schema import Algorithm, Attenuation, ChioCapabilitytokenV1, ChioScope, Constraint, DelegationLink, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
-from .token_v2_schema import Algorithm, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytokenV2, GrantKind, GrantSubsetRelation, Kind, ScopeAttenuation
+from .token_schema import ChioCapabilitytoken
+from .token_v1_schema import ChioCapabilitytokenV1
+from .token_v2_schema import AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytokenV2, GrantKind, GrantSubsetRelation, Kind, ScopeAttenuation
 
 __all__ = [
-    "Algorithm",
-    "Attenuation",
     "AttenuationProof",
     "AttenuationWitness",
     "Caveat",
@@ -29,17 +27,9 @@ __all__ = [
     "ChioCapabilitytoken",
     "ChioCapabilitytokenV1",
     "ChioCapabilitytokenV2",
-    "ChioScope",
-    "Constraint",
-    "DelegationLink",
     "GrantKind",
     "GrantSubsetRelation",
     "Kind",
     "MaxCapabilitySchema",
-    "MonetaryAmount",
-    "Operation",
-    "PromptGrant",
-    "ResourceGrant",
     "ScopeAttenuation",
-    "ToolGrant",
 ]

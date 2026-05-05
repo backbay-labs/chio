@@ -10,10 +10,10 @@
 
 from __future__ import annotations
 
-from .attestation_bundle_schema import ChioProvenanceAttestationBundle, CredentialKind, EvidenceClass, Scheme, Statement, Tier, WorkloadIdentity
+from .attestation_bundle_schema import ChioProvenanceAttestationBundle, CredentialKind, Scheme, Statement, Tier, WorkloadIdentity
 from .context_schema import ChioProvenanceCallChainContext
 from .stamp_schema import ChioProvenanceStamp
-from .verdict_link_schema import ChioProvenanceVerdictLink, ChioProvenanceVerdictLink1, ChioProvenanceVerdictLink2, ChioProvenanceVerdictLink3, ChioProvenanceVerdictLink4, EvidenceClass, Verdict
+from .verdict_link_schema import ChioProvenanceVerdictLink, ChioProvenanceVerdictLink1, ChioProvenanceVerdictLink2, ChioProvenanceVerdictLink3, ChioProvenanceVerdictLink4, Verdict
 
 __all__ = [
     "ChioProvenanceAttestationBundle",
@@ -25,7 +25,6 @@ __all__ = [
     "ChioProvenanceVerdictLink3",
     "ChioProvenanceVerdictLink4",
     "CredentialKind",
-    "EvidenceClass",
     "Scheme",
     "Statement",
     "Tier",
