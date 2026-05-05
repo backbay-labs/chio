@@ -30,6 +30,7 @@ TARGETS=(
     chio_yaml_parse
     openapi_ingest
     receipt_log_replay
+    eval_receipt_bundle
     canonical_json
     capability_receipt
     manifest_roundtrip

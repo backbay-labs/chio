@@ -4,7 +4,7 @@ This sample mirrors the METR vivaria trace post-processing handoff from
 `crates/chio-eval-receipt/EXPORT-CONTRACT.md`. It packages three
 verdict-matrix receipt fixtures into `chio.eval-report.bundle.v1`, signs
 the bundle with the local test signature used by the reference verifier,
-and round-trips the output through `chio-eval-receipt verify`.
+and round-trips the output through `chio-eval-receipt verify-fixture`.
 
 Run from the repository root:
 

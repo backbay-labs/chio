@@ -1265,12 +1265,18 @@ dependencies = [
  "chio-core-types",
  "chio-revocation-oracle",
  "chrono",
+ "coset",
+ "der",
+ "hex",
+ "jsonwebtoken",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 1.0.69",
  "url",
  "webauthn-rs",
  "webauthn-rs-proto",
+ "x509-parser",
 ]
 
 [[package]]
@@ -1303,6 +1309,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-eval-receipt"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "chio-federation"
 version = "0.1.0"
 dependencies = [
@@ -1330,6 +1344,7 @@ dependencies = [
  "chio-credentials",
  "chio-data-guards",
  "chio-did",
+ "chio-eval-receipt",
  "chio-guards",
  "chio-kernel",
  "chio-kernel-core",
@@ -1426,6 +1441,7 @@ dependencies = [
  "chio-settle",
  "chio-tool-call-fabric",
  "chio-underwriting",
+ "chio-weights",
  "chrono",
  "dashmap",
  "lru",
@@ -1449,6 +1465,16 @@ dependencies = [
  "chio-core-types",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "chio-lineage"
+version = "0.1.0"
+dependencies = [
+ "petgraph 0.6.5",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1711,6 +1737,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-weights"
+version = "0.1.0"
+dependencies = [
+ "chio-attest-verify",
+ "chio-core-types",
+ "chio-lineage",
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1732,6 +1773,33 @@ checksum = "a6139a8597ed92cf816dfb33f5dd6cf0bb93a6adc938f11039f371bc5bcd26c3"
 dependencies = [
  "chrono",
  "phf",
+]
+
+[[package]]
+name = "ciborium"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e"
+dependencies = [
+ "ciborium-io",
+ "ciborium-ll",
+ "serde",
+]
+
+[[package]]
+name = "ciborium-io"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757"
+
+[[package]]
+name = "ciborium-ll"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
+dependencies = [
+ "ciborium-io",
+ "half 2.7.1",
 ]
 
 [[package]]
@@ -1847,6 +1915,16 @@ name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+
+[[package]]
+name = "coset"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1eb98d5e9155e2cf7cd942c8b3033097d4563b6fb0a00b9caecb74669555c058"
+dependencies = [
+ "ciborium",
+ "ciborium-io",
+]
 
 [[package]]
 name = "cpp_demangle"
@@ -2950,6 +3028,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b43ede17f21864e81be2fa654110bf1e793774238d86ef8555c37e6519c0403"
 
 [[package]]
+name = "half"
+version = "2.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
+dependencies = [
+ "cfg-if",
+ "crunchy",
+ "zerocopy",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3591,6 +3680,21 @@ dependencies = [
  "smallstr",
  "smallvec",
  "utf8-decode",
+]
+
+[[package]]
+name = "jsonwebtoken"
+version = "9.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a87cc7a48537badeae96744432de36f4be2b4a34a05a5ef32e9dd8a1c169dde"
+dependencies = [
+ "base64 0.22.1",
+ "js-sys",
+ "pem",
+ "ring",
+ "serde",
+ "serde_json",
+ "simple_asn1",
 ]
 
 [[package]]
@@ -5742,7 +5846,7 @@ version = "0.12.0-dev"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b46d75f449e01f1eddbe9b00f432d616fbbd899b809c837d0fbc380496a0dd55"
 dependencies = [
- "half",
+ "half 1.8.3",
  "serde",
 ]
 
@@ -6073,6 +6177,18 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "simple_asn1"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
+dependencies = [
+ "num-bigint",
+ "num-traits",
+ "thiserror 2.0.18",
+ "time",
+]
 
 [[package]]
 name = "siphasher"

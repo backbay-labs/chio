@@ -197,6 +197,18 @@ triggers = [
 seeds    = "fuzz/corpus/receipt_log_replay"
 notes    = "Receipt log replay decode plus chain-invariant state-machine."
 
+[targets.eval_receipt_bundle]
+crate    = "chio-eval-receipt"
+path     = "fuzz/fuzz_targets/eval_receipt_bundle.rs"
+triggers = [
+    "crates/chio-eval-receipt/**",
+    "spec/eval/**",
+    "fuzz/fuzz_targets/eval_receipt_bundle.rs",
+    "fuzz/corpus/eval_receipt_bundle/**",
+]
+seeds    = "fuzz/corpus/eval_receipt_bundle"
+notes    = "Eval-report bundle parser and fail-closed verifier."
+
 [targets.fuzz_policy_parse_compile]
 crate    = "chio-policy"
 path     = "fuzz/fuzz_targets/policy_parse_compile.rs"

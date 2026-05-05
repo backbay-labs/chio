@@ -5,10 +5,28 @@
 //! and PGP verification stay fail-closed until the release lane supplies
 //! external verifier tooling.
 
+use chio_core_types::receipt::ChioReceipt;
 use serde_json::{Map, Value};
 
 use crate::export::{sha256_hex, VERDICT_MATRIX_CORPUS_SHA256, VERDICT_MATRIX_SCENARIO_COUNT};
 use crate::BUNDLE_SCHEMA_ID;
+
+const TEST_SIGNATURE_KIND: &str = "test-sha256";
+
+const LOCAL_TEST_RECEIPT_FIXTURE_HASHES: &[(&str, &str)] = &[
+    (
+        "capability-subset-001-read-exact",
+        "2667e32d83f8f7db47b316f7f188e4dcd0a7d0414767122c54a043d076acb704",
+    ),
+    (
+        "revocation-propagation-001-active-read",
+        "f6db0dec41eb7b9873a4d0a14d26f7cb42c13dcfd22e04384bf1b20da67294c2",
+    ),
+    (
+        "replay-verdict-001-fresh-read",
+        "6e52db09a03b762233c5bf01e440bd0b9009f2c38527c43654a5090e852509f2",
+    ),
+];
 
 /// Successful bundle verification summary.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,6 +50,8 @@ pub enum BundleError {
     UnsupportedSignatureKind(String),
     InvalidSignature(String),
     ReceiptHashMismatch(String),
+    InvalidReceiptPayload(String),
+    InvalidReceiptSignature(String),
     InvalidPartnerReview(String),
     Canonicalization(String),
 }
@@ -53,6 +73,15 @@ impl std::fmt::Display for BundleError {
             Self::ReceiptHashMismatch(scenario_id) => {
                 write!(formatter, "receipt hash mismatch for {scenario_id}")
             }
+            Self::InvalidReceiptPayload(scenario_id) => {
+                write!(formatter, "invalid receipt payload for {scenario_id}")
+            }
+            Self::InvalidReceiptSignature(scenario_id) => {
+                write!(
+                    formatter,
+                    "invalid embedded receipt signature for {scenario_id}"
+                )
+            }
             Self::InvalidPartnerReview(detail) => {
                 write!(formatter, "invalid partner review: {detail}")
             }
@@ -63,8 +92,29 @@ impl std::fmt::Display for BundleError {
 
 impl std::error::Error for BundleError {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum VerificationMode {
+    Production,
+    Fixture,
+}
+
 /// Verify an eval-report bundle JSON document.
 pub fn verify_bundle(bundle_json: &str) -> Result<VerifiedBundle, BundleError> {
+    verify_bundle_with_mode(bundle_json, VerificationMode::Production)
+}
+
+/// Verify a local eval-report fixture bundle JSON document.
+///
+/// This mode accepts the deterministic `test-sha256` outer signature and the
+/// checked-in P2 receipt fixtures. Use [`verify_bundle`] for production inputs.
+pub fn verify_fixture_bundle(bundle_json: &str) -> Result<VerifiedBundle, BundleError> {
+    verify_bundle_with_mode(bundle_json, VerificationMode::Fixture)
+}
+
+fn verify_bundle_with_mode(
+    bundle_json: &str,
+    mode: VerificationMode,
+) -> Result<VerifiedBundle, BundleError> {
     let value: Value =
         serde_json::from_str(bundle_json).map_err(|err| BundleError::Json(err.to_string()))?;
     let object = value
@@ -78,9 +128,9 @@ pub fn verify_bundle(bundle_json: &str) -> Result<VerifiedBundle, BundleError> {
 
     let bundle_id = str_field(object, "bundle_id")?.to_owned();
     verify_corpus(object)?;
-    verify_receipts(object)?;
+    verify_receipts(object, mode)?;
     verify_partner_review(object)?;
-    verify_signatures(&value)?;
+    verify_signatures(&value, mode)?;
 
     let receipt_count = array_field(object, "receipts")?.len();
     let signature_count = array_field(object, "signatures")?.len();
@@ -111,7 +161,7 @@ fn verify_corpus(object: &Map<String, Value>) -> Result<(), BundleError> {
     Ok(())
 }
 
-fn verify_receipts(object: &Map<String, Value>) -> Result<(), BundleError> {
+fn verify_receipts(object: &Map<String, Value>, mode: VerificationMode) -> Result<(), BundleError> {
     let receipts = array_field(object, "receipts")?;
     if receipts.is_empty() {
         return Err(BundleError::EmptyReceipts);
@@ -128,8 +178,48 @@ fn verify_receipts(object: &Map<String, Value>) -> Result<(), BundleError> {
         if actual_hash != expected_hash {
             return Err(BundleError::ReceiptHashMismatch(scenario_id.to_owned()));
         }
+        verify_receipt_payload(scenario_id, payload, mode)?;
     }
     Ok(())
+}
+
+fn verify_receipt_payload(
+    scenario_id: &str,
+    payload: &str,
+    mode: VerificationMode,
+) -> Result<(), BundleError> {
+    match verify_chio_receipt_payload(scenario_id, payload) {
+        Ok(()) => Ok(()),
+        Err(err)
+            if mode == VerificationMode::Fixture
+                && is_allowed_local_fixture_receipt(scenario_id, payload) =>
+        {
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn verify_chio_receipt_payload(scenario_id: &str, payload: &str) -> Result<(), BundleError> {
+    let receipt: ChioReceipt = serde_json::from_str(payload)
+        .map_err(|_| BundleError::InvalidReceiptPayload(scenario_id.to_owned()))?;
+    let is_valid = receipt
+        .verify_signature()
+        .map_err(|_| BundleError::InvalidReceiptSignature(scenario_id.to_owned()))?;
+    if is_valid {
+        Ok(())
+    } else {
+        Err(BundleError::InvalidReceiptSignature(scenario_id.to_owned()))
+    }
+}
+
+fn is_allowed_local_fixture_receipt(scenario_id: &str, payload: &str) -> bool {
+    let payload_hash = sha256_hex(payload.as_bytes());
+    LOCAL_TEST_RECEIPT_FIXTURE_HASHES
+        .iter()
+        .any(|(fixture_id, fixture_hash)| {
+            *fixture_id == scenario_id && *fixture_hash == payload_hash
+        })
 }
 
 fn verify_partner_review(object: &Map<String, Value>) -> Result<(), BundleError> {
@@ -155,7 +245,7 @@ fn verify_partner_review(object: &Map<String, Value>) -> Result<(), BundleError>
     }
 }
 
-fn verify_signatures(value: &Value) -> Result<(), BundleError> {
+fn verify_signatures(value: &Value, mode: VerificationMode) -> Result<(), BundleError> {
     let object = value
         .as_object()
         .ok_or(BundleError::WrongType("bundle root"))?;
@@ -179,10 +269,13 @@ fn verify_signatures(value: &Value) -> Result<(), BundleError> {
             return Err(BundleError::InvalidSignature(key_id.to_owned()));
         }
         match kind {
-            "test-sha256" => {
+            TEST_SIGNATURE_KIND if mode == VerificationMode::Fixture => {
                 if signature_value != expected_signature {
                     return Err(BundleError::InvalidSignature(key_id.to_owned()));
                 }
+            }
+            TEST_SIGNATURE_KIND => {
+                return Err(BundleError::UnsupportedSignatureKind(kind.to_owned()));
             }
             other => return Err(BundleError::UnsupportedSignatureKind(other.to_owned())),
         }
@@ -298,10 +391,17 @@ fn number_field(object: &Map<String, Value>, field: &'static str) -> Result<u64,
 
 #[cfg(test)]
 mod tests {
-    use super::{test_signature_for_bundle_json, verify_bundle, BundleError};
+    use super::{
+        test_signature_for_bundle_json, verify_bundle, verify_fixture_bundle, BundleError,
+    };
     use crate::export::{
         export_scenario_run, EvalRunMeta, EvalRunMetaParts, Receipt, ReceiptParts,
     };
+    use chio_core_types::crypto::Keypair;
+    use chio_core_types::receipt::{
+        ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    };
+    use serde_json::{json, Value};
 
     #[test]
     fn verifies_local_test_signature_and_receipt_hash() -> Result<(), BundleError> {
@@ -309,7 +409,7 @@ mod tests {
         let signature = test_signature_for_bundle_json(&unsigned)?;
         let signed = unsigned.replace("\"SIGNATURE_PLACEHOLDER\"", &format!("\"{signature}\""));
 
-        let verified = verify_bundle(&signed)?;
+        let verified = verify_fixture_bundle(&signed)?;
 
         assert_eq!(verified.bundle_id, "urn:chio:eval-bundle:verify-test");
         assert_eq!(verified.receipt_count, 1);
@@ -325,7 +425,7 @@ mod tests {
             .replace("\"SIGNATURE_PLACEHOLDER\"", &format!("\"{signature}\""))
             .replace("\"test-sha256\"", "\"sigstore-cosign\"");
 
-        let err = verify_bundle(&signed).err();
+        let err = verify_fixture_bundle(&signed).err();
 
         assert!(matches!(
             err,
@@ -342,7 +442,7 @@ mod tests {
             .replace("\"SIGNATURE_PLACEHOLDER\"", &format!("\"{signature}\""))
             .replace("\"review_window_days\": 7", "\"review_window_days\": 30");
 
-        let err = verify_bundle(&signed).err();
+        let err = verify_fixture_bundle(&signed).err();
 
         assert!(matches!(
             err,
@@ -352,12 +452,118 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn rejects_recomputed_test_sha256_with_forged_receipt_payload() -> Result<(), BundleError> {
+        let forged_payload =
+            "{\"scenario_id\":\"capability-subset-001-read-exact\",\"verdict\":\"deny\"}";
+        let signed = signed_bundle_with_receipt_payload(forged_payload)?;
+
+        assert!(
+            verify_fixture_bundle(&signed).is_err(),
+            "recomputed test-sha256 signatures must not verify forged receipt payloads"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_unsigned_receipt_payload() -> Result<(), BundleError> {
+        let unsigned_payload = "{\"receipt_id\":\"unsigned-receipt\"}";
+        let signed = signed_bundle_with_receipt_payload(unsigned_payload)?;
+
+        assert!(
+            verify_fixture_bundle(&signed).is_err(),
+            "receipt payloads without an embedded Chio signature must not verify"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn production_verifier_rejects_local_test_signature() -> Result<(), BundleError> {
+        let receipt_payload = signed_chio_receipt_payload()?;
+        let signed = signed_bundle_with_receipt_payload(&receipt_payload)?;
+
+        let err = verify_bundle(&signed).err();
+
+        assert!(matches!(
+            err,
+            Some(BundleError::UnsupportedSignatureKind(kind)) if kind == "test-sha256"
+        ));
+        Ok(())
+    }
+
+    fn signed_chio_receipt_payload() -> Result<String, BundleError> {
+        let keypair = Keypair::from_seed(&[42u8; 32]);
+        let action = ToolCallAction::from_parameters(json!({
+            "scenario_id": "capability-subset-001-read-exact"
+        }))
+        .map_err(|err| BundleError::Canonicalization(err.to_string()))?;
+        let body = ChioReceiptBody {
+            id: "receipt-capability-subset-001-read-exact".to_owned(),
+            timestamp: 1_777_680_000,
+            capability_id: "capability-subset-001-read-exact".to_owned(),
+            tool_server: "eval-fixture".to_owned(),
+            tool_name: "read".to_owned(),
+            action,
+            decision: Decision::Allow,
+            content_hash: crate::export::sha256_hex(b"capability-subset-001-read-exact"),
+            policy_hash: "policy-test".to_owned(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: keypair.public_key(),
+        };
+        let receipt = ChioReceipt::sign(body, &keypair)
+            .map_err(|err| BundleError::Canonicalization(err.to_string()))?;
+        serde_json::to_string(&receipt)
+            .map_err(|err| BundleError::Canonicalization(err.to_string()))
+    }
+
+    fn signed_bundle_with_receipt_payload(payload: &str) -> Result<String, BundleError> {
+        let unsigned = unsigned_bundle_json()?;
+        let value = bundle_with_receipt_payload(&unsigned, payload)?;
+        let unsigned = serde_json::to_string_pretty(&value)
+            .map_err(|err| BundleError::Canonicalization(err.to_string()))?;
+        let signature = test_signature_for_bundle_json(&unsigned)?;
+        Ok(unsigned.replace(
+            "\"signature\": \"SIGNATURE_PLACEHOLDER\"",
+            &format!("\"signature\": \"{signature}\""),
+        ))
+    }
+
+    fn bundle_with_receipt_payload(bundle_json: &str, payload: &str) -> Result<Value, BundleError> {
+        let mut value: Value =
+            serde_json::from_str(bundle_json).map_err(|err| BundleError::Json(err.to_string()))?;
+        let object = value
+            .as_object_mut()
+            .ok_or(BundleError::WrongType("bundle root"))?;
+        let receipts = object
+            .get_mut("receipts")
+            .and_then(Value::as_array_mut)
+            .ok_or(BundleError::WrongType("receipts"))?;
+        let receipt = receipts
+            .first_mut()
+            .and_then(Value::as_object_mut)
+            .ok_or(BundleError::WrongType("receipts[]"))?;
+        receipt.insert(
+            "receipt_payload".to_owned(),
+            Value::String(payload.to_owned()),
+        );
+        receipt.insert(
+            "receipt_sha256".to_owned(),
+            Value::String(crate::export::sha256_hex(payload.as_bytes())),
+        );
+        Ok(value)
+    }
+
     fn unsigned_bundle_json() -> Result<String, BundleError> {
         let receipt = Receipt::from_parts(ReceiptParts {
             scenario_id: "capability-subset-001-read-exact",
             category: "capability_subset",
             verdict: "allow",
-            receipt_payload: "{\"scenario_id\":\"capability-subset-001-read-exact\"}",
+            receipt_payload: include_str!(
+                "../tests/fixtures/capability-subset-001-read-exact.receipt.json"
+            ),
             trace_id: "trace-001",
             sample_id: "sample-001",
         })
