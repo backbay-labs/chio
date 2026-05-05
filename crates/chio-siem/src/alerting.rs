@@ -27,9 +27,9 @@
 //! use chio_siem::alerting::{AlertingConfig, AlertingExporter, PagerDutyBackend};
 //! use chio_siem::manager::{ExporterManager, SiemConfig};
 //!
-//! # fn build() -> Result<(), chio_siem::manager::SiemError> {
+//! # fn build() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut manager = ExporterManager::new(SiemConfig::default())?;
-//! let pagerduty = PagerDutyBackend::new("rk_live_xxx".into());
+//! let pagerduty = PagerDutyBackend::new("rk_live_xxx".into())?;
 //! let alerting = AlertingExporter::builder(AlertingConfig::default())
 //!     .with_backend(Box::new(pagerduty))
 //!     .build();
@@ -207,22 +207,35 @@ pub struct PagerDutyBackend {
 impl PagerDutyBackend {
     /// Create a new PagerDuty backend with the default endpoint
     /// (`https://events.pagerduty.com`).
-    pub fn new(routing_key: String) -> Self {
+    ///
+    /// Returns an error if the underlying HTTP client cannot be built (e.g.
+    /// missing TLS backend). Fail-closed: callers must surface the error
+    /// rather than silently constructing a backend without the configured
+    /// 30s timeout.
+    pub fn new(routing_key: String) -> Result<Self, ExportError> {
         Self::with_endpoint(routing_key, "https://events.pagerduty.com".to_string())
     }
 
     /// Create a new PagerDuty backend with a custom endpoint. Intended for
     /// integration tests against `wiremock`.
-    pub fn with_endpoint(routing_key: String, endpoint: String) -> Self {
+    ///
+    /// Returns an error if the underlying HTTP client cannot be built. The
+    /// 30s timeout is intentional and must not be silently dropped on
+    /// builder failure.
+    pub fn with_endpoint(routing_key: String, endpoint: String) -> Result<Self, ExportError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
-        Self {
+            .map_err(|e| {
+                ExportError::HttpError(format!(
+                    "failed to build PagerDuty HTTP client (timeout=30s): {e}"
+                ))
+            })?;
+        Ok(Self {
             routing_key: Zeroizing::new(routing_key),
             endpoint,
             client,
-        }
+        })
     }
 }
 
@@ -293,23 +306,36 @@ pub struct OpsGenieBackend {
 impl OpsGenieBackend {
     /// Create a new OpsGenie backend with the default endpoint
     /// (`https://api.opsgenie.com`).
-    pub fn new(api_key: String) -> Self {
+    ///
+    /// Returns an error if the underlying HTTP client cannot be built (e.g.
+    /// missing TLS backend). Fail-closed: callers must surface the error
+    /// rather than silently constructing a backend without the configured
+    /// 30s timeout.
+    pub fn new(api_key: String) -> Result<Self, ExportError> {
         Self::with_endpoint(api_key, "https://api.opsgenie.com".to_string())
     }
 
     /// Create a new OpsGenie backend with a custom endpoint. Intended for
     /// integration tests against `wiremock`.
-    pub fn with_endpoint(api_key: String, endpoint: String) -> Self {
+    ///
+    /// Returns an error if the underlying HTTP client cannot be built. The
+    /// 30s timeout is intentional and must not be silently dropped on
+    /// builder failure.
+    pub fn with_endpoint(api_key: String, endpoint: String) -> Result<Self, ExportError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
-        Self {
+            .map_err(|e| {
+                ExportError::HttpError(format!(
+                    "failed to build OpsGenie HTTP client (timeout=30s): {e}"
+                ))
+            })?;
+        Ok(Self {
             api_key: Zeroizing::new(api_key),
             endpoint,
             client,
             tags: Vec::new(),
-        }
+        })
     }
 
     /// Attach static tags to every alert dispatched by this backend.

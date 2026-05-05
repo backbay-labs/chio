@@ -1,6 +1,8 @@
 // Integration tests for SplunkHecExporter against a wiremock mock server.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::time::Duration;
+
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, SettlementStatus,
@@ -286,6 +288,91 @@ async fn splunk_hec_returns_error_on_503() {
     }
 }
 
+/// SplunkHecExporter caps HEC response bodies before including them in errors.
+#[tokio::test]
+async fn splunk_hec_rejects_oversized_error_response_body() {
+    let server = MockServer::start().await;
+    let oversized_body = "x".repeat(70 * 1024);
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(ResponseTemplate::new(500).set_body_raw(oversized_body, "text/plain"))
+        .mount(&server)
+        .await;
+
+    let config = SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        index: None,
+        host: None,
+        timeout: Duration::from_secs(30),
+    };
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
+
+    let events = vec![SiemEvent::from_receipt(sample_receipt(
+        "splunk-rcpt-large-error",
+    ))];
+    let result = exporter.export_batch(&events).await;
+
+    match result.unwrap_err() {
+        ExportError::HttpError(msg) => {
+            assert!(
+                msg.contains("response body") && msg.contains("limit"),
+                "HttpError should explain response body limit, got: {msg}"
+            );
+            assert!(
+                msg.len() < 2048,
+                "HttpError should not include the entire oversized body"
+            );
+        }
+        other => panic!("expected ExportError::HttpError, got: {other:?}"),
+    }
+}
+
+/// SplunkHecExporter applies the configured HTTP timeout to HEC requests.
+#[tokio::test]
+async fn splunk_hec_honors_configured_timeout() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(Duration::from_secs(5))
+                .set_body_raw(r#"{"text":"Success","code":0}"#, "application/json"),
+        )
+        .mount(&server)
+        .await;
+
+    let config = SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        index: None,
+        host: None,
+        timeout: Duration::from_millis(50),
+    };
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
+
+    let events = vec![SiemEvent::from_receipt(sample_receipt(
+        "splunk-rcpt-timeout",
+    ))];
+    let result = tokio::time::timeout(Duration::from_millis(500), exporter.export_batch(&events))
+        .await
+        .expect("client timeout should fire before the outer test timeout");
+
+    match result.unwrap_err() {
+        ExportError::HttpError(msg) => {
+            assert!(
+                msg.contains("timed out") || msg.contains("timeout"),
+                "HttpError should mention timeout, got: {msg}"
+            );
+        }
+        other => panic!("expected ExportError::HttpError, got: {other:?}"),
+    }
+}
+
 /// SplunkHecExporter::new rejects plaintext http:// endpoints to protect HEC tokens.
 #[test]
 fn splunk_hec_rejects_plaintext_http_endpoint() {
@@ -310,6 +397,100 @@ fn splunk_hec_rejects_plaintext_http_endpoint() {
             );
         }
         other => panic!("expected ExportError::HttpError, got: {other:?}"),
+    }
+}
+
+/// Splunk HEC may return 200 OK with `code != 0` to signal that the entire
+/// batch was rejected. The exporter must surface this as `PartialFailure`
+/// rather than silently treating it as success.
+#[tokio::test]
+async fn splunk_hec_200_with_nonzero_code_classifies_as_partial_failure() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_raw(r#"{"text":"Server error","code":8}"#, "application/json"),
+        )
+        .mount(&server)
+        .await;
+
+    let config = SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        index: None,
+        host: None,
+        timeout: Duration::from_secs(30),
+    };
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
+
+    let events = vec![
+        SiemEvent::from_receipt(sample_receipt("rcpt-pf-1")),
+        SiemEvent::from_receipt(sample_receipt("rcpt-pf-2")),
+    ];
+    let result = exporter.export_batch(&events).await;
+    match result.unwrap_err() {
+        ExportError::PartialFailure {
+            succeeded,
+            failed,
+            details,
+        } => {
+            assert_eq!(succeeded, 0);
+            assert_eq!(failed, 2);
+            assert!(details.contains("code=8"), "details: {details}");
+        }
+        other => panic!("expected PartialFailure, got: {other:?}"),
+    }
+}
+
+/// Splunk HEC returns 200 with `invalid-event-number` listing which events
+/// in the batch were rejected. Each rejected index counts as a per-event
+/// failure; the rest of the batch should be reported as succeeded.
+#[tokio::test]
+async fn splunk_hec_200_with_invalid_event_number_reports_per_event_failures() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"text":"partial","code":0,"invalid-event-number":[0,2]}"#,
+            "application/json",
+        ))
+        .mount(&server)
+        .await;
+
+    let config = SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        index: None,
+        host: None,
+        timeout: Duration::from_secs(30),
+    };
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
+
+    let events = vec![
+        SiemEvent::from_receipt(sample_receipt("rcpt-pe-0")),
+        SiemEvent::from_receipt(sample_receipt("rcpt-pe-1")),
+        SiemEvent::from_receipt(sample_receipt("rcpt-pe-2")),
+    ];
+    let result = exporter.export_batch(&events).await;
+    match result.unwrap_err() {
+        ExportError::PartialFailure {
+            succeeded,
+            failed,
+            details,
+        } => {
+            assert_eq!(failed, 2, "two events flagged invalid");
+            assert_eq!(succeeded, 1, "one event accepted");
+            assert!(
+                details.contains("invalid-event-number"),
+                "details: {details}"
+            );
+        }
+        other => panic!("expected PartialFailure, got: {other:?}"),
     }
 }
 

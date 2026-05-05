@@ -202,7 +202,8 @@ async fn pagerduty_backend_posts_to_v2_enqueue() {
         .mount(&server)
         .await;
 
-    let backend = PagerDutyBackend::with_endpoint("pd-routing-key".to_string(), server.uri());
+    let backend = PagerDutyBackend::with_endpoint("pd-routing-key".to_string(), server.uri())
+        .expect("PagerDutyBackend builds in tests");
     let exporter = AlertingExporter::builder(AlertingConfig::default())
         .with_backend(Box::new(backend))
         .build();
@@ -225,7 +226,8 @@ async fn pagerduty_backend_propagates_http_error() {
         .mount(&server)
         .await;
 
-    let backend = PagerDutyBackend::with_endpoint("pd".to_string(), server.uri());
+    let backend = PagerDutyBackend::with_endpoint("pd".to_string(), server.uri())
+        .expect("PagerDutyBackend builds in tests");
     let exporter = AlertingExporter::builder(AlertingConfig::default())
         .with_backend(Box::new(backend))
         .build();
@@ -251,7 +253,8 @@ async fn opsgenie_backend_posts_to_v2_alerts() {
         .mount(&server)
         .await;
 
-    let backend = OpsGenieBackend::with_endpoint("og-api-key".to_string(), server.uri());
+    let backend = OpsGenieBackend::with_endpoint("og-api-key".to_string(), server.uri())
+        .expect("OpsGenieBackend builds in tests");
     let exporter = AlertingExporter::builder(AlertingConfig::default())
         .with_backend(Box::new(backend))
         .build();
@@ -319,5 +322,37 @@ async fn partial_failure_across_two_backends_surfaces_partial_failure_error() {
         failing_calls.load(Ordering::SeqCst),
         1,
         "failing backend dispatched exactly once"
+    );
+}
+
+/// Regression: PagerDutyBackend constructors are fallible and never silently
+/// drop the configured 30s timeout by reverting to a no-timeout client.
+/// Previously the constructor used `unwrap_or_else(|_| reqwest::Client::new())`
+/// which masked builder failures. The new fallible API forces callers to
+/// surface (or propagate) any build error.
+#[test]
+fn pagerduty_backend_constructors_are_fallible_and_succeed_on_default_runtime() {
+    let pd = PagerDutyBackend::new("rk-test".to_string());
+    assert!(pd.is_ok(), "PagerDutyBackend::new must succeed in test env");
+
+    let pd = PagerDutyBackend::with_endpoint("rk-test".to_string(), "https://x".to_string());
+    assert!(
+        pd.is_ok(),
+        "PagerDutyBackend::with_endpoint must succeed in test env"
+    );
+}
+
+/// Regression: OpsGenieBackend constructors are fallible and never silently
+/// drop the configured 30s timeout. See the PagerDuty companion test for
+/// rationale.
+#[test]
+fn opsgenie_backend_constructors_are_fallible_and_succeed_on_default_runtime() {
+    let og = OpsGenieBackend::new("api-key".to_string());
+    assert!(og.is_ok(), "OpsGenieBackend::new must succeed in test env");
+
+    let og = OpsGenieBackend::with_endpoint("api-key".to_string(), "https://x".to_string());
+    assert!(
+        og.is_ok(),
+        "OpsGenieBackend::with_endpoint must succeed in test env"
     );
 }
