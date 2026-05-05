@@ -42,30 +42,26 @@ jobs:
       - name: Install workspace deps
         run: bun install --frozen-lockfile
 
-      # The wasm artifact is produced by the web-sdk.yml workflow. Pull the
-      # latest successful run's `wasm-artifacts` archive and stage the
-      # browser-target output under sdks/typescript/packages/browser/pkg/ so
-      # the demo build resolves `@chio-protocol/browser`.
-      - name: Download wasm-artifacts (latest web-sdk.yml run on main)
-        uses: dawidd6/action-download-artifact@bf251b5aa9c2f7eeb574a96ee720e24f801b7c11
+      # Build the browser wasm artifact in-place rather than downloading it
+      # from web-sdk.yml. This decouples demo-pages from upstream artifact
+      # availability (web-sdk's path filter does not match every push that
+      # rebuilds Pages) and guarantees the docs-demo Vite build can resolve
+      # `@chio-protocol/browser/pkg/chio_kernel_browser.js`.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         with:
-          workflow: web-sdk.yml
-          branch: main
-          name: wasm-artifacts
-          path: ./.wasm-artifacts
-          if_no_artifact_found: warn
+          targets: wasm32-unknown-unknown
 
-      - name: Stage browser wasm into pkg/
-        run: |
-          set -eu
-          if [ -d "./.wasm-artifacts/browser/dist/web" ]; then
-            mkdir -p sdks/typescript/packages/browser/pkg
-            cp -R ./.wasm-artifacts/browser/dist/web/. sdks/typescript/packages/browser/pkg/
-            echo "Staged wasm into sdks/typescript/packages/browser/pkg/"
-            ls -la sdks/typescript/packages/browser/pkg
-          else
-            echo "::warning::wasm artifact not found; demo will render banner + 'wasm not built' notice"
-          fi
+      - name: Ensure wasm32 target on pinned toolchain
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack (pinned)
+        run: cargo install wasm-pack --version "$(cat .tooling/wasm-pack.version)" --locked
+
+      - name: Install wasm-bindgen-cli (pinned)
+        run: cargo install wasm-bindgen-cli --version "$(cat .tooling/wasm-bindgen.version)" --locked
+
+      - name: Build browser wasm bundle
+        run: bash sdks/typescript/scripts/build-wasm.sh --package browser --target web
 
       - name: Build docs-demo
         run: bun run --filter docs-demo build

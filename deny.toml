@@ -284,19 +284,16 @@ name = "getrandom"
 name = "rand"
 
 [[bans.skip]]
-# `syn` 1.x is documented as a known proc-macro lingerer. Currently no
-# v1 instances in the lockfile (cargo-deny will emit an unmatched-skip
-# warning, which is informational only). Kept as forward defense so a
-# regression via a new transitive proc-macro dep does not flip the gate.
-# Force-bump audit when `darling` and `serde_derive` align on `syn` 2.x.
+# M06.P4 last-checked = 2026-05-03. `syn` 1.x is a known proc-macro
+# lingerer; lockfile currently pins both 1.0.x and 2.0.x. Force-bump
+# audit when `darling` and `serde_derive` align on `syn` 2.x.
 name = "syn"
 version = "1"
 
 [[bans.skip]]
-# `bitflags` 1.x is documented as historically pinned by `clap` and
-# `wasmtime`. Currently no v1 instances in the lockfile (unmatched-skip
-# warning is informational). Retain as forward defense; remove once we
-# confirm no upstream regresses to bitflags 1.
+# M06.P4 last-checked = 2026-05-03. `bitflags` 1.x is historically pinned
+# by `clap` and `wasmtime`; lockfile currently pins both 1.3.x and 2.x.
+# Remove once every upstream consumer migrates to bitflags 2.
 name = "bitflags"
 version = "1"
 
@@ -345,12 +342,6 @@ name = "half"
 name = "oid-registry"
 
 [[bans.skip]]
-# M06.P4 last-checked = 2026-05-02. openssl-sys is transitive through
-# openssl in sigstore verification; the ban remains documented above and
-# this skip is reviewed with the CVE monitor baseline until sigstore moves.
-name = "openssl-sys"
-
-[[bans.skip]]
 name = "redox_users"
 
 [[bans.skip]]
@@ -358,9 +349,6 @@ name = "syn-solidity"
 
 [[bans.skip]]
 name = "synstructure"
-
-[[bans.skip]]
-name = "target-lexicon"
 
 [[bans.skip]]
 name = "wit-bindgen"

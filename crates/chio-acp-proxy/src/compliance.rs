@@ -57,6 +57,20 @@ pub enum ComplianceCertificateError {
         receipt_id: String,
     },
 
+    /// Receipts in the session were signed by more than one kernel key.
+    ///
+    /// The compliance certificate names a single kernel key. A session that
+    /// mixes receipts from different kernels would produce a certificate
+    /// whose `kernel_key` field misrepresents the signer for some receipts;
+    /// fail closed.
+    #[error(
+        "kernel key mismatch: receipt {receipt_id} signed by a different kernel than the session's first receipt"
+    )]
+    KernelKeyMismatch {
+        /// The receipt whose kernel_key did not match the session's first receipt.
+        receipt_id: String,
+    },
+
     /// Serialization error during certificate construction.
     #[error("serialization error: {0}")]
     Serialization(String),
@@ -252,6 +266,22 @@ pub fn generate_compliance_certificate(
             if !has_evidence {
                 return Err(ComplianceCertificateError::GuardBypass {
                     guard_name: guard_name.clone(),
+                    receipt_id: entry.receipt.id.clone(),
+                });
+            }
+        }
+    }
+
+    // 7. Cross-check that all receipts share the same kernel key.
+    //
+    // The certificate body records a single `kernel_key`. Without this check,
+    // a session that mixed receipts from different kernels would still be
+    // certified, masking the mismatch under the first receipt's key.
+    if let Some(first_entry) = receipts.first() {
+        let session_kernel_key = &first_entry.receipt.kernel_key;
+        for entry in receipts.iter().skip(1) {
+            if &entry.receipt.kernel_key != session_kernel_key {
+                return Err(ComplianceCertificateError::KernelKeyMismatch {
                     receipt_id: entry.receipt.id.clone(),
                 });
             }

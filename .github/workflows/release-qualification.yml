@@ -11,6 +11,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
+  # Pinned to match .github/workflows/ci.yml so the formal-proof gates
+  # invoked through scripts/qualify-release.sh -> scripts/ci-workspace.sh
+  # see the same Aeneas/Charon, Creusot, and Kani builds as the PR-tier
+  # CI lane.
   CHIO_AENEAS_RELEASE_TAG: build-2026.04.22.215158-38d10a22642d75d051e14006cc6e45055381f10e
   CHIO_AENEAS_LINUX_X86_64_SHA256: 11b4e88776655c9fd5e391bfd2824e8b52916590962fbcb392768c57b7b32ca7
   CHIO_CREUSOT_REV: a12f3ac7f688c7b93cee2c2eb60282004a2bdb30
