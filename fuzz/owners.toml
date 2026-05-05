@@ -83,3 +83,7 @@ path  = "crates/chio-manifest"
 [targets.revocation_oracle_merkle]
 crate = "chio-revocation-oracle"
 path  = "crates/chio-revocation-oracle"
+
+[targets.federation_trust_establishment]
+crate = "chio-federation"
+path  = "crates/chio-federation"

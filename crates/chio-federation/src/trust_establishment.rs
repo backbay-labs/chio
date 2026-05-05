@@ -11,15 +11,22 @@
 //!
 //! 1. Each side builds a [`HandshakeChallenge`] binding `(local_kernel_id,
 //!    remote_kernel_id, nonce, timestamp)` and signs it with its own
-//!    kernel key.
+//!    kernel key. The `nonce` is a per-handshake unique value bound into
+//!    the signature so two handshake envelopes are never byte-identical;
+//!    this crate does NOT itself track previously-seen nonces, so
+//!    transport-layer replay protection (e.g., the mTLS finished message
+//!    or an idempotency window upstream of [`KernelTrustExchange::accept_envelope`])
+//!    is what prevents an attacker from re-presenting a captured envelope
+//!    inside the freshness window. The local-clock-derived
+//!    `rotation_due` enforces the freshness ceiling regardless.
 //! 2. Peers exchange their [`PeerHandshakeEnvelope`] (challenge + signature
 //!    + declared public key).
 //! 3. Each side verifies the remote envelope's signature against the
-//!    declared public key, checks freshness (`nonce`, `timestamp` skew),
-//!    verifies that the key matches either a pre-configured trust anchor
-//!    or an already-pinned peer, and then pins the remote public key as a
-//!    [`FederationPeer`] with a rotation deadline derived from the
-//!    configured freshness window.
+//!    declared public key, checks freshness (`timestamp` skew against the
+//!    local clock), verifies that the key matches either a pre-configured
+//!    trust anchor or an already-pinned peer, and then pins the remote
+//!    public key as a [`FederationPeer`] with a rotation deadline derived
+//!    from the configured freshness window.
 //!
 //! ## Freshness rotation
 //!

@@ -37,6 +37,7 @@ chio-core = { path = "../crates/chio-core" }
 chio-core-types = { path = "../crates/chio-core-types" }
 chio-data-guards = { path = "../crates/chio-data-guards" }
 chio-eval-receipt = { path = "../crates/chio-eval-receipt" }
+chio-federation = { path = "../crates/chio-federation" }
 chio-guards = { path = "../crates/chio-guards" }
 chio-kernel = { path = "../crates/chio-kernel" }
 chio-manifest = { path = "../crates/chio-manifest" }
@@ -188,6 +189,13 @@ bench = false
 [[bin]]
 name = "manifest_roundtrip"
 path = "fuzz_targets/manifest_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "federation_trust_establishment"
+path = "fuzz_targets/federation_trust_establishment.rs"
 test = false
 doc = false
 bench = false
