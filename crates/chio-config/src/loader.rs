@@ -271,4 +271,53 @@ wasm_guards:
         assert!(config.guards.required.is_empty());
         assert!(config.wasm_guards.is_empty());
     }
+
+    /// Regression: confirm the underlying YAML parser refuses
+    /// "billion-laughs" alias-expansion bombs. `serde_yml` uses
+    /// `libyml`, which caps alias repetitions; if the limit is ever
+    /// removed, malicious `chio.yaml` content could exhaust memory
+    /// before reaching `deny_unknown_fields`.
+    #[test]
+    fn billion_laughs_alias_bomb_is_rejected() {
+        let bomb = r#"
+a: &a ["x","x","x","x","x","x","x","x","x","x"]
+b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a,*a]
+c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b,*b]
+d: &d [*c,*c,*c,*c,*c,*c,*c,*c,*c,*c]
+e: &e [*d,*d,*d,*d,*d,*d,*d,*d,*d,*d]
+f: &f [*e,*e,*e,*e,*e,*e,*e,*e,*e,*e]
+g: &g [*f,*f,*f,*f,*f,*f,*f,*f,*f,*f]
+kernel:
+  signing_key: "generate"
+adapters:
+  - id: "a"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+    extras: [*g,*g,*g,*g,*g,*g,*g,*g,*g,*g]
+"#;
+        let err = load_error(load_from_str(bomb));
+        assert!(
+            matches!(err, ConfigError::Parse(_)),
+            "alias bomb must be rejected as a parse error, got: {err}"
+        );
+    }
+
+    /// Regression: confirm the parser rejects deeply nested YAML before
+    /// recursing through stack overflow. `libyml` caps recursion depth.
+    #[test]
+    fn deeply_nested_yaml_is_rejected() {
+        let mut deep = String::new();
+        for _ in 0..50_000 {
+            deep.push_str("- ");
+        }
+        deep.push_str("\"end\"");
+        let err = load_error(load_from_str(&deep));
+        // Either a parse error (recursion limit) or a validation error
+        // (no kernel/adapters block). Both are acceptable - the key
+        // property is "does not crash or hang."
+        assert!(
+            matches!(err, ConfigError::Parse(_) | ConfigError::Validation(_)),
+            "deeply nested YAML must be rejected without panicking, got: {err}"
+        );
+    }
 }
