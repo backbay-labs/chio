@@ -576,9 +576,12 @@ fn cmd_mcp_serve_http(
         .split_first()
         .ok_or_else(|| CliError::cli_other_error("empty MCP server command".to_string()))?;
 
+    let auth_token = optional_secret_with_env_fallback(auth_token, "CHIO_MCP_AUTH_TOKEN");
+    let admin_token = optional_secret_with_env_fallback(admin_token, "CHIO_MCP_ADMIN_TOKEN");
+
     remote_mcp::serve_http(remote_mcp::RemoteServeHttpConfig {
         listen,
-        auth_token: auth_token.map(ToOwned::to_owned),
+        auth_token,
         auth_jwt_public_key: auth_jwt_public_key.map(ToOwned::to_owned),
         auth_jwt_discovery_url: auth_jwt_discovery_url.map(ToOwned::to_owned),
         auth_introspection_url: auth_introspection_url.map(ToOwned::to_owned),
@@ -590,7 +593,7 @@ fn cmd_mcp_serve_http(
         enterprise_providers_file: enterprise_providers_file.map(Path::to_path_buf),
         auth_jwt_issuer: auth_jwt_issuer.map(ToOwned::to_owned),
         auth_jwt_audience: auth_jwt_audience.map(ToOwned::to_owned),
-        admin_token: admin_token.map(ToOwned::to_owned),
+        admin_token,
         control_url: control_url.map(ToOwned::to_owned),
         control_token: control_token.map(ToOwned::to_owned),
         public_base_url: public_base_url.map(ToOwned::to_owned),
@@ -622,6 +625,12 @@ fn cmd_mcp_serve_http(
         wrapped_command: wrapped_cmd.clone(),
         wrapped_args: wrapped_args.to_vec(),
     })
+}
+
+fn optional_secret_with_env_fallback(value: Option<&str>, fallback_env: &str) -> Option<String> {
+    value
+        .map(ToOwned::to_owned)
+        .or_else(|| std::env::var(fallback_env).ok().filter(|value| !value.is_empty()))
 }
 
 fn require_revocation_db_path(revocation_db_path: Option<&Path>) -> Result<&Path, CliError> {

@@ -97,13 +97,143 @@ struct Cli {
     control_url: Option<String>,
 
     /// Bearer token used to authenticate to the shared trust-control service.
-    #[arg(long, global = true)]
+    /// Prefer `CHIO_CONTROL_TOKEN` env over the argv form so the bearer does
+    /// not leak via `ps` / `/proc/<pid>/cmdline`.
+    #[arg(long, global = true, env = "CHIO_CONTROL_TOKEN", hide_env_values = true)]
     control_token: Option<String>,
 }
 
 impl Cli {
     fn json_output(&self) -> bool {
         self.json || matches!(self.format, OutputFormat::Json)
+    }
+}
+
+#[cfg(test)]
+mod cli_env_tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn restore_env(name: &str, value: Option<OsString>) {
+        if let Some(value) = value {
+            std::env::set_var(name, value);
+        } else {
+            std::env::remove_var(name);
+        }
+    }
+
+    #[test]
+    fn mcp_serve_http_reads_documented_token_env_vars() {
+        let _guard = env_lock();
+        let prior_auth = std::env::var_os("CHIO_AUTH_TOKEN");
+        let prior_admin = std::env::var_os("CHIO_ADMIN_TOKEN");
+        let prior_mcp_auth = std::env::var_os("CHIO_MCP_AUTH_TOKEN");
+        let prior_mcp_admin = std::env::var_os("CHIO_MCP_ADMIN_TOKEN");
+        std::env::set_var("CHIO_AUTH_TOKEN", "documented-auth-token");
+        std::env::set_var("CHIO_ADMIN_TOKEN", "documented-admin-token");
+        std::env::remove_var("CHIO_MCP_AUTH_TOKEN");
+        std::env::remove_var("CHIO_MCP_ADMIN_TOKEN");
+
+        let parsed = Cli::try_parse_from([
+            "chio",
+            "mcp",
+            "serve-http",
+            "--policy",
+            "policy.yaml",
+            "--server-id",
+            "mcp",
+            "/bin/true",
+        ])
+        .unwrap_or_else(|error| panic!("CLI parse failed: {error}"));
+
+        match parsed.command {
+            Commands::Mcp {
+                command:
+                    McpCommands::ServeHttp {
+                        auth_token,
+                        admin_token,
+                        ..
+                    },
+            } => {
+                assert_eq!(auth_token.as_deref(), Some("documented-auth-token"));
+                assert_eq!(admin_token.as_deref(), Some("documented-admin-token"));
+            }
+            _ => panic!("expected mcp serve-http command"),
+        }
+
+        restore_env("CHIO_AUTH_TOKEN", prior_auth);
+        restore_env("CHIO_ADMIN_TOKEN", prior_admin);
+        restore_env("CHIO_MCP_AUTH_TOKEN", prior_mcp_auth);
+        restore_env("CHIO_MCP_ADMIN_TOKEN", prior_mcp_admin);
+    }
+
+    #[test]
+    fn guard_publish_reads_registry_password_env_var() {
+        let _guard = env_lock();
+        let prior = std::env::var_os("CHIO_GUARD_REGISTRY_PASSWORD");
+        std::env::set_var("CHIO_GUARD_REGISTRY_PASSWORD", "registry-password");
+
+        let parsed = Cli::try_parse_from([
+            "chio",
+            "guard",
+            "publish",
+            ".",
+            "--ref",
+            "oci://ghcr.io/chio/tool-gate:v1",
+            "--epoch-id-seed",
+            "seed-1",
+            "--username",
+            "registry-user",
+        ])
+        .unwrap_or_else(|error| panic!("CLI parse failed: {error}"));
+
+        match parsed.command {
+            Commands::Guard {
+                command: GuardCommands::Publish { password, .. },
+            } => {
+                assert_eq!(password.as_deref(), Some("registry-password"));
+            }
+            _ => panic!("expected guard publish command"),
+        }
+
+        restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
+    }
+
+    #[test]
+    fn guard_pull_reads_registry_password_env_var() {
+        let _guard = env_lock();
+        let prior = std::env::var_os("CHIO_GUARD_REGISTRY_PASSWORD");
+        std::env::set_var("CHIO_GUARD_REGISTRY_PASSWORD", "registry-password");
+
+        let parsed = Cli::try_parse_from([
+            "chio",
+            "guard",
+            "pull",
+            "--ref",
+            "oci://ghcr.io/chio/tool-gate@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--username",
+            "registry-user",
+        ])
+        .unwrap_or_else(|error| panic!("CLI parse failed: {error}"));
+
+        match parsed.command {
+            Commands::Guard {
+                command: GuardCommands::Pull { password, .. },
+            } => {
+                assert_eq!(password.as_deref(), Some("registry-password"));
+            }
+            _ => panic!("expected guard pull command"),
+        }
+
+        restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
     }
 }
 
@@ -684,7 +814,14 @@ enum GuardCommands {
         #[arg(long)]
         username: Option<String>,
         /// Registry password or token for HTTP basic auth.
-        #[arg(long, requires = "username")]
+        /// Prefer `CHIO_GUARD_REGISTRY_PASSWORD` env over the argv form so
+        /// the secret does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(
+            long,
+            requires = "username",
+            env = "CHIO_GUARD_REGISTRY_PASSWORD",
+            hide_env_values = true
+        )]
         password: Option<String>,
         /// Registry host allowed to use HTTP instead of HTTPS.
         #[arg(long = "allow-http-registry")]
@@ -700,7 +837,14 @@ enum GuardCommands {
         #[arg(long)]
         username: Option<String>,
         /// Registry password or token for HTTP basic auth.
-        #[arg(long, requires = "username")]
+        /// Prefer `CHIO_GUARD_REGISTRY_PASSWORD` env over the argv form so
+        /// the secret does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(
+            long,
+            requires = "username",
+            env = "CHIO_GUARD_REGISTRY_PASSWORD",
+            hide_env_values = true
+        )]
         password: Option<String>,
         /// Registry host allowed to use HTTP instead of HTTPS.
         #[arg(long = "allow-http-registry")]
@@ -929,7 +1073,9 @@ enum McpCommands {
         listen: SocketAddr,
 
         /// Static bearer token required for remote MCP session admission.
-        #[arg(long)]
+        /// Prefer `CHIO_AUTH_TOKEN` env over the argv form so the bearer
+        /// does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(long, env = "CHIO_AUTH_TOKEN", hide_env_values = true)]
         auth_token: Option<String>,
 
         /// Public key used to verify externally issued JWT bearer tokens.
@@ -949,7 +1095,9 @@ enum McpCommands {
         auth_introspection_client_id: Option<String>,
 
         /// Client secret used when calling the token introspection endpoint.
-        #[arg(long)]
+        /// Prefer `CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET` env over the argv
+        /// form so the secret does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(long, env = "CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET", hide_env_values = true)]
         auth_introspection_client_secret: Option<String>,
 
         /// Optional provider profile used for principal mapping and default OIDC discovery behavior.
@@ -977,7 +1125,9 @@ enum McpCommands {
         auth_jwt_audience: Option<String>,
 
         /// Optional static bearer token for remote admin APIs.
-        #[arg(long)]
+        /// Prefer `CHIO_ADMIN_TOKEN` env over the argv form so the bearer
+        /// does not leak via `ps` / `/proc/<pid>/cmdline`.
+        #[arg(long, env = "CHIO_ADMIN_TOKEN", hide_env_values = true)]
         admin_token: Option<String>,
 
         /// Public base URL used when constructing protected-resource metadata URLs.
