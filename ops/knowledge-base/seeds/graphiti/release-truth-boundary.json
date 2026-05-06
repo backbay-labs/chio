@@ -1,0 +1,21 @@
+{
+  "name": "Chio release truth boundary",
+  "type": "workflow_constraint",
+  "source_description": "Curated seed for release and qualification work.",
+  "scope": "chio-repo",
+  "body": {
+    "summary": "Chio release claims must not outrun repo truth. Treat release docs, conformance fixtures, local gates, and current CI as release evidence. Marketing or roadmap language should remain behind actual qualification evidence.",
+    "authoritative_files": [
+      "docs/release/QUALIFICATION.md",
+      "docs/release/RELEASE_AUDIT.md",
+      "docs/conformance/verdict-matrix.md",
+      "tests/conformance/README.md",
+      "spec/COMPLIANCE-CERTIFICATE.md"
+    ],
+    "constraints": [
+      "Do not treat the knowledge graph as a source of release truth.",
+      "Do not promote GA claims without current qualification evidence.",
+      "When hosted CI is unavailable, record local executor evidence explicitly."
+    ]
+  }
+}

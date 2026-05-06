@@ -1,0 +1,20 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r app && useradd -r -m -d /home/app -g app app
+RUN mkdir -p /cocoindex && chown app:app /cocoindex
+
+COPY pyproject.toml README.md ./
+COPY chio_kb ./chio_kb
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir .
+
+USER app
+
+EXPOSE 8111

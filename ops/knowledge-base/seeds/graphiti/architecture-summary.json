@@ -1,0 +1,21 @@
+{
+  "name": "Chio architecture summary",
+  "type": "architecture_summary",
+  "source_description": "Curated seed for agent orientation in the Chio repository.",
+  "scope": "chio-repo",
+  "body": {
+    "summary": "Chio is a secure, attested tool access protocol. Agents are untrusted. The runtime kernel validates time-bounded capability tokens, runs guard and policy evaluation before tool calls cross trust boundaries, and signs append-only receipt records.",
+    "authoritative_files": [
+      "spec/PROTOCOL.md",
+      "crates/chio-core-types/src/capability.rs",
+      "crates/chio-kernel/src/kernel/mod.rs",
+      "crates/chio-guards/src",
+      "crates/chio-policy/src"
+    ],
+    "editing_guidance": [
+      "Start with protocol and core type contracts before changing kernel behavior.",
+      "Use kb_brief_feature for major work because it combines code, docs, tests, graph impact, memory, and validation commands.",
+      "Repo files and current CI remain authoritative. The graph is retrieval support only."
+    ]
+  }
+}

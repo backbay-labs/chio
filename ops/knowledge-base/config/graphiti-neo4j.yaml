@@ -1,0 +1,56 @@
+# Graphiti MCP Server configuration for the local Chio knowledge base.
+
+server:
+  transport: "http"
+  host: "0.0.0.0"
+  port: 8000
+
+llm:
+  provider: "openai"
+  model: "${GRAPHITI_LLM_MODEL:gpt-4o-mini}"
+  max_tokens: 4096
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
+      organization_id: ${OPENAI_ORGANIZATION_ID:}
+
+embedder:
+  provider: "openai"
+  model: "${GRAPHITI_EMBEDDER_MODEL:text-embedding-3-small}"
+  dimensions: 1536
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
+      organization_id: ${OPENAI_ORGANIZATION_ID:}
+
+database:
+  provider: "neo4j"
+  providers:
+    neo4j:
+      uri: ${GRAPHITI_NEO4J_URI:bolt://kb-neo4j:7687}
+      username: ${NEO4J_USER:neo4j}
+      password: ${NEO4J_PASSWORD:demodemo}
+      database: ${NEO4J_DATABASE:neo4j}
+      use_parallel_runtime: ${USE_PARALLEL_RUNTIME:false}
+
+graphiti:
+  group_id: ${GRAPHITI_GROUP_ID:chio-repo}
+  episode_id_prefix: ${EPISODE_ID_PREFIX:chio}
+  user_id: ${USER_ID:chio_kb}
+  entity_types:
+    - name: "Requirement"
+      description: "Protocol, product, release, security, or implementation requirements."
+    - name: "Procedure"
+      description: "Build, test, release, incident, review, and operational procedures."
+    - name: "Document"
+      description: "Repository docs, specs, standards, plans, PR summaries, and release notes."
+    - name: "Component"
+      description: "Crates, SDKs, tools, adapters, guards, policies, services, and examples."
+    - name: "Decision"
+      description: "Architecture, launch, naming, compatibility, and release decisions."
+    - name: "Risk"
+      description: "Security, correctness, compliance, API, release, or operational risks."
+    - name: "Topic"
+      description: "Fallback Chio or ARC concept when a more precise entity type does not fit."
