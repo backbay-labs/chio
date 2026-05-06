@@ -55,9 +55,9 @@ kb-down:
 	cd $(KB_DIR) && docker compose down
 
 kb-reset:
+	@if [ "$$KB_RESET_VOLUMES" = "1" ]; then cd $(KB_DIR) && docker compose down -v; fi
 	cd $(KB_DIR) && docker compose up -d --build kb-postgres kb-neo4j chio-kb-mcp
 	cd $(KB_DIR) && docker compose exec -T chio-kb-mcp chio-kb-reset
-	@if [ "$$KB_RESET_VOLUMES" = "1" ]; then cd $(KB_DIR) && docker compose down -v; fi
 
 kb-reseed: kb-reset kb-update kb-seed-memory
 

@@ -52,7 +52,7 @@ make kb-eval     # Run core and deep dogfood fixtures and enforce A overall
 make kb-dogfood  # Regenerate DOGFOOD-REVIEW.md from the full dogfood output
 ```
 
-`kb-reset` does not remove `.env` or Docker named volumes. Set `KB_RESET_VOLUMES=1` only when you explicitly want `docker compose down -v` after the scoped reset.
+`kb-reset` does not remove `.env` or Docker named volumes by default. Set `KB_RESET_VOLUMES=1` only when you explicitly want `docker compose down -v` before the stack is started and reseeded.
 
 You can also run the CocoIndex app directly:
 
