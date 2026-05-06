@@ -7,7 +7,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from chio_kb import query
 
@@ -162,6 +162,10 @@ def _rpc_error(request_id: Any, code: int, message: str) -> JSONResponse:
     )
 
 
+def _notification_accepted() -> Response:
+    return Response(status_code=202)
+
+
 def _tool_list() -> list[dict[str, Any]]:
     return [{"name": name, **metadata} for name, metadata in sorted(TOOLS.items())]
 
@@ -228,7 +232,7 @@ async def tools() -> dict[str, Any]:
 
 @app.post("/mcp/")
 @app.post("/mcp")
-async def mcp(request: Request) -> JSONResponse:
+async def mcp(request: Request) -> Response:
     try:
         payload = await request.json()
     except Exception:
@@ -249,7 +253,7 @@ async def mcp(request: Request) -> JSONResponse:
                 },
             )
         if method == "notifications/initialized":
-            return _rpc_result(request_id, {})
+            return _notification_accepted()
         if method == "tools/list":
             return _rpc_result(request_id, {"tools": _tool_list()})
         if method == "tools/call":
