@@ -46,7 +46,6 @@ __pycache__/
 ops/knowledge-base/.pytest_cache/
 ops/knowledge-base/.venv/
 ops/knowledge-base/.cocoindex/
-ops/knowledge-base/uv.lock
 examples/anthropic-sdk/node_modules/
 examples/openai-compatible/node_modules/
 examples/langchain/*.egg-info/

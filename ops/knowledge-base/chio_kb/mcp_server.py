@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
+import json
 import os
 from typing import Any
 
@@ -166,6 +169,27 @@ def _notification_accepted() -> Response:
     return Response(status_code=202)
 
 
+def _client_is_loopback(request: Request) -> bool:
+    if request.client is None:
+        return False
+    try:
+        return ipaddress.ip_address(request.client.host).is_loopback
+    except ValueError:
+        return request.client.host == "localhost"
+
+
+def _has_bearer_token(request: Request) -> bool:
+    expected = os.environ.get("CHIO_KB_MCP_BEARER_TOKEN")
+    if not expected:
+        return False
+    scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
+    return scheme.lower() == "bearer" and hmac.compare_digest(supplied, expected)
+
+
+def _write_tool_authorized(request: Request) -> bool:
+    return _client_is_loopback(request) or _has_bearer_token(request)
+
+
 def _tool_list() -> list[dict[str, Any]]:
     return [{"name": name, **metadata} for name, metadata in sorted(TOOLS.items())]
 
@@ -238,9 +262,18 @@ async def mcp(request: Request) -> Response:
     except Exception:
         return _rpc_error(None, -32700, "Invalid JSON")
 
+    if not isinstance(payload, dict):
+        return _rpc_error(None, -32600, "Invalid Request")
+
     request_id = payload.get("id")
     method = payload.get("method")
-    params = payload.get("params") or {}
+    raw_params = payload.get("params", {})
+    if raw_params is None:
+        params: dict[str, Any] = {}
+    elif isinstance(raw_params, dict):
+        params = raw_params
+    else:
+        return _rpc_error(request_id, -32602, "Invalid params")
 
     try:
         if method == "initialize":
@@ -254,13 +287,23 @@ async def mcp(request: Request) -> Response:
             )
         if method == "notifications/initialized":
             return _notification_accepted()
+        if method == "ping":
+            return _rpc_result(request_id, {})
         if method == "tools/list":
             return _rpc_result(request_id, {"tools": _tool_list()})
         if method == "tools/call":
             name = params.get("name")
-            arguments = params.get("arguments") or {}
+            raw_arguments = params.get("arguments", {})
+            if raw_arguments is None:
+                arguments: dict[str, Any] = {}
+            elif isinstance(raw_arguments, dict):
+                arguments = raw_arguments
+            else:
+                return _rpc_error(request_id, -32602, "Invalid tool arguments")
             if name not in TOOLS:
                 return _rpc_error(request_id, -32602, f"Unknown tool: {name}")
+            if name == "kb_add_episode" and not _write_tool_authorized(request):
+                return _rpc_error(request_id, -32001, "kb_add_episode requires loopback access or a bearer token")
             result = await _call_tool(name, arguments)
             return _rpc_result(
                 request_id,
@@ -268,7 +311,7 @@ async def mcp(request: Request) -> Response:
                     "content": [
                         {
                             "type": "text",
-                            "text": result if isinstance(result, str) else __import__("json").dumps(result, indent=2),
+                            "text": result if isinstance(result, str) else json.dumps(result, indent=2),
                         }
                     ]
                 },
@@ -289,7 +332,7 @@ async def shutdown() -> None:
 def main() -> None:
     uvicorn.run(
         "chio_kb.mcp_server:app",
-        host=os.environ.get("CHIO_KB_MCP_HOST", "0.0.0.0"),
+        host=os.environ.get("CHIO_KB_MCP_HOST", "127.0.0.1"),
         port=int(os.environ.get("CHIO_KB_MCP_PORT", "8111")),
     )
 

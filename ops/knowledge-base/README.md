@@ -35,6 +35,14 @@ CocoIndex owns incremental vector ingestion. The Chio property graph is seeded t
 | Graphiti MCP | `http://localhost:8000/mcp` | Temporal graph memory |
 | Chio KB MCP | `http://localhost:8111/mcp/` | Agent-facing repo search tools |
 
+Docker Compose publishes every service port on `127.0.0.1` only. Keep that
+binding unless you are deliberately tunneling the stack. The standalone
+`chio-kb-mcp` command also defaults `CHIO_KB_MCP_HOST` to `127.0.0.1`.
+If you override the MCP listener to a non-loopback interface, set
+`CHIO_KB_MCP_BEARER_TOKEN` and send `Authorization: Bearer <token>` for
+`kb_add_episode`; without loopback access or a valid token, that write tool is
+denied.
+
 Neo4j defaults are `neo4j` / `demodemo`. Change them in `.env` before first startup if needed.
 
 ## Commands
@@ -50,6 +58,7 @@ make kb-status   # Show compose state and service health
 make kb-smoke    # Exercise service health and MCP tool listing
 make kb-eval     # Run core and deep dogfood fixtures and enforce A overall
 make kb-dogfood  # Regenerate DOGFOOD-REVIEW.md from the full dogfood output
+make kb-lock-check  # Verify pyproject.toml matches the checked-in uv.lock
 ```
 
 `kb-reset` does not remove `.env` or Docker named volumes by default. Set `KB_RESET_VOLUMES=1` only when you explicitly want `docker compose down -v` before the stack is started and reseeded.
@@ -62,6 +71,12 @@ docker compose exec -T chio-kb-mcp cocoindex -d /app show chio_kb.index --tree
 docker compose exec -T chio-kb-mcp cocoindex -d /app update --force chio_kb.index
 docker compose exec chio-kb-mcp cocoindex -d /app update --force --live chio_kb.index
 ```
+
+The KB Python environment is locked by `ops/knowledge-base/uv.lock`; run
+`make kb-lock-check` or `cd ops/knowledge-base && uv lock --check` before
+building container changes. Runtime images are pinned by digest in
+`docker-compose.yml` and `Dockerfile.kb-mcp`; refresh those digests deliberately
+when upgrading Postgres, Neo4j, Graphiti MCP, or the uv Python base.
 
 ## MCP Tools
 
@@ -141,6 +156,16 @@ Direct HTTP smoke call:
 curl -s http://localhost:8111/mcp/ \
   -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq
+```
+
+Write-tool call with bearer token when the MCP server is intentionally exposed
+beyond loopback:
+
+```sh
+curl -s http://localhost:8111/mcp/ \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $CHIO_KB_MCP_BEARER_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"kb_add_episode","arguments":{"name":"Repair summary","body":"Validated locally."}}}' | jq
 ```
 
 ## Indexed Shape

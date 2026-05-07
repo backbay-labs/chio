@@ -7,7 +7,7 @@
 #
 # Owner: M01 (single-owner trajectory, see EXECUTION-BOARD.md section 5).
 
-.PHONY: codegen-check codegen-check-rust codegen-check-python codegen-check-ts codegen-check-go ts-codegen-deps kb-up kb-down kb-reset kb-reseed kb-update kb-live kb-status kb-smoke kb-eval kb-seed-memory kb-dogfood
+.PHONY: codegen-check codegen-check-rust codegen-check-python codegen-check-ts codegen-check-go ts-codegen-deps kb-lock-check kb-up kb-down kb-reset kb-reseed kb-update kb-live kb-status kb-smoke kb-eval kb-seed-memory kb-dogfood
 
 KB_DIR ?= ops/knowledge-base
 
@@ -50,6 +50,9 @@ codegen-check-go:
 
 kb-up:
 	cd $(KB_DIR) && docker compose up -d --build kb-postgres kb-neo4j graphiti-mcp chio-kb-mcp
+
+kb-lock-check:
+	cd $(KB_DIR) && uv lock --check
 
 kb-down:
 	cd $(KB_DIR) && docker compose down
