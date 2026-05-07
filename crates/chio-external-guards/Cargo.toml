@@ -15,6 +15,7 @@ name = "chio_external_guards"
 chio-guards = { path = "../chio-guards" }
 chio-core-types = { path = "../chio-core-types" }
 chio-kernel = { path = "../chio-kernel" }
+chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"] }
 async-trait = "0.1"
 base64 = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls"] }

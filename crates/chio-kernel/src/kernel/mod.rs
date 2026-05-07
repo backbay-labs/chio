@@ -4230,6 +4230,13 @@ impl ChioKernel {
         #[cfg(feature = "delegation_v2")]
         delegation::consult_revocation_view(cap, self.revocation_view.as_ref())?;
 
+        if cap.schema == chio_core::capability::CHIO_CAPABILITY_V2_SCHEMA {
+            return Err(KernelError::DelegationInvalid(
+                "v2 chain-binding requires a trust-root resolver on the production kernel path"
+                    .to_string(),
+            ));
+        }
+
         if cap.delegation_chain.is_empty() {
             return Ok(());
         }

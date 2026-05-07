@@ -57,6 +57,15 @@
       "proof_manifest_ref": "manifest.capability.attenuation_proof"
     },
     {
+      "id": "claim.http.egress_contract",
+      "status": "enforced",
+      "schema_artifact": "crates/chio-egress-contract/src/lib.rs",
+      "summary": "Every kernel/guard/adapter outbound HTTP path declares a typed HttpEgressContract and runs through chio_egress_contract::send_with_contract (or the URL-only enforce_url helper for non-reqwest substrates) before bytes leave the substrate. The contract validates target URL on the initial request, every redirect target, and the response body size; loopback, link-local, IPv6 ULA, unbounded redirects, and oversize responses fail closed. A workspace lint at scripts/check-http-egress-contract.sh catches regressions; new callers must thread the contract through their config.",
+      "introduced_in": "trajectory-4/W2.2",
+      "depends_on_theorems": ["theorem.egress.contract_enforcement"],
+      "proof_manifest_ref": "manifest.http.egress_contract"
+    },
+    {
       "id": "claim.anchor.batch_continuity",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/anchor/batch.schema.json",

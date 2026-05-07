@@ -21,8 +21,8 @@ use chio_core::web3::{
     Web3SettlementSupportBoundary, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
     CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
 };
+use chio_egress_contract::{client_builder_with_contract, send_with_contract};
 use chio_web3_bindings::{ChioMerkleProof, IChioBondVault, IChioEscrow};
-use reqwest::Client;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::{Message, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
@@ -923,12 +923,7 @@ pub async fn estimate_call_gas(
     config: &SettlementChainConfig,
     call: &PreparedEvmCall,
 ) -> Result<u64, SettlementError> {
-    let result = rpc_call(
-        &config.rpc_url,
-        "eth_estimateGas",
-        json!([request_value(call)]),
-    )
-    .await?;
+    let result = rpc_call(config, "eth_estimateGas", json!([request_value(call)])).await?;
     parse_hex_u64(
         result.as_str().ok_or_else(|| {
             SettlementError::Rpc("eth_estimateGas returned non-string".to_string())
@@ -950,7 +945,7 @@ pub async fn submit_call(
             .saturating_add(50_000),
     };
     request["gas"] = Value::String(format!("0x{gas_limit:x}"));
-    let result = rpc_call(&config.rpc_url, "eth_sendTransaction", json!([request])).await?;
+    let result = rpc_call(config, "eth_sendTransaction", json!([request])).await?;
     result
         .as_str()
         .map(ToString::to_string)
@@ -962,12 +957,7 @@ pub async fn confirm_transaction(
     tx_hash: &str,
 ) -> Result<EvmTransactionReceipt, SettlementError> {
     for _ in 0..100 {
-        let result = rpc_call(
-            &config.rpc_url,
-            "eth_getTransactionReceipt",
-            json!([tx_hash]),
-        )
-        .await?;
+        let result = rpc_call(config, "eth_getTransactionReceipt", json!([tx_hash])).await?;
         if result.is_null() {
             thread::sleep(Duration::from_millis(100));
             continue;
@@ -1011,12 +1001,7 @@ pub async fn confirm_transaction(
             .iter()
             .map(parse_log_entry)
             .collect::<Result<Vec<_>, _>>()?;
-        let block = rpc_call(
-            &config.rpc_url,
-            "eth_getBlockByHash",
-            json!([block_hash, false]),
-        )
-        .await?;
+        let block = rpc_call(config, "eth_getBlockByHash", json!([block_hash, false])).await?;
         let observed_at = parse_hex_u64(
             block
                 .get("timestamp")
@@ -1495,30 +1480,40 @@ async fn eth_call_raw(
     config: &SettlementChainConfig,
     call: &PreparedEvmCall,
 ) -> Result<String, SettlementError> {
-    let result = rpc_call(
-        &config.rpc_url,
-        "eth_call",
-        json!([request_value(call), "latest"]),
-    )
-    .await?;
+    let result = rpc_call(config, "eth_call", json!([request_value(call), "latest"])).await?;
     result
         .as_str()
         .map(ToString::to_string)
         .ok_or_else(|| SettlementError::Rpc("eth_call returned non-string".to_string()))
 }
 
-async fn rpc_call(rpc_url: &str, method: &str, params: Value) -> Result<Value, SettlementError> {
-    let response = Client::new()
-        .post(rpc_url)
+async fn rpc_call(
+    config: &SettlementChainConfig,
+    method: &str,
+    params: Value,
+) -> Result<Value, SettlementError> {
+    config.validate_rpc_egress_contract()?;
+    let contract = &config.egress_contract;
+    let client = client_builder_with_contract(contract)
+        .build()
+        .map_err(|error| SettlementError::Rpc(format!("reqwest build: {error}")))?;
+    let request = client
+        .post(&config.rpc_url)
         .json(&json!({
             "jsonrpc": "2.0",
             "id": 1u64,
             "method": method,
             "params": params,
         }))
-        .send()
+        .build()
+        .map_err(|error| SettlementError::Rpc(format!("reqwest build request: {error}")))?;
+    let response = send_with_contract(contract, &client, request)
         .await
-        .map_err(|error| SettlementError::Rpc(error.to_string()))?;
+        .map_err(|error| {
+            SettlementError::Rpc(format!(
+                "HttpEgressContract rejects settlement RPC dispatch: {error}"
+            ))
+        })?;
     let envelope: JsonRpcEnvelope = response
         .json()
         .await
@@ -1675,6 +1670,8 @@ mod tests {
         SettlementChainConfig {
             chain_id: "eip155:31337".to_string(),
             network_name: "Ganache".to_string(),
+            egress_contract: crate::settlement_devnet_rpc_egress_contract(&rpc_url)
+                .test_expect("devnet egress contract"),
             rpc_url,
             escrow_contract: "0x69011eD3D9792Ea93595EeBd919EE621764B19e0".to_string(),
             bond_vault_contract: "0x621c302d6EC93b7186bEF18dF5D6436C6ea30125".to_string(),
@@ -1689,9 +1686,27 @@ mod tests {
         }
     }
 
+    fn hostname_rpc_contract(authority: &str) -> chio_egress_contract::HttpEgressContract {
+        chio_egress_contract::HttpEgressContract {
+            tenant_egress_namespace: "chio-settle-evm-unit-rpc".to_string(),
+            allowed_schemes: std::collections::BTreeSet::from(["https".to_string()]),
+            allowed_authority_set: std::collections::BTreeSet::from([authority.to_string()]),
+            deny_loopback: true,
+            deny_link_local: true,
+            deny_ipv6_ula: true,
+            max_redirect_chain: 0,
+            max_response_bytes: 64 * 1024 * 1024,
+        }
+    }
+
     struct MockJsonRpcServer {
         base_url: String,
         requests: Arc<Mutex<Vec<Value>>>,
+        handle: thread::JoinHandle<()>,
+    }
+
+    struct MockRawHttpServer {
+        base_url: String,
         handle: thread::JoinHandle<()>,
     }
 
@@ -1732,6 +1747,39 @@ mod tests {
             self.handle
                 .join()
                 .test_expect("mock RPC thread should exit cleanly");
+        }
+    }
+
+    impl MockRawHttpServer {
+        fn spawn(response: String) -> Self {
+            let listener =
+                TcpListener::bind("127.0.0.1:0").test_expect("bind mock raw HTTP listener");
+            let address = listener.local_addr().test_expect("listener address");
+            let base_url = format!("http://{}", address);
+            let handle = thread::spawn(move || {
+                let (mut stream, _) = listener
+                    .accept()
+                    .test_expect("accept mock raw HTTP request");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .test_expect("set read timeout");
+                let _request = read_http_request(&mut stream);
+                stream
+                    .write_all(response.as_bytes())
+                    .test_expect("write mock raw HTTP response");
+                stream.flush().test_expect("flush mock raw HTTP response");
+            });
+            Self { base_url, handle }
+        }
+
+        fn base_url(&self) -> String {
+            self.base_url.clone()
+        }
+
+        fn join(self) {
+            self.handle
+                .join()
+                .test_expect("mock raw HTTP thread should exit cleanly");
         }
     }
 
@@ -2380,6 +2428,17 @@ mod tests {
         assert_eq!(requests[3]["params"][0]["gas"], json!("0x125c0"));
     }
 
+    #[test]
+    fn rpc_config_accepts_hostname_rpc_url_with_pinned_resolver() {
+        let mut config = sample_config();
+        config.rpc_url = "https://mainnet-rpc.example.com".to_string();
+        config.egress_contract = hostname_rpc_contract("mainnet-rpc.example.com");
+
+        config
+            .validate_rpc_egress_contract()
+            .test_expect("hostname RPC dispatch is resolver-enforced");
+    }
+
     #[tokio::test]
     async fn submit_call_respects_explicit_gas_limit() {
         let server = MockJsonRpcServer::spawn(vec![rpc_result(json!(
@@ -2407,6 +2466,58 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0]["method"], "eth_sendTransaction");
         assert_eq!(requests[0]["params"][0]["gas"], json!("0xc350"));
+    }
+
+    #[tokio::test]
+    async fn submit_call_rejects_rpc_redirects() {
+        let server = MockRawHttpServer::spawn(
+            "HTTP/1.1 302 Found\r\nLocation: /redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .to_string(),
+        );
+        let config = sample_config_with_rpc_url(server.base_url());
+        let call = PreparedEvmCall {
+            from_address: "0x1000000000000000000000000000000000000001".to_string(),
+            to_address: "0x1000000000000000000000000000000000000002".to_string(),
+            data: "0xdeadbeef".to_string(),
+            gas_limit: Some(50_000),
+        };
+
+        let error = submit_call(&config, &call)
+            .await
+            .test_expect_err("submission RPC redirect should fail");
+        let message = error.to_string();
+
+        server.join();
+        assert!(
+            message.contains("HttpEgressContract") && message.contains("redirect chain length"),
+            "unexpected settlement RPC redirect denial: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn submit_call_rejects_oversized_rpc_responses() {
+        let server = MockRawHttpServer::spawn(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 67108865\r\nConnection: close\r\n\r\n"
+                .to_string(),
+        );
+        let config = sample_config_with_rpc_url(server.base_url());
+        let call = PreparedEvmCall {
+            from_address: "0x1000000000000000000000000000000000000001".to_string(),
+            to_address: "0x1000000000000000000000000000000000000002".to_string(),
+            data: "0xdeadbeef".to_string(),
+            gas_limit: Some(50_000),
+        };
+
+        let error = submit_call(&config, &call)
+            .await
+            .test_expect_err("oversized submission RPC response should fail");
+        let message = error.to_string();
+
+        server.join();
+        assert!(
+            message.contains("HttpEgressContract") && message.contains("response size"),
+            "unexpected settlement RPC response-size denial: {message}"
+        );
     }
 
     #[tokio::test]

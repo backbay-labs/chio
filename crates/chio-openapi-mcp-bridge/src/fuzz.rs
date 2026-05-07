@@ -44,6 +44,7 @@ pub fn fuzz_openapi_ingest(data: &[u8]) {
         server_version: "0.0.0".to_string(),
         public_key: "00".to_string(),
         base_url: "https://fuzz.invalid".to_string(),
+        egress_contract: None,
     };
     let _ = OpenApiMcpBridge::from_spec(text, config);
 }

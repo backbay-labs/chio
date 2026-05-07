@@ -27,6 +27,7 @@ use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
 use crate::redaction::redact_for_operator_log;
 use chio_core::receipt::Decision;
+use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 /// Authentication mode for the webhook exporter.
 ///
@@ -106,6 +107,10 @@ pub struct WebhookConfig {
     pub exclude_guards: Vec<String>,
     /// HTTP request timeout. Default: 30 seconds.
     pub timeout: Duration,
+    /// Typed HTTP egress contract enforced before every request and on
+    /// every redirect hop. When `None`, the substrate fails closed at
+    /// dispatch time instead of leaking a request. Required in production.
+    pub egress_contract: Option<HttpEgressContract>,
 }
 
 impl Default for WebhookConfig {
@@ -120,6 +125,7 @@ impl Default for WebhookConfig {
             include_guards: Vec::new(),
             exclude_guards: Vec::new(),
             timeout: Duration::from_secs(30),
+            egress_contract: None,
         }
     }
 }
@@ -133,8 +139,9 @@ pub struct WebhookExporter {
 impl WebhookExporter {
     /// Create a new `WebhookExporter`.
     ///
-    /// Returns an error if `url` is empty, not HTTPS, or if the HTTP client
-    /// cannot be built.
+    /// Returns an error if `url` is empty, not HTTPS, the
+    /// [`HttpEgressContract`] is missing or rejects the configured URL, or
+    /// if the HTTP client cannot be built.
     pub fn new(config: WebhookConfig) -> Result<Self, ExportError> {
         if config.url.trim().is_empty() {
             return Err(ExportError::HttpError(
@@ -145,8 +152,21 @@ impl WebhookExporter {
             &config.url,
             "Webhook receipt export requires an https endpoint",
         )?;
+        // HttpEgressContract: production webhook callers must declare a
+        // typed egress contract that admits the configured URL. The contract
+        // is re-checked on every dispatch via send_with_contract; this early
+        // check is purely a config-time guard so misconfiguration fails at
+        // construction rather than at first delivery.
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError(
+                "Webhook receipt export requires an HttpEgressContract".to_string(),
+            )
+        })?;
+        contract.enforce_url(&config.url, 0).map_err(|err| {
+            ExportError::HttpError(format!("HttpEgressContract rejects webhook URL: {err}"))
+        })?;
 
-        let client = reqwest::Client::builder()
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
@@ -159,14 +179,35 @@ impl WebhookExporter {
     /// This constructor is intended for integration tests that run against a
     /// local mock server over plain HTTP. Do NOT use this in production code:
     /// it bypasses the HTTPS enforcement that protects receipt export.
-    pub fn new_plaintext_for_tests(config: WebhookConfig) -> Result<Self, ExportError> {
+    ///
+    /// If the supplied [`WebhookConfig`] does not declare an
+    /// [`HttpEgressContract`], a permissive test-only contract is derived from
+    /// the configured URL so the egress substrate still runs.
+    pub fn new_plaintext_for_tests(mut config: WebhookConfig) -> Result<Self, ExportError> {
         if config.url.trim().is_empty() {
             return Err(ExportError::HttpError(
                 "Webhook url must not be empty".to_string(),
             ));
         }
 
-        let client = reqwest::Client::builder()
+        if config.egress_contract.is_none() {
+            let url = url::Url::parse(&config.url).map_err(|e| {
+                ExportError::HttpError(format!("invalid webhook URL for test contract: {e}"))
+            })?;
+            let host = url.host_str().unwrap_or("localhost");
+            let authority = match url.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host.to_string(),
+            };
+            config.egress_contract = Some(HttpEgressContract::permissive_for_tests(&authority));
+        }
+
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError(
+                "Webhook test exporter requires an HttpEgressContract".to_string(),
+            )
+        })?;
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
@@ -256,8 +297,23 @@ impl WebhookExporter {
                 tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
             }
 
-            let request = self.build_request(event)?;
-            let result = request.send().await;
+            // HttpEgressContract: every webhook dispatch must run through the
+            // typed egress contract. Build the reqwest::Request, validate it
+            // against the contract via send_with_contract, and only then
+            // hand the response back to the retry loop.
+            let request_builder = self.build_request(event)?;
+            let raw_request = request_builder.build().map_err(|e| {
+                ExportError::HttpError(format!("failed to build webhook request: {e}"))
+            })?;
+            let result = match &self.config.egress_contract {
+                Some(contract) => send_with_contract(contract, &self.client, raw_request)
+                    .await
+                    .map_err(|err| ExportError::HttpError(err.to_string())),
+                None => Err(ExportError::HttpError(
+                    "webhook exporter is missing HttpEgressContract; substrate fails closed"
+                        .to_string(),
+                )),
+            };
 
             match result {
                 Ok(response) => {
@@ -286,8 +342,7 @@ impl WebhookExporter {
                 }
                 Err(e) => {
                     last_err = Some(ExportError::HttpError(format!(
-                        "webhook endpoint request failed: {} ({})",
-                        classify_reqwest_error(&e),
+                        "webhook endpoint request failed: {e} ({})",
                         self.safe_endpoint_label()
                     )));
                 }
@@ -310,22 +365,6 @@ fn sanitize_url_for_error(raw_url: &str) -> String {
     url.set_query(None);
     url.set_fragment(None);
     url.to_string()
-}
-
-fn classify_reqwest_error(error: &reqwest::Error) -> &'static str {
-    if error.is_timeout() {
-        "timeout"
-    } else if error.is_connect() {
-        "connect error"
-    } else if error.is_request() {
-        "request error"
-    } else if error.is_body() {
-        "body error"
-    } else if error.is_decode() {
-        "decode error"
-    } else {
-        "transport error"
-    }
 }
 
 impl Exporter for WebhookExporter {

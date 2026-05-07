@@ -167,6 +167,20 @@
         {"kind": "conformance_fixture", "ref": "crates/chio-conformance/tests/cross_surface/t2_1_hosted_native_http_no_bypass.json"},
         {"kind": "conformance_fixture", "ref": "crates/chio-conformance/tests/cross_surface/t2_1_a2a_http_edge_no_bypass.json"}
       ]
+    },
+    {
+      "id": "manifest.http.egress_contract",
+      "claim_ref": "claim.http.egress_contract",
+      "introduced_by": "trajectory-4/W2.2",
+      "evidence": [
+        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_loopback_rejected.rs::webhook_dispatch_rejects_loopback_target"},
+        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_link_local_rejected.rs::splunk_hec_construction_rejects_link_local_target"},
+        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_ipv6_ula_rejected.rs::pyth_contract_rejects_ipv6_ula_target"},
+        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_redirect_overflow_rejected.rs::redirect_chain_above_ceiling_is_rejected"},
+        {"kind": "rust_test", "ref": "crates/chio-conformance/tests/ssrf_oversize_response_rejected.rs::contract_rejects_oversize_response"},
+        {"kind": "workspace_lint", "ref": "scripts/check-http-egress-contract.sh"},
+        {"kind": "workspace_lint_test", "ref": "scripts/tests/check-http-egress-contract.test.sh"}
+      ]
     }
   ]
 }

@@ -10,6 +10,9 @@ use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
 use crate::redaction::redact_for_operator_log;
+use chio_egress_contract::{
+    client_builder_with_contract, send_with_contract, ContractResponse, HttpEgressContract,
+};
 
 const DEFAULT_HEC_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_HEC_RESPONSE_BODY_BYTES: usize = 64 * 1024;
@@ -33,6 +36,10 @@ pub struct SplunkConfig {
     /// loop. `reqwest` does not apply any timeout by default, so we install
     /// one here and treat a stuck collector as a transient error.
     pub timeout: Duration,
+    /// Typed HTTP egress contract enforced before every HEC dispatch and on
+    /// every redirect hop. Required in production; tests may use
+    /// `HttpEgressContract::permissive_for_tests`.
+    pub egress_contract: Option<HttpEgressContract>,
 }
 
 impl Default for SplunkConfig {
@@ -44,6 +51,7 @@ impl Default for SplunkConfig {
             index: None,
             host: None,
             timeout: DEFAULT_HEC_TIMEOUT,
+            egress_contract: None,
         }
     }
 }
@@ -77,8 +85,18 @@ impl SplunkHecExporter {
             "Splunk HEC endpoint must use https:// -- sending HEC tokens over \
              plaintext http:// is not permitted",
         )?;
+        // HttpEgressContract: Splunk HEC dispatch must run through the
+        // typed egress contract. The contract is re-checked on every
+        // dispatch via send_with_contract.
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError("Splunk HEC exporter requires an HttpEgressContract".to_string())
+        })?;
+        let dispatch_url = format!("{}/services/collector/event", config.endpoint);
+        contract.enforce_url(&dispatch_url, 0).map_err(|err| {
+            ExportError::HttpError(format!("HttpEgressContract rejects HEC URL: {err}"))
+        })?;
 
-        let client = reqwest::Client::builder()
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
@@ -91,8 +109,24 @@ impl SplunkHecExporter {
     /// against a local mock server over plain HTTP. Do NOT use this in
     /// production code -- it bypasses the https:// enforcement that protects
     /// HEC tokens from being sent in cleartext.
-    pub fn new_plaintext_for_tests(config: SplunkConfig) -> Result<Self, ExportError> {
-        let client = reqwest::Client::builder()
+    pub fn new_plaintext_for_tests(mut config: SplunkConfig) -> Result<Self, ExportError> {
+        if config.egress_contract.is_none() {
+            let url = url::Url::parse(&config.endpoint).map_err(|e| {
+                ExportError::HttpError(format!("invalid HEC endpoint for test contract: {e}"))
+            })?;
+            let host = url.host_str().unwrap_or("localhost");
+            let authority = match url.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host.to_string(),
+            };
+            config.egress_contract = Some(HttpEgressContract::permissive_for_tests(&authority));
+        }
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError(
+                "Splunk HEC test exporter requires an HttpEgressContract".to_string(),
+            )
+        })?;
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
@@ -139,24 +173,30 @@ impl Exporter for SplunkHecExporter {
             let payload = parts.join("\n");
             let url = format!("{}/services/collector/event", self.config.endpoint);
 
-            let mut response = self
+            // HttpEgressContract: every HEC dispatch routes through
+            // send_with_contract so the URL, every redirect hop, and the
+            // response size are validated by the typed contract before bytes
+            // leave the substrate.
+            let contract = self.config.egress_contract.as_ref().ok_or_else(|| {
+                ExportError::HttpError(
+                    "Splunk HEC exporter is missing HttpEgressContract; substrate fails closed"
+                        .to_string(),
+                )
+            })?;
+            let raw_request = self
                 .client
                 .post(&url)
                 .header("Authorization", format!("Splunk {}", self.config.hec_token))
                 .header("Content-Type", "application/json")
                 .body(payload)
-                .send()
+                .build()
+                .map_err(|e| ExportError::HttpError(format!("failed to build HEC request: {e}")))?;
+            let response = send_with_contract(contract, &self.client, raw_request)
                 .await
-                .map_err(|e| {
-                    if e.is_timeout() {
-                        ExportError::HttpError(format!("HEC request timed out: {e}"))
-                    } else {
-                        ExportError::HttpError(format!("HEC request failed: {e}"))
-                    }
-                })?;
+                .map_err(|err| ExportError::HttpError(format!("HEC request failed: {err}")))?;
 
             let status = response.status();
-            let body = read_hec_response_body(&mut response).await?;
+            let body = read_hec_response_body(&response)?;
 
             if !status.is_success() {
                 let body = redact_for_operator_log(body);
@@ -175,30 +215,13 @@ impl Exporter for SplunkHecExporter {
     }
 }
 
-async fn read_hec_response_body(response: &mut reqwest::Response) -> Result<String, ExportError> {
-    if let Some(content_length) = response.content_length() {
-        if content_length > MAX_HEC_RESPONSE_BODY_BYTES as u64 {
-            return Err(hec_response_body_too_large(content_length));
-        }
+fn read_hec_response_body(response: &ContractResponse) -> Result<String, ExportError> {
+    let body = response.body();
+    if body.len() > MAX_HEC_RESPONSE_BODY_BYTES {
+        return Err(hec_response_body_too_large(body.len() as u64));
     }
 
-    let mut body = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|e| ExportError::HttpError(format!("failed to read HEC response body: {e}")))?
-    {
-        let next_len = body
-            .len()
-            .checked_add(chunk.len())
-            .ok_or_else(|| hec_response_body_too_large(u64::MAX))?;
-        if next_len > MAX_HEC_RESPONSE_BODY_BYTES {
-            return Err(hec_response_body_too_large(next_len as u64));
-        }
-        body.extend_from_slice(&chunk);
-    }
-
-    Ok(String::from_utf8_lossy(&body).into_owned())
+    Ok(String::from_utf8_lossy(body).into_owned())
 }
 
 fn hec_response_body_too_large(size: u64) -> ExportError {

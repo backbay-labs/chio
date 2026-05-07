@@ -43,7 +43,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
-use super::{ExternalGuard, ExternalGuardError, GuardCallContext};
+use super::{http_egress, ExternalGuard, ExternalGuardError, GuardCallContext};
 
 /// Guard name reported by [`BedrockGuardrailGuard::name`].
 pub const GUARD_NAME: &str = "bedrock-guardrail";
@@ -186,22 +186,31 @@ struct GuardrailText<'a> {
 pub struct BedrockGuardrailGuard {
     cfg: BedrockGuardrailConfig,
     http: Client,
+    egress_contract: chio_egress_contract::HttpEgressContract,
 }
 
 impl BedrockGuardrailGuard {
     /// Construct a guard with an internally-owned [`reqwest::Client`].
     pub fn new(cfg: BedrockGuardrailConfig) -> Result<Self, ExternalGuardError> {
-        let http = Client::builder()
-            .timeout(cfg.timeout)
-            .build()
-            .map_err(|e| ExternalGuardError::Permanent(format!("reqwest build: {e}")))?;
-        Ok(Self { cfg, http })
+        let egress_contract = http_egress::contract_for_url(GUARD_NAME, &cfg.apply_url())?;
+        let http = http_egress::client_for_contract(&egress_contract, cfg.timeout)?;
+        Ok(Self {
+            cfg,
+            http,
+            egress_contract,
+        })
     }
 
-    /// Construct a guard with a caller-supplied client (primarily for
-    /// tests where the `wiremock` URL needs a tuned client).
-    pub fn with_client(cfg: BedrockGuardrailConfig, http: Client) -> Self {
-        Self { cfg, http }
+    /// Construct a guard from a caller-supplied client handle.
+    ///
+    /// The supplied client is not reused. The guard rebuilds an internal client
+    /// from its egress contract so automatic redirect following cannot bypass
+    /// per-hop contract validation.
+    pub fn with_client(
+        cfg: BedrockGuardrailConfig,
+        _http: Client,
+    ) -> Result<Self, ExternalGuardError> {
+        Self::new(cfg)
     }
 
     /// Build a [`GuardEvidence`] record for the verdict that
@@ -283,20 +292,15 @@ impl ExternalGuard for BedrockGuardrailGuard {
                 .map_err(|e| ExternalGuardError::Permanent(format!("invalid api key: {e}")))?,
         );
 
-        let resp = self
-            .http
-            .post(&url)
-            .headers(headers)
-            .json(&body)
-            .send()
-            .await
-            .map_err(classify_reqwest_error)?;
+        let resp = http_egress::send_request_with_contract(
+            &self.egress_contract,
+            &self.http,
+            self.http.post(&url).headers(headers).json(&body),
+        )
+        .await?;
 
         let status = resp.status();
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| ExternalGuardError::Transient(format!("read body: {e}")))?;
+        let text = http_egress::response_text(resp).await?;
 
         if !status.is_success() {
             return Err(classify_status_error("bedrock", status, &text));
@@ -333,17 +337,5 @@ pub(crate) fn classify_status_error(
         ExternalGuardError::Transient(format!("{provider} HTTP {}: {}", status.as_u16(), snippet))
     } else {
         ExternalGuardError::Permanent(format!("{provider} HTTP {}: {}", status.as_u16(), snippet))
-    }
-}
-
-/// Helper shared with the other cloud guardrail adapters. Classifies a
-/// [`reqwest::Error`] as retryable (timeout / connect) or permanent.
-pub(crate) fn classify_reqwest_error(err: reqwest::Error) -> ExternalGuardError {
-    if err.is_timeout() {
-        ExternalGuardError::Timeout
-    } else if err.is_connect() || err.is_request() {
-        ExternalGuardError::Transient(err.to_string())
-    } else {
-        ExternalGuardError::Permanent(err.to_string())
     }
 }

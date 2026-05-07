@@ -73,6 +73,9 @@ impl Probe for KernelRuntimeProbe {
             .with_context("expected_gauge", KERNEL_DISPATCH_INFLIGHT_GAUGE);
         }
 
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: diagnostic metrics probes
+        // target a user-configured endpoint and are skipped by
+        // CHIO_DOCTOR_SKIP_NETWORK, outside substrate tool egress.
         let client = match reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build()
@@ -88,6 +91,8 @@ impl Probe for KernelRuntimeProbe {
             }
         };
 
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: diagnostic metrics probe,
+        // outside substrate tool egress.
         match client.get(&url).send() {
             Ok(resp) => match resp.text() {
                 Ok(body) => {

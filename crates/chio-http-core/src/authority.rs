@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use chio_core_types::capability::{
-    CapabilityToken, ChioScope, ModelMetadata, Operation, ToolGrant,
+    CapabilityToken, ChioScope, ModelMetadata, Operation, ToolGrant, CHIO_CAPABILITY_V2_SCHEMA,
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_core_types::receipt::GuardEvidence;
@@ -787,6 +787,12 @@ fn validate_capability_token(
     if !signature_valid {
         return Err("capability signature verification failed".to_string());
     }
+    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
+        return Err(
+            "v2 chain-binding requires a trust-root resolver on the HTTP authority path"
+                .to_string(),
+        );
+    }
     token
         .validate_time(chrono::Utc::now().timestamp() as u64)
         .map_err(|e| format!("invalid capability token: {e}"))?;
@@ -910,7 +916,10 @@ mod tests {
         http_status_scope, AuthMethod, CHIO_DECISION_RECEIPT_ID_KEY,
         CHIO_HTTP_STATUS_SCOPE_DECISION, CHIO_HTTP_STATUS_SCOPE_FINAL,
     };
-    use chio_core_types::capability::{CapabilityTokenBody, ChioScope, Operation, ToolGrant};
+    use chio_core_types::capability::{
+        compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityTokenBody,
+        CapabilityTokenV2Body, ChioScope, Operation, ToolGrant,
+    };
 
     trait TestUnwrap<T> {
         fn test_unwrap(self) -> T;
@@ -953,6 +962,38 @@ mod tests {
                 issued_at: now.saturating_sub(60),
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
+            },
+            issuer,
+        )
+        .test_unwrap();
+        serde_json::to_string(&token).test_unwrap()
+    }
+
+    fn signed_direct_v2_capability_token_json(issuer: &Keypair, id: &str) -> String {
+        let now = chrono::Utc::now().timestamp() as u64;
+        let scope = ChioScope::default();
+        let parent_hash = scope_hash(&scope).test_unwrap();
+        let child_hash = scope_hash(&scope).test_unwrap();
+        let witness = compute_attenuation_witness(&scope, &scope).test_unwrap();
+        let token = CapabilityToken::sign_v2(
+            CapabilityTokenV2Body {
+                body: CapabilityTokenBody {
+                    id: id.to_string(),
+                    issuer: issuer.public_key(),
+                    subject: issuer.public_key(),
+                    scope,
+                    issued_at: now.saturating_sub(60),
+                    expires_at: now + 3600,
+                    delegation_chain: Vec::new(),
+                },
+                caveats: Vec::new(),
+                scope_attenuations: Vec::new(),
+                attenuation_proof: AttenuationProof {
+                    parent_scope_hash: parent_hash,
+                    child_scope_hash: child_hash,
+                    normalized_subset_proof: witness,
+                },
+                budget_share_bps: None,
             },
             issuer,
         )
@@ -1120,6 +1161,40 @@ mod tests {
         assert!(
             metadata_string(result.receipt.metadata.as_ref(), CHIO_KERNEL_RECEIPT_ID_KEY).is_some()
         );
+    }
+
+    #[test]
+    fn direct_v2_capability_denies_without_http_trust_root_resolver() {
+        let query = HashMap::new();
+        let (authority, issuer) = authority_with_issuer();
+        let capability = signed_direct_v2_capability_token_json(&issuer, "cap-v2-direct");
+        let result = authority
+            .evaluate(HttpAuthorityInput {
+                request_id: "req-v2-direct".to_string(),
+                method: HttpMethod::Post,
+                route_pattern: "/pets".to_string(),
+                path: "/pets",
+                query: &query,
+                caller: caller(),
+                body_hash: Some("def".to_string()),
+                body_length: 3,
+                session_id: Some("session-1".to_string()),
+                capability_id_hint: None,
+                presented_capability: Some(&capability),
+                requested_tool_server: None,
+                requested_tool_name: None,
+                requested_arguments: None,
+                model_metadata: None,
+                policy: HttpAuthorityPolicy::DenyByDefault,
+            })
+            .test_unwrap();
+
+        assert!(result.verdict.is_denied());
+        assert!(result.receipt.capability_id.is_none());
+        assert!(result.receipt.evidence[0]
+            .details
+            .as_deref()
+            .is_some_and(|details| details.contains("v2 chain-binding requires")));
     }
 
     #[test]

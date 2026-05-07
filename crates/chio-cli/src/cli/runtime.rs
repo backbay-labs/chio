@@ -578,6 +578,14 @@ fn cmd_mcp_serve_http(
 
     let auth_token = optional_secret_with_env_fallback(auth_token, "CHIO_MCP_AUTH_TOKEN");
     let admin_token = optional_secret_with_env_fallback(admin_token, "CHIO_MCP_ADMIN_TOKEN");
+    let egress_contract = remote_mcp_auth_egress_contract(
+        server_id,
+        auth_jwt_discovery_url,
+        auth_introspection_url,
+        auth_jwt_provider_profile,
+        auth_jwt_issuer,
+        auth_jwks_uri,
+    )?;
 
     remote_mcp::serve_http(remote_mcp::RemoteServeHttpConfig {
         listen,
@@ -624,7 +632,122 @@ fn cmd_mcp_serve_http(
         shared_hosted_owner,
         wrapped_command: wrapped_cmd.clone(),
         wrapped_args: wrapped_args.to_vec(),
+        egress_contract,
     })
+}
+
+fn remote_mcp_auth_egress_contract(
+    server_id: &str,
+    auth_jwt_discovery_url: Option<&str>,
+    auth_introspection_url: Option<&str>,
+    auth_jwt_provider_profile: Option<remote_mcp::JwtProviderProfile>,
+    auth_jwt_issuer: Option<&str>,
+    auth_jwks_uri: Option<&str>,
+) -> Result<Option<chio_egress_contract::HttpEgressContract>, CliError> {
+    let mut urls = Vec::new();
+    urls.extend(auth_jwt_discovery_url);
+    urls.extend(auth_introspection_url);
+    urls.extend(auth_jwks_uri);
+    if auth_jwt_provider_profile.is_some() || auth_jwt_discovery_url.is_some() {
+        urls.extend(auth_jwt_issuer);
+    }
+    if urls.is_empty() {
+        return Ok(None);
+    }
+
+    let mut allowed_schemes = std::collections::BTreeSet::new();
+    let mut allowed_authority_set = std::collections::BTreeSet::new();
+    let mut deny_loopback = true;
+    let mut deny_link_local = true;
+    let mut deny_ipv6_ula = true;
+
+    for raw_url in urls {
+        let parsed = url::Url::parse(raw_url).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "remote MCP auth egress URL `{raw_url}` is invalid: {error}"
+            ))
+        })?;
+        allowed_schemes.insert(parsed.scheme().to_ascii_lowercase());
+        allowed_authority_set.insert(cli_normalized_url_authority(&parsed)?);
+
+        if let Some(host) = parsed.host() {
+            match host {
+                url::Host::Domain(domain) => {
+                    let normalized = domain.trim_end_matches('.').to_ascii_lowercase();
+                    if matches!(normalized.as_str(), "localhost" | "localhost.localdomain") {
+                        deny_loopback = false;
+                    }
+                }
+                url::Host::Ipv4(address) => {
+                    if address.is_loopback() {
+                        deny_loopback = false;
+                    }
+                    if address.is_link_local() {
+                        deny_link_local = false;
+                    }
+                }
+                url::Host::Ipv6(address) => {
+                    if let Some(mapped) = address.to_ipv4_mapped() {
+                        if mapped.is_loopback() {
+                            deny_loopback = false;
+                        }
+                        if mapped.is_link_local() {
+                            deny_link_local = false;
+                        }
+                    }
+                    if address.is_loopback() {
+                        deny_loopback = false;
+                    }
+                    if is_cli_ipv6_unicast_link_local(&address) {
+                        deny_link_local = false;
+                    }
+                    if is_cli_ipv6_unique_local(&address) {
+                        deny_ipv6_ula = false;
+                    }
+                }
+            }
+        }
+    }
+
+    let contract = chio_egress_contract::HttpEgressContract {
+        tenant_egress_namespace: format!("remote-mcp-auth:{server_id}"),
+        allowed_schemes,
+        allowed_authority_set,
+        deny_loopback,
+        deny_link_local,
+        deny_ipv6_ula,
+        max_redirect_chain: 3,
+        max_response_bytes: 1024 * 1024,
+    };
+    contract.validate().map_err(|error| {
+        CliError::cli_other_error(format!("remote MCP auth egress contract is invalid: {error}"))
+    })?;
+    Ok(Some(contract))
+}
+
+fn cli_normalized_url_authority(url: &url::Url) -> Result<String, CliError> {
+    let host = url.host_str().ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "remote MCP auth egress URL `{url}` is missing an authority"
+        ))
+    })?;
+    let host = match url.host() {
+        Some(url::Host::Ipv6(_)) => format!("[{}]", host.to_ascii_lowercase()),
+        Some(url::Host::Domain(_)) => host.trim_end_matches('.').to_ascii_lowercase(),
+        _ => host.to_ascii_lowercase(),
+    };
+    Ok(match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    })
+}
+
+fn is_cli_ipv6_unicast_link_local(address: &std::net::Ipv6Addr) -> bool {
+    (address.segments()[0] & 0xffc0) == 0xfe80
+}
+
+fn is_cli_ipv6_unique_local(address: &std::net::Ipv6Addr) -> bool {
+    (address.segments()[0] & 0xfe00) == 0xfc00
 }
 
 fn optional_secret_with_env_fallback(value: Option<&str>, fallback_env: &str) -> Option<String> {
@@ -2043,5 +2166,49 @@ mod runtime_local_error_domain_tests {
         );
 
         assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+    }
+
+    #[test]
+    fn remote_mcp_auth_contract_is_derived_from_external_auth_urls() {
+        let contract = remote_mcp_auth_egress_contract(
+            "edge-a",
+            Some("https://id.example.com/.well-known/openid-configuration"),
+            Some("https://auth.example.com/oauth2/introspect"),
+            None,
+            Some("https://issuer.example.com/oauth2/default"),
+            Some("https://keys.example.com/jwks.json"),
+        )
+        .expect("contract builds")
+        .expect("external auth creates contract");
+
+        assert_eq!(contract.tenant_egress_namespace, "remote-mcp-auth:edge-a");
+        assert!(contract.allowed_schemes.contains("https"));
+        assert!(contract.allowed_authority_set.contains("id.example.com"));
+        assert!(contract.allowed_authority_set.contains("auth.example.com"));
+        assert!(contract
+            .allowed_authority_set
+            .contains("issuer.example.com"));
+        assert!(contract.allowed_authority_set.contains("keys.example.com"));
+        assert!(contract.deny_loopback);
+    }
+
+    #[test]
+    fn remote_mcp_auth_contract_permits_explicit_loopback_auth_url() {
+        let contract = remote_mcp_auth_egress_contract(
+            "edge-local",
+            None,
+            Some("http://127.0.0.1:18080/introspect"),
+            None,
+            None,
+            None,
+        )
+        .expect("contract builds")
+        .expect("loopback auth creates contract");
+
+        assert!(contract.allowed_schemes.contains("http"));
+        assert!(contract
+            .allowed_authority_set
+            .contains("127.0.0.1:18080"));
+        assert!(!contract.deny_loopback);
     }
 }

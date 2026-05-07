@@ -156,6 +156,25 @@ async fn cloud_guardrails_recheck_runtime_endpoints_before_send() {
         .contains("must not target localhost, link-local, or private-network hosts"));
 }
 
+#[test]
+fn bedrock_constructor_rejects_default_hostname_without_dns_pinning() {
+    let error = match BedrockGuardrailGuard::new(BedrockGuardrailConfig::new(
+        "test-token",
+        "us-east-1",
+        "gr-123",
+        "1",
+    )) {
+        Ok(_) => panic!("default Bedrock hostname must fail before dispatch"),
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    assert!(
+        message.contains("bedrock-runtime.us-east-1.amazonaws.com")
+            && message.contains("hostname egress requires DNS pinning"),
+        "unexpected default Bedrock hostname denial: {message}"
+    );
+}
+
 #[tokio::test]
 async fn bedrock_evidence_captures_action() {
     use chio_external_guards::external::BedrockDecisionDetails;

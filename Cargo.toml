@@ -36,6 +36,7 @@ members = [
     "crates/chio-bedrock-converse-adapter",
     "crates/chio-cohere-tools-adapter",
     "crates/chio-cross-protocol",
+    "crates/chio-egress-contract",
     "crates/chio-envoy-ext-authz",
     "crates/chio-gemini-tools-adapter",
     "crates/chio-groq-tools-adapter",

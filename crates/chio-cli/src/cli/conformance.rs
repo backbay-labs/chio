@@ -281,6 +281,9 @@ fn cmd_conformance_fetch_peers(
 
     // Bound the HTTP client timeout so a stalled release-asset mirror
     // cannot hang the CLI indefinitely.
+    // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: user-initiated conformance peer
+    // binary downloads are lockfile URL fetches verified by sha256, outside
+    // substrate tool egress.
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(
             FETCH_PEERS_HTTP_TIMEOUT_SECS,
@@ -315,6 +318,8 @@ fn download_and_verify(
     entry: &chio_conformance::PeerEntry,
     out: &Path,
 ) -> Result<(), CliError> {
+    // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: conformance peer binary
+    // download is verified by sha256, outside substrate tool egress.
     let response = client.get(&entry.url).send().map_err(|error| {
         CliError::provider_error(format!(
             "failed to GET `{}` ({}): {error}",

@@ -15,6 +15,7 @@ use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
 use crate::redaction::redact_for_operator_log;
+use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 /// Authentication configuration for the Elasticsearch exporter.
 ///
@@ -49,6 +50,9 @@ pub struct ElasticConfig {
     /// A stalled cluster must not block the SIEM manager poll loop;
     /// `reqwest` does not apply a default timeout, so we install one here.
     pub timeout: Duration,
+    /// Typed HTTP egress contract enforced before every dispatch and on
+    /// every redirect hop. Required in production.
+    pub egress_contract: Option<HttpEgressContract>,
 }
 
 impl Default for ElasticConfig {
@@ -58,6 +62,7 @@ impl Default for ElasticConfig {
             index_name: "chio-receipts".to_string(),
             auth: ElasticAuthConfig::ApiKey(String::new()),
             timeout: Duration::from_secs(30),
+            egress_contract: None,
         }
     }
 }
@@ -88,8 +93,19 @@ impl ElasticsearchExporter {
             "Elasticsearch endpoint must use https:// -- sending API keys \
              or Basic credentials over plaintext http:// is not permitted",
         )?;
+        // HttpEgressContract: Elasticsearch bulk dispatch must run through
+        // the typed egress contract. Re-checked per-request via send_with_contract.
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError(
+                "Elasticsearch exporter requires an HttpEgressContract".to_string(),
+            )
+        })?;
+        let dispatch_url = format!("{}/_bulk", config.endpoint);
+        contract.enforce_url(&dispatch_url, 0).map_err(|err| {
+            ExportError::HttpError(format!("HttpEgressContract rejects ES URL: {err}"))
+        })?;
 
-        let client = reqwest::Client::builder()
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
@@ -102,8 +118,24 @@ impl ElasticsearchExporter {
     /// local mock server over plain HTTP. Do NOT use this in production code:
     /// it bypasses the `https://` enforcement that protects auth credentials
     /// from being sent in cleartext.
-    pub fn new_plaintext_for_tests(config: ElasticConfig) -> Result<Self, ExportError> {
-        let client = reqwest::Client::builder()
+    pub fn new_plaintext_for_tests(mut config: ElasticConfig) -> Result<Self, ExportError> {
+        if config.egress_contract.is_none() {
+            let url = url::Url::parse(&config.endpoint).map_err(|e| {
+                ExportError::HttpError(format!("invalid ES endpoint for test contract: {e}"))
+            })?;
+            let host = url.host_str().unwrap_or("localhost");
+            let authority = match url.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host.to_string(),
+            };
+            config.egress_contract = Some(HttpEgressContract::permissive_for_tests(&authority));
+        }
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError(
+                "Elasticsearch test exporter requires an HttpEgressContract".to_string(),
+            )
+        })?;
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
@@ -165,10 +197,20 @@ impl Exporter for ElasticsearchExporter {
                 }
             };
 
-            let response = builder
-                .send()
+            // HttpEgressContract: every bulk dispatch routes through
+            // send_with_contract.
+            let contract = self.config.egress_contract.as_ref().ok_or_else(|| {
+                ExportError::HttpError(
+                    "Elasticsearch exporter is missing HttpEgressContract; substrate fails closed"
+                        .to_string(),
+                )
+            })?;
+            let raw_request = builder.build().map_err(|e| {
+                ExportError::HttpError(format!("failed to build ES bulk request: {e}"))
+            })?;
+            let response = send_with_contract(contract, &self.client, raw_request)
                 .await
-                .map_err(|e| ExportError::HttpError(format!("bulk request failed: {e}")))?;
+                .map_err(|err| ExportError::HttpError(format!("bulk request failed: {err}")))?;
 
             let status = response.status();
             if !status.is_success() {

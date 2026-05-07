@@ -236,11 +236,17 @@ fn configured_named_cookie(
 }
 
 fn dedupe_request_headers(headers: &mut Vec<A2aRequestHeader>) {
-    let mut deduped = Vec::new();
+    let mut deduped: Vec<A2aRequestHeader> = Vec::new();
     for header in headers.drain(..) {
-        if !deduped.iter().any(|existing: &A2aRequestHeader| {
-            existing.name.eq_ignore_ascii_case(&header.name) && existing.value == header.value
-        }) {
+        let mut merged = false;
+        for existing in &mut deduped {
+            if existing.name.eq_ignore_ascii_case(&header.name) && existing.value == header.value {
+                existing.sensitive |= header.sensitive;
+                merged = true;
+                break;
+            }
+        }
+        if !merged {
             deduped.push(header);
         }
     }
@@ -273,14 +279,24 @@ fn dedupe_request_cookies(cookies: &mut Vec<A2aRequestCookie>) {
     *cookies = deduped;
 }
 
-fn upsert_request_header(headers: &mut Vec<A2aRequestHeader>, name: String, value: String) {
+fn upsert_request_header(
+    headers: &mut Vec<A2aRequestHeader>,
+    name: String,
+    value: String,
+    sensitive: bool,
+) {
     if let Some(existing) = headers
         .iter_mut()
         .find(|header| header.name.eq_ignore_ascii_case(&name))
     {
         existing.value = value;
+        existing.sensitive |= sensitive;
     } else {
-        headers.push(A2aRequestHeader { name, value });
+        headers.push(A2aRequestHeader {
+            name,
+            value,
+            sensitive,
+        });
     }
 }
 
@@ -745,4 +761,3 @@ fn validate_authentication_info(
         })),
     }
 }
-

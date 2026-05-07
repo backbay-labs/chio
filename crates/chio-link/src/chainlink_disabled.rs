@@ -1,15 +1,19 @@
+use chio_egress_contract::HttpEgressContract;
+
 use crate::config::{ChainlinkNetworkConfig, PairConfig};
 use crate::{OracleBackend, OracleBackendKind, OracleFuture, PriceOracleError};
 
 pub struct ChainlinkFeedReader {
     _networks: Vec<ChainlinkNetworkConfig>,
+    _egress_contract: HttpEgressContract,
 }
 
 impl ChainlinkFeedReader {
     #[must_use]
-    pub fn new(networks: Vec<ChainlinkNetworkConfig>) -> Self {
+    pub fn new(networks: Vec<ChainlinkNetworkConfig>, egress_contract: HttpEgressContract) -> Self {
         Self {
             _networks: networks,
+            _egress_contract: egress_contract,
         }
     }
 }

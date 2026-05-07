@@ -20,6 +20,7 @@ fuzz = ["dep:arbitrary"]
 
 [dependencies]
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
+chio-egress-contract = { path = "../chio-egress-contract" }
 chio-kernel = { path = "../chio-kernel" }
 chio-manifest = { path = "../chio-manifest" }
 chio-mcp-edge = { path = "../chio-mcp-edge" }

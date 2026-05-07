@@ -35,7 +35,9 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use chio_core_types::capability::{CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken};
+use chio_core_types::capability::{
+    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, CHIO_CAPABILITY_V2_SCHEMA,
+};
 use chio_core_types::crypto::PublicKey;
 
 use crate::budget_split::{BudgetRegistry, NoopBudgetRegistry};
@@ -266,6 +268,13 @@ pub fn evaluate_with_crypto_floor_and_budgets(
     budgets: &mut dyn BudgetRegistry,
 ) -> EvaluationVerdict {
     // Step 1: capability verification.
+    if input.capability.schema == CHIO_CAPABILITY_V2_SCHEMA {
+        let core_err = KernelCoreError::InvalidCapability(CapabilityError::AttenuationViolation(
+            "v2 chain-binding requires a trust-root resolver on the evaluate path".to_string(),
+        ));
+        return deny(core_err, None, None);
+    }
+
     let verified = match verify_capability_with_floor(
         input.capability,
         input.trusted_issuers,

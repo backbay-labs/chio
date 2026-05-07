@@ -32,8 +32,8 @@ pub use ccip::{
     CcipSettlementPayload, CHIO_CCIP_SETTLEMENT_MESSAGE_SCHEMA,
 };
 pub use config::{
-    DevnetContracts, DevnetMocks, EvidenceSubstrateMode, LocalDevnetDeployment,
-    SettlementAmountTier, SettlementChainConfig, SettlementEvidenceConfig,
+    settlement_devnet_rpc_egress_contract, DevnetContracts, DevnetMocks, EvidenceSubstrateMode,
+    LocalDevnetDeployment, SettlementAmountTier, SettlementChainConfig, SettlementEvidenceConfig,
     SettlementOracleAuthority, SettlementOracleConfig, SettlementPolicyConfig,
 };
 pub use evm::{

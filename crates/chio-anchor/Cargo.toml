@@ -18,6 +18,7 @@ web3 = [
     "dep:alloy-sol-types",
     "dep:async-trait",
     "dep:chio-core",
+    "dep:chio-egress-contract",
     "dep:chio-kernel",
     "dep:chio-web3",
     "dep:chio-web3-bindings",
@@ -40,6 +41,7 @@ fuzz = ["web3", "dep:arbitrary"]
 
 [dependencies]
 chio-core = { path = "../chio-core", optional = true }
+chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"], optional = true }
 chio-kernel = { path = "../chio-kernel", optional = true }
 chio-metrics-spec = { workspace = true }
 chio-web3 = { path = "../chio-web3", optional = true }

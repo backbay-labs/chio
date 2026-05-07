@@ -2403,6 +2403,7 @@ dependencies = [
  "arbitrary",
  "base64 0.22.1",
  "chio-core-types",
+ "chio-egress-contract",
  "chio-kernel",
  "chio-manifest",
  "rcgen",
@@ -2497,6 +2498,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chio-core",
+ "chio-egress-contract",
  "chio-kernel",
  "chio-metrics-spec",
  "chio-web3",
@@ -2692,6 +2694,7 @@ dependencies = [
  "chio-credit",
  "chio-data-guards",
  "chio-did",
+ "chio-egress-contract",
  "chio-errors",
  "chio-external-guards",
  "chio-federation",
@@ -2779,12 +2782,16 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64ct",
+ "chio-a2a-adapter",
  "chio-a2a-edge",
  "chio-acp-edge",
  "chio-adversarial-suite",
  "chio-anchor",
+ "chio-api-protect",
  "chio-core-types",
  "chio-custody-hw",
+ "chio-egress-contract",
+ "chio-external-guards",
  "chio-federation",
  "chio-guards",
  "chio-http-core",
@@ -2792,9 +2799,13 @@ dependencies = [
  "chio-kernel",
  "chio-kernel-browser",
  "chio-kernel-core",
+ "chio-link",
  "chio-manifest",
  "chio-mcp-edge",
+ "chio-mcp-remote",
  "chio-metrics-spec",
+ "chio-openapi-mcp-bridge",
+ "chio-siem",
  "chio-store-sqlite",
  "chio-wasm-guards",
  "chio-weights",
@@ -2814,7 +2825,9 @@ dependencies = [
  "tiny_http",
  "tokio",
  "toml 0.8.23",
+ "url",
  "wat",
+ "zeroize",
 ]
 
 [[package]]
@@ -3048,6 +3061,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-egress-contract"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "chio-envoy-ext-authz"
 version = "0.1.0"
 dependencies = [
@@ -3105,6 +3130,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chio-core-types",
+ "chio-egress-contract",
  "chio-guards",
  "chio-kernel",
  "reqwest 0.13.2",
@@ -3274,12 +3300,14 @@ dependencies = [
  "chio-core",
  "chio-core-types",
  "chio-cross-protocol",
+ "chio-egress-contract",
  "chio-kernel",
  "chio-metrics-spec",
  "chrono",
  "ed25519-dalek",
  "hex",
  "rand_core 0.6.4",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3405,15 +3433,20 @@ name = "chio-link"
 version = "0.1.0"
 dependencies = [
  "alloy-contract",
+ "alloy-json-rpc",
  "alloy-primitives 1.5.7",
  "alloy-provider",
+ "alloy-rpc-client",
  "alloy-sol-types 1.5.7",
+ "alloy-transport",
  "chio-core",
+ "chio-egress-contract",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+ "tower 0.5.3",
 ]
 
 [[package]]
@@ -3534,6 +3567,7 @@ dependencies = [
  "base64 0.22.1",
  "chio-control-plane",
  "chio-core-types",
+ "chio-egress-contract",
  "chio-kernel",
  "chio-mcp-adapter",
  "chio-siem",
@@ -3549,7 +3583,6 @@ dependencies = [
  "subtle",
  "tokio",
  "tracing",
- "ureq 2.12.1",
  "url",
 ]
 
@@ -3664,6 +3697,7 @@ version = "0.1.0"
 dependencies = [
  "arbitrary",
  "chio-core-types",
+ "chio-egress-contract",
  "chio-kernel",
  "chio-manifest",
  "chio-mcp-edge",
@@ -3809,6 +3843,7 @@ dependencies = [
  "chio-anchor",
  "chio-core",
  "chio-credit",
+ "chio-egress-contract",
  "chio-kernel",
  "chio-link",
  "chio-web3",
@@ -3828,6 +3863,7 @@ name = "chio-siem"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-egress-contract",
  "chio-log-redact",
  "reqwest 0.13.2",
  "rusqlite",

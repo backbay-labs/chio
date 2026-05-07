@@ -38,6 +38,7 @@
 //! # }
 //! ```
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -47,6 +48,7 @@ use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::redaction::redact_for_operator_log;
 use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence};
+use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 // -- Severity -----------------------------------------------------------------
 
@@ -203,6 +205,7 @@ pub struct PagerDutyBackend {
     routing_key: Zeroizing<String>,
     endpoint: String,
     client: reqwest::Client,
+    egress_contract: HttpEgressContract,
 }
 
 impl PagerDutyBackend {
@@ -224,7 +227,17 @@ impl PagerDutyBackend {
     /// 30s timeout is intentional and must not be silently dropped on
     /// builder failure.
     pub fn with_endpoint(routing_key: String, endpoint: String) -> Result<Self, ExportError> {
-        let client = reqwest::Client::builder()
+        let egress_contract = alert_endpoint_egress_contract("pagerduty", &endpoint)?;
+        Self::with_endpoint_and_contract(routing_key, endpoint, egress_contract)
+    }
+
+    /// Construct a PagerDuty backend with a required [`HttpEgressContract`].
+    pub fn with_endpoint_and_contract(
+        routing_key: String,
+        endpoint: String,
+        egress_contract: HttpEgressContract,
+    ) -> Result<Self, ExportError> {
+        let client = client_builder_with_contract(&egress_contract)
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| {
@@ -232,10 +245,17 @@ impl PagerDutyBackend {
                     "failed to build PagerDuty HTTP client (timeout=30s): {e}"
                 ))
             })?;
+        let probe_url = format!("{}/v2/enqueue", endpoint.trim_end_matches('/'));
+        egress_contract.enforce_url(&probe_url, 0).map_err(|err| {
+            ExportError::HttpError(format!(
+                "HttpEgressContract rejects PagerDuty endpoint: {err}"
+            ))
+        })?;
         Ok(Self {
             routing_key: Zeroizing::new(routing_key),
             endpoint,
             client,
+            egress_contract,
         })
     }
 }
@@ -267,14 +287,22 @@ impl AlertBackend for PagerDutyBackend {
                 }
             });
 
-            let response = self
+            // HttpEgressContract: every dispatch routes through send_with_contract.
+            let contract = &self.egress_contract;
+            let raw_request = self
                 .client
                 .post(&url)
                 .header("Content-Type", "application/json")
                 .json(&payload)
-                .send()
+                .build()
+                .map_err(|e| {
+                    ExportError::HttpError(format!("failed to build PagerDuty request: {e}"))
+                })?;
+            let response = send_with_contract(contract, &self.client, raw_request)
                 .await
-                .map_err(|e| ExportError::HttpError(format!("PagerDuty request failed: {e}")))?;
+                .map_err(|err| {
+                    ExportError::HttpError(format!("PagerDuty request failed: {err}"))
+                })?;
 
             let status = response.status();
             if status.is_success() || status.as_u16() == 202 {
@@ -302,6 +330,7 @@ pub struct OpsGenieBackend {
     endpoint: String,
     client: reqwest::Client,
     tags: Vec<String>,
+    egress_contract: HttpEgressContract,
 }
 
 impl OpsGenieBackend {
@@ -323,7 +352,17 @@ impl OpsGenieBackend {
     /// 30s timeout is intentional and must not be silently dropped on
     /// builder failure.
     pub fn with_endpoint(api_key: String, endpoint: String) -> Result<Self, ExportError> {
-        let client = reqwest::Client::builder()
+        let egress_contract = alert_endpoint_egress_contract("opsgenie", &endpoint)?;
+        Self::with_endpoint_and_contract(api_key, endpoint, egress_contract)
+    }
+
+    /// Construct an OpsGenie backend with a required [`HttpEgressContract`].
+    pub fn with_endpoint_and_contract(
+        api_key: String,
+        endpoint: String,
+        egress_contract: HttpEgressContract,
+    ) -> Result<Self, ExportError> {
+        let client = client_builder_with_contract(&egress_contract)
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| {
@@ -331,11 +370,18 @@ impl OpsGenieBackend {
                     "failed to build OpsGenie HTTP client (timeout=30s): {e}"
                 ))
             })?;
+        let probe_url = format!("{}/v2/alerts", endpoint.trim_end_matches('/'));
+        egress_contract.enforce_url(&probe_url, 0).map_err(|err| {
+            ExportError::HttpError(format!(
+                "HttpEgressContract rejects OpsGenie endpoint: {err}"
+            ))
+        })?;
         Ok(Self {
             api_key: Zeroizing::new(api_key),
             endpoint,
             client,
             tags: Vec::new(),
+            egress_contract,
         })
     }
 
@@ -345,6 +391,103 @@ impl OpsGenieBackend {
         self.tags = tags;
         self
     }
+}
+
+fn alert_endpoint_egress_contract(
+    namespace_prefix: &str,
+    endpoint: &str,
+) -> Result<HttpEgressContract, ExportError> {
+    let parsed = url::Url::parse(endpoint).map_err(|error| {
+        ExportError::HttpError(format!(
+            "invalid {namespace_prefix} endpoint URL `{endpoint}`: {error}"
+        ))
+    })?;
+    let authority = normalized_alert_authority(&parsed)?;
+    let mut allowed_schemes = BTreeSet::new();
+    allowed_schemes.insert(parsed.scheme().to_ascii_lowercase());
+    let mut allowed_authority_set = BTreeSet::new();
+    allowed_authority_set.insert(authority.clone());
+    let mut deny_loopback = true;
+    let mut deny_link_local = true;
+    let mut deny_ipv6_ula = true;
+
+    if let Some(host) = parsed.host() {
+        match host {
+            url::Host::Domain(domain) => {
+                let normalized = domain.trim_end_matches('.').to_ascii_lowercase();
+                if matches!(normalized.as_str(), "localhost" | "localhost.localdomain") {
+                    deny_loopback = false;
+                }
+            }
+            url::Host::Ipv4(address) => {
+                if address.is_loopback() {
+                    deny_loopback = false;
+                }
+                if address.is_link_local() {
+                    deny_link_local = false;
+                }
+            }
+            url::Host::Ipv6(address) => {
+                if let Some(mapped) = address.to_ipv4_mapped() {
+                    if mapped.is_loopback() {
+                        deny_loopback = false;
+                    }
+                    if mapped.is_link_local() {
+                        deny_link_local = false;
+                    }
+                }
+                if address.is_loopback() {
+                    deny_loopback = false;
+                }
+                if is_alert_ipv6_unicast_link_local(&address) {
+                    deny_link_local = false;
+                }
+                if is_alert_ipv6_unique_local(&address) {
+                    deny_ipv6_ula = false;
+                }
+            }
+        }
+    }
+
+    let contract = HttpEgressContract {
+        tenant_egress_namespace: format!("siem:{namespace_prefix}:{authority}"),
+        allowed_schemes,
+        allowed_authority_set,
+        deny_loopback,
+        deny_link_local,
+        deny_ipv6_ula,
+        max_redirect_chain: 3,
+        max_response_bytes: 1024 * 1024,
+    };
+    contract.validate().map_err(|error| {
+        ExportError::HttpError(format!(
+            "{namespace_prefix} egress contract is invalid: {error}"
+        ))
+    })?;
+    Ok(contract)
+}
+
+fn normalized_alert_authority(url: &url::Url) -> Result<String, ExportError> {
+    let host = url.host_str().ok_or_else(|| {
+        ExportError::HttpError(format!("endpoint URL `{url}` is missing an authority"))
+    })?;
+    let host = match url.host() {
+        Some(url::Host::Ipv6(_)) => format!("[{}]", host.to_ascii_lowercase()),
+        Some(url::Host::Domain(_)) => host.trim_end_matches('.').to_ascii_lowercase(),
+        _ => host.to_ascii_lowercase(),
+    };
+    Ok(match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    })
+}
+
+fn is_alert_ipv6_unicast_link_local(address: &std::net::Ipv6Addr) -> bool {
+    (address.segments()[0] & 0xffc0) == 0xfe80
+}
+
+fn is_alert_ipv6_unique_local(address: &std::net::Ipv6Addr) -> bool {
+    (address.segments()[0] & 0xfe00) == 0xfc00
 }
 
 impl AlertBackend for OpsGenieBackend {
@@ -374,7 +517,9 @@ impl AlertBackend for OpsGenieBackend {
                 "details": alert.receipt_json,
             });
 
-            let response = self
+            // HttpEgressContract: every dispatch routes through send_with_contract.
+            let contract = &self.egress_contract;
+            let raw_request = self
                 .client
                 .post(&url)
                 .header("Content-Type", "application/json")
@@ -383,9 +528,13 @@ impl AlertBackend for OpsGenieBackend {
                     format!("GenieKey {}", self.api_key.as_str()),
                 )
                 .json(&body)
-                .send()
+                .build()
+                .map_err(|e| {
+                    ExportError::HttpError(format!("failed to build OpsGenie request: {e}"))
+                })?;
+            let response = send_with_contract(contract, &self.client, raw_request)
                 .await
-                .map_err(|e| ExportError::HttpError(format!("OpsGenie request failed: {e}")))?;
+                .map_err(|err| ExportError::HttpError(format!("OpsGenie request failed: {err}")))?;
 
             let status = response.status();
             if status.is_success() || status.as_u16() == 202 {

@@ -24,6 +24,7 @@ use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
 use crate::redaction::redact_for_operator_log;
 use chio_core::receipt::Decision;
+use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 /// On-the-wire format for the Sumo Logic batch body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -56,6 +57,9 @@ pub struct SumoLogicConfig {
     pub format: SumoLogicFormat,
     /// HTTP request timeout. Default: 30 seconds.
     pub timeout: Duration,
+    /// Typed HTTP egress contract enforced before every dispatch and on
+    /// every redirect hop. Required in production.
+    pub egress_contract: Option<HttpEgressContract>,
 }
 
 impl Default for SumoLogicConfig {
@@ -67,6 +71,7 @@ impl Default for SumoLogicConfig {
             source_host: None,
             format: SumoLogicFormat::Json,
             timeout: Duration::from_secs(30),
+            egress_contract: None,
         }
     }
 }
@@ -99,8 +104,18 @@ impl SumoLogicExporter {
             "Sumo Logic http_source_url must use https:// -- the collector \
              token is embedded in the URL and must not travel over cleartext",
         )?;
+        // HttpEgressContract: every Sumo Logic dispatch must run through
+        // the typed egress contract.
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError("Sumo Logic exporter requires an HttpEgressContract".to_string())
+        })?;
+        contract
+            .enforce_url(&config.http_source_url, 0)
+            .map_err(|err| {
+                ExportError::HttpError(format!("HttpEgressContract rejects Sumo URL: {err}"))
+            })?;
 
-        let client = reqwest::Client::builder()
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
@@ -122,7 +137,23 @@ impl SumoLogicExporter {
                 "Sumo Logic http_source_url must not be empty".to_string(),
             ));
         }
-        let client = reqwest::Client::builder()
+        if config.egress_contract.is_none() {
+            let url = url::Url::parse(&config.http_source_url).map_err(|e| {
+                ExportError::HttpError(format!("invalid Sumo URL for test contract: {e}"))
+            })?;
+            let host = url.host_str().unwrap_or("localhost");
+            let authority = match url.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host.to_string(),
+            };
+            config.egress_contract = Some(HttpEgressContract::permissive_for_tests(&authority));
+        }
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError(
+                "Sumo Logic test exporter requires an HttpEgressContract".to_string(),
+            )
+        })?;
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
@@ -207,7 +238,14 @@ impl Exporter for SumoLogicExporter {
             // paths enforce the https:// constraint at construction time.
             let _ = self.allow_plaintext;
 
-            let response = self
+            // HttpEgressContract: every dispatch routes through send_with_contract.
+            let contract = self.config.egress_contract.as_ref().ok_or_else(|| {
+                ExportError::HttpError(
+                    "Sumo Logic exporter is missing HttpEgressContract; substrate fails closed"
+                        .to_string(),
+                )
+            })?;
+            let raw_request = self
                 .client
                 .post(&self.config.http_source_url)
                 .header("Content-Type", self.content_type())
@@ -215,10 +253,14 @@ impl Exporter for SumoLogicExporter {
                 .header("X-Sumo-Name", &self.config.source_name)
                 .header("X-Sumo-Host", &hostname)
                 .body(body)
-                .send()
-                .await
+                .build()
                 .map_err(|e| {
-                    ExportError::HttpError(format!("Sumo HTTP source request failed: {e}"))
+                    ExportError::HttpError(format!("failed to build Sumo request: {e}"))
+                })?;
+            let response = send_with_contract(contract, &self.client, raw_request)
+                .await
+                .map_err(|err| {
+                    ExportError::HttpError(format!("Sumo HTTP source request failed: {err}"))
                 })?;
 
             let status = response.status();
@@ -282,6 +324,9 @@ mod tests {
     fn new_accepts_https() {
         let cfg = SumoLogicConfig {
             http_source_url: "https://collectors.sumologic.com/foo".to_string(),
+            egress_contract: Some(HttpEgressContract::permissive_for_tests(
+                "collectors.sumologic.com",
+            )),
             ..SumoLogicConfig::default()
         };
         assert!(SumoLogicExporter::new(cfg).is_ok());

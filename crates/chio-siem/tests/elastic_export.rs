@@ -309,6 +309,9 @@ fn elastic_new_accepts_https() {
         endpoint: "https://es.example.com:9200".to_string(),
         index_name: "chio-receipts".to_string(),
         auth: ElasticAuthConfig::ApiKey("test-api-key".to_string()),
+        egress_contract: Some(
+            chio_egress_contract::HttpEgressContract::permissive_for_tests("es.example.com:9200"),
+        ),
         ..ElasticConfig::default()
     };
 
@@ -347,6 +350,9 @@ fn elastic_new_accepts_uppercase_https_scheme() {
         endpoint: "HTTPS://es.example.com:9200".to_string(),
         index_name: "chio-receipts".to_string(),
         auth: ElasticAuthConfig::ApiKey("test-api-key".to_string()),
+        egress_contract: Some(
+            chio_egress_contract::HttpEgressContract::permissive_for_tests("es.example.com:9200"),
+        ),
         ..ElasticConfig::default()
     };
     let result = ElasticsearchExporter::new(config);

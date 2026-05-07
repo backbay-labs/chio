@@ -25,11 +25,11 @@ use chio_core_types::capability::{
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_http_core::{
-    handle_batch_respond, handle_get_approval, handle_list_pending, handle_respond,
-    http_status_metadata_decision, http_status_metadata_final, ApprovalAdmin, ApprovalHandlerError,
-    AuthMethod, BatchRespondRequest, CallerIdentity, ChioHttpRequest, EvaluateResponse,
-    HealthResponse, HttpMethod, HttpReceipt, HttpReceiptBody, PendingQuery, RespondRequest,
-    SidecarStatus, Verdict, VerifyReceiptResponse,
+    client_builder_with_contract, handle_batch_respond, handle_get_approval, handle_list_pending,
+    handle_respond, http_status_metadata_decision, http_status_metadata_final, send_with_contract,
+    ApprovalAdmin, ApprovalHandlerError, AuthMethod, BatchRespondRequest, CallerIdentity,
+    ChioHttpRequest, EvaluateResponse, HealthResponse, HttpEgressContract, HttpMethod, HttpReceipt,
+    HttpReceiptBody, PendingQuery, RespondRequest, SidecarStatus, Verdict, VerifyReceiptResponse,
 };
 use chio_kernel::{ApprovalStore, InMemoryApprovalStore};
 use chio_openapi::{ChioExtensions, DefaultPolicy};
@@ -37,7 +37,7 @@ use chio_store_sqlite::SqliteApprovalStore;
 
 use crate::error::ProtectError;
 use crate::evaluator::{RequestEvaluator, RouteEntry};
-use crate::spec_discovery::{discover_spec, load_spec_from_file};
+use crate::spec_discovery::{default_upstream_egress_contract, discover_spec, load_spec_from_file};
 
 /// Configuration for the protect proxy.
 pub struct ProtectConfig {
@@ -182,6 +182,7 @@ struct ProxyState {
     signer_keypair: Keypair,
     upstream: String,
     http_client: reqwest::Client,
+    egress_contract: HttpEgressContract,
     approval_admin: ApprovalAdmin,
     receipt_log: Mutex<ReceiptLog>,
     receipt_store: Option<Mutex<SqliteReceiptStore>>,
@@ -292,11 +293,14 @@ impl ProtectProxy {
                 )
             };
 
+        let egress_contract = default_upstream_egress_contract(&self.config.upstream)?;
+        let http_client = client_builder_with_contract(&egress_contract).build()?;
         let state = Arc::new(ProxyState {
             evaluator,
             signer_keypair: keypair,
             upstream: self.config.upstream.clone(),
-            http_client: reqwest::Client::new(),
+            http_client,
+            egress_contract,
             approval_admin: ApprovalAdmin::new(approval_store),
             receipt_log: Mutex::new(receipt_log),
             receipt_store,
@@ -563,11 +567,24 @@ async fn proxy_handler(State(state): State<Arc<ProxyState>>, request: Request<Bo
         upstream_req = upstream_req.body(body_bytes.to_vec());
     }
 
-    match upstream_req.send().await {
+    let upstream_req = match upstream_req.build() {
+        Ok(request) => request,
+        Err(error) => {
+            return finalize_bad_gateway(
+                &state,
+                &result.receipt,
+                format!("failed to build upstream request: {error}"),
+            )
+            .await;
+        }
+    };
+
+    match send_with_contract(&state.egress_contract, &state.http_client, upstream_req).await {
         Ok(resp) => {
             let status =
                 StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
             let response_headers = resp.headers().clone();
+            let response_body = resp.body().to_vec();
             let final_receipt =
                 match finalize_and_record_receipt(&state, &result.receipt, status.as_u16()).await {
                     Ok(receipt) => receipt,
@@ -584,19 +601,9 @@ async fn proxy_handler(State(state): State<Arc<ProxyState>>, request: Request<Bo
             // Add receipt ID header.
             response_builder = response_builder.header("X-Chio-Receipt-Id", &final_receipt.id);
 
-            match resp.bytes().await {
-                Ok(body) => response_builder
-                    .body(Body::from(body))
-                    .unwrap_or_else(|_| (StatusCode::BAD_GATEWAY, "bad gateway").into_response()),
-                Err(error) => {
-                    finalize_bad_gateway(
-                        &state,
-                        &result.receipt,
-                        format!("failed to read upstream response: {error}"),
-                    )
-                    .await
-                }
-            }
+            response_builder
+                .body(Body::from(response_body))
+                .unwrap_or_else(|_| (StatusCode::BAD_GATEWAY, "bad gateway").into_response())
         }
         Err(e) => {
             warn!("upstream error: {e}");
@@ -2066,11 +2073,16 @@ paths:
             "test-policy".to_string(),
             Arc::clone(&approval_store),
         );
+        let egress_contract = default_upstream_egress_contract(&upstream).test_unwrap();
+        let http_client = client_builder_with_contract(&egress_contract)
+            .build()
+            .test_unwrap();
         Arc::new(ProxyState {
             evaluator,
             signer_keypair: keypair,
             upstream,
-            http_client: reqwest::Client::new(),
+            http_client,
+            egress_contract,
             approval_admin: ApprovalAdmin::new(approval_store),
             receipt_log: Mutex::new(ReceiptLog { receipts }),
             receipt_store,

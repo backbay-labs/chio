@@ -225,7 +225,7 @@ jobs:
           bash scripts/criterion-compare.sh \
             --baseline "${{ steps.criterion.outputs.baseline }}" \
             --current "${{ steps.criterion.outputs.current }}" \
-            --threshold-percent 15
+            --threshold-percent 10
 
       - name: Kernel bench baseline unavailable
         if: steps.criterion.outputs.baseline == ''

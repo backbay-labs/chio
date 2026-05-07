@@ -9,7 +9,8 @@
 //! `wasm32-unknown-unknown` unchanged.
 
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Constraint, Operation, ToolGrant,
+    compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
+    CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, Constraint, Operation, ToolGrant,
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
@@ -55,6 +56,62 @@ fn make_capability_with_constraints(
         delegation_chain: vec![],
     };
     CapabilityToken::sign(body, issuer).unwrap()
+}
+
+fn make_v2_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
+    let parent_scope = ChioScope {
+        grants: vec![ToolGrant {
+            server_id: "srv-a".to_string(),
+            tool_name: "echo".to_string(),
+            operations: vec![Operation::Invoke, Operation::Delegate],
+            constraints: vec![],
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        }],
+        resource_grants: vec![],
+        prompt_grants: vec![],
+    };
+    let child_scope = ChioScope {
+        grants: vec![ToolGrant {
+            server_id: "srv-a".to_string(),
+            tool_name: "echo".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![],
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        }],
+        resource_grants: vec![],
+        prompt_grants: vec![],
+    };
+    let proof = AttenuationProof {
+        parent_scope_hash: scope_hash(&parent_scope).unwrap(),
+        child_scope_hash: scope_hash(&child_scope).unwrap(),
+        normalized_subset_proof: compute_attenuation_witness(&parent_scope, &child_scope).unwrap(),
+    };
+    let body = CapabilityTokenBody {
+        id: "cap-v2-evaluate".to_string(),
+        issuer: issuer.public_key(),
+        subject: subject.public_key(),
+        scope: child_scope,
+        issued_at: ISSUED_AT,
+        expires_at: EXPIRES_AT,
+        delegation_chain: vec![],
+    };
+    CapabilityToken::sign_v2(
+        CapabilityTokenV2Body {
+            body,
+            caveats: vec![],
+            scope_attenuations: vec![],
+            attenuation_proof: proof,
+            budget_share_bps: None,
+        },
+        issuer,
+    )
+    .unwrap()
 }
 
 fn make_request(subject: &Keypair) -> PortableToolCallRequest {
@@ -125,6 +182,32 @@ fn evaluate_allow_path() {
     assert!(verdict.is_allow());
     assert_eq!(verdict.matched_grant_index, Some(0));
     assert!(verdict.verified.is_some());
+}
+
+#[test]
+fn evaluate_rejects_v2_without_trust_root_binding() {
+    let subject = Keypair::generate();
+    let issuer = Keypair::generate();
+    let capability = make_v2_capability(&subject, &issuer);
+    let request = make_request(&subject);
+    let clock = FixedClock::new(ISSUED_AT + 1);
+    let trusted = [issuer.public_key()];
+    let guards: Vec<&dyn Guard> = vec![];
+
+    let verdict = evaluate(EvaluateInput {
+        request: &request,
+        capability: &capability,
+        trusted_issuers: &trusted,
+        clock: &clock,
+        guards: &guards,
+        session_filesystem_roots: None,
+    });
+
+    assert!(verdict.is_deny());
+    assert!(verdict.verified.is_none());
+    let reason = verdict.reason.unwrap();
+    assert!(reason.contains("chain-binding"), "reason was: {reason}");
+    assert!(reason.contains("trust-root"), "reason was: {reason}");
 }
 
 #[test]

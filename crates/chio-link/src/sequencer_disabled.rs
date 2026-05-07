@@ -1,3 +1,5 @@
+use chio_egress_contract::HttpEgressContract;
+
 use crate::config::ChainlinkNetworkConfig;
 use crate::PriceOracleError;
 
@@ -20,6 +22,7 @@ pub struct SequencerStatus {
 pub async fn read_sequencer_status(
     chain: &ChainlinkNetworkConfig,
     _now: u64,
+    _egress_contract: &HttpEgressContract,
 ) -> Result<Option<SequencerStatus>, PriceOracleError> {
     if chain.sequencer_uptime_feed.is_some() {
         return Err(PriceOracleError::UnsupportedBackend(

@@ -9,6 +9,8 @@ mod tests {
     use rsa::rand_core::OsRng;
     use rsa::signature::{RandomizedSigner as _, SignatureEncoding as _};
     use serde_json::json;
+    use std::io::Read as _;
+    use std::net::ToSocketAddrs as _;
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
@@ -166,6 +168,7 @@ mod tests {
             enterprise_provider_registry: None,
             sender_dpop_nonce_store,
             sender_dpop_config,
+            egress_contract: None,
         }
     }
 
@@ -243,6 +246,8 @@ mod tests {
             shared_hosted_owner: false,
             wrapped_command: "python3".to_string(),
             wrapped_args: vec!["mock.py".to_string()],
+            egress_contract: None,
+
         }
     }
 
@@ -1454,6 +1459,8 @@ mod tests {
             shared_hosted_owner: false,
             wrapped_command: "python3".to_string(),
             wrapped_args: vec!["mock.py".to_string()],
+            egress_contract: None,
+
         };
 
         let discovery_url = resolve_identity_provider_discovery_url(&config)
@@ -1462,6 +1469,90 @@ mod tests {
         assert_eq!(
             discovery_url.as_str(),
             "https://id.example.com/oauth2/default/.well-known/openid-configuration"
+        );
+    }
+
+    fn spawn_localhost_json_server(body: &'static str) -> (std::net::SocketAddr, std::thread::JoinHandle<()>) {
+        let bind_ip = ("localhost", 0)
+            .to_socket_addrs()
+            .expect("resolve localhost")
+            .next()
+            .map(|addr| addr.ip())
+            .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+        let listener = std::net::TcpListener::bind(std::net::SocketAddr::new(bind_ip, 0))
+            .expect("bind localhost test server");
+        let addr = listener.local_addr().expect("read local addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept request");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            loop {
+                let read = stream.read(&mut buffer).expect("read request");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write JSON response");
+        });
+        (addr, handle)
+    }
+
+    #[tokio::test]
+    async fn oidc_fetch_uses_contract_backed_client_for_hostname_url() {
+        let (addr, handle) = spawn_localhost_json_server("{\"ok\":true}");
+        let url = Url::parse(&format!(
+            "http://localhost:{}/.well-known/openid-configuration",
+            addr.port()
+        ))
+        .expect("parse OIDC URL");
+        let contract =
+            HttpEgressContract::permissive_for_tests(&format!("localhost:{}", addr.port()));
+
+        let json: Value =
+            fetch_identity_provider_json(&url, "test OIDC discovery", Some(&contract))
+                .await
+                .expect("OIDC fetch uses contract-backed reqwest client");
+
+        assert_eq!(json["ok"].as_bool(), Some(true));
+        handle.join().expect("join localhost JSON server");
+    }
+
+    #[tokio::test]
+    async fn oidc_fetch_rejects_special_use_address_contract() {
+        let url = Url::parse("http://169.254.169.254/.well-known/openid-configuration")
+            .expect("parse link-local OIDC URL");
+        let contract = HttpEgressContract {
+            tenant_egress_namespace: "chio-mcp-remote-oidc-test".to_string(),
+            allowed_schemes: std::collections::BTreeSet::from(["http".to_string()]),
+            allowed_authority_set: std::collections::BTreeSet::from([
+                "169.254.169.254".to_string()
+            ]),
+            deny_loopback: true,
+            deny_link_local: true,
+            deny_ipv6_ula: true,
+            max_redirect_chain: 0,
+            max_response_bytes: 64 * 1024,
+        };
+
+        let error =
+            fetch_identity_provider_json::<Value>(&url, "test OIDC discovery", Some(&contract))
+                .await
+                .expect_err("link-local OIDC URL should fail closed");
+        let message = error.to_string();
+        assert!(
+            message.contains("HttpEgressContract") && message.contains("link-local"),
+            "unexpected OIDC egress denial: {message}"
         );
     }
 
@@ -1535,6 +1626,8 @@ mod tests {
             shared_hosted_owner: false,
             wrapped_command: "python3".to_string(),
             wrapped_args: vec!["mock.py".to_string()],
+            egress_contract: None,
+
         };
 
         let error = build_remote_auth_state(&config, "127.0.0.1:0".parse().unwrap(), None, None)

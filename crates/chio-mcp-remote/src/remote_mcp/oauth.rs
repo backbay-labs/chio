@@ -1300,7 +1300,21 @@ impl IntrospectionBearerVerifier {
         {
             request = request.basic_auth(client_id, Some(client_secret));
         }
-        let response = request.send().await.map_err(|error| {
+        let contract = self.egress_contract.as_ref().ok_or_else(|| {
+            plain_http_error(
+                StatusCode::BAD_GATEWAY,
+                "token introspection requires an HttpEgressContract",
+            )
+        })?;
+        let raw_request = request.build().map_err(|error| {
+            plain_http_error(
+                StatusCode::BAD_GATEWAY,
+                &format!("failed to build token introspection request: {error}"),
+            )
+        })?;
+        let response = send_with_contract(contract, &self.client, raw_request)
+            .await
+            .map_err(|error| {
             plain_http_error(
                 StatusCode::BAD_GATEWAY,
                 &format!("token introspection endpoint unavailable: {error}"),

@@ -4,7 +4,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_anchor::{
     build_anchor_inclusion_proof_from_evidence_bundle, build_chain_anchor_record,
-    confirm_root_publication, prepare_root_publication, publish_root, EvmAnchorTarget,
+    confirm_root_publication, evm_anchor_devnet_rpc_egress_contract, prepare_root_publication,
+    publish_root, EvmAnchorTarget,
 };
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::capability::MonetaryAmount;
@@ -388,7 +389,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
         .accounts
         .clone()
         .ok_or("runtime devnet accounts missing")?;
-    let config = deployment.into_chain_config();
+    let config = deployment.into_chain_config()?;
     let binding = operator_binding(
         &operator_keypair,
         &config.chain_id,
@@ -522,7 +523,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         .accounts
         .clone()
         .ok_or("runtime devnet accounts missing")?;
-    let config = deployment.into_chain_config();
+    let config = deployment.into_chain_config()?;
     let binding = operator_binding(
         &operator_keypair,
         &config.chain_id,
@@ -598,9 +599,16 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         publisher_address: config.operator_address.clone(),
     };
     let publication = prepare_root_publication(&anchor_target, &checkpoint, &binding)?;
-    let publish_tx = publish_root(&publication).await?;
-    let confirmed_anchor =
-        confirm_root_publication(&anchor_target, &checkpoint, &binding, &publish_tx).await?;
+    let egress_contract = evm_anchor_devnet_rpc_egress_contract(&config.rpc_url)?;
+    let publish_tx = publish_root(&publication, &egress_contract).await?;
+    let confirmed_anchor = confirm_root_publication(
+        &anchor_target,
+        &checkpoint,
+        &binding,
+        &publish_tx,
+        &egress_contract,
+    )
+    .await?;
     let chain_anchor = build_chain_anchor_record(&anchor_target, &checkpoint, &confirmed_anchor);
     let evidence_bundle = EvidenceExportBundle {
         query: EvidenceExportQuery::default(),

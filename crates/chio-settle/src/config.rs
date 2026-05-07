@@ -1,7 +1,11 @@
+use std::collections::BTreeSet;
 use std::fs;
+use std::net::{IpAddr, Ipv6Addr};
 use std::path::Path;
 
 use chio_core::web3::Web3FinalityMode;
+use chio_egress_contract::HttpEgressContract;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use crate::SettlementError;
@@ -211,6 +215,7 @@ pub struct SettlementChainConfig {
     pub chain_id: String,
     pub network_name: String,
     pub rpc_url: String,
+    pub egress_contract: HttpEgressContract,
     pub escrow_contract: String,
     pub bond_vault_contract: String,
     pub identity_registry_contract: String,
@@ -260,8 +265,98 @@ impl SettlementChainConfig {
         self.oracle.validate()?;
         self.evidence_substrate.validate()?;
         self.policy.validate()?;
+        self.validate_rpc_egress_contract()?;
         Ok(())
     }
+
+    pub fn validate_rpc_egress_contract(&self) -> Result<(), SettlementError> {
+        self.egress_contract
+            .validate_dispatchable_with_pinned_dns()
+            .map_err(|error| {
+                SettlementError::InvalidInput(format!(
+                    "invalid settlement RPC HttpEgressContract: {error}"
+                ))
+            })?;
+        self.egress_contract
+            .enforce_url_with_dns(&self.rpc_url, 0)
+            .map_err(|error| {
+                SettlementError::InvalidInput(format!(
+                    "settlement RPC URL is not allowed by HttpEgressContract: {error}"
+                ))
+            })?;
+        Ok(())
+    }
+}
+
+pub fn settlement_devnet_rpc_egress_contract(
+    rpc_url: &str,
+) -> Result<HttpEgressContract, SettlementError> {
+    devnet_rpc_egress_contract_for_url("chio-settle-devnet-rpc", rpc_url)
+}
+
+fn devnet_rpc_egress_contract_for_url(
+    namespace: &str,
+    rpc_url: &str,
+) -> Result<HttpEgressContract, SettlementError> {
+    let url = Url::parse(rpc_url)
+        .map_err(|error| SettlementError::InvalidInput(format!("invalid RPC URL: {error}")))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| SettlementError::InvalidInput("RPC URL must include a host".to_string()))?;
+    if !rpc_host_is_loopback(host) {
+        return Err(SettlementError::InvalidInput(
+            "devnet settlement RPC egress contract requires a loopback RPC URL".to_string(),
+        ));
+    }
+
+    let mut allowed_schemes = BTreeSet::new();
+    allowed_schemes.insert(url.scheme().to_ascii_lowercase());
+    let mut allowed_authority_set = BTreeSet::new();
+    allowed_authority_set.insert(normalized_rpc_authority(&url, host));
+    let contract = HttpEgressContract {
+        tenant_egress_namespace: namespace.to_string(),
+        allowed_schemes,
+        allowed_authority_set,
+        deny_loopback: false,
+        deny_link_local: true,
+        deny_ipv6_ula: true,
+        max_redirect_chain: 0,
+        max_response_bytes: 64 * 1024 * 1024,
+    };
+    contract
+        .validate_dispatchable_with_pinned_dns()
+        .map_err(|error| {
+            SettlementError::InvalidInput(format!(
+                "invalid settlement RPC HttpEgressContract: {error}"
+            ))
+        })?;
+    contract.enforce_url_with_dns(rpc_url, 0).map_err(|error| {
+        SettlementError::InvalidInput(format!(
+            "settlement RPC URL is not allowed by HttpEgressContract: {error}"
+        ))
+    })?;
+    Ok(contract)
+}
+
+fn normalized_rpc_authority(url: &Url, host: &str) -> String {
+    let host = if host.parse::<Ipv6Addr>().is_ok() {
+        format!("[{host}]")
+    } else {
+        host.trim_end_matches('.').to_ascii_lowercase()
+    };
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    }
+}
+
+fn rpc_host_is_loopback(host: &str) -> bool {
+    matches!(
+        host.trim_end_matches('.').to_ascii_lowercase().as_str(),
+        "localhost" | "localhost.localdomain"
+    ) || host
+        .parse::<IpAddr>()
+        .is_ok_and(|address| address.is_loopback())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -320,12 +415,13 @@ impl LocalDevnetDeployment {
             .map_err(|error| SettlementError::Serialization(error.to_string()))
     }
 
-    #[must_use]
-    pub fn into_chain_config(self) -> SettlementChainConfig {
-        SettlementChainConfig {
+    pub fn into_chain_config(self) -> Result<SettlementChainConfig, SettlementError> {
+        let egress_contract = settlement_devnet_rpc_egress_contract(&self.rpc_url)?;
+        Ok(SettlementChainConfig {
             chain_id: self.chain_id,
             network_name: self.network_name,
             rpc_url: self.rpc_url,
+            egress_contract,
             escrow_contract: self.contracts.escrow,
             bond_vault_contract: self.contracts.bond_vault,
             identity_registry_contract: self.contracts.identity_registry,
@@ -339,13 +435,29 @@ impl LocalDevnetDeployment {
             },
             evidence_substrate: SettlementEvidenceConfig::default(),
             policy: SettlementPolicyConfig::default(),
-        }
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    trait TestResultOk<T, E> {
+        fn test_unwrap(self) -> T;
+    }
+
+    impl<T, E> TestResultOk<T, E> for Result<T, E>
+    where
+        E: std::fmt::Display,
+    {
+        fn test_unwrap(self) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("expected Ok result: {error}"),
+            }
+        }
+    }
 
     trait TestResultErr<T, E> {
         fn test_unwrap_err(self) -> E;
@@ -367,7 +479,9 @@ mod tests {
         SettlementChainConfig {
             chain_id: "eip155:8453".to_string(),
             network_name: "base-mainnet".to_string(),
-            rpc_url: "https://example.invalid".to_string(),
+            rpc_url: "http://127.0.0.1:8545".to_string(),
+            egress_contract: settlement_devnet_rpc_egress_contract("http://127.0.0.1:8545")
+                .test_unwrap(),
             escrow_contract: "0x1000000000000000000000000000000000000001".to_string(),
             bond_vault_contract: "0x2000000000000000000000000000000000000001".to_string(),
             identity_registry_contract: "0x3000000000000000000000000000000000000001".to_string(),
@@ -434,7 +548,7 @@ mod tests {
             accounts: None,
         };
 
-        let config = deployment.into_chain_config();
+        let config = deployment.into_chain_config().test_unwrap();
         assert_eq!(
             config.oracle.authority,
             SettlementOracleAuthority::ChioLinkReceiptEvidence
@@ -443,5 +557,56 @@ mod tests {
             config.oracle.price_resolver_contract.as_deref(),
             Some("0x1000000000000000000000000000000000000005")
         );
+    }
+
+    #[test]
+    fn chain_config_requires_matching_rpc_egress_contract() {
+        let mut config = sample_chain_config();
+        config.egress_contract =
+            settlement_devnet_rpc_egress_contract("http://127.0.0.1:9545").test_unwrap();
+
+        let error = config.validate().test_unwrap_err();
+
+        assert!(error.to_string().contains("HttpEgressContract"));
+    }
+
+    #[test]
+    fn chain_config_does_not_self_authorize_rpc_url_authority() {
+        for rpc_url in [
+            "http://127.0.0.1:8545",
+            "http://10.0.0.5:8545",
+            "http://192.168.1.20:8545",
+            "http://203.0.113.10:8545",
+        ] {
+            let mut config = sample_chain_config();
+            config.rpc_url = rpc_url.to_string();
+            config.egress_contract =
+                settlement_devnet_rpc_egress_contract("http://127.0.0.1:9545").test_unwrap();
+
+            let error = config.validate().test_unwrap_err();
+
+            assert!(
+                error.to_string().contains("HttpEgressContract"),
+                "unexpected self-authorization denial for {rpc_url}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn devnet_rpc_egress_contract_only_authorizes_loopback() {
+        assert!(settlement_devnet_rpc_egress_contract("http://127.0.0.1:8545").is_ok());
+        assert!(settlement_devnet_rpc_egress_contract("http://localhost:8545").is_ok());
+        for rpc_url in [
+            "http://10.0.0.5:8545",
+            "http://192.168.1.20:8545",
+            "http://172.16.0.2:8545",
+            "http://203.0.113.10:8545",
+        ] {
+            let error = settlement_devnet_rpc_egress_contract(rpc_url).test_unwrap_err();
+            assert!(
+                error.to_string().contains("requires a loopback RPC URL"),
+                "unexpected devnet egress error for {rpc_url}: {error}"
+            );
+        }
     }
 }

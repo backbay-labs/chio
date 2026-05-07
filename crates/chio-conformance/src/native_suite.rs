@@ -535,6 +535,9 @@ fn execute_http_scenario(
             format!("/{path}")
         }
     );
+    // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: the native conformance HTTP
+    // driver targets a caller-supplied harness endpoint, not production
+    // substrate tool egress.
     let client = Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -545,6 +548,8 @@ fn execute_http_scenario(
             scenario_id: scenario.id.clone(),
             request,
         })
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: native conformance harness
+        // dispatch, outside substrate tool egress.
         .send()
         .map_err(|error| NativeSuiteError::Http(error.to_string()))?;
     if !response.status().is_success() {

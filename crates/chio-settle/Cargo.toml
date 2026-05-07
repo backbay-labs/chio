@@ -16,6 +16,7 @@ default = ["web3"]
 web3 = [
     "dep:alloy-primitives",
     "dep:alloy-sol-types",
+    "dep:chio-egress-contract",
     "dep:chio-core",
     "dep:chio-credit",
     "dep:chio-web3",
@@ -34,6 +35,7 @@ web3 = [
 [dependencies]
 chio-core = { path = "../chio-core", optional = true }
 chio-credit = { path = "../chio-credit", optional = true }
+chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"], optional = true }
 chio-web3 = { path = "../chio-web3", optional = true }
 chio-web3-bindings = { path = "../chio-web3-bindings", default-features = false, features = ["web3"], optional = true }
 alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"], optional = true }

@@ -307,6 +307,7 @@ async fn splunk_hec_rejects_oversized_error_response_body() {
         index: None,
         host: None,
         timeout: Duration::from_secs(30),
+        egress_contract: None,
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -352,6 +353,7 @@ async fn splunk_hec_honors_configured_timeout() {
         index: None,
         host: None,
         timeout: Duration::from_millis(50),
+        egress_contract: None,
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -423,6 +425,7 @@ async fn splunk_hec_200_with_nonzero_code_classifies_as_partial_failure() {
         index: None,
         host: None,
         timeout: Duration::from_secs(30),
+        egress_contract: None,
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -468,6 +471,7 @@ async fn splunk_hec_200_with_invalid_event_number_reports_per_event_failures() {
         index: None,
         host: None,
         timeout: Duration::from_secs(30),
+        egress_contract: None,
     };
     let exporter = SplunkHecExporter::new_plaintext_for_tests(config).expect("exporter builds");
 
@@ -503,6 +507,11 @@ fn splunk_hec_accepts_https_endpoint() {
         sourcetype: "chio:receipt".to_string(),
         index: None,
         host: None,
+        egress_contract: Some(
+            chio_egress_contract::HttpEgressContract::permissive_for_tests(
+                "splunk.example.com:8088",
+            ),
+        ),
         ..SplunkConfig::default()
     };
     // Construction should succeed; no network call is made here.

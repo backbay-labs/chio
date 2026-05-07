@@ -207,6 +207,8 @@ jobs:
           ./scripts/check-workspace-layering.sh
           bash ./scripts/check-sre-metrics-registry.sh
           bash ./scripts/check-log-redaction.sh
+          bash ./scripts/check-http-egress-contract.sh
+          bash ./scripts/tests/check-http-egress-contract.test.sh
 
       - name: Workspace proof report
         env:

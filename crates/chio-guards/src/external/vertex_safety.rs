@@ -25,7 +25,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
-use super::bedrock::{classify_reqwest_error, classify_status_error};
+use super::bedrock::classify_status_error;
+use super::http_egress;
 use super::{ExternalGuard, ExternalGuardError, GuardCallContext};
 
 /// Guard name reported by [`VertexSafetyGuard::name`].
@@ -213,21 +214,28 @@ struct PromptFeedback {
 pub struct VertexSafetyGuard {
     cfg: VertexSafetyConfig,
     http: Client,
+    egress_contract: chio_egress_contract::HttpEgressContract,
 }
 
 impl VertexSafetyGuard {
     /// Build a guard with an internally-owned [`reqwest::Client`].
     pub fn new(cfg: VertexSafetyConfig) -> Result<Self, ExternalGuardError> {
-        let http = Client::builder()
-            .timeout(cfg.timeout)
-            .build()
-            .map_err(|e| ExternalGuardError::Permanent(format!("reqwest build: {e}")))?;
-        Ok(Self { cfg, http })
+        let egress_contract = http_egress::contract_for_url(GUARD_NAME, &cfg.generate_url())?;
+        let http = http_egress::client_for_contract(&egress_contract, cfg.timeout)?;
+        Ok(Self {
+            cfg,
+            http,
+            egress_contract,
+        })
     }
 
-    /// Build a guard with a caller-supplied client (for tests).
-    pub fn with_client(cfg: VertexSafetyConfig, http: Client) -> Self {
-        Self { cfg, http }
+    /// Build a guard from a caller-supplied client handle.
+    ///
+    /// The supplied client is not reused. The guard rebuilds an internal client
+    /// from its egress contract so automatic redirect following cannot bypass
+    /// per-hop contract validation.
+    pub fn with_client(cfg: VertexSafetyConfig, _http: Client) -> Result<Self, ExternalGuardError> {
+        Self::new(cfg)
     }
 
     /// Build a [`GuardEvidence`] record for a prior decision.
@@ -312,20 +320,15 @@ impl ExternalGuard for VertexSafetyGuard {
                 .map_err(|e| ExternalGuardError::Permanent(format!("invalid api key: {e}")))?,
         );
 
-        let resp = self
-            .http
-            .post(&url)
-            .headers(headers)
-            .json(&body)
-            .send()
-            .await
-            .map_err(classify_reqwest_error)?;
+        let resp = http_egress::send_request_with_contract(
+            &self.egress_contract,
+            &self.http,
+            self.http.post(&url).headers(headers).json(&body),
+        )
+        .await?;
 
         let status = resp.status();
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| ExternalGuardError::Transient(format!("read body: {e}")))?;
+        let text = http_egress::response_text(resp).await?;
 
         if !status.is_success() {
             return Err(classify_status_error("vertex-safety", status, &text));

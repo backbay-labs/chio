@@ -3,7 +3,9 @@ use chio_core::web3::{
     Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
     Web3SettlementLifecycleState, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
 };
+use chio_egress_contract::{client_builder_with_contract, send_with_contract};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 use crate::evm::{
     confirm_transaction, read_bond_snapshot, read_escrow_snapshot,
@@ -269,23 +271,8 @@ pub async fn observe_bond(
 }
 
 async fn latest_block_number(config: &SettlementChainConfig) -> Result<u64, SettlementError> {
-    let block = reqwest::Client::new()
-        .post(&config.rpc_url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1u64,
-            "method": "eth_getBlockByNumber",
-            "params": ["latest", false],
-        }))
-        .send()
-        .await
-        .map_err(|error| SettlementError::Rpc(error.to_string()))?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|error| SettlementError::Rpc(error.to_string()))?;
-    let result = block.get("result").ok_or_else(|| {
-        SettlementError::Rpc("eth_getBlockByNumber returned no result".to_string())
-    })?;
+    let result =
+        settlement_rpc_call(config, "eth_getBlockByNumber", json!(["latest", false])).await?;
     parse_hex_u64(
         result
             .get("number")
@@ -298,25 +285,12 @@ async fn block_hash_at_number_optional(
     config: &SettlementChainConfig,
     block_number: u64,
 ) -> Result<Option<String>, SettlementError> {
-    let block = reqwest::Client::new()
-        .post(&config.rpc_url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1u64,
-            "method": "eth_getBlockByNumber",
-            "params": [format!("0x{block_number:x}"), false],
-        }))
-        .send()
-        .await
-        .map_err(|error| SettlementError::Rpc(error.to_string()))?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|error| SettlementError::Rpc(error.to_string()))?;
-    let Some(result) = block.get("result") else {
-        return Err(SettlementError::Rpc(
-            "eth_getBlockByNumber returned no result".to_string(),
-        ));
-    };
+    let result = settlement_rpc_call(
+        config,
+        "eth_getBlockByNumber",
+        json!([format!("0x{block_number:x}"), false]),
+    )
+    .await?;
     if result.is_null() {
         return Ok(None);
     }
@@ -324,6 +298,63 @@ async fn block_hash_at_number_optional(
         .get("hash")
         .and_then(serde_json::Value::as_str)
         .map(ToString::to_string))
+}
+
+#[derive(Debug, Deserialize)]
+struct JsonRpcEnvelope {
+    #[serde(rename = "jsonrpc")]
+    _jsonrpc: String,
+    #[serde(rename = "id")]
+    _id: u64,
+    #[serde(default)]
+    result: Value,
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct JsonRpcError {
+    code: i64,
+    message: String,
+}
+
+async fn settlement_rpc_call(
+    config: &SettlementChainConfig,
+    method: &str,
+    params: Value,
+) -> Result<Value, SettlementError> {
+    config.validate_rpc_egress_contract()?;
+    let contract = &config.egress_contract;
+    let client = client_builder_with_contract(contract)
+        .build()
+        .map_err(|error| SettlementError::Rpc(format!("reqwest build: {error}")))?;
+    let request = client
+        .post(&config.rpc_url)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1u64,
+            "method": method,
+            "params": params,
+        }))
+        .build()
+        .map_err(|error| SettlementError::Rpc(format!("reqwest build request: {error}")))?;
+    let response = send_with_contract(contract, &client, request)
+        .await
+        .map_err(|error| {
+            SettlementError::Rpc(format!(
+                "HttpEgressContract rejects settlement observer RPC dispatch: {error}"
+            ))
+        })?;
+    let envelope: JsonRpcEnvelope = response
+        .json()
+        .await
+        .map_err(|error| SettlementError::Rpc(error.to_string()))?;
+    if let Some(error) = envelope.error {
+        return Err(SettlementError::Rpc(format!(
+            "{} (code {})",
+            error.message, error.code
+        )));
+    }
+    Ok(envelope.result)
 }
 
 fn parse_hex_u64(value: &str) -> Result<u64, SettlementError> {
@@ -411,6 +442,11 @@ mod tests {
         handle: thread::JoinHandle<()>,
     }
 
+    struct MockRawHttpServer {
+        base_url: String,
+        handle: thread::JoinHandle<()>,
+    }
+
     impl MockJsonRpcServer {
         fn spawn(envelopes: Vec<Value>) -> Self {
             let listener =
@@ -456,11 +492,44 @@ mod tests {
         }
     }
 
+    impl MockRawHttpServer {
+        fn spawn(response: String) -> Self {
+            let listener =
+                TcpListener::bind("127.0.0.1:0").test_expect("bind mock raw HTTP listener");
+            let address = listener.local_addr().test_expect("listener address");
+            let base_url = format!("http://127.0.0.1:{}", address.port());
+
+            let handle = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().test_expect("accept mock request");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .test_expect("set read timeout");
+                let _request = read_http_request(&mut stream);
+                stream
+                    .write_all(response.as_bytes())
+                    .test_expect("write mock response");
+                stream.flush().test_expect("flush mock response");
+            });
+
+            Self { base_url, handle }
+        }
+
+        fn base_url(&self) -> &str {
+            &self.base_url
+        }
+
+        fn join(self) {
+            self.handle.join().test_expect("join mock raw server");
+        }
+    }
+
     fn sample_config(rpc_url: &str) -> SettlementChainConfig {
         SettlementChainConfig {
             chain_id: "eip155:31337".to_string(),
             network_name: "Ganache".to_string(),
             rpc_url: rpc_url.to_string(),
+            egress_contract: crate::settlement_devnet_rpc_egress_contract(rpc_url)
+                .test_expect("devnet egress contract"),
             escrow_contract: "0x69011eD3D9792Ea93595EeBd919EE621764B19e0".to_string(),
             bond_vault_contract: "0x621c302d6EC93b7186bEF18dF5D6436C6ea30125".to_string(),
             identity_registry_contract: "0x0eAFb60DD4F4b3863eb5490752238aC37A625dc6".to_string(),
@@ -500,6 +569,19 @@ mod tests {
                     },
                 ],
             },
+        }
+    }
+
+    fn hostname_rpc_contract(authority: &str) -> chio_egress_contract::HttpEgressContract {
+        chio_egress_contract::HttpEgressContract {
+            tenant_egress_namespace: "chio-settle-observer-unit-rpc".to_string(),
+            allowed_schemes: std::collections::BTreeSet::from(["https".to_string()]),
+            allowed_authority_set: std::collections::BTreeSet::from([authority.to_string()]),
+            deny_loopback: true,
+            deny_link_local: true,
+            deny_ipv6_ula: true,
+            max_redirect_chain: 0,
+            max_response_bytes: 64 * 1024 * 1024,
         }
     }
 
@@ -847,6 +929,59 @@ mod tests {
             .test_expect_err("missing block number should fail");
         missing_field_server.join();
         assert!(error.to_string().contains("latest block missing number"));
+    }
+
+    #[test]
+    fn observer_config_accepts_hostname_rpc_url_with_pinned_resolver() {
+        let mut config = sample_config("http://127.0.0.1:8545");
+        config.rpc_url = "https://mainnet-rpc.example.com".to_string();
+        config.egress_contract = hostname_rpc_contract("mainnet-rpc.example.com");
+
+        config
+            .validate_rpc_egress_contract()
+            .test_expect("hostname observer RPC dispatch is resolver-enforced");
+    }
+
+    #[tokio::test]
+    async fn observer_rpc_rejects_redirects() {
+        let server = MockRawHttpServer::spawn(
+            "HTTP/1.1 302 Found\r\nLocation: /redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .to_string(),
+        );
+        let config = sample_config(server.base_url());
+        let receipt = sample_receipt(100, "0xaaa", 1_700_000_000);
+
+        let error = inspect_finality_for_receipt(&config, &receipt, 50_000, None)
+            .await
+            .test_expect_err("observer RPC redirect should fail");
+        let message = error.to_string();
+
+        server.join();
+        assert!(
+            message.contains("HttpEgressContract") && message.contains("redirect chain length"),
+            "unexpected observer RPC redirect denial: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn observer_rpc_rejects_oversized_responses() {
+        let server = MockRawHttpServer::spawn(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 67108865\r\nConnection: close\r\n\r\n"
+                .to_string(),
+        );
+        let config = sample_config(server.base_url());
+        let receipt = sample_receipt(100, "0xaaa", 1_700_000_000);
+
+        let error = inspect_finality_for_receipt(&config, &receipt, 50_000, None)
+            .await
+            .test_expect_err("oversized observer RPC response should fail");
+        let message = error.to_string();
+
+        server.join();
+        assert!(
+            message.contains("HttpEgressContract") && message.contains("response size"),
+            "unexpected observer RPC response-size denial: {message}"
+        );
     }
 
     #[tokio::test]

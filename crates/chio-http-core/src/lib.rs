@@ -43,6 +43,8 @@ pub use compliance::{
     handle_compliance_score, ComplianceScoreError, ComplianceScoreRequest, ComplianceScoreResponse,
     ComplianceScoreWindow, ComplianceSource, ComplianceSourceResult,
 };
+#[cfg(feature = "reqwest-egress")]
+pub use egress::{client_builder_with_contract, send_with_contract};
 pub use egress::{HttpEgressContract, HttpEgressError, ValidatedHttpEgressTarget};
 pub use emergency::{
     handle_emergency_resume, handle_emergency_status, handle_emergency_stop, EmergencyAdmin,

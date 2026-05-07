@@ -545,6 +545,7 @@ fn spawn_static_bearer_server_thread(
         shared_hosted_owner: false,
         wrapped_command: "python3".to_string(),
         wrapped_args: vec![script_path.to_string_lossy().into_owned()],
+        egress_contract: None,
     };
 
     let (result_tx, result_rx) = mpsc::channel();
@@ -620,6 +621,7 @@ fn spawn_jwt_http_server_thread(
         shared_hosted_owner: false,
         wrapped_command: "python3".to_string(),
         wrapped_args: vec![script_path.to_string_lossy().into_owned()],
+        egress_contract: None,
     };
 
     spawn_server_thread(config)
@@ -681,6 +683,7 @@ fn spawn_local_oauth_http_server_thread(
         shared_hosted_owner: false,
         wrapped_command: "python3".to_string(),
         wrapped_args: vec![script_path.to_string_lossy().into_owned()],
+        egress_contract: None,
     };
 
     spawn_server_thread(config)

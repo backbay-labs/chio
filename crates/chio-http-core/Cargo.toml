@@ -24,12 +24,21 @@ url = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 chio-core-types = { path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }
+chio-egress-contract = { path = "../chio-egress-contract" }
 chio-kernel = { path = "../chio-kernel" }
 chio-metrics-spec = { workspace = true }
+
+[features]
+default = []
+# Re-exports `chio-egress-contract`'s reqwest helper. Callers that already
+# depend on `reqwest` and on this crate get `send_with_contract` via
+# `chio_http_core::send_with_contract`.
+reqwest-egress = ["chio-egress-contract/reqwest-egress"]
 
 [dev-dependencies]
 chio-core = { path = "../chio-core" }
 tokio = { workspace = true }
+reqwest = { workspace = true, default-features = false, features = ["rustls"] }
 
 [lints.clippy]
 unwrap_used = "deny"

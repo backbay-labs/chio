@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
-use crate::external::bedrock::{classify_reqwest_error, classify_status_error};
-use crate::external::{ExternalGuard, ExternalGuardError, GuardCallContext};
+use crate::external::bedrock::classify_status_error;
+use crate::external::{http_egress, ExternalGuard, ExternalGuardError, GuardCallContext};
 
 /// Guard name reported by [`SafeBrowsingGuard::name`].
 pub const GUARD_NAME: &str = "safe-browsing";
@@ -161,31 +161,30 @@ pub struct SafeBrowsingGuard {
     cfg: SafeBrowsingConfig,
     base_url: String,
     http: Client,
+    egress_contract: chio_egress_contract::HttpEgressContract,
 }
 
 impl SafeBrowsingGuard {
     /// Build a guard with an internally-owned [`reqwest::Client`].
     pub fn new(cfg: SafeBrowsingConfig) -> Result<Self, ExternalGuardError> {
-        let http = Client::builder()
-            .timeout(cfg.timeout)
-            .build()
-            .map_err(|e| ExternalGuardError::Permanent(format!("reqwest build: {e}")))?;
         let base_url = cfg.resolved_base_url();
+        let egress_contract = http_egress::contract_for_url(GUARD_NAME, &base_url)?;
+        let http = http_egress::client_for_contract(&egress_contract, cfg.timeout)?;
         Ok(Self {
             cfg,
             base_url,
             http,
+            egress_contract,
         })
     }
 
-    /// Build with a caller-supplied client.
-    pub fn with_client(cfg: SafeBrowsingConfig, http: Client) -> Self {
-        let base_url = cfg.resolved_base_url();
-        Self {
-            cfg,
-            base_url,
-            http,
-        }
+    /// Build from a caller-supplied client handle.
+    ///
+    /// The supplied client is not reused. The guard rebuilds an internal client
+    /// from its egress contract so automatic redirect following cannot bypass
+    /// per-hop contract validation.
+    pub fn with_client(cfg: SafeBrowsingConfig, _http: Client) -> Result<Self, ExternalGuardError> {
+        Self::new(cfg)
     }
 
     /// Build a [`GuardEvidence`] record for a prior decision.
@@ -251,20 +250,15 @@ impl ExternalGuard for SafeBrowsingGuard {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-        let resp = self
-            .http
-            .post(&endpoint)
-            .headers(headers)
-            .json(&body)
-            .send()
-            .await
-            .map_err(classify_reqwest_error)?;
+        let resp = http_egress::send_request_with_contract(
+            &self.egress_contract,
+            &self.http,
+            self.http.post(&endpoint).headers(headers).json(&body),
+        )
+        .await?;
 
         let status = resp.status();
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| ExternalGuardError::Transient(format!("read body: {e}")))?;
+        let text = http_egress::response_text(resp).await?;
 
         if !status.is_success() {
             return Err(classify_status_error("safe-browsing", status, &text));

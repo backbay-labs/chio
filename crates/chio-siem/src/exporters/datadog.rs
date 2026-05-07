@@ -22,6 +22,7 @@ use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::redaction::redact_for_operator_log;
 use chio_core::receipt::Decision;
+use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 
 /// Configuration for the Datadog Logs exporter.
 #[derive(Debug, Clone)]
@@ -43,6 +44,9 @@ pub struct DatadogConfig {
     pub hostname: Option<String>,
     /// HTTP request timeout. Default: 30 seconds.
     pub timeout: Duration,
+    /// Typed HTTP egress contract enforced before every dispatch and on
+    /// every redirect hop. Required in production.
+    pub egress_contract: Option<HttpEgressContract>,
 }
 
 impl Default for DatadogConfig {
@@ -55,6 +59,7 @@ impl Default for DatadogConfig {
             tags: Vec::new(),
             hostname: None,
             timeout: Duration::from_secs(30),
+            egress_contract: None,
         }
     }
 }
@@ -91,12 +96,22 @@ impl DatadogExporter {
             ));
         }
 
-        let client = reqwest::Client::builder()
+        let logs_url = format!("https://http-intake.logs.{}/api/v2/logs", config.site);
+
+        // HttpEgressContract: every Datadog Logs dispatch must run through
+        // the typed egress contract. Re-checked per-request via send_with_contract.
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError("Datadog exporter requires an HttpEgressContract".to_string())
+        })?;
+        contract.enforce_url(&logs_url, 0).map_err(|err| {
+            ExportError::HttpError(format!("HttpEgressContract rejects Datadog URL: {err}"))
+        })?;
+
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
 
-        let logs_url = format!("https://http-intake.logs.{}/api/v2/logs", config.site);
         Ok(Self {
             config,
             client,
@@ -119,12 +134,29 @@ impl DatadogExporter {
             config.site = "datadoghq.com".to_string();
         }
 
-        let client = reqwest::Client::builder()
+        let logs_url = format!("{}/api/v2/logs", base_url.trim_end_matches('/'));
+
+        if config.egress_contract.is_none() {
+            let url = url::Url::parse(&logs_url)
+                .map_err(|e| ExportError::HttpError(format!("invalid Datadog test URL: {e}")))?;
+            let host = url.host_str().unwrap_or("localhost");
+            let authority = match url.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host.to_string(),
+            };
+            config.egress_contract = Some(HttpEgressContract::permissive_for_tests(&authority));
+        }
+
+        let contract = config.egress_contract.as_ref().ok_or_else(|| {
+            ExportError::HttpError(
+                "Datadog test exporter requires an HttpEgressContract".to_string(),
+            )
+        })?;
+        let client = client_builder_with_contract(contract)
             .timeout(config.timeout)
             .build()
             .map_err(|e| ExportError::HttpError(format!("failed to build HTTP client: {e}")))?;
 
-        let logs_url = format!("{}/api/v2/logs", base_url.trim_end_matches('/'));
         Ok(Self {
             config,
             client,
@@ -229,15 +261,28 @@ impl Exporter for DatadogExporter {
 
             let logs = self.build_payload(events)?;
 
-            let response = self
+            // HttpEgressContract: every dispatch routes through send_with_contract.
+            let contract = self.config.egress_contract.as_ref().ok_or_else(|| {
+                ExportError::HttpError(
+                    "Datadog exporter is missing HttpEgressContract; substrate fails closed"
+                        .to_string(),
+                )
+            })?;
+            let raw_request = self
                 .client
                 .post(&self.logs_url)
                 .header("DD-API-KEY", &self.config.api_key)
                 .header("Content-Type", "application/json")
                 .json(&logs)
-                .send()
+                .build()
+                .map_err(|e| {
+                    ExportError::HttpError(format!("failed to build Datadog request: {e}"))
+                })?;
+            let response = send_with_contract(contract, &self.client, raw_request)
                 .await
-                .map_err(|e| ExportError::HttpError(format!("Datadog logs request failed: {e}")))?;
+                .map_err(|err| {
+                    ExportError::HttpError(format!("Datadog logs request failed: {err}"))
+                })?;
 
             let status = response.status();
             // Datadog returns 202 Accepted on success.

@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction};
+use chio_egress_contract::HttpEgressContract;
 use chio_siem::alerting::{
     Alert, AlertBackend, AlertSeverity, AlertingConfig, AlertingExporter, OpsGenieBackend,
     PagerDutyBackend,
@@ -19,6 +20,15 @@ use chio_siem::exporter::ExportError;
 use chio_siem::Exporter;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+fn test_server_authority(server: &MockServer) -> String {
+    let url = url::Url::parse(&server.uri()).expect("wiremock uri parses");
+    let host = url.host_str().unwrap_or("127.0.0.1").to_string();
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    }
+}
 
 fn allow_receipt(id: &str) -> ChioReceipt {
     let keypair = Keypair::generate();
@@ -202,8 +212,13 @@ async fn pagerduty_backend_posts_to_v2_enqueue() {
         .mount(&server)
         .await;
 
-    let backend = PagerDutyBackend::with_endpoint("pd-routing-key".to_string(), server.uri())
-        .expect("PagerDutyBackend builds in tests");
+    let authority = test_server_authority(&server);
+    let backend = PagerDutyBackend::with_endpoint_and_contract(
+        "pd-routing-key".to_string(),
+        server.uri(),
+        HttpEgressContract::permissive_for_tests(&authority),
+    )
+    .expect("PagerDutyBackend builds in tests");
     let exporter = AlertingExporter::builder(AlertingConfig::default())
         .with_backend(Box::new(backend))
         .build();
@@ -226,8 +241,13 @@ async fn pagerduty_backend_propagates_http_error() {
         .mount(&server)
         .await;
 
-    let backend = PagerDutyBackend::with_endpoint("pd".to_string(), server.uri())
-        .expect("PagerDutyBackend builds in tests");
+    let authority = test_server_authority(&server);
+    let backend = PagerDutyBackend::with_endpoint_and_contract(
+        "pd".to_string(),
+        server.uri(),
+        HttpEgressContract::permissive_for_tests(&authority),
+    )
+    .expect("PagerDutyBackend builds in tests");
     let exporter = AlertingExporter::builder(AlertingConfig::default())
         .with_backend(Box::new(backend))
         .build();
@@ -253,8 +273,13 @@ async fn opsgenie_backend_posts_to_v2_alerts() {
         .mount(&server)
         .await;
 
-    let backend = OpsGenieBackend::with_endpoint("og-api-key".to_string(), server.uri())
-        .expect("OpsGenieBackend builds in tests");
+    let authority = test_server_authority(&server);
+    let backend = OpsGenieBackend::with_endpoint_and_contract(
+        "og-api-key".to_string(),
+        server.uri(),
+        HttpEgressContract::permissive_for_tests(&authority),
+    )
+    .expect("OpsGenieBackend builds in tests");
     let exporter = AlertingExporter::builder(AlertingConfig::default())
         .with_backend(Box::new(backend))
         .build();

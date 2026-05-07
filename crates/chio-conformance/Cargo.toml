@@ -108,12 +108,27 @@ chrono = { workspace = true, features = ["clock"] }
 # vectors and assert each of the six initial threat IDs is backed
 # by at least one non-pending DENY-asserted case.
 chio-adversarial-suite = { version = "0.1.0", path = "../chio-adversarial-suite" }
+# W2.2: SSRF negative-conformance tests exercise typed HttpEgressContract
+# enforcement through real production callers (chio-siem WebhookExporter,
+# chio-siem SplunkHecExporter, chio-siem DatadogExporter, chio-link
+# PythHermesClient, chio-openapi-mcp-bridge OpenApiMcpBridge,
+# chio-a2a-adapter A2aAdapter).
+chio-egress-contract = { version = "0.1.0", path = "../chio-egress-contract" }
+chio-siem = { version = "0.1.0", path = "../chio-siem" }
+chio-link = { version = "0.1.0", path = "../chio-link" }
+chio-openapi-mcp-bridge = { version = "0.1.0", path = "../chio-openapi-mcp-bridge" }
+chio-a2a-adapter = { version = "0.1.0", path = "../chio-a2a-adapter" }
+chio-mcp-remote = { version = "0.1.0", path = "../chio-mcp-remote" }
+chio-api-protect = { version = "0.1.0", path = "../chio-api-protect" }
+chio-external-guards = { version = "0.1.0", path = "../chio-external-guards" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+url = "2"
+zeroize = "1"
 # W2.3: anchor-batch witness-lane conformance tests exercise
 # AnchorWitnessClient (RekorClient + OtsClient) and the WitnessState
 # state machine via the chio-anchor crate. tokio drives the async
 # trait surface; tiny_http stages the mock Rekor server.
 chio-anchor = { version = "0.1.0", path = "../chio-anchor" }
-tokio = { workspace = true }
 async-trait = "0.1"
 # W2.3 PR #594 review (HIGH-3): negative conformance test
 # anchor_batch_witness_impersonation_rejected.rs forges a Rekor SET

@@ -15,6 +15,8 @@ pub use endpoint_security::{
 pub mod azure_content_safety;
 #[path = "../../../chio-guards/src/external/bedrock.rs"]
 pub mod bedrock;
+#[path = "../../../chio-guards/src/external/http_egress.rs"]
+pub(crate) mod http_egress;
 #[path = "../../../chio-guards/src/external/threat_intel/mod.rs"]
 pub mod threat_intel;
 #[path = "../../../chio-guards/src/external/vertex_safety.rs"]

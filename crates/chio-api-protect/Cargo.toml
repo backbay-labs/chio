@@ -13,7 +13,7 @@ name = "chio_api_protect"
 
 [dependencies]
 chio-core-types = { path = "../chio-core-types" }
-chio-http-core = { path = "../chio-http-core" }
+chio-http-core = { path = "../chio-http-core", features = ["reqwest-egress"] }
 chio-kernel = { path = "../chio-kernel" }
 chio-openapi = { path = "../chio-openapi" }
 chio-store-sqlite = { path = "../chio-store-sqlite" }

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+use std::net::{IpAddr, Ipv6Addr};
 use std::str::FromStr;
 
 use alloy_primitives::{keccak256, Address, FixedBytes, B256, U256};
@@ -8,9 +10,10 @@ use chio_core::web3::{
     verify_anchor_inclusion_proof, AnchorInclusionProof, SignedWeb3IdentityBinding,
     Web3ChainAnchorRecord, Web3KeyBindingPurpose,
 };
+use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 use chio_kernel::checkpoint::KernelCheckpoint;
 use chio_web3_bindings::{ChioMerkleProof, IChioRootRegistry};
-use reqwest::Client;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -194,14 +197,18 @@ pub fn prepare_delegate_registration(
     })
 }
 
-pub async fn publish_root(publication: &PreparedEvmRootPublication) -> Result<String, AnchorError> {
-    let gas_limit = estimate_publication_gas(publication)
+pub async fn publish_root(
+    publication: &PreparedEvmRootPublication,
+    egress_contract: &HttpEgressContract,
+) -> Result<String, AnchorError> {
+    let gas_limit = estimate_publication_gas(publication, egress_contract)
         .await?
         .saturating_mul(12)
         .saturating_div(10)
         .saturating_add(50_000);
     let result = rpc_call(
         &publication.rpc_url,
+        egress_contract,
         "eth_sendTransaction",
         json!([{
             "from": publication.publisher_address,
@@ -220,9 +227,11 @@ pub async fn publish_root(publication: &PreparedEvmRootPublication) -> Result<St
 
 async fn estimate_publication_gas(
     publication: &PreparedEvmRootPublication,
+    egress_contract: &HttpEgressContract,
 ) -> Result<u64, AnchorError> {
     let result = rpc_call(
         &publication.rpc_url,
+        egress_contract,
         "eth_estimateGas",
         json!([{
             "from": publication.publisher_address,
@@ -243,9 +252,11 @@ pub async fn confirm_root_publication(
     checkpoint: &KernelCheckpoint,
     binding: &SignedWeb3IdentityBinding,
     tx_hash: &str,
+    egress_contract: &HttpEgressContract,
 ) -> Result<EvmPublicationReceipt, AnchorError> {
     let receipt = rpc_call(
         &target.rpc_url,
+        egress_contract,
         "eth_getTransactionReceipt",
         json!([tx_hash]),
     )
@@ -280,6 +291,7 @@ pub async fn confirm_root_publication(
     };
     let root_result = rpc_call(
         &target.rpc_url,
+        egress_contract,
         "eth_call",
         json!([
             {
@@ -319,6 +331,7 @@ pub async fn confirm_root_publication(
 
 pub async fn inspect_publication_guard(
     target: &EvmAnchorTarget,
+    egress_contract: &HttpEgressContract,
 ) -> Result<EvmPublicationGuard, AnchorError> {
     let operator = Address::from_str(&target.operator_address)
         .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;
@@ -331,6 +344,7 @@ pub async fn inspect_publication_guard(
     };
     let auth_response = rpc_call(
         &target.rpc_url,
+        egress_contract,
         "eth_call",
         json!([
             {
@@ -353,6 +367,7 @@ pub async fn inspect_publication_guard(
     let seq_call = IChioRootRegistry::getLatestSeqCall { operator };
     let seq_response = rpc_call(
         &target.rpc_url,
+        egress_contract,
         "eth_call",
         json!([
             {
@@ -385,8 +400,9 @@ pub async fn inspect_publication_guard(
 pub async fn ensure_publication_ready(
     target: &EvmAnchorTarget,
     checkpoint_seq: u64,
+    egress_contract: &HttpEgressContract,
 ) -> Result<EvmPublicationGuard, AnchorError> {
-    let guard = inspect_publication_guard(target).await?;
+    let guard = inspect_publication_guard(target, egress_contract).await?;
     if !guard.publisher_authorized {
         return Err(AnchorError::Verification(format!(
             "publisher {} is not authorized for operator {} on {}",
@@ -405,6 +421,7 @@ pub async fn ensure_publication_ready(
 pub async fn verify_inclusion_onchain(
     target: &EvmAnchorTarget,
     proof: &AnchorInclusionProof,
+    egress_contract: &HttpEgressContract,
 ) -> Result<bool, AnchorError> {
     verify_anchor_inclusion_proof(proof)
         .map_err(|error| AnchorError::Verification(error.to_string()))?;
@@ -432,6 +449,7 @@ pub async fn verify_inclusion_onchain(
     };
     let response = rpc_call(
         &target.rpc_url,
+        egress_contract,
         "eth_call",
         json!([
             {
@@ -469,8 +487,17 @@ pub fn build_chain_anchor_record(
     }
 }
 
-async fn rpc_call(rpc_url: &str, method: &str, params: Value) -> Result<Value, AnchorError> {
-    let response = Client::new()
+async fn rpc_call(
+    rpc_url: &str,
+    egress_contract: &HttpEgressContract,
+    method: &str,
+    params: Value,
+) -> Result<Value, AnchorError> {
+    validate_rpc_egress_contract(rpc_url, egress_contract)?;
+    let client = client_builder_with_contract(egress_contract)
+        .build()
+        .map_err(|error| AnchorError::Rpc(format!("reqwest build: {error}")))?;
+    let request = client
         .post(rpc_url)
         .json(&json!({
             "jsonrpc": "2.0",
@@ -478,9 +505,15 @@ async fn rpc_call(rpc_url: &str, method: &str, params: Value) -> Result<Value, A
             "method": method,
             "params": params,
         }))
-        .send()
+        .build()
+        .map_err(|error| AnchorError::Rpc(format!("reqwest build request: {error}")))?;
+    let response = send_with_contract(egress_contract, &client, request)
         .await
-        .map_err(|error| AnchorError::Rpc(error.to_string()))?;
+        .map_err(|error| {
+            AnchorError::Rpc(format!(
+                "HttpEgressContract rejects anchor EVM RPC dispatch: {error}"
+            ))
+        })?;
     let envelope: JsonRpcEnvelope = response
         .json()
         .await
@@ -494,6 +527,95 @@ async fn rpc_call(rpc_url: &str, method: &str, params: Value) -> Result<Value, A
     envelope
         .result
         .ok_or_else(|| AnchorError::Rpc(format!("{} returned no result", method)))
+}
+
+pub fn evm_anchor_devnet_rpc_egress_contract(
+    rpc_url: &str,
+) -> Result<HttpEgressContract, AnchorError> {
+    devnet_rpc_egress_contract_for_url("chio-anchor-evm-devnet-rpc", rpc_url)
+}
+
+fn validate_rpc_egress_contract(
+    rpc_url: &str,
+    contract: &HttpEgressContract,
+) -> Result<(), AnchorError> {
+    contract
+        .validate_dispatchable_with_pinned_dns()
+        .map_err(|error| {
+            AnchorError::Rpc(format!(
+                "invalid anchor EVM RPC HttpEgressContract: {error}"
+            ))
+        })?;
+    contract.enforce_url_with_dns(rpc_url, 0).map_err(|error| {
+        AnchorError::Rpc(format!(
+            "anchor EVM RPC URL is not allowed by HttpEgressContract: {error}"
+        ))
+    })?;
+    Ok(())
+}
+
+fn devnet_rpc_egress_contract_for_url(
+    namespace: &str,
+    rpc_url: &str,
+) -> Result<HttpEgressContract, AnchorError> {
+    let url = Url::parse(rpc_url)
+        .map_err(|error| AnchorError::Rpc(format!("invalid anchor EVM RPC URL: {error}")))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| AnchorError::Rpc("anchor EVM RPC URL must include a host".to_string()))?;
+    if !rpc_host_is_loopback(host) {
+        return Err(AnchorError::InvalidInput(
+            "devnet anchor EVM RPC egress contract requires a loopback RPC URL".to_string(),
+        ));
+    }
+    let mut allowed_schemes = BTreeSet::new();
+    allowed_schemes.insert(url.scheme().to_ascii_lowercase());
+    let mut allowed_authority_set = BTreeSet::new();
+    allowed_authority_set.insert(normalized_rpc_authority(&url, host));
+    let contract = HttpEgressContract {
+        tenant_egress_namespace: namespace.to_string(),
+        allowed_schemes,
+        allowed_authority_set,
+        deny_loopback: false,
+        deny_link_local: true,
+        deny_ipv6_ula: true,
+        max_redirect_chain: 0,
+        max_response_bytes: 64 * 1024 * 1024,
+    };
+    contract
+        .validate_dispatchable_with_pinned_dns()
+        .map_err(|error| {
+            AnchorError::Rpc(format!(
+                "invalid anchor EVM RPC HttpEgressContract: {error}"
+            ))
+        })?;
+    contract.enforce_url_with_dns(rpc_url, 0).map_err(|error| {
+        AnchorError::Rpc(format!(
+            "anchor EVM RPC URL is not allowed by HttpEgressContract: {error}"
+        ))
+    })?;
+    Ok(contract)
+}
+
+fn normalized_rpc_authority(url: &Url, host: &str) -> String {
+    let host = if host.parse::<Ipv6Addr>().is_ok() {
+        format!("[{host}]")
+    } else {
+        host.trim_end_matches('.').to_ascii_lowercase()
+    };
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    }
+}
+
+fn rpc_host_is_loopback(host: &str) -> bool {
+    matches!(
+        host.trim_end_matches('.').to_ascii_lowercase().as_str(),
+        "localhost" | "localhost.localdomain"
+    ) || host
+        .parse::<IpAddr>()
+        .is_ok_and(|address| address.is_loopback())
 }
 
 fn hash_to_b256(hash: &chio_core::hashing::Hash) -> B256 {
@@ -521,9 +643,10 @@ mod tests {
 
     use super::{
         build_chain_anchor_record, confirm_root_publication, ensure_publication_ready,
-        hash_to_b256, inspect_publication_guard, operator_key_hash, prepare_delegate_registration,
-        prepare_root_publication, publish_root, verify_inclusion_onchain, EvmAnchorTarget,
-        EvmPublicationReceipt,
+        evm_anchor_devnet_rpc_egress_contract, hash_to_b256, inspect_publication_guard,
+        operator_key_hash, prepare_delegate_registration, prepare_root_publication, publish_root,
+        validate_rpc_egress_contract, verify_inclusion_onchain, EvmAnchorTarget,
+        EvmPublicationReceipt, HttpEgressContract,
     };
 
     trait TestResultOk<T, E> {
@@ -576,6 +699,11 @@ mod tests {
         handle: thread::JoinHandle<()>,
     }
 
+    struct MockRawHttpServer {
+        base_url: String,
+        handle: thread::JoinHandle<()>,
+    }
+
     impl MockJsonRpcServer {
         fn spawn(envelopes: Vec<Value>) -> Option<Self> {
             let listener = bind_mock_json_rpc_listener()?;
@@ -620,6 +748,36 @@ mod tests {
         }
     }
 
+    impl MockRawHttpServer {
+        fn spawn(response: String) -> Option<Self> {
+            let listener = bind_mock_json_rpc_listener()?;
+            let address = listener.local_addr().test_expect("listener address");
+            let base_url = format!("http://127.0.0.1:{}", address.port());
+
+            let handle = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().test_expect("accept mock request");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .test_expect("set read timeout");
+                let _request = read_http_request(&mut stream);
+                stream
+                    .write_all(response.as_bytes())
+                    .test_expect("write mock response");
+                stream.flush().test_expect("flush mock response");
+            });
+
+            Some(Self { base_url, handle })
+        }
+
+        fn base_url(&self) -> &str {
+            &self.base_url
+        }
+
+        fn join(self) {
+            self.handle.join().test_expect("join mock raw server");
+        }
+    }
+
     fn sample_primary_proof() -> AnchorInclusionProof {
         serde_json::from_str(include_str!(
             "../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
@@ -650,6 +808,10 @@ mod tests {
         let mut target = sample_target(rpc_url);
         target.publisher_address = "0x1000000000000000000000000000000000000004".to_string();
         target
+    }
+
+    fn sample_rpc_contract(rpc_url: &str) -> HttpEgressContract {
+        evm_anchor_devnet_rpc_egress_contract(rpc_url).test_expect("devnet anchor egress contract")
     }
 
     fn rpc_result(result: Value) -> Value {
@@ -842,8 +1004,11 @@ mod tests {
         let publication =
             prepare_root_publication(&sample_target(server.base_url()), &checkpoint, &binding)
                 .test_expect("prepare publication");
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let tx_hash = publish_root(&publication).await.test_expect("publish root");
+        let tx_hash = publish_root(&publication, &egress_contract)
+            .await
+            .test_expect("publish root");
 
         assert_eq!(tx_hash, "0xabc123");
         let requests = server.requests();
@@ -871,8 +1036,9 @@ mod tests {
         let publication =
             prepare_root_publication(&sample_target(server.base_url()), &checkpoint, &binding)
                 .test_expect("prepare publication");
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = publish_root(&publication)
+        let error = publish_root(&publication, &egress_contract)
             .await
             .test_expect_err("non-string tx hash should fail");
 
@@ -893,14 +1059,128 @@ mod tests {
         let publication =
             prepare_root_publication(&sample_target(server.base_url()), &checkpoint, &binding)
                 .test_expect("prepare publication");
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = publish_root(&publication)
+        let error = publish_root(&publication, &egress_contract)
             .await
             .test_expect_err("RPC error should fail");
 
         server.join();
         assert!(error.to_string().contains("denied"));
         assert!(error.to_string().contains("-32000"));
+    }
+
+    #[test]
+    fn validate_rpc_egress_contract_accepts_hostname_rpc() {
+        let egress_contract = HttpEgressContract {
+            tenant_egress_namespace: "chio-anchor-unit-rpc".to_string(),
+            allowed_schemes: std::collections::BTreeSet::from(["https".to_string()]),
+            allowed_authority_set: std::collections::BTreeSet::from(["rpc.example".to_string()]),
+            deny_loopback: true,
+            deny_link_local: true,
+            deny_ipv6_ula: true,
+            max_redirect_chain: 0,
+            max_response_bytes: 64 * 1024 * 1024,
+        };
+
+        validate_rpc_egress_contract("https://rpc.example", &egress_contract)
+            .test_expect("hostname RPC dispatch is resolver-enforced");
+    }
+
+    #[test]
+    fn devnet_rpc_egress_contract_only_authorizes_loopback() {
+        assert!(evm_anchor_devnet_rpc_egress_contract("http://127.0.0.1:8545").is_ok());
+        assert!(evm_anchor_devnet_rpc_egress_contract("http://localhost:8545").is_ok());
+        for rpc_url in [
+            "http://10.0.0.5:8545",
+            "http://192.168.1.20:8545",
+            "http://172.16.0.2:8545",
+            "http://203.0.113.10:8545",
+        ] {
+            let error = evm_anchor_devnet_rpc_egress_contract(rpc_url)
+                .test_expect_err("non-loopback devnet RPC URL should fail");
+            assert!(
+                error.to_string().contains("requires a loopback RPC URL"),
+                "unexpected devnet egress error for {rpc_url}: {error}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_root_does_not_self_authorize_rpc_url_authority() {
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
+        let publication = prepare_root_publication(
+            &sample_target("http://127.0.0.1:8545"),
+            &checkpoint,
+            &binding,
+        )
+        .test_expect("prepare publication");
+        let egress_contract = sample_rpc_contract("http://127.0.0.1:9545");
+
+        let error = publish_root(&publication, &egress_contract)
+            .await
+            .test_expect_err("RPC URL must not authorize itself");
+        let message = error.to_string();
+
+        assert!(
+            message.contains("HttpEgressContract") && message.contains("is not allowed"),
+            "unexpected anchor RPC self-authorization denial: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_root_rejects_rpc_redirects() {
+        let Some(server) = MockRawHttpServer::spawn(
+            "HTTP/1.1 302 Found\r\nLocation: /redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .to_string(),
+        ) else {
+            return;
+        };
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
+        let publication =
+            prepare_root_publication(&sample_target(server.base_url()), &checkpoint, &binding)
+                .test_expect("prepare publication");
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let error = publish_root(&publication, &egress_contract)
+            .await
+            .test_expect_err("RPC redirect should fail");
+        let message = error.to_string();
+
+        server.join();
+        assert!(
+            message.contains("HttpEgressContract") && message.contains("redirect chain length"),
+            "unexpected anchor RPC redirect denial: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_root_rejects_oversized_rpc_response() {
+        let Some(server) = MockRawHttpServer::spawn(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 67108865\r\nConnection: close\r\n\r\n"
+                .to_string(),
+        ) else {
+            return;
+        };
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
+        let publication =
+            prepare_root_publication(&sample_target(server.base_url()), &checkpoint, &binding)
+                .test_expect("prepare publication");
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let error = publish_root(&publication, &egress_contract)
+            .await
+            .test_expect_err("oversized RPC response should fail");
+        let message = error.to_string();
+
+        server.join();
+        assert!(
+            message.contains("HttpEgressContract") && message.contains("response size"),
+            "unexpected anchor RPC response-size denial: {message}"
+        );
     }
 
     #[tokio::test]
@@ -929,10 +1209,17 @@ mod tests {
             return;
         };
         let target = sample_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let receipt = confirm_root_publication(&target, &checkpoint, &binding, "0xdeadbeef")
-            .await
-            .test_expect("confirm publication");
+        let receipt = confirm_root_publication(
+            &target,
+            &checkpoint,
+            &binding,
+            "0xdeadbeef",
+            &egress_contract,
+        )
+        .await
+        .test_expect("confirm publication");
 
         let requests = server.requests();
         server.join();
@@ -956,10 +1243,17 @@ mod tests {
         let checkpoint = sample_checkpoint();
         let binding = sample_binding();
         let target = sample_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = confirm_root_publication(&target, &checkpoint, &binding, "0xdeadbeef")
-            .await
-            .test_expect_err("failed tx status should fail");
+        let error = confirm_root_publication(
+            &target,
+            &checkpoint,
+            &binding,
+            "0xdeadbeef",
+            &egress_contract,
+        )
+        .await
+        .test_expect_err("failed tx status should fail");
 
         server.join();
         assert!(error.to_string().contains("failed with status 0x0"));
@@ -991,10 +1285,17 @@ mod tests {
             return;
         };
         let target = sample_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = confirm_root_publication(&target, &checkpoint, &binding, "0xdeadbeef")
-            .await
-            .test_expect_err("mismatched registry entry should fail");
+        let error = confirm_root_publication(
+            &target,
+            &checkpoint,
+            &binding,
+            "0xdeadbeef",
+            &egress_contract,
+        )
+        .await
+        .test_expect_err("mismatched registry entry should fail");
 
         server.join();
         assert!(error
@@ -1015,8 +1316,9 @@ mod tests {
             return;
         };
         let target = sample_delegate_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let guard = inspect_publication_guard(&target)
+        let guard = inspect_publication_guard(&target, &egress_contract)
             .await
             .test_expect("inspect guard");
 
@@ -1040,8 +1342,9 @@ mod tests {
             return;
         };
         let target = sample_delegate_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = ensure_publication_ready(&target, 42)
+        let error = ensure_publication_ready(&target, 42, &egress_contract)
             .await
             .test_expect_err("unauthorized publisher should fail");
 
@@ -1062,8 +1365,9 @@ mod tests {
             return;
         };
         let target = sample_delegate_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = ensure_publication_ready(&target, 41)
+        let error = ensure_publication_ready(&target, 41, &egress_contract)
             .await
             .test_expect_err("checkpoint regression should fail");
 
@@ -1084,8 +1388,9 @@ mod tests {
             return;
         };
         let target = sample_delegate_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let guard = ensure_publication_ready(&target, 42)
+        let guard = ensure_publication_ready(&target, 42, &egress_contract)
             .await
             .test_expect("checkpoint 42 should be accepted");
 
@@ -1102,8 +1407,9 @@ mod tests {
         };
         let target = sample_target(server.base_url());
         let proof = sample_primary_proof();
+        let egress_contract = sample_rpc_contract(server.base_url());
 
-        let verified = verify_inclusion_onchain(&target, &proof)
+        let verified = verify_inclusion_onchain(&target, &proof, &egress_contract)
             .await
             .test_expect("verify inclusion");
 

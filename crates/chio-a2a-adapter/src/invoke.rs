@@ -28,6 +28,7 @@ impl A2aAdapter {
                 &config.tls_root_ca_pems,
                 config.mutual_tls_identity.as_ref(),
             )?,
+            egress_contract: config.egress_contract.clone(),
         };
         let discovery_tls_mode = if transport_config.mutual_tls_config.is_some() {
             A2aTlsMode::MutualTls

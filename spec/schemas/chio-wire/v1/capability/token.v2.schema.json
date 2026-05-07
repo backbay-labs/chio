@@ -47,7 +47,7 @@
     "delegation_chain": {
       "type": "array",
       "items": {
-        "type": "object"
+        "$ref": "#/$defs/delegationLink"
       }
     },
     "algorithm": {
@@ -279,6 +279,60 @@
         }
       }
     },
+    "delegationLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "delegator",
+        "delegatee",
+        "timestamp",
+        "signature",
+        "scope_hash"
+      ],
+      "description": "A single v2 delegation link. The required scope_hash binds the authorized parent scope used by the next hop's attenuation_proof.parent_scope_hash.",
+      "properties": {
+        "capability_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delegator": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+        },
+        "delegatee": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+        },
+        "attenuations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "timestamp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+        },
+        "scope_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "RFC 8785 canonical scope hash for this delegation hop. Runtime v2 verification rejects links that omit it."
+        }
+      }
+    },
     "attenuationWitness": {
       "type": "object",
       "additionalProperties": false,
@@ -325,7 +379,7 @@
         },
         "subset": {
           "type": "boolean",
-          "const": true
+          "enum": [true]
         }
       }
     }

@@ -56,6 +56,47 @@ mod tests {
         }
     }
 
+    fn test_adapter_config(base_url: &str, public_key: String) -> A2aAdapterConfig {
+        A2aAdapterConfig::new(base_url, public_key)
+            .with_egress_contract(test_egress_contract(base_url))
+    }
+
+    fn test_egress_contract(base_url: &str) -> HttpEgressContract {
+        let url = Url::parse(base_url).expect("test base URL parses");
+        let host = url.host_str().expect("test base URL has host");
+        let authority = match url.port() {
+            Some(port) => format!("{host}:{port}"),
+            None => host.to_string(),
+        };
+        HttpEgressContract::permissive_for_tests(&authority)
+    }
+
+    fn insert_test_egress_authority(contract: &mut HttpEgressContract, base_url: &str) {
+        let url = Url::parse(base_url).expect("test base URL parses");
+        let host = url.host_str().expect("test base URL has host");
+        let authority = match url.port() {
+            Some(port) => format!("{host}:{port}"),
+            None => host.to_string(),
+        };
+        contract.allowed_authority_set.insert(authority);
+    }
+
+    #[test]
+    fn a2a_contract_resolver_rejects_loopback_answers() {
+        let mut contract = HttpEgressContract::permissive_for_tests("127.0.0.1:80");
+        contract.deny_loopback = true;
+        let resolver = A2aContractResolver { contract };
+
+        let error = ureq::Resolver::resolve(&resolver, "127.0.0.1:80")
+            .expect_err("loopback DNS answers are rejected at resolver time");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(
+            error.to_string().contains("loopback"),
+            "unexpected resolver error: {error}"
+        );
+    }
+
     #[test]
     fn adapter_discovers_jsonrpc_and_invokes_skill() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc() else {
@@ -63,7 +104,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_bearer_token("secret-token")
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -100,13 +141,325 @@ mod tests {
     }
 
     #[test]
+    fn adapter_rejects_json_tool_body_on_cross_origin_redirect() {
+        let Some(target_listener) = bind_fake_a2a_listener("redirect target A2A listener") else {
+            return;
+        };
+        let target_address = target_listener.local_addr().expect("target listener address");
+        let target_base_url = format!("http://{target_address}");
+
+        let Some(initial_listener) = bind_fake_a2a_listener("redirect initial A2A listener") else {
+            return;
+        };
+        let initial_address = initial_listener
+            .local_addr()
+            .expect("initial listener address");
+        let initial_base_url = format!("http://{initial_address}");
+        let initial_base_url_for_thread = initial_base_url.clone();
+        let target_base_url_for_thread = target_base_url.clone();
+        let initial_handle = thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = initial_listener.accept().expect("accept initial request");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .expect("set initial read timeout");
+                let request = read_http_request(&mut stream);
+                let first_line = request.lines().next().unwrap_or_default();
+                if first_line.starts_with("GET /.well-known/agent-card.json") {
+                    write_http_json_response(
+                        &mut stream,
+                        200,
+                        &json!({
+                            "name": "Research Agent",
+                            "description": "Answers research questions over A2A",
+                            "supportedInterfaces": [{
+                                "url": format!("{initial_base_url_for_thread}/rpc"),
+                                "protocolBinding": "JSONRPC",
+                                "protocolVersion": "1.0"
+                            }],
+                            "version": "1.0.0",
+                            "capabilities": {
+                                "streaming": false,
+                                "pushNotifications": false,
+                                "stateTransitionHistory": true
+                            },
+                            "defaultInputModes": ["text/plain", "application/json"],
+                            "defaultOutputModes": ["application/json"],
+                            "skills": [{
+                                "id": "research",
+                                "name": "Research",
+                                "description": "Search and synthesize results",
+                                "tags": ["search"],
+                                "inputModes": ["text/plain", "application/json"],
+                                "outputModes": ["application/json"]
+                            }]
+                        }),
+                    );
+                } else if first_line.starts_with("POST /rpc") {
+                    write!(
+                        stream,
+                        "HTTP/1.1 302 Found\r\nLocation: {target_base_url_for_thread}/rpc\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .expect("write redirect response");
+                } else {
+                    write_http_json_response(
+                        &mut stream,
+                        500,
+                        &json!({"error": format!("unexpected request: {first_line}")}),
+                    );
+                }
+            }
+        });
+
+        let manifest_key = Keypair::generate();
+        let mut contract = test_egress_contract(&initial_base_url);
+        insert_test_egress_authority(&mut contract, &target_base_url);
+        let adapter = A2aAdapter::discover(
+            A2aAdapterConfig::new(&initial_base_url, manifest_key.public_key().to_hex())
+                .with_egress_contract(contract)
+                .with_bearer_token("secret-token")
+                .with_request_cookie("partner_session", "cookie-alpha")
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover redirecting JSONRPC adapter");
+
+        let error = adapter
+            .invoke(
+                "research",
+                json!({"message": "do not replay this tool body"}),
+                None,
+            )
+            .expect_err("JSON tool body must not be replayed to cross-origin redirect target");
+
+        initial_handle.join().expect("join initial redirect server");
+        let message = error.to_string();
+        assert!(
+            message.contains("body-bearing request rejected cross-origin redirect"),
+            "expected body-bearing redirect rejection, got: {message}"
+        );
+    }
+
+    #[test]
+    fn adapter_rejects_http_json_tool_body_on_cross_origin_redirect() {
+        let Some(target_listener) = bind_fake_a2a_listener("api key redirect target A2A listener")
+        else {
+            return;
+        };
+        let target_address = target_listener.local_addr().expect("target listener address");
+        let target_base_url = format!("http://{target_address}");
+
+        let Some(initial_listener) =
+            bind_fake_a2a_listener("api key redirect initial A2A listener")
+        else {
+            return;
+        };
+        let initial_address = initial_listener
+            .local_addr()
+            .expect("initial listener address");
+        let initial_base_url = format!("http://{initial_address}");
+        let initial_base_url_for_thread = initial_base_url.clone();
+        let target_base_url_for_thread = target_base_url.clone();
+        let initial_handle = thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = initial_listener.accept().expect("accept initial request");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .expect("set initial read timeout");
+                let request = read_http_request(&mut stream);
+                let first_line = request.lines().next().unwrap_or_default();
+                if first_line.starts_with("GET /.well-known/agent-card.json") {
+                    let (security_schemes, security_requirements) =
+                        agent_card_security_metadata(TestScenario::ApiKeyRequired, &initial_base_url_for_thread);
+                    write_http_json_response(
+                        &mut stream,
+                        200,
+                        &json!({
+                            "name": "Research Agent",
+                            "description": "Answers research questions over A2A",
+                            "supportedInterfaces": [{
+                                "url": initial_base_url_for_thread,
+                                "protocolBinding": "HTTP+JSON",
+                                "protocolVersion": "1.0"
+                            }],
+                            "version": "1.0.0",
+                            "capabilities": {
+                                "streaming": false,
+                                "pushNotifications": false,
+                                "stateTransitionHistory": true
+                            },
+                            "defaultInputModes": ["text/plain", "application/json"],
+                            "defaultOutputModes": ["application/json"],
+                            "securitySchemes": security_schemes,
+                            "securityRequirements": security_requirements,
+                            "skills": [{
+                                "id": "research",
+                                "name": "Research",
+                                "description": "Search and synthesize results",
+                                "tags": ["search"],
+                                "inputModes": ["text/plain", "application/json"],
+                                "outputModes": ["application/json"]
+                            }]
+                        }),
+                    );
+                } else if first_line.starts_with("POST /message:send") {
+                    write!(
+                        stream,
+                        "HTTP/1.1 302 Found\r\nLocation: {target_base_url_for_thread}/message:send\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .expect("write redirect response");
+                } else {
+                    write_http_json_response(
+                        &mut stream,
+                        500,
+                        &json!({"error": format!("unexpected request: {first_line}")}),
+                    );
+                }
+            }
+        });
+
+        let manifest_key = Keypair::generate();
+        let mut contract = test_egress_contract(&initial_base_url);
+        insert_test_egress_authority(&mut contract, &target_base_url);
+        let adapter = A2aAdapter::discover(
+            A2aAdapterConfig::new(&initial_base_url, manifest_key.public_key().to_hex())
+                .with_egress_contract(contract)
+                .with_api_key_header("X-A2A-Key", "secret-key")
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover API key redirecting HTTP+JSON adapter");
+
+        let error = adapter
+            .invoke(
+                "research",
+                json!({"message": "do not replay this HTTP JSON body"}),
+                None,
+            )
+            .expect_err("HTTP+JSON tool body must not be replayed cross-origin");
+
+        initial_handle.join().expect("join initial redirect server");
+        let message = error.to_string();
+        assert!(
+            message.contains("body-bearing request rejected cross-origin redirect"),
+            "expected body-bearing redirect rejection, got: {message}"
+        );
+    }
+
+    #[test]
+    fn adapter_rejects_json_tool_body_before_cross_origin_redirect_chain() {
+        let Some(initial_listener) =
+            bind_fake_a2a_listener("multi-hop redirect initial A2A listener")
+        else {
+            return;
+        };
+        let Some(middle_listener) =
+            bind_fake_a2a_listener("multi-hop redirect middle A2A listener")
+        else {
+            return;
+        };
+
+        let initial_address = initial_listener
+            .local_addr()
+            .expect("initial listener address");
+        let initial_base_url = format!("http://{initial_address}");
+        let middle_address = middle_listener
+            .local_addr()
+            .expect("middle listener address");
+        let middle_base_url = format!("http://{middle_address}");
+
+        let initial_base_url_for_thread = initial_base_url.clone();
+        let middle_base_url_for_thread = middle_base_url.clone();
+        let initial_handle = thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = initial_listener.accept().expect("accept initial request");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .expect("set initial read timeout");
+                let request = read_http_request(&mut stream);
+                let first_line = request.lines().next().unwrap_or_default();
+                if first_line.starts_with("GET /.well-known/agent-card.json") {
+                    write_http_json_response(
+                        &mut stream,
+                        200,
+                        &json!({
+                            "name": "Research Agent",
+                            "description": "Answers research questions over A2A",
+                            "supportedInterfaces": [{
+                                "url": format!("{initial_base_url_for_thread}/rpc"),
+                                "protocolBinding": "JSONRPC",
+                                "protocolVersion": "1.0"
+                            }],
+                            "version": "1.0.0",
+                            "capabilities": {
+                                "streaming": false,
+                                "pushNotifications": false,
+                                "stateTransitionHistory": true
+                            },
+                            "defaultInputModes": ["text/plain", "application/json"],
+                            "defaultOutputModes": ["application/json"],
+                            "skills": [{
+                                "id": "research",
+                                "name": "Research",
+                                "description": "Search and synthesize results",
+                                "tags": ["search"],
+                                "inputModes": ["text/plain", "application/json"],
+                                "outputModes": ["application/json"]
+                            }]
+                        }),
+                    );
+                } else if first_line.starts_with("POST /rpc") {
+                    write!(
+                        stream,
+                        "HTTP/1.1 302 Found\r\nLocation: {middle_base_url_for_thread}/relay\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .expect("write cross-origin redirect response");
+                } else {
+                    write_http_json_response(
+                        &mut stream,
+                        500,
+                        &json!({"error": format!("unexpected request: {first_line}")}),
+                    );
+                }
+            }
+        });
+
+        let manifest_key = Keypair::generate();
+        let mut contract = test_egress_contract(&initial_base_url);
+        insert_test_egress_authority(&mut contract, &middle_base_url);
+        let adapter = A2aAdapter::discover(
+            A2aAdapterConfig::new(&initial_base_url, manifest_key.public_key().to_hex())
+                .with_egress_contract(contract)
+                .with_bearer_token("secret-token")
+                .with_request_cookie("partner_session", "cookie-alpha")
+                .with_timeout(Duration::from_secs(2)),
+        )
+        .expect("discover multi-hop redirecting JSONRPC adapter");
+
+        let error = adapter
+            .invoke(
+                "research",
+                json!({"message": "do not replay across redirect chain"}),
+                None,
+            )
+            .expect_err("JSON tool body must not enter cross-origin redirect chain");
+
+        initial_handle
+            .join()
+            .expect("join initial redirect server");
+        let message = error.to_string();
+        assert!(
+            message.contains("body-bearing request rejected cross-origin redirect"),
+            "expected body-bearing redirect rejection, got: {message}"
+        );
+    }
+
+    #[test]
     fn adapter_generic_request_auth_surfaces_apply_to_discovery_and_invoke() {
         let Some(server) = FakeA2aServer::spawn_http_json() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_request_header("X-Partner", "partner-alpha")
                 .with_request_query_param("partner", "alpha")
                 .with_request_cookie("partner_session", "cookie-alpha")
@@ -146,7 +499,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let error = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_partner_policy(
                     A2aPartnerPolicy::new("partner-alpha").with_required_tenant("tenant-required"),
                 )
@@ -168,7 +521,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -245,7 +598,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
@@ -287,7 +640,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -339,7 +692,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
@@ -463,6 +816,7 @@ mod tests {
             transport_config: A2aTransportConfig {
                 default_tls_config: None,
                 mutual_tls_config: None,
+                egress_contract: None,
             },
             token_cache: Mutex::new(Vec::new()),
             timeout: Duration::from_secs(2),
@@ -619,6 +973,7 @@ mod tests {
             transport_config: A2aTransportConfig {
                 default_tls_config: None,
                 mutual_tls_config: None,
+                egress_contract: None,
             },
             token_cache: Mutex::new(Vec::new()),
             timeout: Duration::from_secs(2),
@@ -756,7 +1111,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -790,7 +1145,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -838,7 +1193,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
@@ -878,7 +1233,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -939,6 +1294,18 @@ mod tests {
     }
 
     #[test]
+    fn sse_parser_enforces_contract_response_limit() {
+        let working = json!({
+            "task": task_payload("TASK_STATE_WORKING", false)
+        });
+        let body = format!("data: {}\n\n", serde_json::to_string(&working).unwrap());
+
+        let error = parse_sse_stream_with_limit(body.as_bytes(), 8, Ok).unwrap_err();
+
+        assert!(error.to_string().contains("response bytes"));
+    }
+
+    #[test]
     fn sse_parser_rejects_too_many_chunks() {
         let working = json!({
             "task": task_payload("TASK_STATE_WORKING", false)
@@ -962,7 +1329,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -1001,7 +1368,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
@@ -1040,7 +1407,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -1071,7 +1438,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -1106,7 +1473,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
@@ -1141,7 +1508,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -1237,7 +1604,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
@@ -1334,7 +1701,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
@@ -1365,7 +1732,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_oauth_client_credentials("client-id", "client-secret")
                 .with_oauth_scope("offline_access")
                 .with_timeout(Duration::from_secs(2)),
@@ -1412,13 +1779,89 @@ mod tests {
     }
 
     #[test]
+    fn oauth_client_credentials_form_fallback_rejects_cross_origin_redirect() {
+        let Some(target_listener) = bind_fake_a2a_listener("OAuth redirect target listener") else {
+            return;
+        };
+        let target_address = target_listener.local_addr().expect("target listener address");
+        let target_base_url = format!("http://{target_address}");
+
+        let Some(initial_listener) = bind_fake_a2a_listener("OAuth redirect initial listener")
+        else {
+            return;
+        };
+        let initial_address = initial_listener
+            .local_addr()
+            .expect("initial listener address");
+        let initial_base_url = format!("http://{initial_address}");
+        let target_base_url_for_thread = target_base_url.clone();
+        let initial_handle = thread::spawn(move || {
+            for request_index in 0..2 {
+                let (mut stream, _) = initial_listener.accept().expect("accept token request");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .expect("set token read timeout");
+                let request = read_http_request(&mut stream);
+                assert!(request.starts_with("POST /oauth/token HTTP/1.1"));
+                if request_index == 0 {
+                    assert!(request.contains("Authorization: Basic "));
+                    assert!(!request.contains("client_secret=client-secret"));
+                    write!(
+                        stream,
+                        "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .expect("write 401 token response");
+                } else {
+                    assert!(request.contains("client_id=client-id"));
+                    assert!(request.contains("client_secret=client-secret"));
+                    write!(
+                        stream,
+                        "HTTP/1.1 302 Found\r\nLocation: {target_base_url_for_thread}/oauth/token\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .expect("write cross-origin token redirect");
+                }
+            }
+        });
+
+        let mut contract = test_egress_contract(&initial_base_url);
+        insert_test_egress_authority(&mut contract, &target_base_url);
+        let transport_config = A2aTransportConfig {
+            default_tls_config: None,
+            mutual_tls_config: None,
+            egress_contract: Some(contract),
+        };
+        let token_endpoint =
+            Url::parse(&format!("{initial_base_url}/oauth/token")).expect("token endpoint URL");
+        let credentials = A2aOAuthClientCredentials {
+            client_id: "client-id".to_string(),
+            client_secret: "client-secret".to_string(),
+        };
+
+        let error = request_client_credentials_token(
+            &token_endpoint,
+            &credentials,
+            &["a2a.invoke".to_string()],
+            Duration::from_secs(2),
+            &transport_config,
+        )
+        .expect_err("OAuth form secret body must not be replayed cross-origin");
+
+        initial_handle.join().expect("join OAuth redirect server");
+        let message = error.to_string();
+        assert!(
+            message.contains("body-bearing request rejected cross-origin redirect"),
+            "expected body-bearing redirect rejection, got: {message}"
+        );
+    }
+
+    #[test]
     fn adapter_openid_client_credentials_fetches_discovery_and_token() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_openid_client_credentials_required() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_oauth_client_credentials("client-id", "client-secret")
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -1455,7 +1898,7 @@ mod tests {
             return;
         };
         let manifest_key = Keypair::generate();
-        let adapter = A2aAdapter::discover(A2aAdapterConfig::new(
+        let adapter = A2aAdapter::discover(test_adapter_config(
             server.base_url(),
             manifest_key.public_key().to_hex(),
         ))
@@ -1482,7 +1925,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_http_basic_auth("a2a-user", "secret-pass")
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -1576,6 +2019,7 @@ mod tests {
             transport_config: A2aTransportConfig {
                 default_tls_config: None,
                 mutual_tls_config: None,
+                egress_contract: None,
             },
             token_cache: Mutex::new(Vec::new()),
             timeout: Duration::from_secs(2),
@@ -1597,7 +2041,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_api_key_header("X-A2A-Key", "secret-key")
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -1631,7 +2075,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_api_key_query_param("a2a_key", "secret-key")
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -1665,7 +2109,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_api_key_cookie("a2a_session", "secret-cookie")
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -1757,6 +2201,7 @@ mod tests {
             transport_config: A2aTransportConfig {
                 default_tls_config: None,
                 mutual_tls_config: None,
+                egress_contract: None,
             },
             token_cache: Mutex::new(Vec::new()),
             timeout: Duration::from_secs(2),
@@ -1779,7 +2224,7 @@ mod tests {
             return;
         };
         let manifest_key = Keypair::generate();
-        let adapter = A2aAdapter::discover(A2aAdapterConfig::new(
+        let adapter = A2aAdapter::discover(test_adapter_config(
             server.base_url(),
             manifest_key.public_key().to_hex(),
         ))
@@ -1807,7 +2252,7 @@ mod tests {
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_tls_root_ca_pem(server.root_ca_pem())
                 .with_mtls_client_auth_pem(
                     server.client_cert_chain_pem(),
@@ -1847,7 +2292,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
@@ -1939,7 +2384,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_api_key_query_param("a2a_key", "secret-key")
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -2004,7 +2449,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_http_basic_auth("a2a-user", "secret-pass")
                 .with_timeout(Duration::from_secs(2)),
         )
@@ -2073,7 +2518,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_tls_root_ca_pem(server.root_ca_pem())
                 .with_mtls_client_auth_pem(
                     server.client_cert_chain_pem(),
@@ -2143,7 +2588,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
@@ -2267,7 +2712,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
@@ -2333,7 +2778,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
@@ -2396,7 +2841,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
@@ -2462,7 +2907,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
@@ -2524,7 +2969,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
@@ -2592,7 +3037,7 @@ mod tests {
         let subject = Keypair::generate();
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
-        let adapter = A2aAdapter::discover(A2aAdapterConfig::new(
+        let adapter = A2aAdapter::discover(test_adapter_config(
             server.base_url(),
             manifest_key.public_key().to_hex(),
         ))
@@ -2655,7 +3100,7 @@ mod tests {
         let issuer = Keypair::generate();
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
-            A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+            test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
                 .with_oauth_client_credentials("client-id", "client-secret")
                 .with_timeout(Duration::from_secs(2)),
         )

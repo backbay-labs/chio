@@ -1,4 +1,4 @@
-use chio_link::config::PriceOracleConfig;
+use chio_link::config::{build_default_egress_contract, PriceOracleConfig};
 use chio_link::ExchangeRate;
 
 #[test]
@@ -25,7 +25,11 @@ fn exchange_rate_helpers_reflect_public_contract() {
 
 #[test]
 fn default_price_oracle_config_validates() {
-    let config = PriceOracleConfig::base_mainnet_default("http://localhost:8545");
+    let mut config =
+        PriceOracleConfig::base_arbitrum_default("http://127.0.0.1:8545", "http://127.0.0.1:9545");
+    config.pyth.hermes_url = "http://127.0.0.1:9000".to_string();
+    config.egress_contract = build_default_egress_contract(&config.pyth, &config.operator.chains);
+    config.egress_contract.deny_loopback = false;
 
     assert!(config.validate().is_ok());
 }

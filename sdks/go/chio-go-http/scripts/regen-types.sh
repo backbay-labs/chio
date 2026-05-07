@@ -207,6 +207,18 @@ def rewrite(node, lifts: dict, prefix: str):
                     node["type"] = "integer"
                     node.setdefault("format", "int64")
 
+        # oapi-codegen v2.4.1 emits invalid Go for singleton boolean enums
+        # (for example `map[]`). Keep the boolean shape in Go generation;
+        # the canonical JSON schema still enforces the singleton value.
+        if "enum" in node:
+            enum_values = node["enum"]
+            if (
+                isinstance(enum_values, list)
+                and len(enum_values) == 1
+                and isinstance(enum_values[0], bool)
+            ):
+                node.pop("enum", None)
+
         # Wire numeric counters and timestamps can exceed platform-width
         # Go int on 32-bit targets. Emit int64 consistently for integer
         # schemas unless a schema has already chosen a narrower format.

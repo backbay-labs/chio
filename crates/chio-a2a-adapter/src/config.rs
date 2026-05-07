@@ -2,6 +2,7 @@
 struct A2aRequestHeader {
     name: String,
     value: String,
+    sensitive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +54,10 @@ struct A2aResolvedRequestAuth {
 struct A2aTransportConfig {
     default_tls_config: Option<Arc<ureq::rustls::ClientConfig>>,
     mutual_tls_config: Option<Arc<ureq::rustls::ClientConfig>>,
+    /// Typed HTTP egress contract that gates every outbound A2A dispatch.
+    /// `None` fails closed before dispatch; production callers must thread a
+    /// tenant-scoped contract via [`A2aAdapterConfig::with_egress_contract`].
+    egress_contract: Option<HttpEgressContract>,
 }
 
 
@@ -73,6 +78,8 @@ pub struct A2aAdapterConfig {
     server_version: String,
     partner_policy: Option<A2aPartnerPolicy>,
     task_registry_path: Option<PathBuf>,
+    /// Typed HTTP egress contract that gates every outbound A2A dispatch.
+    egress_contract: Option<HttpEgressContract>,
 }
 
 impl A2aAdapterConfig {
@@ -94,7 +101,17 @@ impl A2aAdapterConfig {
             server_version: "0.1.0".to_string(),
             partner_policy: None,
             task_registry_path: None,
+            egress_contract: None,
         }
+    }
+
+    /// Set the typed [`HttpEgressContract`] that gates every outbound A2A
+    /// dispatch (agent-card discovery, SendMessage, OAuth token exchange).
+    /// Production callers must thread a tenant-scoped contract through here.
+    #[must_use]
+    pub fn with_egress_contract(mut self, contract: HttpEgressContract) -> Self {
+        self.egress_contract = Some(contract);
+        self
     }
 
     #[must_use]
@@ -103,6 +120,7 @@ impl A2aAdapterConfig {
             &mut self.request_headers,
             "Authorization".to_string(),
             format!("Bearer {}", token.into()),
+            true,
         );
         self
     }
@@ -117,6 +135,7 @@ impl A2aAdapterConfig {
             &mut self.request_headers,
             "Authorization".to_string(),
             basic_request_header_value(username.into(), password.into()),
+            true,
         );
         self
     }
@@ -127,7 +146,9 @@ impl A2aAdapterConfig {
         header_name: impl Into<String>,
         value: impl Into<String>,
     ) -> Self {
-        upsert_request_header(&mut self.request_headers, header_name.into(), value.into());
+        let header_name = header_name.into();
+        let sensitive = is_sensitive_redirect_header(header_name.as_str());
+        upsert_request_header(&mut self.request_headers, header_name, value.into(), sensitive);
         self
     }
 
@@ -137,7 +158,7 @@ impl A2aAdapterConfig {
         header_name: impl Into<String>,
         value: impl Into<String>,
     ) -> Self {
-        upsert_request_header(&mut self.request_headers, header_name.into(), value.into());
+        upsert_request_header(&mut self.request_headers, header_name.into(), value.into(), true);
         self
     }
 

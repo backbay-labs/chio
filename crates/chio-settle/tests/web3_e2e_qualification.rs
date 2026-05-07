@@ -6,7 +6,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_anchor::{
     build_anchor_inclusion_proof_from_evidence_bundle, build_chain_anchor_record,
-    confirm_root_publication, prepare_root_publication, publish_root, EvmAnchorTarget,
+    confirm_root_publication, evm_anchor_devnet_rpc_egress_contract, prepare_root_publication,
+    publish_root, EvmAnchorTarget,
 };
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::capability::MonetaryAmount;
@@ -36,7 +37,9 @@ use chio_kernel::evidence_export::{
     EvidenceChildReceiptScope, EvidenceExportBundle, EvidenceExportQuery,
     EvidenceRetentionMetadata, EvidenceToolReceiptRecord,
 };
-use chio_link::config::{OracleBackendKind, PairConfig, PriceOracleConfig};
+use chio_link::config::{
+    build_default_egress_contract, OracleBackendKind, PairConfig, PriceOracleConfig,
+};
 use chio_link::{ChioLinkOracle, ExchangeRate, OracleBackend, OracleFuture, PriceOracleError};
 use chio_settle::{
     confirm_transaction, estimate_call_gas, finalize_bond_lock, finalize_escrow_dispatch,
@@ -582,10 +585,13 @@ async fn build_fx_oracle_evidence(
 ) -> Result<OracleConversionEvidence, Box<dyn std::error::Error>> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let mut config =
-        PriceOracleConfig::base_mainnet_default("https://base-mainnet.example.invalid");
+        PriceOracleConfig::base_arbitrum_default("http://127.0.0.1:8545", "http://127.0.0.1:9545");
+    config.pyth.hermes_url = "http://127.0.0.1:9000".to_string();
     for chain in &mut config.operator.chains {
         chain.sequencer_uptime_feed = None;
     }
+    config.egress_contract = build_default_egress_contract(&config.pyth, &config.operator.chains);
+    config.egress_contract.deny_loopback = false;
     let eth_pair = config
         .pairs
         .iter()
@@ -636,9 +642,16 @@ async fn publish_anchor_proof(
         publisher_address: config.operator_address.clone(),
     };
     let publication = prepare_root_publication(&anchor_target, &checkpoint, binding)?;
-    let publish_tx = publish_root(&publication).await?;
-    let confirmed_anchor =
-        confirm_root_publication(&anchor_target, &checkpoint, binding, &publish_tx).await?;
+    let egress_contract = evm_anchor_devnet_rpc_egress_contract(&config.rpc_url)?;
+    let publish_tx = publish_root(&publication, &egress_contract).await?;
+    let confirmed_anchor = confirm_root_publication(
+        &anchor_target,
+        &checkpoint,
+        binding,
+        &publish_tx,
+        &egress_contract,
+    )
+    .await?;
     let chain_anchor = build_chain_anchor_record(&anchor_target, &checkpoint, &confirmed_anchor);
     let evidence_bundle = EvidenceExportBundle {
         query: EvidenceExportQuery::default(),
@@ -698,7 +711,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         .accounts
         .clone()
         .ok_or("runtime devnet accounts missing")?;
-    let config = deployment.into_chain_config();
+    let config = deployment.into_chain_config()?;
     let binding = operator_binding(
         &operator_keypair,
         &config.chain_id,

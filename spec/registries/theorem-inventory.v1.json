@@ -138,6 +138,14 @@
       "statement": "If QuorumPolicy.min_tier is T, any peer admitted through KernelTrustExchange has a signed conformance_tier >= T in its accepted handshake challenge.",
       "introduced_by": "trajectory-4/T2.1",
       "depends_on": ["theorem.handshake.negotiation_safety"]
+    },
+    {
+      "id": "theorem.egress.contract_enforcement",
+      "kind": "assumed",
+      "status": "assumed",
+      "statement": "For every outbound HTTP dispatch in the kernel/guard/adapter layer, the typed HttpEgressContract approves the target URL on the initial request, on every redirect target, and bounds the observed response body size; loopback, link-local, IPv6 ULA, unbounded redirects, and oversize responses are rejected before any byte leaves the substrate. Operationally backed by the W2.2 wiring of 16 production callers (chio-link, chio-siem, chio-a2a-adapter, chio-openapi-mcp-bridge, chio-mcp-remote) plus the workspace lint and 5 SSRF negative-conformance tests.",
+      "introduced_by": "trajectory-4/W2.2",
+      "depends_on": []
     }
   ]
 }

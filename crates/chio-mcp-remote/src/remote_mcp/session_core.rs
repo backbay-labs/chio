@@ -45,6 +45,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use chio_egress_contract::{client_builder_with_contract, send_with_contract, HttpEgressContract};
 use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey};
 use p384::ecdsa::{Signature as P384Signature, VerifyingKey as P384VerifyingKey};
 use reqwest::Client as HttpClient;
@@ -174,6 +175,11 @@ pub struct RemoteServeHttpConfig {
     pub shared_hosted_owner: bool,
     pub wrapped_command: String,
     pub wrapped_args: Vec<String>,
+    /// Typed HTTP egress contract that gates outbound HTTP from the remote
+    /// MCP runtime (most prominently the OAuth introspection endpoint).
+    /// Production deployments must populate this; absence falls back to
+    /// substrate fail-closed at dispatch.
+    pub egress_contract: Option<HttpEgressContract>,
 }
 
 #[derive(Clone)]
@@ -594,6 +600,12 @@ struct IntrospectionBearerVerifier {
     enterprise_provider_registry: Option<Arc<EnterpriseProviderRegistry>>,
     sender_dpop_nonce_store: Arc<DpopNonceStore>,
     sender_dpop_config: DpopConfig,
+    /// Typed HTTP egress contract that gates every introspection-endpoint
+    /// dispatch. Production deployments must populate this; without a
+    /// contract the verifier substrate will fail closed if introspection is
+    /// invoked.
+    #[allow(dead_code)]
+    egress_contract: Option<HttpEgressContract>,
 }
 
 #[derive(Clone)]
@@ -924,17 +936,58 @@ fn derive_oidc_discovery_url_from_issuer(issuer: &str) -> Result<Url, CliError> 
     Ok(discovery)
 }
 
-fn fetch_identity_provider_json<T: DeserializeOwned>(
+/// Test-friendly entry point that runs the typed `HttpEgressContract`
+/// gate against an OIDC discovery or JWKS URL using the same code path
+/// as production OIDC discovery. Returns `Ok(())` when the URL passes
+/// the contract; surfaces a `CliError` when it is denied. This lets
+/// negative-conformance tests assert that loopback / link-local targets
+/// are rejected before a TCP connect is attempted.
+pub fn enforce_oidc_egress_contract(
+    url: &Url,
+    egress_contract: &HttpEgressContract,
+) -> Result<(), CliError> {
+    egress_contract
+        .enforce_url_with_dns(url.as_str(), 0)
+        .map(|_| ())
+        .map_err(|err| {
+            CliError::cli_other_error(format!(
+                "HttpEgressContract rejects OIDC fetch `{url}`: {err}"
+            ))
+        })
+}
+
+async fn fetch_identity_provider_json<T: DeserializeOwned>(
     url: &Url,
     field_name: &str,
+    egress_contract: Option<&HttpEgressContract>,
 ) -> Result<T, CliError> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(IDENTITY_PROVIDER_FETCH_TIMEOUT_SECS))
-        .build();
-    let response = agent.get(url.as_str()).call().map_err(|error| {
-        CliError::cli_other_error(format!("failed to fetch {field_name} `{}`: {error}", url))
+    // HttpEgressContract: every OIDC discovery and JWKS fetch goes through
+    // send_with_contract so target URL, DNS answers, redirects, and response
+    // body size are enforced before bytes cross the substrate boundary.
+    let contract = egress_contract.ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "{field_name} `{url}` requires an HttpEgressContract; substrate fails closed"
+        ))
     })?;
-    response.into_json::<T>().map_err(|error| {
+    let client = client_builder_with_contract(contract)
+        .timeout(Duration::from_secs(IDENTITY_PROVIDER_FETCH_TIMEOUT_SECS))
+        .build()
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "failed to build {field_name} HTTP client for `{url}`: {error}"
+            ))
+        })?;
+    let request = client.get(url.as_str()).build().map_err(|error| {
+        CliError::cli_other_error(format!("failed to build {field_name} request `{url}`: {error}"))
+    })?;
+    let response = send_with_contract(contract, &client, request)
+        .await
+        .map_err(|err| {
+            CliError::cli_other_error(format!(
+                "HttpEgressContract rejects {field_name} `{url}`: {err}"
+            ))
+        })?;
+    response.json::<T>().await.map_err(|error| {
         CliError::cli_other_error(format!(
             "failed to parse JSON from {field_name} `{}`: {error}",
             url
@@ -960,8 +1013,13 @@ fn resolve_identity_provider_discovery_url(
     Ok(None)
 }
 
-fn resolve_jwks_key_set(jwks_uri: &Url, field_name: &str) -> Result<JwtJwksKeySet, CliError> {
-    let document: JwksDocument = fetch_identity_provider_json(jwks_uri, field_name)?;
+async fn resolve_jwks_key_set(
+    jwks_uri: &Url,
+    field_name: &str,
+    egress_contract: Option<&HttpEgressContract>,
+) -> Result<JwtJwksKeySet, CliError> {
+    let document: JwksDocument =
+        fetch_identity_provider_json(jwks_uri, field_name, egress_contract).await?;
     let mut keys_by_kid = HashMap::new();
     let mut anonymous_keys = Vec::new();
     for key in document.keys {
@@ -1104,14 +1162,19 @@ fn resolve_jwk_public_key(
     }))
 }
 
-fn resolve_discovered_identity_provider(
+async fn resolve_discovered_identity_provider(
     config: &RemoteServeHttpConfig,
 ) -> Result<Option<DiscoveredIdentityProvider>, CliError> {
     let Some(discovery_url) = resolve_identity_provider_discovery_url(config)? else {
         return Ok(None);
     };
-    let document: OidcDiscoveryDocument =
-        fetch_identity_provider_json(&discovery_url, "--auth-jwt-discovery-url")?;
+    let egress_contract = config.egress_contract.as_ref();
+    let document: OidcDiscoveryDocument = fetch_identity_provider_json(
+        &discovery_url,
+        "--auth-jwt-discovery-url",
+        egress_contract,
+    )
+    .await?;
     let issuer_url = parse_identity_provider_url(&document.issuer, "discovered OIDC issuer")?;
     let issuer = canonicalize_federated_issuer(issuer_url.as_str());
     if let Some(expected_issuer) = config.auth_jwt_issuer.as_deref() {
@@ -1142,7 +1205,12 @@ fn resolve_discovered_identity_provider(
                     .to_string(),
             )
         })?;
-        Some(resolve_jwks_key_set(jwks_uri, "discovered OIDC jwks_uri")?)
+        Some(resolve_jwks_key_set(
+            jwks_uri,
+            "discovered OIDC jwks_uri",
+            egress_contract,
+        )
+        .await?)
     } else {
         None
     };

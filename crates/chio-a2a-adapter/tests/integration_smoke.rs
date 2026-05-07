@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use chio_a2a_adapter::{A2aAdapter, A2aAdapterConfig};
 use chio_core::crypto::Keypair;
+use chio_egress_contract::HttpEgressContract;
 use chio_kernel::ToolServerConnection;
 use serde_json::{json, Value};
 
@@ -27,6 +28,20 @@ fn bind_fake_a2a_listener() -> Option<TcpListener> {
         }
         Err(err) => panic!("bind fake A2A listener: {err}"),
     }
+}
+
+fn test_adapter_config(base_url: &str, public_key: String) -> A2aAdapterConfig {
+    A2aAdapterConfig::new(base_url, public_key).with_egress_contract(test_egress_contract(base_url))
+}
+
+fn test_egress_contract(base_url: &str) -> HttpEgressContract {
+    let url = url::Url::parse(base_url).expect("test base URL parses");
+    let host = url.host_str().expect("test base URL has host");
+    let authority = match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_string(),
+    };
+    HttpEgressContract::permissive_for_tests(&authority)
 }
 
 struct FakeA2aJsonRpcServer {
@@ -213,7 +228,7 @@ fn adapter_discovers_and_invokes_over_a2a_jsonrpc() {
     };
     let manifest_key = Keypair::generate();
     let adapter = A2aAdapter::discover(
-        A2aAdapterConfig::new(server.base_url(), manifest_key.public_key().to_hex())
+        test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
             .with_bearer_token("secret-token")
             .with_timeout(Duration::from_secs(2)),
     )

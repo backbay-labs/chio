@@ -14,7 +14,7 @@ use chio_external_guards::external::{
 };
 use chio_kernel::Verdict;
 use serde_json::json;
-use wiremock::matchers::{header, method, path, path_regex, query_param};
+use wiremock::matchers::{any, header, method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const KNOWN_BAD_HASH: &str = "44d88612fea8a8f36de82e1278abb02f44d88612fea8a8f36de82e1278abb02f";
@@ -296,6 +296,50 @@ async fn safe_browsing_allows_clean_url() {
             .evaluate(&make_ctx("fetch", json!({"url": "https://example.com"})))
             .await,
         Verdict::Allow
+    );
+}
+
+#[tokio::test]
+async fn safe_browsing_with_default_client_rejects_redirect_before_target_contact() {
+    let target = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&target)
+        .await;
+
+    let redirect_target = format!("{}/forbidden", target.uri());
+    let start = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/threatMatches:find"))
+        .and(query_param("key", "sb-key"))
+        .respond_with(ResponseTemplate::new(302).insert_header("Location", redirect_target))
+        .mount(&start)
+        .await;
+
+    let cfg = SafeBrowsingConfig::new("sb-key").with_base_url(start.uri());
+    let guard = SafeBrowsingGuard::with_client(cfg, reqwest::Client::new()).expect("guard build");
+
+    let error = guard
+        .eval(&make_ctx(
+            "fetch",
+            json!({"url": "https://example.com/payload"}),
+        ))
+        .await
+        .expect_err("redirect target should be denied before follow");
+    let message = error.to_string();
+    assert!(
+        message.contains("HttpEgressContract rejects external guard dispatch")
+            && message.contains("authority"),
+        "unexpected redirect denial: {message}"
+    );
+
+    let target_requests = target
+        .received_requests()
+        .await
+        .expect("target request log");
+    assert!(
+        target_requests.is_empty(),
+        "forbidden redirect target received a request"
     );
 }
 

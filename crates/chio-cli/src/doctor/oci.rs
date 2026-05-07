@@ -107,6 +107,9 @@ impl Probe for OciProbe {
         // Best-effort reachability via reqwest blocking. Treat any
         // failure as a warning, never a hard error: the probe is read-
         // only and a transient network blip should not block CI.
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: diagnostic OCI reachability
+        // probes target a user-configured registry and are skipped by
+        // CHIO_DOCTOR_SKIP_NETWORK, outside substrate tool egress.
         match reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build()
@@ -117,6 +120,8 @@ impl Probe for OciProbe {
                 } else {
                     format!("https://{registry}/v2/")
                 };
+                // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: diagnostic OCI reachability
+                // probe, outside substrate tool egress.
                 match client.head(&url).send() {
                     Ok(response) => {
                         if response.status().is_success()

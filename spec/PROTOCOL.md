@@ -1147,6 +1147,44 @@ and Python peers, and the release-qualification wave corpus.
 These surfaces are part of the supported production-diagnostics contract for
 the hosted edge.
 
+### 8.4 HTTP egress contract enforcement (W2.2)
+
+Every kernel, guard, and adapter outbound HTTP path declares a typed
+`HttpEgressContract` and routes its dispatch through
+`chio_egress_contract::send_with_contract` (or, for non-reqwest substrates,
+through the URL-only `enforce_url` and `enforce_response_bytes` helpers)
+before any byte leaves the substrate. The contract carries:
+
+- a tenant-scoped namespace,
+- a lowercase scheme allow-list,
+- an exact authority allow-list,
+- explicit denials for loopback, IPv4/IPv6 link-local, and IPv6 unique-local
+  (`fc00::/7`),
+- a `max_redirect_chain` ceiling that bounds redirect hop count, and
+- a `max_response_bytes` ceiling that bounds the observed response body.
+
+Reject scenarios (each surfaced as a structured `HttpEgressError`):
+
+- loopback target rejected (`LoopbackDenied`),
+- link-local / cloud metadata target rejected (`LinkLocalDenied`),
+- IPv6 ULA target rejected (`Ipv6UlaDenied`),
+- redirect chain exceeds the contract ceiling (`RedirectLimitExceeded`),
+- response body exceeds the contract ceiling (`ResponseTooLarge`),
+- scheme outside the allow-list (`SchemeDenied`),
+- authority outside the allow-list (`AuthorityDenied`).
+
+The W2.2 rollout wires this contract into every shipped substrate caller
+in `chio-link` (Chainlink, Pyth, sequencer), `chio-siem` (webhook, Splunk,
+Elasticsearch, Sumo Logic, Datadog, OCSF, alerting backends), the
+`chio-a2a-adapter` ureq dispatch helpers, the `chio-openapi-mcp-bridge`
+dispatcher invocation, and the `chio-mcp-remote` introspection-bearer
+verifier. A workspace lint at `scripts/check-http-egress-contract.sh`
+catches regressions; a self-test at
+`scripts/tests/check-http-egress-contract.test.sh` proves the lint accepts
+wired callers and rejects bare reqwest dispatch. Five standalone SSRF
+negative-conformance tests in `crates/chio-conformance/tests/ssrf_*.rs`
+exercise the failure paths through real production callers.
+
 ## 9. Trust-Control Contract
 
 `chio trust serve` is the shipped trust-control HTTP service.

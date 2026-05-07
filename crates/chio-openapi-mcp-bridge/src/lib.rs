@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 #[cfg(feature = "fuzz")]
 pub mod fuzz;
 
+use chio_egress_contract::HttpEgressContract;
 use chio_kernel::{KernelError, NestedFlowBridge, ToolServerConnection};
 use chio_manifest::ToolManifest;
 use chio_mcp_edge::McpToolInfo;
@@ -75,6 +76,11 @@ pub struct BridgeConfig {
     pub public_key: String,
     /// Base URL for the upstream HTTP API.
     pub base_url: String,
+    /// Typed HTTP egress contract that gates every dispatcher invocation.
+    /// Enforced at `invoke_tool` time before the dispatcher receives the URL.
+    /// Production callers must populate this field; `None` falls back to
+    /// substrate-default fail-closed behavior at dispatch time.
+    pub egress_contract: Option<HttpEgressContract>,
 }
 
 /// An HTTP method and path pair identifying an API route.
@@ -103,6 +109,35 @@ pub struct BridgedResponse {
 /// This allows the bridge to remain transport-agnostic (no reqwest dependency).
 pub type HttpDispatcher =
     dyn Fn(&str, &str, &Value) -> Result<BridgedResponse, BridgeError> + Send + Sync;
+
+fn enforce_dispatch_contract<'a>(
+    contract: Option<&'a HttpEgressContract>,
+    url: &str,
+) -> Result<&'a HttpEgressContract, BridgeError> {
+    let contract = contract.ok_or_else(|| {
+        BridgeError::UpstreamError(
+            "OpenAPI bridge dispatcher requires an HttpEgressContract".to_string(),
+        )
+    })?;
+    contract.enforce_url_with_dns(url, 0).map_err(|err| {
+        BridgeError::UpstreamError(format!("HttpEgressContract rejects bridge URL: {err}"))
+    })?;
+    Ok(contract)
+}
+
+fn enforce_bridged_response_body(
+    contract: &HttpEgressContract,
+    response: &BridgedResponse,
+) -> Result<(), BridgeError> {
+    let body_bytes = serde_json::to_vec(&response.body)
+        .map(|bytes| bytes.len() as u64)
+        .map_err(|err| {
+            BridgeError::UpstreamError(format!("failed to measure bridge response body: {err}"))
+        })?;
+    contract.enforce_response_bytes(body_bytes).map_err(|err| {
+        BridgeError::UpstreamError(format!("HttpEgressContract rejects bridge response: {err}"))
+    })
+}
 
 /// The OpenAPI-MCP bridge.
 ///
@@ -237,7 +272,13 @@ impl OpenApiMcpBridge {
 
         if let Some(dispatcher) = &self.dispatcher {
             let url = format!("{}{}", self.config.base_url, binding.path);
+            // HttpEgressContract: gate the dispatcher invocation on the typed
+            // egress contract. The bridge stays transport-agnostic, so we
+            // validate URL and DNS pre-flight, then enforce the response-byte
+            // ceiling post-dispatch. Missing contract state fails closed.
+            let contract = enforce_dispatch_contract(self.config.egress_contract.as_ref(), &url)?;
             let response = dispatcher(&binding.method, &url, &arguments)?;
+            enforce_bridged_response_body(contract, &response)?;
             Ok(json!({
                 "content": [{
                     "type": "text",
@@ -333,7 +374,12 @@ impl OwnedBridgeToolServer {
 
         if let Some(dispatcher) = &self.dispatcher {
             let url = format!("{}{}", self.config.base_url, binding.path);
+            // HttpEgressContract: validate URL pre-flight and enforce the
+            // response-byte ceiling post-dispatch. Missing contract state
+            // fails closed for live dispatchers.
+            let contract = enforce_dispatch_contract(self.config.egress_contract.as_ref(), &url)?;
             let response = dispatcher(&binding.method, &url, &arguments)?;
+            enforce_bridged_response_body(contract, &response)?;
             Ok(json!({
                 "content": [{
                     "type": "text",
@@ -492,7 +538,15 @@ mod tests {
             server_version: "1.0.0".to_string(),
             public_key: "aabbccdd".to_string(),
             base_url: "https://api.example.com".to_string(),
+            egress_contract: None,
         }
+    }
+
+    fn petstore_config_with_egress() -> BridgeConfig {
+        let mut config = petstore_config();
+        config.base_url = "https://203.0.113.10".to_string();
+        config.egress_contract = Some(HttpEgressContract::permissive_for_tests("203.0.113.10"));
+        config
     }
 
     #[test]
@@ -557,7 +611,8 @@ mod tests {
 
     #[test]
     fn bridge_invoke_with_dispatcher() {
-        let mut bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
         bridge.set_dispatcher(Box::new(|method, url, _args| {
             Ok(BridgedResponse {
                 status: 200,
@@ -577,7 +632,8 @@ mod tests {
 
     #[test]
     fn bridge_invoke_dispatcher_error_response() {
-        let mut bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
         bridge.set_dispatcher(Box::new(|_method, _url, _args| {
             Ok(BridgedResponse {
                 status: 404,
@@ -590,6 +646,40 @@ mod tests {
             .unwrap();
         assert_eq!(result["isError"], true);
         assert_eq!(result["structuredContent"]["httpStatus"], 404);
+    }
+
+    #[test]
+    fn bridge_dispatcher_without_egress_contract_fails_closed() {
+        let mut bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            Ok(BridgedResponse {
+                status: 200,
+                body: json!({"ok": true}),
+                is_error: false,
+            })
+        }));
+        let error = bridge.invoke_tool("listPets", json!({})).unwrap_err();
+        assert!(format!("{error}").contains("requires an HttpEgressContract"));
+    }
+
+    #[test]
+    fn bridge_dispatcher_response_body_cap_is_enforced() {
+        let mut config = petstore_config_with_egress();
+        config
+            .egress_contract
+            .as_mut()
+            .expect("egress contract")
+            .max_response_bytes = 8;
+        let mut bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, config).unwrap();
+        bridge.set_dispatcher(Box::new(|_method, _url, _args| {
+            Ok(BridgedResponse {
+                status: 200,
+                body: json!({"oversized": "response"}),
+                is_error: false,
+            })
+        }));
+        let error = bridge.invoke_tool("listPets", json!({})).unwrap_err();
+        assert!(format!("{error}").contains("response size"));
     }
 
     #[test]
@@ -650,7 +740,8 @@ mod tests {
 
     #[test]
     fn owned_bridge_tool_server_with_dispatcher() {
-        let mut bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
         bridge.set_dispatcher(Box::new(|_method, _url, _args| {
             Ok(BridgedResponse {
                 status: 200,
@@ -701,7 +792,8 @@ mod tests {
 
     #[test]
     fn bridge_dispatcher_receives_correct_url() {
-        let mut bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
+        let mut bridge =
+            OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
         bridge.set_dispatcher(Box::new(|_method, url, _args| {
             Ok(BridgedResponse {
                 status: 200,
@@ -715,7 +807,7 @@ mod tests {
         let url = result["structuredContent"]["body"]["receivedUrl"]
             .as_str()
             .unwrap_or("");
-        assert!(url.starts_with("https://api.example.com"));
+        assert!(url.starts_with("https://203.0.113.10"));
     }
 
     #[test]
