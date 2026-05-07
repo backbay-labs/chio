@@ -133,7 +133,7 @@ pub fn signed_play_integrity_token(
     device_verdicts: &[&str],
     exp: u64,
 ) -> Result<String, Box<dyn Error>> {
-    let mut header = Header::new(Algorithm::RS256);
+    let mut header = Header::new(Algorithm::ES256);
     header.kid = Some(GOOGLE_PLAY_INTEGRITY_ROOT_KID.to_string());
     let claims = TestClaims {
         nonce: nonce.to_string(),

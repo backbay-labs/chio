@@ -2785,6 +2785,7 @@ dependencies = [
  "chio-http-session",
  "chio-kernel",
  "chio-kernel-browser",
+ "chio-kernel-core",
  "chio-weights",
  "chrono",
  "coset",

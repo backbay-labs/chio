@@ -50,20 +50,32 @@
           "ref": "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs"
         }
       ]
-    }
-  ],
-  "trj4_proposed_manifests": [
+    },
+    {
+      "id": "manifest.capability.budget_split",
+      "claim_ref": "claim.capability.budget_split",
+      "introduced_by": "trajectory-4/W1.2",
+      "evidence": [
+        {"kind": "lean_theorem", "ref": "theorem.budget.sibling_sum_soundness"},
+        {"kind": "rust_test", "ref": "crates/chio-kernel-core/src/budget_split.rs::second_oversubscribed_sibling_is_rejected"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs::parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs::parent_5000_child_4000_two_grandchildren_3000_each_second_rejected"}
+      ]
+    },
     {
       "id": "manifest.capability.attenuation_proof",
       "claim_ref": "claim.capability.attenuation_proof",
-      "introduced_by": "trajectory-4/T1.1",
+      "introduced_by": "trajectory-4/W1.1",
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_soundness"},
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_completeness"},
         {"kind": "rust_test", "ref": "crates/chio-core-types/src/capability.rs::attenuation_witness_roundtrip_and_forgery_rejection"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"}
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs::v2_token_with_inflated_parent_scope_hash_is_rejected"}
       ]
-    },
+    }
+  ],
+  "trj4_proposed_manifests": [
     {
       "id": "manifest.receipt.body_hash_addressing",
       "claim_ref": "claim.receipt.body_hash_addressing",
@@ -81,10 +93,12 @@
       "claim_ref": "claim.receipt.dag_acyclicity",
       "introduced_by": "trajectory-4/T1.2",
       "evidence": [
-        {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"},
         {"kind": "lean_theorem", "ref": "theorem.receipt.dag_acyclicity"},
         {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_v2_dag_rejects_non_increasing_ordinal"},
         {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::receipt_v2_dag_cycle_shape_rejected"}
+      ],
+      "evidence_proposed": [
+        {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"}
       ]
     },
     {

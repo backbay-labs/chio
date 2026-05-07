@@ -14,10 +14,19 @@
 #   2. carries `coverage_state: pending` plus a non-empty
 #      `deferred_to` reference in the threat-model JSON.
 #
-# Fails closed: `partial` is never accepted, and `pending` without
+# Fails closed: `partial` is never accepted, `weak_coverage` is
+# never accepted (the row must either be raised to `covered` with
+# real mutation-testing evidence under
+# `audits/evidence/threats/<id>.json` or downgraded to `pending`
+# with a `deferred_to` reference), and `pending` without
 # `deferred_to` exits non-zero with a clear hint. Auto-promoted
 # pending corpus seeds (D14) are excluded from coverage by
 # construction since they live in the corpus, not the threat list.
+#
+# This script handles the file-existence check only. The companion
+# `check-threat-coverage-mutants.sh` enforces the per-row mutation-
+# testing evidence requirement and is the gate that catches the
+# `assert!(true)` failure mode flagged by the trajectory-4 audit.
 
 set -euo pipefail
 
@@ -68,6 +77,7 @@ uncovered=()
 covered=()
 pending=()
 partial=()
+weak=()
 
 while IFS=$'\t' read -r id state deferred_to; do
     [[ -z "$id" ]] && continue
@@ -86,10 +96,15 @@ while IFS=$'\t' read -r id state deferred_to; do
             uncovered+=("$id (coverage_state partial is not allowed after M05.P4)")
             continue
             ;;
+        weak_coverage)
+            weak+=("$id")
+            uncovered+=("$id (coverage_state weak_coverage: mutation-testing evidence is missing or shows zero kills; raise to covered with real evidence under audits/evidence/threats/<id>.json)")
+            continue
+            ;;
         ""|covered)
             ;;
         *)
-            echo "error: threat $id has unknown coverage_state '$state' (expected covered|partial|pending)" >&2
+            echo "error: threat $id has unknown coverage_state '$state' (expected covered|partial|pending|weak_coverage)" >&2
             exit 1
             ;;
     esac
@@ -113,6 +128,7 @@ echo "threat-model coverage:"
 echo "  covered: ${#covered[@]}"
 echo "  partial: ${#partial[@]}"
 echo "  pending: ${#pending[@]}"
+echo "  weak_coverage: ${#weak[@]}"
 echo "  uncovered: ${#uncovered[@]}"
 
 if [[ ${#uncovered[@]} -gt 0 ]]; then

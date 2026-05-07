@@ -350,8 +350,22 @@ pub fn verify_capability(
             CapabilityError::CryptoFloorRejected(message) => ChioMobileError::InvalidCapability {
                 message: format!("capability crypto floor rejected: {message}"),
             },
+            CapabilityError::AttenuationViolation(message) => ChioMobileError::InvalidCapability {
+                message: format!("capability rejected by chain binding: {message}"),
+            },
+            CapabilityError::BudgetSplitRejected(err) => ChioMobileError::InvalidCapability {
+                message: format!("capability rejected by sibling-sum budget split: {err}"),
+            },
             CapabilityError::Internal(msg) => ChioMobileError::Internal {
                 message: format!("capability verification failed: {msg}"),
+            },
+            CapabilityError::SchemaExceedsNegotiatedCeiling {
+                token_schema,
+                peer_max,
+            } => ChioMobileError::InvalidCapability {
+                message: format!(
+                    "capability token schema {token_schema} exceeds peer-negotiated ceiling {peer_max}"
+                ),
             },
         })?;
 

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/registries/theorem-inventory/v1",
+  "title": "Chio theorem inventory (v1)",
+  "description": "Schema for spec/registries/theorem-inventory.v1.json. Constrains the allowed status values to the canonical trajectory-4 closeout set (proposed, proven, assumed). Two transitional values (proven_partial, advisory_only) are grandfathered for legacy entries only and must be re-classified before the closeout gate flips. Any historical non-canonical status (such as the deprecated impl-backed label) is rejected by the spec/registries gate at scripts/check-trj4-no-implementation-backed.sh.",
+  "type": "object",
+  "required": ["version", "theorems"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string" },
+    "description": { "type": "string" },
+    "owner": { "type": "string" },
+    "bootstrapped_by": { "type": "string" },
+    "theorems": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/theorem" }
+    },
+    "trj4_proposed_theorems": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/theorem" }
+    }
+  },
+  "$defs": {
+    "theorem": {
+      "type": "object",
+      "required": ["id", "kind", "status", "statement"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "status": {
+          "description": "Theorem status. Canonical values are proposed, proven, assumed. The transitional values proven_partial and advisory_only are grandfathered for existing entries only; new theorems must use a canonical value. Non-canonical labels are rejected by the closeout gate.",
+          "enum": ["proposed", "proven", "assumed", "proven_partial", "advisory_only"]
+        },
+        "statement": { "type": "string" },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "introduced_by": { "type": "string" },
+        "trj4_followup": { "type": "string" }
+      }
+    }
+  }
+}

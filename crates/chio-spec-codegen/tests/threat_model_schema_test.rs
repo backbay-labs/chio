@@ -123,7 +123,48 @@ fn schema_rejects_invalid_coverage_state() {
 
     assert!(
         !validator.is_valid(&bad),
-        "schema must reject coverage_state values outside {{covered, partial, pending}}"
+        "schema must reject coverage_state values outside {{covered, partial, pending, weak_coverage}}"
+    );
+}
+
+#[test]
+fn schema_accepts_weak_coverage_state() {
+    // Positive case: `weak_coverage` is a first-class state used by
+    // the per-row mutation-testing gate
+    // (`scripts/check-threat-coverage-mutants.sh`) to flag rows whose
+    // backing tests exist but whose mutants evidence is missing or
+    // shows zero kills.
+    let root = repo_root();
+    let schema_path = root.join("spec/security/chio-threat-model.schema.json");
+    let schema_value = load_json(&schema_path);
+    let validator =
+        jsonschema::validator_for(&schema_value).expect("compile chio-threat-model.schema.json");
+
+    let valid = serde_json::json!({
+        "schema": "chio.threat-model.v1",
+        "updatedAt": "2026-04-30",
+        "boundary": {
+            "focus": "x",
+            "surfaces": ["native_chio"],
+            "assets": ["capability_tokens"]
+        },
+        "threats": [
+            {
+                "id": "weak_coverage_example",
+                "name": "Weak coverage example",
+                "surfaces": ["native_chio"],
+                "mitigations": [
+                    {"status": "existing", "control": "x"}
+                ],
+                "residualRisk": "x",
+                "coverage_state": "weak_coverage"
+            }
+        ]
+    });
+
+    assert!(
+        validator.is_valid(&valid),
+        "schema must accept the weak_coverage downgrade state"
     );
 }
 

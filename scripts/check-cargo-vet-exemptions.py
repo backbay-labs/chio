@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Fail when a cargo-vet config adds net-new exemption blocks."""
+"""Fail when a cargo-vet config adds net-new exemption blocks.
+
+Each exemption block is keyed on (name, version, criteria). Adding a row for
+an already-exempt name, escalating criteria from `safe-to-run` to
+`safe-to-deploy`, or repeating a name@version with a different criteria all
+count as net-new exemptions.
+"""
 
 from __future__ import annotations
 
@@ -10,20 +16,34 @@ import sys
 
 EXEMPTION_HEADER = re.compile(r"^\s*\[\[exemptions\.([^\]]+)\]\]\s*$")
 VERSION_LINE = re.compile(r"^\s*version\s*=\s*[\"']([^\"']+)[\"']\s*$")
+CRITERIA_LINE_STRING = re.compile(r"^\s*criteria\s*=\s*[\"']([^\"']+)[\"']\s*$")
+CRITERIA_LINE_LIST = re.compile(r"^\s*criteria\s*=\s*\[(.+)\]\s*$")
+
+
+def _parse_criteria_list(payload: str) -> str:
+    items = [
+        item.strip().strip("\"'")
+        for item in payload.split(",")
+        if item.strip()
+    ]
+    return ",".join(sorted(items))
 
 
 def exemption_entries(path: pathlib.Path) -> set[str]:
     entries: set[str] = set()
     current_name: str | None = None
     current_version: str | None = None
+    current_criteria: str | None = None
 
     def flush_current() -> None:
-        nonlocal current_name, current_version
+        nonlocal current_name, current_version, current_criteria
         if current_name is not None:
             version = current_version or "<missing-version>"
-            entries.add(f"{current_name}@{version}")
+            criteria = current_criteria or "<missing-criteria>"
+            entries.add(f"{current_name}@{version}#{criteria}")
         current_name = None
         current_version = None
+        current_criteria = None
 
     for line in path.read_text(encoding="utf-8").splitlines():
         match = EXEMPTION_HEADER.match(line)
@@ -31,9 +51,22 @@ def exemption_entries(path: pathlib.Path) -> set[str]:
             flush_current()
             current_name = match.group(1).strip().strip('"')
             continue
+        if current_name is None:
+            continue
         version_match = VERSION_LINE.match(line)
-        if current_name is not None and version_match:
+        if version_match:
             current_version = version_match.group(1).strip()
+            continue
+        criteria_string_match = CRITERIA_LINE_STRING.match(line)
+        if criteria_string_match:
+            current_criteria = criteria_string_match.group(1).strip()
+            continue
+        criteria_list_match = CRITERIA_LINE_LIST.match(line)
+        if criteria_list_match:
+            current_criteria = _parse_criteria_list(
+                criteria_list_match.group(1)
+            )
+            continue
     flush_current()
     return entries
 

@@ -1147,6 +1147,7 @@ fn build_delegation_pair() -> (CapabilityToken, CapabilityToken) {
                 },
             ],
             timestamp: 1_700_000_100,
+            scope_hash: None,
         },
         &parent_subject,
     )

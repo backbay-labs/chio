@@ -50,21 +50,46 @@ jobs:
           cargo install cargo-vet --locked --version 0.10.2
 
       - name: Check cargo-vet exemptions do not increase
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE_SHA="$PR_BASE_SHA"
+          else
+            BASE_SHA="$PUSH_BEFORE_SHA"
+          fi
+          # Force-pushes and the very first push to a new branch can leave
+          # github.event.before as the all-zero SHA. In that case there is no
+          # base to diff against, so fall back to comparing against itself
+          # (i.e. accept the head verbatim) and rely on the justification gate
+          # to catch any exemption growth on subsequent pushes.
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "no base sha available for $EVENT_NAME; skipping exemption diff" >&2
+            exit 0
+          fi
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git show "$BASE_SHA:supply-chain/config.toml" > "$RUNNER_TEMP/base-cargo-vet-config.toml"
           if python3 scripts/check-cargo-vet-exemptions.py \
             --base "$RUNNER_TEMP/base-cargo-vet-config.toml" \
             --head supply-chain/config.toml; then
             exit 0
+          fi
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            {
+              echo "Net-new cargo-vet exemptions detected on a direct push to main."
+              echo "Direct pushes cannot supply a justification comment; this push is rejected."
+              echo "Open a pull request and request a cargo-vet-exemption-justification comment instead."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
 
           has_authorized_justification() {

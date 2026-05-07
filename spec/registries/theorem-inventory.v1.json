@@ -47,7 +47,7 @@
     {
       "id": "theorem.attenuation.witness_soundness",
       "kind": "lean",
-      "status": "implementation_backed",
+      "status": "proposed",
       "statement": "If verify_attenuation_witness(parent_hash, child_hash, witness) returns Ok, then there exists a parent scope and a child scope such that H(canonical(parent)) = parent_hash, H(canonical(child)) = child_hash, and child.is_subset_of(parent) holds.",
       "introduced_by": "trajectory-4/T1.1",
       "depends_on": ["theorem.attenuation.subset_correctness"]
@@ -55,7 +55,7 @@
     {
       "id": "theorem.attenuation.witness_completeness",
       "kind": "lean",
-      "status": "implementation_backed",
+      "status": "proposed",
       "statement": "If child.is_subset_of(parent) holds, then compute_attenuation_witness(parent, child) returns Ok with a witness w such that verify_attenuation_witness(H(canonical(parent)), H(canonical(child)), w) returns Ok.",
       "introduced_by": "trajectory-4/T1.1",
       "depends_on": ["theorem.attenuation.witness_soundness"]
@@ -63,7 +63,7 @@
     {
       "id": "theorem.receipt.body_hash_input_set_pinned",
       "kind": "lean",
-      "status": "implementation_backed",
+      "status": "proposed",
       "statement": "For any chio.receipt.v2 body B, the set of fields contributing to body_hash is exactly fields(B) \\\\ {body_hash, signature, receipt_id}. The Lean proof regenerates from the JSON schema; any drift fails the proof.",
       "introduced_by": "trajectory-4/T1.2",
       "depends_on": []
@@ -71,7 +71,7 @@
     {
       "id": "theorem.receipt.body_hash_collision_resistance",
       "kind": "lean",
-      "status": "implementation_backed",
+      "status": "proposed",
       "statement": "Under the standard SHA-256 collision-resistance assumption, distinct ReceiptV2BodyHashInput values produce distinct body_hash values with negligible collision probability.",
       "introduced_by": "trajectory-4/T1.2",
       "depends_on": ["theorem.receipt.body_hash_input_set_pinned"]
@@ -79,7 +79,7 @@
     {
       "id": "theorem.receipt.dag_acyclicity",
       "kind": "tla_apalache",
-      "status": "implementation_backed",
+      "status": "proposed",
       "statement": "Under the verifier rule child.dag_ordinal > max(parent.dag_ordinal) for all parents in parent_receipt_ids, the receipt DAG is acyclic across any number of independent kernel clock domains.",
       "introduced_by": "trajectory-4/T1.2",
       "depends_on": []
@@ -87,7 +87,7 @@
     {
       "id": "theorem.anchor.merkle_inclusion",
       "kind": "lean",
-      "status": "implementation_backed",
+      "status": "proposed",
       "statement": "For any Merkle tree T over leaves L_1..L_N and any inclusion proof P_i for leaf L_i, verify_inclusion(L_i, P_i, root(T)) returns Ok iff P_i is the canonical inclusion path.",
       "introduced_by": "trajectory-4/T1.3",
       "depends_on": []
@@ -95,7 +95,7 @@
     {
       "id": "theorem.anchor.public_witness_anti_equivocation",
       "kind": "lean",
-      "status": "implementation_backed",
+      "status": "proposed",
       "statement": "Once a chio.anchor_batch.v1 root R is published to a public witness lane (Rekor / OTS / Solana memo) at time t, any subsequent batch B' with the same checkpoint_ids but a different root R' is detectable by any verifier that queries the witness lane.",
       "introduced_by": "trajectory-4/T1.3",
       "depends_on": ["theorem.anchor.merkle_inclusion"]
@@ -103,7 +103,7 @@
     {
       "id": "theorem.handshake.negotiation_safety",
       "kind": "lean",
-      "status": "implementation_backed",
+      "status": "proposed",
       "statement": "When two peers exchange chio.capabilities.v1 feature bitsets and proceed with the intersection, neither peer can be tricked into using a feature it did not advertise (confused-deputy resistance).",
       "introduced_by": "trajectory-4/T1.0",
       "depends_on": []
