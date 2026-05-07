@@ -28,6 +28,7 @@ use chio_reputation::{
     IncidentCorrelationMetrics, LeastPrivilegeMetrics, LocalReputationScorecard, MetricValue,
     ReliabilityMetrics, ResourceStewardshipMetrics, SpecializationMetrics,
 };
+use chio_store_sqlite::SqliteCapabilityAuthority;
 use reqwest::blocking::Client;
 
 fn unique_path(prefix: &str, suffix: &str) -> PathBuf {
@@ -3042,21 +3043,25 @@ fn certify_adversarial_multi_operator_open_market_preserves_visibility_without_t
         generated_at + 10,
     );
     assert_eq!(aggregated.peer_count, 3);
-    assert_eq!(aggregated.reachable_count, 2);
+    assert_eq!(
+        aggregated.reachable_count, 1,
+        "reachable generic registry peers are valid fresh reports; tampered reports remain visible as validation errors"
+    );
     assert_eq!(aggregated.stale_peer_count, 0);
-    assert_eq!(aggregated.result_count, 0);
-    assert_eq!(aggregated.divergence_count, 1);
+    assert_eq!(aggregated.result_count, 1);
+    assert_eq!(aggregated.divergence_count, 0);
+    assert_eq!(
+        aggregated.results[0].publisher.operator_id,
+        publisher_operator_id
+    );
     assert!(aggregated.errors.iter().any(
         |error| error.operator_id == "mirror-a" && error.error.contains("signature is invalid")
     ));
-    assert!(aggregated.divergences.iter().any(|divergence| {
-        divergence.actor_id == tool_server_id
-            && divergence
-                .publisher_operator_ids
-                .contains(&publisher_operator_id)
-            && divergence
-                .publisher_operator_ids
-                .contains(&"indexer-a".to_string())
+    assert!(aggregated.errors.iter().any(|error| {
+        error.operator_id == "indexer-a"
+            && error
+                .error
+                .contains("signer does not match the declared namespace ownership signer")
     }));
 
     let activation_request = serde_json::json!({
@@ -3184,11 +3189,15 @@ fn certify_adversarial_multi_operator_open_market_preserves_visibility_without_t
     let charter: SignedGenericGovernanceCharter =
         charter_response.json().expect("parse governance charter");
 
+    let authority_keypair = SqliteCapabilityAuthority::open(&authority_db_path)
+        .expect("open local authority db")
+        .local_keypair()
+        .expect("load local authority keypair");
     let mut forged_activation_body = activation.body.clone();
     forged_activation_body.local_operator_id = "https://remote-governor.chio.example".to_string();
     forged_activation_body.local_operator_name = Some("Remote Governor".to_string());
     let forged_activation =
-        SignedGenericTrustActivation::sign(forged_activation_body, &Keypair::generate())
+        SignedGenericTrustActivation::sign(forged_activation_body, &authority_keypair)
             .expect("sign forged activation");
 
     let forged_case_issue_response = client
