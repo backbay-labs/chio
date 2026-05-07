@@ -912,7 +912,6 @@ async def app_main(sourcedir: pathlib.Path) -> None:
         path_matcher=matcher,
     )
     await coco.mount_each(process_file_vectors, files.items(), code_table, doc_table)
-    return
 
     entity_table = await _mount_node("ChioEntity", ChioEntity)
     file_table = await _mount_node("ChioFile", ChioFile)

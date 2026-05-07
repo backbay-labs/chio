@@ -169,6 +169,18 @@ def _notification_accepted() -> Response:
     return Response(status_code=202)
 
 
+def _rpc_result_or_notification(is_notification: bool, request_id: Any, result: Any) -> Response:
+    if is_notification:
+        return _notification_accepted()
+    return _rpc_result(request_id, result)
+
+
+def _rpc_error_or_notification(is_notification: bool, request_id: Any, code: int, message: str) -> Response:
+    if is_notification:
+        return _notification_accepted()
+    return _rpc_error(request_id, code, message)
+
+
 def _client_is_loopback(request: Request) -> bool:
     if request.client is None:
         return False
@@ -265,6 +277,7 @@ async def mcp(request: Request) -> Response:
     if not isinstance(payload, dict):
         return _rpc_error(None, -32600, "Invalid Request")
 
+    is_notification = "id" not in payload
     request_id = payload.get("id")
     method = payload.get("method")
     raw_params = payload.get("params", {})
@@ -273,11 +286,12 @@ async def mcp(request: Request) -> Response:
     elif isinstance(raw_params, dict):
         params = raw_params
     else:
-        return _rpc_error(request_id, -32602, "Invalid params")
+        return _rpc_error_or_notification(is_notification, request_id, -32602, "Invalid params")
 
     try:
         if method == "initialize":
-            return _rpc_result(
+            return _rpc_result_or_notification(
+                is_notification,
                 request_id,
                 {
                     "protocolVersion": "2025-03-26",
@@ -288,9 +302,9 @@ async def mcp(request: Request) -> Response:
         if method == "notifications/initialized":
             return _notification_accepted()
         if method == "ping":
-            return _rpc_result(request_id, {})
+            return _rpc_result_or_notification(is_notification, request_id, {})
         if method == "tools/list":
-            return _rpc_result(request_id, {"tools": _tool_list()})
+            return _rpc_result_or_notification(is_notification, request_id, {"tools": _tool_list()})
         if method == "tools/call":
             name = params.get("name")
             raw_arguments = params.get("arguments", {})
@@ -299,13 +313,19 @@ async def mcp(request: Request) -> Response:
             elif isinstance(raw_arguments, dict):
                 arguments = raw_arguments
             else:
-                return _rpc_error(request_id, -32602, "Invalid tool arguments")
+                return _rpc_error_or_notification(is_notification, request_id, -32602, "Invalid tool arguments")
             if name not in TOOLS:
-                return _rpc_error(request_id, -32602, f"Unknown tool: {name}")
+                return _rpc_error_or_notification(is_notification, request_id, -32602, f"Unknown tool: {name}")
             if name == "kb_add_episode" and not _write_tool_authorized(request):
-                return _rpc_error(request_id, -32001, "kb_add_episode requires loopback access or a bearer token")
+                return _rpc_error_or_notification(
+                    is_notification,
+                    request_id,
+                    -32001,
+                    "kb_add_episode requires loopback access or a bearer token",
+                )
             result = await _call_tool(name, arguments)
-            return _rpc_result(
+            return _rpc_result_or_notification(
+                is_notification,
                 request_id,
                 {
                     "content": [
@@ -317,11 +337,11 @@ async def mcp(request: Request) -> Response:
                 },
             )
     except KeyError as exc:
-        return _rpc_error(request_id, -32602, f"Missing required argument: {exc}")
+        return _rpc_error_or_notification(is_notification, request_id, -32602, f"Missing required argument: {exc}")
     except Exception as exc:
-        return _rpc_error(request_id, -32000, str(exc))
+        return _rpc_error_or_notification(is_notification, request_id, -32000, str(exc))
 
-    return _rpc_error(request_id, -32601, f"Unknown method: {method}")
+    return _rpc_error_or_notification(is_notification, request_id, -32601, f"Unknown method: {method}")
 
 
 @app.on_event("shutdown")

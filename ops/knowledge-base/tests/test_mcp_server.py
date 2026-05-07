@@ -21,6 +21,30 @@ def test_initialized_notification_has_no_json_rpc_response() -> None:
     assert response.content == b""
 
 
+def test_request_without_id_is_notification() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/mcp/",
+        json={"jsonrpc": "2.0", "method": "ping"},
+    )
+
+    assert response.status_code == 202
+    assert response.content == b""
+
+
+def test_explicit_null_id_still_returns_json_rpc_response() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/mcp/",
+        json={"jsonrpc": "2.0", "id": None, "method": "ping"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"jsonrpc": "2.0", "id": None, "result": {}}
+
+
 def test_initialize_request_still_returns_json_rpc_result() -> None:
     client = TestClient(app)
 
