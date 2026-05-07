@@ -432,6 +432,7 @@ mod tests {
                         delegatee: subject.public_key(),
                         attenuations: Vec::new(),
                         timestamp: 100,
+                        scope_hash: None,
                     },
                     issuer,
                 )

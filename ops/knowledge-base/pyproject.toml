@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chio-knowledge-base"
+version = "0.1.0"
+description = "Local CocoIndex, Neo4j, Graphiti, and MCP knowledge base for Chio agents."
+requires-python = ">=3.11"
+dependencies = [
+    "asyncpg>=0.29.0",
+    "cocoindex[litellm,neo4j,postgres]>=1.0.2",
+    "fastapi>=0.115.0",
+    "httpx>=0.27.0",
+    "instructor>=1.7.0",
+    "litellm>=1.60.0",
+    "neo4j>=5.26.0",
+    "numpy",
+    "pgvector>=0.4.1",
+    "pydantic>=2.8.0",
+    "PyYAML>=6.0.0",
+    "python-dotenv>=1.0.0",
+    "pytest>=8.0.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[project.scripts]
+chio-kb-eval = "chio_kb.eval_runner:main"
+chio-kb-mcp = "chio_kb.mcp_server:main"
+chio-kb-reset = "chio_kb.maintenance:reset_main"
+chio-kb-seed-memory = "chio_kb.seed_memory:main"
+chio-kb-smoke = "chio_kb.smoke:main"
+chio-kb-seed-graph = "chio_kb.graph_seed:main"
+
+[tool.setuptools.packages.find]
+include = ["chio_kb*"]

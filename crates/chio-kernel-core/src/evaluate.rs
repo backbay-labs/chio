@@ -38,6 +38,7 @@ use alloc::vec::Vec;
 use chio_core_types::capability::{CapabilityCryptoFloor, CapabilityToken};
 use chio_core_types::crypto::PublicKey;
 
+use crate::budget_split::{BudgetRegistry, NoopBudgetRegistry};
 use crate::capability_verify::{verify_capability_with_floor, CapabilityError, VerifiedCapability};
 use crate::clock::Clock;
 use crate::guard::{Guard, GuardContext, PortableToolCallRequest};
@@ -144,9 +145,31 @@ impl KernelCoreError {
                 }
                 CapabilityError::NotYetValid => "capability not yet valid".to_string(),
                 CapabilityError::Expired => "capability has expired".to_string(),
+                CapabilityError::AttenuationViolation(msg) => {
+                    let mut out = String::from("capability rejected by chain binding: ");
+                    out.push_str(msg);
+                    out
+                }
+                CapabilityError::BudgetSplitRejected(err) => {
+                    let mut out = String::from("capability budget split rejected: ");
+                    // alloc::fmt is available; use core formatting.
+                    let formatted = alloc::format!("{err}");
+                    out.push_str(&formatted);
+                    out
+                }
                 CapabilityError::Internal(msg) => {
                     let mut out = String::from("capability verification failed: ");
                     out.push_str(msg);
+                    out
+                }
+                CapabilityError::SchemaExceedsNegotiatedCeiling {
+                    token_schema,
+                    peer_max,
+                } => {
+                    let mut out = String::from("capability token schema ");
+                    out.push_str(token_schema);
+                    out.push_str(" exceeds peer-negotiated ceiling ");
+                    out.push_str(peer_max);
                     out
                 }
             },
@@ -210,9 +233,26 @@ pub fn evaluate(input: EvaluateInput<'_>) -> EvaluationVerdict {
 /// Legacy callers use [`evaluate`], which preserves the historical
 /// allow-classical posture. Kernels that load `policy.crypto_floor` must call
 /// this entry point so capability tokens cannot bypass the PQ floor.
+///
+/// This entry point uses a [`NoopBudgetRegistry`]; the full
+/// [`evaluate_with_crypto_floor_and_budgets`] entry point lets a hosted
+/// kernel inject its own [`BudgetRegistry`] so sibling-sum oversubscription
+/// is rejected at evaluation time.
 pub fn evaluate_with_crypto_floor(
     input: EvaluateInput<'_>,
     crypto_floor: CapabilityCryptoFloor,
+) -> EvaluationVerdict {
+    let mut budgets = NoopBudgetRegistry;
+    evaluate_with_crypto_floor_and_budgets(input, crypto_floor, &mut budgets)
+}
+
+/// Evaluate with both a configured crypto floor and a sibling-sum budget
+/// registry. Hosted kernels that track delegated children should call this
+/// so an oversubscribed sibling fails closed at the verify step.
+pub fn evaluate_with_crypto_floor_and_budgets(
+    input: EvaluateInput<'_>,
+    crypto_floor: CapabilityCryptoFloor,
+    budgets: &mut dyn BudgetRegistry,
 ) -> EvaluationVerdict {
     // Step 1: capability verification.
     let verified = match verify_capability_with_floor(
@@ -220,6 +260,7 @@ pub fn evaluate_with_crypto_floor(
         input.trusted_issuers,
         input.clock,
         crypto_floor,
+        budgets,
     ) {
         Ok(verified) => verified,
         Err(error) => {

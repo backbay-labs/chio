@@ -148,6 +148,7 @@ mod tests {
                 delegatee: next_kp.public_key(),
                 attenuations: vec![],
                 timestamp: 1500,
+                scope_hash: None,
             };
             let link = DelegationLink::sign(body, &last_kp).unwrap();
             chain.push(link);

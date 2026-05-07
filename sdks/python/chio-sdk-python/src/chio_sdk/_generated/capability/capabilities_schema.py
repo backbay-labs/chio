@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 168c92102b530411f244aeff273362ff27544e7ce7b3c6623f51c9ecb4d58e62
+# Schema sha256: 33035d85d1be112ab0feff412b8183f2916dc2c03dd89271104beebb8ea8bc2d
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -14,7 +14,11 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+_CHIO_FEATURE_NAME_RE = re.compile(r"^[a-z0-9_.-]{1,96}$")
 
 
 class MaxCapabilitySchema(Enum):
@@ -36,3 +40,15 @@ class ChioCapabilityNegotiationV1(BaseModel):
         description="String-keyed feature bitset. Peers proceed only with the intersection of true values advertised by both sides.",
     )
     maxCapabilitySchema: MaxCapabilitySchema
+
+    @model_validator(mode="after")
+    def _validate_feature_names(self) -> "ChioCapabilityNegotiationV1":
+        if self.features is None:
+            return self
+        for name in self.features:
+            if not _CHIO_FEATURE_NAME_RE.match(name):
+                raise ValueError(
+                    f"capability feature name {name!r} does not match "
+                    f"propertyNames pattern ^[a-z0-9_.-]{{1,96}}$"
+                )
+        return self

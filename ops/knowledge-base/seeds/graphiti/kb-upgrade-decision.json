@@ -1,0 +1,21 @@
+{
+  "name": "A-grade local KB upgrade decision",
+  "type": "architecture_decision",
+  "source_description": "Curated seed for the local knowledge-base upgrade.",
+  "scope": "chio-repo",
+  "body": {
+    "summary": "The local Chio KB keeps OpenAI embeddings as the default, uses deterministic Postgres vector ingestion for code and docs, uses deterministic Neo4j seeding for Chio graph facts, and reserves Graphiti for curated temporal episodes.",
+    "decisions": [
+      "Normalize all paths before classification so Docker /workspace paths, absolute checkout paths, and repo-relative paths map to the same metadata.",
+      "Keep bulk source and docs out of Graphiti. Seed only architecture summaries, decisions, release gates, repair summaries, and workflow constraints.",
+      "Prefer scoped concept nodes such as capability:kernel-validation and guard:pipeline over broad global concept hubs during graph traversal.",
+      "Use fixed dogfood fixtures to gate retrieval quality before calling the KB A-grade."
+    ],
+    "validation": [
+      "make kb-reset",
+      "make kb-reseed",
+      "make kb-eval",
+      "make kb-dogfood"
+    ]
+  }
+}

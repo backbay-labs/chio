@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 168c92102b530411f244aeff273362ff27544e7ce7b3c6623f51c9ecb4d58e62
+# Schema sha256: 33035d85d1be112ab0feff412b8183f2916dc2c03dd89271104beebb8ea8bc2d
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -11,13 +11,15 @@
 from __future__ import annotations
 
 from .capabilities_schema import ChioCapabilityNegotiationV1, MaxCapabilitySchema
-from .grant_schema import ChioCapabilityGrant
+from .grant_schema import ChioCapabilityGrant, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
 from .revocation_schema import ChioCapabilityRevocationEntry
-from .token_schema import ChioCapabilitytoken
-from .token_v1_schema import ChioCapabilitytokenV1
-from .token_v2_schema import AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytokenV2, GrantKind, GrantSubsetRelation, Kind, ScopeAttenuation
+from .token_schema import Algorithm, Attenuation, ChioCapabilitytoken, ChioScope, Constraint, DelegationLink, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
+from .token_v1_schema import Algorithm, Attenuation, ChioCapabilitytokenV1, ChioScope, Constraint, DelegationLink, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
+from .token_v2_schema import Algorithm, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytokenV2, ChioScope, Constraint, GrantKind, GrantSubsetRelation, Kind, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, ToolGrant
 
 __all__ = [
+    "Algorithm",
+    "Attenuation",
     "AttenuationProof",
     "AttenuationWitness",
     "Caveat",
@@ -27,9 +29,17 @@ __all__ = [
     "ChioCapabilitytoken",
     "ChioCapabilitytokenV1",
     "ChioCapabilitytokenV2",
+    "ChioScope",
+    "Constraint",
+    "DelegationLink",
     "GrantKind",
     "GrantSubsetRelation",
     "Kind",
     "MaxCapabilitySchema",
+    "MonetaryAmount",
+    "Operation",
+    "PromptGrant",
+    "ResourceGrant",
     "ScopeAttenuation",
+    "ToolGrant",
 ]

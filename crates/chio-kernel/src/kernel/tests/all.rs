@@ -874,6 +874,7 @@ fn make_delegation_link(
             delegatee: delegatee_kp.public_key(),
             attenuations: vec![],
             timestamp,
+            scope_hash: None,
         },
         delegator_kp,
     )

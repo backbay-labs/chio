@@ -1,0 +1,27 @@
+{
+  "name": "Receipt compliance evidence path",
+  "type": "architecture_summary",
+  "source_description": "Curated seed for receipt, evidence export, and compliance certificate work.",
+  "scope": "chio-repo",
+  "body": {
+    "summary": "Release qualification and compliance certificate work should prioritize protocol docs, compliance certificate spec, evidence export code, receipt store reports, kernel certificate tests, and conformance evidence before product release surfaces.",
+    "authoritative_files": [
+      "spec/COMPLIANCE-CERTIFICATE.md",
+      "docs/release/QUALIFICATION.md",
+      "docs/release/RELEASE_AUDIT.md",
+      "crates/chio-cli/src/evidence_export.rs",
+      "crates/chio-kernel/src/evidence_export.rs",
+      "crates/chio-store-sqlite/src/evidence_export.rs"
+    ],
+    "tests": [
+      "crates/chio-kernel/tests/compliance_certificate_hybrid.rs",
+      "crates/chio-cli/tests/evidence_export.rs",
+      "crates/chio-http-core/tests/compliance_score_endpoint.rs"
+    ],
+    "constraints": [
+      "Do not rank Mercury product release code above protocol qualification evidence for compliance certificate queries.",
+      "Release claims must stay behind current qualification evidence.",
+      "Compliance certificate work should surface signed receipts and Merkle checkpoint context."
+    ]
+  }
+}

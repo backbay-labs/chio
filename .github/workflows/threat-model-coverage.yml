@@ -1,11 +1,25 @@
 # threat-model-coverage.yml - M05.P5.T4 CI gate.
 #
-# Fails the build if any threat ID in
-# spec/security/chio-threat-model.v1.json lacks a populated test
-# body (the codegen stub at crates/chio-conformance/tests/threats/<id>.rs
-# still calls `unimplemented!()`) and is not explicitly marked
-# `coverage_state: pending` or `coverage_state: partial` in the
-# threat-model JSON.
+# Two complementary gates run in this workflow:
+#
+#   1. `scripts/check-threat-coverage.sh` (file-existence gate):
+#      fails the build if any threat ID lacks a populated test
+#      body (the codegen stub at
+#      crates/chio-conformance/tests/threats/<id>.rs still calls
+#      `unimplemented!()`) and is not explicitly marked
+#      `coverage_state: pending` (with a `deferred_to`),
+#      `coverage_state: partial`, or `coverage_state:
+#      weak_coverage` in the threat-model JSON.
+#
+#   2. `scripts/check-threat-coverage-mutants.sh` (per-row mutation-
+#      testing gate, trajectory-4 wave-0 / E0.4): for each
+#      `covered` row, asserts the existence of an evidence file at
+#      `audits/evidence/threats/<id>.json` recording at least one
+#      caught mutant. Rows whose evidence is missing or zero-kills
+#      get a `WEAK: <id>` downgrade hint. Bootstrap placeholders
+#      (`needs_real_run: true`) are reported as informational and
+#      do not fail the build, so the per-row gate can be wired in
+#      ahead of trajectory-4 wave 4 backfilling real evidence.
 #
 # Pending vectors auto-promoted by the M05.P2 fuzz-seed promoter
 # (D14) live in the corpus, not the threat list, and are excluded
@@ -23,7 +37,10 @@ on:
       - "crates/chio-conformance/tests/threats/**"
       - "crates/chio-spec-codegen/src/threat_model.rs"
       - "scripts/check-threat-coverage.sh"
+      - "scripts/check-threat-coverage-mutants.sh"
       - "scripts/tests/check-threat-coverage.test.sh"
+      - "scripts/tests/check-threat-coverage-mutants.test.sh"
+      - "audits/evidence/threats/**"
       - ".github/workflows/threat-model-coverage.yml"
   push:
     branches:
@@ -56,11 +73,17 @@ jobs:
       - name: Cache cargo registry and target
         uses: Swatinem/rust-cache@v2
 
-      - name: Run threat-model coverage gate
+      - name: Run threat-model coverage gate (file-existence)
         run: bash scripts/check-threat-coverage.sh
+
+      - name: Run threat-model mutants gate (per-row evidence)
+        run: bash scripts/check-threat-coverage-mutants.sh
 
       - name: Self-test the coverage gate (state matrix)
         run: bash scripts/tests/check-threat-coverage.test.sh
+
+      - name: Self-test the mutants gate (evidence matrix)
+        run: bash scripts/tests/check-threat-coverage-mutants.test.sh
 
       - name: Cargo test - threat_model_schema_test
         run: cargo test -p chio-spec-codegen --test threat_model_schema_test

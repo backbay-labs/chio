@@ -3,9 +3,7 @@ extern crate alloc;
 use alloc::string::ToString;
 use alloc::vec;
 
-use chio_core_types::capability::{
-    CapabilityToken, ChioScope, Operation, ToolGrant, CHIO_CAPABILITY_V1_SCHEMA,
-};
+use chio_core_types::capability::{CapabilityToken, ChioScope, Operation, ToolGrant};
 use chio_core_types::crypto::{PublicKey, Signature, SigningAlgorithm, SigningBackend};
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use serde_json::Value;
@@ -53,7 +51,7 @@ fn grant(server: &str, tool: &str) -> ToolGrant {
 
 fn unsigned_capability(ttl: u64) -> CapabilityToken {
     CapabilityToken {
-        schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
+        schema: chio_core_types::capability::CHIO_CAPABILITY_V1_SCHEMA.to_string(),
         id: "cap-public-kani".to_string(),
         issuer: public_key(7),
         subject: public_key(9),

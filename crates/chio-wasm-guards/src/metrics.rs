@@ -1,10 +1,29 @@
 //! Prometheus metric family descriptors for WASM guard observability.
+//!
+//! All `METRIC_CHIO_*` constants used to live here as parallel string
+//! literals. W2.4 of the trj4 closeout migrates them to re-exports from
+//! `chio_metrics_spec` so the workspace registry is the single source of
+//! truth for Prometheus metric names. The three pool metrics
+//! (`chio_guard_pool_checkout_total`, `chio_guard_pool_warm_size`,
+//! `chio_guard_pool_evict_total`) were registered in the same wave; the
+//! re-exports below pick them up automatically.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-pub use chio_kernel::{
-    METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
-    METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+pub use chio_metrics_spec::{
+    CHIO_GUARD_DENY_TOTAL as METRIC_CHIO_GUARD_DENY_TOTAL,
+    CHIO_GUARD_EVAL_DURATION_SECONDS as METRIC_CHIO_GUARD_EVAL_DURATION_SECONDS,
+    CHIO_GUARD_FUEL_CONSUMED_TOTAL as METRIC_CHIO_GUARD_FUEL_CONSUMED_TOTAL,
+    CHIO_GUARD_HOST_CALL_DURATION_SECONDS as METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS,
+    CHIO_GUARD_MODULE_BYTES as METRIC_CHIO_GUARD_MODULE_BYTES,
+    CHIO_GUARD_POOL_CHECKOUT_TOTAL as METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL,
+    CHIO_GUARD_POOL_EVICT_TOTAL as METRIC_CHIO_GUARD_POOL_EVICT_TOTAL,
+    CHIO_GUARD_POOL_WARM_SIZE as METRIC_CHIO_GUARD_POOL_WARM_SIZE,
+    CHIO_GUARD_RELOAD_TOTAL as METRIC_CHIO_GUARD_RELOAD_TOTAL,
+    CHIO_GUARD_VERDICT_TOTAL as METRIC_CHIO_GUARD_VERDICT_TOTAL,
+    CHIO_OTEL_INGRESS_DROP_TOTAL as METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL,
+    CHIO_OTEL_SINK_DROP_TOTAL as METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
+    CHIO_SIGNING_QUEUE_BLOCK_TOTAL as METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
 };
 
 use crate::observability::{
@@ -13,17 +32,6 @@ use crate::observability::{
     VERDICT_REWRITE,
 };
 
-pub const METRIC_CHIO_GUARD_EVAL_DURATION_SECONDS: &str = "chio_guard_eval_duration_seconds";
-pub const METRIC_CHIO_GUARD_FUEL_CONSUMED_TOTAL: &str = "chio_guard_fuel_consumed_total";
-pub const METRIC_CHIO_GUARD_VERDICT_TOTAL: &str = "chio_guard_verdict_total";
-pub const METRIC_CHIO_GUARD_DENY_TOTAL: &str = "chio_guard_deny_total";
-pub const METRIC_CHIO_GUARD_RELOAD_TOTAL: &str = "chio_guard_reload_total";
-pub const METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS: &str =
-    "chio_guard_host_call_duration_seconds";
-pub const METRIC_CHIO_GUARD_MODULE_BYTES: &str = "chio_guard_module_bytes";
-pub const METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL: &str = "chio_guard_pool_checkout_total";
-pub const METRIC_CHIO_GUARD_POOL_WARM_SIZE: &str = "chio_guard_pool_warm_size";
-pub const METRIC_CHIO_GUARD_POOL_EVICT_TOTAL: &str = "chio_guard_pool_evict_total";
 pub const MAX_GUARD_METRIC_CARDINALITY: usize = 1024;
 pub const E_GUARD_METRIC_CARDINALITY_EXCEEDED: &str = "E_GUARD_METRIC_CARDINALITY_EXCEEDED";
 pub const OVERFLOW_TENANT_ID: &str = "__overflow__";

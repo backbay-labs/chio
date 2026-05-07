@@ -112,6 +112,7 @@ fn make_delegation_link(delegator_kp: &Keypair, delegatee_kp: &Keypair) -> Deleg
         delegatee: delegatee_kp.public_key(),
         attenuations: vec![],
         timestamp: 1_000_100,
+        scope_hash: None,
     };
     DelegationLink::sign(body, delegator_kp).unwrap()
 }

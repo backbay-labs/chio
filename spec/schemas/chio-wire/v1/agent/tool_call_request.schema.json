@@ -17,17 +17,21 @@
       "additionalProperties": false,
       "required": ["id", "issuer", "subject", "scope", "issued_at", "expires_at", "signature"],
       "properties": {
+        "schema": {
+          "type": "string",
+          "const": "chio.capability.v1"
+        },
         "id": {
           "type": "string",
           "minLength": 1
         },
         "issuer": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
         },
         "subject": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
         },
         "scope": {
           "type": "object",
@@ -195,11 +199,11 @@
               },
               "delegator": {
                 "type": "string",
-                "pattern": "^[0-9a-f]{64}$"
+                "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
               },
               "delegatee": {
                 "type": "string",
-                "pattern": "^[0-9a-f]{64}$"
+                "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
               },
               "attenuations": {
                 "type": "array",
@@ -211,16 +215,24 @@
                 "type": "integer",
                 "minimum": 0
               },
+              "scope_hash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
               "signature": {
                 "type": "string",
-                "pattern": "^[0-9a-f]{128}$"
+                "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
               }
             }
           }
         },
+        "algorithm": {
+          "type": "string",
+          "enum": ["ed25519", "p256", "p384", "hybrid"]
+        },
         "signature": {
           "type": "string",
-          "pattern": "^[0-9a-f]{128}$"
+          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
         }
       }
     },

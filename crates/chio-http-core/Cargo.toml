@@ -25,6 +25,7 @@ uuid = { workspace = true, features = ["v7"] }
 chio-core-types = { path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }
 chio-kernel = { path = "../chio-kernel" }
+chio-metrics-spec = { workspace = true }
 
 [dev-dependencies]
 chio-core = { path = "../chio-core" }

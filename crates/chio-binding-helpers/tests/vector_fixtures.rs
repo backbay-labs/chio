@@ -450,6 +450,7 @@ fn signed_delegation_link(
             delegatee: delegatee.public_key(),
             attenuations: vec![],
             timestamp,
+            scope_hash: None,
         },
         delegator,
     )

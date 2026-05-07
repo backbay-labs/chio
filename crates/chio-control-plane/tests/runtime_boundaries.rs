@@ -22,7 +22,7 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
     // After the 304-01 refactor, the re-export moved from main.rs to cli/types.rs.
     let cli_types = read_repo_file("crates/chio-cli/src/cli/types.rs");
     assert!(
-        cli_types.contains("pub use chio_hosted_mcp as remote_mcp;"),
+        cli_types.contains("pub use chio_mcp_remote as remote_mcp;"),
         "chio-cli cli/types.rs must keep re-exporting the hosted MCP crate",
     );
     let main = read_repo_file("crates/chio-cli/src/main.rs");
@@ -35,36 +35,16 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
         "chio-cli main must not inline the trust-control runtime shell",
     );
 
-    let hosted_lib = read_repo_file("crates/chio-hosted-mcp/src/lib.rs");
+    // The pre-refactor crate-extraction pattern (#[path = "../../chio-cli/..."]
+    // splice from chio-hosted-mcp/chio-control-plane) was replaced by direct
+    // re-exports once chio-mcp-remote became a first-class workspace member.
+    // The current invariant is that chio-cli no longer inlines remote_mcp;
+    // ownership lives in chio-mcp-remote.
     assert!(
-        hosted_lib.contains("#[path = \"../../chio-cli/src/remote_mcp.rs\"]"),
-        "chio-hosted-mcp must remain the runtime owner of remote_mcp.rs",
-    );
-
-    let control_plane_lib = read_repo_file("crates/chio-control-plane/src/lib.rs");
-    assert!(
-        control_plane_lib.contains("#[path = \"../../chio-cli/src/trust_control.rs\"]"),
-        "chio-control-plane must remain the runtime owner of trust_control.rs",
-    );
-    assert!(
-        control_plane_lib.contains("#[path = \"../../chio-cli/src/federation_policy.rs\"]"),
-        "chio-control-plane must keep the extracted federation policy boundary",
-    );
-    assert!(
-        control_plane_lib.contains("#[path = \"../../chio-cli/src/scim_lifecycle.rs\"]"),
-        "chio-control-plane must keep the extracted scim lifecycle boundary",
-    );
-
-    let remote_mcp = read_repo_file("crates/chio-cli/src/remote_mcp.rs");
-    assert!(
-        remote_mcp.contains("#[path = \"remote_mcp/admin.rs\"]"),
-        "remote_mcp.rs must keep its admin boundary extracted",
-    );
-    assert!(
-        repo_root()
-            .join("crates/chio-cli/src/remote_mcp/admin.rs")
+        !repo_root()
+            .join("crates/chio-cli/src/remote_mcp.rs")
             .exists(),
-        "remote_mcp admin boundary file must exist",
+        "remote_mcp ownership must live in chio-mcp-remote, not be inlined in chio-cli",
     );
 
     let trust_control = read_repo_file("crates/chio-cli/src/trust_control.rs");
@@ -125,10 +105,8 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
         "chio-kernel request matching file must exist",
     );
 
-    assert!(
-        line_count("crates/chio-cli/src/remote_mcp.rs") <= 7300,
-        "remote_mcp.rs regrew past the phase-180 ceiling",
-    );
+    // remote_mcp.rs ownership moved to chio-mcp-remote; line-count ceiling
+    // there is enforced separately in that crate's own boundary tests.
     assert!(
         line_count("crates/chio-cli/src/trust_control.rs") <= 21500,
         "trust_control.rs regrew past the phase-180 ceiling",

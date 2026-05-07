@@ -1,0 +1,94 @@
+# close-bar-tracker.yml - Trj4 closeout per-row ledger gate.
+#
+# Three complementary gates run in this workflow:
+#
+#   1. `scripts/check-close-bar-tracker.sh` (in-tree gate): asserts the
+#      tracker is well-formed (>= 153 rows, no DONE+wired=n, no DONE
+#      pointing at a missing or non-recognised test path, no proven
+#      theorem with a missing .lean file) and refuses regressions
+#      against the in-tree snapshot at audits/evidence/close-bar-snapshot.json.
+#
+#   2. `scripts/check-close-bar-snapshot-frozen.sh` (cross-ref gate):
+#      compares the head tracker against the snapshot from `origin/main`.
+#      A PR cannot bypass the in-tree regression check by editing the
+#      snapshot in the same PR; the source of truth for "was this row
+#      already DONE/PARTIAL on main?" is the main snapshot, not the
+#      head snapshot.
+#
+#   3. `python3 .planning/trajectory-4/closeout/build_tracker.py` then
+#      `git diff --exit-code` on the regenerated outputs: ensures the
+#      committed tracker + snapshot are exactly what the regenerator
+#      produces. If a row was hand-edited away from regenerator output,
+#      the gate fails so the regenerator stays the source of truth.
+#
+# Required status check name: close-bar-tracker / close-bar-gate
+
+name: close-bar-tracker
+
+on:
+  pull_request:
+    paths:
+      - ".planning/trajectory-4/closeout/CLOSE-BAR-TRACKER.md"
+      - ".planning/trajectory-4/closeout/build_tracker.py"
+      - "audits/evidence/close-bar-snapshot.json"
+      - "scripts/check-close-bar-tracker.sh"
+      - "scripts/check-close-bar-snapshot-frozen.sh"
+      - "scripts/tests/check-close-bar-tracker.test.sh"
+      - ".github/workflows/close-bar-tracker.yml"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: close-bar-tracker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  close-bar-gate:
+    name: close-bar-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Fetch origin/main for snapshot-frozen comparison
+        run: git fetch origin main
+
+      - name: Run close-bar tracker gate (in-tree)
+        run: bash scripts/check-close-bar-tracker.sh
+
+      - name: Run close-bar snapshot-frozen gate (vs origin/main)
+        run: bash scripts/check-close-bar-snapshot-frozen.sh
+
+      - name: Self-test the close-bar tracker gate
+        run: bash scripts/tests/check-close-bar-tracker.test.sh
+
+      - name: Self-test the close-bar snapshot-frozen gate
+        run: bash scripts/tests/check-close-bar-snapshot-frozen.test.sh
+
+      - name: Regenerate tracker + snapshot from build_tracker.py
+        run: python3 .planning/trajectory-4/closeout/build_tracker.py
+
+      - name: Assert tracker + snapshot match build_tracker.py output
+        run: |
+          if ! git diff --exit-code -- \
+              .planning/trajectory-4/closeout/CLOSE-BAR-TRACKER.md \
+              audits/evidence/close-bar-snapshot.json; then
+            echo "" >&2
+            echo "ERROR: the committed tracker and/or snapshot have been hand-edited" >&2
+            echo "       away from build_tracker.py output. Re-run:" >&2
+            echo "         python3 .planning/trajectory-4/closeout/build_tracker.py" >&2
+            echo "       and commit the result." >&2
+            exit 1
+          fi

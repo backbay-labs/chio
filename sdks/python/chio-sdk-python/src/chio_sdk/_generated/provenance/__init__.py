@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 168c92102b530411f244aeff273362ff27544e7ce7b3c6623f51c9ecb4d58e62
+# Schema sha256: 33035d85d1be112ab0feff412b8183f2916dc2c03dd89271104beebb8ea8bc2d
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -10,10 +10,10 @@
 
 from __future__ import annotations
 
-from .attestation_bundle_schema import ChioProvenanceAttestationBundle, CredentialKind, Scheme, Statement, Tier, WorkloadIdentity
+from .attestation_bundle_schema import ChioProvenanceAttestationBundle, CredentialKind, EvidenceClass, Scheme, Statement, Tier, WorkloadIdentity
 from .context_schema import ChioProvenanceCallChainContext
 from .stamp_schema import ChioProvenanceStamp
-from .verdict_link_schema import ChioProvenanceVerdictLink, ChioProvenanceVerdictLink1, ChioProvenanceVerdictLink2, ChioProvenanceVerdictLink3, ChioProvenanceVerdictLink4, Verdict
+from .verdict_link_schema import ChioProvenanceVerdictLink, ChioProvenanceVerdictLink1, ChioProvenanceVerdictLink2, ChioProvenanceVerdictLink3, ChioProvenanceVerdictLink4, EvidenceClass, Verdict
 
 __all__ = [
     "ChioProvenanceAttestationBundle",
@@ -25,6 +25,7 @@ __all__ = [
     "ChioProvenanceVerdictLink3",
     "ChioProvenanceVerdictLink4",
     "CredentialKind",
+    "EvidenceClass",
     "Scheme",
     "Statement",
     "Tier",

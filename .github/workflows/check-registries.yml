@@ -1,0 +1,32 @@
+# check-registries.yml - Trajectory-4 closeout gate.
+#
+# Job:
+#   - no-implementation-backed: greps spec/registries/ and formal/ for the
+#     deprecated theorem status `implementation_backed`. Fails closed if any
+#     occurrence remains. Backs the chore(trj4-closeout) demotion PR.
+
+name: check-registries
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-registries-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('main-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  no-implementation-backed:
+    name: no-implementation-backed (trj4 closeout)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Run trj4 no-implementation-backed gate
+        run: bash scripts/check-trj4-no-implementation-backed.sh

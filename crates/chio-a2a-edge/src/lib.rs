@@ -20,12 +20,21 @@
 //! `task/get` resolves the terminal receipt-bearing result, and `task/cancel`
 //! can cancel a deferred task before execution.
 
+pub mod metrics;
+pub use metrics::{
+    receipt_write_outcome_for_verdict, receipt_write_total, render_a2a_edge_metrics_prometheus,
+    CHIO_RECEIPT_WRITE_TOTAL, RECEIPT_WRITE_OUTCOME_ALLOW, RECEIPT_WRITE_OUTCOME_DENY,
+    RECEIPT_WRITE_OUTCOME_ERROR, RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
+};
+
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::capability::{
     CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
 };
+#[cfg(test)]
+use chio_core::session::OperationTerminalState;
 use chio_cross_protocol::{
     runtime_lifecycle_contract, runtime_lifecycle_metadata, semantic_hints_for_tool,
     target_protocol_for_tool_with_registry, BridgeError, BridgeFidelity, CapabilityBridge,
@@ -66,6 +75,16 @@ pub enum A2aEdgeError {
     /// Cross-protocol orchestration failed.
     #[error("bridge error: {0}")]
     Bridge(#[from] chio_cross_protocol::BridgeError),
+}
+
+fn record_receipt_write_error() {
+    crate::metrics::record_receipt_write(crate::metrics::RECEIPT_WRITE_OUTCOME_ERROR);
+}
+
+fn record_receipt_write_bridge_error(error: &BridgeError) {
+    if matches!(error, BridgeError::Kernel(_)) {
+        record_receipt_write_error();
+    }
 }
 
 /// Configuration for the A2A edge.
@@ -605,6 +624,47 @@ impl ChioA2aEdge {
             model_metadata: execution.model_metadata.clone(),
         };
         let orchestrated = execute_orchestrated_a2a_request(kernel, request)?;
+        Ok(task_response_from_orchestrated(task_id, orchestrated))
+    }
+
+    /// Drive the kernel-backed A2A projection with a pending verdict for unit tests.
+    ///
+    /// The helper first executes the normal orchestrator path, then feeds a pending
+    /// kernel response through the same receipt-sink mapper used by `handle_send_message`.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn project_pending_approval_for_test(
+        &mut self,
+        skill_id: &str,
+        request: &SendMessageRequest,
+        kernel: &ChioKernel,
+        execution: &A2aKernelExecutionContext,
+        reason: impl Into<String>,
+    ) -> Result<TaskResponse, A2aEdgeError> {
+        let binding = self.resolve_skill_binding(skill_id)?;
+        let arguments = extract_arguments_from_message(&request.message);
+        let task_id = self.next_task_id();
+        let request = CrossProtocolExecutionRequest {
+            origin_request_id: task_id.clone(),
+            kernel_request_id: format!("a2a-{task_id}"),
+            target_protocol: binding.target_protocol,
+            target_server_id: binding.server_id,
+            target_tool_name: binding.tool_name,
+            agent_id: execution.agent_id.clone(),
+            arguments,
+            capability: execution.capability.clone(),
+            source_envelope: build_a2a_source_envelope(skill_id, request)?,
+            dpop_proof: execution.dpop_proof.clone(),
+            governed_intent: execution.governed_intent.clone(),
+            approval_token: execution.approval_token.clone(),
+            model_metadata: execution.model_metadata.clone(),
+        };
+        let mut orchestrated = execute_orchestrated_a2a_request(kernel, request)?;
+        let reason = reason.into();
+        orchestrated.response.verdict = KernelVerdict::PendingApproval;
+        orchestrated.response.output = None;
+        orchestrated.response.reason = Some(reason.clone());
+        orchestrated.response.terminal_state = OperationTerminalState::Incomplete { reason };
         Ok(task_response_from_orchestrated(task_id, orchestrated))
     }
 
@@ -1285,10 +1345,16 @@ fn execute_orchestrated_a2a_request(
         )));
     }
 
-    CrossProtocolOrchestrator::new(kernel)
+    match CrossProtocolOrchestrator::new(kernel)
         .with_registry(registry)
         .execute(&A2aCapabilityBridge, request)
-        .map_err(Into::into)
+    {
+        Ok(orchestrated) => Ok(orchestrated),
+        Err(error) => {
+            record_receipt_write_bridge_error(&error);
+            Err(error.into())
+        }
+    }
 }
 
 fn authoritative_target_registry() -> TargetProtocolRegistry<'static> {
@@ -1354,6 +1420,11 @@ fn task_response_from_orchestrated(
     let response = orchestrated.response;
     annotate_authoritative_a2a_metadata(&mut metadata, response.output.as_ref());
     let receipt_metadata = Some(metadata);
+
+    // W2.4: emit `chio_receipt_write_total` at the A2A receipt-sink
+    // boundary. PendingApproval is normal HITL flow, so it must not feed
+    // infrastructure error burn-rate numerators.
+    crate::metrics::record_receipt_write_verdict(response.verdict);
 
     match response.verdict {
         KernelVerdict::Allow => TaskResponse {
@@ -1533,6 +1604,7 @@ fn ensure_chio_metadata(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use chio_core::capability::{CapabilityTokenBody, ChioScope, Operation, ToolGrant};
@@ -1543,6 +1615,15 @@ mod tests {
         DEFAULT_MAX_STREAM_TOTAL_BYTES,
     };
     use chio_manifest::LatencyHint;
+
+    static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn metrics_test_guard() -> MutexGuard<'static, ()> {
+        match METRICS_TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
 
     struct MockToolServer {
         server_id: String,
@@ -1919,6 +2000,21 @@ mod tests {
         .expect("capability should sign")
     }
 
+    fn assert_receipt_write_prometheus_sample_at_least(outcome: &str, minimum: u64) {
+        let body = render_a2a_edge_metrics_prometheus();
+        let prefix = format!("{CHIO_RECEIPT_WRITE_TOTAL}{{outcome=\"{outcome}\"}} ");
+        let sample = body
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix))
+            .expect("Prometheus sample should exist")
+            .parse::<u64>()
+            .expect("Prometheus sample should be an integer");
+        assert!(
+            sample >= minimum,
+            "Prometheus sample for {outcome} must include the pending projection counter"
+        );
+    }
+
     // ---- Agent Card tests ----
 
     #[test]
@@ -2244,6 +2340,7 @@ mod tests {
 
     #[test]
     fn pending_approval_is_not_reported_as_completed() {
+        let _metrics_guard = metrics_test_guard();
         let config = test_kernel_config();
         let kernel_issuer = config.keypair.clone();
         let mut kernel = ChioKernel::new(config);
@@ -2251,29 +2348,26 @@ mod tests {
 
         let subject = Keypair::generate();
         let request = text_message("blocked pending approval");
-        let mut orchestrated = execute_orchestrated_a2a_request(
-            &kernel,
-            CrossProtocolExecutionRequest {
-                origin_request_id: "a2a-task-pending".to_string(),
-                kernel_request_id: "a2a-a2a-task-pending".to_string(),
-                target_protocol: DiscoveryProtocol::Native,
-                target_server_id: "test-srv".to_string(),
-                target_tool_name: "echo".to_string(),
-                agent_id: subject.public_key().to_hex(),
-                arguments: extract_arguments_from_message(&request.message),
-                capability: capability_for_tool(&kernel_issuer, &subject, "test-srv", "echo"),
-                source_envelope: build_a2a_source_envelope("echo", &request).unwrap(),
-                dpop_proof: None,
-                governed_intent: None,
-                approval_token: None,
-                model_metadata: None,
-            },
-        )
-        .unwrap();
-        orchestrated.response.verdict = KernelVerdict::PendingApproval;
-        orchestrated.response.reason = Some("approval required".to_string());
+        let mut edge = ChioA2aEdge::new(A2aEdgeConfig::default(), vec![test_manifest()]).unwrap();
+        let before_pending = receipt_write_total(RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL);
+        let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
 
-        let response = task_response_from_orchestrated("task-pending".to_string(), orchestrated);
+        let response = edge
+            .project_pending_approval_for_test(
+                "echo",
+                &request,
+                &kernel,
+                &A2aKernelExecutionContext {
+                    capability: capability_for_tool(&kernel_issuer, &subject, "test-srv", "echo"),
+                    agent_id: subject.public_key().to_hex(),
+                    dpop_proof: None,
+                    governed_intent: None,
+                    approval_token: None,
+                    model_metadata: None,
+                },
+                "approval required",
+            )
+            .unwrap();
         let metadata = response
             .metadata
             .expect("pending approval should attach metadata");
@@ -2287,6 +2381,94 @@ mod tests {
         assert_eq!(
             metadata["chio"]["decision"].as_str(),
             Some("pending_approval")
+        );
+        let pending_total = receipt_write_total(RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL);
+        assert!(pending_total > before_pending);
+        assert_receipt_write_prometheus_sample_at_least(
+            RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
+            pending_total,
+        );
+        assert_eq!(
+            receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR),
+            before_error
+        );
+    }
+
+    #[test]
+    fn send_message_kernel_error_records_receipt_write_error_outcome() {
+        let _metrics_guard = metrics_test_guard();
+        let mut edge = ChioA2aEdge::new(A2aEdgeConfig::default(), vec![test_manifest()]).unwrap();
+        let mut config = test_kernel_config();
+        config.require_web3_evidence = true;
+        let kernel_issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&kernel_issuer, &subject, "test-srv", "echo"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+        let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
+
+        let error = edge
+            .handle_send_message("echo", &text_message("boom"), &kernel, &execution)
+            .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("web3 evidence prerequisites unavailable"));
+        assert!(
+            receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR) > before_error,
+            "a2a orchestrator error path must advance receipt write error"
+        );
+    }
+
+    #[test]
+    fn pre_kernel_bridge_error_does_not_record_receipt_write_error_outcome() {
+        let _metrics_guard = metrics_test_guard();
+        let mut edge = ChioA2aEdge::new(A2aEdgeConfig::default(), vec![test_manifest()]).unwrap();
+        let config = test_kernel_config();
+        let kernel_issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&kernel_issuer, &subject, "test-srv", "echo"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+        let capability_ref = CrossProtocolCapabilityRef {
+            chio_capability_id: "wrong-capability".to_string(),
+            origin_protocol: DiscoveryProtocol::A2a,
+            protocol_context: Some(json!({ "targetSkillId": "echo" })),
+            parent_capability_hash: "wrong-parent-hash".to_string(),
+        };
+        let mut request = text_message("boom");
+        request.metadata = Some(json!({
+            "chio": {
+                "capabilityRef": serde_json::to_value(capability_ref).unwrap()
+            }
+        }));
+        let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
+
+        let error = edge
+            .handle_send_message("echo", &request, &kernel, &execution)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("capability reference mismatch"));
+        assert_eq!(
+            receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR),
+            before_error,
+            "pre-kernel A2A bridge errors must not advance receipt write error"
         );
     }
 

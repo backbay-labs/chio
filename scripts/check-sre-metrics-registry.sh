@@ -9,15 +9,19 @@ trap 'rm -f "${registry}" "${observed}"' EXIT
 
 cut -d'|' -f1 crates/chio-metrics-spec/metrics.snapshot | sort -u > "${registry}"
 
-rg --no-filename -o 'chio_[a-z0-9_]*(seconds|total|depth|bytes|ready)' \
+# W2.4: scope expanded to the six edges that consume the registry plus
+# `chio-wasm-guards`. The grep is anchored at `crates/<name>/src` to
+# avoid pulling matches out of `target/` artifacts.
+rg --no-filename -o 'chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)' \
   crates/chio-metrics-spec \
-  crates/chio-kernel \
-  crates/chio-mcp-edge \
-  crates/chio-acp-edge \
-  crates/chio-a2a-edge \
-  crates/chio-http-core \
-  crates/chio-anchor \
-  crates/chio-federation \
+  crates/chio-kernel/src \
+  crates/chio-mcp-edge/src \
+  crates/chio-acp-edge/src \
+  crates/chio-a2a-edge/src \
+  crates/chio-http-core/src \
+  crates/chio-anchor/src \
+  crates/chio-federation/src \
+  crates/chio-wasm-guards/src \
   crates/chio-siem \
   deploy/prometheus \
   .github/workflows \

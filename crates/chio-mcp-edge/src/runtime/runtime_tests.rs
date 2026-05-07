@@ -17,9 +17,19 @@ use chio_kernel::{
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
+static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn metrics_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    match METRICS_TEST_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 struct EchoServer;
 struct StreamingEchoServer;
 struct UrlRequiredServer;
+struct CancelledServer;
 #[derive(Default)]
 struct AsyncEventServer {
     events: Mutex<Vec<ToolServerEvent>>,
@@ -138,6 +148,28 @@ impl ToolServerConnection for UrlRequiredServer {
                 url: "https://example.com/authorize".to_string(),
                 elicitation_id: "elicit-auth".to_string(),
             }],
+        })
+    }
+}
+
+impl ToolServerConnection for CancelledServer {
+    fn server_id(&self) -> &str {
+        "cancel-srv"
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["cancel".to_string()]
+    }
+
+    fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: Value,
+        _nested_flow_bridge: Option<&mut dyn chio_kernel::NestedFlowBridge>,
+    ) -> Result<Value, KernelError> {
+        Err(KernelError::RequestCancelled {
+            request_id: chio_core::session::RequestId::new("direct-bridge-cancelled"),
+            reason: "cancelled by direct bridge test".to_string(),
         })
     }
 }
@@ -397,6 +429,85 @@ fn make_kernel() -> (ChioKernel, Keypair) {
     kernel.register_resource_provider(Box::new(FilesystemResourceProvider));
     kernel.register_prompt_provider(Box::new(ExamplePromptProvider));
     (kernel, keypair)
+}
+
+fn make_web3_required_kernel() -> (ChioKernel, Keypair) {
+    let keypair = Keypair::generate();
+    let config = KernelConfig {
+        keypair: keypair.clone(),
+        ca_public_keys: vec![],
+        max_delegation_depth: 5,
+        policy_hash: "edge-policy".to_string(),
+        allow_sampling: true,
+        allow_sampling_tool_use: false,
+        allow_elicitation: false,
+        max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
+        max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        require_web3_evidence: true,
+        checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
+        retention_config: None,
+    };
+    let mut kernel = ChioKernel::new(config);
+    kernel.register_tool_server(Box::new(EchoServer));
+    (kernel, keypair)
+}
+
+fn make_kernel_error_bridge_fixture(
+    server: Box<dyn ToolServerConnection>,
+    server_id: &str,
+    tool_name: &str,
+    request_id: &str,
+) -> (ChioKernel, BridgeMcpToolCallRequest) {
+    let keypair = Keypair::generate();
+    let config = KernelConfig {
+        keypair: keypair.clone(),
+        ca_public_keys: vec![],
+        max_delegation_depth: 5,
+        policy_hash: "edge-policy".to_string(),
+        allow_sampling: true,
+        allow_sampling_tool_use: false,
+        allow_elicitation: true,
+        max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
+        max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        require_web3_evidence: false,
+        checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
+        retention_config: None,
+    };
+    let mut kernel = ChioKernel::new(config);
+    kernel.register_tool_server(server);
+    let agent = Keypair::generate();
+    let capability = kernel
+        .issue_capability(
+            &agent.public_key(),
+            ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: server_id.to_string(),
+                    tool_name: tool_name.to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: vec![],
+                    max_invocations: None,
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                }],
+                resource_grants: vec![],
+                prompt_grants: vec![],
+            },
+            300,
+        )
+        .unwrap();
+    let request = BridgeMcpToolCallRequest {
+        request_id: request_id.to_string(),
+        capability,
+        server_id: server_id.to_string(),
+        tool_name: tool_name.to_string(),
+        arguments: json!({}),
+        agent_id: agent.public_key().to_hex(),
+        model_metadata: None,
+        route_selection_metadata: None,
+        peer_supports_chio_tool_streaming: false,
+    };
+    (kernel, request)
 }
 
 fn make_streaming_kernel() -> (ChioKernel, Keypair) {
@@ -730,6 +841,20 @@ fn make_edge_with_config(page_size: usize, logging_enabled: bool) -> ChioMcpEdge
     .unwrap()
 }
 
+fn initialize_edge(edge: &mut ChioMcpEdge) {
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    }));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    }));
+}
+
 #[test]
 fn execute_bridge_mcp_tool_call_preserves_model_metadata() {
     let (kernel, _) = make_kernel();
@@ -758,6 +883,352 @@ fn execute_bridge_mcp_tool_call_preserves_model_metadata() {
     .unwrap();
 
     assert!(matches!(bridge.response.verdict, Verdict::Allow));
+}
+
+#[test]
+fn pending_approval_receipt_write_uses_pending_outcome_label() {
+    let _metrics_guard = metrics_test_guard();
+    let (kernel, _) = make_kernel();
+    let agent = Keypair::generate();
+    let capability = issue_capabilities(&kernel, &agent).remove(0);
+    let bridge = execute_bridge_mcp_tool_call(
+        &kernel,
+        BridgeMcpToolCallRequest {
+            request_id: "mcp-pending-seed".to_string(),
+            capability,
+            server_id: "srv".to_string(),
+            tool_name: "read_file".to_string(),
+            arguments: json!({"path":"/tmp/demo.txt"}),
+            agent_id: agent.public_key().to_hex(),
+            model_metadata: None,
+            route_selection_metadata: None,
+            peer_supports_chio_tool_streaming: false,
+        },
+    )
+    .unwrap();
+    let before_pending = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL);
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+
+    let mut response = bridge.response;
+    response.verdict = Verdict::PendingApproval;
+    response.reason = Some("approval required".to_string());
+    response.output = None;
+    response.terminal_state = OperationTerminalState::Incomplete {
+        reason: "approval required".to_string(),
+    };
+    let projected =
+        BridgeMcpToolCall::from_kernel_response(response, "mcp-pending-1", false).unwrap();
+
+    assert!(matches!(
+        projected.response.verdict,
+        Verdict::PendingApproval
+    ));
+    assert_eq!(projected.mcp_result["isError"], true);
+    assert_eq!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL),
+        before_pending + 1
+    );
+    assert_eq!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
+        before_error
+    );
+    assert!(crate::render_mcp_edge_metrics_prometheus().contains("outcome=\"pending_approval\""));
+}
+
+#[test]
+fn tools_call_jsonrpc_path_records_receipt_write_allow() {
+    let _metrics_guard = metrics_test_guard();
+    let mut edge = make_edge_with_config(10, false);
+    initialize_edge(&mut edge);
+    let before_allow = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ALLOW);
+
+    let response = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "read_file",
+                "arguments": { "path": "/tmp/demo.txt" }
+            }
+        }))
+        .unwrap();
+
+    assert_eq!(response["result"]["isError"], false);
+    assert!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ALLOW) > before_allow,
+        "MCP JSON-RPC allow path must advance receipt write metrics"
+    );
+}
+
+#[test]
+fn tools_call_jsonrpc_path_records_receipt_write_deny() {
+    let _metrics_guard = metrics_test_guard();
+    let (kernel, _) = make_kernel();
+    let caller = Keypair::generate();
+    let capability_subject = Keypair::generate();
+    let capabilities = issue_capabilities(&kernel, &capability_subject);
+    let mut edge = ChioMcpEdge::new(
+        McpEdgeConfig::default(),
+        kernel,
+        caller.public_key().to_hex(),
+        capabilities,
+        vec![sample_manifest()],
+    )
+    .unwrap();
+    initialize_edge(&mut edge);
+    let before_deny = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY);
+
+    let response = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "read_file",
+                "arguments": { "path": "/tmp/demo.txt" }
+            }
+        }))
+        .unwrap();
+
+    assert_eq!(response["result"]["isError"], true);
+    assert!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY) > before_deny,
+        "MCP JSON-RPC deny path must advance receipt write metrics"
+    );
+}
+
+#[test]
+fn tools_call_jsonrpc_path_skips_receipt_write_error_for_url_elicitation() {
+    let _metrics_guard = metrics_test_guard();
+    let mut edge = make_url_required_edge();
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "capabilities": {
+                "elicitation": {
+                    "url": {}
+                }
+            }
+        }
+    }));
+    let _ = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    }));
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+
+    let response = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "authorize",
+                "arguments": {}
+            }
+        }))
+        .unwrap();
+
+    assert_eq!(response["error"]["code"], JSONRPC_URL_ELICITATION_REQUIRED);
+    assert_eq!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
+        before_error,
+        "URL elicitation must not feed receipt write infrastructure errors"
+    );
+}
+
+#[test]
+fn tool_call_error_outcome_records_receipt_write_error_for_kernel_error() {
+    let _metrics_guard = metrics_test_guard();
+    let mut edge = make_edge(10);
+    initialize_edge(&mut edge);
+    let (session_id, _context, _operation) = edge
+        .prepare_tool_call_request(
+            &json!(2),
+            &json!({
+                "name": "read_file",
+                "arguments": { "path": "/tmp/demo.txt" }
+            }),
+        )
+        .unwrap();
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+
+    let outcome = edge.tool_call_error_outcome(
+        &session_id,
+        KernelError::Internal("receipt sink unavailable".to_string()),
+        None,
+    );
+
+    assert!(
+        matches!(
+            outcome,
+            ToolCallEdgeOutcome::Result(result) if result["isError"] == true
+        ),
+        "kernel infrastructure errors should return an MCP tool error result"
+    );
+    assert!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR) > before_error,
+        "MCP KernelError path must advance receipt write error metrics"
+    );
+}
+
+#[test]
+fn kernel_error_records_receipt_write_error_outcome() {
+    let _metrics_guard = metrics_test_guard();
+    let (kernel, _) = make_web3_required_kernel();
+    let agent = Keypair::generate();
+    let capability = issue_capabilities(&kernel, &agent).remove(0);
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+
+    let error = execute_bridge_mcp_tool_call(
+        &kernel,
+        BridgeMcpToolCallRequest {
+            request_id: "mcp-error-1".to_string(),
+            capability,
+            server_id: "srv".to_string(),
+            tool_name: "read_file".to_string(),
+            arguments: json!({"path":"/tmp/demo.txt"}),
+            agent_id: agent.public_key().to_hex(),
+            model_metadata: None,
+            route_selection_metadata: None,
+            peer_supports_chio_tool_streaming: false,
+        },
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        AdapterError::KernelRuntime(message)
+            if message.contains("web3 evidence prerequisites unavailable")
+    ));
+    assert!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR) > before_error,
+        "mcp kernel error path must advance receipt write error"
+    );
+}
+
+#[test]
+fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_request_cancelled() {
+    let _metrics_guard = metrics_test_guard();
+    let (kernel, request) = make_kernel_error_bridge_fixture(
+        Box::new(CancelledServer),
+        "cancel-srv",
+        "cancel",
+        "mcp-cancelled-blocking",
+    );
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let bridge =
+        runtime.block_on(async { execute_bridge_mcp_tool_call(&kernel, request).unwrap() });
+
+    assert!(matches!(
+        bridge.response.terminal_state,
+        OperationTerminalState::Cancelled { reason }
+            if reason == "cancelled by direct bridge test"
+    ));
+    assert_eq!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
+        before_error,
+        "direct MCP cancellation must not feed receipt write infrastructure errors"
+    );
+}
+
+#[test]
+fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_url_elicitation() {
+    let _metrics_guard = metrics_test_guard();
+    let (kernel, request) = make_kernel_error_bridge_fixture(
+        Box::new(UrlRequiredServer),
+        "url-srv",
+        "authorize",
+        "mcp-url-required-blocking",
+    );
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let error =
+        runtime.block_on(async { execute_bridge_mcp_tool_call(&kernel, request).unwrap_err() });
+
+    assert!(matches!(
+        error,
+        AdapterError::KernelRuntime(message) if message.contains("URL elicitation")
+    ));
+    assert_eq!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
+        before_error,
+        "direct MCP URL elicitation must not feed receipt write infrastructure errors"
+    );
+}
+
+#[test]
+fn execute_bridge_mcp_tool_call_async_skips_receipt_write_error_for_request_cancelled() {
+    let _metrics_guard = metrics_test_guard();
+    let (kernel, request) = make_kernel_error_bridge_fixture(
+        Box::new(CancelledServer),
+        "cancel-srv",
+        "cancel",
+        "mcp-cancelled-async",
+    );
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let bridge = runtime
+        .block_on(execute_bridge_mcp_tool_call_async(&kernel, request))
+        .unwrap();
+
+    assert!(matches!(
+        bridge.response.terminal_state,
+        OperationTerminalState::Cancelled { reason }
+            if reason == "cancelled by direct bridge test"
+    ));
+    assert_eq!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
+        before_error,
+        "async MCP cancellation must not feed receipt write infrastructure errors"
+    );
+}
+
+#[test]
+fn execute_bridge_mcp_tool_call_async_skips_receipt_write_error_for_url_elicitation() {
+    let _metrics_guard = metrics_test_guard();
+    let (kernel, request) = make_kernel_error_bridge_fixture(
+        Box::new(UrlRequiredServer),
+        "url-srv",
+        "authorize",
+        "mcp-url-required-async",
+    );
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let error = runtime
+        .block_on(execute_bridge_mcp_tool_call_async(&kernel, request))
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        AdapterError::KernelRuntime(message) if message.contains("URL elicitation")
+    ));
+    assert_eq!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
+        before_error,
+        "async MCP URL elicitation must not feed receipt write infrastructure errors"
+    );
 }
 
 #[tokio::test]
@@ -2059,6 +2530,7 @@ fn tasks_cancel_marks_working_task_cancelled_and_result_returns_error_payload() 
 
 #[test]
 fn request_cancelled_errors_record_cancelled_task_terminal_state() {
+    let _metrics_guard = metrics_test_guard();
     let mut edge = make_edge(10);
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
@@ -2084,6 +2556,7 @@ fn request_cancelled_errors_record_cancelled_task_terminal_state() {
         .unwrap();
     let task_id = "mcp-edge-task-cancelled".to_string();
     let mut task = EdgeTask::new(task_id.clone(), session_id, context, operation, None, 0);
+    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
 
     let outcome = edge.tool_call_error_outcome(
         &task.session_id,
@@ -2095,6 +2568,11 @@ fn request_cancelled_errors_record_cancelled_task_terminal_state() {
     );
     task.record_outcome(outcome);
 
+    assert_eq!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
+        before_error,
+        "request cancellation must not feed receipt write infrastructure errors"
+    );
     assert_eq!(task.status, EdgeTaskStatus::Cancelled);
     assert_eq!(
         task.status_message.as_deref(),

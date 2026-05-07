@@ -22,6 +22,7 @@ chio-cross-protocol = { path = "../chio-cross-protocol" }
 chio-kernel = { path = "../chio-kernel" }
 chio-manifest = { path = "../chio-manifest" }
 chio-mcp-edge = { path = "../chio-mcp-edge" }
+chio-metrics-spec = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

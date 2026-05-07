@@ -3020,18 +3020,24 @@ fn certify_adversarial_multi_operator_open_market_preserves_visibility_without_t
     divergent_indexer.publisher.operator_name = Some("Indexer A".to_string());
     divergent_indexer.publisher.registry_url = "https://indexer-a.chio.example".to_string();
     divergent_indexer.publisher.upstream_registry_urls = vec![base_url.clone()];
-    let divergent_listing = divergent_indexer
-        .listings
-        .iter_mut()
-        .find(|listing| {
-            listing.body.subject.actor_kind == GenericListingActorKind::ToolServer
-                && listing.body.subject.actor_id == tool_server_id
-        })
-        .expect("divergent indexer listing");
-    let mut divergent_body = divergent_listing.body.clone();
-    divergent_body.compatibility.source_artifact_sha256 = "sha256-divergent-source".to_string();
-    *divergent_listing = SignedGenericListing::sign(divergent_body, &Keypair::generate())
-        .expect("sign divergent indexer listing");
+    let divergent_keypair = Keypair::generate();
+    let mut divergent_ownership = divergent_indexer.namespace.clone();
+    divergent_ownership.owner_id = "indexer-a".to_string();
+    divergent_ownership.registry_url = "https://indexer-a.chio.example".to_string();
+    divergent_ownership.signer_public_key = divergent_keypair.public_key();
+    divergent_indexer.namespace = divergent_ownership.clone();
+    for listing in &mut divergent_indexer.listings {
+        let mut divergent_body = listing.body.clone();
+        divergent_body.namespace_ownership = divergent_ownership.clone();
+        if divergent_body.subject.actor_kind == GenericListingActorKind::ToolServer
+            && divergent_body.subject.actor_id == tool_server_id
+        {
+            divergent_body.compatibility.source_artifact_sha256 =
+                "sha256-divergent-source".to_string();
+        }
+        *listing = SignedGenericListing::sign(divergent_body, &divergent_keypair)
+            .expect("sign divergent indexer listing");
+    }
 
     let aggregated = aggregate_generic_listing_reports(
         &[origin_report, tampered_mirror, divergent_indexer],
@@ -3043,25 +3049,21 @@ fn certify_adversarial_multi_operator_open_market_preserves_visibility_without_t
         generated_at + 10,
     );
     assert_eq!(aggregated.peer_count, 3);
-    assert_eq!(
-        aggregated.reachable_count, 1,
-        "reachable generic registry peers are valid fresh reports; tampered reports remain visible as validation errors"
-    );
+    assert_eq!(aggregated.reachable_count, 2);
     assert_eq!(aggregated.stale_peer_count, 0);
-    assert_eq!(aggregated.result_count, 1);
-    assert_eq!(aggregated.divergence_count, 0);
-    assert_eq!(
-        aggregated.results[0].publisher.operator_id,
-        publisher_operator_id
-    );
+    assert_eq!(aggregated.result_count, 0);
+    assert_eq!(aggregated.divergence_count, 1);
     assert!(aggregated.errors.iter().any(
         |error| error.operator_id == "mirror-a" && error.error.contains("signature is invalid")
     ));
-    assert!(aggregated.errors.iter().any(|error| {
-        error.operator_id == "indexer-a"
-            && error
-                .error
-                .contains("signer does not match the declared namespace ownership signer")
+    assert!(aggregated.divergences.iter().any(|divergence| {
+        divergence.actor_id == tool_server_id
+            && divergence
+                .publisher_operator_ids
+                .contains(&publisher_operator_id)
+            && divergence
+                .publisher_operator_ids
+                .contains(&"indexer-a".to_string())
     }));
 
     let activation_request = serde_json::json!({
@@ -3189,15 +3191,15 @@ fn certify_adversarial_multi_operator_open_market_preserves_visibility_without_t
     let charter: SignedGenericGovernanceCharter =
         charter_response.json().expect("parse governance charter");
 
-    let authority_keypair = SqliteCapabilityAuthority::open(&authority_db_path)
-        .expect("open local authority db")
-        .local_keypair()
-        .expect("load local authority keypair");
     let mut forged_activation_body = activation.body.clone();
     forged_activation_body.local_operator_id = "https://remote-governor.chio.example".to_string();
     forged_activation_body.local_operator_name = Some("Remote Governor".to_string());
+    let local_authority_keypair = SqliteCapabilityAuthority::open(&authority_db_path)
+        .expect("open local authority")
+        .local_keypair()
+        .expect("read local authority keypair");
     let forged_activation =
-        SignedGenericTrustActivation::sign(forged_activation_body, &authority_keypair)
+        SignedGenericTrustActivation::sign(forged_activation_body, &local_authority_keypair)
             .expect("sign forged activation");
 
     let forged_case_issue_response = client

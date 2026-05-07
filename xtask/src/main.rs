@@ -556,7 +556,7 @@ fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
 /// Mapping from a schema's canonical `$id` URI (and a few normalized
 /// variants) to the absolute path of the schema file on disk. Built once
 /// per `validate-scenarios` invocation by walking `spec/schemas/`.
-type SchemaIndex = std::collections::BTreeMap<String, PathBuf>;
+type SchemaIndex = BTreeMap<String, PathBuf>;
 
 fn build_schema_index(schemas_root: &Path) -> Result<SchemaIndex, XtaskError> {
     let mut index: SchemaIndex = SchemaIndex::new();
@@ -1583,7 +1583,41 @@ fn harden_python_generated_models(root_dir: &Path) -> Result<(), XtaskError> {
     harden_python_provenance_verdict_link(
         &root_dir.join("provenance").join("verdict_link_schema.py"),
     )?;
+    harden_python_capability_negotiation(
+        &root_dir.join("capability").join("capabilities_schema.py"),
+    )?;
     Ok(())
+}
+
+/// Inject a `model_validator` on `ChioCapabilityNegotiationV1` that
+/// enforces the schema's `propertyNames` regex pattern on each feature
+/// key. `datamodel-code-generator` drops `propertyNames` constraints,
+/// which would let a Python peer accept negotiation payloads that the
+/// Rust verifier rejects (`CapabilityNegotiation::validate`). Mirror
+/// the wire-side check here so cross-language consumers fail closed
+/// in the same place.
+fn harden_python_capability_negotiation(path: &Path) -> Result<(), XtaskError> {
+    let mut body =
+        fs::read_to_string(path).map_err(|err| XtaskError::Io(display_path(path), err))?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "from pydantic import BaseModel, ConfigDict, Field",
+        "import re\n\nfrom pydantic import BaseModel, ConfigDict, Field, model_validator",
+    )?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "from pydantic import BaseModel, ConfigDict, Field, model_validator\n",
+        "from pydantic import BaseModel, ConfigDict, Field, model_validator\n\n_CHIO_FEATURE_NAME_RE = re.compile(r\"^[a-z0-9_.-]{1,96}$\")\n",
+    )?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "    maxCapabilitySchema: MaxCapabilitySchema\n",
+        "    maxCapabilitySchema: MaxCapabilitySchema\n\n    @model_validator(mode=\"after\")\n    def _validate_feature_names(self) -> \"ChioCapabilityNegotiationV1\":\n        if self.features is None:\n            return self\n        for name in self.features:\n            if not _CHIO_FEATURE_NAME_RE.match(name):\n                raise ValueError(\n                    f\"capability feature name {name!r} does not match \"\n                    f\"propertyNames pattern ^[a-z0-9_.-]{{1,96}}$\"\n                )\n        return self\n",
+    )?;
+    fs::write(path, body).map_err(|err| XtaskError::Io(display_path(path), err))
 }
 
 fn harden_python_jsonrpc_response(path: &Path) -> Result<(), XtaskError> {
@@ -1666,40 +1700,65 @@ type PythonSubpackageExports = Vec<(String, Vec<String>)>;
 fn build_python_top_init(schema_digest: &str, subpackages: &PythonSubpackageExports) -> String {
     let header = build_python_file_header(schema_digest);
 
-    let mut global_counts: BTreeMap<String, usize> = BTreeMap::new();
-    for (_, classes) in subpackages {
+    // Build the deterministic re-export block. Each line is
+    // `from .<subpkg> import <Class1>, <Class2>` plus an `__all__` listing
+    // every re-exported name and the SCHEMA_SHA256 constant.
+    //
+    // Names that collide across subpackages (e.g. `Kind` defined in both
+    // `anchor` and `capability`) are imported with a `<Subpkg><Name>` alias
+    // so the top-level `__init__.py` does not silently shadow one with the
+    // other. Both aliases are listed in `__all__`. The unaliased name is
+    // kept only when a single subpackage owns it.
+    let mut name_owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (subpkg, classes) in subpackages {
         for class in classes {
-            *global_counts.entry(class.clone()).or_default() += 1;
+            if subpkg == "agent" && class == "CapabilityToken" {
+                continue;
+            }
+            name_owners
+                .entry(class.clone())
+                .or_default()
+                .push(subpkg.clone());
         }
     }
 
-    // Build the deterministic re-export block. Only globally unique names
-    // are lifted to the top level; generic generated names such as `Kind`,
-    // `Algorithm`, or `Error` remain available from their subpackages so a
-    // later import cannot silently shadow an unrelated model.
     let mut imports = String::new();
     let mut all_names: Vec<String> = vec!["SCHEMA_SHA256".to_string()];
     for (subpkg, classes) in subpackages {
-        let mut import_classes: Vec<String> = classes
-            .iter()
-            .filter(|name| global_counts.get(*name).copied() == Some(1))
-            .cloned()
-            .collect();
-        if subpkg == "agent" {
-            import_classes.retain(|name| name != "CapabilityToken");
+        let mut entries: Vec<String> = Vec::new();
+        for class in classes {
+            if subpkg == "agent" && class == "CapabilityToken" {
+                continue;
+            }
+            let owners = name_owners.get(class).map(Vec::as_slice).unwrap_or(&[]);
+            if owners.len() > 1 {
+                // Collision across subpackages: alias as <Subpkg><Class>.
+                let alias = format!("{}{}", capitalize_subpkg(subpkg), class);
+                entries.push(format!("{class} as {alias}"));
+                all_names.push(alias);
+            } else {
+                entries.push(class.clone());
+                all_names.push(class.clone());
+            }
         }
-        if import_classes.is_empty() {
+        if entries.is_empty() {
             continue;
         }
         imports.push_str(&format!(
             "from .{subpkg} import {names}\n",
-            names = import_classes.join(", ")
+            names = entries.join(", ")
         ));
-        all_names.extend(import_classes.iter().cloned());
     }
-    if subpackages.iter().any(|(subpkg, classes)| {
+    let has_capability_v1 = subpackages.iter().any(|(subpkg, classes)| {
         subpkg == "capability" && classes.iter().any(|name| name == "ChioCapabilitytoken")
-    }) {
+    });
+    let has_capability_v2 = subpackages.iter().any(|(subpkg, classes)| {
+        subpkg == "capability" && classes.iter().any(|name| name == "ChioCapabilitytokenV2")
+    });
+    if has_capability_v1 && has_capability_v2 {
+        imports.push_str("\nCapabilityToken = ChioCapabilitytoken | ChioCapabilitytokenV2\n");
+        all_names.push("CapabilityToken".to_string());
+    } else if has_capability_v1 {
         imports.push_str("\nCapabilityToken = ChioCapabilitytoken\n");
         all_names.push("CapabilityToken".to_string());
     }
@@ -1716,12 +1775,15 @@ fn build_python_top_init(schema_digest: &str, subpackages: &PythonSubpackageExpo
         "{header}\n\
          \"\"\"Generated Pydantic v2 models for the Chio wire protocol (chio-wire/v1).\n\
          \n\
-         Re-exports unambiguous generated models so callers can write\n\
+         Re-exports every subpackage so callers can write\n\
          ``from chio_sdk._generated import CapabilityToken`` for the canonical\n\
-         capability token shape without knowing the per-subpackage layout.\n\
-         Generic names that collide across schemas stay scoped to their\n\
-         subpackages. The SCHEMA_SHA256 constant pins the schema set this build\n\
-         was generated from; the spec-drift CI lane reads it to detect tampering.\n\
+         capability token shapes without knowing the per-subpackage layout. Class\n\
+         names that collide across subpackages (for example ``Kind`` defined in\n\
+         both ``anchor`` and ``capability``) are re-exported under a\n\
+         ``<Subpkg><Class>`` alias (``AnchorKind``, ``CapabilityKind``) so\n\
+         neither definition silently shadows the other. The SCHEMA_SHA256\n\
+         constant pins the schema set this build was generated from; the\n\
+         spec-drift CI lane reads it to detect tampering.\n\
          \"\"\"\n\
          \n\
          from __future__ import annotations\n\
@@ -1734,6 +1796,29 @@ fn build_python_top_init(schema_digest: &str, subpackages: &PythonSubpackageExpo
          {imports}\n\
          {all_block}"
     )
+}
+
+/// Convert a snake_case subpackage directory name (e.g. `trust_control`) into
+/// a CamelCase prefix (e.g. `TrustControl`) used to disambiguate class names
+/// that collide across subpackages in the top-level `__init__.py`.
+fn capitalize_subpkg(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut next_upper = true;
+    for ch in name.chars() {
+        if ch == '_' || ch == '-' {
+            next_upper = true;
+            continue;
+        }
+        if next_upper {
+            for upper in ch.to_uppercase() {
+                out.push(upper);
+            }
+            next_upper = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Walk every subpackage directory under `root_dir`, scan each `*.py` module
@@ -1789,7 +1874,7 @@ fn rewrite_python_subpackage_inits(
         }
         modules.sort();
 
-        let mut class_counts: BTreeMap<String, usize> = BTreeMap::new();
+        let mut all_classes: Vec<String> = Vec::new();
         for module in &modules {
             let stem = module
                 .file_stem()
@@ -1800,41 +1885,25 @@ fn rewrite_python_subpackage_inits(
                 .map_err(|err| XtaskError::Io(display_path(module), err))?;
             let classes = extract_top_level_python_classes(&body);
             if !classes.is_empty() {
-                for class in &classes {
-                    *class_counts.entry(class.clone()).or_default() += 1;
-                }
+                all_classes.extend(classes.iter().cloned());
                 module_classes.push((stem, classes));
             }
         }
-        let mut all_classes: Vec<String> = class_counts
-            .iter()
-            .filter(|(_, count)| **count == 1)
-            .map(|(name, _)| name.clone())
-            .collect();
         all_classes.sort();
+        all_classes.dedup();
 
         // Rewrite the subpackage __init__.py with explicit imports per
-        // module and a deterministic __all__. Ambiguous names that appear
-        // in more than one sibling module are intentionally left scoped to
-        // their modules; otherwise `from .token_v1_schema import
-        // DelegationLink` can overwrite `token_schema.DelegationLink` and
-        // silently narrow accepted wire shapes.
+        // module and a deterministic __all__. The header is preserved so
+        // the spec-drift CI lane's per-file header check still
+        // passes.
         let init_path = subdir.join(PYTHON_INIT_FILE);
         let mut body = header.clone();
         body.push('\n');
         body.push_str("from __future__ import annotations\n\n");
         for (module_stem, classes) in &module_classes {
-            let export_classes: Vec<String> = classes
-                .iter()
-                .filter(|name| class_counts.get(*name).copied() == Some(1))
-                .cloned()
-                .collect();
-            if export_classes.is_empty() {
-                continue;
-            }
             body.push_str(&format!(
                 "from .{module_stem} import {names}\n",
-                names = export_classes.join(", ")
+                names = classes.join(", ")
             ));
         }
         body.push('\n');

@@ -1,0 +1,27 @@
+{
+  "name": "Guard policy fail-closed behavior",
+  "type": "workflow_constraint",
+  "source_description": "Curated seed for guard and policy implementation work.",
+  "scope": "chio-repo",
+  "body": {
+    "summary": "Guard and policy work should route through native guard pipeline behavior, policy validation and compiler code, and fail-closed tests. Guard denial and redaction evidence must remain connected to receipt and conformance surfaces.",
+    "authoritative_files": [
+      "crates/chio-guards/src/pipeline.rs",
+      "crates/chio-guards/src/lib.rs",
+      "crates/chio-kernel/src/kernel/evaluator.rs",
+      "crates/chio-policy/src/validate.rs",
+      "crates/chio-policy/src/evaluate/engine.rs"
+    ],
+    "tests": [
+      "crates/chio-guards/tests/integration.rs",
+      "crates/chio-guards/tests/output_sanitization.rs",
+      "crates/chio-policy/tests/compile_policy.rs",
+      "crates/chio-policy/tests/validate_boundary.rs"
+    ],
+    "constraints": [
+      "Invalid policies reject at load time.",
+      "Guard and policy errors deny access.",
+      "Agents should inspect both runtime evaluator code and policy compiler code before changing guard semantics."
+    ]
+  }
+}

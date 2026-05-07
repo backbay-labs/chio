@@ -511,7 +511,7 @@ impl<'de> ::serde::Deserialize<'de> for AttenuationWitnessNormalizedParentScope 
 ///    },
 ///    "signerKey": {
 ///      "type": "string",
-///      "minLength": 64
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "treeRoot": {
 ///      "type": "string",
@@ -629,7 +629,7 @@ impl<'de> ::serde::Deserialize<'de> for BodyCheckpointIdsItem {
 /// ```json
 ///{
 ///  "type": "string",
-///  "minLength": 64
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -657,8 +657,18 @@ impl ::std::str::FromStr for BodySignerKey {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 64usize {
-            return Err("shorter than 64 characters".into());
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -806,7 +816,7 @@ impl<'de> ::serde::Deserialize<'de> for BodyTreeRoot {
 ///    },
 ///    "sig": {
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -1006,7 +1016,7 @@ impl<'de> ::serde::Deserialize<'de> for CaveatPredicate {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -1037,13 +1047,13 @@ impl ::std::str::FromStr for CaveatSig {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -1178,6 +1188,15 @@ for ChioAgentMessageListCapabilities {
 ///        "subject"
 ///      ],
 ///      "properties": {
+///        "algorithm": {
+///          "type": "string",
+///          "enum": [
+///            "ed25519",
+///            "p256",
+///            "p384",
+///            "hybrid"
+///          ]
+///        },
 ///        "delegation_chain": {
 ///          "type": "array",
 ///          "items": {
@@ -1202,15 +1221,19 @@ for ChioAgentMessageListCapabilities {
 ///              },
 ///              "delegatee": {
 ///                "type": "string",
-///                "pattern": "^[0-9a-f]{64}$"
+///                "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///              },
 ///              "delegator": {
+///                "type": "string",
+///                "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///              },
+///              "scope_hash": {
 ///                "type": "string",
 ///                "pattern": "^[0-9a-f]{64}$"
 ///              },
 ///              "signature": {
 ///                "type": "string",
-///                "pattern": "^[0-9a-f]{128}$"
+///                "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///              },
 ///              "timestamp": {
 ///                "type": "integer",
@@ -1234,7 +1257,11 @@ for ChioAgentMessageListCapabilities {
 ///        },
 ///        "issuer": {
 ///          "type": "string",
-///          "pattern": "^[0-9a-f]{64}$"
+///          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///        },
+///        "schema": {
+///          "type": "string",
+///          "const": "chio.capability.v1"
 ///        },
 ///        "scope": {
 ///          "type": "object",
@@ -1401,11 +1428,11 @@ for ChioAgentMessageListCapabilities {
 ///        },
 ///        "signature": {
 ///          "type": "string",
-///          "pattern": "^[0-9a-f]{128}$"
+///          "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///        },
 ///        "subject": {
 ///          "type": "string",
-///          "pattern": "^[0-9a-f]{64}$"
+///          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///        }
 ///      },
 ///      "additionalProperties": false
@@ -1465,6 +1492,15 @@ for ChioAgentMessageToolCallRequest {
 ///    "subject"
 ///  ],
 ///  "properties": {
+///    "algorithm": {
+///      "type": "string",
+///      "enum": [
+///        "ed25519",
+///        "p256",
+///        "p384",
+///        "hybrid"
+///      ]
+///    },
 ///    "delegation_chain": {
 ///      "type": "array",
 ///      "items": {
@@ -1489,15 +1525,19 @@ for ChioAgentMessageToolCallRequest {
 ///          },
 ///          "delegatee": {
 ///            "type": "string",
-///            "pattern": "^[0-9a-f]{64}$"
+///            "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///          },
 ///          "delegator": {
+///            "type": "string",
+///            "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///          },
+///          "scope_hash": {
 ///            "type": "string",
 ///            "pattern": "^[0-9a-f]{64}$"
 ///          },
 ///          "signature": {
 ///            "type": "string",
-///            "pattern": "^[0-9a-f]{128}$"
+///            "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///          },
 ///          "timestamp": {
 ///            "type": "integer",
@@ -1521,7 +1561,11 @@ for ChioAgentMessageToolCallRequest {
 ///    },
 ///    "issuer": {
 ///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///    },
+///    "schema": {
+///      "type": "string",
+///      "const": "chio.capability.v1"
 ///    },
 ///    "scope": {
 ///      "type": "object",
@@ -1688,11 +1732,11 @@ for ChioAgentMessageToolCallRequest {
 ///    },
 ///    "signature": {
 ///      "type": "string",
-///      "pattern": "^[0-9a-f]{128}$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "subject": {
 ///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -1702,6 +1746,10 @@ for ChioAgentMessageToolCallRequest {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ChioAgentMessageToolCallRequestCapabilityToken {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub algorithm: ::std::option::Option<
+        ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm,
+    >,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub delegation_chain: ::std::vec::Vec<
         ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem,
@@ -1710,6 +1758,8 @@ pub struct ChioAgentMessageToolCallRequestCapabilityToken {
     pub id: ChioAgentMessageToolCallRequestCapabilityTokenId,
     pub issued_at: u64,
     pub issuer: ChioAgentMessageToolCallRequestCapabilityTokenIssuer,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub schema: ::std::option::Option<::std::string::String>,
     pub scope: ChioAgentMessageToolCallRequestCapabilityTokenScope,
     pub signature: ChioAgentMessageToolCallRequestCapabilityTokenSignature,
     pub subject: ChioAgentMessageToolCallRequestCapabilityTokenSubject,
@@ -1718,6 +1768,101 @@ impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityToken>
 for ChioAgentMessageToolCallRequestCapabilityToken {
     fn from(value: &ChioAgentMessageToolCallRequestCapabilityToken) -> Self {
         value.clone()
+    }
+}
+///`ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "ed25519",
+///    "p256",
+///    "p384",
+///    "hybrid"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
+    #[serde(rename = "ed25519")]
+    Ed25519,
+    #[serde(rename = "p256")]
+    P256,
+    #[serde(rename = "p384")]
+    P384,
+    #[serde(rename = "hybrid")]
+    Hybrid,
+}
+impl ::std::convert::From<&Self>
+for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
+    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Ed25519 => f.write_str("ed25519"),
+            Self::P256 => f.write_str("p256"),
+            Self::P384 => f.write_str("p384"),
+            Self::Hybrid => f.write_str("hybrid"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "ed25519" => Ok(Self::Ed25519),
+            "p256" => Ok(Self::P256),
+            "p384" => Ok(Self::P384),
+            "hybrid" => Ok(Self::Hybrid),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem`
@@ -1747,15 +1892,19 @@ for ChioAgentMessageToolCallRequestCapabilityToken {
 ///    },
 ///    "delegatee": {
 ///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "delegator": {
+///      "type": "string",
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///    },
+///    "scope_hash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    },
 ///    "signature": {
 ///      "type": "string",
-///      "pattern": "^[0-9a-f]{128}$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "timestamp": {
 ///      "type": "integer",
@@ -1776,6 +1925,10 @@ pub struct ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem {
     pub capability_id: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId,
     pub delegatee: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee,
     pub delegator: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub scope_hash: ::std::option::Option<
+        ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
+    >,
     pub signature: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature,
     pub timestamp: u64,
 }
@@ -1888,7 +2041,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityI
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -1929,9 +2082,17 @@ for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -1983,7 +2144,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -2024,9 +2185,17 @@ for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -2071,6 +2240,101 @@ for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
             })
     }
 }
+///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<
+    ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
+> for ::std::string::String {
+    fn from(
+        value: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<
+    &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
+> for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
+    fn from(
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature`
 ///
 /// <details><summary>JSON schema</summary>
@@ -2078,7 +2342,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^[0-9a-f]{128}$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -2119,9 +2383,17 @@ for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{128}$").unwrap() });
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{128}$\"".into());
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -2255,7 +2527,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenId {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -2286,9 +2558,17 @@ impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenIssue
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -3869,7 +4149,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPatt
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^[0-9a-f]{128}$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -3902,9 +4182,17 @@ impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenSigna
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{128}$").unwrap() });
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{128}$\"".into());
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -3956,7 +4244,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenSignature {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -3987,9 +4275,17 @@ impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenSubje
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
         if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -4296,7 +4592,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioAgentMessageToolCallRequestTool {
 ///    },
 ///    "signature": {
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -4321,7 +4617,7 @@ impl ::std::convert::From<&ChioAnchorBatchV1> for ChioAnchorBatchV1 {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -4352,13 +4648,13 @@ impl ::std::str::FromStr for ChioAnchorBatchV1Signature {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -4817,7 +5113,6 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 ///    "id",
 ///    "issued_at",
 ///    "issuer",
-///    "schema",
 ///    "scope",
 ///    "signature",
 ///    "subject"
@@ -4901,7 +5196,8 @@ pub struct ChioCapabilityToken {
     ///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.
     pub issuer: ChioCapabilityTokenIssuer,
     ///Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
-    pub schema: ::std::string::String,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub schema: ::std::option::Option<::std::string::String>,
     pub scope: ChioScope,
     ///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
     pub signature: ChioCapabilityTokenSignature,
@@ -5363,7 +5659,6 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenSubject {
 ///    "id",
 ///    "issued_at",
 ///    "issuer",
-///    "schema",
 ///    "scope",
 ///    "signature",
 ///    "subject"
@@ -5446,7 +5741,8 @@ pub struct ChioCapabilityTokenV1 {
     ///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
     pub issuer: ChioCapabilityTokenV1Issuer,
     ///Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
-    pub schema: ::std::string::String,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub schema: ::std::option::Option<::std::string::String>,
     pub scope: ChioScope,
     ///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
     pub signature: ChioCapabilityTokenV1Signature,
@@ -5953,16 +6249,14 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Subject {
 ///    },
 ///    "issuer": {
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "schema": {
 ///      "type": "string",
 ///      "const": "chio.capability.v2"
 ///    },
 ///    "scope": {
-///      "description": "ChioScope. The Rust verifier hashes the RFC 8785 canonical form for attenuation_proof.childScopeHash.",
-///      "type": "object",
-///      "additionalProperties": true
+///      "$ref": "#/$defs/chioScope"
 ///    },
 ///    "scope_attenuations": {
 ///      "type": "array",
@@ -5982,11 +6276,11 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Subject {
 ///    },
 ///    "signature": {
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "subject": {
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -6013,8 +6307,7 @@ pub struct ChioCapabilityTokenV2 {
     pub issued_at: u64,
     pub issuer: ChioCapabilityTokenV2Issuer,
     pub schema: ::std::string::String,
-    ///ChioScope. The Rust verifier hashes the RFC 8785 canonical form for attenuation_proof.childScopeHash.
-    pub scope: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    pub scope: ChioScope,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub scope_attenuations: ::std::vec::Vec<ChioCapabilityTokenV2ScopeAttenuationsItem>,
     pub signature: ChioCapabilityTokenV2Signature,
@@ -6200,7 +6493,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Id {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -6231,13 +6524,13 @@ impl ::std::str::FromStr for ChioCapabilityTokenV2Issuer {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$",
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -6399,7 +6692,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2ScopeAttenuationsIt
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -6431,13 +6724,13 @@ impl ::std::str::FromStr for ChioCapabilityTokenV2Signature {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -6487,7 +6780,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Signature {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -6519,13 +6812,13 @@ impl ::std::str::FromStr for ChioCapabilityTokenV2Subject {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$",
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -7646,6 +7939,11 @@ impl<'de> ::serde::Deserialize<'de> for ChioJsonRpc20ResponseVariant1IdVariant1 
 ///            "type": "string",
 ///            "pattern": "^[0-9a-f]{64}$"
 ///          },
+///          "schema": {
+///            "description": "Signed-artifact schema ID for live v1 capability-token serialization.",
+///            "type": "string",
+///            "const": "chio.capability.v1"
+///          },
 ///          "scope": {
 ///            "type": "object",
 ///            "properties": {
@@ -7917,6 +8215,11 @@ for ChioKernelMessageCapabilityList {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    },
+///    "schema": {
+///      "description": "Signed-artifact schema ID for live v1 capability-token serialization.",
+///      "type": "string",
+///      "const": "chio.capability.v1"
+///    },
 ///    "scope": {
 ///      "type": "object",
 ///      "properties": {
@@ -8104,6 +8407,9 @@ pub struct ChioKernelMessageCapabilityListCapabilitiesItem {
     pub id: ChioKernelMessageCapabilityListCapabilitiesItemId,
     pub issued_at: u64,
     pub issuer: ChioKernelMessageCapabilityListCapabilitiesItemIssuer,
+    ///Signed-artifact schema ID for live v1 capability-token serialization.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub schema: ::std::option::Option<::std::string::String>,
     pub scope: ChioKernelMessageCapabilityListCapabilitiesItemScope,
     pub signature: ChioKernelMessageCapabilityListCapabilitiesItemSignature,
     pub subject: ChioKernelMessageCapabilityListCapabilitiesItemSubject,
@@ -17633,7 +17939,7 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant3 {
 ///    },
 ///    "kernelKey": {
 ///      "type": "string",
-///      "minLength": 64
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "parentReceiptIds": {
 ///      "type": "array",
@@ -17653,7 +17959,7 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant3 {
 ///    },
 ///    "signature": {
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -17935,7 +18241,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2Id {
 /// ```json
 ///{
 ///  "type": "string",
-///  "minLength": 64
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -17965,8 +18271,18 @@ impl ::std::str::FromStr for ChioReceiptLineageStatementV2KernelKey {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 64usize {
-            return Err("shorter than 64 characters".into());
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -18184,7 +18500,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ParentSetHa
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -18217,13 +18533,13 @@ impl ::std::str::FromStr for ChioReceiptLineageStatementV2Signature {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -19502,7 +19818,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordTrustLe
 ///    },
 ///    "signature": {
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -19780,7 +20096,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptV2ReceiptId {
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -19811,13 +20127,13 @@ impl ::std::str::FromStr for ChioReceiptV2Signature {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
                     .into(),
             );
         }
@@ -19858,6 +20174,62 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptV2Signature {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.",
+///  "type": "object",
+///  "properties": {
+///    "grants": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/toolGrant"
+///      }
+///    },
+///    "prompt_grants": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/promptGrant"
+///      }
+///    },
+///    "resource_grants": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/resourceGrant"
+///      }
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioScope {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub grants: ::std::vec::Vec<ToolGrant>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub prompt_grants: ::std::vec::Vec<PromptGrant>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub resource_grants: ::std::vec::Vec<ResourceGrant>,
+}
+impl ::std::convert::From<&ChioScope> for ChioScope {
+    fn from(value: &ChioScope) -> Self {
+        value.clone()
+    }
+}
+impl ::std::default::Default for ChioScope {
+    fn default() -> Self {
+        Self {
+            grants: Default::default(),
+            prompt_grants: Default::default(),
+            resource_grants: Default::default(),
+        }
     }
 }
 ///What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
@@ -23804,6 +24176,39 @@ impl ::std::convert::From<&Constraint> for Constraint {
         value.clone()
     }
 }
+///Tagged enum mirroring `Constraint`. Encoded as `{ type, value }`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Tagged enum mirroring `Constraint`. Encoded as `{ type, value }`.",
+///  "type": "object",
+///  "required": [
+///    "type"
+///  ],
+///  "properties": {
+///    "type": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "value": true
+///  }
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct Constraint {
+    #[serde(rename = "type")]
+    pub type_: ConstraintType,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub value: ::std::option::Option<::serde_json::Value>,
+}
+impl ::std::convert::From<&Constraint> for Constraint {
+    fn from(value: &Constraint) -> Self {
+        value.clone()
+    }
+}
 ///`ConstraintType`
 ///
 /// <details><summary>JSON schema</summary>
@@ -25293,6 +25698,43 @@ impl ::std::convert::From<&MonetaryAmount> for MonetaryAmount {
         value.clone()
     }
 }
+///A monetary amount in the currency's smallest minor unit. Mirrors `MonetaryAmount`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A monetary amount in the currency's smallest minor unit. Mirrors `MonetaryAmount`.",
+///  "type": "object",
+///  "required": [
+///    "currency",
+///    "units"
+///  ],
+///  "properties": {
+///    "currency": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "units": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct MonetaryAmount {
+    pub currency: MonetaryAmountCurrency,
+    pub units: u64,
+}
+impl ::std::convert::From<&MonetaryAmount> for MonetaryAmount {
+    fn from(value: &MonetaryAmount) -> Self {
+        value.clone()
+    }
+}
 ///`MonetaryAmountCurrency`
 ///
 /// <details><summary>JSON schema</summary>
@@ -25670,6 +26112,146 @@ impl ::std::convert::TryFrom<::std::string::String> for Operation {
         value.parse()
     }
 }
+///`Operation`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "enum": [
+///    "invoke",
+///    "read_result",
+///    "read",
+///    "subscribe",
+///    "get",
+///    "delegate"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum Operation {
+    #[serde(rename = "invoke")]
+    Invoke,
+    #[serde(rename = "read_result")]
+    ReadResult,
+    #[serde(rename = "read")]
+    Read,
+    #[serde(rename = "subscribe")]
+    Subscribe,
+    #[serde(rename = "get")]
+    Get,
+    #[serde(rename = "delegate")]
+    Delegate,
+}
+impl ::std::convert::From<&Self> for Operation {
+    fn from(value: &Operation) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for Operation {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Invoke => f.write_str("invoke"),
+            Self::ReadResult => f.write_str("read_result"),
+            Self::Read => f.write_str("read"),
+            Self::Subscribe => f.write_str("subscribe"),
+            Self::Get => f.write_str("get"),
+            Self::Delegate => f.write_str("delegate"),
+        }
+    }
+}
+impl ::std::str::FromStr for Operation {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "invoke" => Ok(Self::Invoke),
+            "read_result" => Ok(Self::ReadResult),
+            "read" => Ok(Self::Read),
+            "subscribe" => Ok(Self::Subscribe),
+            "get" => Ok(Self::Get),
+            "delegate" => Ok(Self::Delegate),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for Operation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for Operation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for Operation {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.",
+///  "type": "object",
+///  "required": [
+///    "operations",
+///    "prompt_name"
+///  ],
+///  "properties": {
+///    "operations": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/operation"
+///      },
+///      "minItems": 1
+///    },
+///    "prompt_name": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PromptGrant {
+    pub operations: ::std::vec::Vec<Operation>,
+    pub prompt_name: PromptGrantPromptName,
+}
+impl ::std::convert::From<&PromptGrant> for PromptGrant {
+    fn from(value: &PromptGrant) -> Self {
+        value.clone()
+    }
+}
 ///Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
 ///
 /// <details><summary>JSON schema</summary>
@@ -25926,7 +26508,7 @@ impl<'de> ::serde::Deserialize<'de> for PromptGrantPromptName {
 ///    },
 ///    "kernelKey": {
 ///      "type": "string",
-///      "minLength": 64
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "metadata": true,
 ///    "parentReceiptIds": {
@@ -26282,7 +26864,7 @@ impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputContentHash {
 /// ```json
 ///{
 ///  "type": "string",
-///  "minLength": 64
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
 /// ```
 /// </details>
@@ -26311,8 +26893,18 @@ impl ::std::str::FromStr for ReceiptV2BodyHashInputKernelKey {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 64usize {
-            return Err("shorter than 64 characters".into());
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        {
+            ::regress::Regex::new(
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                )
+                .unwrap()
+        });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }
@@ -26966,6 +27558,46 @@ impl ::std::convert::From<&ResourceGrant> for ResourceGrant {
         value.clone()
     }
 }
+///Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.",
+///  "type": "object",
+///  "required": [
+///    "operations",
+///    "uri_pattern"
+///  ],
+///  "properties": {
+///    "operations": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/operation"
+///      },
+///      "minItems": 1
+///    },
+///    "uri_pattern": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ResourceGrant {
+    pub operations: ::std::vec::Vec<Operation>,
+    pub uri_pattern: ResourceGrantUriPattern,
+}
+impl ::std::convert::From<&ResourceGrant> for ResourceGrant {
+    fn from(value: &ResourceGrant) -> Self {
+        value.clone()
+    }
+}
 ///`ResourceGrantUriPattern`
 ///
 /// <details><summary>JSON schema</summary>
@@ -27398,6 +28030,81 @@ pub struct ToolGrant {
     ///Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).
     pub server_id: ToolGrantServerId,
     ///Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).
+    pub tool_name: ToolGrantToolName,
+}
+impl ::std::convert::From<&ToolGrant> for ToolGrant {
+    fn from(value: &ToolGrant) -> Self {
+        value.clone()
+    }
+}
+///Authorization to invoke a single tool. Mirrors `ToolGrant`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Authorization to invoke a single tool. Mirrors `ToolGrant`.",
+///  "type": "object",
+///  "required": [
+///    "operations",
+///    "server_id",
+///    "tool_name"
+///  ],
+///  "properties": {
+///    "constraints": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/constraint"
+///      }
+///    },
+///    "dpop_required": {
+///      "type": "boolean"
+///    },
+///    "max_cost_per_invocation": {
+///      "$ref": "#/$defs/monetaryAmount"
+///    },
+///    "max_invocations": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "max_total_cost": {
+///      "$ref": "#/$defs/monetaryAmount"
+///    },
+///    "operations": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/operation"
+///      },
+///      "minItems": 1
+///    },
+///    "server_id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "tool_name": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ToolGrant {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub constraints: ::std::vec::Vec<Constraint>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub dpop_required: ::std::option::Option<bool>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub max_cost_per_invocation: ::std::option::Option<MonetaryAmount>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub max_invocations: ::std::option::Option<u64>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub max_total_cost: ::std::option::Option<MonetaryAmount>,
+    pub operations: ::std::vec::Vec<Operation>,
+    pub server_id: ToolGrantServerId,
     pub tool_name: ToolGrantToolName,
 }
 impl ::std::convert::From<&ToolGrant> for ToolGrant {

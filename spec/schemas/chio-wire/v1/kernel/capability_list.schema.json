@@ -15,6 +15,11 @@
         "additionalProperties": false,
         "required": ["id", "issuer", "subject", "scope", "issued_at", "expires_at", "signature"],
         "properties": {
+          "schema": {
+            "type": "string",
+            "const": "chio.capability.v1",
+            "description": "Signed-artifact schema ID for live v1 capability-token serialization."
+          },
           "id": {
             "type": "string",
             "minLength": 1

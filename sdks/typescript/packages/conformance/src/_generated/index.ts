@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: fac53f665e6810ee845da66559d7701f03fa944299d4ddbf67e3dab88cd673e1
+// Schema SHA: 2a21457c52ce6ab3e26a8eec007a641d1bf20b9b560c7a5fed3a7ae212135e43
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -35,6 +35,7 @@ export namespace Agent_ToolCallRequest {
     type: "tool_call_request";
     id: string;
     capability_token: {
+      schema?: "chio.capability.v1";
       id: string;
       issuer: string;
       subject: string;
@@ -93,8 +94,10 @@ export namespace Agent_ToolCallRequest {
         delegatee: string;
         attenuations?: {}[];
         timestamp: number;
+        scope_hash?: string;
         signature: string;
       }[];
+      algorithm?: "ed25519" | "p256" | "p384" | "hybrid";
       signature: string;
     };
     server_id: string;
@@ -261,7 +264,7 @@ export namespace Capability_Token {
     /**
      * Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
      */
-    schema: "chio.capability.v1";
+    schema?: "chio.capability.v1";
     /**
      * Unique token ID (UUIDv7 recommended), used for revocation.
      */
@@ -399,7 +402,7 @@ export namespace Capability_TokenV1 {
     /**
      * Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
      */
-    schema: "chio.capability.v1";
+    schema?: "chio.capability.v1";
     /**
      * Unique token ID (UUIDv7 recommended), used for revocation.
      */
@@ -528,6 +531,8 @@ export namespace Capability_TokenV1 {
 // -----------------------------------------------------------------------------
 // Source: spec/schemas/chio-wire/v1/capability/token.v2.schema.json
 export namespace Capability_TokenV2 {
+  export type Operation = "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate";
+
   /**
    * Schema-tagged v2 capability token with typed caveats, first-class attenuation fields, an attenuation_proof witness, and a reserved hybrid algorithm enum value for the T2.1 compatibility path.
    */
@@ -536,12 +541,7 @@ export namespace Capability_TokenV2 {
     id: string;
     issuer: string;
     subject: string;
-    /**
-     * ChioScope. The Rust verifier hashes the RFC 8785 canonical form for attenuation_proof.childScopeHash.
-     */
-    scope: {
-      [k: string]: unknown;
-    };
+    scope: ChioScope;
     issued_at: number;
     expires_at: number;
     delegation_chain?: {}[];
@@ -557,6 +557,64 @@ export namespace Capability_TokenV2 {
      */
     budget_share_bps?: number;
     signature: string;
+  }
+  /**
+   * What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
+   */
+  export interface ChioScope {
+    grants?: ToolGrant[];
+    resource_grants?: ResourceGrant[];
+    prompt_grants?: PromptGrant[];
+  }
+  /**
+   * Authorization to invoke a single tool. Mirrors `ToolGrant`.
+   */
+  export interface ToolGrant {
+    server_id: string;
+    tool_name: string;
+    /**
+     * @minItems 1
+     */
+    operations: [Operation, ...Operation[]];
+    constraints?: Constraint[];
+    max_invocations?: number;
+    max_cost_per_invocation?: MonetaryAmount;
+    max_total_cost?: MonetaryAmount;
+    dpop_required?: boolean;
+  }
+  /**
+   * Tagged enum mirroring `Constraint`. Encoded as `{ type, value }`.
+   */
+  export interface Constraint {
+    type: string;
+    value?: unknown;
+  }
+  /**
+   * A monetary amount in the currency's smallest minor unit. Mirrors `MonetaryAmount`.
+   */
+  export interface MonetaryAmount {
+    units: number;
+    currency: string;
+  }
+  /**
+   * Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
+   */
+  export interface ResourceGrant {
+    uri_pattern: string;
+    /**
+     * @minItems 1
+     */
+    operations: [Operation, ...Operation[]];
+  }
+  /**
+   * Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
+   */
+  export interface PromptGrant {
+    prompt_name: string;
+    /**
+     * @minItems 1
+     */
+    operations: [Operation, ...Operation[]];
   }
   export interface Caveat {
     kind: "restrict_tool" | "bind_session" | "restrict_audience" | "restrict_geo" | "restrict_time_window";
@@ -736,6 +794,10 @@ export namespace Kernel_CapabilityList {
   export interface ChioKernelMessageCapabilityList {
     type: "capability_list";
     capabilities: {
+      /**
+       * Signed-artifact schema ID for live v1 capability-token serialization.
+       */
+      schema?: "chio.capability.v1";
       id: string;
       issuer: string;
       subject: string;

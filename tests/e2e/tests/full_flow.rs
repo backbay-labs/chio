@@ -422,6 +422,7 @@ async fn full_flow_revocation_cascade() {
         delegatee: agent_b_kp.public_key(),
         attenuations: vec![],
         timestamp: now,
+        scope_hash: None,
     };
     let link = DelegationLink::sign(link_body, &agent_a_kp).expect("sign delegation link");
 

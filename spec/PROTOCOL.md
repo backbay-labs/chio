@@ -302,6 +302,32 @@ Peers that do not advertise the bitset stay on the v1 default. This prevents a
 flag-day rollout for additive capability, receipt, anchor, and signature
 changes.
 
+#### Negotiated Schema Ceiling (W1.3)
+
+The negotiated `maxCapabilitySchema` is enforced by the verifier as a
+schema ceiling on every inbound capability token. Concretely:
+
+- `FederationTrustExchange.negotiated_with(...)` derives the per-peer
+  ceiling and stores it on `FederationPeer.capabilities`.
+- The portable verifier entrypoint
+  `chio_kernel_core::verify_capability_with_negotiated_floor(token,
+  trusted_issuers, clock, crypto_floor, peer)` rejects with
+  `CapabilityError::SchemaExceedsNegotiatedCeiling { token_schema,
+  peer_max }` when `token.schema == chio.capability.v2` and
+  `peer.max_capability_schema != chio.capability.v2`.
+- The check runs before signature, time, and crypto-floor checks. It
+  costs nothing on the happy path and closes the downgrade attack
+  where a v1-only Mallory presents a v2 token to a v2-aware Alice in
+  order to force Alice to parse v2-only fields.
+- The symmetric direction (a v1 token presented to a v2-aware peer) is
+  always admitted: v1 is the universal floor of the schema lattice and
+  raising the ceiling never invalidates legacy tokens.
+
+The Lean theorem `theorem.handshake.negotiation_safety` in
+`formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean` models the
+ceiling check, and the Rust shell is exercised by
+`crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs`.
+
 ### Signed-Artifact Registry
 
 `spec/schemas/registry.json` is the signed-artifact compatibility registry.
@@ -355,6 +381,77 @@ Minting and verification both check that the child scope hash in the proof
 matches the token scope, that the witness hashes match the normalized scopes,
 and that every recorded grant relation is a subset. Budget shares above 10000
 bps fail closed because they re-amplify parent authority.
+
+#### Chain-Binding Rule (W1.1)
+
+The `attenuation_proof.parent_scope_hash` field MUST be bound to the token's
+upstream lineage. Without this rule an issuer with true authority `scope_X`
+could mint a v2 token claiming `parent_scope = scope_BIGGER` and supply an
+internally consistent witness, because nothing tied `parent_scope_hash` to
+the issuer's actual upstream parent capability. Concretely:
+
+- Every v2 delegation hop carries a signed `DelegationLink.scope_hash` that
+  records the canonical hash of the scope authorized at that step.
+- A direct-issue v2 token (empty `delegation_chain`) MUST have
+  `attenuation_proof.parent_scope_hash` equal to the verifier's
+  trust-root scope hash for the issuing authority.
+- A delegated v2 token MUST have `attenuation_proof.parent_scope_hash`
+  equal to `delegation_chain.last().scope_hash`. The chain-link signature
+  binds that hash to the predecessor's key, transitively rooting the
+  witness in the trust-root authority.
+- A v2 chain whose hops omit `scope_hash` is rejected fail-closed; legacy
+  v1 hops do not carry it and v2 verifiers therefore reject mixed chains.
+
+The portable verifier entrypoint
+`chio_kernel_core::verify_capability_with_floor_and_trust_root(token,
+trusted_issuers, clock, crypto_floor, trust_root_scope_hash)` enforces
+the rule and rejects with `CapabilityError::AttenuationViolation` when
+`parent_scope_hash` is unbound. The check costs a single hash comparison
+on the happy path and runs after the basic signature, time, and crypto-
+floor checks (the chain binding is meaningful only once those succeed).
+
+The Lean theorem `theorem.attenuation.witness_soundness` in
+`formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean` models the
+chain-binding check, and the Rust shell is exercised by
+`crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`.
+
+#### Sibling-Sum Budget Enforcement (W1.2)
+
+The `<= 10000 bps` per-token cap is necessary but not sufficient: a parent
+at `5000 bps` could mint two children at `4000 bps` each, and per-token
+validation would happily accept both, letting the children jointly claim
+80% of the parent's authority while the parent itself only owns 50%. The
+W1.2 fix closes that gap with a registry hook at the verifier:
+
+- The portable verifier maintains a per-parent `BudgetRegistry` (in-process
+  by default, via `chio_kernel_core::InMemoryBudgetRegistry`).
+- When the verifier admits a freshly delegated child token, it asks the
+  registry whether the parent has enough remaining headroom. If the
+  running sum of admitted sibling shares plus the new child's share
+  would exceed the parent's share, the registry rejects the child and
+  verification fails closed with
+  `CapabilityError::BudgetSplitRejected(BudgetSplitError::OversubscribedSiblings)`.
+- The check composes across hops: a grandchild's admission is checked
+  against its immediate parent's admitted share, not just the root, so
+  cross-hop amplification (parent 5000, child 4000, two grandchildren
+  3000 each) is rejected fail-closed at the second grandchild.
+- Idempotency: re-admitting the same child id with the same share is a
+  silent success; a different share for the same id is a hard failure
+  because it would let an attacker rewrite the split after the fact.
+- Overflow safety: the running sum is computed in `u32` so two
+  `u16::MAX` siblings cannot wrap around the cap.
+
+The kernel-side entry point is
+`chio_kernel_core::evaluate_with_crypto_floor_and_budgets(input,
+crypto_floor, &mut dyn BudgetRegistry)`. Hosted callers
+(`chio-kernel`) instantiate a process-scoped `InMemoryBudgetRegistry`
+and pass it through; portable callers can supply their own
+`BudgetRegistry` implementation against external storage. The Lean
+theorem `theorem.budget.sibling_sum_soundness` in
+`formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean` models the
+admit check, and the Rust shell is exercised by
+`crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
+and `crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
 
 ### 5.2 Governed Transaction Extensions
 
