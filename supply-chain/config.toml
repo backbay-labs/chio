@@ -2356,6 +2356,10 @@ criteria = "safe-to-deploy"
 version = "0.103.9"
 criteria = "safe-to-deploy"
 
+[[exemptions.rustls-webpki]]
+version = "0.103.13"
+criteria = "safe-to-deploy"
+
 [[exemptions.rusty-fork]]
 version = "0.3.1"
 criteria = "safe-to-deploy"

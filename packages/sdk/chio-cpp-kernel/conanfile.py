@@ -18,7 +18,7 @@ class ChioCppKernelConan(ConanFile):
     options = {"shared": [True, False]}
     default_options = {"shared": False}
 
-    _rust_workspace_roots = ["crates/chio-cpp-kernel-ffi"]
+    _rust_workspace_roots = ["crates/chio-cpp-kernel-ffi", "crates/chio-metrics-spec"]
 
     @staticmethod
     def _extract_manifest_section(manifest, header):

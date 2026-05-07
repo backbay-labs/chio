@@ -1,5 +1,6 @@
 # Build artifacts
 /target/
+/target-shared/
 **/*.rs.bk
 
 # Release SBOM evidence is committed under supply-chain/sbom/v{tag}/.

@@ -6,31 +6,24 @@ groups:
         expr: |
           histogram_quantile(
             0.95,
-            sum by (le) (rate(chio_kernel_decision_latency_seconds_bucket[5m]))
-          )
-
-      - record: chio:receipt_write_latency:histogram_quantile_p95_5m
-        expr: |
-          histogram_quantile(
-            0.95,
-            sum by (le) (rate(chio_receipt_write_latency_seconds_bucket[5m]))
+            sum by (surface, outcome, le) (rate(chio_kernel_decision_latency_seconds_bucket[5m]))
           )
 
       - record: chio:receipt_write_error_ratio_5m
         expr: |
-          sum(rate(chio_receipt_write_total{outcome!="success"}[5m]))
+          sum(rate(chio_receipt_write_total{outcome="error"}[5m]))
           /
           clamp_min(sum(rate(chio_receipt_write_total[5m])), 1)
 
       - record: chio:receipt_write_error_ratio_1h
         expr: |
-          sum(rate(chio_receipt_write_total{outcome!="success"}[1h]))
+          sum(rate(chio_receipt_write_total{outcome="error"}[1h]))
           /
           clamp_min(sum(rate(chio_receipt_write_total[1h])), 1)
 
       - record: chio:receipt_write_error_ratio_6h
         expr: |
-          sum(rate(chio_receipt_write_total{outcome!="success"}[6h]))
+          sum(rate(chio_receipt_write_total{outcome="error"}[6h]))
           /
           clamp_min(sum(rate(chio_receipt_write_total[6h])), 1)
 
@@ -74,26 +67,26 @@ groups:
         expr: |
           histogram_quantile(
             0.95,
-            sum by (le) (rate(chio_anchor_round_latency_seconds_bucket[5m]))
+            sum by (witness, outcome, le) (rate(chio_anchor_round_latency_seconds_bucket[5m]))
           )
 
       - record: chio:federation_hop_latency:histogram_quantile_p95_5m
         expr: |
           histogram_quantile(
             0.95,
-            sum by (le) (rate(chio_federation_hop_latency_seconds_bucket[5m]))
+            sum by (result, le) (rate(chio_federation_hop_latency_seconds_bucket[5m]))
           )
 
       - record: chio:guard_eval_latency:histogram_quantile_p95_5m
         expr: |
           histogram_quantile(
             0.95,
-            sum by (le) (rate(chio_guard_eval_duration_seconds_bucket[5m]))
+            sum by (guard_id, verdict, le) (rate(chio_guard_eval_duration_seconds_bucket[5m]))
           )
 
       - record: chio:alert_dispatch_latency:histogram_quantile_p95_5m
         expr: |
           histogram_quantile(
             0.95,
-            sum by (le) (rate(chio_alert_dispatch_latency_seconds_bucket[5m]))
+            sum by (route, outcome, le) (rate(chio_alert_dispatch_latency_seconds_bucket[5m]))
           )

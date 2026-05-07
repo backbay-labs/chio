@@ -252,3 +252,9 @@ opentelemetry-semantic-conventions = { version = "=0.29.0", default-features = f
 # M09 wave-opener: lineage DAG (petgraph) and marketplace CSV exports (csv).
 petgraph = "0.6"
 csv = "1"
+# Workspace metric registry. Surfaced through workspace.dependencies so the
+# six edge crates wired in W2.4 (chio-mcp-edge, chio-acp-edge, chio-a2a-edge,
+# chio-http-core, chio-anchor, chio-federation) plus chio-wasm-guards consume
+# the registry by `chio-metrics-spec = { workspace = true }` rather than each
+# carrying its own `path = "..."` redeclaration.
+chio-metrics-spec = { path = "crates/chio-metrics-spec" }

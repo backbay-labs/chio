@@ -22,6 +22,13 @@
 #[cfg(feature = "fuzz")]
 pub mod fuzz;
 
+pub mod metrics;
+pub use metrics::{
+    receipt_write_outcome_for_verdict, receipt_write_total, render_acp_edge_metrics_prometheus,
+    CHIO_RECEIPT_WRITE_TOTAL, RECEIPT_WRITE_OUTCOME_ALLOW, RECEIPT_WRITE_OUTCOME_DENY,
+    RECEIPT_WRITE_OUTCOME_ERROR, RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
+};
+
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -29,6 +36,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chio_core::capability::{
     CapabilityToken, GovernedApprovalToken, GovernedTransactionIntent, ModelMetadata,
 };
+#[cfg(test)]
+use chio_core::session::OperationTerminalState;
 use chio_cross_protocol::{
     runtime_lifecycle_contract, runtime_lifecycle_metadata, semantic_hints_for_tool,
     target_protocol_for_tool_with_registry, BridgeError, BridgeFidelity, CapabilityBridge,
@@ -72,6 +81,16 @@ pub enum AcpEdgeError {
     /// Cross-protocol orchestration failed.
     #[error("bridge error: {0}")]
     Bridge(#[from] chio_cross_protocol::BridgeError),
+}
+
+fn record_receipt_write_error() {
+    crate::metrics::record_receipt_write(crate::metrics::RECEIPT_WRITE_OUTCOME_ERROR);
+}
+
+fn record_receipt_write_bridge_error(error: &BridgeError) {
+    if matches!(error, BridgeError::Kernel(_)) {
+        record_receipt_write_error();
+    }
 }
 
 /// An ACP capability advertisement derived from an Chio tool.
@@ -529,6 +548,42 @@ impl ChioAcpEdge {
             },
         )?;
         let orchestrated = execute_orchestrated_acp_request(kernel, request)?;
+        Ok(acp_invocation_result_from_orchestrated(orchestrated))
+    }
+
+    /// Drive the kernel-backed ACP projection with a pending verdict for unit tests.
+    ///
+    /// The helper first executes the normal orchestrator path, then feeds a pending
+    /// kernel response through the same receipt-sink mapper used by `invoke`.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn project_pending_approval_for_test(
+        &self,
+        capability_id: &str,
+        arguments: Value,
+        kernel: &ChioKernel,
+        execution: &AcpKernelExecutionContext,
+        reason: impl Into<String>,
+    ) -> Result<AcpInvocationResult, AcpEdgeError> {
+        let binding = self.capability_binding(capability_id)?;
+        let request_suffix = current_unix_timestamp();
+        let request = self.build_execution_request(
+            capability_id,
+            arguments,
+            execution,
+            &binding,
+            binding.target_protocol,
+            AcpRequestIds {
+                origin_request_id: format!("acp-request-{capability_id}-pending-{request_suffix}"),
+                kernel_request_id: format!("acp-{capability_id}-pending-{request_suffix}"),
+            },
+        )?;
+        let mut orchestrated = execute_orchestrated_acp_request(kernel, request)?;
+        let reason = reason.into();
+        orchestrated.response.verdict = KernelVerdict::PendingApproval;
+        orchestrated.response.output = None;
+        orchestrated.response.reason = Some(reason.clone());
+        orchestrated.response.terminal_state = OperationTerminalState::Incomplete { reason };
         Ok(acp_invocation_result_from_orchestrated(orchestrated))
     }
 
@@ -1200,10 +1255,16 @@ fn execute_orchestrated_acp_request(
         )));
     }
 
-    CrossProtocolOrchestrator::new(kernel)
+    match CrossProtocolOrchestrator::new(kernel)
         .with_registry(registry)
         .execute(&AcpCapabilityBridge, request)
-        .map_err(Into::into)
+    {
+        Ok(orchestrated) => Ok(orchestrated),
+        Err(error) => {
+            record_receipt_write_bridge_error(&error);
+            Err(error.into())
+        }
+    }
 }
 
 fn authoritative_target_registry() -> TargetProtocolRegistry<'static> {
@@ -1349,6 +1410,11 @@ fn acp_invocation_result_from_orchestrated(
     let response = orchestrated.response;
     let success = matches!(response.verdict, KernelVerdict::Allow);
 
+    // W2.4: emit `chio_receipt_write_total` at the ACP receipt-sink
+    // boundary. PendingApproval is normal HITL flow, so it must not feed
+    // infrastructure error burn-rate numerators.
+    crate::metrics::record_receipt_write_verdict(response.verdict);
+
     AcpInvocationResult {
         success,
         data,
@@ -1447,6 +1513,8 @@ fn lifecycle_not_supported_error(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
     use chio_core::capability::{CapabilityTokenBody, ChioScope, Operation, ToolGrant};
     use chio_core::crypto::Keypair;
     use chio_kernel::{
@@ -1454,6 +1522,15 @@ mod tests {
         DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
     };
     use chio_manifest::LatencyHint;
+
+    static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn metrics_test_guard() -> MutexGuard<'static, ()> {
+        match METRICS_TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
 
     struct MockToolServer {
         server_id: String,
@@ -1834,6 +1911,21 @@ mod tests {
             issuer,
         )
         .expect("capability should sign")
+    }
+
+    fn assert_receipt_write_prometheus_sample_at_least(outcome: &str, minimum: u64) {
+        let body = render_acp_edge_metrics_prometheus();
+        let prefix = format!("{CHIO_RECEIPT_WRITE_TOTAL}{{outcome=\"{outcome}\"}} ");
+        let sample = body
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix))
+            .expect("Prometheus sample should exist")
+            .parse::<u64>()
+            .expect("Prometheus sample should be an integer");
+        assert!(
+            sample >= minimum,
+            "Prometheus sample for {outcome} must include the pending projection counter"
+        );
     }
 
     // ---- Capability generation tests ----
@@ -2237,36 +2329,33 @@ mod tests {
 
     #[test]
     fn pending_approval_is_not_reported_as_success() {
+        let _metrics_guard = metrics_test_guard();
         let config = test_kernel_config();
         let issuer = config.keypair.clone();
         let mut kernel = ChioKernel::new(config);
         kernel.register_tool_server(Box::new(test_server()));
 
         let subject = Keypair::generate();
-        let mut orchestrated = execute_orchestrated_acp_request(
-            &kernel,
-            CrossProtocolExecutionRequest {
-                origin_request_id: "acp-request-pending".to_string(),
-                kernel_request_id: "acp-pending".to_string(),
-                target_protocol: DiscoveryProtocol::Native,
-                target_server_id: "test-srv".to_string(),
-                target_tool_name: "read_file".to_string(),
-                agent_id: subject.public_key().to_hex(),
-                arguments: json!({"path": "/tmp"}),
-                capability: capability_for_tool(&issuer, &subject, "test-srv", "read_file"),
-                source_envelope: build_acp_source_envelope("read_file", json!({"path": "/tmp"}))
-                    .unwrap(),
-                dpop_proof: None,
-                governed_intent: None,
-                approval_token: None,
-                model_metadata: None,
-            },
-        )
-        .unwrap();
-        orchestrated.response.verdict = KernelVerdict::PendingApproval;
-        orchestrated.response.reason = Some("approval required".to_string());
+        let edge = ChioAcpEdge::new(AcpEdgeConfig::default(), vec![test_manifest()]).unwrap();
+        let before_pending = receipt_write_total(RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL);
+        let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
 
-        let result = acp_invocation_result_from_orchestrated(orchestrated);
+        let result = edge
+            .project_pending_approval_for_test(
+                "read_file",
+                json!({"path": "/tmp"}),
+                &kernel,
+                &AcpKernelExecutionContext {
+                    capability: capability_for_tool(&issuer, &subject, "test-srv", "read_file"),
+                    agent_id: subject.public_key().to_hex(),
+                    dpop_proof: None,
+                    governed_intent: None,
+                    approval_token: None,
+                    model_metadata: None,
+                },
+                "approval required",
+            )
+            .unwrap();
         let metadata = result
             .metadata
             .expect("pending approval should attach metadata");
@@ -2276,6 +2365,102 @@ mod tests {
         assert_eq!(
             metadata["chio"]["decision"].as_str(),
             Some("pending_approval")
+        );
+        let pending_total = receipt_write_total(RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL);
+        assert!(pending_total > before_pending);
+        assert_receipt_write_prometheus_sample_at_least(
+            RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
+            pending_total,
+        );
+        assert_eq!(
+            receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR),
+            before_error
+        );
+    }
+
+    #[test]
+    fn invoke_kernel_error_records_receipt_write_error_outcome() {
+        let _metrics_guard = metrics_test_guard();
+        let edge = ChioAcpEdge::new(AcpEdgeConfig::default(), vec![test_manifest()]).unwrap();
+        let mut config = test_kernel_config();
+        config.require_web3_evidence = true;
+        let issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let execution = AcpKernelExecutionContext {
+            capability: capability_for_tool(&issuer, &subject, "test-srv", "read_file"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+        let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
+
+        let error = edge
+            .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
+            .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("web3 evidence prerequisites unavailable"));
+        assert!(
+            receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR) > before_error,
+            "acp orchestrator error path must advance receipt write error"
+        );
+    }
+
+    #[test]
+    fn pre_kernel_bridge_error_does_not_record_receipt_write_error_outcome() {
+        let _metrics_guard = metrics_test_guard();
+        let config = test_kernel_config();
+        let issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let capability = capability_for_tool(&issuer, &subject, "test-srv", "read_file");
+        let capability_ref = CrossProtocolCapabilityRef {
+            chio_capability_id: "wrong-capability".to_string(),
+            origin_protocol: DiscoveryProtocol::Acp,
+            protocol_context: Some(json!({ "capabilityId": "read_file" })),
+            parent_capability_hash: "wrong-parent-hash".to_string(),
+        };
+        let arguments = json!({ "path": "/tmp" });
+        let request = CrossProtocolExecutionRequest {
+            origin_request_id: "acp-pre-kernel-mismatch".to_string(),
+            kernel_request_id: "acp-pre-kernel-mismatch-kernel".to_string(),
+            target_protocol: DiscoveryProtocol::Native,
+            target_server_id: "test-srv".to_string(),
+            target_tool_name: "read_file".to_string(),
+            agent_id: subject.public_key().to_hex(),
+            arguments: arguments.clone(),
+            capability,
+            source_envelope: json!({
+                "capabilityId": "read_file",
+                "arguments": arguments,
+                "metadata": {
+                    "chio": {
+                        "capabilityRef": serde_json::to_value(capability_ref).unwrap()
+                    }
+                }
+            }),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+        let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
+
+        let error = execute_orchestrated_acp_request(&kernel, request).unwrap_err();
+
+        assert!(error.to_string().contains("capability reference mismatch"));
+        assert_eq!(
+            receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR),
+            before_error,
+            "pre-kernel ACP bridge errors must not advance receipt write error"
         );
     }
 

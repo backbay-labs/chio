@@ -18,7 +18,7 @@ class ChioCppConan(ConanFile):
     options = {"shared": [True, False], "with_curl": [True, False]}
     default_options = {"shared": False, "with_curl": False}
 
-    _rust_workspace_roots = ["crates/chio-bindings-ffi"]
+    _rust_workspace_roots = ["crates/chio-bindings-ffi", "crates/chio-metrics-spec"]
 
     @staticmethod
     def _extract_manifest_section(manifest, header):

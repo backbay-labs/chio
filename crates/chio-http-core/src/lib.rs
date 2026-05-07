@@ -13,6 +13,7 @@ pub mod emergency;
 mod evaluation;
 mod identity;
 mod method;
+pub mod metrics;
 pub mod plan;
 mod receipt;
 pub mod regulatory_api;
@@ -20,6 +21,13 @@ mod request;
 pub mod routes;
 mod session;
 mod verdict;
+
+pub use metrics::{
+    decision_latency_count, guard_evaluations_total, observe_decision_latency_nanos,
+    record_guard_evaluation, render_http_core_metrics_prometheus, CHIO_GUARD_EVALUATIONS_TOTAL,
+    CHIO_KERNEL_DECISION_LATENCY_SECONDS, GUARD_LABEL_HTTP_AUTHORITY, GUARD_OUTCOME_ALLOW,
+    GUARD_OUTCOME_DENY, GUARD_OUTCOME_ERROR,
+};
 
 pub use approvals::{
     handle_batch_respond, handle_get_approval, handle_list_pending, handle_respond, ApprovalAdmin,

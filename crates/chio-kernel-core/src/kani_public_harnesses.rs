@@ -51,6 +51,7 @@ fn grant(server: &str, tool: &str) -> ToolGrant {
 
 fn unsigned_capability(ttl: u64) -> CapabilityToken {
     CapabilityToken {
+        schema: chio_core_types::capability::CHIO_CAPABILITY_V1_SCHEMA.to_string(),
         id: "cap-public-kani".to_string(),
         issuer: public_key(7),
         subject: public_key(9),
@@ -62,6 +63,10 @@ fn unsigned_capability(ttl: u64) -> CapabilityToken {
         expires_at: 10 + ttl,
         delegation_chain: vec![],
         algorithm: None,
+        caveats: vec![],
+        scope_attenuations: None,
+        attenuation_proof: None,
+        budget_share_bps: None,
         signature: Signature::from_bytes(&[0; 64]),
     }
 }

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::capability::{
-    validate_attenuation, validate_delegation_chain, Attenuation, CapabilityToken,
+    scope_hash, validate_attenuation, validate_delegation_chain, Attenuation, CapabilityToken,
     CapabilityTokenBody, ChioScope, Constraint, DelegationLink, DelegationLinkBody,
     GovernedTransactionIntent, Operation, ToolGrant,
 };
@@ -1129,6 +1129,7 @@ fn build_delegation_pair() -> (CapabilityToken, CapabilityToken) {
         }],
         ..ChioScope::default()
     };
+    let child_scope_hash = scope_hash(&child_scope).expect("hash child delegation scope");
     let delegation = DelegationLink::sign(
         DelegationLinkBody {
             capability_id: parent.id.clone(),
@@ -1147,7 +1148,7 @@ fn build_delegation_pair() -> (CapabilityToken, CapabilityToken) {
                 },
             ],
             timestamp: 1_700_000_100,
-            scope_hash: None,
+            scope_hash: Some(child_scope_hash),
         },
         &parent_subject,
     )

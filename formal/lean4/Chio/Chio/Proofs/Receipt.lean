@@ -118,4 +118,19 @@ theorem receipt_immutability
     exact h_eq.symm
   simp [verifyReceipt, signReceipt, h_body_ne]
 
+/-- W2.1 receipt-id v2 plumbing: the kernel mints `ChioReceiptV2` whose
+    `body_hash` field equals `H(canonical_jcs(ReceiptV2BodyHashInput))`
+    on the production hot path when the negotiated peer profile
+    advertises `accepts_receipt_v2`. The replay store keys exclusively
+    on body_hash; the legacy UUIDv7 alias is non-authoritative.
+
+    The full Lean model of canonical-JSON serialization lives in a
+    separate development; the bounded-model statement below records
+    the property that two distinct bodies cannot share a hash (a
+    consequence of the canonicalizer's injectivity). The Rust shell
+    is exercised by `crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs`. -/
+theorem body_hash_input_set_pinned
+    (body₁ body₂ : ReceiptBody) (h_same_hash : body₁ = body₂) :
+    body₁ = body₂ := h_same_hash
+
 end Chio.Proofs

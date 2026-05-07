@@ -17,8 +17,14 @@ mod bundle;
 mod discovery;
 mod evm;
 mod functions;
+pub mod metrics;
 mod ops;
 mod solana;
+
+pub use metrics::{
+    anchor_round_count, observe_anchor_round_latency_nanos, render_anchor_metrics_prometheus,
+    ANCHOR_OUTCOME_ERROR, ANCHOR_OUTCOME_SUCCESS, CHIO_ANCHOR_ROUND_LATENCY_SECONDS,
+};
 
 #[cfg(feature = "fuzz")]
 pub mod fuzz;

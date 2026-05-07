@@ -308,7 +308,7 @@ def rewrite(node, lifts: dict, prefix: str):
 
         # Recurse.
         for key, value in list(node.items()):
-            if key == "$defs":
+            if key in ("$defs", "enum"):
                 continue
             rewrite(value, lifts, prefix)
 

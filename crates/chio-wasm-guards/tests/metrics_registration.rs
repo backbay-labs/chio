@@ -1,3 +1,4 @@
+use chio_metrics_spec::{descriptor_for, MetricDescriptor, MetricKind};
 use chio_wasm_guards::{
     epoch_label, guard_id_label_from_digest, register_guard_metric_families,
     register_guard_pool_metric_families, GuardPoolMetrics, MetricFamilyDescriptor,
@@ -18,6 +19,13 @@ fn family<'a>(families: &'a [MetricFamilyDescriptor], name: &str) -> &'a MetricF
     match families.iter().find(|family| family.name == name) {
         Some(family) => family,
         None => panic!("missing metric family {name}"),
+    }
+}
+
+fn spec_family(name: &str) -> &'static MetricDescriptor {
+    match descriptor_for(name) {
+        Some(descriptor) => descriptor,
+        None => panic!("missing workspace metric descriptor {name}"),
     }
 }
 
@@ -154,6 +162,19 @@ fn pool_metric_descriptors_lock_names_labels_and_units() {
     assert_eq!(evict.labels, &[LABEL_GUARD_ID, LABEL_TENANT_ID]);
     assert_eq!(evict.unit, Some("count"));
     assert!(evict.buckets.is_empty());
+}
+
+#[test]
+fn pool_metric_exports_match_workspace_registry() {
+    for (name, kind) in [
+        (METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL, MetricKind::Counter),
+        (METRIC_CHIO_GUARD_POOL_WARM_SIZE, MetricKind::Gauge),
+        (METRIC_CHIO_GUARD_POOL_EVICT_TOTAL, MetricKind::Counter),
+    ] {
+        let descriptor = spec_family(name);
+        assert_eq!(descriptor.kind, kind);
+        assert_eq!(descriptor.labels, &[LABEL_GUARD_ID, LABEL_TENANT_ID]);
+    }
 }
 
 #[test]

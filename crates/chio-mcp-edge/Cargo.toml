@@ -17,6 +17,7 @@ chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }
 chio-kernel = { path = "../chio-kernel" }
 chio-manifest = { path = "../chio-manifest" }
+chio-metrics-spec = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

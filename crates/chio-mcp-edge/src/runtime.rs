@@ -108,6 +108,37 @@ pub struct BridgeMcpToolCall {
     pub notifications: Vec<Value>,
 }
 
+impl BridgeMcpToolCall {
+    /// Project a kernel tool-call response through the MCP bridge result surface.
+    ///
+    /// This is the production projection used by bridge execution and by
+    /// hosts that already hold a kernel response, including PendingApproval.
+    pub fn from_kernel_response(
+        response: ToolCallResponse,
+        request_id: &str,
+        peer_supports_chio_tool_streaming: bool,
+    ) -> Result<Self, AdapterError> {
+        bridge_mcp_tool_call_from_response(
+            response,
+            request_id,
+            peer_supports_chio_tool_streaming,
+            true,
+        )
+    }
+}
+
+fn record_receipt_write_error() {
+    crate::metrics::record_receipt_write(crate::metrics::RECEIPT_WRITE_OUTCOME_ERROR);
+}
+
+fn record_receipt_write_kernel_error(error: &chio_kernel::KernelError) {
+    match error {
+        chio_kernel::KernelError::RequestCancelled { .. }
+        | chio_kernel::KernelError::UrlElicitationsRequired { .. } => {}
+        _ => record_receipt_write_error(),
+    }
+}
+
 /// Default non-native protocol executor for MCP target projections.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct McpTargetExecutor {
@@ -123,19 +154,31 @@ impl TargetProtocolExecutor for McpTargetExecutor {
         &self,
         request: CrossProtocolTargetRequest<'_>,
     ) -> Result<CrossProtocolTargetExecution, BridgeError> {
-        let bridge = execute_bridge_mcp_tool_call(
-            request.kernel,
-            BridgeMcpToolCallRequest {
-                request_id: request.execution.kernel_request_id.clone(),
-                capability: request.execution.capability.clone(),
-                server_id: request.execution.target_server_id.clone(),
-                tool_name: request.execution.target_tool_name.clone(),
-                arguments: request.execution.arguments.clone(),
-                agent_id: request.execution.agent_id.clone(),
-                model_metadata: request.execution.model_metadata.clone(),
-                route_selection_metadata: Some(route_selection_metadata(request.route_selection)?),
-                peer_supports_chio_tool_streaming: self.peer_supports_chio_tool_streaming,
-            },
+        let route_metadata = route_selection_metadata(request.route_selection)?;
+        let response = request
+            .kernel
+            .evaluate_tool_call_blocking_with_metadata(
+                &ToolCallRequest {
+                    request_id: request.execution.kernel_request_id.clone(),
+                    capability: request.execution.capability.clone(),
+                    tool_name: request.execution.target_tool_name.clone(),
+                    server_id: request.execution.target_server_id.clone(),
+                    agent_id: request.execution.agent_id.clone(),
+                    arguments: request.execution.arguments.clone(),
+                    dpop_proof: request.execution.dpop_proof.clone(),
+                    governed_intent: request.execution.governed_intent.clone(),
+                    approval_token: request.execution.approval_token.clone(),
+                    model_metadata: request.execution.model_metadata.clone(),
+                    federated_origin_kernel_id: None,
+                },
+                Some(route_metadata),
+            )
+            .map_err(BridgeError::Kernel)?;
+        let bridge = bridge_mcp_tool_call_from_response(
+            response,
+            &request.execution.kernel_request_id,
+            self.peer_supports_chio_tool_streaming,
+            false,
         )
         .map_err(|error| BridgeError::InvalidRequest(error.to_string()))?;
         let receipt_id = bridge.response.receipt.id.clone();
@@ -188,12 +231,22 @@ pub async fn execute_bridge_mcp_tool_call_async(
         model_metadata,
         federated_origin_kernel_id: None,
     };
-    let response = kernel
+    let response = match kernel
         .evaluate_tool_call_with_metadata(&kernel_request, route_selection_metadata)
         .await
-        .map_err(|error| AdapterError::KernelRuntime(error.to_string()))?;
+    {
+        Ok(response) => response,
+        Err(error) => {
+            record_receipt_write_kernel_error(&error);
+            return Err(AdapterError::KernelRuntime(error.to_string()));
+        }
+    };
 
-    bridge_mcp_tool_call_from_response(response, &request_id, peer_supports_chio_tool_streaming)
+    BridgeMcpToolCall::from_kernel_response(
+        response,
+        &request_id,
+        peer_supports_chio_tool_streaming,
+    )
 }
 
 pub fn execute_bridge_mcp_tool_call(
@@ -220,13 +273,17 @@ pub fn execute_bridge_mcp_tool_call(
                 model_metadata: request.model_metadata.clone(),
                 federated_origin_kernel_id: None,
             };
-            let response = kernel
-                .evaluate_tool_call_blocking_with_metadata(
-                    &kernel_request,
-                    request.route_selection_metadata.clone(),
-                )
-                .map_err(|error| AdapterError::KernelRuntime(error.to_string()))?;
-            bridge_mcp_tool_call_from_response(
+            let response = match kernel.evaluate_tool_call_blocking_with_metadata(
+                &kernel_request,
+                request.route_selection_metadata.clone(),
+            ) {
+                Ok(response) => response,
+                Err(error) => {
+                    record_receipt_write_kernel_error(&error);
+                    return Err(AdapterError::KernelRuntime(error.to_string()));
+                }
+            };
+            BridgeMcpToolCall::from_kernel_response(
                 response,
                 &request.request_id,
                 request.peer_supports_chio_tool_streaming,
@@ -246,6 +303,7 @@ fn bridge_mcp_tool_call_from_response(
     response: ToolCallResponse,
     request_id: &str,
     peer_supports_chio_tool_streaming: bool,
+    record_receipt_write: bool,
 ) -> Result<BridgeMcpToolCall, AdapterError> {
     let mut notifications = Vec::new();
     let mcp_result = kernel_response_to_tool_result(KernelResponseToToolResultArgs {
@@ -258,6 +316,13 @@ fn bridge_mcp_tool_call_from_response(
         peer_supports_chio_tool_streaming,
         related_task_id: None,
     });
+
+    if record_receipt_write {
+        // W2.4: emit `chio_receipt_write_total` at the MCP receipt-sink
+        // boundary. PendingApproval is normal HITL flow, so it must not feed
+        // infrastructure error burn-rate numerators.
+        crate::metrics::record_receipt_write_verdict(response.verdict);
+    }
 
     Ok(BridgeMcpToolCall {
         response,
@@ -2866,6 +2931,7 @@ impl ChioMcpEdge {
             related_task_id,
         } = args;
         let peer_supports_chio_tool_streaming = self.peer_supports_chio_tool_streaming(session_id);
+        crate::metrics::record_receipt_write_verdict(verdict);
         let result = kernel_response_to_tool_result(KernelResponseToToolResultArgs {
             pending_notifications: &mut self.pending_notifications,
             request_id: client_request_id,
@@ -2924,7 +2990,10 @@ impl ChioMcpEdge {
                     data: Some(json!({ "elicitations": elicitations })),
                 }
             }
-            other => ToolCallEdgeOutcome::Result(tool_error_result(&other.to_string())),
+            other => {
+                record_receipt_write_error();
+                ToolCallEdgeOutcome::Result(tool_error_result(&other.to_string()))
+            }
         }
     }
 

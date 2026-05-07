@@ -117,6 +117,7 @@ fn build_validation_fixture() -> (
             delegatee: delegate_one.public_key(),
             attenuations: Vec::new(),
             timestamp: 1_710_000_000,
+            scope_hash: None,
         },
         &root,
     )
@@ -128,6 +129,7 @@ fn build_validation_fixture() -> (
             delegatee: delegate_two.public_key(),
             attenuations: Vec::new(),
             timestamp: 1_710_000_060,
+            scope_hash: None,
         },
         &delegate_one,
     )

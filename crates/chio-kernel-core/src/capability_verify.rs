@@ -320,7 +320,8 @@ pub fn verify_capability_with_floor_and_trust_root(
     trust_root_scope_hash: &ScopeHash,
 ) -> Result<VerifiedCapability, CapabilityError> {
     let mut budgets = NoopBudgetRegistry;
-    let verified = verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
+    let verified =
+        verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
 
     if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
         token
@@ -344,7 +345,8 @@ pub fn verify_capability_with_floor_and_resolver(
     trust_root: &dyn TrustRootResolver,
 ) -> Result<VerifiedCapability, CapabilityError> {
     let mut budgets = NoopBudgetRegistry;
-    let verified = verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
+    let verified =
+        verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
 
     if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
         let issuer_root = trust_root

@@ -82,8 +82,23 @@ pub fn build_anchor_batch(
     issued_at: u64,
     keypair: &Keypair,
 ) -> Result<AnchorBatch, AnchorError> {
-    let body = build_anchor_batch_body(checkpoint_ids, witness, issued_at, keypair.public_key())?;
-    AnchorBatch::sign(body, keypair)
+    // W2.4: emit `chio_anchor_round_latency_seconds` at the anchor
+    // publish boundary. The signing and Merkle-tree work happens here so
+    // round latency captures the full publish path.
+    let started_at = std::time::Instant::now();
+    let result = (|| {
+        let body =
+            build_anchor_batch_body(checkpoint_ids, witness, issued_at, keypair.public_key())?;
+        AnchorBatch::sign(body, keypair)
+    })();
+    let elapsed_nanos = u64::try_from(started_at.elapsed().as_nanos()).unwrap_or(u64::MAX);
+    let outcome = if result.is_ok() {
+        crate::metrics::ANCHOR_OUTCOME_SUCCESS
+    } else {
+        crate::metrics::ANCHOR_OUTCOME_ERROR
+    };
+    crate::metrics::observe_anchor_round_latency_nanos(outcome, elapsed_nanos);
+    result
 }
 
 /// Build an unsigned anchor-batch body and all inclusion proofs.

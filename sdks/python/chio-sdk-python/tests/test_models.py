@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import time
+from typing import get_args
 
 import pytest
+from pydantic import TypeAdapter
 from pydantic import ValidationError
 
 from chio_sdk._generated import (
     CapabilityToken as GeneratedCapabilityToken,
     ChioCapabilitytoken,
+    ChioCapabilitytokenV2,
 )
 from chio_sdk._generated.capability import Constraint as GeneratedConstraint
 from chio_sdk._generated.jsonrpc import ChioJsonRpc20Response
@@ -63,8 +66,44 @@ class TestOperation:
 
 
 class TestGeneratedWireModels:
-    def test_top_level_capability_token_alias_is_canonical(self) -> None:
-        assert GeneratedCapabilityToken is ChioCapabilitytoken
+    def test_top_level_capability_token_alias_includes_v1_and_v2(self) -> None:
+        assert set(get_args(GeneratedCapabilityToken)) == {
+            ChioCapabilitytoken,
+            ChioCapabilitytokenV2,
+        }
+
+    def test_top_level_capability_token_alias_accepts_v2(self) -> None:
+        token = TypeAdapter(GeneratedCapabilityToken).validate_python(
+            {
+                "schema": "chio.capability.v2",
+                "id": "cap-v2",
+                "issuer": "a" * 64,
+                "subject": "b" * 64,
+                "scope": {
+                    "grants": [
+                        {
+                            "server_id": "srv",
+                            "tool_name": "tool",
+                            "operations": ["invoke"],
+                        }
+                    ]
+                },
+                "issued_at": 1,
+                "expires_at": 2,
+                "attenuation_proof": {
+                    "parentScopeHash": "c" * 64,
+                    "childScopeHash": "d" * 64,
+                    "normalizedSubsetProof": {
+                        "normalizedParentScope": "{}",
+                        "normalizedChildScope": "{}",
+                    },
+                },
+                "signature": "e" * 128,
+            }
+        )
+        assert isinstance(token, ChioCapabilitytokenV2)
+        assert token.scope.grants is not None
+        assert token.scope.grants[0].server_id == "srv"
 
     def test_constraint_value_payload_round_trips(self) -> None:
         constraint = GeneratedConstraint.model_validate(

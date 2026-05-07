@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 3ed943267c60942b5a63a39515fbbc1a553d614d895d142e307096a7a99c7da2
+# Schema sha256: 33035d85d1be112ab0feff412b8183f2916dc2c03dd89271104beebb8ea8bc2d
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -91,25 +91,47 @@ class DelegationChainItem(BaseModel):
         extra="forbid",
     )
     capability_id: constr(min_length=1)
-    delegator: constr(pattern=r"^[0-9a-f]{64}$")
-    delegatee: constr(pattern=r"^[0-9a-f]{64}$")
+    delegator: constr(
+        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\+mldsa65)$"
+    )
+    delegatee: constr(
+        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\+mldsa65)$"
+    )
     attenuations: list[dict[str, Any]] | None = None
     timestamp: conint(ge=0)
-    signature: constr(pattern=r"^[0-9a-f]{128}$")
+    scope_hash: constr(pattern=r"^[0-9a-f]{64}$") | None = None
+    signature: constr(
+        pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\+mldsa65)$"
+    )
+
+
+class Algorithm(Enum):
+    ed25519 = "ed25519"
+    p256 = "p256"
+    p384 = "p384"
+    hybrid = "hybrid"
 
 
 class CapabilityToken(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    schema_: Literal["chio.capability.v1"] = Field("chio.capability.v1", alias="schema")
     id: constr(min_length=1)
-    issuer: constr(pattern=r"^[0-9a-f]{64}$")
-    subject: constr(pattern=r"^[0-9a-f]{64}$")
+    issuer: constr(
+        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\+mldsa65)$"
+    )
+    subject: constr(
+        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\+mldsa65)$"
+    )
     scope: Scope
     issued_at: conint(ge=0)
     expires_at: conint(ge=0)
     delegation_chain: list[DelegationChainItem] | None = None
-    signature: constr(pattern=r"^[0-9a-f]{128}$")
+    algorithm: Algorithm | None = None
+    signature: constr(
+        pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\+mldsa65)$"
+    )
 
 
 class ChioAgentmessageToolCallRequest(BaseModel):

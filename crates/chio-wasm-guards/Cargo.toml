@@ -38,6 +38,7 @@ chio-kernel = { path = "../chio-kernel" }
 chio-core = { path = "../chio-core" }
 chio-config = { path = "../chio-config" }
 chio-guards = { path = "../chio-guards" }
+chio-metrics-spec = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
 serde = { workspace = true }
