@@ -670,6 +670,10 @@ impl ReceiptV2ReplaySet {
         Ok(self.body_hashes.insert(receipt.body_hash.clone()))
     }
 
+    pub fn remove_body_hash(&mut self, body_hash: &str) -> bool {
+        self.body_hashes.remove(body_hash)
+    }
+
     #[must_use]
     pub fn contains_body_hash(&self, body_hash: &str) -> bool {
         self.body_hashes.contains(body_hash)
@@ -700,6 +704,33 @@ pub fn receipt_v2_body_hash(body: &ReceiptV2BodyHashInput) -> Result<String> {
     body.validate()?;
     let canonical = canonical_json_bytes(body)?;
     Ok(sha256_hex(&canonical))
+}
+
+/// W2.1 Step 1 helper: build a signed [`ChioReceiptV2`] from a v1
+/// [`ChioReceiptBody`] plus DAG fields, addressed by `body_hash`.
+///
+/// `legacy_receipt_id_alias` is preserved on the wire as a tooling
+/// alias only; replay identity is exclusively `body_hash`. The kernel
+/// hot path passes the same UUIDv7 it would have used as the v1
+/// receipt id so external readers can correlate without granting the
+/// alias any authority.
+pub fn signed_receipt_v2(
+    legacy_receipt_id_alias: impl Into<String>,
+    v1_body: ChioReceiptBody,
+    chain_id: impl Into<String>,
+    parent_receipt_ids: Vec<String>,
+    dag_ordinal: u64,
+    hlc: ReceiptHybridLogicalClock,
+    keypair: &Keypair,
+) -> Result<ChioReceiptV2> {
+    let v2_body = ReceiptV2BodyHashInput::from_v1_body(
+        v1_body,
+        chain_id,
+        parent_receipt_ids,
+        dag_ordinal,
+        hlc,
+    );
+    ChioReceiptV2::sign(legacy_receipt_id_alias, v2_body, keypair)
 }
 
 /// Verify DAG acyclicity and common-chain constraints for a v2 receipt.

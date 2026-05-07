@@ -12,14 +12,16 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core_types::capability::CapabilityToken;
+use chio_core_types::capability::{
+    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, ScopeHash,
+};
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey};
 use chio_core_types::receipt::ChioReceiptBody;
 use chio_kernel_core::passport_verify::{verify_passport as core_verify_passport, VerifyError};
 use chio_kernel_core::{
-    evaluate as core_evaluate, sign_receipt as core_sign_receipt,
-    verify_capability as core_verify_capability, CapabilityError, Clock, EvaluateInput, FixedClock,
-    Guard, PortableToolCallRequest, ReceiptSigningError, Verdict,
+    evaluate_with_full_floor, sign_receipt as core_sign_receipt, verify_capability_full,
+    BudgetRegistry, BudgetSplitError, CapabilityError, Clock, EvaluateInput, FixedClock, Guard,
+    InMemoryBudgetRegistry, PortableToolCallRequest, ReceiptSigningError, Verdict,
 };
 use serde::{Deserialize, Serialize};
 
@@ -141,6 +143,46 @@ struct EvaluateRequestEnvelope {
     request: EvaluateRequestBody,
     #[serde(default)]
     now_secs: Option<u64>,
+    /// Optional W1.3 peer-negotiated profile. Defaults to `t1_default`
+    /// (admits v2 tokens) when omitted.
+    #[serde(default)]
+    peer_capabilities: Option<CapabilityNegotiation>,
+    /// Optional W1.1 chain-binding trust roots, keyed by issuer hex.
+    /// V2 tokens require an entry here; absent issuers fail-closed.
+    #[serde(default)]
+    capability_trust_roots: std::collections::BTreeMap<String, ScopeHash>,
+    /// Optional parent-budget snapshots used to seed sibling-sum
+    /// enforcement before delegated tokens are evaluated.
+    #[serde(default)]
+    parent_budget_snapshots: Vec<ParentBudgetSnapshot>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VerifyCapabilityRequestEnvelope {
+    token: serde_json::Value,
+    trusted_issuers: Vec<String>,
+    #[serde(default)]
+    now_secs: Option<i64>,
+    #[serde(default)]
+    peer_capabilities: Option<CapabilityNegotiation>,
+    #[serde(default)]
+    capability_trust_roots: std::collections::BTreeMap<String, ScopeHash>,
+    #[serde(default)]
+    parent_budget_snapshots: Vec<ParentBudgetSnapshot>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ParentBudgetSnapshot {
+    parent_token_id: String,
+    parent_share_bps: u16,
+    #[serde(default)]
+    admitted_children: Vec<AdmittedChildBudget>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AdmittedChildBudget {
+    child_token_id: String,
+    share_bps: u16,
 }
 
 #[derive(Debug, Deserialize)]
@@ -241,6 +283,39 @@ fn public_key_from_hex(value: &str, context: &str) -> Result<PublicKey, KernelFf
     PublicKey::from_hex(value).map_err(|error| KernelFfiError::invalid_hex(context, error))
 }
 
+fn decode_trusted_issuers(values: &[String]) -> Result<Vec<PublicKey>, KernelFfiError> {
+    let mut trusted = Vec::with_capacity(values.len());
+    for issuer in values {
+        trusted.push(public_key_from_hex(issuer, "trusted issuer")?);
+    }
+    Ok(trusted)
+}
+
+fn seed_budget_registry(
+    budgets: &mut InMemoryBudgetRegistry,
+    snapshots: &[ParentBudgetSnapshot],
+) -> Result<(), KernelFfiError> {
+    for snapshot in snapshots {
+        budgets
+            .register_parent(snapshot.parent_token_id.clone(), snapshot.parent_share_bps)
+            .map_err(|error| budget_seed_error("parent budget snapshot", &error))?;
+        for child in &snapshot.admitted_children {
+            budgets
+                .try_admit_child(
+                    snapshot.parent_token_id.as_str(),
+                    child.child_token_id.clone(),
+                    child.share_bps,
+                )
+                .map_err(|error| budget_seed_error("admitted child budget snapshot", &error))?;
+        }
+    }
+    Ok(())
+}
+
+fn budget_seed_error(context: &str, error: &BudgetSplitError) -> KernelFfiError {
+    KernelFfiError::InvalidCapability(format!("{context}: {error}"))
+}
+
 fn fixed_clock_from_secs(now_secs: i64) -> Option<FixedClock> {
     if now_secs < 0 {
         None
@@ -256,10 +331,7 @@ fn evaluate_json_str(request_json: &str) -> Result<String, KernelFfiError> {
     let capability: CapabilityToken = serde_json::from_value(parsed.capability)
         .map_err(|error| KernelFfiError::invalid_json("capability token", error))?;
 
-    let mut trusted = Vec::with_capacity(parsed.trusted_issuers.len());
-    for issuer in &parsed.trusted_issuers {
-        trusted.push(public_key_from_hex(issuer, "trusted issuer")?);
-    }
+    let trusted = decode_trusted_issuers(&parsed.trusted_issuers)?;
 
     let portable_request = PortableToolCallRequest {
         request_id: parsed.request.request_id,
@@ -277,14 +349,37 @@ fn evaluate_json_str(request_json: &str) -> Result<String, KernelFfiError> {
     };
     let guards: &[&dyn Guard] = &[];
 
-    let verdict = core_evaluate(EvaluateInput {
-        request: &portable_request,
-        capability: &capability,
-        trusted_issuers: &trusted,
-        clock,
-        guards,
-        session_filesystem_roots: None,
-    });
+    // Wave 1.5 hot-path wiring: route through `evaluate_with_full_floor`
+    // so the W1.3 schema-ceiling check and the W1.1 chain-binding rule
+    // are exercised on the same hot path that already enforces the
+    // crypto floor and time bounds.
+    let peer_profile = parsed
+        .peer_capabilities
+        .clone()
+        .unwrap_or_else(CapabilityNegotiation::t1_default);
+    let trust_root_map = parsed.capability_trust_roots.clone();
+    let trust_resolver = move |issuer: &PublicKey| -> Option<ScopeHash> {
+        trust_root_map.get(&issuer.to_hex()).cloned()
+    };
+    // Seed the per-request registry from caller-owned parent snapshots
+    // so delegated tokens can be evaluated without fabricating missing
+    // parent shares.
+    let mut budgets = InMemoryBudgetRegistry::new();
+    seed_budget_registry(&mut budgets, &parsed.parent_budget_snapshots)?;
+    let verdict = evaluate_with_full_floor(
+        EvaluateInput {
+            request: &portable_request,
+            capability: &capability,
+            trusted_issuers: &trusted,
+            clock,
+            guards,
+            session_filesystem_roots: None,
+        },
+        CapabilityCryptoFloor::AllowClassical,
+        &peer_profile,
+        &trust_resolver,
+        &mut budgets,
+    );
 
     let response = match verdict.verdict {
         Verdict::Allow => EvaluateResponse {
@@ -340,46 +435,99 @@ fn verify_capability_json_str(
     let token: CapabilityToken = serde_json::from_str(token_json)
         .map_err(|error| KernelFfiError::invalid_json("capability token", error))?;
     let authority = public_key_from_hex(authority_pub_hex, "authority public key")?;
-    let fixed_clock = fixed_clock_from_secs(now_secs);
+
+    verify_capability_with_parts(
+        token,
+        vec![authority],
+        Some(now_secs),
+        CapabilityNegotiation::t1_default(),
+        std::collections::BTreeMap::new(),
+        &[],
+    )
+}
+
+fn verify_capability_with_context_json_str(request_json: &str) -> Result<String, KernelFfiError> {
+    let parsed: VerifyCapabilityRequestEnvelope = serde_json::from_str(request_json)
+        .map_err(|error| KernelFfiError::invalid_json("verify capability request", error))?;
+    let token: CapabilityToken = serde_json::from_value(parsed.token)
+        .map_err(|error| KernelFfiError::invalid_json("capability token", error))?;
+    let trusted = decode_trusted_issuers(&parsed.trusted_issuers)?;
+    let peer_profile = parsed
+        .peer_capabilities
+        .clone()
+        .unwrap_or_else(CapabilityNegotiation::t1_default);
+
+    verify_capability_with_parts(
+        token,
+        trusted,
+        parsed.now_secs,
+        peer_profile,
+        parsed.capability_trust_roots,
+        &parsed.parent_budget_snapshots,
+    )
+}
+
+fn verify_capability_with_parts(
+    token: CapabilityToken,
+    trusted: Vec<PublicKey>,
+    now_secs: Option<i64>,
+    peer_profile: CapabilityNegotiation,
+    capability_trust_roots: std::collections::BTreeMap<String, ScopeHash>,
+    parent_budget_snapshots: &[ParentBudgetSnapshot],
+) -> Result<String, KernelFfiError> {
+    let fixed_clock = now_secs.and_then(fixed_clock_from_secs);
     let system_clock = SystemClock;
     let clock: &dyn Clock = match &fixed_clock {
         Some(clock) => clock,
         None => &system_clock,
     };
 
-    let verified =
-        core_verify_capability(&token, &[authority], clock).map_err(|error| match error {
-            CapabilityError::UntrustedIssuer => KernelFfiError::InvalidCapability(
-                "capability issuer is not in the trusted authority set".to_string(),
-            ),
-            CapabilityError::InvalidSignature => KernelFfiError::InvalidCapability(
-                "capability signature failed to verify".to_string(),
-            ),
-            CapabilityError::CryptoFloorRejected(message) => KernelFfiError::InvalidCapability(
-                format!("capability crypto floor rejected: {message}"),
-            ),
-            CapabilityError::NotYetValid => {
-                KernelFfiError::InvalidCapability("capability is not yet valid".to_string())
-            }
-            CapabilityError::Expired => {
-                KernelFfiError::InvalidCapability("capability has expired".to_string())
-            }
-            CapabilityError::AttenuationViolation(message) => KernelFfiError::InvalidCapability(
-                format!("capability rejected by chain binding: {message}"),
-            ),
-            CapabilityError::BudgetSplitRejected(err) => KernelFfiError::InvalidCapability(
-                format!("capability rejected by sibling-sum budget split: {err}"),
-            ),
-            CapabilityError::Internal(message) => {
-                KernelFfiError::Internal(format!("capability verification failed: {message}"))
-            }
-            CapabilityError::SchemaExceedsNegotiatedCeiling {
-                token_schema,
-                peer_max,
-            } => KernelFfiError::InvalidCapability(format!(
-                "capability token schema {token_schema} exceeds peer-negotiated ceiling {peer_max}"
-            )),
-        })?;
+    let trust_resolver = |issuer: &PublicKey| -> Option<ScopeHash> {
+        capability_trust_roots.get(&issuer.to_hex()).cloned()
+    };
+    let mut budgets = InMemoryBudgetRegistry::new();
+    seed_budget_registry(&mut budgets, parent_budget_snapshots)?;
+    let verified = verify_capability_full(
+        &token,
+        &trusted,
+        clock,
+        CapabilityCryptoFloor::AllowClassical,
+        &peer_profile,
+        &trust_resolver,
+        &mut budgets,
+    )
+    .map_err(|error| match error {
+        CapabilityError::UntrustedIssuer => KernelFfiError::InvalidCapability(
+            "capability issuer is not in the trusted authority set".to_string(),
+        ),
+        CapabilityError::InvalidSignature => {
+            KernelFfiError::InvalidCapability("capability signature failed to verify".to_string())
+        }
+        CapabilityError::CryptoFloorRejected(message) => KernelFfiError::InvalidCapability(
+            format!("capability crypto floor rejected: {message}"),
+        ),
+        CapabilityError::NotYetValid => {
+            KernelFfiError::InvalidCapability("capability is not yet valid".to_string())
+        }
+        CapabilityError::Expired => {
+            KernelFfiError::InvalidCapability("capability has expired".to_string())
+        }
+        CapabilityError::AttenuationViolation(message) => KernelFfiError::InvalidCapability(
+            format!("capability rejected by chain binding: {message}"),
+        ),
+        CapabilityError::BudgetSplitRejected(err) => KernelFfiError::InvalidCapability(format!(
+            "capability rejected by sibling-sum budget split: {err}"
+        )),
+        CapabilityError::Internal(message) => {
+            KernelFfiError::Internal(format!("capability verification failed: {message}"))
+        }
+        CapabilityError::SchemaExceedsNegotiatedCeiling {
+            token_schema,
+            peer_max,
+        } => KernelFfiError::InvalidCapability(format!(
+            "capability token schema {token_schema} exceeds peer-negotiated ceiling {peer_max}"
+        )),
+    })?;
 
     let scope_json = serde_json::to_string(&verified.scope)
         .map_err(|error| KernelFfiError::internal("serialize capability scope", error))?;
@@ -532,6 +680,17 @@ pub extern "C" fn chio_kernel_verify_capability_json(
 }
 
 #[no_mangle]
+pub extern "C" fn chio_kernel_verify_capability_with_context_json(
+    request_json: *const c_char,
+) -> ChioKernelFfiResult {
+    let request_json = match read_c_str(request_json, "request_json") {
+        Ok(value) => value,
+        Err(result) => return result,
+    };
+    run_ffi(|| verify_capability_with_context_json_str(&request_json))
+}
+
+#[no_mangle]
 pub extern "C" fn chio_kernel_verify_passport_json(
     envelope_json: *const c_char,
     issuer_pub_hex: *const c_char,
@@ -552,7 +711,9 @@ pub extern "C" fn chio_kernel_verify_passport_json(
 mod tests {
     use super::*;
     use chio_core_types::canonical_json_bytes;
-    use chio_core_types::capability::{CapabilityTokenBody, ChioScope, Operation, ToolGrant};
+    use chio_core_types::capability::{
+        CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation, ToolGrant,
+    };
     use chio_kernel_core::passport_verify::{
         PortablePassportBody, PortablePassportEnvelope, PORTABLE_PASSPORT_SCHEMA,
     };
@@ -591,6 +752,50 @@ mod tests {
             delegation_chain: vec![],
         };
         CapabilityToken::sign(body, issuer).unwrap()
+    }
+
+    fn make_delegated_capability(
+        id: &str,
+        parent_id: &str,
+        subject: &Keypair,
+        issuer: &Keypair,
+    ) -> CapabilityToken {
+        let mut body = make_capability_at(subject, issuer, ISSUED_AT, EXPIRES_AT).body();
+        body.id = id.to_string();
+        body.delegation_chain = vec![DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: parent_id.to_string(),
+                delegator: issuer.public_key(),
+                delegatee: subject.public_key(),
+                attenuations: vec![],
+                timestamp: ISSUED_AT,
+                scope_hash: None,
+            },
+            issuer,
+        )
+        .unwrap()];
+        CapabilityToken::sign(body, issuer).unwrap()
+    }
+
+    fn parent_budget_snapshot(parent_id: &str) -> serde_json::Value {
+        json!({
+            "parent_token_id": parent_id,
+            "parent_share_bps": 10_000,
+            "admitted_children": [],
+        })
+    }
+
+    fn oversubscribed_budget_snapshot(parent_id: &str) -> serde_json::Value {
+        json!({
+            "parent_token_id": parent_id,
+            "parent_share_bps": 10_000,
+            "admitted_children": [
+                {
+                    "child_token_id": "cap-sibling",
+                    "share_bps": 1,
+                }
+            ],
+        })
     }
 
     fn evaluate_envelope_at(
@@ -656,6 +861,61 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_allows_delegated_token_with_parent_budget_snapshot() {
+        let subject = Keypair::generate();
+        let issuer = Keypair::generate();
+        let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+        let envelope = json!({
+            "capability": capability,
+            "trusted_issuers": [issuer.public_key().to_hex()],
+            "request": {
+                "request_id": "req-delegated",
+                "tool_name": "echo",
+                "server_id": "srv-a",
+                "agent_id": subject.public_key().to_hex(),
+                "arguments": {"msg": "hello"}
+            },
+            "now_secs": ISSUED_AT + 1,
+            "parent_budget_snapshots": [parent_budget_snapshot("cap-parent")]
+        });
+
+        let output = evaluate_json_str(&envelope.to_string()).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+        assert_eq!(value["verdict"], "allow");
+        assert_eq!(value["matched_grant_index"], 0);
+    }
+
+    #[test]
+    fn evaluate_rejects_oversubscribed_delegated_sibling() {
+        let subject = Keypair::generate();
+        let issuer = Keypair::generate();
+        let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+        let envelope = json!({
+            "capability": capability,
+            "trusted_issuers": [issuer.public_key().to_hex()],
+            "request": {
+                "request_id": "req-delegated-oversub",
+                "tool_name": "echo",
+                "server_id": "srv-a",
+                "agent_id": subject.public_key().to_hex(),
+                "arguments": {"msg": "hello"}
+            },
+            "now_secs": ISSUED_AT + 1,
+            "parent_budget_snapshots": [oversubscribed_budget_snapshot("cap-parent")]
+        });
+
+        let output = evaluate_json_str(&envelope.to_string()).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+        assert_eq!(value["verdict"], "deny");
+        assert!(value["reason"]
+            .as_str()
+            .unwrap()
+            .contains("budget split rejected"));
+    }
+
+    #[test]
     fn evaluate_honors_epoch_zero_clock() {
         let output = evaluate_json_str(&evaluate_envelope_at("echo", 0, 10, Some(0))).unwrap();
         let value: serde_json::Value = serde_json::from_str(&output).unwrap();
@@ -701,6 +961,47 @@ mod tests {
         assert_eq!(value["evaluated_at"], 0);
         assert_eq!(value["issued_at"], 0);
         assert_eq!(value["expires_at"], 10);
+    }
+
+    #[test]
+    fn verify_capability_context_allows_delegated_token_with_parent_budget_snapshot() {
+        let subject = Keypair::generate();
+        let issuer = Keypair::generate();
+        let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+        let envelope = json!({
+            "token": capability,
+            "trusted_issuers": [issuer.public_key().to_hex()],
+            "now_secs": ISSUED_AT as i64 + 1,
+            "parent_budget_snapshots": [parent_budget_snapshot("cap-parent")]
+        });
+
+        let output = verify_capability_with_context_json_str(&envelope.to_string()).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+        assert_eq!(value["id"], "cap-child");
+        assert_eq!(value["subject_hex"], subject.public_key().to_hex());
+    }
+
+    #[test]
+    fn verify_capability_context_rejects_oversubscribed_delegated_sibling() {
+        let subject = Keypair::generate();
+        let issuer = Keypair::generate();
+        let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+        let envelope = json!({
+            "token": capability,
+            "trusted_issuers": [issuer.public_key().to_hex()],
+            "now_secs": ISSUED_AT as i64 + 1,
+            "parent_budget_snapshots": [oversubscribed_budget_snapshot("cap-parent")]
+        });
+
+        let error = verify_capability_with_context_json_str(&envelope.to_string()).unwrap_err();
+
+        match error {
+            KernelFfiError::InvalidCapability(message) => {
+                assert!(message.contains("sibling-sum budget split"));
+            }
+            other => panic!("expected InvalidCapability, got {other:?}"),
+        }
     }
 
     #[test]

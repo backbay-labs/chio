@@ -14,7 +14,8 @@
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
+    CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation,
+    ToolGrant,
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
@@ -25,8 +26,8 @@ use chio_kernel_core::passport_verify::{
 };
 use chio_kernel_mobile::{
     attest_app_attest, attest_play_integrity, evaluate, sign_receipt, verify_app_attest_evidence,
-    verify_capability, verify_mobile_receipt, verify_passport, verify_play_integrity_evidence,
-    ChioMobileError,
+    verify_capability, verify_capability_with_context, verify_mobile_receipt, verify_passport,
+    verify_play_integrity_evidence, ChioMobileError,
 };
 
 const ISSUED_AT: u64 = 1_700_000_000;
@@ -58,6 +59,50 @@ fn make_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
         delegation_chain: vec![],
     };
     CapabilityToken::sign(body, issuer).unwrap()
+}
+
+fn make_delegated_capability(
+    id: &str,
+    parent_id: &str,
+    subject: &Keypair,
+    issuer: &Keypair,
+) -> CapabilityToken {
+    let mut body = make_capability(subject, issuer).body();
+    body.id = id.to_string();
+    body.delegation_chain = vec![DelegationLink::sign(
+        DelegationLinkBody {
+            capability_id: parent_id.to_string(),
+            delegator: issuer.public_key(),
+            delegatee: subject.public_key(),
+            attenuations: vec![],
+            timestamp: ISSUED_AT,
+            scope_hash: None,
+        },
+        issuer,
+    )
+    .unwrap()];
+    CapabilityToken::sign(body, issuer).unwrap()
+}
+
+fn parent_budget_snapshot(parent_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "parent_token_id": parent_id,
+        "parent_share_bps": 10_000,
+        "admitted_children": [],
+    })
+}
+
+fn oversubscribed_budget_snapshot(parent_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "parent_token_id": parent_id,
+        "parent_share_bps": 10_000,
+        "admitted_children": [
+            {
+                "child_token_id": "cap-sibling",
+                "share_bps": 1,
+            }
+        ],
+    })
 }
 
 fn make_receipt_body(keypair: &Keypair) -> ChioReceiptBody {
@@ -104,6 +149,61 @@ fn evaluate_allow_roundtrip() {
     assert_eq!(response["verdict"], "allow");
     assert_eq!(response["matched_grant_index"], 0);
     assert!(response.get("reason").is_none());
+}
+
+#[test]
+fn evaluate_allows_delegated_token_with_parent_budget_snapshot() {
+    let subject = Keypair::generate();
+    let issuer = Keypair::generate();
+    let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+
+    let request_json = serde_json::json!({
+        "capability": capability,
+        "trusted_issuers": [issuer.public_key().to_hex()],
+        "request": {
+            "request_id": "req-delegated",
+            "tool_name": "echo",
+            "server_id": "srv-a",
+            "agent_id": subject.public_key().to_hex(),
+            "arguments": {"msg": "hello"},
+        },
+        "now_secs": EVAL_TIME as i64,
+        "parent_budget_snapshots": [parent_budget_snapshot("cap-parent")],
+    })
+    .to_string();
+
+    let response_json = evaluate(request_json).expect("evaluate delegated allow");
+    let response: serde_json::Value = serde_json::from_str(&response_json).unwrap();
+    assert_eq!(response["verdict"], "allow");
+    assert_eq!(response["matched_grant_index"], 0);
+}
+
+#[test]
+fn evaluate_rejects_oversubscribed_delegated_sibling() {
+    let subject = Keypair::generate();
+    let issuer = Keypair::generate();
+    let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+
+    let request_json = serde_json::json!({
+        "capability": capability,
+        "trusted_issuers": [issuer.public_key().to_hex()],
+        "request": {
+            "request_id": "req-delegated-oversub",
+            "tool_name": "echo",
+            "server_id": "srv-a",
+            "agent_id": subject.public_key().to_hex(),
+            "arguments": {"msg": "hello"},
+        },
+        "now_secs": EVAL_TIME as i64,
+        "parent_budget_snapshots": [oversubscribed_budget_snapshot("cap-parent")],
+    })
+    .to_string();
+
+    let response_json = evaluate(request_json).expect("evaluate delegated deny");
+    let response: serde_json::Value = serde_json::from_str(&response_json).unwrap();
+    assert_eq!(response["verdict"], "deny");
+    let reason = response["reason"].as_str().unwrap();
+    assert!(reason.contains("budget split rejected"), "reason: {reason}");
 }
 
 #[test]
@@ -288,6 +388,54 @@ fn verify_capability_happy_path() {
     assert!(verified.scope_json.contains("srv-a"));
     assert_eq!(verified.issued_at, 1_000_000_000);
     assert_eq!(verified.expires_at, 5_000_000_000);
+}
+
+#[test]
+fn verify_capability_with_context_allows_delegated_token_with_parent_budget_snapshot() {
+    let subject = Keypair::generate();
+    let issuer = Keypair::generate();
+    let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+
+    let request_json = serde_json::json!({
+        "token": capability,
+        "trusted_issuers": [issuer.public_key().to_hex()],
+        "now_secs": EVAL_TIME as i64,
+        "parent_budget_snapshots": [parent_budget_snapshot("cap-parent")],
+    })
+    .to_string();
+
+    let verified =
+        verify_capability_with_context(request_json).expect("verify delegated capability");
+
+    assert_eq!(verified.id, "cap-child");
+    assert_eq!(verified.subject_hex, subject.public_key().to_hex());
+}
+
+#[test]
+fn verify_capability_with_context_rejects_oversubscribed_delegated_sibling() {
+    let subject = Keypair::generate();
+    let issuer = Keypair::generate();
+    let capability = make_delegated_capability("cap-child", "cap-parent", &subject, &issuer);
+
+    let request_json = serde_json::json!({
+        "token": capability,
+        "trusted_issuers": [issuer.public_key().to_hex()],
+        "now_secs": EVAL_TIME as i64,
+        "parent_budget_snapshots": [oversubscribed_budget_snapshot("cap-parent")],
+    })
+    .to_string();
+
+    let err = verify_capability_with_context(request_json).unwrap_err();
+
+    match err {
+        ChioMobileError::InvalidCapability { message } => {
+            assert!(
+                message.contains("sibling-sum budget split"),
+                "message: {message}"
+            );
+        }
+        other => panic!("expected InvalidCapability, got {other:?}"),
+    }
 }
 
 #[test]

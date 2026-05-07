@@ -34,6 +34,49 @@ pub const CHIO_CAPABILITY_V1_SCHEMA: &str = "chio.capability.v1";
 /// Capability-token v2 schema with typed caveats and attenuation witnesses.
 pub const CHIO_CAPABILITY_V2_SCHEMA: &str = "chio.capability.v2";
 
+/// Total ordering over the known capability-token schema versions.
+///
+/// The W1.3 schema-ceiling check needs an ordering relation (token schema
+/// must be `<=` the peer's negotiated maximum), not bare string equality.
+/// String equality fails-closed when the peer advertises a strictly newer
+/// ceiling that is still backwards-compatible with the inbound token's
+/// schema, which is the wrong direction in the lattice.
+///
+/// New schema versions append a variant; serialization uses the existing
+/// `chio.capability.v1` / `chio.capability.v2` constants so wire shapes do
+/// not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CapabilitySchemaVersion {
+    /// Frozen v1 capability-token schema.
+    V1,
+    /// v2 capability-token schema with typed caveats and attenuation witnesses.
+    V2,
+}
+
+impl CapabilitySchemaVersion {
+    /// Parse a capability schema id into the ordered enum, returning
+    /// `None` for unknown identifiers. Unknown values must fail-closed
+    /// at higher layers (`CapabilityNegotiation::validate` already
+    /// rejects them on the negotiation surface).
+    #[must_use]
+    pub fn parse(schema: &str) -> Option<Self> {
+        match schema {
+            CHIO_CAPABILITY_V1_SCHEMA => Some(Self::V1),
+            CHIO_CAPABILITY_V2_SCHEMA => Some(Self::V2),
+            _ => None,
+        }
+    }
+
+    /// Return the wire-form schema identifier for this version.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::V1 => CHIO_CAPABILITY_V1_SCHEMA,
+            Self::V2 => CHIO_CAPABILITY_V2_SCHEMA,
+        }
+    }
+}
+
 fn default_capability_schema() -> String {
     CHIO_CAPABILITY_V1_SCHEMA.to_string()
 }
@@ -106,6 +149,14 @@ impl CapabilityNegotiation {
     }
 
     /// T1 peer profile: v2 capability, receipt v2, and anchor batches.
+    ///
+    /// Wave 1.5 hardening: the
+    /// [`capability_features::DELEGATION_V2_CHAIN_BINDING`] flag is
+    /// advertised as `true` so production peers exercise the W1.1
+    /// chain-binding check by default. Peers that need to interoperate
+    /// with a counterparty that has not rolled out chain-binding can
+    /// explicitly clear the flag in the intersected profile, but the
+    /// safe direction is to leave it on.
     #[must_use]
     pub fn t1_default() -> Self {
         let mut features = BTreeMap::new();
@@ -113,6 +164,10 @@ impl CapabilityNegotiation {
         features.insert(capability_features::ACCEPTS_RECEIPT_V2.to_string(), true);
         features.insert(
             capability_features::ACCEPTS_ANCHOR_BATCH_V1.to_string(),
+            true,
+        );
+        features.insert(
+            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
             true,
         );
         Self {
@@ -155,9 +210,20 @@ impl CapabilityNegotiation {
         self.validate()?;
         remote.validate()?;
         let mut features = BTreeMap::new();
-        for (feature, enabled) in &self.features {
-            if *enabled && remote.features.get(feature).copied().unwrap_or(false) {
-                features.insert(feature.clone(), true);
+        for feature in self.features.keys().chain(remote.features.keys()) {
+            if features.contains_key(feature) {
+                continue;
+            }
+            let local = self.features.get(feature).copied();
+            let remote = remote.features.get(feature).copied();
+            match (local, remote) {
+                (Some(true), Some(true)) => {
+                    features.insert(feature.clone(), true);
+                }
+                (Some(false), _) | (_, Some(false)) => {
+                    features.insert(feature.clone(), false);
+                }
+                _ => {}
             }
         }
         let max_capability_schema = if self.max_capability_schema == CHIO_CAPABILITY_V2_SCHEMA
@@ -598,6 +664,14 @@ impl CapabilityToken {
     /// witness that the verifier accepts.
     ///
     /// This check is a no-op for v1 tokens.
+    ///
+    /// Wave 1.5 note: production callers should prefer
+    /// [`Self::validate_chain_binding_with_features`], which gates the
+    /// v2 chain-binding enforcement on the
+    /// [`capability_features::DELEGATION_V2_CHAIN_BINDING`] feature flag.
+    /// This entry point preserves the legacy "always on" semantics that
+    /// existing callers (verifier hot path, FFI shells, conformance
+    /// tests) rely on.
     pub fn validate_chain_binding(&self, trust_root_scope_hash: &ScopeHash) -> Result<()> {
         if self.schema != CHIO_CAPABILITY_V2_SCHEMA {
             return Ok(());
@@ -643,6 +717,41 @@ impl CapabilityToken {
             }
         }
         Ok(())
+    }
+
+    /// Wave 1.5 feature-gated wrapper around [`Self::validate_chain_binding`].
+    ///
+    /// Consults `negotiated.delegation_v2_chain_binding`: if the feature
+    /// is enabled (the production default; see
+    /// [`CapabilityNegotiation::t1_default`]), the chain-binding check
+    /// runs as in the legacy entry point. If the peer has explicitly
+    /// disabled the feature in the negotiated bitset, v2 tokens fail
+    /// closed instead of skipping the binding check.
+    ///
+    /// Production callers SHOULD prefer this wrapper; legacy callers
+    /// that have not plumbed a [`CapabilityNegotiation`] through their
+    /// boundary continue to invoke [`Self::validate_chain_binding`]
+    /// directly with the same semantics.
+    pub fn validate_chain_binding_with_features(
+        &self,
+        trust_root_scope_hash: &ScopeHash,
+        negotiated: &CapabilityNegotiation,
+    ) -> Result<()> {
+        if self.schema != CHIO_CAPABILITY_V2_SCHEMA {
+            return Ok(());
+        }
+        let enabled = negotiated
+            .features
+            .get(capability_features::DELEGATION_V2_CHAIN_BINDING)
+            .copied()
+            .unwrap_or(true);
+        if !enabled {
+            return Err(Error::AttenuationViolation {
+                reason: "delegation_v2_chain_binding is disabled; v2 tokens are rejected"
+                    .to_string(),
+            });
+        }
+        self.validate_chain_binding(trust_root_scope_hash)
     }
 
     /// Sign a capability token body with the given Ed25519 keypair.
@@ -3703,6 +3812,51 @@ mod tests {
     }
 
     #[test]
+    fn capability_v2_chain_binding_feature_disabled_fails_closed() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let scope = ChioScope::default();
+        let proof = AttenuationProof {
+            parent_scope_hash: scope_hash(&scope).unwrap(),
+            child_scope_hash: scope_hash(&scope).unwrap(),
+            normalized_subset_proof: compute_attenuation_witness(&scope, &scope).unwrap(),
+        };
+        let body = CapabilityTokenBody {
+            id: "cap-v2-disabled-chain-binding".to_string(),
+            issuer: issuer.public_key(),
+            subject: subject.public_key(),
+            scope,
+            issued_at: 10,
+            expires_at: 20,
+            delegation_chain: vec![],
+        };
+        let token = CapabilityToken::sign_v2(
+            CapabilityTokenV2Body {
+                body,
+                caveats: vec![],
+                scope_attenuations: vec![],
+                attenuation_proof: proof,
+                budget_share_bps: None,
+            },
+            &issuer,
+        )
+        .unwrap();
+        let mut negotiated = CapabilityNegotiation::t1_default();
+        negotiated.features.insert(
+            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+            false,
+        );
+
+        let err = token
+            .validate_chain_binding_with_features(
+                &scope_hash(&ChioScope::default()).unwrap(),
+                &negotiated,
+            )
+            .expect_err("disabled chain binding must reject v2 tokens");
+        assert!(matches!(err, Error::AttenuationViolation { .. }));
+    }
+
+    #[test]
     fn capability_v2_requires_attenuation_proof() -> Result<()> {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
@@ -3815,6 +3969,58 @@ mod tests {
         let mut malformed = CapabilityNegotiation::t1_default();
         malformed.features.insert("bad feature".to_string(), true);
         assert!(local.negotiated_with(&malformed).is_err());
+    }
+
+    #[test]
+    fn capability_negotiation_preserves_explicit_disabled_features() {
+        let local = CapabilityNegotiation::t1_default();
+        let mut remote = CapabilityNegotiation::t1_default();
+        remote.features.insert(
+            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+            false,
+        );
+
+        let negotiated = local.negotiated_with(&remote).unwrap();
+
+        assert_eq!(negotiated.max_capability_schema, CHIO_CAPABILITY_V2_SCHEMA);
+        assert_eq!(
+            negotiated
+                .features
+                .get(capability_features::DELEGATION_V2_CHAIN_BINDING)
+                .copied(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn chain_binding_disabled_does_not_reject_v1_tokens() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "cap-v1".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 10,
+                expires_at: 20,
+                delegation_chain: vec![],
+            },
+            &issuer,
+        )
+        .unwrap();
+        let mut negotiated = CapabilityNegotiation::t1_default();
+        negotiated.features.insert(
+            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+            false,
+        );
+
+        token
+            .validate_chain_binding_with_features(
+                &scope_hash(&ChioScope::default()).unwrap(),
+                &negotiated,
+            )
+            .unwrap();
     }
 
     fn make_signed_link(

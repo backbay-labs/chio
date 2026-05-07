@@ -68,6 +68,14 @@ namespace chio_kernel_mobile {
     [Throws=ChioMobileError]
     VerifiedCapability verify_capability(string token_json, string authority_pub_hex);
 
+    // Verify a capability token with the full portable JSON context.
+    //
+    // `request_json` accepts the same trust-root and parent-budget
+    // snapshot fields as `evaluate`, allowing delegated tokens to seed
+    // sibling-sum enforcement before verification.
+    [Throws=ChioMobileError]
+    VerifiedCapability verify_capability_with_context(string request_json);
+
     // Verify a portable passport envelope (Phase 20.1 wire format).
     //
     // `envelope_json` is the JSON-encoded PortablePassportEnvelope.

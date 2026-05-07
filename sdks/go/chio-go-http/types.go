@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: 4dd860b33178e66d250e1524b4463c327c07badc325726d05c9e02afdd9f2b46
+// Schema content SHA-256: 5e4d8e423d4d3437dc40500a251d789c5747705ec343898ea684d3f041d60574
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -44,6 +44,7 @@ const (
 // Defines values for AgentToolCallRequestCapabilityTokenSchema.
 const (
 	AgentToolCallRequestCapabilityTokenSchemaChioCapabilityV1 AgentToolCallRequestCapabilityTokenSchema = "chio.capability.v1"
+	AgentToolCallRequestCapabilityTokenSchemaChioCapabilityV2 AgentToolCallRequestCapabilityTokenSchema = "chio.capability.v2"
 )
 
 // Defines values for AgentToolCallRequestCapabilityTokenScopeGrantsOperations.
@@ -74,6 +75,16 @@ const (
 	AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperationsRead       AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperations = "read"
 	AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperationsReadResult AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperations = "read_result"
 	AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperationsSubscribe  AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperations = "subscribe"
+)
+
+// Defines values for AgentToolCallRequestCapabilityToken0Schema.
+const (
+	AgentToolCallRequestCapabilityToken0SchemaChioCapabilityV2 AgentToolCallRequestCapabilityToken0Schema = "chio.capability.v2"
+)
+
+// Defines values for AgentToolCallRequestCapabilityToken1Schema.
+const (
+	AgentToolCallRequestCapabilityToken1SchemaChioCapabilityV1 AgentToolCallRequestCapabilityToken1Schema = "chio.capability.v1"
 )
 
 // Defines values for AgentToolCallRequestType.
@@ -248,9 +259,18 @@ const (
 	JsonrpcResponseJsonrpcN20 JsonrpcResponseJsonrpc = "2.0"
 )
 
+// Defines values for KernelCapabilityListCapabilitiesAlgorithm.
+const (
+	KernelCapabilityListCapabilitiesAlgorithmEd25519 KernelCapabilityListCapabilitiesAlgorithm = "ed25519"
+	KernelCapabilityListCapabilitiesAlgorithmHybrid  KernelCapabilityListCapabilitiesAlgorithm = "hybrid"
+	KernelCapabilityListCapabilitiesAlgorithmP256    KernelCapabilityListCapabilitiesAlgorithm = "p256"
+	KernelCapabilityListCapabilitiesAlgorithmP384    KernelCapabilityListCapabilitiesAlgorithm = "p384"
+)
+
 // Defines values for KernelCapabilityListCapabilitiesSchema.
 const (
 	KernelCapabilityListCapabilitiesSchemaChioCapabilityV1 KernelCapabilityListCapabilitiesSchema = "chio.capability.v1"
+	KernelCapabilityListCapabilitiesSchemaChioCapabilityV2 KernelCapabilityListCapabilitiesSchema = "chio.capability.v2"
 )
 
 // Defines values for KernelCapabilityListCapabilitiesScopeGrantsOperations.
@@ -281,6 +301,16 @@ const (
 	KernelCapabilityListCapabilitiesScopeResourceGrantsOperationsRead       KernelCapabilityListCapabilitiesScopeResourceGrantsOperations = "read"
 	KernelCapabilityListCapabilitiesScopeResourceGrantsOperationsReadResult KernelCapabilityListCapabilitiesScopeResourceGrantsOperations = "read_result"
 	KernelCapabilityListCapabilitiesScopeResourceGrantsOperationsSubscribe  KernelCapabilityListCapabilitiesScopeResourceGrantsOperations = "subscribe"
+)
+
+// Defines values for KernelCapabilityListCapabilities0Schema.
+const (
+	KernelCapabilityListCapabilities0SchemaChioCapabilityV2 KernelCapabilityListCapabilities0Schema = "chio.capability.v2"
+)
+
+// Defines values for KernelCapabilityListCapabilities1Schema.
+const (
+	KernelCapabilityListCapabilities1SchemaChioCapabilityV1 KernelCapabilityListCapabilities1Schema = "chio.capability.v1"
 )
 
 // Defines values for KernelCapabilityListType.
@@ -605,59 +635,12 @@ type AgentListCapabilitiesType string
 
 // AgentToolCallRequest defines model for AgentToolCallRequest.
 type AgentToolCallRequest struct {
-	CapabilityToken struct {
-		Algorithm       *AgentToolCallRequestCapabilityTokenAlgorithm `json:"algorithm,omitempty"`
-		DelegationChain *[]struct {
-			Attenuations *[]map[string]interface{} `json:"attenuations,omitempty"`
-			CapabilityId string                    `json:"capability_id"`
-			Delegatee    string                    `json:"delegatee"`
-			Delegator    string                    `json:"delegator"`
-			ScopeHash    *string                   `json:"scope_hash,omitempty"`
-			Signature    string                    `json:"signature"`
-			Timestamp    int64                     `json:"timestamp"`
-		} `json:"delegation_chain,omitempty"`
-		ExpiresAt int64                                      `json:"expires_at"`
-		Id        string                                     `json:"id"`
-		IssuedAt  int64                                      `json:"issued_at"`
-		Issuer    string                                     `json:"issuer"`
-		Schema    *AgentToolCallRequestCapabilityTokenSchema `json:"schema,omitempty"`
-		Scope     struct {
-			Grants *[]struct {
-				Constraints *[]struct {
-					Type  string       `json:"type"`
-					Value *interface{} `json:"value,omitempty"`
-				} `json:"constraints,omitempty"`
-				DpopRequired         *bool `json:"dpop_required,omitempty"`
-				MaxCostPerInvocation *struct {
-					Currency string `json:"currency"`
-					Units    int64  `json:"units"`
-				} `json:"max_cost_per_invocation,omitempty"`
-				MaxInvocations *int64 `json:"max_invocations,omitempty"`
-				MaxTotalCost   *struct {
-					Currency string `json:"currency"`
-					Units    int64  `json:"units"`
-				} `json:"max_total_cost,omitempty"`
-				Operations []AgentToolCallRequestCapabilityTokenScopeGrantsOperations `json:"operations"`
-				ServerId   string                                                     `json:"server_id"`
-				ToolName   string                                                     `json:"tool_name"`
-			} `json:"grants,omitempty"`
-			PromptGrants *[]struct {
-				Operations []AgentToolCallRequestCapabilityTokenScopePromptGrantsOperations `json:"operations"`
-				PromptName string                                                           `json:"prompt_name"`
-			} `json:"prompt_grants,omitempty"`
-			ResourceGrants *[]struct {
-				Operations []AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperations `json:"operations"`
-				UriPattern string                                                             `json:"uri_pattern"`
-			} `json:"resource_grants,omitempty"`
-		} `json:"scope"`
-		Signature string `json:"signature"`
-		Subject   string `json:"subject"`
-	} `json:"capability_token"`
-	Id       string                   `json:"id"`
-	Params   interface{}              `json:"params"`
-	ServerId string                   `json:"server_id"`
-	Tool     string                   `json:"tool"`
-	Type     AgentToolCallRequestType `json:"type"`
+	CapabilityToken AgentToolCallRequest_CapabilityToken `json:"capability_token"`
+	Id              string                               `json:"id"`
+	Params          interface{}                          `json:"params"`
+	ServerId        string                               `json:"server_id"`
+	Tool            string                               `json:"tool"`
+	Type            AgentToolCallRequestType             `json:"type"`
 }
 
 // AgentToolCallRequestCapabilityTokenAlgorithm defines model for AgentToolCallRequest.CapabilityToken.Algorithm.
@@ -674,6 +657,96 @@ type AgentToolCallRequestCapabilityTokenScopePromptGrantsOperations string
 
 // AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperations defines model for AgentToolCallRequest.CapabilityToken.Scope.ResourceGrants.Operations.
 type AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperations string
+
+// AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item defines model for AgentToolCallRequest.CapabilityToken.ScopeAttenuations.Item.
+type AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item struct {
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AgentToolCallRequestCapabilityToken0 defines model for .
+type AgentToolCallRequestCapabilityToken0 struct {
+	AttenuationProof struct {
+		ChildScopeHash        string   `json:"child_scope_hash"`
+		NormalizedSubsetProof []string `json:"normalized_subset_proof"`
+		ParentScopeHash       string   `json:"parent_scope_hash"`
+	} `json:"attenuation_proof"`
+	Schema AgentToolCallRequestCapabilityToken0Schema `json:"schema"`
+}
+
+// AgentToolCallRequestCapabilityToken0Schema defines model for AgentToolCallRequest.CapabilityToken.0.Schema.
+type AgentToolCallRequestCapabilityToken0Schema string
+
+// AgentToolCallRequestCapabilityToken1 defines model for .
+type AgentToolCallRequestCapabilityToken1 struct {
+	Schema *AgentToolCallRequestCapabilityToken1Schema `json:"schema,omitempty"`
+}
+
+// AgentToolCallRequestCapabilityToken1Schema defines model for AgentToolCallRequest.CapabilityToken.1.Schema.
+type AgentToolCallRequestCapabilityToken1Schema string
+
+// AgentToolCallRequest_CapabilityToken defines model for AgentToolCallRequest.CapabilityToken.
+type AgentToolCallRequest_CapabilityToken struct {
+	Algorithm        *AgentToolCallRequestCapabilityTokenAlgorithm `json:"algorithm,omitempty"`
+	AttenuationProof *struct {
+		ChildScopeHash        string   `json:"child_scope_hash"`
+		NormalizedSubsetProof []string `json:"normalized_subset_proof"`
+		ParentScopeHash       string   `json:"parent_scope_hash"`
+	} `json:"attenuation_proof,omitempty"`
+	BudgetShareBps *int64 `json:"budget_share_bps,omitempty"`
+	Caveats        *[]struct {
+		EnforcedAt *string     `json:"enforced_at,omitempty"`
+		Kind       string      `json:"kind"`
+		Predicate  interface{} `json:"predicate"`
+	} `json:"caveats,omitempty"`
+	DelegationChain *[]struct {
+		Attenuations *[]map[string]interface{} `json:"attenuations,omitempty"`
+		CapabilityId string                    `json:"capability_id"`
+		Delegatee    string                    `json:"delegatee"`
+		Delegator    string                    `json:"delegator"`
+		ScopeHash    *string                   `json:"scope_hash,omitempty"`
+		Signature    string                    `json:"signature"`
+		Timestamp    int64                     `json:"timestamp"`
+	} `json:"delegation_chain,omitempty"`
+	ExpiresAt int64                                      `json:"expires_at"`
+	Id        string                                     `json:"id"`
+	IssuedAt  int64                                      `json:"issued_at"`
+	Issuer    string                                     `json:"issuer"`
+	Schema    *AgentToolCallRequestCapabilityTokenSchema `json:"schema,omitempty"`
+	Scope     struct {
+		Grants *[]struct {
+			Constraints *[]struct {
+				Type  string       `json:"type"`
+				Value *interface{} `json:"value,omitempty"`
+			} `json:"constraints,omitempty"`
+			DpopRequired         *bool `json:"dpop_required,omitempty"`
+			MaxCostPerInvocation *struct {
+				Currency string `json:"currency"`
+				Units    int64  `json:"units"`
+			} `json:"max_cost_per_invocation,omitempty"`
+			MaxInvocations *int64 `json:"max_invocations,omitempty"`
+			MaxTotalCost   *struct {
+				Currency string `json:"currency"`
+				Units    int64  `json:"units"`
+			} `json:"max_total_cost,omitempty"`
+			Operations []AgentToolCallRequestCapabilityTokenScopeGrantsOperations `json:"operations"`
+			ServerId   string                                                     `json:"server_id"`
+			ToolName   string                                                     `json:"tool_name"`
+		} `json:"grants,omitempty"`
+		PromptGrants *[]struct {
+			Operations []AgentToolCallRequestCapabilityTokenScopePromptGrantsOperations `json:"operations"`
+			PromptName string                                                           `json:"prompt_name"`
+		} `json:"prompt_grants,omitempty"`
+		ResourceGrants *[]struct {
+			Operations []AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperations `json:"operations"`
+			UriPattern string                                                             `json:"uri_pattern"`
+		} `json:"resource_grants,omitempty"`
+	} `json:"scope"`
+	ScopeAttenuations *[]AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item `json:"scope_attenuations,omitempty"`
+	Signature         string                                                         `json:"signature"`
+	Subject           string                                                         `json:"subject"`
+	union             json.RawMessage
+}
 
 // AgentToolCallRequestType defines model for AgentToolCallRequest.Type.
 type AgentToolCallRequestType string
@@ -813,7 +886,7 @@ type CapabilityToken struct {
 	// Issuer Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.
 	Issuer string `json:"issuer"`
 
-	// Schema Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+	// Schema Signed-artifact schema ID. Optional on the wire: legacy v1 tokens persisted before this field was introduced omit it entirely, and verifiers default the missing value to `chio.capability.v1` so those tokens deserialize unchanged. Newly issued tokens carry it in the schema-aware signing input.
 	Schema *CapabilityTokenSchema `json:"schema,omitempty"`
 
 	// Scope What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
@@ -829,7 +902,7 @@ type CapabilityToken struct {
 // CapabilityTokenAlgorithm Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
 type CapabilityTokenAlgorithm string
 
-// CapabilityTokenSchema Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+// CapabilityTokenSchema Signed-artifact schema ID. Optional on the wire: legacy v1 tokens persisted before this field was introduced omit it entirely, and verifiers default the missing value to `chio.capability.v1` so those tokens deserialize unchanged. Newly issued tokens carry it in the schema-aware signing input.
 type CapabilityTokenSchema string
 
 // CapabilityTokenChioScope What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
@@ -1325,58 +1398,14 @@ type JsonrpcResponse1 struct {
 
 // KernelCapabilityList defines model for KernelCapabilityList.
 type KernelCapabilityList struct {
-	Capabilities []struct {
-		DelegationChain *[]struct {
-			Attenuations *[]map[string]interface{} `json:"attenuations,omitempty"`
-			CapabilityId string                    `json:"capability_id"`
-			Delegatee    string                    `json:"delegatee"`
-			Delegator    string                    `json:"delegator"`
-			Signature    string                    `json:"signature"`
-			Timestamp    int64                     `json:"timestamp"`
-		} `json:"delegation_chain,omitempty"`
-		ExpiresAt int64  `json:"expires_at"`
-		Id        string `json:"id"`
-		IssuedAt  int64  `json:"issued_at"`
-		Issuer    string `json:"issuer"`
-
-		// Schema Signed-artifact schema ID for live v1 capability-token serialization.
-		Schema *KernelCapabilityListCapabilitiesSchema `json:"schema,omitempty"`
-		Scope  struct {
-			Grants *[]struct {
-				Constraints *[]struct {
-					Type  string       `json:"type"`
-					Value *interface{} `json:"value,omitempty"`
-				} `json:"constraints,omitempty"`
-				DpopRequired         *bool `json:"dpop_required,omitempty"`
-				MaxCostPerInvocation *struct {
-					Currency string `json:"currency"`
-					Units    int64  `json:"units"`
-				} `json:"max_cost_per_invocation,omitempty"`
-				MaxInvocations *int64 `json:"max_invocations,omitempty"`
-				MaxTotalCost   *struct {
-					Currency string `json:"currency"`
-					Units    int64  `json:"units"`
-				} `json:"max_total_cost,omitempty"`
-				Operations []KernelCapabilityListCapabilitiesScopeGrantsOperations `json:"operations"`
-				ServerId   string                                                  `json:"server_id"`
-				ToolName   string                                                  `json:"tool_name"`
-			} `json:"grants,omitempty"`
-			PromptGrants *[]struct {
-				Operations []KernelCapabilityListCapabilitiesScopePromptGrantsOperations `json:"operations"`
-				PromptName string                                                        `json:"prompt_name"`
-			} `json:"prompt_grants,omitempty"`
-			ResourceGrants *[]struct {
-				Operations []KernelCapabilityListCapabilitiesScopeResourceGrantsOperations `json:"operations"`
-				UriPattern string                                                          `json:"uri_pattern"`
-			} `json:"resource_grants,omitempty"`
-		} `json:"scope"`
-		Signature string `json:"signature"`
-		Subject   string `json:"subject"`
-	} `json:"capabilities"`
-	Type KernelCapabilityListType `json:"type"`
+	Capabilities []KernelCapabilityList_Capabilities_Item `json:"capabilities"`
+	Type         KernelCapabilityListType                 `json:"type"`
 }
 
-// KernelCapabilityListCapabilitiesSchema Signed-artifact schema ID for live v1 capability-token serialization.
+// KernelCapabilityListCapabilitiesAlgorithm defines model for KernelCapabilityList.Capabilities.Algorithm.
+type KernelCapabilityListCapabilitiesAlgorithm string
+
+// KernelCapabilityListCapabilitiesSchema Signed-artifact schema ID for live capability-token serialization.
 type KernelCapabilityListCapabilitiesSchema string
 
 // KernelCapabilityListCapabilitiesScopeGrantsOperations defines model for KernelCapabilityList.Capabilities.Scope.Grants.Operations.
@@ -1387,6 +1416,97 @@ type KernelCapabilityListCapabilitiesScopePromptGrantsOperations string
 
 // KernelCapabilityListCapabilitiesScopeResourceGrantsOperations defines model for KernelCapabilityList.Capabilities.Scope.ResourceGrants.Operations.
 type KernelCapabilityListCapabilitiesScopeResourceGrantsOperations string
+
+// KernelCapabilityList_Capabilities_ScopeAttenuations_Item defines model for KernelCapabilityList.Capabilities.ScopeAttenuations.Item.
+type KernelCapabilityList_Capabilities_ScopeAttenuations_Item struct {
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// KernelCapabilityListCapabilities0 defines model for .
+type KernelCapabilityListCapabilities0 struct {
+	AttenuationProof struct {
+		ChildScopeHash        string   `json:"child_scope_hash"`
+		NormalizedSubsetProof []string `json:"normalized_subset_proof"`
+		ParentScopeHash       string   `json:"parent_scope_hash"`
+	} `json:"attenuation_proof"`
+	Schema KernelCapabilityListCapabilities0Schema `json:"schema"`
+}
+
+// KernelCapabilityListCapabilities0Schema defines model for KernelCapabilityList.Capabilities.0.Schema.
+type KernelCapabilityListCapabilities0Schema string
+
+// KernelCapabilityListCapabilities1 defines model for .
+type KernelCapabilityListCapabilities1 struct {
+	Schema *KernelCapabilityListCapabilities1Schema `json:"schema,omitempty"`
+}
+
+// KernelCapabilityListCapabilities1Schema defines model for KernelCapabilityList.Capabilities.1.Schema.
+type KernelCapabilityListCapabilities1Schema string
+
+// KernelCapabilityList_Capabilities_Item defines model for KernelCapabilityList.capabilities.Item.
+type KernelCapabilityList_Capabilities_Item struct {
+	Algorithm        *KernelCapabilityListCapabilitiesAlgorithm `json:"algorithm,omitempty"`
+	AttenuationProof *struct {
+		ChildScopeHash        string   `json:"child_scope_hash"`
+		NormalizedSubsetProof []string `json:"normalized_subset_proof"`
+		ParentScopeHash       string   `json:"parent_scope_hash"`
+	} `json:"attenuation_proof,omitempty"`
+	BudgetShareBps *int64 `json:"budget_share_bps,omitempty"`
+	Caveats        *[]struct {
+		EnforcedAt *string     `json:"enforced_at,omitempty"`
+		Kind       string      `json:"kind"`
+		Predicate  interface{} `json:"predicate"`
+	} `json:"caveats,omitempty"`
+	DelegationChain *[]struct {
+		Attenuations *[]map[string]interface{} `json:"attenuations,omitempty"`
+		CapabilityId string                    `json:"capability_id"`
+		Delegatee    string                    `json:"delegatee"`
+		Delegator    string                    `json:"delegator"`
+		Signature    string                    `json:"signature"`
+		Timestamp    int64                     `json:"timestamp"`
+	} `json:"delegation_chain,omitempty"`
+	ExpiresAt int64  `json:"expires_at"`
+	Id        string `json:"id"`
+	IssuedAt  int64  `json:"issued_at"`
+	Issuer    string `json:"issuer"`
+
+	// Schema Signed-artifact schema ID for live capability-token serialization.
+	Schema *KernelCapabilityListCapabilitiesSchema `json:"schema,omitempty"`
+	Scope  struct {
+		Grants *[]struct {
+			Constraints *[]struct {
+				Type  string       `json:"type"`
+				Value *interface{} `json:"value,omitempty"`
+			} `json:"constraints,omitempty"`
+			DpopRequired         *bool `json:"dpop_required,omitempty"`
+			MaxCostPerInvocation *struct {
+				Currency string `json:"currency"`
+				Units    int64  `json:"units"`
+			} `json:"max_cost_per_invocation,omitempty"`
+			MaxInvocations *int64 `json:"max_invocations,omitempty"`
+			MaxTotalCost   *struct {
+				Currency string `json:"currency"`
+				Units    int64  `json:"units"`
+			} `json:"max_total_cost,omitempty"`
+			Operations []KernelCapabilityListCapabilitiesScopeGrantsOperations `json:"operations"`
+			ServerId   string                                                  `json:"server_id"`
+			ToolName   string                                                  `json:"tool_name"`
+		} `json:"grants,omitempty"`
+		PromptGrants *[]struct {
+			Operations []KernelCapabilityListCapabilitiesScopePromptGrantsOperations `json:"operations"`
+			PromptName string                                                        `json:"prompt_name"`
+		} `json:"prompt_grants,omitempty"`
+		ResourceGrants *[]struct {
+			Operations []KernelCapabilityListCapabilitiesScopeResourceGrantsOperations `json:"operations"`
+			UriPattern string                                                          `json:"uri_pattern"`
+		} `json:"resource_grants,omitempty"`
+	} `json:"scope"`
+	ScopeAttenuations *[]KernelCapabilityList_Capabilities_ScopeAttenuations_Item `json:"scope_attenuations,omitempty"`
+	Signature         string                                                      `json:"signature"`
+	Subject           string                                                      `json:"subject"`
+	union             json.RawMessage
+}
 
 // KernelCapabilityListType defines model for KernelCapabilityList.Type.
 type KernelCapabilityListType string
@@ -2222,6 +2342,72 @@ type TrustControlTerminate struct {
 // TrustControlTerminateReason Typed reason for releasing the lease. `leader_handoff` covers planned reassignment, `quorum_lost` covers detected loss of cluster quorum, `operator_stepdown` covers explicit operator action, and `term_advanced` covers a higher election term superseding the lease.
 type TrustControlTerminateReason string
 
+// Getter for additional properties for AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item. Returns the specified
+// element and whether it was found
+func (a AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item
+func (a *AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item to handle AdditionalProperties
+func (a *AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item to handle AdditionalProperties
+func (a AgentToolCallRequest_CapabilityToken_ScopeAttenuations_Item) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
 // Getter for additional properties for CapabilityTokenV2_ScopeAttenuations_Item. Returns the specified
 // element and whether it was found
 func (a CapabilityTokenV2_ScopeAttenuations_Item) Get(fieldName string) (value interface{}, found bool) {
@@ -2286,6 +2472,337 @@ func (a CapabilityTokenV2_ScopeAttenuations_Item) MarshalJSON() ([]byte, error) 
 		}
 	}
 	return json.Marshal(object)
+}
+
+// Getter for additional properties for KernelCapabilityList_Capabilities_ScopeAttenuations_Item. Returns the specified
+// element and whether it was found
+func (a KernelCapabilityList_Capabilities_ScopeAttenuations_Item) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for KernelCapabilityList_Capabilities_ScopeAttenuations_Item
+func (a *KernelCapabilityList_Capabilities_ScopeAttenuations_Item) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for KernelCapabilityList_Capabilities_ScopeAttenuations_Item to handle AdditionalProperties
+func (a *KernelCapabilityList_Capabilities_ScopeAttenuations_Item) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for KernelCapabilityList_Capabilities_ScopeAttenuations_Item to handle AdditionalProperties
+func (a KernelCapabilityList_Capabilities_ScopeAttenuations_Item) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// AsAgentToolCallRequestCapabilityToken0 returns the union data inside the AgentToolCallRequest_CapabilityToken as a AgentToolCallRequestCapabilityToken0
+func (t AgentToolCallRequest_CapabilityToken) AsAgentToolCallRequestCapabilityToken0() (AgentToolCallRequestCapabilityToken0, error) {
+	var body AgentToolCallRequestCapabilityToken0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentToolCallRequestCapabilityToken0 overwrites any union data inside the AgentToolCallRequest_CapabilityToken as the provided AgentToolCallRequestCapabilityToken0
+func (t *AgentToolCallRequest_CapabilityToken) FromAgentToolCallRequestCapabilityToken0(v AgentToolCallRequestCapabilityToken0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentToolCallRequestCapabilityToken0 performs a merge with any union data inside the AgentToolCallRequest_CapabilityToken, using the provided AgentToolCallRequestCapabilityToken0
+func (t *AgentToolCallRequest_CapabilityToken) MergeAgentToolCallRequestCapabilityToken0(v AgentToolCallRequestCapabilityToken0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAgentToolCallRequestCapabilityToken1 returns the union data inside the AgentToolCallRequest_CapabilityToken as a AgentToolCallRequestCapabilityToken1
+func (t AgentToolCallRequest_CapabilityToken) AsAgentToolCallRequestCapabilityToken1() (AgentToolCallRequestCapabilityToken1, error) {
+	var body AgentToolCallRequestCapabilityToken1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentToolCallRequestCapabilityToken1 overwrites any union data inside the AgentToolCallRequest_CapabilityToken as the provided AgentToolCallRequestCapabilityToken1
+func (t *AgentToolCallRequest_CapabilityToken) FromAgentToolCallRequestCapabilityToken1(v AgentToolCallRequestCapabilityToken1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentToolCallRequestCapabilityToken1 performs a merge with any union data inside the AgentToolCallRequest_CapabilityToken, using the provided AgentToolCallRequestCapabilityToken1
+func (t *AgentToolCallRequest_CapabilityToken) MergeAgentToolCallRequestCapabilityToken1(v AgentToolCallRequestCapabilityToken1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AgentToolCallRequest_CapabilityToken) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Algorithm != nil {
+		object["algorithm"], err = json.Marshal(t.Algorithm)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'algorithm': %w", err)
+		}
+	}
+
+	if t.AttenuationProof != nil {
+		object["attenuation_proof"], err = json.Marshal(t.AttenuationProof)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'attenuation_proof': %w", err)
+		}
+	}
+
+	if t.BudgetShareBps != nil {
+		object["budget_share_bps"], err = json.Marshal(t.BudgetShareBps)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'budget_share_bps': %w", err)
+		}
+	}
+
+	if t.Caveats != nil {
+		object["caveats"], err = json.Marshal(t.Caveats)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'caveats': %w", err)
+		}
+	}
+
+	if t.DelegationChain != nil {
+		object["delegation_chain"], err = json.Marshal(t.DelegationChain)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'delegation_chain': %w", err)
+		}
+	}
+
+	object["expires_at"], err = json.Marshal(t.ExpiresAt)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'expires_at': %w", err)
+	}
+
+	object["id"], err = json.Marshal(t.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'id': %w", err)
+	}
+
+	object["issued_at"], err = json.Marshal(t.IssuedAt)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'issued_at': %w", err)
+	}
+
+	object["issuer"], err = json.Marshal(t.Issuer)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'issuer': %w", err)
+	}
+
+	if t.Schema != nil {
+		object["schema"], err = json.Marshal(t.Schema)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'schema': %w", err)
+		}
+	}
+
+	object["scope"], err = json.Marshal(t.Scope)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'scope': %w", err)
+	}
+
+	if t.ScopeAttenuations != nil {
+		object["scope_attenuations"], err = json.Marshal(t.ScopeAttenuations)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'scope_attenuations': %w", err)
+		}
+	}
+
+	object["signature"], err = json.Marshal(t.Signature)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'signature': %w", err)
+	}
+
+	object["subject"], err = json.Marshal(t.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'subject': %w", err)
+	}
+
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *AgentToolCallRequest_CapabilityToken) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["algorithm"]; found {
+		err = json.Unmarshal(raw, &t.Algorithm)
+		if err != nil {
+			return fmt.Errorf("error reading 'algorithm': %w", err)
+		}
+	}
+
+	if raw, found := object["attenuation_proof"]; found {
+		err = json.Unmarshal(raw, &t.AttenuationProof)
+		if err != nil {
+			return fmt.Errorf("error reading 'attenuation_proof': %w", err)
+		}
+	}
+
+	if raw, found := object["budget_share_bps"]; found {
+		err = json.Unmarshal(raw, &t.BudgetShareBps)
+		if err != nil {
+			return fmt.Errorf("error reading 'budget_share_bps': %w", err)
+		}
+	}
+
+	if raw, found := object["caveats"]; found {
+		err = json.Unmarshal(raw, &t.Caveats)
+		if err != nil {
+			return fmt.Errorf("error reading 'caveats': %w", err)
+		}
+	}
+
+	if raw, found := object["delegation_chain"]; found {
+		err = json.Unmarshal(raw, &t.DelegationChain)
+		if err != nil {
+			return fmt.Errorf("error reading 'delegation_chain': %w", err)
+		}
+	}
+
+	if raw, found := object["expires_at"]; found {
+		err = json.Unmarshal(raw, &t.ExpiresAt)
+		if err != nil {
+			return fmt.Errorf("error reading 'expires_at': %w", err)
+		}
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &t.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+	}
+
+	if raw, found := object["issued_at"]; found {
+		err = json.Unmarshal(raw, &t.IssuedAt)
+		if err != nil {
+			return fmt.Errorf("error reading 'issued_at': %w", err)
+		}
+	}
+
+	if raw, found := object["issuer"]; found {
+		err = json.Unmarshal(raw, &t.Issuer)
+		if err != nil {
+			return fmt.Errorf("error reading 'issuer': %w", err)
+		}
+	}
+
+	if raw, found := object["schema"]; found {
+		err = json.Unmarshal(raw, &t.Schema)
+		if err != nil {
+			return fmt.Errorf("error reading 'schema': %w", err)
+		}
+	}
+
+	if raw, found := object["scope"]; found {
+		err = json.Unmarshal(raw, &t.Scope)
+		if err != nil {
+			return fmt.Errorf("error reading 'scope': %w", err)
+		}
+	}
+
+	if raw, found := object["scope_attenuations"]; found {
+		err = json.Unmarshal(raw, &t.ScopeAttenuations)
+		if err != nil {
+			return fmt.Errorf("error reading 'scope_attenuations': %w", err)
+		}
+	}
+
+	if raw, found := object["signature"]; found {
+		err = json.Unmarshal(raw, &t.Signature)
+		if err != nil {
+			return fmt.Errorf("error reading 'signature': %w", err)
+		}
+	}
+
+	if raw, found := object["subject"]; found {
+		err = json.Unmarshal(raw, &t.Subject)
+		if err != nil {
+			return fmt.Errorf("error reading 'subject': %w", err)
+		}
+	}
+
+	return err
 }
 
 // AsCapabilityGrantToolGrant returns the union data inside the CapabilityGrant as a CapabilityGrantToolGrant
@@ -2962,6 +3479,271 @@ func (t JsonrpcResponse_Id) MarshalJSON() ([]byte, error) {
 
 func (t *JsonrpcResponse_Id) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsKernelCapabilityListCapabilities0 returns the union data inside the KernelCapabilityList_Capabilities_Item as a KernelCapabilityListCapabilities0
+func (t KernelCapabilityList_Capabilities_Item) AsKernelCapabilityListCapabilities0() (KernelCapabilityListCapabilities0, error) {
+	var body KernelCapabilityListCapabilities0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromKernelCapabilityListCapabilities0 overwrites any union data inside the KernelCapabilityList_Capabilities_Item as the provided KernelCapabilityListCapabilities0
+func (t *KernelCapabilityList_Capabilities_Item) FromKernelCapabilityListCapabilities0(v KernelCapabilityListCapabilities0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeKernelCapabilityListCapabilities0 performs a merge with any union data inside the KernelCapabilityList_Capabilities_Item, using the provided KernelCapabilityListCapabilities0
+func (t *KernelCapabilityList_Capabilities_Item) MergeKernelCapabilityListCapabilities0(v KernelCapabilityListCapabilities0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsKernelCapabilityListCapabilities1 returns the union data inside the KernelCapabilityList_Capabilities_Item as a KernelCapabilityListCapabilities1
+func (t KernelCapabilityList_Capabilities_Item) AsKernelCapabilityListCapabilities1() (KernelCapabilityListCapabilities1, error) {
+	var body KernelCapabilityListCapabilities1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromKernelCapabilityListCapabilities1 overwrites any union data inside the KernelCapabilityList_Capabilities_Item as the provided KernelCapabilityListCapabilities1
+func (t *KernelCapabilityList_Capabilities_Item) FromKernelCapabilityListCapabilities1(v KernelCapabilityListCapabilities1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeKernelCapabilityListCapabilities1 performs a merge with any union data inside the KernelCapabilityList_Capabilities_Item, using the provided KernelCapabilityListCapabilities1
+func (t *KernelCapabilityList_Capabilities_Item) MergeKernelCapabilityListCapabilities1(v KernelCapabilityListCapabilities1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t KernelCapabilityList_Capabilities_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Algorithm != nil {
+		object["algorithm"], err = json.Marshal(t.Algorithm)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'algorithm': %w", err)
+		}
+	}
+
+	if t.AttenuationProof != nil {
+		object["attenuation_proof"], err = json.Marshal(t.AttenuationProof)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'attenuation_proof': %w", err)
+		}
+	}
+
+	if t.BudgetShareBps != nil {
+		object["budget_share_bps"], err = json.Marshal(t.BudgetShareBps)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'budget_share_bps': %w", err)
+		}
+	}
+
+	if t.Caveats != nil {
+		object["caveats"], err = json.Marshal(t.Caveats)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'caveats': %w", err)
+		}
+	}
+
+	if t.DelegationChain != nil {
+		object["delegation_chain"], err = json.Marshal(t.DelegationChain)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'delegation_chain': %w", err)
+		}
+	}
+
+	object["expires_at"], err = json.Marshal(t.ExpiresAt)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'expires_at': %w", err)
+	}
+
+	object["id"], err = json.Marshal(t.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'id': %w", err)
+	}
+
+	object["issued_at"], err = json.Marshal(t.IssuedAt)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'issued_at': %w", err)
+	}
+
+	object["issuer"], err = json.Marshal(t.Issuer)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'issuer': %w", err)
+	}
+
+	if t.Schema != nil {
+		object["schema"], err = json.Marshal(t.Schema)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'schema': %w", err)
+		}
+	}
+
+	object["scope"], err = json.Marshal(t.Scope)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'scope': %w", err)
+	}
+
+	if t.ScopeAttenuations != nil {
+		object["scope_attenuations"], err = json.Marshal(t.ScopeAttenuations)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'scope_attenuations': %w", err)
+		}
+	}
+
+	object["signature"], err = json.Marshal(t.Signature)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'signature': %w", err)
+	}
+
+	object["subject"], err = json.Marshal(t.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'subject': %w", err)
+	}
+
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *KernelCapabilityList_Capabilities_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["algorithm"]; found {
+		err = json.Unmarshal(raw, &t.Algorithm)
+		if err != nil {
+			return fmt.Errorf("error reading 'algorithm': %w", err)
+		}
+	}
+
+	if raw, found := object["attenuation_proof"]; found {
+		err = json.Unmarshal(raw, &t.AttenuationProof)
+		if err != nil {
+			return fmt.Errorf("error reading 'attenuation_proof': %w", err)
+		}
+	}
+
+	if raw, found := object["budget_share_bps"]; found {
+		err = json.Unmarshal(raw, &t.BudgetShareBps)
+		if err != nil {
+			return fmt.Errorf("error reading 'budget_share_bps': %w", err)
+		}
+	}
+
+	if raw, found := object["caveats"]; found {
+		err = json.Unmarshal(raw, &t.Caveats)
+		if err != nil {
+			return fmt.Errorf("error reading 'caveats': %w", err)
+		}
+	}
+
+	if raw, found := object["delegation_chain"]; found {
+		err = json.Unmarshal(raw, &t.DelegationChain)
+		if err != nil {
+			return fmt.Errorf("error reading 'delegation_chain': %w", err)
+		}
+	}
+
+	if raw, found := object["expires_at"]; found {
+		err = json.Unmarshal(raw, &t.ExpiresAt)
+		if err != nil {
+			return fmt.Errorf("error reading 'expires_at': %w", err)
+		}
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &t.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+	}
+
+	if raw, found := object["issued_at"]; found {
+		err = json.Unmarshal(raw, &t.IssuedAt)
+		if err != nil {
+			return fmt.Errorf("error reading 'issued_at': %w", err)
+		}
+	}
+
+	if raw, found := object["issuer"]; found {
+		err = json.Unmarshal(raw, &t.Issuer)
+		if err != nil {
+			return fmt.Errorf("error reading 'issuer': %w", err)
+		}
+	}
+
+	if raw, found := object["schema"]; found {
+		err = json.Unmarshal(raw, &t.Schema)
+		if err != nil {
+			return fmt.Errorf("error reading 'schema': %w", err)
+		}
+	}
+
+	if raw, found := object["scope"]; found {
+		err = json.Unmarshal(raw, &t.Scope)
+		if err != nil {
+			return fmt.Errorf("error reading 'scope': %w", err)
+		}
+	}
+
+	if raw, found := object["scope_attenuations"]; found {
+		err = json.Unmarshal(raw, &t.ScopeAttenuations)
+		if err != nil {
+			return fmt.Errorf("error reading 'scope_attenuations': %w", err)
+		}
+	}
+
+	if raw, found := object["signature"]; found {
+		err = json.Unmarshal(raw, &t.Signature)
+		if err != nil {
+			return fmt.Errorf("error reading 'signature': %w", err)
+		}
+	}
+
+	if raw, found := object["subject"]; found {
+		err = json.Unmarshal(raw, &t.Subject)
+		if err != nil {
+			return fmt.Errorf("error reading 'subject': %w", err)
+		}
+	}
+
 	return err
 }
 

@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 2a21457c52ce6ab3e26a8eec007a641d1bf20b9b560c7a5fed3a7ae212135e43
+// Schema SHA: d7d9d533ee78fd64c1ed44044d88163b65583e7972742d56bdd4fba32e0862d4
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -34,72 +34,13 @@ export namespace Agent_ToolCallRequest {
   export interface ChioAgentMessageToolCallRequest {
     type: "tool_call_request";
     id: string;
-    capability_token: {
-      schema?: "chio.capability.v1";
-      id: string;
-      issuer: string;
-      subject: string;
-      scope: {
-        grants?: {
-          server_id: string;
-          tool_name: string;
-          /**
-           * @minItems 1
-           */
-          operations: [
-            "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate",
-            ...("invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate")[]
-          ];
-          constraints?: {
-            type: string;
-            value?: unknown;
-          }[];
-          max_invocations?: number;
-          max_cost_per_invocation?: {
-            units: number;
-            currency: string;
-          };
-          max_total_cost?: {
-            units: number;
-            currency: string;
-          };
-          dpop_required?: boolean;
-        }[];
-        resource_grants?: {
-          uri_pattern: string;
-          /**
-           * @minItems 1
-           */
-          operations: [
-            "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate",
-            ...("invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate")[]
-          ];
-        }[];
-        prompt_grants?: {
-          prompt_name: string;
-          /**
-           * @minItems 1
-           */
-          operations: [
-            "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate",
-            ...("invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate")[]
-          ];
-        }[];
-      };
-      issued_at: number;
-      expires_at: number;
-      delegation_chain?: {
-        capability_id: string;
-        delegator: string;
-        delegatee: string;
-        attenuations?: {}[];
-        timestamp: number;
-        scope_hash?: string;
-        signature: string;
-      }[];
-      algorithm?: "ed25519" | "p256" | "p384" | "hybrid";
-      signature: string;
-    };
+    capability_token:
+      | {
+          schema: "chio.capability.v2";
+        }
+      | {
+          schema?: "chio.capability.v1";
+        };
     server_id: string;
     tool: string;
     params: unknown;
@@ -262,7 +203,7 @@ export namespace Capability_Token {
    */
   export interface ChioCapabilityToken {
     /**
-     * Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+     * Signed-artifact schema ID. Optional on the wire: legacy v1 tokens persisted before this field was introduced omit it entirely, and verifiers default the missing value to `chio.capability.v1` so those tokens deserialize unchanged. Newly issued tokens carry it in the schema-aware signing input.
      */
     schema?: "chio.capability.v1";
     /**
@@ -793,73 +734,14 @@ export namespace Jsonrpc_Response {
 export namespace Kernel_CapabilityList {
   export interface ChioKernelMessageCapabilityList {
     type: "capability_list";
-    capabilities: {
-      /**
-       * Signed-artifact schema ID for live v1 capability-token serialization.
-       */
-      schema?: "chio.capability.v1";
-      id: string;
-      issuer: string;
-      subject: string;
-      scope: {
-        grants?: {
-          server_id: string;
-          tool_name: string;
-          /**
-           * @minItems 1
-           */
-          operations: [
-            "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate",
-            ...("invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate")[]
-          ];
-          constraints?: {
-            type: string;
-            value?: unknown;
-          }[];
-          max_invocations?: number;
-          max_cost_per_invocation?: {
-            units: number;
-            currency: string;
-          };
-          max_total_cost?: {
-            units: number;
-            currency: string;
-          };
-          dpop_required?: boolean;
-        }[];
-        resource_grants?: {
-          uri_pattern: string;
-          /**
-           * @minItems 1
-           */
-          operations: [
-            "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate",
-            ...("invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate")[]
-          ];
-        }[];
-        prompt_grants?: {
-          prompt_name: string;
-          /**
-           * @minItems 1
-           */
-          operations: [
-            "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate",
-            ...("invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate")[]
-          ];
-        }[];
-      };
-      issued_at: number;
-      expires_at: number;
-      delegation_chain?: {
-        capability_id: string;
-        delegator: string;
-        delegatee: string;
-        attenuations?: {}[];
-        timestamp: number;
-        signature: string;
-      }[];
-      signature: string;
-    }[];
+    capabilities: (
+      | {
+          schema: "chio.capability.v2";
+        }
+      | {
+          schema?: "chio.capability.v1";
+        }
+    )[];
   }
 }
 

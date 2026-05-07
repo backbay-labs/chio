@@ -399,6 +399,84 @@ impl SqliteReceiptStore {
     pub fn flush_receipt_writes(&self) -> Result<(), ReceiptStoreError> {
         self.receipt_commit_actor.flush()
     }
+
+    /// W2.1 Step 2: append a `ChioReceiptV2` keyed on `body_hash`.
+    ///
+    /// `legacy_receipt_id_alias` is a non-authoritative tooling alias
+    /// (UUIDv7) preserved for cross-version correlation; tampering with
+    /// it must NOT change replay decisions because replay keys
+    /// exclusively on `body_hash`.
+    pub fn append_chio_receipt_v2_internal(
+        &self,
+        receipt: &chio_core::receipt::ChioReceiptV2,
+        legacy_receipt_id_alias: Option<&str>,
+    ) -> Result<u64, ReceiptStoreError> {
+        if !receipt
+            .verify_signature()
+            .map_err(|e| ReceiptStoreError::Canonical(e.to_string()))?
+        {
+            return Err(ReceiptStoreError::Canonical(
+                "receipt v2 signature verification failed".into(),
+            ));
+        }
+        let raw_json = serde_json::to_string(receipt)?;
+        let timestamp = sqlite_i64(receipt.body.timestamp, "v2 receipt timestamp")?;
+        let dag_ordinal = sqlite_i64(receipt.body.dag_ordinal, "v2 receipt dag_ordinal")?;
+        let connection = self.connection()?;
+        let inserted_seq = connection
+            .query_row(
+                r#"
+                INSERT INTO chio_receipts_v2 (
+                    body_hash, legacy_receipt_id, timestamp, capability_id,
+                    tool_server, tool_name, decision_kind, policy_hash,
+                    content_hash, chain_id, dag_ordinal, tenant_id, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(body_hash) DO NOTHING
+                RETURNING seq
+                "#,
+                params![
+                    receipt.body_hash.as_str(),
+                    legacy_receipt_id_alias,
+                    timestamp,
+                    receipt.body.capability_id.as_str(),
+                    receipt.body.tool_server.as_str(),
+                    receipt.body.tool_name.as_str(),
+                    decision_kind(&receipt.body.decision),
+                    receipt.body.policy_hash.as_str(),
+                    receipt.body.content_hash.as_str(),
+                    receipt.body.chain_id.as_str(),
+                    dag_ordinal,
+                    receipt.body.tenant_id.as_deref(),
+                    raw_json,
+                ],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?;
+        match inserted_seq {
+            Some(seq) => sqlite_u64(seq, "v2 receipt seq"),
+            None => Err(ReceiptStoreError::Conflict(format!(
+                "v2 receipt replay rejected: body_hash {} already exists",
+                receipt.body_hash
+            ))),
+        }
+    }
+
+    /// W2.1 Step 3 helper: probe whether a v2 receipt body_hash has
+    /// already been admitted to the persistent store.
+    pub fn contains_chio_receipt_v2_body_hash_internal(
+        &self,
+        body_hash: &str,
+    ) -> Result<bool, ReceiptStoreError> {
+        let connection = self.connection()?;
+        let row: Option<i64> = connection
+            .query_row(
+                "SELECT 1 FROM chio_receipts_v2 WHERE body_hash = ?1",
+                params![body_hash],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?;
+        Ok(row.is_some())
+    }
 }
 
 fn append_chio_receipt_tx(

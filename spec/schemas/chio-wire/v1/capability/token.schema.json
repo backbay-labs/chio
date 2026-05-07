@@ -18,7 +18,8 @@
     "schema": {
       "type": "string",
       "const": "chio.capability.v1",
-      "description": "Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input."
+      "default": "chio.capability.v1",
+      "description": "Signed-artifact schema ID. Optional on the wire: legacy v1 tokens persisted before this field was introduced omit it entirely, and verifiers default the missing value to `chio.capability.v1` so those tokens deserialize unchanged. Newly issued tokens carry it in the schema-aware signing input."
     },
     "id": {
       "type": "string",

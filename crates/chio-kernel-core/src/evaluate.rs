@@ -35,11 +35,14 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use chio_core_types::capability::{CapabilityCryptoFloor, CapabilityToken};
+use chio_core_types::capability::{CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken};
 use chio_core_types::crypto::PublicKey;
 
 use crate::budget_split::{BudgetRegistry, NoopBudgetRegistry};
-use crate::capability_verify::{verify_capability_with_floor, CapabilityError, VerifiedCapability};
+use crate::capability_verify::{
+    verify_capability_full, verify_capability_with_floor, CapabilityError, TrustRootResolver,
+    VerifiedCapability,
+};
 use crate::clock::Clock;
 use crate::guard::{Guard, GuardContext, PortableToolCallRequest};
 use crate::normalized::{NormalizationError, NormalizedEvaluationVerdict};
@@ -238,6 +241,14 @@ pub fn evaluate(input: EvaluateInput<'_>) -> EvaluationVerdict {
 /// [`evaluate_with_crypto_floor_and_budgets`] entry point lets a hosted
 /// kernel inject its own [`BudgetRegistry`] so sibling-sum oversubscription
 /// is rejected at evaluation time.
+///
+/// Wave 1.5 note: this entry point does NOT enforce the W1.1 chain-binding
+/// rule or the W1.3 negotiated schema-ceiling rule. Production kernels MUST
+/// migrate to [`evaluate_with_full_floor`], which threads a peer-negotiated
+/// capability profile and a per-issuer trust-root resolver through the
+/// verifier in addition to the crypto floor. Calls that hit this entry
+/// point continue to work for v1 tokens but leave a v2-token soundness
+/// gap and a downgrade-attack surface open.
 pub fn evaluate_with_crypto_floor(
     input: EvaluateInput<'_>,
     crypto_floor: CapabilityCryptoFloor,
@@ -340,6 +351,144 @@ pub fn evaluate_with_crypto_floor_and_budgets(
                 };
                 return deny(core_err, Some(matched_grant_index), Some(verified));
             }
+        }
+    }
+
+    EvaluationVerdict {
+        verdict: Verdict::Allow,
+        reason: None,
+        matched_grant_index: Some(matched_grant_index),
+        verified: Some(verified),
+    }
+}
+
+/// Wave 1.5 maximum-flexibility evaluation entry point.
+///
+/// Same five steps as [`evaluate_with_crypto_floor`] but uses
+/// [`crate::capability_verify::verify_capability_full`] for capability
+/// verification, which threads:
+///
+/// - the W1.3 peer-negotiated schema ceiling, and
+/// - the W1.1 per-issuer trust-root resolver
+///
+/// in addition to the crypto floor. Production kernels (`chio-kernel`,
+/// `chio-kernel-browser`, `chio-kernel-mobile`, `chio-cpp-kernel-ffi`,
+/// `chio-ag-ui-proxy`) call this path so the W1.1 chain-binding rule and
+/// the W1.3 downgrade defense are actually exercised on the hot path.
+pub fn evaluate_with_full_floor(
+    input: EvaluateInput<'_>,
+    crypto_floor: CapabilityCryptoFloor,
+    peer: &CapabilityNegotiation,
+    trust_root: &dyn TrustRootResolver,
+    budgets: &mut dyn BudgetRegistry,
+) -> EvaluationVerdict {
+    // Step 1: capability verification with all Wave 1 defenses except
+    // persistent sibling-sum admission. Admission mutates the supplied
+    // registry, so defer it until subject, scope, and guard checks have
+    // passed. Otherwise a validly signed token for the wrong request can
+    // consume sibling share and starve later valid siblings.
+    let mut verify_only_budgets = NoopBudgetRegistry;
+    let verified = match verify_capability_full(
+        input.capability,
+        input.trusted_issuers,
+        input.clock,
+        crypto_floor,
+        peer,
+        trust_root,
+        &mut verify_only_budgets,
+    ) {
+        Ok(verified) => verified,
+        Err(error) => {
+            let core_err = KernelCoreError::InvalidCapability(error);
+            return deny(core_err, None, None);
+        }
+    };
+
+    // Step 2: subject binding.
+    if verified.subject_hex != input.request.agent_id {
+        let core_err = KernelCoreError::SubjectMismatch {
+            expected: verified.subject_hex.clone(),
+            actual: input.request.agent_id.clone(),
+        };
+        return deny(core_err, None, Some(verified));
+    }
+
+    // Step 3: scope match.
+    let matches: Vec<MatchedGrant<'_>> = match resolve_matching_grants(
+        &verified.scope,
+        &input.request.tool_name,
+        &input.request.server_id,
+        &input.request.arguments,
+    ) {
+        Ok(matches) if matches.is_empty() => {
+            let core_err = KernelCoreError::OutOfScope {
+                tool: input.request.tool_name.clone(),
+                server: input.request.server_id.clone(),
+            };
+            return deny(core_err, None, Some(verified));
+        }
+        Ok(matches) => matches,
+        Err(crate::ScopeMatchError::OutOfScope) => {
+            let core_err = KernelCoreError::OutOfScope {
+                tool: input.request.tool_name.clone(),
+                server: input.request.server_id.clone(),
+            };
+            return deny(core_err, None, Some(verified));
+        }
+        Err(crate::ScopeMatchError::ConstraintError(reason)) => {
+            return deny(
+                KernelCoreError::ConstraintError { reason },
+                None,
+                Some(verified),
+            );
+        }
+    };
+    // Safe: guarded above.
+    let matched_grant_index = matches[0].index;
+
+    // Step 4: guard pipeline.
+    let ctx = GuardContext {
+        request: input.request,
+        scope: &verified.scope,
+        agent_id: &input.request.agent_id,
+        server_id: &input.request.server_id,
+        session_filesystem_roots: input.session_filesystem_roots,
+        matched_grant_index: Some(matched_grant_index),
+    };
+
+    for guard in input.guards {
+        match guard.evaluate(&ctx) {
+            Ok(Verdict::Allow) => {}
+            Ok(Verdict::Deny) | Ok(Verdict::PendingApproval) => {
+                let core_err = KernelCoreError::GuardDenied {
+                    guard: guard.name().to_string(),
+                };
+                return deny(core_err, Some(matched_grant_index), Some(verified));
+            }
+            Err(error) => {
+                let core_err = KernelCoreError::GuardError {
+                    guard: guard.name().to_string(),
+                    reason: error.deny_reason(),
+                };
+                return deny(core_err, Some(matched_grant_index), Some(verified));
+            }
+        }
+    }
+
+    if let Some(parent_link) = input.capability.delegation_chain.last() {
+        let proposed_share = input
+            .capability
+            .budget_share_bps
+            .unwrap_or(crate::budget_split::MAX_BUDGET_SHARE_BPS);
+        if let Err(error) = budgets.try_admit_child(
+            parent_link.capability_id.as_str(),
+            input.capability.id.clone(),
+            proposed_share,
+        ) {
+            let core_err = KernelCoreError::InvalidCapability(
+                crate::capability_verify::CapabilityError::BudgetSplitRejected(error),
+            );
+            return deny(core_err, Some(matched_grant_index), Some(verified));
         }
     }
 

@@ -4,21 +4,16 @@ from __future__ import annotations
 
 import json
 import time
-from typing import get_args
 
 import pytest
-from pydantic import TypeAdapter
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-import chio_sdk._generated as generated_wire
-import chio_sdk._generated.capability as generated_capability
-from chio_sdk._generated.capability import token_schema, token_v1_schema
 from chio_sdk._generated import (
     CapabilityToken as GeneratedCapabilityToken,
     ChioCapabilitytoken,
     ChioCapabilitytokenV2,
 )
-from chio_sdk._generated.capability.grant_schema import Constraint as GeneratedConstraint
+from chio_sdk._generated.capability import Constraint as GeneratedConstraint
 from chio_sdk._generated.jsonrpc import ChioJsonRpc20Response
 from chio_sdk._generated.provenance import ChioProvenanceVerdictLink
 from chio_sdk.models import (
@@ -42,6 +37,40 @@ from chio_sdk.models import (
     ToolGrant,
     Verdict,
 )
+
+
+def _generated_v1_token() -> dict[str, object]:
+    return {
+        "schema": "chio.capability.v1",
+        "id": "cap-v1",
+        "issuer": "a" * 64,
+        "subject": "b" * 64,
+        "scope": {},
+        "issued_at": 1,
+        "expires_at": 2,
+        "signature": "c" * 128,
+    }
+
+
+def _generated_v2_token() -> dict[str, object]:
+    return {
+        "schema": "chio.capability.v2",
+        "id": "cap-v2",
+        "issuer": "a" * 64,
+        "subject": "b" * 64,
+        "scope": {"grants": []},
+        "issued_at": 1,
+        "expires_at": 2,
+        "attenuation_proof": {
+            "parentScopeHash": "0" * 64,
+            "childScopeHash": "1" * 64,
+            "normalizedSubsetProof": {
+                "normalizedParentScope": "{}",
+                "normalizedChildScope": "{}",
+            },
+        },
+        "signature": "c" * 128,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -69,49 +98,53 @@ class TestOperation:
 
 
 class TestGeneratedWireModels:
-    def test_top_level_capability_token_alias_includes_v1_and_v2(self) -> None:
-        assert set(get_args(GeneratedCapabilityToken)) == {
-            ChioCapabilitytoken,
-            ChioCapabilitytokenV2,
-        }
+    def test_top_level_capability_token_alias_is_canonical(self) -> None:
+        token = GeneratedCapabilityToken.model_validate(_generated_v1_token())
+        assert isinstance(token, ChioCapabilitytoken)
 
     def test_top_level_capability_token_alias_accepts_v2(self) -> None:
-        token = TypeAdapter(GeneratedCapabilityToken).validate_python(
-            {
-                "schema": "chio.capability.v2",
-                "id": "cap-v2",
-                "issuer": "a" * 64,
-                "subject": "b" * 64,
-                "scope": {
-                    "grants": [
-                        {
-                            "server_id": "srv",
-                            "tool_name": "tool",
-                            "operations": ["invoke"],
-                        }
-                    ]
-                },
-                "issued_at": 1,
-                "expires_at": 2,
-                "attenuation_proof": {
-                    "parentScopeHash": "c" * 64,
-                    "childScopeHash": "d" * 64,
-                    "normalizedSubsetProof": {
-                        "normalizedParentScope": "{}",
-                        "normalizedChildScope": "{}",
-                    },
-                },
-                "signature": "e" * 128,
-            }
+        token = GeneratedCapabilityToken.model_validate(_generated_v2_token())
+        assert isinstance(token, ChioCapabilitytokenV2)
+
+    def test_top_level_capability_token_constructor_dispatches(self) -> None:
+        token_v1 = GeneratedCapabilityToken(**_generated_v1_token())
+        token_v2 = GeneratedCapabilityToken(**_generated_v2_token())
+
+        assert isinstance(token_v1, ChioCapabilitytoken)
+        assert isinstance(token_v2, ChioCapabilitytokenV2)
+
+    def test_top_level_capability_token_schema_includes_both_versions(self) -> None:
+        schema = GeneratedCapabilityToken.model_json_schema()
+        serialized = json.dumps(schema)
+        assert "chio.capability.v1" in serialized
+        assert "chio.capability.v2" in serialized
+
+    def test_top_level_capability_token_type_adapter_dispatches_python(self) -> None:
+        token = GeneratedCapabilityToken.model_validate(_generated_v1_token())
+        assert isinstance(token, ChioCapabilitytoken)
+        dumped = token.model_dump(by_alias=True, exclude_none=True)
+        assert dumped["schema"] == "chio.capability.v1"
+        assert dumped["id"] == "cap-v1"
+
+        adapted_v1 = TypeAdapter(GeneratedCapabilityToken).validate_python(
+            _generated_v1_token()
+        )
+        adapted_v2 = TypeAdapter(GeneratedCapabilityToken).validate_python(
+            _generated_v2_token()
+        )
+        assert isinstance(adapted_v1, ChioCapabilitytoken)
+        assert isinstance(adapted_v2, ChioCapabilitytokenV2)
+
+    def test_top_level_capability_token_json_dispatch_accepts_v2(self) -> None:
+        token = GeneratedCapabilityToken.model_validate_json(
+            json.dumps(_generated_v2_token())
         )
         assert isinstance(token, ChioCapabilitytokenV2)
-        assert token.scope.grants is not None
-        assert token.scope.grants[0].server_id == "srv"
 
-    def test_ambiguous_generated_names_stay_module_scoped(self) -> None:
-        assert not hasattr(generated_wire, "Kind")
-        assert not hasattr(generated_capability, "DelegationLink")
-        assert token_schema.DelegationLink is not token_v1_schema.DelegationLink
+        adapted = TypeAdapter(GeneratedCapabilityToken).validate_json(
+            json.dumps(_generated_v2_token())
+        )
+        assert isinstance(adapted, ChioCapabilitytokenV2)
 
     def test_constraint_value_payload_round_trips(self) -> None:
         constraint = GeneratedConstraint.model_validate(

@@ -216,8 +216,12 @@ pub trait BudgetRegistry {
         parent_share_bps: u16,
     ) -> Result<(), BudgetSplitError>;
 
-    /// Try to admit a child token under the given parent. The parent must
-    /// have been registered with [`Self::register_parent`].
+    /// Try to admit a child token under the given parent.
+    ///
+    /// Unknown parents fail closed. Callers that have verifier-owned parent
+    /// lineage or a parent snapshot must call [`BudgetRegistry::register_parent`]
+    /// before admitting children. This prevents a verifier from fabricating a
+    /// missing parent share at [`MAX_BUDGET_SHARE_BPS`].
     fn try_admit_child(
         &mut self,
         parent_token_id: &str,
@@ -423,8 +427,27 @@ mod tests {
         let mut registry = InMemoryBudgetRegistry::new();
         let err = registry
             .try_admit_child("missing", "child".to_string(), 1_000)
-            .expect_err("unknown parent");
+            .expect_err("unknown parent must fail closed");
         assert!(matches!(err, BudgetSplitError::UnknownParent { .. }));
+        assert!(registry.split("missing").is_none());
+    }
+
+    #[test]
+    fn registered_parent_enforces_sibling_sum_across_calls() {
+        let mut registry = InMemoryBudgetRegistry::new();
+        registry
+            .register_parent("p".to_string(), MAX_BUDGET_SHARE_BPS)
+            .expect("register parent snapshot");
+        registry
+            .try_admit_child("p", "child-a".to_string(), 6_000)
+            .expect("first child admits under registered parent");
+        let err = registry
+            .try_admit_child("p", "child-b".to_string(), 5_000)
+            .expect_err("second sibling must oversubscribe (6_000 + 5_000 > 10_000)");
+        assert!(matches!(
+            err,
+            BudgetSplitError::OversubscribedSiblings { .. }
+        ));
     }
 
     #[test]
@@ -450,6 +473,23 @@ mod tests {
         let err = registry
             .try_admit_child("p", "c2".to_string(), 4_000)
             .expect_err("second child must oversubscribe");
+        assert!(matches!(
+            err,
+            BudgetSplitError::OversubscribedSiblings { .. }
+        ));
+    }
+
+    #[test]
+    fn registered_parent_share_takes_precedence_over_default() {
+        // When the parent is already registered, the auto-register
+        // default is ignored: the registered share is the ceiling.
+        let mut registry = InMemoryBudgetRegistry::new();
+        registry
+            .register_parent("p".to_string(), 5_000)
+            .expect("register");
+        let err = registry
+            .try_admit_child("p", "c1".to_string(), 6_000)
+            .expect_err("child larger than registered parent share must fail");
         assert!(matches!(
             err,
             BudgetSplitError::OversubscribedSiblings { .. }

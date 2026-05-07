@@ -55,23 +55,24 @@
       "introduced_in": "trajectory-4/W1.1",
       "depends_on_theorems": ["theorem.attenuation.witness_soundness"],
       "proof_manifest_ref": "manifest.capability.attenuation_proof"
+    },
+    {
+      "id": "claim.receipt.body_hash_addressing",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/v2.schema.json",
+      "summary": "A v2 receipt is content-addressed by body_hash := H(canonical_jcs(ReceiptV2BodyHashInput)) where the input set strictly excludes body_hash, signature, and the legacy UUIDv7 receipt_id. The kernel mints `ChioReceiptV2` on the production hot path when the negotiated peer profile advertises `accepts_receipt_v2`; the legacy UUIDv7 alias is non-authoritative for replay (replay key is body_hash). Closes the W2.1 plumbing-only finding on T1.2.",
+      "introduced_in": "trajectory-4/T1.2",
+      "promoted_in": "trajectory-4/W2.1",
+      "depends_on_theorems": ["theorem.receipt.body_hash_input_set_pinned"],
+      "proof_manifest_ref": "manifest.receipt.body_hash_addressing"
     }
   ],
   "trj4_proposed_claims": [
     {
-      "id": "claim.receipt.body_hash_addressing",
-      "status": "proposed",
-      "schema_artifact_proposed": "spec/schemas/chio-wire/v1/receipt/v2.schema.json",
-      "summary": "Proposed v2 receipts are intended to be content-addressed by body_hash := H(canonical_jcs(ReceiptV2BodyHashInput)) where the input set strictly excludes body_hash, signature, and the legacy UUIDv7 receipt_id. This is not yet an enforced verifier claim.",
-      "introduced_by": "trajectory-4/T1.2",
-      "depends_on_theorems": ["theorem.receipt.body_hash_input_set_pinned"],
-      "proof_manifest_ref": "manifest.receipt.body_hash_addressing"
-    },
-    {
       "id": "claim.receipt.dag_acyclicity",
-      "status": "proposed",
-      "schema_artifact_proposed": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json",
-      "summary": "Proposed multi-parent receipt lineage carries a signed dag_ordinal + HLC triple; the intended verifier predicate child.dag_ordinal > max(parent.dag_ordinal) would reject cycles across independent kernel clock domains. This is not yet an enforced verifier claim.",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json",
+      "summary": "Multi-parent receipt lineage carries a signed dag_ordinal + HLC triple; verifier predicate child.dag_ordinal > max(parent.dag_ordinal) rejects cycles across independent kernel clock domains.",
       "introduced_by": "trajectory-4/T1.2",
       "depends_on_theorems": ["theorem.receipt.dag_acyclicity"],
       "proof_manifest_ref": "manifest.receipt.dag_acyclicity"

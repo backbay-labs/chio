@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 33035d85d1be112ab0feff412b8183f2916dc2c03dd89271104beebb8ea8bc2d
+# Schema sha256: bc02beb22e700f6dcb4ff8bacf886190c87ed37499a515db8e09dfd0f87c2e00
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -15,6 +15,11 @@ from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, conint, constr
+
+
+class Schema(Enum):
+    chio_capability_v1 = "chio.capability.v1"
+    chio_capability_v2 = "chio.capability.v2"
 
 
 class Operation(Enum):
@@ -112,11 +117,36 @@ class Algorithm(Enum):
     hybrid = "hybrid"
 
 
+class Caveat(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: constr(min_length=1)
+    predicate: Any
+    enforced_at: constr(min_length=1) | None = None
+
+
+class ScopeAttenuation(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    type: constr(min_length=1)
+
+
+class AttenuationProof(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    parent_scope_hash: constr(pattern=r"^[0-9a-f]{64}$")
+    child_scope_hash: constr(pattern=r"^[0-9a-f]{64}$")
+    normalized_subset_proof: list[str]
+
+
 class CapabilityToken(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_: Literal["chio.capability.v1"] = Field("chio.capability.v1", alias="schema")
+    schema_: Literal["chio.capability.v2"] = Field(..., alias="schema")
     id: constr(min_length=1)
     issuer: constr(
         pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\+mldsa65)$"
@@ -129,6 +159,75 @@ class CapabilityToken(BaseModel):
     expires_at: conint(ge=0)
     delegation_chain: list[DelegationChainItem] | None = None
     algorithm: Algorithm | None = None
+    caveats: list[Caveat] | None = None
+    scope_attenuations: list[ScopeAttenuation] | None = None
+    attenuation_proof: AttenuationProof
+    budget_share_bps: conint(ge=0, le=10000) | None = None
+    signature: constr(
+        pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\+mldsa65)$"
+    )
+
+
+class Grant3(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    server_id: constr(min_length=1)
+    tool_name: constr(min_length=1)
+    operations: list[Operation] = Field(..., min_length=1)
+    constraints: list[Constraint] | None = None
+    max_invocations: conint(ge=0) | None = None
+    max_cost_per_invocation: MaxCostPerInvocation | None = None
+    max_total_cost: MaxTotalCost | None = None
+    dpop_required: bool | None = None
+
+
+class ResourceGrant3(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    uri_pattern: constr(min_length=1)
+    operations: list[Operation] = Field(..., min_length=1)
+
+
+class PromptGrant3(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    prompt_name: constr(min_length=1)
+    operations: list[Operation] = Field(..., min_length=1)
+
+
+class Scope3(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    grants: list[Grant3] | None = None
+    resource_grants: list[ResourceGrant3] | None = None
+    prompt_grants: list[PromptGrant3] | None = None
+
+
+class CapabilityToken1(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_: Literal["chio.capability.v1"] = Field("chio.capability.v1", alias="schema")
+    id: constr(min_length=1)
+    issuer: constr(
+        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\+mldsa65)$"
+    )
+    subject: constr(
+        pattern=r"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\+mldsa65)$"
+    )
+    scope: Scope3
+    issued_at: conint(ge=0)
+    expires_at: conint(ge=0)
+    delegation_chain: list[DelegationChainItem] | None = None
+    algorithm: Algorithm | None = None
+    caveats: list[Caveat] | None = None
+    scope_attenuations: list[ScopeAttenuation] | None = None
+    attenuation_proof: AttenuationProof | None = None
+    budget_share_bps: conint(ge=0, le=10000) | None = None
     signature: constr(
         pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\+mldsa65)$"
     )
@@ -140,7 +239,7 @@ class ChioAgentmessageToolCallRequest(BaseModel):
     )
     type: Literal["tool_call_request"]
     id: constr(min_length=1)
-    capability_token: CapabilityToken
+    capability_token: CapabilityToken | CapabilityToken1
     server_id: constr(min_length=1)
     tool: constr(min_length=1)
     params: Any

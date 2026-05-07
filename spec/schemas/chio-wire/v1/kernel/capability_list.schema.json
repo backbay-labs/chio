@@ -14,11 +14,29 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["id", "issuer", "subject", "scope", "issued_at", "expires_at", "signature"],
+        "oneOf": [
+          {
+            "required": ["schema", "attenuation_proof"],
+            "properties": {
+              "schema": {
+                "const": "chio.capability.v2"
+              }
+            }
+          },
+          {
+            "properties": {
+              "schema": {
+                "const": "chio.capability.v1"
+              }
+            }
+          }
+        ],
         "properties": {
           "schema": {
             "type": "string",
-            "const": "chio.capability.v1",
-            "description": "Signed-artifact schema ID for live v1 capability-token serialization."
+            "enum": ["chio.capability.v1", "chio.capability.v2"],
+            "default": "chio.capability.v1",
+            "description": "Signed-artifact schema ID for live capability-token serialization."
           },
           "id": {
             "type": "string",
@@ -26,11 +44,11 @@
           },
           "issuer": {
             "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
+            "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
           },
           "subject": {
             "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
+            "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
           },
           "scope": {
             "type": "object",
@@ -216,14 +234,77 @@
                 },
                 "signature": {
                   "type": "string",
-                  "pattern": "^[0-9a-f]{128}$"
+                  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
                 }
               }
             }
           },
+          "algorithm": {
+            "type": "string",
+            "enum": ["ed25519", "p256", "p384", "hybrid"]
+          },
+          "caveats": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "predicate"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "predicate": true,
+                "enforced_at": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "scope_attenuations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "attenuation_proof": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["parent_scope_hash", "child_scope_hash", "normalized_subset_proof"],
+            "properties": {
+              "parent_scope_hash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "child_scope_hash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "normalized_subset_proof": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "budget_share_bps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
           "signature": {
             "type": "string",
-            "pattern": "^[0-9a-f]{128}$"
+            "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
           }
         }
       }

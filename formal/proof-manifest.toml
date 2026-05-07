@@ -25,6 +25,9 @@ root_modules = [
   "formal/lean4/Chio/Chio/Proofs/Protocol.lean",
   "formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean",
   "formal/lean4/Chio/Chio/Proofs/FormalClosure.lean",
+  "formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean",
+  "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
+  "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
   "formal/lean4/Chio/Chio/Capability/Delegation.lean",
 ]
 

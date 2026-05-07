@@ -507,6 +507,34 @@ impl SqliteReceiptStore {
             CREATE INDEX IF NOT EXISTS idx_chio_child_receipts_request
                 ON chio_child_receipts(request_id);
 
+            -- W2.1: v2 receipts addressed by body_hash. Replay identity is
+            -- exclusively body_hash; legacy_receipt_id is a non-authoritative
+            -- tooling alias kept for cross-version correlation only.
+            DROP INDEX IF EXISTS idx_chio_receipts_v2_legacy_alias;
+            CREATE TABLE IF NOT EXISTS chio_receipts_v2 (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                body_hash TEXT NOT NULL UNIQUE,
+                legacy_receipt_id TEXT,
+                timestamp INTEGER NOT NULL,
+                capability_id TEXT NOT NULL,
+                tool_server TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                decision_kind TEXT NOT NULL,
+                policy_hash TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                chain_id TEXT NOT NULL,
+                dag_ordinal INTEGER NOT NULL,
+                tenant_id TEXT,
+                raw_json TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_chio_receipts_v2_legacy_alias
+                ON chio_receipts_v2(legacy_receipt_id)
+                WHERE legacy_receipt_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_chio_receipts_v2_chain
+                ON chio_receipts_v2(chain_id, dag_ordinal);
+            CREATE INDEX IF NOT EXISTS idx_chio_receipts_v2_capability
+                ON chio_receipts_v2(capability_id);
+
             CREATE TABLE IF NOT EXISTS claim_receipt_log_entries (
                 entry_seq INTEGER PRIMARY KEY AUTOINCREMENT,
                 receipt_id TEXT NOT NULL UNIQUE,

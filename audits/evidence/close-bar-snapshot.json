@@ -277,10 +277,10 @@
       "title": "SubAgentBudgetPropagation",
       "bucket": "DONE",
       "wired_runtime_path": "y",
-      "negative_conformance_test": "crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs",
-      "theorem_status": "proposed",
+      "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
+      "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.2: BudgetRegistry trait + InMemoryBudgetRegistry shipped at chio-kernel-core/src/budget_split.rs; ChioKernel wires a process-scoped registry into evaluate_portable_verdict; cross-hop enforcement covered by budget_split_cross_hop_rejects_amplification.rs; theorem.budget.sibling_sum_soundness at formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean (status=assumed pending Lean toolchain)"
+      "notes": "W1.2 + W1.5: BudgetRegistry trait + InMemoryBudgetRegistry shipped at chio-kernel-core/src/budget_split.rs; ChioKernel wires a process-scoped registry into evaluate_portable_verdict via verify_capability_full; cross-hop enforcement covered by budget_split_cross_hop_rejects_amplification.rs; theorem.budget.sibling_sum_soundness at formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean (status=assumed pending Lean toolchain)"
     },
     {
       "id": "C-5",
@@ -447,10 +447,10 @@
       "title": "Delegation attenuation proofs (P1 in receipts)",
       "bucket": "DONE",
       "wired_runtime_path": "y",
-      "negative_conformance_test": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs",
-      "theorem_status": "proposed",
+      "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
+      "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.1: attenuation_proof witness shipped, chain-binding rule enforced via verify_capability_with_floor_and_trust_root, AttenuationViolation error mapped through caller crates; theorem.attenuation.witness_soundness at formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean (status=assumed pending Lean toolchain)"
+      "notes": "W1.1 + W1.5: attenuation_proof witness shipped; chain-binding rule enforced via verify_capability_full across 5 surfaces; AttenuationViolation error mapped through caller crates; theorem.attenuation.witness_soundness at formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean (status=assumed pending Lean toolchain in CI)"
     },
     {
       "id": "P-9",
@@ -507,10 +507,10 @@
       "title": "Durable Agent Identity with Attenuated Sub-Agent Capabilities",
       "bucket": "DONE",
       "wired_runtime_path": "y",
-      "negative_conformance_test": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs",
-      "theorem_status": "proposed",
+      "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
+      "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.1: DelegationLink.scope_hash binds each hop to the canonical authorized scope; attenuation_proof.parent_scope_hash anchored to predecessor or trust root"
+      "notes": "W1.1 + W1.5: DelegationLink.scope_hash binds each hop to the canonical authorized scope; attenuation_proof.parent_scope_hash anchored to predecessor or trust root; verify_capability_full enforces the rule on the chio-kernel hot path and on chio-kernel-browser/chio-kernel-mobile/chio-cpp-kernel-ffi/chio-ag-ui-proxy adapter surfaces"
     },
     {
       "id": "A-3",
@@ -1197,20 +1197,20 @@
       "title": "Evidence Gate for T1.1 macaroon capability attenuation",
       "bucket": "DONE",
       "wired_runtime_path": "y",
-      "negative_conformance_test": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs",
-      "theorem_status": "proposed",
+      "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
+      "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.1: claim.capability.attenuation_proof promoted to active; Lean theorem.attenuation.witness_soundness authored (status=assumed); conformance test DENY-asserts the inflated-parent attack"
+      "notes": "W1.1 + W1.5: claim.capability.attenuation_proof promoted to active; manifest.handshake.capability_negotiation promoted to active; Lean theorem.attenuation.witness_soundness, theorem.handshake.negotiation_safety, theorem.budget.sibling_sum_soundness authored (status=assumed); conformance test wave1_hot_path_enforcement.rs DENY-asserts the inflated-parent attack, the v1-only-peer downgrade attack, and the oversubscribed-siblings attack through the kernel hot path"
     },
     {
       "id": "T1.2.E",
       "title": "Evidence Gate for T1.2 multi-agent receipt DAG + receipt-id migration",
-      "bucket": "NONE",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "PARTIAL",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs",
+      "theorem_status": "assumed",
       "wave": "04",
-      "notes": "T1.2 Evidence Gate not yet closed"
+      "notes": "W2.1: claim.receipt.body_hash_addressing promoted to active; manifest.receipt.body_hash_addressing promoted to active; theorem.receipt.body_hash_input_set_pinned promoted (status=assumed); kernel hot path mints ChioReceiptV2 alongside v1; chio_receipts_v2 sqlite migration ships; multi-parent DAG (close-bar-#18) and theorem.receipt.dag_acyclicity remain open"
     },
     {
       "id": "T1.3.E",
@@ -1377,30 +1377,30 @@
       "title": "delegation_v2 promoted default-on; Attenuation/ScopeAttenuation first-class; compute_attenuation_witness/verify_attenuation_witness ship; attenuation_proof on wire",
       "bucket": "DONE",
       "wired_runtime_path": "y",
-      "negative_conformance_test": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs",
-      "theorem_status": "proposed",
+      "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
+      "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.1: attenuation witness API ships; chain-binding rule enforced; attenuation_proof.parent_scope_hash bound to trust root or last delegation link's scope_hash"
+      "notes": "W1.1 + W1.5: attenuation witness API ships; chain-binding rule enforced via verify_capability_full across all 5 hot-path surfaces (chio-kernel, chio-kernel-browser, chio-kernel-mobile, chio-cpp-kernel-ffi, chio-ag-ui-proxy); attenuation_proof.parent_scope_hash bound to trust root or last delegation link's scope_hash; capability_features::DELEGATION_V2_CHAIN_BINDING advertised true in t1_default"
     },
     {
       "id": "close-bar-#16",
       "title": "SubAgentBudgetPropagation enforced at join, using fixed-point integer share units",
       "bucket": "DONE",
       "wired_runtime_path": "y",
-      "negative_conformance_test": "crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs",
-      "theorem_status": "proposed",
+      "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
+      "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.2: BudgetSplit type + BudgetRegistry trait shipped; verifier consults registry on every delegated child via verify_capability_with_floor; ChioKernel wires InMemoryBudgetRegistry into evaluate_portable_verdict; fixed-point u16 basis-point share representation enforced at admit time"
+      "notes": "W1.2 + W1.5: BudgetSplit type + BudgetRegistry trait shipped; verifier consults registry on every delegated child via verify_capability_full; ChioKernel wires InMemoryBudgetRegistry into evaluate_portable_verdict; per-request InMemoryBudgetRegistry on browser/mobile/cpp/ag-ui-proxy adapter surfaces; fixed-point u16 basis-point share representation enforced at admit time"
     },
     {
       "id": "close-bar-#17",
       "title": "chio.receipt.v2 ships with signed body_hash; receipt_id_v2 = body_hash; legacy UUIDv7 verifies on v1; v1->v2 negotiation works",
-      "bucket": "NONE",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs",
+      "theorem_status": "assumed",
       "wave": "04",
-      "notes": "receipt_id today is UUIDv7 prefixed rcpt_; body_hash field absent"
+      "notes": "W2.1: kernel mints ChioReceiptV2 on the production hot path (record_chio_receipt_with_federation) when the negotiated peer profile advertises ACCEPTS_RECEIPT_V2; chio_receipts_v2 table persists body_hash + non-authoritative legacy alias; ReceiptV2ReplaySet keys exclusively on body_hash; integration test mints, replays, tampers with alias, mismatches body_hash, and asserts v1-only fallback through ChioKernel::evaluate_tool_call_blocking"
     },
     {
       "id": "close-bar-#18",

@@ -113,6 +113,7 @@ fn parent_5000_child_4000_two_grandchildren_3000_each_second_rejected() {
             delegatee: child_subject.public_key(),
             attenuations: vec![],
             timestamp: 100,
+            scope_hash: None,
         },
         &kp,
     )
@@ -155,6 +156,7 @@ fn parent_5000_child_4000_two_grandchildren_3000_each_second_rejected() {
                 delegatee: gc_subject.public_key(),
                 attenuations: vec![],
                 timestamp: 110,
+                scope_hash: None,
             },
             &child_subject,
         )

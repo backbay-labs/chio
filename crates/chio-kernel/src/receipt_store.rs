@@ -2,6 +2,7 @@ use chio_core::canonical::CanonicalBytes;
 use chio_core::capability::CapabilityToken;
 use chio_core::credit::CreditBondRow;
 use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
+use chio_core_types::receipt::ChioReceiptV2;
 
 use crate::capability_lineage::CapabilitySnapshot;
 use crate::checkpoint::KernelCheckpoint;
@@ -88,6 +89,35 @@ pub trait ReceiptStore: Send + Sync {
     ) -> Result<Option<u64>, ReceiptStoreError> {
         self.append_child_receipt(receipt)?;
         Ok(None)
+    }
+
+    /// W2.1 Step 2: persist a v2 receipt keyed on `body_hash`.
+    ///
+    /// The replay store keys on `receipt.body_hash`. The optional
+    /// `legacy_receipt_id_alias` is the kernel's UUIDv7 tooling alias
+    /// (when one is co-minted alongside a v1 fallback receipt) and is
+    /// non-authoritative: tampering with the alias must NOT change the
+    /// replay decision. Implementations that do not support v2 storage
+    /// return `Ok(0)` so kernels remain backward-compatible during
+    /// rollout.
+    fn append_chio_receipt_v2(
+        &self,
+        _receipt: &ChioReceiptV2,
+        _legacy_receipt_id_alias: Option<&str>,
+    ) -> Result<u64, ReceiptStoreError> {
+        Ok(0)
+    }
+
+    /// Replay-detection probe for a v2 receipt body_hash. Returns `true`
+    /// when the body_hash has already been admitted to the store.
+    /// Default implementation returns `false` so non-v2 stores never
+    /// flag a replay; the in-memory `ReceiptV2ReplaySet` on the kernel
+    /// remains the authoritative gate during the rollout.
+    fn contains_chio_receipt_v2_body_hash(
+        &self,
+        _body_hash: &str,
+    ) -> Result<bool, ReceiptStoreError> {
+        Ok(false)
     }
 
     fn receipts_canonical_bytes_range(

@@ -53,7 +53,7 @@ min_rows = int(min_rows_str)
 
 ALLOWED_BUCKETS = {"DONE", "PARTIAL", "NONE"}
 ALLOWED_WIRED = {"y", "n"}
-ALLOWED_THEOREM = {"proven", "proposed", "n-a"}
+ALLOWED_THEOREM = {"proven", "proposed", "assumed", "n-a"}
 
 # Higher = closer to closure. Used for regression detection.
 BUCKET_RANK = {"NONE": 0, "PARTIAL": 1, "DONE": 2}

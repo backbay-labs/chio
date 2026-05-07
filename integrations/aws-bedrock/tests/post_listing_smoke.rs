@@ -82,7 +82,7 @@ fn active_entitlements() -> Result<EntitlementStore, EntitlementError> {
 }
 
 fn smoke_error(message: &'static str) -> Box<dyn std::error::Error> {
-    std::io::Error::new(std::io::ErrorKind::Other, message).into()
+    std::io::Error::other(message).into()
 }
 
 #[test]

@@ -20,6 +20,10 @@ impl DispatchAllowFixture {
     pub fn new() -> Self {
         let mut kernel = ChioKernel::new(make_config());
         kernel.register_tool_server(Box::new(BenchToolServer));
+        // Hold the dispatch-path bench at v1 receipt baseline. W2.1 v2
+        // body_hash receipt minting is a measurable extra cost that
+        // belongs in its own bench, not bundled into dispatch_allow.
+        kernel.set_receipt_v2_default(false);
 
         let subject = Keypair::generate();
         let capability = issue_capability(&kernel, &subject);
