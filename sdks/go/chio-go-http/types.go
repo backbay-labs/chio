@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: 5e4d8e423d4d3437dc40500a251d789c5747705ec343898ea684d3f041d60574
+// Schema content SHA-256: a483aa0830a9112ca47d1a406db48be586023aef757ff4badea55aad8356f804
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -102,6 +102,28 @@ const (
 	AnchorBatchWitnessKindOts        AnchorBatchWitnessKind = "ots"
 	AnchorBatchWitnessKindRekor      AnchorBatchWitnessKind = "rekor"
 	AnchorBatchWitnessKindSolanaMemo AnchorBatchWitnessKind = "solana_memo"
+)
+
+// Defines values for AnchorBatchWitnessReceiptKind.
+const (
+	AnchorBatchWitnessReceiptKindOts        AnchorBatchWitnessReceiptKind = "ots"
+	AnchorBatchWitnessReceiptKindRekor      AnchorBatchWitnessReceiptKind = "rekor"
+	AnchorBatchWitnessReceiptKindSolanaMemo AnchorBatchWitnessReceiptKind = "solana_memo"
+)
+
+// Defines values for AnchorBatchWitnessState0Kind.
+const (
+	AnchorBatchWitnessState0KindPending AnchorBatchWitnessState0Kind = "pending"
+)
+
+// Defines values for AnchorBatchWitnessState1Kind.
+const (
+	AnchorBatchWitnessState1KindWitnessed AnchorBatchWitnessState1Kind = "witnessed"
+)
+
+// Defines values for AnchorBatchWitnessState2Kind.
+const (
+	AnchorBatchWitnessState2KindStale AnchorBatchWitnessState2Kind = "stale"
 )
 
 // Defines values for CapabilityCapabilitiesMaxCapabilitySchema.
@@ -766,6 +788,9 @@ type AnchorBatchBody struct {
 	SignerKey     string                 `json:"signerKey"`
 	TreeRoot      string                 `json:"treeRoot"`
 	Witness       AnchorBatchWitness     `json:"witness"`
+
+	// WitnessState W2.3 lifecycle for the public-witness lane. Defaults to {kind: pending} when omitted to preserve wire compatibility for v1 batches that pre-date the state machine.
+	WitnessState *AnchorBatchWitnessState `json:"witnessState,omitempty"`
 }
 
 // AnchorBatchBodySchema defines model for AnchorBatchBody.Schema.
@@ -788,6 +813,54 @@ type AnchorBatchWitness struct {
 
 // AnchorBatchWitnessKind defines model for AnchorBatchWitness.Kind.
 type AnchorBatchWitnessKind string
+
+// AnchorBatchWitnessReceipt Verifier-bound receipt returned by a public-witness lane. OTS receipts remain advisory until the lane carries trusted Bitcoin header or calendar-backed commitment evidence.
+type AnchorBatchWitnessReceipt struct {
+	BodyHash       string                        `json:"bodyHash"`
+	ExternalUuid   string                        `json:"externalUuid"`
+	InclusionProof string                        `json:"inclusionProof"`
+	Kind           AnchorBatchWitnessReceiptKind `json:"kind"`
+	PublishedAt    int64                         `json:"publishedAt"`
+	WitnessRoot    string                        `json:"witnessRoot"`
+}
+
+// AnchorBatchWitnessReceiptKind defines model for AnchorBatchWitnessReceipt.Kind.
+type AnchorBatchWitnessReceiptKind string
+
+// AnchorBatchWitnessState W2.3 lifecycle for the public-witness lane. Defaults to {kind: pending} when omitted to preserve wire compatibility for v1 batches that pre-date the state machine.
+type AnchorBatchWitnessState struct {
+	union json.RawMessage
+}
+
+// AnchorBatchWitnessState0 defines model for .
+type AnchorBatchWitnessState0 struct {
+	Kind AnchorBatchWitnessState0Kind `json:"kind"`
+}
+
+// AnchorBatchWitnessState0Kind defines model for AnchorBatchWitnessState.0.Kind.
+type AnchorBatchWitnessState0Kind string
+
+// AnchorBatchWitnessState1 defines model for .
+type AnchorBatchWitnessState1 struct {
+	Kind       AnchorBatchWitnessState1Kind `json:"kind"`
+	ObservedAt int64                        `json:"observed_at"`
+
+	// Receipt Verifier-bound receipt returned by a public-witness lane. OTS receipts remain advisory until the lane carries trusted Bitcoin header or calendar-backed commitment evidence.
+	Receipt AnchorBatchWitnessReceipt `json:"receipt"`
+}
+
+// AnchorBatchWitnessState1Kind defines model for AnchorBatchWitnessState.1.Kind.
+type AnchorBatchWitnessState1Kind string
+
+// AnchorBatchWitnessState2 defines model for .
+type AnchorBatchWitnessState2 struct {
+	Error        string                       `json:"error"`
+	Kind         AnchorBatchWitnessState2Kind `json:"kind"`
+	LastVerified int64                        `json:"last_verified"`
+}
+
+// AnchorBatchWitnessState2Kind defines model for AnchorBatchWitnessState.2.Kind.
+type AnchorBatchWitnessState2Kind string
 
 // CapabilityCapabilities Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed before peers negotiate capability v2, receipt v2, or anchor-batch support.
 type CapabilityCapabilities struct {
@@ -2802,6 +2875,94 @@ func (t *AgentToolCallRequest_CapabilityToken) UnmarshalJSON(b []byte) error {
 		}
 	}
 
+	return err
+}
+
+// AsAnchorBatchWitnessState0 returns the union data inside the AnchorBatchWitnessState as a AnchorBatchWitnessState0
+func (t AnchorBatchWitnessState) AsAnchorBatchWitnessState0() (AnchorBatchWitnessState0, error) {
+	var body AnchorBatchWitnessState0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAnchorBatchWitnessState0 overwrites any union data inside the AnchorBatchWitnessState as the provided AnchorBatchWitnessState0
+func (t *AnchorBatchWitnessState) FromAnchorBatchWitnessState0(v AnchorBatchWitnessState0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAnchorBatchWitnessState0 performs a merge with any union data inside the AnchorBatchWitnessState, using the provided AnchorBatchWitnessState0
+func (t *AnchorBatchWitnessState) MergeAnchorBatchWitnessState0(v AnchorBatchWitnessState0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAnchorBatchWitnessState1 returns the union data inside the AnchorBatchWitnessState as a AnchorBatchWitnessState1
+func (t AnchorBatchWitnessState) AsAnchorBatchWitnessState1() (AnchorBatchWitnessState1, error) {
+	var body AnchorBatchWitnessState1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAnchorBatchWitnessState1 overwrites any union data inside the AnchorBatchWitnessState as the provided AnchorBatchWitnessState1
+func (t *AnchorBatchWitnessState) FromAnchorBatchWitnessState1(v AnchorBatchWitnessState1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAnchorBatchWitnessState1 performs a merge with any union data inside the AnchorBatchWitnessState, using the provided AnchorBatchWitnessState1
+func (t *AnchorBatchWitnessState) MergeAnchorBatchWitnessState1(v AnchorBatchWitnessState1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAnchorBatchWitnessState2 returns the union data inside the AnchorBatchWitnessState as a AnchorBatchWitnessState2
+func (t AnchorBatchWitnessState) AsAnchorBatchWitnessState2() (AnchorBatchWitnessState2, error) {
+	var body AnchorBatchWitnessState2
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAnchorBatchWitnessState2 overwrites any union data inside the AnchorBatchWitnessState as the provided AnchorBatchWitnessState2
+func (t *AnchorBatchWitnessState) FromAnchorBatchWitnessState2(v AnchorBatchWitnessState2) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAnchorBatchWitnessState2 performs a merge with any union data inside the AnchorBatchWitnessState, using the provided AnchorBatchWitnessState2
+func (t *AnchorBatchWitnessState) MergeAnchorBatchWitnessState2(v AnchorBatchWitnessState2) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AnchorBatchWitnessState) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AnchorBatchWitnessState) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
 	return err
 }
 

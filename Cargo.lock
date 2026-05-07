@@ -2494,6 +2494,7 @@ dependencies = [
  "alloy-primitives 1.5.7",
  "alloy-sol-types 1.5.7",
  "arbitrary",
+ "async-trait",
  "base64 0.22.1",
  "chio-core",
  "chio-kernel",
@@ -2502,6 +2503,9 @@ dependencies = [
  "chio-web3-bindings",
  "hex",
  "opentimestamps",
+ "p256 0.13.2",
+ "pem",
+ "rand 0.8.5",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
@@ -2773,6 +2777,7 @@ dependencies = [
 name = "chio-conformance"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "base64ct",
  "chio-a2a-edge",
  "chio-acp-edge",
@@ -2796,6 +2801,8 @@ dependencies = [
  "chrono",
  "coset",
  "jsonwebtoken",
+ "p256 0.13.2",
+ "rand 0.8.5",
  "reqwest 0.13.2",
  "rusqlite",
  "serde",
@@ -2805,6 +2812,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tiny_http",
+ "tokio",
  "toml 0.8.23",
  "wat",
 ]

@@ -932,6 +932,91 @@ new batches degrade to `pending_public_witness`. Verifiers configured with
 already-witnessed batches and locally valid receipts. The operational semantics
 are pinned in `docs/security/public-witness-semantics.md`.
 
+#### Anchor batch public-witness lane (W2.3)
+
+W2.3 promotes the executable subset of `claim.anchor.batch_continuity` from
+proposed to enforced and ships the production wiring that backs it. Rekor
+Merkle inclusion-proof checking and formal anti-equivocation theorem coverage
+remain proposed evidence until implemented. The relevant artifacts live under
+`crates/chio-anchor/src/witness*`:
+
+- `AnchorWitnessClient`: an `async_trait` with `publish(&AnchorBatch)` and
+  `verify_inclusion(&WitnessReceipt)`.
+- `RekorClient`: real Sigstore Rekor REST client. `publish` POSTs the
+  canonical-JSON encoding of `body` to `/api/v1/log/entries` with a Sigstore
+  intoto envelope keyed by `sha256(canonical_jcs(body))`. `verify_inclusion`
+  GETs `/api/v1/log/entries/<uuid>` and asserts the returned
+  `body.spec.content.hash.value` equals the receipt's `body_hash` and verifies
+  the Rekor signed-entry timestamp against the configured trusted key set. It
+  does not yet verify Rekor's Merkle inclusion path to a checkpoint. Mismatches,
+  HTTP non-2xx, network failures, invalid signed-entry timestamps, and entries
+  past `max_witness_age_seconds` are reported as fail-closed errors.
+- `OtsClient`: OpenTimestamps client. `publish` POSTs `body_hash` to
+  `<calendar>/digest` and parses the returned timestamp through the
+  `opentimestamps` crate, but OTS is advisory for the W2.3 public-witness
+  requirement. A local parse plus a Bitcoin attestation marker is self-assertable
+  without trusted Bitcoin block-header evidence or independently verified
+  calendar commitment evidence, so `verify_inclusion` fails closed and OTS
+  receipts do not satisfy `require_public_witness`.
+
+`batch_body_hash` is `sha256(canonical_jcs(BatchHashInput))`, where
+`BatchHashInput` contains `schema`, `treeRoot`, `checkpointIds`, `inclusions`,
+`issuedAt`, `signerKey`, and a stable witness projection with only `kind` and
+`root`. It explicitly excludes `witnessState`, lane-assigned `witnessId`, and
+lane observation timestamps. This keeps the hash stable when a lane returns a
+UUID or when the producer re-signs the batch with an embedded `WitnessReceipt`.
+Verifiers separately require `receipt.kind == body.witness.kind`,
+`receipt.witness_root == body.tree_root`, and
+`receipt.body_hash == batch_body_hash(batch)`.
+
+Each batch carries a `WitnessState` lifecycle:
+
+- `Pending`: minted locally, no lane has confirmed yet.
+- `Witnessed { receipt, observed_at }`: a successful publish or verify ran
+  through `AnchorWitnessClient`. `receipt.witness_root == body.tree_root`
+  is invariant and re-checked on every verify.
+- `Stale { last_verified, error }`: the producer reports that the lane was
+  reachable in the past but re-verification failed. The verifier treats
+  `last_verified` as telemetry only. The verifier rule is:
+  - `require_public_witness: true`, `Pending` -> reject.
+  - `require_public_witness: true`, `Witnessed` on the sync path -> reject;
+    use the async verifier path so `AnchorWitnessClient::verify_inclusion`
+    runs.
+  - `require_public_witness: true`, `Stale` and no verifier-owned cache entry
+    for the recomputed `batch_body_hash` -> reject.
+  - `require_public_witness: true`, `Stale` and
+    `now - cache.verified_at > stale_window_seconds` -> reject.
+  - `require_public_witness: true`, `Stale` inside the verifier-owned cache
+    window -> accept (the receipt is still authoritative for already-witnessed
+    batches).
+  - `require_public_witness: false` -> accept all states (advisory mode).
+
+Rejection criteria the W2.3 negative-conformance suite exercises:
+
+- forged Merkle root (real Merkle re-compute, not a label compare): rebuilding
+  the tree from `body.checkpoint_ids` and asserting `tree.root() ==
+  body.tree_root` plus walking each inclusion proof through `verify_hash`.
+- mis-ordered audit path: reversing or swapping siblings on a non-trivial
+  audit path while keeping leaf hashes consistent. Detected only by real
+  Merkle math.
+- witness-lane impersonation: the lane returns an entry whose
+  `body.spec.content.hash.value` does not match the batch's body hash, OR the
+  lane returns an entry under a different UUID. Both cases fail closed.
+- stale-witness fallback: dropping the lane while the policy is
+  `require_public_witness=true` rejects new pending batches but keeps
+  already-witnessed receipts usable inside the configured stale window only
+  when the verifier's own cache has a fresh `verified_at` timestamp for the
+  batch body hash.
+- OTS marker-only witness receipts: an OTS proof that decodes, matches the batch
+  body hash, and contains a Bitcoin attestation marker is still rejected under
+  `require_public_witness` until trusted Bitcoin header or calendar-backed
+  commitment evidence is present in the receipt contract.
+
+The negative tests live as standalone files at
+`crates/chio-conformance/tests/anchor_batch_{forged_root,misordered_proof,witness_impersonation,stale_witness_fallback}_rejected.rs`
+(plus `anchor_batch_stale_witness_fallback.rs`) and exercise the real
+`verify_anchor_batch` and `verify_anchor_batch_with_witness_policy` paths.
+
 ### 6.5 HTTP Receipts
 
 The HTTP substrate (see [HTTP-SUBSTRATE.md](HTTP-SUBSTRATE.md)) introduces

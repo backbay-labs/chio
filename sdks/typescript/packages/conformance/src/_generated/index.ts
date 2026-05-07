@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: d7d9d533ee78fd64c1ed44044d88163b65583e7972742d56bdd4fba32e0862d4
+// Schema SHA: a2383d5d6128895ce558845ec60c0e0d3d8ac0f67f5ca2610ab3b81fd40f69eb
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -51,6 +51,24 @@ export namespace Agent_ToolCallRequest {
 // Source: spec/schemas/chio-wire/v1/anchor/batch.schema.json
 export namespace Anchor_Batch {
   /**
+   * W2.3 lifecycle for the public-witness lane. Defaults to {kind: pending} when omitted to preserve wire compatibility for v1 batches that pre-date the state machine.
+   */
+  export type WitnessState =
+    | {
+        kind: "pending";
+      }
+    | {
+        kind: "witnessed";
+        receipt: WitnessReceipt;
+        observed_at: number;
+      }
+    | {
+        kind: "stale";
+        last_verified: number;
+        error: string;
+      };
+
+  /**
    * Signed additive Merkle batch over receipts or checkpoints. Local receipt signatures remain authoritative; the batch adds continuity and public-witness timestamping.
    */
   export interface ChioAnchorBatchV1 {
@@ -71,6 +89,7 @@ export namespace Anchor_Batch {
     witness: Witness;
     issuedAt: number;
     signerKey: string;
+    witnessState?: WitnessState;
   }
   export interface Inclusion {
     checkpointId: string;
@@ -84,6 +103,17 @@ export namespace Anchor_Batch {
     witnessId: string;
     root: string;
     observedAt?: number;
+  }
+  /**
+   * Verifier-bound receipt returned by a public-witness lane. OTS receipts remain advisory until the lane carries trusted Bitcoin header or calendar-backed commitment evidence.
+   */
+  export interface WitnessReceipt {
+    kind: "rekor" | "ots" | "solana_memo";
+    externalUuid: string;
+    publishedAt: number;
+    inclusionProof: string;
+    witnessRoot: string;
+    bodyHash: string;
   }
 }
 

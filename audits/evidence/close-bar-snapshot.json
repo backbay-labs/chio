@@ -405,12 +405,12 @@
     {
       "id": "P-4",
       "title": "Anchor-batch Merkle trees with public-witness checkpoints",
-      "bucket": "PARTIAL",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
-      "wave": "05",
-      "notes": "checkpoint Merkle batching present; chio.anchor_batch.v1 artifact + witness lane not yet shipped"
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/anchor_batch_forged_root_rejected.rs",
+      "theorem_status": "proposed",
+      "wave": "02",
+      "notes": "W2.3: AnchorWitnessClient trait + RekorClient (real Sigstore HTTP) + OtsClient (OpenTimestamps calendar HTTP) shipped at crates/chio-anchor/src/witness*; WitnessState state machine (Pending/Witnessed/Stale) wired into verify_anchor_batch_with_witness_policy; 4 standalone negative-conformance tests (forged_root, misordered_proof, witness_impersonation, stale_witness_fallback) all green; theorem.anchor.merkle_inclusion + theorem.anchor.public_witness_anti_equivocation at proposed (Lean toolchain follow-up)"
     },
     {
       "id": "P-5",
@@ -1215,12 +1215,12 @@
     {
       "id": "T1.3.E",
       "title": "Evidence Gate for T1.3 anchor-batch Merkle trees",
-      "bucket": "NONE",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
-      "wave": "05",
-      "notes": "T1.3 Evidence Gate not yet closed"
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/anchor_batch_forged_root_rejected.rs",
+      "theorem_status": "proposed",
+      "wave": "02",
+      "notes": "W2.3: PROTOCOL.md section 6.4.1 expanded with public-witness lane semantics; spec/schemas/chio-wire/v1/anchor/batch.schema.json carries witnessState; claim.anchor.batch_continuity promoted to active; manifest.anchor.batch_continuity references all 4 conformance tests + the witness clients; theorems remain proposed pending Lean toolchain"
     },
     {
       "id": "T2.1.E",
@@ -1360,7 +1360,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs",
       "theorem_status": "proposed",
       "wave": "02",
-      "notes": "W1.3 wired the negotiated max_capability_schema as a verifier ceiling. FederationTrustExchange.negotiated_with stores the per-peer ceiling on FederationPeer.capabilities; verify_capability_with_negotiated_floor enforces it before signature/time/floor checks. Lean theorem theorem.handshake.negotiation_safety models the ceiling check (status assumed pending Lean toolchain in CI)."
+      "notes": "W1.3 wired the negotiated max_capability_schema as a verifier ceiling. FederationTrustExchange.negotiated_with stores the per-peer ceiling on FederationPeer.capabilities; verify_capability_with_negotiated_floor enforces it before signature/time/floor checks. Lean theorem theorem.handshake.negotiation_safety models the ceiling check (status pending Lean toolchain in CI)."
     },
     {
       "id": "close-bar-#14",
@@ -1415,12 +1415,12 @@
     {
       "id": "close-bar-#19",
       "title": "chio.anchor_batch.v1 published with witness lane; claim registry/proof manifest/public-witness semantics doc updated; negative conformance tests pass",
-      "bucket": "PARTIAL",
-      "wired_runtime_path": "n",
-      "negative_conformance_test": "NONE",
-      "theorem_status": "n-a",
-      "wave": "05",
-      "notes": "anchor batch type substrate exists in chio-anchor; chio.anchor_batch.v1 wire artifact + witness + Evidence Gate items NONE"
+      "bucket": "DONE",
+      "wired_runtime_path": "y",
+      "negative_conformance_test": "crates/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs",
+      "theorem_status": "proposed",
+      "wave": "02",
+      "notes": "W2.3: AnchorWitnessClient trait + RekorClient (real Sigstore HTTP) + OtsClient (OpenTimestamps calendar HTTP) live in crates/chio-anchor/src/witness*; WitnessState (Pending/Witnessed/Stale) wired into verify_anchor_batch_with_witness_policy; 4 standalone negative-conformance tests at crates/chio-conformance/tests/anchor_batch_*_rejected.rs (forged_root, misordered_proof, witness_impersonation, stale_witness_fallback) all green; claim.anchor.batch_continuity promoted to active; manifest.anchor.batch_continuity references real conformance evidence; spec/PROTOCOL.md section 6.4.1 expanded with W2.3 subsection"
     },
     {
       "id": "close-bar-#20",

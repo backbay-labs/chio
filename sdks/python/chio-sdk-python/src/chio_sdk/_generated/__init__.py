@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: bc02beb22e700f6dcb4ff8bacf886190c87ed37499a515db8e09dfd0f87c2e00
+# Schema sha256: d680571b15f2c519e43943d2ec4e7754e54e544f1245ac1e25d16952856342c9
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -29,10 +29,10 @@ from pydantic_core import core_schema
 #: SHA-256 of the lexicographically sorted concatenation of every
 #: ``spec/schemas/chio-wire/v1/**/*.schema.json`` byte stream that was
 #: fed into datamodel-code-generator at build time.
-SCHEMA_SHA256 = "bc02beb22e700f6dcb4ff8bacf886190c87ed37499a515db8e09dfd0f87c2e00"
+SCHEMA_SHA256 = "d680571b15f2c519e43943d2ec4e7754e54e544f1245ac1e25d16952856342c9"
 
 from .agent import Algorithm as AgentAlgorithm, AttenuationProof as AgentAttenuationProof, CapabilityToken1, Caveat as AgentCaveat, ChioAgentmessageHeartbeat, ChioAgentmessageListCapabilities, ChioAgentmessageToolCallRequest, Constraint as AgentConstraint, DelegationChainItem as AgentDelegationChainItem, Grant as AgentGrant, Grant3, MaxCostPerInvocation as AgentMaxCostPerInvocation, MaxTotalCost as AgentMaxTotalCost, Operation as AgentOperation, PromptGrant as AgentPromptGrant, PromptGrant3, ResourceGrant as AgentResourceGrant, ResourceGrant3, Schema as AgentSchema, Scope as AgentScope, Scope3, ScopeAttenuation as AgentScopeAttenuation
-from .anchor import Body, CheckpointId, ChioAnchorBatchV1, Inclusion, Kind as AnchorKind, Witness
+from .anchor import Body, CheckpointId, ChioAnchorBatchV1, Inclusion, Kind as AnchorKind, Witness, WitnessReceipt, WitnessState, WitnessState1, WitnessState2, WitnessState3
 from .capability import Algorithm as CapabilityAlgorithm, Attenuation, AttenuationProof as CapabilityAttenuationProof, AttenuationWitness, Caveat as CapabilityCaveat, ChioCapabilityGrant, ChioCapabilityNegotiationV1, ChioCapabilityRevocationEntry, ChioCapabilitytoken, ChioCapabilitytokenV1, ChioCapabilitytokenV2, ChioScope, Constraint as CapabilityConstraint, DelegationLink, GrantKind, GrantSubsetRelation, Kind as CapabilityKind, MaxCapabilitySchema, MonetaryAmount, Operation as CapabilityOperation, PromptGrant as CapabilityPromptGrant, ResourceGrant as CapabilityResourceGrant, ScopeAttenuation as CapabilityScopeAttenuation, ToolGrant
 from .error import ChioToolcallerrorCapabilityDenied, ChioToolcallerrorCapabilityExpired, ChioToolcallerrorCapabilityRevoked, ChioToolcallerrorInternalError, ChioToolcallerrorPolicyDenied, ChioToolcallerrorToolServerError, Detail as ErrorDetail
 from .jsonrpc import ChioJsonRpc20Notification, ChioJsonRpc20Request, ChioJsonRpc20Response, ChioJsonRpc20Response1, ChioJsonRpc20Response2, Error as JsonrpcError
@@ -251,4 +251,9 @@ __all__ = [
     "TrustLevel",
     "Verdict",
     "Witness",
+    "WitnessReceipt",
+    "WitnessState",
+    "WitnessState1",
+    "WitnessState2",
+    "WitnessState3",
 ]

@@ -119,7 +119,7 @@
       "id": "theorem.anchor.public_witness_anti_equivocation",
       "kind": "lean",
       "status": "proposed",
-      "statement": "Once a chio.anchor_batch.v1 root R is published to a public witness lane (Rekor / OTS / Solana memo) at time t, any subsequent batch B' with the same checkpoint_ids but a different root R' is detectable by any verifier that queries the witness lane.",
+      "statement": "Once a chio.anchor_batch.v1 root R is published to a public witness lane with verifier-trusted lane evidence at time t, any subsequent batch B' with the same checkpoint_ids but a different root R' is detectable by any verifier that queries the witness lane. OTS satisfies this theorem only after receipts carry trusted Bitcoin header or calendar-backed commitment evidence.",
       "introduced_by": "trajectory-4/T1.3",
       "depends_on": ["theorem.anchor.merkle_inclusion"]
     },

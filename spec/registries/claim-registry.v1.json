@@ -57,6 +57,14 @@
       "proof_manifest_ref": "manifest.capability.attenuation_proof"
     },
     {
+      "id": "claim.anchor.batch_continuity",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-wire/v1/anchor/batch.schema.json",
+      "summary": "A chio.anchor_batch.v1 signs a Merkle root over N receipts/checkpoints and can bind that root to a public witness lane through AnchorWitnessClient. Per-receipt local signatures stay authoritative. The enforced subset recomputes Merkle roots/proofs, checks witness root/body-hash binding, verifies Rekor signed-entry timestamps, rejects sync self-asserted Witnessed under require_public_witness, rejects OTS marker-only receipts as advisory until trusted Bitcoin header or calendar-backed commitment evidence exists, and admits Stale only from a verifier-owned batch_body_hash -> verified_at cache. Rekor Merkle inclusion-proof checking, OTS trusted-header verification, and formal public-witness anti-equivocation remain proposed evidence.",
+      "introduced_in": "trajectory-4/W2.3",
+      "proof_manifest_ref": "manifest.anchor.batch_continuity"
+    },
+    {
       "id": "claim.receipt.body_hash_addressing",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/receipt/v2.schema.json",
@@ -76,15 +84,6 @@
       "introduced_by": "trajectory-4/T1.2",
       "depends_on_theorems": ["theorem.receipt.dag_acyclicity"],
       "proof_manifest_ref": "manifest.receipt.dag_acyclicity"
-    },
-    {
-      "id": "claim.anchor.batch_continuity",
-      "status": "enforced",
-      "schema_artifact": "spec/schemas/chio-wire/v1/anchor/batch.schema.json",
-      "summary": "A chio.anchor_batch.v1 publishes a Merkle root over N receipts/checkpoints to a public witness lane (Rekor / OTS / Solana memo). Per-receipt local sign stays unchanged; the batch upgrades continuity and non-repudiation, additive over per-receipt verification.",
-      "introduced_by": "trajectory-4/T1.3",
-      "depends_on_theorems": ["theorem.anchor.merkle_inclusion", "theorem.anchor.public_witness_anti_equivocation"],
-      "proof_manifest_ref": "manifest.anchor.batch_continuity"
     },
     {
       "id": "claim.signature.hybrid_pq",

@@ -5,9 +5,9 @@ signatures, receipt body hashes, or checkpoint inclusion proofs.
 
 ## Guarantees
 
-- Anti-equivocation: once a batch root is published to an allowed witness lane,
-  a later batch with the same `checkpointIds` and a different root is detectable
-  by querying that lane.
+- Anti-equivocation: the executable verifier detects local batch-root and
+  witness body-hash substitution. Full Rekor Merkle anti-equivocation is
+  proposed evidence until Rekor inclusion-proof verification lands.
 - Claim completeness: every checkpoint named by the batch must have an inclusion
   proof whose leaf verifies against `treeRoot`.
 - Local validity stays local: a receipt remains locally verifiable when its
@@ -20,11 +20,17 @@ signatures, receipt body hashes, or checkpoint inclusion proofs.
   checkpoint at the same index.
 - Witness impersonation: reject the batch when the witness entry resolves to a
   different root or to a lane outside the verifier allow-list.
-- Stale witness: when Rekor, OTS, or Solana memo publication is unavailable for
+- OTS marker-only receipt: an OTS blob that locally decodes and contains a
+  Bitcoin attestation marker is advisory only. It does not satisfy
+  `require_public_witness` until the receipt contract carries trusted Bitcoin
+  block-header evidence or independently verified calendar commitment evidence.
+- Stale witness: when Rekor or another trusted public-witness lane is unavailable for
   longer than the verifier freshness window, mark new batches as
   `pending_public_witness`. Verifiers configured with `require_public_witness`
-  reject those new batches, but still accept receipts that verify locally and
-  already-witnessed batches.
+  reject those new batches, reject sync self-asserted `Witnessed` states, and
+  accept stale batches only when a verifier-owned cache records a fresh
+  `verified_at` timestamp for that batch body hash. Producer-signed
+  `last_verified` is telemetry only.
 
 ## Operator Defaults
 

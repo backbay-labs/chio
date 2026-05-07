@@ -16,6 +16,7 @@ default = ["web3"]
 web3 = [
     "dep:alloy-primitives",
     "dep:alloy-sol-types",
+    "dep:async-trait",
     "dep:chio-core",
     "dep:chio-kernel",
     "dep:chio-web3",
@@ -23,6 +24,8 @@ web3 = [
     "dep:base64",
     "dep:hex",
     "dep:opentimestamps",
+    "dep:p256",
+    "dep:pem",
     "dep:reqwest",
     "dep:serde",
     "dep:serde_json",
@@ -43,9 +46,14 @@ chio-web3 = { path = "../chio-web3", optional = true }
 chio-web3-bindings = { path = "../chio-web3-bindings", default-features = false, features = ["web3"], optional = true }
 alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
 alloy-sol-types = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
+async-trait = { version = "0.1", optional = true }
 base64 = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
 opentimestamps = { version = "0.2.0", optional = true }
+# Rekor signed-entry-timestamp (SET) verification: P-256 ECDSA against
+# the pinned Sigstore Rekor public key (HIGH-3 in PR #594 review).
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"], optional = true }
+pem = { version = "3", optional = true }
 reqwest = { workspace = true, features = ["form", "json", "query", "rustls"], optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { workspace = true, optional = true }
@@ -55,6 +63,7 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+rand = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"

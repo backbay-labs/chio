@@ -103,6 +103,31 @@
         {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs::body_hash_mismatch_fails_closed"},
         {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs::negotiation_v1_only_peer_disables_v2_minting"}
       ]
+    },
+    {
+      "id": "manifest.anchor.batch_continuity",
+      "claim_ref": "claim.anchor.batch_continuity",
+      "introduced_by": "trajectory-4/W2.3",
+      "evidence": [
+        {"kind": "rust_test", "ref": "crates/chio-anchor/src/batch.rs::anchor_batch_roundtrip_and_negative_roots"},
+        {"kind": "rust_test", "ref": "crates/chio-anchor/src/batch.rs::verifies_legacy_signature_that_omitted_pending_witness_state"},
+        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness.rs::witness_policy_rejects_pending_when_required"},
+        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness.rs::sync_require_public_witness_rejects_self_asserted_witnessed"},
+        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness/rekor.rs::rekor_body_b64_round_trips_real_batch_hash"},
+        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness/ots.rs::ots_verify_inclusion_rejects_bitcoin_marker_without_trusted_evidence"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_forged_root_rejected.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_misordered_proof_rejected.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs"},
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/anchor_batch_stale_witness_fallback.rs"}
+      ],
+      "evidence_proposed": [
+        {"kind": "lean_theorem", "ref": "theorem.anchor.merkle_inclusion"},
+        {"kind": "lean_theorem", "ref": "theorem.anchor.public_witness_anti_equivocation"},
+        {"kind": "rekor_merkle_inclusion_verifier", "ref": "crates/chio-anchor/src/witness/rekor.rs"},
+        {"kind": "ots_trusted_bitcoin_header_verifier", "ref": "crates/chio-anchor/src/witness/ots.rs"},
+        {"kind": "rust_test", "ref": "crates/chio-anchor/src/witness/ots.rs::ots_inclusion_proof_round_trips_through_parser"},
+        {"kind": "doc", "ref": "docs/security/public-witness-semantics.md"}
+      ]
     }
   ],
   "trj4_proposed_manifests": [
@@ -117,17 +142,6 @@
       ],
       "evidence_proposed": [
         {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"}
-      ]
-    },
-    {
-      "id": "manifest.anchor.batch_continuity",
-      "claim_ref": "claim.anchor.batch_continuity",
-      "introduced_by": "trajectory-4/T1.3",
-      "evidence": [
-        {"kind": "lean_theorem", "ref": "theorem.anchor.merkle_inclusion"},
-        {"kind": "lean_theorem", "ref": "theorem.anchor.public_witness_anti_equivocation"},
-        {"kind": "rust_test", "ref": "crates/chio-anchor/src/batch.rs::anchor_batch_roundtrip_and_negative_roots"},
-        {"kind": "doc", "ref": "docs/security/public-witness-semantics.md"}
       ]
     },
     {

@@ -5,6 +5,10 @@ use chio_core::signed_artifact::CHIO_ANCHOR_BATCH_V1_SCHEMA;
 use chio_core::{Keypair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 
+use crate::witness::{
+    evaluate_witness_policy, evaluate_witness_policy_with_verifier, AnchorWitnessClient,
+    VerifiedWitnessCache, WitnessPolicy, WitnessPolicyError, WitnessState,
+};
 use crate::AnchorError;
 
 /// Public witness lane for an anchor batch root.
@@ -37,6 +41,12 @@ pub struct AnchorBatchInclusion {
 }
 
 /// Signed anchor-batch body. Per-receipt local signatures remain authoritative.
+///
+/// `witness_state` carries the lane lifecycle introduced by W2.3
+/// (`Pending` -> `Witnessed` -> `Stale`). The field defaults to
+/// [`WitnessState::Pending`] for older artifacts that pre-date the
+/// state machine, preserving wire compatibility for v1 batches that
+/// never went through a public-witness lane.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AnchorBatchBody {
@@ -47,6 +57,14 @@ pub struct AnchorBatchBody {
     pub witness: AnchorBatchWitness,
     pub issued_at: u64,
     pub signer_key: PublicKey,
+    /// Always serialized. A non-Rust signer that emits explicit
+    /// `witnessState: {"kind":"pending"}` produces canonical bytes
+    /// that Rust verification must match. Stripping the field on
+    /// the Rust side via `skip_serializing_if` would canonicalize
+    /// to a different byte sequence and reject otherwise-valid
+    /// cross-SDK batches.
+    #[serde(default)]
+    pub witness_state: WitnessState,
 }
 
 /// Signed anchor batch artifact.
@@ -68,10 +86,51 @@ impl AnchorBatch {
 
     pub fn verify_signature(&self) -> Result<bool, AnchorError> {
         validate_anchor_batch_body(&self.body)?;
-        self.body
+        if self
+            .body
             .signer_key
             .verify_canonical(&self.body, &self.signature)
+            .map_err(|error| AnchorError::Verification(error.to_string()))?
+        {
+            return Ok(true);
+        }
+        if self.body.witness_state != WitnessState::Pending {
+            return Ok(false);
+        }
+        let legacy = LegacyAnchorBatchBody::from_body(&self.body);
+        self.body
+            .signer_key
+            .verify_canonical(&legacy, &self.signature)
             .map_err(|error| AnchorError::Verification(error.to_string()))
+    }
+}
+
+/// Canonical signing view for v1 batches produced before `witnessState`
+/// was added to the body. Deserialization still defaults the field to
+/// `Pending`; verification falls back to this view only for that state.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyAnchorBatchBody<'a> {
+    schema: &'a str,
+    tree_root: &'a Hash,
+    checkpoint_ids: &'a [String],
+    inclusions: &'a [AnchorBatchInclusion],
+    witness: &'a AnchorBatchWitness,
+    issued_at: u64,
+    signer_key: &'a PublicKey,
+}
+
+impl<'a> LegacyAnchorBatchBody<'a> {
+    fn from_body(body: &'a AnchorBatchBody) -> Self {
+        Self {
+            schema: &body.schema,
+            tree_root: &body.tree_root,
+            checkpoint_ids: &body.checkpoint_ids,
+            inclusions: &body.inclusions,
+            witness: &body.witness,
+            issued_at: body.issued_at,
+            signer_key: &body.signer_key,
+        }
     }
 }
 
@@ -141,6 +200,7 @@ pub fn build_anchor_batch_body(
         witness,
         issued_at,
         signer_key,
+        witness_state: WitnessState::Pending,
     })
 }
 
@@ -152,6 +212,64 @@ pub fn verify_anchor_batch(batch: &AnchorBatch) -> Result<(), AnchorError> {
         ));
     }
     Ok(())
+}
+
+/// Verify the batch and apply [`WitnessPolicy`] using `now` (UNIX
+/// seconds) as the wall clock. This sync entry point does NOT call out
+/// to the witness lane and has no verifier-owned stale cache.
+///
+/// When `policy.require_public_witness=true`, this function fails
+/// closed for `Witnessed` and `Stale` states after structural checks.
+/// Use [`verify_anchor_batch_with_witness_policy_async`] for
+/// load-bearing public-witness verification and stale fallback.
+/// Advisory mode (`require_public_witness=false`) remains available
+/// for callers that intentionally treat witness state as non-binding.
+pub fn verify_anchor_batch_with_witness_policy(
+    batch: &AnchorBatch,
+    policy: &WitnessPolicy,
+    now: i64,
+) -> Result<(), AnchorError> {
+    verify_anchor_batch(batch)?;
+    evaluate_witness_policy(batch, &batch.body.witness_state, policy, now)
+        .map_err(witness_policy_to_anchor_error)
+}
+
+/// Verify the batch and apply [`WitnessPolicy`] WITH live
+/// witness-lane verification when `require_public_witness=true`.
+///
+/// `client`: the [`AnchorWitnessClient`] backing the lane named in
+/// `batch.body.witness.kind`. Required when the policy is
+/// load-bearing AND the state is `Witnessed`.
+///
+/// `previously_verified_witnesses`: verifier-owned cache from
+/// recomputed `batch_body_hash` (witness-state-excluded) to the
+/// verifier's own successful `verify_inclusion` timestamp. Used for
+/// `Stale` admission when the lane is currently down. Binding to the
+/// batch body hash and verifier timestamp, not the receipt id or
+/// producer-signed `last_verified`, prevents replay and fabricated
+/// freshness.
+pub async fn verify_anchor_batch_with_witness_policy_async(
+    batch: &AnchorBatch,
+    policy: &WitnessPolicy,
+    now: i64,
+    client: Option<&dyn AnchorWitnessClient>,
+    previously_verified_witnesses: &VerifiedWitnessCache,
+) -> Result<(), AnchorError> {
+    verify_anchor_batch(batch)?;
+    evaluate_witness_policy_with_verifier(
+        batch,
+        &batch.body.witness_state,
+        policy,
+        now,
+        client,
+        previously_verified_witnesses,
+    )
+    .await
+    .map_err(witness_policy_to_anchor_error)
+}
+
+fn witness_policy_to_anchor_error(error: WitnessPolicyError) -> AnchorError {
+    AnchorError::Verification(format!("witness policy violation: {error}"))
 }
 
 fn validate_anchor_batch_body(body: &AnchorBatchBody) -> Result<(), AnchorError> {
@@ -253,5 +371,28 @@ mod tests {
         let mut impersonated = batch;
         impersonated.body.witness.root = Hash::zero();
         assert!(verify_anchor_batch(&impersonated).is_err());
+    }
+
+    #[test]
+    fn verifies_legacy_signature_that_omitted_pending_witness_state() {
+        let kp = Keypair::generate();
+        let witness = AnchorBatchWitness {
+            kind: AnchorBatchWitnessKind::Rekor,
+            witness_id: "rekor:legacy".to_string(),
+            root: Hash::zero(),
+            observed_at: Some(1710000000),
+        };
+        let body = build_anchor_batch_body(
+            vec!["checkpoint-legacy".to_string()],
+            witness,
+            1710000000,
+            kp.public_key(),
+        )
+        .unwrap();
+        let legacy_view = LegacyAnchorBatchBody::from_body(&body);
+        let (signature, _) = kp.sign_canonical(&legacy_view).unwrap();
+        let batch = AnchorBatch { body, signature };
+
+        verify_anchor_batch(&batch).expect("legacy omitted witnessState signature verifies");
     }
 }

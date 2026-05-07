@@ -20,6 +20,7 @@ mod functions;
 pub mod metrics;
 mod ops;
 mod solana;
+mod witness;
 
 pub use metrics::{
     anchor_round_count, observe_anchor_round_latency_nanos, render_anchor_metrics_prometheus,
@@ -46,6 +47,9 @@ pub use automation::{
 pub use batch::{
     build_anchor_batch, build_anchor_batch_body, verify_anchor_batch, AnchorBatch, AnchorBatchBody,
     AnchorBatchInclusion, AnchorBatchWitness, AnchorBatchWitnessKind,
+};
+pub use batch::{
+    verify_anchor_batch_with_witness_policy, verify_anchor_batch_with_witness_policy_async,
 };
 pub use bitcoin::{
     attach_bitcoin_anchor, inspect_ots_proof, prepare_ots_submission,
@@ -87,6 +91,20 @@ pub use ops::{
 pub use solana::{
     prepare_solana_memo_publication, verify_solana_anchor, PreparedSolanaMemoPublication,
     SolanaMemoAnchorRecord, SOLANA_MEMO_PROGRAM_ID,
+};
+pub use witness::ots::{
+    build_ots_inclusion_proof, build_ots_inclusion_proof_b64,
+    build_ots_inclusion_proof_with_forged_digest, OtsClient,
+};
+pub use witness::rekor::{
+    build_rekor_entry_body_b64, build_rekor_entry_body_b64_with_hash, build_rekor_publish_response,
+    build_rekor_publish_response_with_set, sign_set_with_test_key, verifying_key_to_pem,
+    RekorClient, REKOR_PUBLIC_KEY_PEM,
+};
+pub use witness::{
+    batch_body_hash, batch_body_hash_from_body, evaluate_witness_policy,
+    evaluate_witness_policy_with_verifier, AnchorWitnessClient, AnchorWitnessError, BatchHashInput,
+    VerifiedWitnessCache, WitnessPolicy, WitnessPolicyError, WitnessReceipt, WitnessState,
 };
 
 #[derive(Debug, thiserror::Error)]
