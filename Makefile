@@ -7,7 +7,9 @@
 #
 # Owner: M01 (single-owner trajectory, see EXECUTION-BOARD.md section 5).
 
-.PHONY: codegen-check codegen-check-rust codegen-check-python codegen-check-ts codegen-check-go ts-codegen-deps
+.PHONY: codegen-check codegen-check-rust codegen-check-python codegen-check-ts codegen-check-go ts-codegen-deps kb-lock-check kb-up kb-down kb-reset kb-reseed kb-update kb-live kb-status kb-smoke kb-eval kb-seed-memory kb-dogfood
+
+KB_DIR ?= ops/knowledge-base
 
 # REQUIRES on PATH:
 #   - cargo (Rust toolchain) for all four lanes.
@@ -45,3 +47,46 @@ ts-codegen-deps:
 
 codegen-check-go:
 	cargo xtask codegen --lang go --check
+
+kb-up:
+	cd $(KB_DIR) && docker compose up -d --build kb-postgres kb-neo4j graphiti-mcp chio-kb-mcp
+
+kb-lock-check:
+	cd $(KB_DIR) && uv lock --check
+
+kb-down:
+	cd $(KB_DIR) && docker compose down
+
+kb-reset:
+	@if [ "$$KB_RESET_VOLUMES" = "1" ]; then cd $(KB_DIR) && docker compose down -v; fi
+	cd $(KB_DIR) && docker compose up -d --build kb-postgres kb-neo4j chio-kb-mcp
+	cd $(KB_DIR) && docker compose exec -T chio-kb-mcp chio-kb-reset
+
+kb-reseed: kb-reset kb-update kb-seed-memory
+
+kb-update:
+	cd $(KB_DIR) && CHIO_KB_MAX_INFLIGHT_COMPONENTS=$${CHIO_KB_MAX_INFLIGHT_COMPONENTS:-8} COCOINDEX_SOURCE_MAX_INFLIGHT_ROWS=$${COCOINDEX_SOURCE_MAX_INFLIGHT_ROWS:-8} docker compose exec -T -e CHIO_KB_MAX_INFLIGHT_COMPONENTS -e COCOINDEX_SOURCE_MAX_INFLIGHT_ROWS chio-kb-mcp cocoindex -d /app update --force chio_kb.index
+	cd $(KB_DIR) && docker compose exec -T chio-kb-mcp chio-kb-seed-graph
+
+kb-live:
+	cd $(KB_DIR) && CHIO_KB_MAX_INFLIGHT_COMPONENTS=$${CHIO_KB_MAX_INFLIGHT_COMPONENTS:-8} COCOINDEX_SOURCE_MAX_INFLIGHT_ROWS=$${COCOINDEX_SOURCE_MAX_INFLIGHT_ROWS:-8} docker compose exec -e CHIO_KB_MAX_INFLIGHT_COMPONENTS -e COCOINDEX_SOURCE_MAX_INFLIGHT_ROWS chio-kb-mcp cocoindex -d /app update --force --live chio_kb.index
+
+kb-status:
+	cd $(KB_DIR) && docker compose ps
+	@curl -fsS http://localhost:8111/health
+	@printf "\n"
+	@curl -fsS http://localhost:8000/health
+	@printf "\n"
+
+kb-smoke:
+	cd $(KB_DIR) && docker compose exec -T chio-kb-mcp chio-kb-smoke
+
+kb-eval:
+	cd $(KB_DIR) && docker compose exec -T chio-kb-mcp chio-kb-eval --suite all --fail-below-a
+
+kb-seed-memory:
+	cd $(KB_DIR) && docker compose up -d kb-neo4j graphiti-mcp chio-kb-mcp
+	cd $(KB_DIR) && docker compose exec -T chio-kb-mcp chio-kb-seed-memory
+
+kb-dogfood:
+	cd $(KB_DIR) && docker compose exec -T chio-kb-mcp chio-kb-eval --suite all --format markdown --fail-below-a > DOGFOOD-REVIEW.md

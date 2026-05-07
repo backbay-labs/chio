@@ -1,0 +1,20 @@
+FROM ghcr.io/astral-sh/uv:0.8.15-python3.12-bookworm-slim@sha256:0664f9b563fb559314ae82b9d87cd34d503f98a96d8cd9b37fd9d9cfe76d5ede
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+RUN groupadd -r app && useradd -r -m -d /home/app -g app app
+RUN mkdir -p /cocoindex && chown app:app /cocoindex
+
+COPY pyproject.toml uv.lock README.md ./
+COPY chio_kb ./chio_kb
+
+RUN uv sync --locked --no-dev
+
+ENV PATH="/app/.venv/bin:${PATH}"
+
+USER app
+
+EXPOSE 8111

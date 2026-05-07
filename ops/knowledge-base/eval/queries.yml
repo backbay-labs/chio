@@ -1,0 +1,394 @@
+fixtures:
+  - id: capability-validation
+    suite: core
+    category: code-retrieval
+    target_tool: kb_search_code
+    query: capability validation kernel token scope fail closed grants
+    limit: 12
+    expected_top_paths:
+      - crates/chio-kernel/src/kernel/mod.rs
+      - crates/chio-core-types/src/capability.rs
+    expected_any_paths:
+      - crates/chio-kernel/src/kernel/delegation.rs
+      - crates/chio-http-core/src/authority.rs
+    forbidden_top_paths:
+      - .planning
+      - target
+    max_latency_ms: 2500
+
+  - id: delegation-revocation
+    suite: core
+    category: code-retrieval
+    target_tool: kb_search_code
+    query: delegated capability revocation validation token revoked expiration attenuation
+    limit: 12
+    expected_top_paths:
+      - crates/chio-kernel/src/kernel/delegation.rs
+      - crates/chio-kernel/src/revocation_store.rs
+    expected_any_paths:
+      - crates/chio-kernel-core/src/capability_verify.rs
+      - crates/chio-core-types/src/capability.rs
+    forbidden_top_paths:
+      - crates/chio-tee
+      - .planning
+    max_latency_ms: 2500
+
+  - id: receipt-merkle-proof
+    suite: core
+    category: docs-retrieval
+    target_tool: kb_search_docs
+    query: receipt log Merkle committed signed decisions inclusion proof checkpoint
+    limit: 12
+    expected_top_paths:
+      - spec/PROTOCOL.md
+      - spec/schemas/chio-wire/v1/receipt/README.md
+    expected_any_paths:
+      - spec/schemas/chio-wire/v1/receipt/inclusion-proof.schema.json
+      - docs/standards/CHIO_RECEIPTS_PROFILE.md
+    forbidden_top_paths:
+      - .planning
+      - tests/conformance/reports/generated
+    max_latency_ms: 2500
+
+  - id: guard-pipeline
+    suite: core
+    category: code-retrieval
+    target_tool: kb_search_code
+    query: guard pipeline input output policy evaluator deny allow redaction
+    limit: 12
+    expected_top_paths:
+      - crates/chio-guards/src
+      - crates/chio-kernel/src/kernel/evaluator.rs
+    expected_any_paths:
+      - crates/chio-guards/src/mcp_tool.rs
+      - crates/chio-guards/src/lib.rs
+    forbidden_top_paths:
+      - .planning
+    max_latency_ms: 2500
+
+  - id: policy-compiler
+    suite: core
+    category: code-retrieval
+    target_tool: kb_search_code
+    query: policy compiler validate ruleset schema fail closed evaluate conditions
+    limit: 12
+    expected_top_paths:
+      - crates/chio-policy/src/validate.rs
+      - crates/chio-policy/src/evaluate/engine.rs
+    expected_any_paths:
+      - crates/chio-policy/src/lib.rs
+      - crates/chio-policy/src/models.rs
+    forbidden_top_paths:
+      - .planning
+    max_latency_ms: 2500
+
+  - id: mcp-adapter
+    suite: core
+    category: graph-and-bridge
+    target_tool: kb_search_code
+    query: MCP adapter transport envelope initialize tools call receipt bridge
+    limit: 12
+    expected_top_paths:
+      - crates/chio-mcp-adapter/src/lib.rs
+      - crates/chio-mcp-adapter/src/transport.rs
+    expected_any_paths:
+      - crates/chio-mcp-adapter/src/native.rs
+      - crates/chio-mcp-edge/src/runtime.rs
+    forbidden_top_paths:
+      - .planning
+    max_latency_ms: 2500
+
+  - id: sdk-conformance
+    suite: core
+    category: docs-retrieval
+    target_tool: kb_find_docs
+    query: SDK conformance peers binding vectors verdict matrix wire protocol
+    limit: 12
+    expected_top_paths:
+      - docs/conformance/verdict-matrix.md
+      - tests/conformance/README.md
+    expected_any_paths:
+      - tests/conformance/peers/js/README.md
+      - tests/conformance/peers/python/README.md
+    forbidden_top_paths:
+      - tests/conformance/results/generated
+      - .planning
+    max_latency_ms: 2500
+
+  - id: release-qualification
+    suite: core
+    category: operations
+    target_tool: kb_search_docs
+    query: release qualification audit gates conformance security candidate
+    limit: 12
+    expected_top_paths:
+      - docs/release/RELEASE_AUDIT.md
+      - docs/release/QUALIFICATION.md
+    expected_any_paths:
+      - docs/conformance/verdict-matrix.md
+      - spec/COMPLIANCE-CERTIFICATE.md
+      - docs/standards/CHIO_WEB3_QUALIFICATION_MATRIX.json
+    forbidden_top_paths:
+      - target
+      - tests/conformance/reports/generated
+    max_latency_ms: 2500
+
+  - id: docs-spec-security-receipts
+    suite: deep
+    category: docs-spec-retrieval
+    target_tool: kb_search_docs
+    query: security revocation receipt log signed decision capability token error registry
+    limit: 12
+    expected_top_paths:
+      - spec/SECURITY.md
+      - spec/PROTOCOL.md
+    expected_any_paths:
+      - spec/errors/registry.yaml
+      - docs/standards/CHIO_RECEIPTS_PROFILE.md
+    forbidden_top_paths:
+      - .planning
+      - docs/mercury
+    forbidden_any_paths:
+      - .planning
+    max_latency_ms: 2500
+
+  - id: feature-brief-revocation-receipts
+    suite: deep
+    category: feature-brief
+    target_tool: kb_brief_feature
+    query: delegated capability revocation with signed receipts
+    intent: auto
+    include_memory: true
+    limit: 5
+    expected_top_paths:
+      - crates/chio-kernel/src/kernel/delegation.rs
+      - crates/chio-kernel/src/revocation_store.rs
+    expected_any_paths:
+      - crates/chio-core-types/src/capability.rs
+      - spec/PROTOCOL.md
+      - crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
+    forbidden_top_paths:
+      - crates/chio-tee
+      - docs/mercury
+    expected_text_terms:
+      - revocation
+      - read_first
+    max_latency_ms: 7000
+
+  - id: feature-brief-release-qualification
+    suite: deep
+    category: feature-brief
+    target_tool: kb_brief_feature
+    query: release qualification evidence export compliance certificate signed receipts
+    intent: auto
+    include_memory: true
+    limit: 5
+    expected_top_paths:
+      - crates/chio-cli/src/evidence_export.rs
+      - crates/chio-kernel/src/evidence_export.rs
+    expected_any_paths:
+      - spec/COMPLIANCE-CERTIFICATE.md
+      - docs/release/QUALIFICATION.md
+      - crates/chio-kernel/tests/compliance_certificate_hybrid.rs
+    forbidden_top_paths:
+      - crates/chio-mercury
+      - docs/mercury
+    forbidden_text_terms:
+      - chio-mercury/src/commands/assurance_release.rs
+    max_latency_ms: 7000
+
+  - id: compound-test-revocation
+    suite: deep
+    category: test-discovery
+    target_tool: kb_find_tests
+    query: delegated capability revocation
+    limit: 12
+    expected_top_paths:
+      - crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
+      - crates/chio-revocation-oracle/tests/receipt_chain_proof.rs
+    expected_any_paths:
+      - crates/chio-revocation-oracle/tests/property_oracle.rs
+      - crates/chio-kernel-core/tests/revocation_view_concurrency.rs
+    forbidden_top_paths:
+      - crates/chio-tee
+      - crates/chio-kernel-mobile
+    max_latency_ms: 2500
+
+  - id: compound-test-compliance-certificate
+    suite: deep
+    category: test-discovery
+    target_tool: kb_find_tests
+    query: compliance certificate evidence export signed receipts
+    limit: 12
+    expected_top_paths:
+      - crates/chio-kernel/tests/compliance_certificate_hybrid.rs
+      - crates/chio-cli/tests/evidence_export.rs
+    expected_any_paths:
+      - crates/chio-kernel/src/kernel/tests/compliance_score.rs
+      - crates/chio-http-core/tests/compliance_score_endpoint.rs
+    forbidden_top_paths:
+      - crates/chio-mercury
+    max_latency_ms: 2500
+
+  - id: graph-neighbors-mcp-adapter
+    suite: deep
+    category: graph-navigation-impact
+    target_tool: kb_neighbors
+    query: crates/chio-mcp-adapter/src/lib.rs
+    depth: 2
+    limit: 12
+    expected_top_paths:
+      - crates/chio-mcp-adapter/src/lib.rs
+      - crates/chio-mcp-adapter/src/transport.rs
+    expected_any_paths:
+      - crates/chio-mcp-adapter
+      - integrations/mcp-adapter/tests/transport_round_trip.rs
+    forbidden_top_paths:
+      - docs/sdk/PYTHON.md
+      - docs/adr/README.md
+      - docs/mercury/README.md
+    forbidden_any_paths:
+      - .
+      - docs/sdk/PYTHON.md
+      - docs/adr/README.md
+      - docs/mercury/README.md
+    max_latency_ms: 2500
+
+  - id: graph-context-scoped-capability
+    suite: deep
+    category: graph-navigation-impact
+    target_tool: kb_context
+    query: capability:kernel-validation
+    limit: 20
+    expected_top_paths:
+      - crates/chio-kernel/src/kernel/mod.rs
+      - crates/chio-kernel/src/kernel/delegation.rs
+    expected_any_paths:
+      - crates/chio-core-types/src/capability.rs
+      - spec/PROTOCOL.md
+    expected_text_terms:
+      - primary_match
+      - capability:kernel-validation
+      - validation_commands
+    forbidden_any_paths:
+      - .
+    max_latency_ms: 2500
+
+  - id: feature-brief-guard-receipts
+    suite: deep
+    category: feature-brief
+    target_tool: kb_brief_feature
+    query: guard policy fail closed redaction pipeline signed receipts
+    intent: auto
+    include_memory: true
+    limit: 6
+    expected_top_paths:
+      - crates/chio-guards/src/pipeline.rs
+      - crates/chio-kernel/src/kernel/evaluator.rs
+    expected_any_paths:
+      - crates/chio-guards/tests/output_sanitization.rs
+      - crates/chio-policy/tests/compile_policy.rs
+      - spec/PROTOCOL.md
+    forbidden_top_paths:
+      - crates/chio-cli/src/evidence_export.rs
+      - crates/chio-store-sqlite/src/evidence_export.rs
+    expected_text_terms:
+      - guard-policy
+      - receipt
+    max_latency_ms: 7000
+
+  - id: feature-brief-mcp-sdk-receipts
+    suite: deep
+    category: feature-brief
+    target_tool: kb_brief_feature
+    query: MCP adapter capability token receipt propagation with SDK conformance
+    intent: auto
+    include_memory: true
+    limit: 6
+    expected_top_paths:
+      - crates/chio-mcp-adapter/src/lib.rs
+      - crates/chio-mcp-adapter/src/transport.rs
+    expected_any_paths:
+      - docs/conformance/verdict-matrix.md
+      - integrations/mcp-adapter/tests/transport_round_trip.rs
+      - crates/chio-conformance/verdict_matrix/tests/verdict_matrix_cross_language.rs
+    forbidden_top_paths:
+      - crates/chio-cli/src/evidence_export.rs
+      - crates/chio-kernel/src/evidence_export.rs
+    expected_text_terms:
+      - mcp-adapter
+      - sdk-conformance
+      - receipt
+    max_latency_ms: 7000
+
+  - id: graph-context-compliance-certificate-doc
+    suite: deep
+    category: graph-navigation-impact
+    target_tool: kb_context
+    query: spec/COMPLIANCE-CERTIFICATE.md
+    limit: 16
+    expected_top_paths:
+      - spec/COMPLIANCE-CERTIFICATE.md
+      - docs/release/QUALIFICATION.md
+    expected_any_paths:
+      - crates/chio-kernel/src/compliance_certificate.rs
+      - crates/chio-kernel/tests/compliance_certificate_hybrid.rs
+    forbidden_any_paths:
+      - .
+      - .planning
+      - docs/scratchpad
+    max_latency_ms: 2500
+
+  - id: graph-impact-delegation-tests
+    suite: deep
+    category: graph-navigation-impact
+    target_tool: kb_impact
+    query: crates/chio-kernel/src/kernel/delegation.rs
+    limit: 16
+    expected_top_paths:
+      - crates/chio-kernel/src/kernel/delegation.rs
+    expected_any_paths:
+      - crates/chio-revocation-oracle/tests/swarm_revocation_e2e.rs
+      - crates/chio-kernel-core/tests/revocation_view_concurrency.rs
+      - spec/PROTOCOL.md
+    forbidden_any_paths:
+      - .planning
+      - docs/scratchpad
+      - spec/schemas
+    max_latency_ms: 2500
+
+  - id: mercury-test-latency
+    suite: deep
+    category: test-discovery
+    target_tool: kb_find_tests
+    query: Mercury assurance release renewal
+    limit: 8
+    expected_top_paths:
+      - crates/chio-mercury/tests/cli.rs
+    expected_any_paths:
+      - crates/chio-mercury-core/tests/integration_smoke.rs
+    max_latency_ms: 2500
+
+  - id: graphiti-release-memory
+    suite: deep
+    category: graphiti-memory
+    target_tool: kb_search_memory
+    query: release qualification truth boundary evidence gate
+    limit: 5
+    expected_text_terms:
+      - release truth boundary
+      - qualification
+      - evidence
+    max_latency_ms: 7000
+
+  - id: graphiti-capability-memory
+    suite: deep
+    category: graphiti-memory
+    target_tool: kb_search_memory
+    query: capability revocation delegated receipts architecture decision
+    limit: 5
+    expected_text_terms:
+      - capability
+      - revocation
+      - receipts
+    max_latency_ms: 7000
