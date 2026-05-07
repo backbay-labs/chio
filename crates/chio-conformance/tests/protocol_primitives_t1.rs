@@ -8,8 +8,8 @@ use chio_core::capability::{
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{
     verify_receipt_v2_dag, ChioReceiptBody, ChioReceiptV2, Decision, GuardEvidence,
-    ReceiptDagParent, ReceiptHybridLogicalClock, ReceiptV2BodyHashInput, ReceiptV2ReplaySet,
-    ToolCallAction, TrustLevel,
+    ReceiptHybridLogicalClock, ReceiptV2BodyHashInput, ReceiptV2ReplaySet, ToolCallAction,
+    TrustLevel,
 };
 
 fn grant(operations: Vec<Operation>) -> ToolGrant {
@@ -197,15 +197,10 @@ fn receipt_v2_dag_cycle_shape_rejected() {
         },
     );
     let parent = ChioReceiptV2::sign("rcpt-parent", parent_body, &kp).unwrap();
-    let parent_descriptor = ReceiptDagParent {
-        body_hash: parent.body_hash.clone(),
-        chain_id: "chain-1".to_string(),
-        dag_ordinal: 4,
-    };
     let child_body = ReceiptV2BodyHashInput::from_v1_body(
         receipt_body(&kp),
         "chain-1",
-        vec![parent.body_hash],
+        vec![parent.body_hash.clone()],
         4,
         ReceiptHybridLogicalClock {
             wall_seconds: 1710000001,
@@ -214,5 +209,5 @@ fn receipt_v2_dag_cycle_shape_rejected() {
         },
     );
     let child = ChioReceiptV2::sign("rcpt-child", child_body, &kp).unwrap();
-    assert!(verify_receipt_v2_dag(&child, &[parent_descriptor]).is_err());
+    assert!(verify_receipt_v2_dag(&child, &[parent]).is_err());
 }

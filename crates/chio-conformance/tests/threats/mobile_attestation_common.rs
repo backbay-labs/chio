@@ -92,7 +92,7 @@ pub fn webauthn_fixture(
     auth_data.extend_from_slice(&sha256(app_id.as_bytes()));
     auth_data.push(0x40);
     auth_data.extend_from_slice(&1_u32.to_be_bytes());
-    auth_data.extend_from_slice(&[0_u8; 16]);
+    auth_data.extend_from_slice(b"appattest\0\0\0\0\0\0\0");
     auth_data.extend_from_slice(&(credential_id.len() as u16).to_be_bytes());
     auth_data.extend_from_slice(credential_id);
     auth_data.extend_from_slice(&cose_key()?);
@@ -133,7 +133,7 @@ pub fn signed_play_integrity_token(
     device_verdicts: &[&str],
     exp: u64,
 ) -> Result<String, Box<dyn Error>> {
-    let mut header = Header::new(Algorithm::HS256);
+    let mut header = Header::new(Algorithm::ES256);
     header.kid = Some(GOOGLE_PLAY_INTEGRITY_ROOT_KID.to_string());
     let claims = TestClaims {
         nonce: nonce.to_string(),

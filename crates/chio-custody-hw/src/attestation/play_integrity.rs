@@ -3,8 +3,8 @@
 //! # Trust contract
 //!
 //! The verifier takes the current Google JWKS document from the caller,
-//! selects the JWK by token `kid`, validates the JWS under the selected
-//! key's advertised algorithm, and then enforces the Play Integrity
+//! selects the JWK by token `kid`, validates the JWS under ES256/P-256
+//! key material, and then enforces the Play Integrity
 //! claim contract:
 //!
 //! - `aud` must match `expected_audience`.
@@ -15,7 +15,7 @@
 //! - `device_integrity.device_recognition_verdict` must contain
 //!   [`MEETS_DEVICE_INTEGRITY`].
 
-use jsonwebtoken::jwk::{Jwk, JwkSet, KeyAlgorithm};
+use jsonwebtoken::jwk::{AlgorithmParameters, EllipticCurve, Jwk, JwkSet, KeyAlgorithm};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
@@ -163,24 +163,27 @@ fn jwk_algorithm(jwk: &Jwk) -> Result<Algorithm, AttestationError> {
     let algorithm = jwk.common.key_algorithm.ok_or_else(|| {
         AttestationError::PlayIntegrityInvalidToken("JWKS key has no alg".to_string())
     })?;
-    match algorithm {
-        KeyAlgorithm::HS256 => Ok(Algorithm::HS256),
-        KeyAlgorithm::HS384 => Ok(Algorithm::HS384),
-        KeyAlgorithm::HS512 => Ok(Algorithm::HS512),
-        KeyAlgorithm::ES256 => Ok(Algorithm::ES256),
-        KeyAlgorithm::ES384 => Ok(Algorithm::ES384),
-        KeyAlgorithm::RS256 => Ok(Algorithm::RS256),
-        KeyAlgorithm::RS384 => Ok(Algorithm::RS384),
-        KeyAlgorithm::RS512 => Ok(Algorithm::RS512),
-        KeyAlgorithm::PS256 => Ok(Algorithm::PS256),
-        KeyAlgorithm::PS384 => Ok(Algorithm::PS384),
-        KeyAlgorithm::PS512 => Ok(Algorithm::PS512),
-        KeyAlgorithm::EdDSA => Ok(Algorithm::EdDSA),
-        KeyAlgorithm::RSA1_5 | KeyAlgorithm::RSA_OAEP | KeyAlgorithm::RSA_OAEP_256 => {
+    if algorithm != KeyAlgorithm::ES256 {
+        return Err(AttestationError::PlayIntegrityInvalidToken(format!(
+            "unsupported Play Integrity JWKS signing alg {:?}; expected ES256",
+            algorithm
+        )));
+    }
+    match &jwk.algorithm {
+        AlgorithmParameters::EllipticCurve(params) if params.curve == EllipticCurve::P256 => {
+            Ok(Algorithm::ES256)
+        }
+        AlgorithmParameters::EllipticCurve(params) => {
             Err(AttestationError::PlayIntegrityInvalidToken(format!(
-                "unsupported JWKS signing alg {:?}",
-                algorithm
+                "Play Integrity ES256 JWKS key must use P-256, got {:?}",
+                params.curve
             )))
         }
+        AlgorithmParameters::OctetKey(_) => Err(AttestationError::PlayIntegrityInvalidToken(
+            "Play Integrity JWKS must not contain symmetric keys".to_string(),
+        )),
+        _ => Err(AttestationError::PlayIntegrityInvalidToken(
+            "Play Integrity JWKS key must be an ES256 P-256 EC key".to_string(),
+        )),
     }
 }

@@ -8,7 +8,7 @@ quietly collapse back into monolithic shells.
 
 | Surface | Runtime shell responsibility | Extracted boundary |
 | --- | --- | --- |
-| `crates/chio-cli/src/remote_mcp.rs` | hosted MCP session lifecycle, auth, edge routing, and transport orchestration | `crates/chio-cli/src/remote_mcp/admin.rs` owns remote admin routes, admin-only storage access, and session trust control handlers |
+| `crates/chio-mcp-remote/src/remote_mcp/http_service.rs` | hosted MCP session lifecycle, auth, edge routing, and transport orchestration | `crates/chio-mcp-remote/src/remote_mcp/admin.rs` owns remote admin routes, admin-only storage access, and session trust control handlers |
 | `crates/chio-cli/src/trust_control.rs` | trust-service routing, issuance, registry operations, remote client entrypoints, and cluster coordination | `crates/chio-cli/src/trust_control/health.rs` owns health-report composition and cluster health projection; `crates/chio-cli/src/federation_policy.rs` owns the bounded federation-policy model; `crates/chio-cli/src/scim_lifecycle.rs` owns the bounded SCIM lifecycle model |
 | `crates/chio-mcp-edge/src/runtime.rs` | `ChioMcpEdge` state machine, task orchestration, runtime event forwarding, and inbound loop control | `crates/chio-mcp-edge/src/runtime/protocol.rs` owns JSON-RPC shaping, task/result metadata, transport glue, pagination, and capability selection helpers |
 | `crates/chio-kernel/src/lib.rs` | kernel policy flow, dispatch, receipt persistence, checkpoint triggering, and public crate surface | `crates/chio-kernel/src/receipt_support.rs` owns receipt hashing and metadata helpers; `crates/chio-kernel/src/request_matching.rs` owns session request tracking plus capability and constraint matching |
@@ -18,8 +18,8 @@ quietly collapse back into monolithic shells.
 - `chio-cli` stays a shell. `crates/chio-cli/src/main.rs` re-exports runtime
   surfaces from `chio-hosted-mcp` and `chio-control-plane` instead of inlining
   additional giant modules.
-- `chio-hosted-mcp` remains the owner of the remote MCP HTTP edge via
-  `#[path = "../../chio-cli/src/remote_mcp.rs"]`.
+- `chio-mcp-remote` owns the remote MCP HTTP edge. `chio-hosted-mcp`
+  remains a compatibility crate that re-exports the remote server entrypoint.
 - `chio-control-plane` remains the owner of the trust-control service via
   `#[path = "../../chio-cli/src/trust_control.rs"]`.
 - `chio-mcp-edge` keeps protocol glue separate from the runtime loop so JSON-RPC

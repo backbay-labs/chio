@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use base64ct::{Base64UrlUnpadded, Encoding};
 use chio_custody_hw::attestation::google_root::{
     play_integrity_encoding_key, play_integrity_jwks_json, play_integrity_root_sha256_hex,
     GOOGLE_PLAY_INTEGRITY_ISSUER, GOOGLE_PLAY_INTEGRITY_ROOT_KID,
@@ -8,7 +9,7 @@ use chio_custody_hw::{
     verify_mobile_receipt_chain, verify_play_integrity, AttestationError,
     PlayIntegrityVerificationInput, MEETS_DEVICE_INTEGRITY, PLAY_RECOGNIZED,
 };
-use jsonwebtoken::{encode, Algorithm, Header};
+use jsonwebtoken::{decode_header, encode, Algorithm, EncodingKey, Header};
 use serde::Serialize;
 
 const PACKAGE: &str = "dev.chio.patient";
@@ -43,6 +44,7 @@ struct TestDeviceIntegrity {
 #[test]
 fn play_integrity_verifier_accepts_signed_fixture() -> Result<(), Box<dyn Error>> {
     let token = signed_token(NONCE, PACKAGE, PLAY_RECOGNIZED, &[MEETS_DEVICE_INTEGRITY])?;
+    assert_eq!(decode_header(&token)?.alg, Algorithm::ES256);
     let verified = verify_play_integrity(PlayIntegrityVerificationInput {
         token: &token,
         expected_nonce: NONCE,
@@ -136,25 +138,7 @@ fn signed_token_with_exp(
     device_verdicts: &[&str],
     exp: Option<u64>,
 ) -> Result<String, Box<dyn Error>> {
-    signed_token_with_alg(
-        nonce,
-        package_name,
-        app_verdict,
-        device_verdicts,
-        exp,
-        Algorithm::HS256,
-    )
-}
-
-fn signed_token_with_alg(
-    nonce: &str,
-    package_name: &str,
-    app_verdict: &str,
-    device_verdicts: &[&str],
-    exp: Option<u64>,
-    algorithm: Algorithm,
-) -> Result<String, Box<dyn Error>> {
-    let mut header = Header::new(algorithm);
+    let mut header = Header::new(Algorithm::ES256);
     header.kid = Some(GOOGLE_PLAY_INTEGRITY_ROOT_KID.to_string());
     let claims = TestClaims {
         nonce: nonce.to_string(),
@@ -176,7 +160,7 @@ fn signed_token_with_alg(
 }
 
 fn signed_token_with_issuer(issuer: &str) -> Result<String, Box<dyn Error>> {
-    let mut header = Header::new(Algorithm::HS256);
+    let mut header = Header::new(Algorithm::ES256);
     header.kid = Some(GOOGLE_PLAY_INTEGRITY_ROOT_KID.to_string());
     let claims = TestClaims {
         nonce: NONCE.to_string(),
@@ -289,13 +273,63 @@ fn play_integrity_verifier_rejects_wrong_audience() -> Result<(), Box<dyn Error>
 }
 
 #[test]
-fn play_integrity_verifier_rejects_alg_downgrade() -> Result<(), Box<dyn Error>> {
-    let token = signed_token_with_alg(
-        NONCE,
-        PACKAGE,
-        PLAY_RECOGNIZED,
-        &[MEETS_DEVICE_INTEGRITY],
-        Some(future_exp()?),
+fn play_integrity_verifier_rejects_non_es256_asymmetric_algs() -> Result<(), Box<dyn Error>> {
+    let cases = [
+        (
+            "rsa",
+            Algorithm::RS256,
+            unsupported_alg_jwks_json("rsa", "RS256"),
+        ),
+        (
+            "pss",
+            Algorithm::PS256,
+            unsupported_alg_jwks_json("pss", "PS256"),
+        ),
+        (
+            "eddsa",
+            Algorithm::EdDSA,
+            unsupported_alg_jwks_json("eddsa", "EdDSA"),
+        ),
+        (
+            "es384",
+            Algorithm::ES384,
+            unsupported_alg_jwks_json("es384", "ES384"),
+        ),
+    ];
+
+    for (kid, algorithm, jwks_json) in cases {
+        let token = token_with_header_alg(algorithm, kid)?;
+        let error = verify_play_integrity(PlayIntegrityVerificationInput {
+            token: &token,
+            expected_nonce: NONCE,
+            expected_package_name: PACKAGE,
+            expected_audience: AUDIENCE,
+            jwks_json: &jwks_json,
+        })
+        .err()
+        .ok_or("expected unsupported asymmetric algorithm rejection")?;
+        assert_invalid_token_contains(error, "unsupported Play Integrity JWKS signing alg", kid);
+    }
+    let jwks_json = p384_jwks_with_es256_alg("p384-es256");
+    let token = token_with_header_alg(Algorithm::ES256, "p384-es256")?;
+    let error = verify_play_integrity(PlayIntegrityVerificationInput {
+        token: &token,
+        expected_nonce: NONCE,
+        expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &jwks_json,
+    })
+    .err()
+    .ok_or("expected P-384 curve rejection")?;
+    assert_invalid_token_contains(error, "must use P-256", "p384-es256");
+    Ok(())
+}
+
+#[test]
+fn play_integrity_verifier_rejects_symmetric_alg_downgrade() -> Result<(), Box<dyn Error>> {
+    let token = signed_symmetric_token_with_alg(
+        b"attacker-controlled-play-integrity-secret",
+        GOOGLE_PLAY_INTEGRITY_ROOT_KID,
         Algorithm::HS384,
     )?;
     let error = verify_play_integrity(PlayIntegrityVerificationInput {
@@ -312,6 +346,140 @@ fn play_integrity_verifier_rejects_alg_downgrade() -> Result<(), Box<dyn Error>>
         AttestationError::PlayIntegrityInvalidToken(_)
     ));
     Ok(())
+}
+
+#[test]
+fn play_integrity_verifier_rejects_symmetric_jwks_fail_closed() -> Result<(), Box<dyn Error>> {
+    let secret = b"attacker-controlled-play-integrity-secret";
+    let kid = "attacker-hmac";
+    let token = signed_symmetric_token(secret, kid)?;
+    let jwks = serde_json::json!({
+        "keys": [
+            {
+                "kty": "oct",
+                "alg": "HS256",
+                "kid": kid,
+                "use": "sig",
+                "k": Base64UrlUnpadded::encode_string(secret)
+            }
+        ]
+    })
+    .to_string();
+
+    let error = verify_play_integrity(PlayIntegrityVerificationInput {
+        token: &token,
+        expected_nonce: NONCE,
+        expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &jwks,
+    })
+    .err()
+    .ok_or("expected symmetric JWKS rejection")?;
+    assert!(matches!(
+        error,
+        AttestationError::PlayIntegrityInvalidToken(_)
+    ));
+    Ok(())
+}
+
+fn signed_symmetric_token(secret: &[u8], kid: &str) -> Result<String, Box<dyn Error>> {
+    signed_symmetric_token_with_alg(secret, kid, Algorithm::HS256)
+}
+
+fn signed_symmetric_token_with_alg(
+    secret: &[u8],
+    kid: &str,
+    algorithm: Algorithm,
+) -> Result<String, Box<dyn Error>> {
+    let mut header = Header::new(algorithm);
+    header.kid = Some(kid.to_string());
+    let claims = TestClaims {
+        nonce: NONCE.to_string(),
+        app_integrity: TestAppIntegrity {
+            app_recognition_verdict: PLAY_RECOGNIZED.to_string(),
+            package_name: PACKAGE.to_string(),
+        },
+        device_integrity: TestDeviceIntegrity {
+            device_recognition_verdict: vec![MEETS_DEVICE_INTEGRITY.to_string()],
+        },
+        aud: AUDIENCE.to_string(),
+        iss: GOOGLE_PLAY_INTEGRITY_ISSUER.to_string(),
+        exp: Some(future_exp()?),
+    };
+    encode(&header, &claims, &EncodingKey::from_secret(secret)).map_err(Into::into)
+}
+
+fn token_with_header_alg(algorithm: Algorithm, kid: &str) -> Result<String, Box<dyn Error>> {
+    let mut header = Header::new(algorithm);
+    header.kid = Some(kid.to_string());
+    let header_b64 = Base64UrlUnpadded::encode_string(&serde_json::to_vec(&header)?);
+    let claims_b64 = Base64UrlUnpadded::encode_string(br#"{}"#);
+    Ok(format!("{header_b64}.{claims_b64}.signature"))
+}
+
+fn assert_invalid_token_contains(error: AttestationError, expected: &str, label: &str) {
+    match error {
+        AttestationError::PlayIntegrityInvalidToken(message) => assert!(
+            message.contains(expected),
+            "{label} should reject before signature verification with message containing {expected:?}, got {message:?}"
+        ),
+        other => panic!("{label} should fail as an invalid Play Integrity token, got {other:?}"),
+    }
+}
+
+fn unsupported_alg_jwks_json(kid: &str, alg: &str) -> String {
+    let key = match alg {
+        "RS256" | "PS256" => serde_json::json!({
+            "kty": "RSA",
+            "alg": alg,
+            "kid": kid,
+            "use": "sig",
+            "n": "AQAB",
+            "e": "AQAB"
+        }),
+        "EdDSA" => serde_json::json!({
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "alg": alg,
+            "kid": kid,
+            "use": "sig",
+            "x": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }),
+        "ES384" => serde_json::json!({
+            "kty": "EC",
+            "crv": "P-384",
+            "alg": alg,
+            "kid": kid,
+            "use": "sig",
+            "x": "w7JAoU_gJbZJvV-zCOvU9yFJq0FNC_edCMRM78P8eQQ",
+            "y": "wQg1EytcsEmGrM70Gb53oluoDbVhCZ3Uq3hHMslHVb4"
+        }),
+        _ => serde_json::json!({
+            "kty": "oct",
+            "alg": alg,
+            "kid": kid,
+            "use": "sig",
+            "k": "AA"
+        }),
+    };
+    serde_json::json!({ "keys": [key] }).to_string()
+}
+
+fn p384_jwks_with_es256_alg(kid: &str) -> String {
+    serde_json::json!({
+        "keys": [
+            {
+                "kty": "EC",
+                "crv": "P-384",
+                "alg": "ES256",
+                "kid": kid,
+                "use": "sig",
+                "x": "w7JAoU_gJbZJvV-zCOvU9yFJq0FNC_edCMRM78P8eQQ",
+                "y": "wQg1EytcsEmGrM70Gb53oluoDbVhCZ3Uq3hHMslHVb4"
+            }
+        ]
+    })
+    .to_string()
 }
 
 fn future_exp() -> Result<u64, Box<dyn Error>> {
