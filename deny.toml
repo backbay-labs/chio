@@ -15,33 +15,15 @@ no-default-features = false
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-# The ignore list exceeds the ~6-entry soft cap for structural reasons: the
-# advisory db carried 4 rustls-webpki CVEs against a single 0.103.9 pin,
-# plus several unmaintained advisories. The 0.103 path was bumped to 0.103.13
-# in the trajectory-4 readiness sweep. The remaining rustls-webpki hits are
-# through the AWS SDK rustls 0.21 path and require an AWS stack migration,
-# not a direct lockfile bump.
-# Each cluster collapses to one upstream-dep bump:
-#   - migrate the AWS SDK rustls 0.21 path off rustls-webpki 0.101.x
-#   - migrate off rustls-pemfile, bincode 1, fxhash, paste, serde_yml
-#   - bump rsa to clear RUSTSEC-2023-0071 (Marvin) once an upstream fix lands
+# The ignore list exceeds the ~6-entry soft cap for structural reasons:
+# remaining entries are either unmaintained build-time/test-only transitives,
+# ecosystem migrations that need coordinated upstream bumps, or one RSA
+# advisory with no upstream fix. Trajectory-4 follow-up removed the AWS SDK
+# legacy rustls 0.21 path, so rustls-webpki advisories are no longer ignored.
 # Prune the corresponding entries here when those bumps land.
-# M06.P4 refresh: last-checked = 2026-05-02. Each ignore below is either
+# M06.P4 refresh: last-checked = 2026-05-05. Each ignore below is either
 # closed by a lockfile bump in this phase or re-justified with a dated status.
 ignore = [
-    # --- rustls-webpki cluster. ---
-    # last-checked = 2026-05-05; rustls-webpki 0.103.9 was bumped to 0.103.13.
-    # The remaining exposure is the AWS SDK rustls 0.21 path on rustls-webpki 0.101.x.
-    # last-checked = 2026-05-05; Name constraints for URI names incorrectly accepted on the AWS rustls 0.21 path.
-    # Fix requires migrating that path to a rustls stack with rustls-webpki >=0.103.12.
-    "RUSTSEC-2026-0098",
-    # last-checked = 2026-05-05; Name constraints accepted for certificates asserting a wildcard name on the AWS rustls 0.21 path.
-    # Fix requires migrating that path to a rustls stack with rustls-webpki >=0.103.12.
-    "RUSTSEC-2026-0099",
-    # last-checked = 2026-05-05; Reachable panic in CRL parsing on the AWS rustls 0.21 path.
-    # Fix requires migrating that path to a rustls stack with rustls-webpki >=0.103.13.
-    "RUSTSEC-2026-0104",
-
     # --- unmaintained / unsound clusters: each requires a dep migration. ---
     # last-checked = 2026-05-02; bincode 1.3.3 unmaintained (RUSTSEC-2025-0141). Pulled by uniffi 0.28.x build deps;
     # only used in chio-kernel-mobile codegen, not at runtime. Migrate uniffi or accept.
@@ -59,9 +41,10 @@ ignore = [
     # We do not register a custom global logger that calls rand::rng(); risk is latent.
     # Clears with the rand-family unification ticket already noted in [bans.skip].
     "RUSTSEC-2026-0097",
-    # last-checked = 2026-05-02; RSA Marvin attack timing sidechannel (RUSTSEC-2023-0071). The `rsa` crate is
-    # pulled transitively only; we do not perform RSA private-key operations on
-    # network-observable timing paths. No upstream fix yet (tracked in rsa#19).
+    # last-checked = 2026-05-05; RSA Marvin attack timing sidechannel (RUSTSEC-2023-0071). Production uses RSA
+    # only for public-key verification of OIDC/JWKS and platform attestations;
+    # private-key signing is confined to tests. No upstream fix yet (tracked
+    # in rsa#19).
     "RUSTSEC-2023-0071",
     # last-checked = 2026-05-02; ansi_term is pulled only by dudect-bencher's legacy clap 2 harness for
     # local timing experiments. It is not linked into production binaries.
@@ -436,9 +419,6 @@ name = "foldhash"
 name = "group"
 
 [[bans.skip]]
-name = "h2"
-
-[[bans.skip]]
 name = "hermit-abi"
 
 [[bans.skip]]
@@ -449,12 +429,6 @@ name = "http"
 
 [[bans.skip]]
 name = "http-body"
-
-[[bans.skip]]
-name = "hyper"
-
-[[bans.skip]]
-name = "hyper-rustls"
 
 [[bans.skip]]
 name = "indexmap"
@@ -514,12 +488,6 @@ name = "reqwest"
 name = "rfc6979"
 
 [[bans.skip]]
-name = "rustls"
-
-[[bans.skip]]
-name = "rustls-webpki"
-
-[[bans.skip]]
 name = "sec1"
 
 [[bans.skip]]
@@ -551,9 +519,6 @@ name = "thiserror"
 
 [[bans.skip]]
 name = "thiserror-impl"
-
-[[bans.skip]]
-name = "tokio-rustls"
 
 [[bans.skip]]
 name = "toml"

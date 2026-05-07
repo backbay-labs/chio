@@ -1,0 +1,23 @@
+{
+  "name": "Chio agent workflow constraints",
+  "type": "workflow_constraint",
+  "source_description": "Curated seed for local agent workflow constraints.",
+  "scope": "chio-repo",
+  "body": {
+    "summary": "Agents using the local Chio KB should treat kb_brief_feature as orientation, then verify with repo files and local tests. The KB accelerates retrieval but never replaces source, CI, or release gates.",
+    "constraints": [
+      "Use focused validation commands from KB output before broad workspace gates.",
+      "Cross-check graph results against code and docs when editing shared protocol behavior.",
+      "If a brief reports coverage gaps, run targeted kb_search_code, kb_search_docs, and kb_find_tests queries before implementation.",
+      "Do not feed raw source or bulk docs into Graphiti."
+    ],
+    "preferred_tools": [
+      "kb_brief_feature",
+      "kb_search_code",
+      "kb_search_docs",
+      "kb_find_tests",
+      "kb_context",
+      "kb_impact"
+    ]
+  }
+}

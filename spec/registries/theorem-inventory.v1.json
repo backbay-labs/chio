@@ -64,7 +64,7 @@
       "id": "theorem.receipt.body_hash_input_set_pinned",
       "kind": "lean",
       "status": "proposed",
-      "statement": "For any chio.receipt.v2 body B, the set of fields contributing to body_hash is exactly fields(B) \\\\ {body_hash, signature, receipt_id}. The Lean proof regenerates from the JSON schema; any drift fails the proof.",
+      "statement": "For any chio.receipt.v2 body B, the intended set of fields contributing to body_hash is exactly fields(B) \\\\ {body_hash, signature, receipt_id}. The Lean model and schema-drift gate remain proposed and do not yet certify an enforced verifier claim.",
       "introduced_by": "trajectory-4/T1.2",
       "depends_on": []
     },
@@ -72,7 +72,7 @@
       "id": "theorem.receipt.body_hash_collision_resistance",
       "kind": "lean",
       "status": "proposed",
-      "statement": "Under the standard SHA-256 collision-resistance assumption, distinct ReceiptV2BodyHashInput values produce distinct body_hash values with negligible collision probability.",
+      "statement": "Under the standard SHA-256 collision-resistance assumption, distinct ReceiptV2BodyHashInput values are intended to produce distinct body_hash values with negligible collision probability. This theorem is proposed until a checker-backed proof is wired.",
       "introduced_by": "trajectory-4/T1.2",
       "depends_on": ["theorem.receipt.body_hash_input_set_pinned"]
     },

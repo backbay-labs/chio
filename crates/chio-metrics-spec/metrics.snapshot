@@ -13,6 +13,9 @@ chio_guard_evaluations_total|counter|guard,outcome||Total guard evaluation outco
 chio_guard_fuel_consumed_total|counter|guard_id||Total WASM guard fuel units consumed.
 chio_guard_host_call_duration_seconds|histogram|guard_id,host_fn|0.00001,0.00005,0.0001,0.0005,0.001,0.005,0.01,0.05,0.1|WASM guard host-call duration in seconds.
 chio_guard_module_bytes|gauge|guard_id,epoch||Loaded WASM guard module size in bytes.
+chio_guard_pool_checkout_total|counter|guard_id,tenant_id||Total WASM guard pool checkout outcomes by tenant.
+chio_guard_pool_evict_total|counter|guard_id,tenant_id||Total WASM guard pool evictions by tenant.
+chio_guard_pool_warm_size|gauge|guard_id,tenant_id||Warm WASM guard pool size by tenant.
 chio_guard_reload_total|counter|guard_id,outcome||Total WASM guard reload outcomes.
 chio_guard_verdict_total|counter|guard_id,verdict||Total WASM guard verdicts by guard and verdict.
 chio_kernel_decision_latency_seconds|histogram|surface,outcome|0.025,0.05,0.075,0.1,0.25,0.5,1.0,2.5|Kernel mediation decision latency in seconds.

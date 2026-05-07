@@ -1,5 +1,6 @@
 # Build artifacts
 /target/
+/target-shared/
 **/*.rs.bk
 
 # Release SBOM evidence is committed under supply-chain/sbom/v{tag}/.
@@ -27,6 +28,7 @@ Thumbs.db
 # Environment
 .env
 .env.*
+!ops/knowledge-base/.env.example
 
 # Debug
 *.pdb
@@ -42,6 +44,9 @@ output/playwright/
 # Generated Python packaging and cache artifacts
 __pycache__/
 *.py[cod]
+ops/knowledge-base/.pytest_cache/
+ops/knowledge-base/.venv/
+ops/knowledge-base/.cocoindex/
 examples/anthropic-sdk/node_modules/
 examples/openai-compatible/node_modules/
 examples/langchain/*.egg-info/

@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: 9ed7ccddee1378164a5a7aba97d482833ee71b4f95c562137265899d61aa5f48
+// Schema content SHA-256: 4dd860b33178e66d250e1524b4463c327c07badc325726d05c9e02afdd9f2b46
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -31,6 +31,19 @@ const (
 // Defines values for AgentListCapabilitiesType.
 const (
 	AgentListCapabilitiesTypeListCapabilities AgentListCapabilitiesType = "list_capabilities"
+)
+
+// Defines values for AgentToolCallRequestCapabilityTokenAlgorithm.
+const (
+	AgentToolCallRequestCapabilityTokenAlgorithmEd25519 AgentToolCallRequestCapabilityTokenAlgorithm = "ed25519"
+	AgentToolCallRequestCapabilityTokenAlgorithmHybrid  AgentToolCallRequestCapabilityTokenAlgorithm = "hybrid"
+	AgentToolCallRequestCapabilityTokenAlgorithmP256    AgentToolCallRequestCapabilityTokenAlgorithm = "p256"
+	AgentToolCallRequestCapabilityTokenAlgorithmP384    AgentToolCallRequestCapabilityTokenAlgorithm = "p384"
+)
+
+// Defines values for AgentToolCallRequestCapabilityTokenSchema.
+const (
+	AgentToolCallRequestCapabilityTokenSchemaChioCapabilityV1 AgentToolCallRequestCapabilityTokenSchema = "chio.capability.v1"
 )
 
 // Defines values for AgentToolCallRequestCapabilityTokenScopeGrantsOperations.
@@ -68,6 +81,29 @@ const (
 	AgentToolCallRequestTypeToolCallRequest AgentToolCallRequestType = "tool_call_request"
 )
 
+// Defines values for AnchorBatchBodySchema.
+const (
+	AnchorBatchBodySchemaChioAnchorBatchV1 AnchorBatchBodySchema = "chio.anchor_batch.v1"
+)
+
+// Defines values for AnchorBatchWitnessKind.
+const (
+	AnchorBatchWitnessKindOts        AnchorBatchWitnessKind = "ots"
+	AnchorBatchWitnessKindRekor      AnchorBatchWitnessKind = "rekor"
+	AnchorBatchWitnessKindSolanaMemo AnchorBatchWitnessKind = "solana_memo"
+)
+
+// Defines values for CapabilityCapabilitiesMaxCapabilitySchema.
+const (
+	CapabilityCapabilitiesMaxCapabilitySchemaChioCapabilityV1 CapabilityCapabilitiesMaxCapabilitySchema = "chio.capability.v1"
+	CapabilityCapabilitiesMaxCapabilitySchemaChioCapabilityV2 CapabilityCapabilitiesMaxCapabilitySchema = "chio.capability.v2"
+)
+
+// Defines values for CapabilityCapabilitiesSchema.
+const (
+	CapabilityCapabilitiesSchemaChioCapabilitiesV1 CapabilityCapabilitiesSchema = "chio.capabilities.v1"
+)
+
 // Defines values for CapabilityGrantOperation.
 const (
 	CapabilityGrantOperationDelegate   CapabilityGrantOperation = "delegate"
@@ -81,8 +117,14 @@ const (
 // Defines values for CapabilityTokenAlgorithm.
 const (
 	CapabilityTokenAlgorithmEd25519 CapabilityTokenAlgorithm = "ed25519"
+	CapabilityTokenAlgorithmHybrid  CapabilityTokenAlgorithm = "hybrid"
 	CapabilityTokenAlgorithmP256    CapabilityTokenAlgorithm = "p256"
 	CapabilityTokenAlgorithmP384    CapabilityTokenAlgorithm = "p384"
+)
+
+// Defines values for CapabilityTokenSchema.
+const (
+	CapabilityTokenSchemaChioCapabilityV1 CapabilityTokenSchema = "chio.capability.v1"
 )
 
 // Defines values for CapabilityTokenOperation.
@@ -93,6 +135,72 @@ const (
 	CapabilityTokenOperationRead       CapabilityTokenOperation = "read"
 	CapabilityTokenOperationReadResult CapabilityTokenOperation = "read_result"
 	CapabilityTokenOperationSubscribe  CapabilityTokenOperation = "subscribe"
+)
+
+// Defines values for CapabilityTokenV1Algorithm.
+const (
+	CapabilityTokenV1AlgorithmEd25519 CapabilityTokenV1Algorithm = "ed25519"
+	CapabilityTokenV1AlgorithmP256    CapabilityTokenV1Algorithm = "p256"
+	CapabilityTokenV1AlgorithmP384    CapabilityTokenV1Algorithm = "p384"
+)
+
+// Defines values for CapabilityTokenV1Schema.
+const (
+	CapabilityTokenV1SchemaChioCapabilityV1 CapabilityTokenV1Schema = "chio.capability.v1"
+)
+
+// Defines values for CapabilityTokenV1Operation.
+const (
+	CapabilityTokenV1OperationDelegate   CapabilityTokenV1Operation = "delegate"
+	CapabilityTokenV1OperationGet        CapabilityTokenV1Operation = "get"
+	CapabilityTokenV1OperationInvoke     CapabilityTokenV1Operation = "invoke"
+	CapabilityTokenV1OperationRead       CapabilityTokenV1Operation = "read"
+	CapabilityTokenV1OperationReadResult CapabilityTokenV1Operation = "read_result"
+	CapabilityTokenV1OperationSubscribe  CapabilityTokenV1Operation = "subscribe"
+)
+
+// Defines values for CapabilityTokenV2Algorithm.
+const (
+	CapabilityTokenV2AlgorithmEd25519 CapabilityTokenV2Algorithm = "ed25519"
+	CapabilityTokenV2AlgorithmHybrid  CapabilityTokenV2Algorithm = "hybrid"
+	CapabilityTokenV2AlgorithmP256    CapabilityTokenV2Algorithm = "p256"
+	CapabilityTokenV2AlgorithmP384    CapabilityTokenV2Algorithm = "p384"
+)
+
+// Defines values for CapabilityTokenV2Schema.
+const (
+	CapabilityTokenV2SchemaChioCapabilityV2 CapabilityTokenV2Schema = "chio.capability.v2"
+)
+
+// Defines values for CapabilityTokenV2CaveatKind.
+const (
+	CapabilityTokenV2CaveatKindBindSession        CapabilityTokenV2CaveatKind = "bind_session"
+	CapabilityTokenV2CaveatKindRestrictAudience   CapabilityTokenV2CaveatKind = "restrict_audience"
+	CapabilityTokenV2CaveatKindRestrictGeo        CapabilityTokenV2CaveatKind = "restrict_geo"
+	CapabilityTokenV2CaveatKindRestrictTimeWindow CapabilityTokenV2CaveatKind = "restrict_time_window"
+	CapabilityTokenV2CaveatKindRestrictTool       CapabilityTokenV2CaveatKind = "restrict_tool"
+)
+
+// Defines values for CapabilityTokenV2GrantSubsetRelationGrantKind.
+const (
+	CapabilityTokenV2GrantSubsetRelationGrantKindPrompt   CapabilityTokenV2GrantSubsetRelationGrantKind = "prompt"
+	CapabilityTokenV2GrantSubsetRelationGrantKindResource CapabilityTokenV2GrantSubsetRelationGrantKind = "resource"
+	CapabilityTokenV2GrantSubsetRelationGrantKindTool     CapabilityTokenV2GrantSubsetRelationGrantKind = "tool"
+)
+
+// Defines values for CapabilityTokenV2GrantSubsetRelationSubset.
+const (
+	CapabilityTokenV2GrantSubsetRelationSubsetTrue CapabilityTokenV2GrantSubsetRelationSubset = true
+)
+
+// Defines values for CapabilityTokenV2Operation.
+const (
+	CapabilityTokenV2OperationDelegate   CapabilityTokenV2Operation = "delegate"
+	CapabilityTokenV2OperationGet        CapabilityTokenV2Operation = "get"
+	CapabilityTokenV2OperationInvoke     CapabilityTokenV2Operation = "invoke"
+	CapabilityTokenV2OperationRead       CapabilityTokenV2Operation = "read"
+	CapabilityTokenV2OperationReadResult CapabilityTokenV2Operation = "read_result"
+	CapabilityTokenV2OperationSubscribe  CapabilityTokenV2Operation = "subscribe"
 )
 
 // Defines values for ErrorCapabilityDeniedCode.
@@ -138,6 +246,11 @@ const (
 // Defines values for JsonrpcResponseJsonrpc.
 const (
 	JsonrpcResponseJsonrpcN20 JsonrpcResponseJsonrpc = "2.0"
+)
+
+// Defines values for KernelCapabilityListCapabilitiesSchema.
+const (
+	KernelCapabilityListCapabilitiesSchemaChioCapabilityV1 KernelCapabilityListCapabilitiesSchema = "chio.capability.v1"
 )
 
 // Defines values for KernelCapabilityListCapabilitiesScopeGrantsOperations.
@@ -332,6 +445,11 @@ const (
 	ProvenanceVerdictLink3VerdictIncomplete ProvenanceVerdictLink3Verdict = "incomplete"
 )
 
+// Defines values for ReceiptLineageStatementV2Schema.
+const (
+	ReceiptLineageStatementV2SchemaChioReceiptLineageStatementV2 ReceiptLineageStatementV2Schema = "chio.receipt_lineage_statement.v2"
+)
+
 // Defines values for ReceiptRecordAlgorithm.
 const (
 	ReceiptRecordAlgorithmEd25519 ReceiptRecordAlgorithm = "ed25519"
@@ -364,6 +482,26 @@ const (
 // Defines values for ReceiptRecordDecision3Verdict.
 const (
 	ReceiptRecordDecision3VerdictIncomplete ReceiptRecordDecision3Verdict = "incomplete"
+)
+
+// Defines values for ReceiptV2Algorithm.
+const (
+	ReceiptV2AlgorithmEd25519 ReceiptV2Algorithm = "ed25519"
+	ReceiptV2AlgorithmHybrid  ReceiptV2Algorithm = "hybrid"
+	ReceiptV2AlgorithmP256    ReceiptV2Algorithm = "p256"
+	ReceiptV2AlgorithmP384    ReceiptV2Algorithm = "p384"
+)
+
+// Defines values for ReceiptV2ReceiptV2BodyHashInputSchema.
+const (
+	ReceiptV2ReceiptV2BodyHashInputSchemaChioReceiptV2 ReceiptV2ReceiptV2BodyHashInputSchema = "chio.receipt.v2"
+)
+
+// Defines values for ReceiptV2ReceiptV2BodyHashInputTrustLevel.
+const (
+	ReceiptV2ReceiptV2BodyHashInputTrustLevelAdvisory ReceiptV2ReceiptV2BodyHashInputTrustLevel = "advisory"
+	ReceiptV2ReceiptV2BodyHashInputTrustLevelMediated ReceiptV2ReceiptV2BodyHashInputTrustLevel = "mediated"
+	ReceiptV2ReceiptV2BodyHashInputTrustLevelVerified ReceiptV2ReceiptV2BodyHashInputTrustLevel = "verified"
 )
 
 // Defines values for ResultCancelledStatus.
@@ -468,18 +606,21 @@ type AgentListCapabilitiesType string
 // AgentToolCallRequest defines model for AgentToolCallRequest.
 type AgentToolCallRequest struct {
 	CapabilityToken struct {
+		Algorithm       *AgentToolCallRequestCapabilityTokenAlgorithm `json:"algorithm,omitempty"`
 		DelegationChain *[]struct {
 			Attenuations *[]map[string]interface{} `json:"attenuations,omitempty"`
 			CapabilityId string                    `json:"capability_id"`
 			Delegatee    string                    `json:"delegatee"`
 			Delegator    string                    `json:"delegator"`
+			ScopeHash    *string                   `json:"scope_hash,omitempty"`
 			Signature    string                    `json:"signature"`
 			Timestamp    int64                     `json:"timestamp"`
 		} `json:"delegation_chain,omitempty"`
-		ExpiresAt int64  `json:"expires_at"`
-		Id        string `json:"id"`
-		IssuedAt  int64  `json:"issued_at"`
-		Issuer    string `json:"issuer"`
+		ExpiresAt int64                                      `json:"expires_at"`
+		Id        string                                     `json:"id"`
+		IssuedAt  int64                                      `json:"issued_at"`
+		Issuer    string                                     `json:"issuer"`
+		Schema    *AgentToolCallRequestCapabilityTokenSchema `json:"schema,omitempty"`
 		Scope     struct {
 			Grants *[]struct {
 				Constraints *[]struct {
@@ -519,6 +660,12 @@ type AgentToolCallRequest struct {
 	Type     AgentToolCallRequestType `json:"type"`
 }
 
+// AgentToolCallRequestCapabilityTokenAlgorithm defines model for AgentToolCallRequest.CapabilityToken.Algorithm.
+type AgentToolCallRequestCapabilityTokenAlgorithm string
+
+// AgentToolCallRequestCapabilityTokenSchema defines model for AgentToolCallRequest.CapabilityToken.Schema.
+type AgentToolCallRequestCapabilityTokenSchema string
+
 // AgentToolCallRequestCapabilityTokenScopeGrantsOperations defines model for AgentToolCallRequest.CapabilityToken.Scope.Grants.Operations.
 type AgentToolCallRequestCapabilityTokenScopeGrantsOperations string
 
@@ -530,6 +677,58 @@ type AgentToolCallRequestCapabilityTokenScopeResourceGrantsOperations string
 
 // AgentToolCallRequestType defines model for AgentToolCallRequest.Type.
 type AgentToolCallRequestType string
+
+// AnchorBatch Signed additive Merkle batch over receipts or checkpoints. Local receipt signatures remain authoritative; the batch adds continuity and public-witness timestamping.
+type AnchorBatch struct {
+	Body      AnchorBatchBody `json:"body"`
+	Signature string          `json:"signature"`
+}
+
+// AnchorBatchBody defines model for AnchorBatchBody.
+type AnchorBatchBody struct {
+	CheckpointIds []string               `json:"checkpointIds"`
+	Inclusions    []AnchorBatchInclusion `json:"inclusions"`
+	IssuedAt      int64                  `json:"issuedAt"`
+	Schema        AnchorBatchBodySchema  `json:"schema"`
+	SignerKey     string                 `json:"signerKey"`
+	TreeRoot      string                 `json:"treeRoot"`
+	Witness       AnchorBatchWitness     `json:"witness"`
+}
+
+// AnchorBatchBodySchema defines model for AnchorBatchBody.Schema.
+type AnchorBatchBodySchema string
+
+// AnchorBatchInclusion defines model for AnchorBatchInclusion.
+type AnchorBatchInclusion struct {
+	CheckpointId string                 `json:"checkpointId"`
+	LeafHash     string                 `json:"leafHash"`
+	Proof        map[string]interface{} `json:"proof"`
+}
+
+// AnchorBatchWitness defines model for AnchorBatchWitness.
+type AnchorBatchWitness struct {
+	Kind       AnchorBatchWitnessKind `json:"kind"`
+	ObservedAt *int64                 `json:"observedAt,omitempty"`
+	Root       string                 `json:"root"`
+	WitnessId  string                 `json:"witnessId"`
+}
+
+// AnchorBatchWitnessKind defines model for AnchorBatchWitness.Kind.
+type AnchorBatchWitnessKind string
+
+// CapabilityCapabilities Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed before peers negotiate capability v2, receipt v2, or anchor-batch support.
+type CapabilityCapabilities struct {
+	// Features String-keyed feature bitset. Peers proceed only with the intersection of true values advertised by both sides.
+	Features            *map[string]bool                          `json:"features,omitempty"`
+	MaxCapabilitySchema CapabilityCapabilitiesMaxCapabilitySchema `json:"maxCapabilitySchema"`
+	Schema              CapabilityCapabilitiesSchema              `json:"schema"`
+}
+
+// CapabilityCapabilitiesMaxCapabilitySchema defines model for CapabilityCapabilities.MaxCapabilitySchema.
+type CapabilityCapabilitiesMaxCapabilitySchema string
+
+// CapabilityCapabilitiesSchema defines model for CapabilityCapabilities.Schema.
+type CapabilityCapabilitiesSchema string
 
 // CapabilityGrant A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/chio-core-types/src/capability.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
 type CapabilityGrant struct {
@@ -594,7 +793,7 @@ type CapabilityRevocation struct {
 	RevokedAt int64 `json:"revoked_at"`
 }
 
-// CapabilityToken A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
+// CapabilityToken A Chio capability token: an Ed25519-signed, FIPS-algorithm, or hybrid PQ scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384), and renders hybrid keys as `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>`. Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms, and `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
 type CapabilityToken struct {
 	// Algorithm Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
 	Algorithm *CapabilityTokenAlgorithm `json:"algorithm,omitempty"`
@@ -611,13 +810,16 @@ type CapabilityToken struct {
 	// IssuedAt Unix timestamp (seconds) when the token was issued.
 	IssuedAt int64 `json:"issued_at"`
 
-	// Issuer Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
+	// Issuer Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.
 	Issuer string `json:"issuer"`
+
+	// Schema Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+	Schema *CapabilityTokenSchema `json:"schema,omitempty"`
 
 	// Scope What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
 	Scope CapabilityTokenChioScope `json:"scope"`
 
-	// Signature Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+	// Signature Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
 	Signature string `json:"signature"`
 
 	// Subject Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
@@ -626,6 +828,9 @@ type CapabilityToken struct {
 
 // CapabilityTokenAlgorithm Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
 type CapabilityTokenAlgorithm string
+
+// CapabilityTokenSchema Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+type CapabilityTokenSchema string
 
 // CapabilityTokenChioScope What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
 type CapabilityTokenChioScope struct {
@@ -699,6 +904,242 @@ type CapabilityTokenToolGrant struct {
 
 	// ToolName Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).
 	ToolName string `json:"tool_name"`
+}
+
+// CapabilityTokenV1 A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
+type CapabilityTokenV1 struct {
+	// Algorithm Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+	Algorithm *CapabilityTokenV1Algorithm `json:"algorithm,omitempty"`
+
+	// DelegationChain Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.
+	DelegationChain *[]CapabilityTokenV1DelegationLink `json:"delegation_chain,omitempty"`
+
+	// ExpiresAt Unix timestamp (seconds) when the token expires.
+	ExpiresAt int64 `json:"expires_at"`
+
+	// Id Unique token ID (UUIDv7 recommended), used for revocation.
+	Id string `json:"id"`
+
+	// IssuedAt Unix timestamp (seconds) when the token was issued.
+	IssuedAt int64 `json:"issued_at"`
+
+	// Issuer Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
+	Issuer string `json:"issuer"`
+
+	// Schema Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+	Schema *CapabilityTokenV1Schema `json:"schema,omitempty"`
+
+	// Scope What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
+	Scope CapabilityTokenV1ChioScope `json:"scope"`
+
+	// Signature Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+	Signature string `json:"signature"`
+
+	// Subject Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
+	Subject string `json:"subject"`
+}
+
+// CapabilityTokenV1Algorithm Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+type CapabilityTokenV1Algorithm string
+
+// CapabilityTokenV1Schema Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
+type CapabilityTokenV1Schema string
+
+// CapabilityTokenV1ChioScope What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
+type CapabilityTokenV1ChioScope struct {
+	Grants         *[]CapabilityTokenV1ToolGrant     `json:"grants,omitempty"`
+	PromptGrants   *[]CapabilityTokenV1PromptGrant   `json:"prompt_grants,omitempty"`
+	ResourceGrants *[]CapabilityTokenV1ResourceGrant `json:"resource_grants,omitempty"`
+}
+
+// CapabilityTokenV1Constraint Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.
+type CapabilityTokenV1Constraint struct {
+	Type  string       `json:"type"`
+	Value *interface{} `json:"value,omitempty"`
+}
+
+// CapabilityTokenV1DelegationLink A single link in a delegation chain. Mirrors `DelegationLink`.
+type CapabilityTokenV1DelegationLink struct {
+	Attenuations *[]struct {
+		Type string `json:"type"`
+	} `json:"attenuations,omitempty"`
+	CapabilityId string `json:"capability_id"`
+
+	// Delegatee Receiving public key. Same encoding as the token-level `issuer`/`subject`.
+	Delegatee string `json:"delegatee"`
+
+	// Delegator Delegating public key. Same encoding as the token-level `issuer`/`subject`.
+	Delegator string `json:"delegator"`
+
+	// Signature Delegation-link signature. Same encoding as the token-level `signature`.
+	Signature string `json:"signature"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+// CapabilityTokenV1MonetaryAmount A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
+type CapabilityTokenV1MonetaryAmount struct {
+	Currency string `json:"currency"`
+	Units    int64  `json:"units"`
+}
+
+// CapabilityTokenV1Operation defines model for CapabilityTokenV1Operation.
+type CapabilityTokenV1Operation string
+
+// CapabilityTokenV1PromptGrant Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
+type CapabilityTokenV1PromptGrant struct {
+	Operations []CapabilityTokenV1Operation `json:"operations"`
+	PromptName string                       `json:"prompt_name"`
+}
+
+// CapabilityTokenV1ResourceGrant Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
+type CapabilityTokenV1ResourceGrant struct {
+	Operations []CapabilityTokenV1Operation `json:"operations"`
+	UriPattern string                       `json:"uri_pattern"`
+}
+
+// CapabilityTokenV1ToolGrant Authorization to invoke a single tool. Mirrors `ToolGrant`.
+type CapabilityTokenV1ToolGrant struct {
+	Constraints *[]CapabilityTokenV1Constraint `json:"constraints,omitempty"`
+
+	// DpopRequired If true, the kernel requires a valid DPoP proof for every invocation under this grant.
+	DpopRequired *bool `json:"dpop_required,omitempty"`
+
+	// MaxCostPerInvocation A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
+	MaxCostPerInvocation *CapabilityTokenV1MonetaryAmount `json:"max_cost_per_invocation,omitempty"`
+	MaxInvocations       *int64                           `json:"max_invocations,omitempty"`
+
+	// MaxTotalCost A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
+	MaxTotalCost *CapabilityTokenV1MonetaryAmount `json:"max_total_cost,omitempty"`
+	Operations   []CapabilityTokenV1Operation     `json:"operations"`
+
+	// ServerId Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).
+	ServerId string `json:"server_id"`
+
+	// ToolName Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).
+	ToolName string `json:"tool_name"`
+}
+
+// CapabilityTokenV2 Schema-tagged v2 capability token with typed caveats, first-class attenuation fields, an attenuation_proof witness, and a reserved hybrid algorithm enum value for the T2.1 compatibility path.
+type CapabilityTokenV2 struct {
+	Algorithm        *CapabilityTokenV2Algorithm       `json:"algorithm,omitempty"`
+	AttenuationProof CapabilityTokenV2AttenuationProof `json:"attenuation_proof"`
+
+	// BudgetShareBps Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed.
+	BudgetShareBps  *int64                     `json:"budget_share_bps,omitempty"`
+	Caveats         *[]CapabilityTokenV2Caveat `json:"caveats,omitempty"`
+	DelegationChain *[]map[string]interface{}  `json:"delegation_chain,omitempty"`
+	ExpiresAt       int64                      `json:"expires_at"`
+	Id              string                     `json:"id"`
+	IssuedAt        int64                      `json:"issued_at"`
+	Issuer          string                     `json:"issuer"`
+	Schema          CapabilityTokenV2Schema    `json:"schema"`
+
+	// Scope What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
+	Scope             CapabilityTokenV2ChioScope                  `json:"scope"`
+	ScopeAttenuations *[]CapabilityTokenV2_ScopeAttenuations_Item `json:"scope_attenuations,omitempty"`
+	Signature         string                                      `json:"signature"`
+	Subject           string                                      `json:"subject"`
+}
+
+// CapabilityTokenV2Algorithm defines model for CapabilityTokenV2.Algorithm.
+type CapabilityTokenV2Algorithm string
+
+// CapabilityTokenV2Schema defines model for CapabilityTokenV2.Schema.
+type CapabilityTokenV2Schema string
+
+// CapabilityTokenV2_ScopeAttenuations_Item defines model for CapabilityTokenV2.scope_attenuations.Item.
+type CapabilityTokenV2_ScopeAttenuations_Item struct {
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// CapabilityTokenV2AttenuationProof defines model for CapabilityTokenV2AttenuationProof.
+type CapabilityTokenV2AttenuationProof struct {
+	ChildScopeHash        string                              `json:"childScopeHash"`
+	NormalizedSubsetProof CapabilityTokenV2AttenuationWitness `json:"normalizedSubsetProof"`
+	ParentScopeHash       string                              `json:"parentScopeHash"`
+}
+
+// CapabilityTokenV2AttenuationWitness defines model for CapabilityTokenV2AttenuationWitness.
+type CapabilityTokenV2AttenuationWitness struct {
+	NormalizedChildScope  string                                  `json:"normalizedChildScope"`
+	NormalizedParentScope string                                  `json:"normalizedParentScope"`
+	RestrictedPredicates  *[]string                               `json:"restrictedPredicates,omitempty"`
+	SubsetRelations       *[]CapabilityTokenV2GrantSubsetRelation `json:"subsetRelations,omitempty"`
+}
+
+// CapabilityTokenV2Caveat defines model for CapabilityTokenV2Caveat.
+type CapabilityTokenV2Caveat struct {
+	Kind      CapabilityTokenV2CaveatKind `json:"kind"`
+	Predicate string                      `json:"predicate"`
+	Sig       *string                     `json:"sig,omitempty"`
+}
+
+// CapabilityTokenV2CaveatKind defines model for CapabilityTokenV2Caveat.Kind.
+type CapabilityTokenV2CaveatKind string
+
+// CapabilityTokenV2ChioScope What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
+type CapabilityTokenV2ChioScope struct {
+	Grants         *[]CapabilityTokenV2ToolGrant     `json:"grants,omitempty"`
+	PromptGrants   *[]CapabilityTokenV2PromptGrant   `json:"prompt_grants,omitempty"`
+	ResourceGrants *[]CapabilityTokenV2ResourceGrant `json:"resource_grants,omitempty"`
+}
+
+// CapabilityTokenV2Constraint Tagged enum mirroring `Constraint`. Encoded as `{ type, value }`.
+type CapabilityTokenV2Constraint struct {
+	Type  string       `json:"type"`
+	Value *interface{} `json:"value,omitempty"`
+}
+
+// CapabilityTokenV2GrantSubsetRelation defines model for CapabilityTokenV2GrantSubsetRelation.
+type CapabilityTokenV2GrantSubsetRelation struct {
+	ChildIndex  int64                                         `json:"childIndex"`
+	GrantKind   CapabilityTokenV2GrantSubsetRelationGrantKind `json:"grantKind"`
+	ParentIndex int64                                         `json:"parentIndex"`
+	Subset      CapabilityTokenV2GrantSubsetRelationSubset    `json:"subset"`
+}
+
+// CapabilityTokenV2GrantSubsetRelationGrantKind defines model for CapabilityTokenV2GrantSubsetRelation.GrantKind.
+type CapabilityTokenV2GrantSubsetRelationGrantKind string
+
+// CapabilityTokenV2GrantSubsetRelationSubset defines model for CapabilityTokenV2GrantSubsetRelation.Subset.
+type CapabilityTokenV2GrantSubsetRelationSubset bool
+
+// CapabilityTokenV2MonetaryAmount A monetary amount in the currency's smallest minor unit. Mirrors `MonetaryAmount`.
+type CapabilityTokenV2MonetaryAmount struct {
+	Currency string `json:"currency"`
+	Units    int64  `json:"units"`
+}
+
+// CapabilityTokenV2Operation defines model for CapabilityTokenV2Operation.
+type CapabilityTokenV2Operation string
+
+// CapabilityTokenV2PromptGrant Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
+type CapabilityTokenV2PromptGrant struct {
+	Operations []CapabilityTokenV2Operation `json:"operations"`
+	PromptName string                       `json:"prompt_name"`
+}
+
+// CapabilityTokenV2ResourceGrant Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
+type CapabilityTokenV2ResourceGrant struct {
+	Operations []CapabilityTokenV2Operation `json:"operations"`
+	UriPattern string                       `json:"uri_pattern"`
+}
+
+// CapabilityTokenV2ToolGrant Authorization to invoke a single tool. Mirrors `ToolGrant`.
+type CapabilityTokenV2ToolGrant struct {
+	Constraints  *[]CapabilityTokenV2Constraint `json:"constraints,omitempty"`
+	DpopRequired *bool                          `json:"dpop_required,omitempty"`
+
+	// MaxCostPerInvocation A monetary amount in the currency's smallest minor unit. Mirrors `MonetaryAmount`.
+	MaxCostPerInvocation *CapabilityTokenV2MonetaryAmount `json:"max_cost_per_invocation,omitempty"`
+	MaxInvocations       *int64                           `json:"max_invocations,omitempty"`
+
+	// MaxTotalCost A monetary amount in the currency's smallest minor unit. Mirrors `MonetaryAmount`.
+	MaxTotalCost *CapabilityTokenV2MonetaryAmount `json:"max_total_cost,omitempty"`
+	Operations   []CapabilityTokenV2Operation     `json:"operations"`
+	ServerId     string                           `json:"server_id"`
+	ToolName     string                           `json:"tool_name"`
 }
 
 // ErrorCapabilityDenied defines model for ErrorCapabilityDenied.
@@ -897,7 +1338,10 @@ type KernelCapabilityList struct {
 		Id        string `json:"id"`
 		IssuedAt  int64  `json:"issued_at"`
 		Issuer    string `json:"issuer"`
-		Scope     struct {
+
+		// Schema Signed-artifact schema ID for live v1 capability-token serialization.
+		Schema *KernelCapabilityListCapabilitiesSchema `json:"schema,omitempty"`
+		Scope  struct {
 			Grants *[]struct {
 				Constraints *[]struct {
 					Type  string       `json:"type"`
@@ -931,6 +1375,9 @@ type KernelCapabilityList struct {
 	} `json:"capabilities"`
 	Type KernelCapabilityListType `json:"type"`
 }
+
+// KernelCapabilityListCapabilitiesSchema Signed-artifact schema ID for live v1 capability-token serialization.
+type KernelCapabilityListCapabilitiesSchema string
 
 // KernelCapabilityListCapabilitiesScopeGrantsOperations defines model for KernelCapabilityList.Capabilities.Scope.Grants.Operations.
 type KernelCapabilityListCapabilitiesScopeGrantsOperations string
@@ -1352,6 +1799,22 @@ type ReceiptInclusionProof struct {
 	TreeSize int64 `json:"tree_size"`
 }
 
+// ReceiptLineageStatementV2 Signed multi-parent lineage statement. parentReceiptIds are v2 body_hash values, canonical sorted and deduplicated, with parentSetHash = H(canonical(parentReceiptIds)).
+type ReceiptLineageStatementV2 struct {
+	ChainId          string                          `json:"chainId"`
+	ChildBodyHash    string                          `json:"childBodyHash"`
+	Id               string                          `json:"id"`
+	IssuedAt         int64                           `json:"issuedAt"`
+	KernelKey        string                          `json:"kernelKey"`
+	ParentReceiptIds []string                        `json:"parentReceiptIds"`
+	ParentSetHash    string                          `json:"parentSetHash"`
+	Schema           ReceiptLineageStatementV2Schema `json:"schema"`
+	Signature        string                          `json:"signature"`
+}
+
+// ReceiptLineageStatementV2Schema defines model for ReceiptLineageStatementV2.Schema.
+type ReceiptLineageStatementV2Schema string
+
 // ReceiptRecord A signed Chio receipt: proof that a tool call was evaluated by the Kernel. Mirrors the serde shape of `ChioReceipt` in `crates/chio-core-types/src/receipt.rs`. The `signature` field covers the canonical JSON of `ChioReceiptBody` (every field below except `algorithm` and `signature`). The `algorithm` envelope field is informational (verification dispatches off the self-describing hex prefix on the signature itself) and is omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Optional fields (`evidence`, `metadata`, `trust_level`, `tenant_id`, `algorithm`) are skipped on the wire when set to their default or unset values.
 type ReceiptRecord struct {
 	// Action Describes the tool call that was evaluated. Mirrors `ToolCallAction`.
@@ -1475,6 +1938,56 @@ type ReceiptRecordToolCallAction struct {
 	// Parameters The parameters that were passed to the tool (or attempted). Free-form JSON value (mirrors `serde_json::Value`).
 	Parameters interface{} `json:"parameters"`
 }
+
+// ReceiptV2 Content-addressed v2 receipt. bodyHash is H(canonical_jcs(ReceiptV2BodyHashInput)); receiptId is a non-authoritative legacy UUIDv7 tooling alias and is not used for replay.
+type ReceiptV2 struct {
+	Algorithm *ReceiptV2Algorithm             `json:"algorithm,omitempty"`
+	Body      ReceiptV2ReceiptV2BodyHashInput `json:"body"`
+	BodyHash  string                          `json:"bodyHash"`
+	ReceiptId string                          `json:"receiptId"`
+	Signature string                          `json:"signature"`
+}
+
+// ReceiptV2Algorithm defines model for ReceiptV2.Algorithm.
+type ReceiptV2Algorithm string
+
+// ReceiptV2Hlc defines model for ReceiptV2Hlc.
+type ReceiptV2Hlc struct {
+	KernelId    string `json:"kernelId"`
+	Logical     int64  `json:"logical"`
+	WallSeconds int64  `json:"wallSeconds"`
+}
+
+// ReceiptV2ReceiptV2BodyHashInput defines model for ReceiptV2ReceiptV2BodyHashInput.
+type ReceiptV2ReceiptV2BodyHashInput struct {
+	Action       map[string]interface{}    `json:"action"`
+	CapabilityId string                    `json:"capabilityId"`
+	ChainId      string                    `json:"chainId"`
+	ContentHash  string                    `json:"contentHash"`
+	DagOrdinal   int64                     `json:"dagOrdinal"`
+	Decision     map[string]interface{}    `json:"decision"`
+	Evidence     *[]map[string]interface{} `json:"evidence,omitempty"`
+	Hlc          ReceiptV2Hlc              `json:"hlc"`
+	KernelKey    string                    `json:"kernelKey"`
+	Metadata     *interface{}              `json:"metadata,omitempty"`
+
+	// ParentReceiptIds Canonical sorted and deduplicated parent body_hash values.
+	ParentReceiptIds *[]string                                  `json:"parentReceiptIds,omitempty"`
+	ParentSetHash    string                                     `json:"parentSetHash"`
+	PolicyHash       string                                     `json:"policyHash"`
+	Schema           ReceiptV2ReceiptV2BodyHashInputSchema      `json:"schema"`
+	TenantId         *string                                    `json:"tenantId,omitempty"`
+	Timestamp        int64                                      `json:"timestamp"`
+	ToolName         string                                     `json:"toolName"`
+	ToolServer       string                                     `json:"toolServer"`
+	TrustLevel       *ReceiptV2ReceiptV2BodyHashInputTrustLevel `json:"trustLevel,omitempty"`
+}
+
+// ReceiptV2ReceiptV2BodyHashInputSchema defines model for ReceiptV2ReceiptV2BodyHashInput.Schema.
+type ReceiptV2ReceiptV2BodyHashInputSchema string
+
+// ReceiptV2ReceiptV2BodyHashInputTrustLevel defines model for ReceiptV2ReceiptV2BodyHashInput.TrustLevel.
+type ReceiptV2ReceiptV2BodyHashInputTrustLevel string
 
 // ResultCancelled defines model for ResultCancelled.
 type ResultCancelled struct {
@@ -1708,6 +2221,72 @@ type TrustControlTerminate struct {
 
 // TrustControlTerminateReason Typed reason for releasing the lease. `leader_handoff` covers planned reassignment, `quorum_lost` covers detected loss of cluster quorum, `operator_stepdown` covers explicit operator action, and `term_advanced` covers a higher election term superseding the lease.
 type TrustControlTerminateReason string
+
+// Getter for additional properties for CapabilityTokenV2_ScopeAttenuations_Item. Returns the specified
+// element and whether it was found
+func (a CapabilityTokenV2_ScopeAttenuations_Item) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for CapabilityTokenV2_ScopeAttenuations_Item
+func (a *CapabilityTokenV2_ScopeAttenuations_Item) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for CapabilityTokenV2_ScopeAttenuations_Item to handle AdditionalProperties
+func (a *CapabilityTokenV2_ScopeAttenuations_Item) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for CapabilityTokenV2_ScopeAttenuations_Item to handle AdditionalProperties
+func (a CapabilityTokenV2_ScopeAttenuations_Item) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
 
 // AsCapabilityGrantToolGrant returns the union data inside the CapabilityGrant as a CapabilityGrantToolGrant
 func (t CapabilityGrant) AsCapabilityGrantToolGrant() (CapabilityGrantToolGrant, error) {

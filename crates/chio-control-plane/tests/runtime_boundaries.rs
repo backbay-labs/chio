@@ -28,13 +28,18 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
     let main = read_repo_file("crates/chio-cli/src/main.rs");
     assert!(
         !main.contains("mod remote_mcp;"),
-        "chio-cli main must not inline the hosted MCP runtime shell",
+        "chio-cli main must not inline the remote MCP runtime shell",
     );
     assert!(
         !main.contains("mod trust_control;"),
         "chio-cli main must not inline the trust-control runtime shell",
     );
 
+    // The pre-refactor crate-extraction pattern (#[path = "../../chio-cli/..."]
+    // splice from chio-hosted-mcp/chio-control-plane) was replaced by direct
+    // re-exports once chio-mcp-remote became a first-class workspace member.
+    // The current invariant is that chio-cli no longer inlines remote_mcp;
+    // ownership lives in chio-mcp-remote.
     let hosted_lib = read_repo_file("crates/chio-hosted-mcp/src/lib.rs");
     assert!(
         hosted_lib.contains("pub use chio_mcp_remote::{serve_http, RemoteServeHttpConfig};"),
@@ -60,6 +65,10 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
             .join("crates/chio-mcp-remote/src/remote_mcp/admin.rs")
             .exists(),
         "remote_mcp admin boundary file must exist",
+    );
+    assert!(
+        !repo_root().join("crates/chio-cli/src/remote_mcp.rs").exists(),
+        "remote_mcp ownership must live in chio-mcp-remote, not be inlined in chio-cli",
     );
 
     let trust_control = read_repo_file("crates/chio-cli/src/trust_control.rs");

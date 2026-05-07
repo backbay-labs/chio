@@ -135,15 +135,51 @@ if [[ -n "${PACKAGE}" ]]; then
     header="${header} (${PACKAGE})"
 fi
 
+# Sticky-comment marker. We post one comment per (PR, package) and edit
+# it in place on subsequent runs instead of leaving a fresh comment per
+# CI push. The marker is hidden in an HTML comment so it does not show
+# up in the rendered Markdown.
+sticky_marker="<!-- chio-mutants-sticky:${PACKAGE:-default} -->"
+
+post_or_edit_sticky() {
+    local body_with_marker="$1"
+    body_with_marker="${sticky_marker}
+${body_with_marker}"
+
+    # Find the most recent existing comment that carries this sticky marker.
+    local existing_id
+    existing_id="$(gh api \
+        "repos/${GITHUB_REPOSITORY:-bb-connor/arc}/issues/${PR_NUMBER}/comments?per_page=100" \
+        --paginate \
+        --jq ".[] | select(.body | contains(\"${sticky_marker}\")) | .id" \
+        2>/dev/null | tail -n 1 || true)"
+
+    if [[ -n "${existing_id}" ]]; then
+        gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY:-bb-connor/arc}/issues/comments/${existing_id}" \
+            -f "body=${body_with_marker}" >/dev/null
+    else
+        gh pr comment "${PR_NUMBER}" --body "${body_with_marker}"
+    fi
+}
+
 if [[ ! -f "${OUTCOMES_JSON}" ]]; then
-    body="${header}
+    # No mutants generated for this package in this diff is the common
+    # case for docs-only / non-trust-boundary edits. Posting a fresh
+    # comment each push pollutes the PR thread without informational
+    # value, so we suppress the comment here. The lane still runs and
+    # any future blocking-mode failure will surface via the gate's
+    # exit code, not via a chatter comment.
+    if [[ "${GATE_MODE}" == "blocking" ]]; then
+        body="${header}
 
 No mutants generated in the PR diff for \`${PACKAGE:-the changed crate}\`.
 This usually means the changes are outside trust-boundary modules
 covered by \`.cargo/mutants.toml\` examine_globs, or the diff touched
-only test/bench/build files. The lane mode is \`${GATE_MODE}\`; see
+only test/bench/build files. Lane mode is blocking; see
 \`docs/fuzzing/mutants.md\` for triage policy."
-    gh pr comment "${PR_NUMBER}" --body "${body}"
+        post_or_edit_sticky "${body}"
+    fi
     exit 0
 fi
 
@@ -153,7 +189,7 @@ if ! command -v jq >/dev/null 2>&1; then
 \`outcomes.json\` written to \`${OUTCOMES_JSON}\` but \`jq\` not available
 on the runner; raw report attached as a workflow artifact. The lane is
 \`${GATE_MODE}\`; see \`docs/fuzzing/mutants.md\` for triage policy."
-    gh pr comment "${PR_NUMBER}" --body "${body}"
+    post_or_edit_sticky "${body}"
     exit 0
 fi
 
@@ -298,4 +334,4 @@ Mode: \`${GATE_MODE}\` | Threshold: ${TARGET_PERCENT}% | Cycle: \`releases.toml\
 Triage policy:
 \`docs/fuzzing/mutants.md\`."
 
-gh pr comment "${PR_NUMBER}" --body "${body}"
+post_or_edit_sticky "${body}"

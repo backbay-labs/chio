@@ -38,6 +38,7 @@ fuzz = ["web3", "dep:arbitrary"]
 [dependencies]
 chio-core = { path = "../chio-core", optional = true }
 chio-kernel = { path = "../chio-kernel", optional = true }
+chio-metrics-spec = { workspace = true }
 chio-web3 = { path = "../chio-web3", optional = true }
 chio-web3-bindings = { path = "../chio-web3-bindings", default-features = false, features = ["web3"], optional = true }
 alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
