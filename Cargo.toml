@@ -193,9 +193,18 @@ strip = "symbols"
 panic = "abort"
 
 [workspace.dependencies]
-aws-sdk-bedrockruntime = "1.130.0"
-aws-sdk-marketplaceentitlement = "1"
-aws-sdk-marketplacemetering = "1"
+aws-sdk-bedrockruntime = { version = "1.130.0", default-features = false, features = [
+    "default-https-client",
+    "rt-tokio",
+] }
+aws-sdk-marketplaceentitlement = { version = "1", default-features = false, features = [
+    "default-https-client",
+    "rt-tokio",
+] }
+aws-sdk-marketplacemetering = { version = "1", default-features = false, features = [
+    "default-https-client",
+    "rt-tokio",
+] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
