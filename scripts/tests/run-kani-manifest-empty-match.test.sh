@@ -84,13 +84,17 @@ assert_eq "$(run_runner "$EMPTY_MANIFEST" --lane pr --allow-empty)" 0 \
 assert_eq "$(run_runner "$EMPTY_MANIFEST" --lane pr --list)" 0 \
   "empty manifest + --list exits 0 (informational)"
 
-# Case 4: lane typo on a populated manifest (no entries match the
-# typo lane) is the scenario the audit calls out by name.
-assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane nightlee)" 1 \
-  "lane typo on populated manifest exits 1"
+# Case 4: lane typo on a populated manifest. After review item the
+# runner validates the requested lane against the closed enum
+# (`pr`, `nightly`) before considering empty-match policy, and rejects
+# unknown lanes with exit 2 (fail-loud). `--allow-empty` does NOT
+# rescue a lane-validation failure: validation runs before the
+# empty-match check, so the runner still exits 2.
+assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane nightlee)" 2 \
+  "lane typo on populated manifest exits 2 (lane validation)"
 
-assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane nightlee --allow-empty)" 0 \
-  "lane typo on populated manifest + --allow-empty exits 0"
+assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane nightlee --allow-empty)" 2 \
+  "lane typo on populated manifest + --allow-empty still exits 2 (lane validation runs first)"
 
 # Case 5: sanity check that --list with a real match still works.
 assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane pr --list)" 0 \

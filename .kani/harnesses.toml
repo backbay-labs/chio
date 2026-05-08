@@ -215,7 +215,7 @@ harness = "public_nitro_verify_quote_rejects_report_data_mismatch"
 default_unwind = 8
 timeout_secs = 1800
 lane = "pr"
-notes = "MODEL-ONLY: proves model_verify_quote algebra over ModelQuoteOutcome, NOT the production <NitroVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: crates/chio-attest-verify/tests/nitro_unit.rs (ReportDataMismatch). See model-only scope note."
+notes = "MODEL-ONLY: proves model_verify_quote algebra over ModelQuoteOutcome, NOT the production <NitroVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: crates/chio-attest-verify/tests/nitro_unit.rs (ReportDataMismatch). See the model-only scope notes."
 
 [[harness]]
 crate = "chio-attest-verify"
@@ -223,7 +223,7 @@ harness = "public_sev_snp_verify_quote_rejects_unacceptable_tcb"
 default_unwind = 8
 timeout_secs = 1800
 lane = "pr"
-notes = "MODEL-ONLY: proves model_verify_quote algebra, NOT the production <SevSnpVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: per-backend unit tests asserting QuoteRejected for non-acceptable TCB. See model-only scope note."
+notes = "MODEL-ONLY: proves model_verify_quote algebra, NOT the production <SevSnpVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: per-backend unit tests asserting QuoteRejected for non-acceptable TCB. See the model-only scope notes."
 
 [[harness]]
 crate = "chio-attest-verify"
@@ -231,7 +231,7 @@ harness = "public_tdx_verify_quote_rejects_algorithm_mismatch"
 default_unwind = 8
 timeout_secs = 1800
 lane = "pr"
-notes = "MODEL-ONLY: proves model_verify_quote algebra, NOT the production <TdxDcapVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: crates/chio-attest-verify/tests/tdx_integration.rs (ReportDataMismatch on intel-tdx-report-data-mismatch and intel-tdx-upper-half-tamper fixtures). See model-only scope note."
+notes = "MODEL-ONLY: proves model_verify_quote algebra, NOT the production <TdxDcapVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: crates/chio-attest-verify/tests/tdx_integration.rs (ReportDataMismatch on intel-tdx-report-data-mismatch and intel-tdx-upper-half-tamper fixtures). See the model-only scope notes."
 
 # ---------------------------------------------------------------------
 # chio-anchor (Kani harness evidence, PR #613)
