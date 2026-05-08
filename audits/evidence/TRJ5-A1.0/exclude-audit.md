@@ -161,6 +161,17 @@ against an `examine_globs` whose chio-credentials surface is just
 `lib.rs` (umbrella) + `trust_tier.rs`; it does NOT mutate the 13
 `include!`d files.
 
+**P0-022 cleanup-wave update (2026-05-08)**: the chio-credentials
+baseline JSON now carries a machine-readable `examine_scope` caveat
+(`"exclude-13-included-files"`) plus a `result_label: "PARTIAL"`
+field with the 13 uncovered file paths enumerated. The README at
+`audits/evidence/mutants/chio-credentials/README.md` and the
+aggregate baseline at
+`audits/mutation/2026-05-08-per-crate-baseline.md` mark this run as
+PARTIAL. Crate-level target satisfaction is NOT claimed; restructuring
+`include!()` into `mod` declarations is a trj6 follow-up that will
+allow cargo-mutants to scan the 13 files.
+
 For the chio-policy and chio-guards baselines (deferred to a
 follow-up PR), the `examine_globs` should FIRST be revised per the
 four `FOR-REMOVAL-CANDIDATE` findings above, THEN the baseline run.
