@@ -60,16 +60,21 @@ for crate in "$@"; do
   ran_at=$(jq -r '.start_time' "${out_dir}/lock.json" 2>/dev/null || echo "unknown")
   tool_ver=$(jq -r '.cargo_mutants_version' "${out_dir}/lock.json" 2>/dev/null || echo "unknown")
 
-  # Inspect the actual `cargo test` invocation cargo-mutants used. The
-  # debug.log records each test process; if it carries `--workspace`
-  # the run is workspace-scoped, otherwise package-scoped. This avoids
-  # hard-coding a label that may not match the actual scope (per
-  # Codex P2 review on PR #603).
-  if [ -f "${out_dir}/debug.log" ] && \
-     grep -q -- "--workspace" "${out_dir}/debug.log"; then
+  # Inspect the actual `cargo test` invocation cargo-mutants used.
+  # cargo-mutants records the invocation in two places (in order of
+  # preference for re-derivability after `audits/evidence/mutants/.gitignore`
+  # excludes the verbose log):
+  #   1. `outcomes.json` (committed) - per-mutant `cargo_test_args` list
+  #   2. `debug.log` (NOT committed) - the literal command line
+  # If either records `--workspace`, the run is workspace-scoped.
+  test_scope="package-only (--test-package ${crate})"
+  if [ -f "${out_dir}/outcomes.json" ] && \
+     jq -e '[.outcomes[]?.phase_results[]?.argv[]?] | any(. == "--workspace")' \
+       "${out_dir}/outcomes.json" > /dev/null 2>&1; then
     test_scope="workspace (additional_cargo_test_args from .cargo/mutants.toml: --workspace --exclude chio-cpp-kernel-ffi)"
-  else
-    test_scope="package-only (--test-package ${crate})"
+  elif [ -f "${out_dir}/debug.log" ] && \
+       grep -q -- "--workspace" "${out_dir}/debug.log"; then
+    test_scope="workspace (additional_cargo_test_args from .cargo/mutants.toml: --workspace --exclude chio-cpp-kernel-ffi)"
   fi
 
   denom=$((c + m + t))
@@ -80,6 +85,17 @@ for crate in "$@"; do
   fi
 
   out_file="${EVIDENCE_DIR}/${crate}/${DATE}.json"
+
+  # Defensive: missed.txt / timeout.txt may not be present on a run that
+  # produced only `outcomes.json` (cargo-mutants 25.x has two layouts).
+  # `--rawfile` errors fatally if the file is missing; provide an empty
+  # tmpfile fallback. (Per Cursor review on PR #603.)
+  missed_path="${out_dir}/missed.txt"
+  timeout_path="${out_dir}/timeout.txt"
+  empty=$(mktemp)
+  : > "${empty}"
+  [ -f "${missed_path}"  ] || missed_path="${empty}"
+  [ -f "${timeout_path}" ] || timeout_path="${empty}"
 
   jq -n \
     --arg crate "${crate}" \
@@ -92,8 +108,8 @@ for crate in "$@"; do
     --argjson timeout "${t}" \
     --argjson unviable "${u}" \
     --arg kill_rate "${rate}" \
-    --rawfile missed_text "${out_dir}/missed.txt" \
-    --rawfile timeout_text "${out_dir}/timeout.txt" \
+    --rawfile missed_text "${missed_path}" \
+    --rawfile timeout_text "${timeout_path}" \
     '{
       crate: $crate,
       ran_at: $ran_at,
@@ -109,5 +125,6 @@ for crate in "$@"; do
       timeout_mutants: ($timeout_text | split("\n") | map(select(length > 0)))
     }' > "${out_file}"
 
+  rm -f "${empty}"
   echo "wrote ${out_file} (caught=${c} missed=${m} timeout=${t} unviable=${u} rate=${rate}%)"
 done

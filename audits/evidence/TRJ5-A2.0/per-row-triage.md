@@ -82,7 +82,8 @@ the same PR; the script is the reproducible producer of this table).
 - BLOCKED-BY-ARCHITECTURE: 1
 
 **Total**: 20 (expected 20)
-/tmp/triage.sh: line 121: [: 2 + 1: integer expression expected
+
+**R3 escalation criterion fires** (`IMPL-PARTIAL + BLOCKED-BY-ARCHITECTURE` count = 3 > 2).
 
 ## Findings
 

@@ -7,7 +7,12 @@
 # `.planning/trajectory-5/lane-a-floor/PLAN.md` Wave 1 section.
 set -uo pipefail
 
-cd /Users/connor/Medica/backbay/standalone/arc/.claude/worktrees/agent-a647641bfe7a1fe98
+ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "${ROOT_DIR}" ]; then
+  echo "error: not a git checkout (or git missing); cannot resolve workspace root" >&2
+  exit 2
+fi
+cd "${ROOT_DIR}"
 
 # Each line: id|public_symbol_claim|file_path|test_file|expected_triage
 ROWS=(

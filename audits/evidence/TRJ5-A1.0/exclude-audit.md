@@ -83,7 +83,7 @@ Format: each row is `<glob>` -> classification, with rationale.
 
 | Glob | Classification | Rationale |
 |---|---|---|
-| `crates/chio-policy/src/models.rs` | `OK` (with caveat) | Pure data structs + serde. Mutating struct field accessors mostly produces equivalent mutants. The decision logic is in `evaluate.rs` and `compiler.rs`, both in `examine_globs`. Caveat: any non-trivial validation in `models.rs` (e.g. `impl TryFrom`) would be missed; spot-check after baseline run. |
+| `crates/chio-policy/src/models.rs` | `FOR-REMOVAL-CANDIDATE` | Codex review on PR #603 flagged: `HushSpec::parse` at lines 129-154 runs fail-closed YAML validation (non-mapping rejection, unterminated-scalar checks, libyaml whitespace-overflow checks, panic containment). That is decision code, not pure data. The original audit downgraded this to "pure data structs + serde", which is WRONG. **Recommendation**: re-include `models.rs` in `examine_globs` and re-run the chio-policy baseline. The kill-rate target re-baselines accordingly. (Documented as a follow-up so the trj5 close-bar is held against the current `examine_globs`; the BASELINE-GAP bar for chio-policy still needs measurement either way.) |
 | `crates/chio-policy/src/version.rs` | `OK` | Version constants. Pure data. |
 | `crates/chio-policy/src/rulesets/**` | `OK` | Embedded YAML rulesets. Data, not decision code. The compiler that LOADS rulesets is in `examine_globs`. |
 
@@ -92,10 +92,10 @@ Format: each row is `<glob>` -> classification, with rationale.
 | Glob | Classification | Rationale |
 |---|---|---|
 | `crates/chio-guards/src/action.rs` | `OK` | Pure type definitions for the `Action` enum. No decision logic. |
-| `crates/chio-guards/src/text_utils.rs` | `OK` | Pure text helpers. Caveat: if a regex or normalization helper here is the SOLE check for an attack class, mutating helpers would matter. After baseline, spot-check what `text_utils.rs` actually exports. |
+| `crates/chio-guards/src/text_utils.rs` | `FOR-REMOVAL-CANDIDATE` | Codex review on PR #603 flagged: `canonicalize` (`pub fn` at line 29) is imported and used by prompt-injection and jailbreak guards before they make their deny decisions. Mutations that stop stripping zero-width characters or folding homoglyphs can let obfuscated payloads evade the trust-boundary guards. The original audit downgraded this to "pure text helpers"; that is WRONG for `canonicalize`. **Recommendation**: re-include `text_utils.rs` in `examine_globs`. The chio-guards baseline re-baselines. |
 | `crates/chio-guards/src/advisory.rs` | `OK` | Advisory-by-design guard surface. By construction, advisory guards do not deny; their decisions are not on the trust boundary. |
-| `crates/chio-guards/src/spider_sense.rs` | `OK` | Advisory anomaly detection (per file naming + positioning beside `advisory.rs`). Same rationale. |
-| `crates/chio-guards/src/external/**` | `FOR-REMOVAL-CANDIDATE` | This blanket exclusion of the `external/` tree is the most consequential entry in the file. The `external/` directory contains remote-process guard bridges (per `mutants.toml` rationale: "remote-process bridges, integration-tested rather than mutation-tested"). However, per `tickets.md` line 73 (TRJ5-A1.6 Note), "if the audit re-adds external paths, the kill-rate target re-baselines." A wholesale exclusion of `external/**` without per-file justification is exactly the pre-existing pattern this audit is meant to challenge. **Recommendation**: leave as `OK` for trj5 close-bar but file a follow-up to itemize each file in `external/` and either (a) confirm each is integration-tested with a named test path, or (b) include the file in `examine_globs`. The blanket-exclusion-with-no-per-file-citation is a smell. |
+| `crates/chio-guards/src/spider_sense.rs` | `FOR-REMOVAL-CANDIDATE` | Codex review on PR #603 flagged: `SpiderSenseGuard` returns `Verdict::Deny` for dimension mismatch (line 290), non-finite embeddings (line 293), high similarity scores, and ambiguous-deny policy (line 299). The file's module-level doc-comment lists three explicit `Verdict::Deny` paths (lines 10-28). The original audit grouped this with `advisory.rs` "by file naming"; that is WRONG. **Recommendation**: re-include `spider_sense.rs` in `examine_globs`. The chio-guards baseline re-baselines. |
+| `crates/chio-guards/src/external/**` | `FOR-REMOVAL-CANDIDATE` | This blanket exclusion of the `external/` tree is the most consequential entry in the file. The `external/` directory contains remote-process guard bridges (per `mutants.toml` rationale: "remote-process bridges, integration-tested rather than mutation-tested"). However, per `tickets.md` line 73 (TRJ5-A1.6 Note), "if the audit re-adds external paths, the kill-rate target re-baselines." A wholesale exclusion of `external/**` without per-file justification is exactly the pre-existing pattern this audit is meant to challenge. **Recommendation**: itemize each file in `external/` and either (a) confirm each is integration-tested with a named test path, or (b) include the file in `examine_globs`. |
 
 ### chio-anchor exclusions
 
@@ -105,39 +105,78 @@ Format: each row is `<glob>` -> classification, with rationale.
 
 ## Findings summary
 
-- 19 of 20 exclusion entries are unambiguously `OK` (test/build/fuzz
-  scaffolding, platform adapters, formal-methods harnesses, pure data,
-  or advisory-by-design surfaces).
-- 1 entry, `crates/chio-guards/src/external/**`, is classified
-  `FOR-REMOVAL-CANDIDATE`. The per-file justification is not present in
-  the current `mutants.toml`. The recommendation is to itemize the
-  `external/` tree: each file should be either (a) annotated with a
-  named integration test that exercises its decision path, or (b)
-  re-included in `examine_globs`. This finding does not block the
-  baseline measurement (TRJ5-A1.2a / A1.2b) but is logged as a
-  follow-up for Wave 2 of the lane.
-- Two structural notes (NOT exclusions, but worth recording): both
-  `chio-credentials/src/lib.rs` and `chio-policy/src/evaluate.rs` use
-  `include!()` to pull in sub-files. cargo-mutants discovers via `mod`
-  declarations and does not see `include!`d files. Mutations of those
-  umbrella files cover the included source for the mutator, but
-  per-file kill-rate breakdown is not possible without restructuring
-  the `include!` pattern.
+(Revised after Codex P2 review on PR #603 corrected three rows.)
+
+- **16 of 20** exclusion entries are unambiguously `OK`
+  (test/build/fuzz scaffolding, platform adapters, formal-methods
+  harnesses, pure data, or advisory-by-design surfaces).
+- **4 entries are `FOR-REMOVAL-CANDIDATE`**, all involving
+  decision-capable code that the original draft of this audit
+  classified incorrectly:
+  - `crates/chio-policy/src/models.rs` (HushSpec::parse runs
+    fail-closed YAML validation; not pure data).
+  - `crates/chio-guards/src/text_utils.rs` (canonicalize is the
+    canonical-form input to prompt-injection / jailbreak guards;
+    mutations to it can let obfuscated payloads through).
+  - `crates/chio-guards/src/spider_sense.rs` (SpiderSenseGuard
+    returns Verdict::Deny on multiple paths; not advisory).
+  - `crates/chio-guards/src/external/**` (blanket exclusion with
+    no per-file justification; remote-process bridges).
+- The chio-policy and chio-guards baselines therefore re-baseline
+  if these four entries are re-included in `examine_globs` (per
+  TRJ5-A1.6 Note in `tickets.md` line 73). The trj5 close bar
+  should hold against the post-fix `examine_globs`, not the current
+  one. **This is a real consequence of the original mis-audit**:
+  any kill-rate number measured against the current
+  `examine_globs` may be inflated relative to what the
+  decision-capable code actually deserves.
+- Three structural notes (NOT exclusions, but worth recording):
+  - `chio-credentials/src/lib.rs` uses `include!()` to pull in 13
+    sub-files. cargo-mutants discovers via `mod` declarations and
+    does not see `include!`d files. The committed
+    `chio-credentials` baseline (PR #603 commit 5bc230799) only
+    mutated `lib.rs` (top-level functions, ~4 lines) and
+    `trust_tier.rs`. **Codex P2 review correctly flagged that this
+    means the published 74.1% kill rate does NOT cover the
+    `include!`d files (`registry.rs`, `oid4vp.rs`, etc.), even
+    though those files contain credential
+    verification/validation logic.** A follow-up should either
+    (a) restructure the `include!` pattern into real `mod`
+    declarations (which makes per-file mutation testing possible)
+    or (b) explicitly cite the published number as covering only
+    the umbrella file.
+  - `chio-policy/src/evaluate.rs` has the same `include!` pattern
+    for the `evaluate/` sub-files (`context.rs`, `engine.rs`,
+    etc.). Same caveat applies once the chio-policy baseline lands.
+  - The fuzz harness path `crates/chio-anchor/src/fuzz.rs` is
+    redundant with the workspace-wide `**/fuzz.rs` exclusion;
+    redundancy is harmless but could be removed for tidiness.
 
 ## Recommendation
 
-Proceed with TRJ5-A1.2a / A1.2b baseline runs against the current
-`examine_globs` list. After baselines land, file a follow-up ticket
-(suggested: TRJ5-A1.6.1 "audit `chio-guards/src/external/**` per-file
-test coverage") to address the only `FOR-REMOVAL-CANDIDATE` finding.
+The TRJ5-A1.2a / A1.2b baseline runs in this PR were conducted
+against the current `examine_globs`. The chio-credentials baseline
+(74.1% kill rate, committed in 5bc230799) is therefore measured
+against an `examine_globs` whose chio-credentials surface is just
+`lib.rs` (umbrella) + `trust_tier.rs`; it does NOT mutate the 13
+`include!`d files.
 
-The audited exclusion list does NOT block the >=65% target reading;
-the target is held against a file set whose justification has been
-re-checked for this trj5 cycle.
+For the chio-policy and chio-guards baselines (deferred to a
+follow-up PR), the `examine_globs` should FIRST be revised per the
+four `FOR-REMOVAL-CANDIDATE` findings above, THEN the baseline run.
+This avoids publishing a number against a file set that excludes
+known decision-capable code.
+
+A follow-up audit ticket (suggested: TRJ5-A1.6.1 "audit
+`chio-guards/src/external/**` per-file test coverage" plus the
+three other re-classified entries) should track this work.
 
 ## Auditor
 
-Automated baseline pass; this document records each entry's
-classification by reading the entries in `.cargo/mutants.toml` against
-the close-bar criterion. Follow-up reviewer should spot-check the
-`text_utils.rs` and `models.rs` caveats noted above.
+Initial pass: automated grep against `.cargo/mutants.toml` entries.
+Codex P2 review on PR #603 (commits 04:44Z and 05:00Z) corrected the
+classification of `models.rs`, `text_utils.rs`, and `spider_sense.rs`
+from `OK` to `FOR-REMOVAL-CANDIDATE` based on a reading of the actual
+production decision logic in those files. The corrections are
+incorporated above; the original misclassification is documented in
+this audit's revision history (this file's git log).

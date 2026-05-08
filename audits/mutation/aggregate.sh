@@ -40,12 +40,16 @@ for crate in "$@"; do
   # on the invocation:
   #   * Newer/default: `<output>/outcomes.json` directly (no mutants.out/).
   #   * Older/in-place: `<output>/mutants.out/outcomes.json`.
-  # Probe both, prefer whichever has caught.txt populated. This mirrors
-  # the dual-layout probe in `scripts/mutants-fuzz-cocoverage.sh`.
+  # Prefer the direct `<output>/` layout because that is the current
+  # cargo-mutants 25.x default; fall back to the nested layout when the
+  # direct layout is absent. This avoids reporting stale counts from a
+  # legacy nested run when a newer run has overwritten the same crate
+  # directory at the top level (per Codex P2 review on PR #603).
+  # Mirrors the dual-layout probe in `scripts/mutants-fuzz-cocoverage.sh`.
   out_dir=""
   for candidate in \
-    "${EVIDENCE_DIR}/${crate}/mutants.out" \
-    "${EVIDENCE_DIR}/${crate}"; do
+    "${EVIDENCE_DIR}/${crate}" \
+    "${EVIDENCE_DIR}/${crate}/mutants.out"; do
     if [ -f "${candidate}/caught.txt" ] || [ -f "${candidate}/outcomes.json" ]; then
       out_dir="${candidate}"
       break
