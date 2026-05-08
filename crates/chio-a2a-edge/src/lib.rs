@@ -27,6 +27,35 @@ pub use metrics::{
     RECEIPT_WRITE_OUTCOME_ERROR, RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
 };
 
+/// Trj5 Lane B0: bridge sync compatibility helpers to the now-async
+/// `ToolServerConnection` trait. The passthrough surface in this crate is
+/// already documented as non-authoritative; it does not enter the Chio
+/// kernel hot path and is not subject to the kernel's runtime invariants.
+#[cfg(any(test, feature = "compatibility-surface"))]
+#[allow(clippy::expect_used)]
+fn block_on_tool_server_invoke<F, T>(future: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => match handle.runtime_flavor() {
+            tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(|| handle.block_on(future))
+            }
+            _ => tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build current-thread runtime for sync passthrough")
+                .block_on(future),
+        },
+        Err(_) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build current-thread runtime for sync passthrough")
+            .block_on(future),
+    }
+}
+
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -737,7 +766,10 @@ impl ChioA2aEdge {
         let arguments = extract_arguments_from_message(&request.message);
         let task_id = self.next_task_id();
 
-        match server.invoke(&tool_name, arguments, None) {
+        // Trj5 Lane B0: ToolServerConnection::invoke is now async. This is a
+        // sync compatibility helper that does not go through the kernel; we
+        // bridge via a current-thread runtime if no tokio runtime is active.
+        match crate::block_on_tool_server_invoke(server.invoke(&tool_name, arguments, None)) {
             Ok(result) => {
                 let response_parts = result_to_parts(&result);
                 Ok(TaskResponse {

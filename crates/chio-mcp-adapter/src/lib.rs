@@ -1102,8 +1102,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn adapted_server_maps_url_required_errors_into_kernel_errors() {
+    #[tokio::test]
+    async fn adapted_server_maps_url_required_errors_into_kernel_errors() {
         let transport = MockTransport::simple(
             vec![McpToolInfo {
                 name: "authorize".into(),
@@ -1138,6 +1138,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("adapted server: {e}"));
         let error = adapted
             .invoke("authorize", serde_json::json!({}), None)
+            .await
             .test_unwrap_err();
 
         match error {
@@ -1183,8 +1184,8 @@ mod tests {
 
     // ---- AdaptedMcpServer ToolServerConnection ----
 
-    #[test]
-    fn adapted_server_invoke_delegates_to_adapter() {
+    #[tokio::test]
+    async fn adapted_server_invoke_delegates_to_adapter() {
         let transport = MockTransport::simple(
             vec![text_tool_info("echo")],
             MockCallBehavior::Success(success_result("echoed")),
@@ -1193,6 +1194,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("{e}"));
         let result = adapted
             .invoke("echo", serde_json::json!({}), None)
+            .await
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(result["content"][0]["text"], "echoed");
     }
@@ -1617,8 +1619,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn adapted_server_mcp_error_maps_to_tool_server_error() {
+    #[tokio::test]
+    async fn adapted_server_mcp_error_maps_to_tool_server_error() {
         let transport = MockTransport::simple(
             vec![text_tool_info("t")],
             MockCallBehavior::McpError {
@@ -1630,12 +1632,13 @@ mod tests {
             .unwrap_or_else(|e| panic!("{e}"));
         let err = adapted
             .invoke("t", serde_json::json!({}), None)
+            .await
             .test_unwrap_err();
         assert!(matches!(err, KernelError::ToolServerError(_)));
     }
 
-    #[test]
-    fn adapted_server_connection_error_maps_to_request_incomplete() {
+    #[tokio::test]
+    async fn adapted_server_connection_error_maps_to_request_incomplete() {
         let transport = MockTransport::simple(
             vec![text_tool_info("t")],
             MockCallBehavior::ConnectionFailed("network down".to_string()),
@@ -1644,6 +1647,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("{e}"));
         let err = adapted
             .invoke("t", serde_json::json!({}), None)
+            .await
             .test_unwrap_err();
         assert!(matches!(err, KernelError::RequestIncomplete(_)));
     }

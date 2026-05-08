@@ -5296,7 +5296,7 @@ impl ToolServerConnection for MonetaryCostServer {
         arguments: serde_json::Value,
         bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<(serde_json::Value, Option<ToolInvocationCost>), KernelError> {
-        let value = self.invoke(tool_name, arguments, bridge)?;
+        let value = self.invoke(tool_name, arguments, bridge).await?;
         Ok((value, self.reported_cost.clone()))
     }
 }
@@ -5358,7 +5358,7 @@ impl ToolServerConnection for CountingMonetaryServer {
         arguments: serde_json::Value,
         bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<(serde_json::Value, Option<ToolInvocationCost>), KernelError> {
-        let value = self.invoke(tool_name, arguments, bridge)?;
+        let value = self.invoke(tool_name, arguments, bridge).await?;
         Ok((value, None))
     }
 }
@@ -10444,12 +10444,13 @@ fn cross_currency_without_oracle_keeps_provisional_charge_and_marks_failed_settl
     );
 }
 
-#[test]
-fn echo_server_invoke_with_cost_returns_none() {
+#[tokio::test]
+async fn echo_server_invoke_with_cost_returns_none() {
     let server = EchoServer::new("srv-a", vec!["echo"]);
     let args = serde_json::json!({"msg": "hello"});
     let (value, cost) = server
         .invoke_with_cost("echo", args, None)
+        .await
         .expect("invoke_with_cost should succeed");
     assert!(cost.is_none(), "EchoServer should return None cost");
     assert!(value.is_object());

@@ -487,8 +487,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn native_service_builder_registers_tools_resources_and_prompts() {
+    #[tokio::test]
+    async fn native_service_builder_registers_tools_resources_and_prompts() {
         let service = NativeChioServiceBuilder::new(
             "srv-native",
             "7b0f6f631f6e66207140ead0b6b2e9418916d2c4b3c7448ba5f7ed27f5c8d038",
@@ -572,6 +572,7 @@ mod tests {
 
         let result = service
             .invoke("greet", serde_json::json!({ "name": "Ada" }), None)
+            .await
             .test_unwrap();
         assert_eq!(result["greeting"], "Hello, Ada!");
 
@@ -601,7 +602,7 @@ mod tests {
 
         service.emit_event(ToolServerEvent::ResourcesListChanged);
         service.emit_event(ToolServerEvent::PromptsListChanged);
-        let events = service.drain_events().test_unwrap();
+        let events = service.drain_events().await.test_unwrap();
         assert_eq!(
             events,
             vec![

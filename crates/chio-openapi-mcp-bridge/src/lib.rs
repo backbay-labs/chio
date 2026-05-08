@@ -714,34 +714,43 @@ mod tests {
         assert_eq!(server.tool_names().len(), 4);
     }
 
-    #[test]
-    fn bridge_tool_server_invoke_delegates() {
+    #[tokio::test]
+    async fn bridge_tool_server_invoke_delegates() {
         let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
         let server = bridge.as_tool_server();
-        let result = server.invoke("listPets", json!({}), None).unwrap();
+        let result = server
+            .invoke("listPets", json!({}), None)
+            .await
+            .unwrap();
         assert_eq!(result["structuredContent"]["bridgeMode"], "simulation");
     }
 
-    #[test]
-    fn bridge_tool_server_invoke_unknown_tool_errors() {
+    #[tokio::test]
+    async fn bridge_tool_server_invoke_unknown_tool_errors() {
         let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
         let server = bridge.as_tool_server();
-        let err = server.invoke("nonexistent", json!({}), None).unwrap_err();
+        let err = server
+            .invoke("nonexistent", json!({}), None)
+            .await
+            .unwrap_err();
         assert!(matches!(err, KernelError::ToolServerError(_)));
     }
 
-    #[test]
-    fn owned_bridge_tool_server_implements_connection() {
+    #[tokio::test]
+    async fn owned_bridge_tool_server_implements_connection() {
         let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
         let owned = OwnedBridgeToolServer::from_bridge(bridge);
         assert_eq!(owned.server_id(), "petstore-bridge");
         assert_eq!(owned.tool_names().len(), 4);
-        let result = owned.invoke("listPets", json!({}), None).unwrap();
+        let result = owned
+            .invoke("listPets", json!({}), None)
+            .await
+            .unwrap();
         assert_eq!(result["structuredContent"]["bridgeMode"], "simulation");
     }
 
-    #[test]
-    fn owned_bridge_tool_server_with_dispatcher() {
+    #[tokio::test]
+    async fn owned_bridge_tool_server_with_dispatcher() {
         let mut bridge =
             OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
         bridge.set_dispatcher(Box::new(|_method, _url, _args| {
@@ -754,6 +763,7 @@ mod tests {
         let owned = OwnedBridgeToolServer::from_bridge(bridge);
         let result = owned
             .invoke("createPet", json!({"name": "Buddy"}), None)
+            .await
             .unwrap();
         assert_eq!(result["structuredContent"]["httpStatus"], 200);
     }

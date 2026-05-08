@@ -29,6 +29,34 @@ pub use metrics::{
     RECEIPT_WRITE_OUTCOME_ERROR, RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
 };
 
+/// Trj5 Lane B0: bridge sync compatibility helpers to the now-async
+/// `ToolServerConnection` trait. The passthrough surface in this crate is
+/// non-authoritative; it does not enter the Chio kernel hot path.
+#[cfg(any(test, feature = "compatibility-surface"))]
+#[allow(clippy::expect_used)]
+fn block_on_tool_server_invoke<F, T>(future: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => match handle.runtime_flavor() {
+            tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(|| handle.block_on(future))
+            }
+            _ => tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build current-thread runtime for sync passthrough")
+                .block_on(future),
+        },
+        Err(_) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build current-thread runtime for sync passthrough")
+            .block_on(future),
+    }
+}
+
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -633,7 +661,10 @@ impl ChioAcpEdge {
             .get(capability_id)
             .ok_or_else(|| AcpEdgeError::ToolNotFound(capability_id.to_string()))?;
 
-        match server.invoke(&binding.tool_name, arguments, None) {
+        // Trj5 Lane B0: ToolServerConnection::invoke is now async. This is a
+        // sync compatibility helper; bridge via block_on.
+        match crate::block_on_tool_server_invoke(server.invoke(&binding.tool_name, arguments, None))
+        {
             Ok(result) => Ok(AcpInvocationResult {
                 success: true,
                 data: result,
