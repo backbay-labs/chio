@@ -261,17 +261,44 @@ authoritative post-merge number; this 69.44% is the pre-B3/A3 seed.
 
 - `2026-05-08.json` - per-crate JSON summary (the authoritative
   machine-readable result; consumed by `audits/mutation/aggregate.sh`).
-  Includes the `partial: true` flag and `evaluated: 210, total_discovered: 262`.
-- `mutants.out/caught.txt` - lines, one per caught mutant.
+  Includes the `partial: true` flag and `evaluated: 214, total_discovered: 262`.
+- `mutants.out/caught.txt` - 125 lines, one per caught mutant.
 - `mutants.out/missed.txt` - 50 lines, one per missed mutant.
 - `mutants.out/timeout.txt` - 5 lines.
 - `mutants.out/unviable.txt` - 34 lines.
 - `mutants.out/mutants.json` - 262-entry mutant catalogue (full surface).
 - `mutants.out/outcomes.json` - per-mutant outcome record (214 entries).
-- `mutants.out/lock.json` - run start time + tool version.
+  Intentionally not committed; regenerate locally when argv-level replay
+  evidence is needed.
+- `mutants.out/lock.json` - run start time + tool version. Intentionally
+  not committed because cargo-mutants records operator identity and
+  workspace-absolute paths in this file.
 - `mutants.out/diff/*.diff` - per-mutant source diff (one per evaluated
   mutant).
 
 The `mutants.out/log/` and `mutants.out/debug.log` are NOT committed
 per `audits/evidence/mutants/.gitignore` (29MB+ per crate, contain
 absolute paths).
+
+## Reproducibility
+
+`mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
+omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
+operator identity, hostnames, workspace-absolute paths, argv paths, and
+per-mutant console transcripts in those files. The committed evidence is
+the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
+`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+
+To regenerate the omitted files locally, rerun:
+
+```sh
+cargo mutants \
+  --config audits/mutation/per-crate-configs/chio-anchor.toml \
+  -p chio-anchor \
+  --in-place \
+  --output audits/evidence/mutants/chio-anchor
+```
+
+Then compare the regenerated counts against
+`audits/evidence/mutants/chio-anchor/2026-05-08.json`; do not commit
+the regenerated `lock.json`, `outcomes.json`, `log/`, or `debug.log`.
