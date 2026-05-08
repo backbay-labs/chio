@@ -1409,8 +1409,17 @@ impl ChioKernel {
     ) -> Result<(), KernelError> {
         self.apply_federation_cosign(request, receipt)?;
         let now = current_unix_timestamp();
-        let version = self
-            .kernel_receipt_version_for_remote(request.federated_origin_kernel_id.as_deref(), now);
+        // TRJ5-B2: fail-closed propagation. The resolver returns
+        // `Err(KernelError::ReceiptNegotiationDowngrade)` when a named
+        // federation peer is not pinned fresh; this `?` surfaces the
+        // typed error to the dispatch path so the caller produces a
+        // structured Deny rather than minting a v1 receipt under a
+        // v2-negotiated dispatch. PROTOCOL.md section 6 normative MUST
+        // (post-B2).
+        let version = self.kernel_receipt_version_for_remote(
+            request.federated_origin_kernel_id.as_deref(),
+            now,
+        )?;
         if version.mints_v2() {
             let v2 = self
                 .mint_chio_receipt_v2_from_v1(receipt)

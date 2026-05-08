@@ -378,7 +378,11 @@ fn negotiation_v1_only_peer_disables_v2_minting() {
     let path = unique_db_path("v2-receipt-v1-only");
     let kernel = make_kernel(&path);
     kernel.set_receipt_v2_default(false);
-    let resolved = kernel.kernel_receipt_version_for_remote(None, 1_700_000_000);
+    // TRJ5-B2: resolver now returns Result; the no-remote-named +
+    // kernel-default-v1 branch must still produce Ok(V1Legacy).
+    let resolved = kernel
+        .kernel_receipt_version_for_remote(None, 1_700_000_000)
+        .unwrap();
     assert_eq!(resolved, KernelReceiptVersion::V1Legacy);
 
     let agent_kp = Keypair::generate();

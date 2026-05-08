@@ -734,10 +734,29 @@ now mints v2 receipts at production mint time when peer negotiation selects v2.
   computed over the typed `ReceiptV2SigningBody { bodyHash, body }` wrapper.
   Either form of mismatch (wrong `bodyHash` field, signature over the wrong
   body) fails closed. This matches the T1.2 audit closure.
-- **Negotiation downgrade.** When the peer profile is v1-only or when no
-  federation peer is pinned fresh for the request, the kernel falls back to
-  minting only the v1 UUIDv7 receipt. The downgrade emits a structured
-  warning so operators can see receipt-version regressions in observability.
+- **Negotiation downgrade (post-TRJ5-B2 hardening).**
+  - When the peer profile advertises only v1 (no `ACCEPTS_RECEIPT_V2`) and
+    is pinned fresh, the kernel mints only the v1 UUIDv7 receipt. This is
+    the spec-conformant v1-only profile; advisory dispatches that name no
+    federation peer remain governed by the kernel-level
+    `kernel_receipt_v2_default` setting.
+  - When the request names a federation peer but no matching peer is pinned
+    fresh for that `remote_kernel_id` (whether stale or never-pinned), the
+    kernel MUST reject the dispatch with a typed
+    `KernelError::ReceiptNegotiationDowngrade` whose
+    `NegotiationDowngradeReason` enumerates the failure mode (currently
+    `PeerNotPinnedFresh`). The kernel MUST NOT mint a v1 receipt as a
+    silent fallback. This is a tightening introduced by TRJ5-B2: it adds a
+    new normative MUST to a section that previously contained only
+    descriptive prose ("the kernel falls back"). The "stale or
+    never-pinned" enumeration is part of the MUST so a future
+    implementation cannot read "not pinned fresh" as "stale only" and
+    re-introduce a bypass for the never-pinned path.
+  - The pre-B2 warn-and-continue behaviour (a `tracing::warn!` event
+    followed by a v1 fallback) is removed. Operators retain the
+    structured `KernelError::ReceiptNegotiationDowngrade` as the
+    observability signal; the dispatch fails closed instead of silently
+    minting a downgraded receipt.
 
 ### 6.1 Decisions
 

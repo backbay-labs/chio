@@ -236,6 +236,32 @@ impl StructuredErrorReport {
     }
 }
 
+/// TRJ5-B2: structured reason for a v2-negotiation receipt downgrade
+/// rejection.
+///
+/// The current variants enumerate the spec-MUST cases that the kernel
+/// fails closed on. Additional variants may be added as further
+/// downgrade modes are wired into the spec; the enum is non-exhaustive
+/// from the public API perspective so a future variant does not break
+/// downstream `match` arms compiled against an older version.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum NegotiationDowngradeReason {
+    /// The dispatch named a federation peer, but no matching peer is
+    /// pinned fresh (the peer is either stale or has never been pinned).
+    /// Spec PROTOCOL.md section 6 lines 737-741 (post-B2 normative MUST)
+    /// requires the kernel to fail closed instead of silently downgrading
+    /// to a v1 receipt.
+    #[error(
+        "named federation peer {remote_kernel_id} is not pinned fresh \
+         (stale or never-pinned)"
+    )]
+    PeerNotPinnedFresh {
+        /// The `remote_kernel_id` carried on the request.
+        remote_kernel_id: String,
+    },
+}
+
 /// Errors that can occur during kernel operations.
 #[derive(Debug, thiserror::Error)]
 pub enum KernelError {
@@ -396,6 +422,31 @@ pub enum KernelError {
     /// expired, or replayed).
     #[error("approval rejected: {0}")]
     ApprovalRejected(String),
+
+    /// TRJ5-B2 (receipt v2 fail-closed): the kernel was asked to mint a
+    /// receipt for a request that named a federation peer expected to
+    /// be v2-capable, but the peer-pin freshness check ruled the
+    /// negotiated v2 receipt unattainable. Per PROTOCOL.md section 6
+    /// (post-B2 normative MUST), the kernel MUST reject the dispatch
+    /// rather than silently downgrade to a v1 receipt.
+    ///
+    /// Enforcement site:
+    /// `crates/chio-kernel/src/kernel/mod.rs:kernel_receipt_version_for_remote`.
+    #[error(
+        "receipt negotiation downgrade rejected: expected {expected:?}, \
+         actual {actual:?}, reason: {reason}"
+    )]
+    ReceiptNegotiationDowngrade {
+        /// The receipt version the kernel would prefer for this dispatch
+        /// (typically `V2BodyHash`).
+        expected: KernelReceiptVersion,
+        /// The receipt version the legacy warn-and-downgrade path would
+        /// have selected (typically `V1Legacy`).
+        actual: KernelReceiptVersion,
+        /// Structured reason describing why the v2 negotiation cannot be
+        /// honored.
+        reason: NegotiationDowngradeReason,
+    },
 }
 
 impl KernelError {
@@ -660,6 +711,20 @@ impl KernelError {
                 "CHIO-KERNEL-APPROVAL-REJECTED",
                 serde_json::json!({ "reason": reason }),
                 "Obtain a fresh approval token bound to this exact request and retry once a human approver has signed it.",
+            ),
+            Self::ReceiptNegotiationDowngrade {
+                expected,
+                actual,
+                reason,
+            } => self.report_with_context(
+                "CHIO-KERNEL-RECEIPT-NEGOTIATION-DOWNGRADE",
+                serde_json::json!({
+                    "expected": format!("{expected:?}"),
+                    "actual": format!("{actual:?}"),
+                    "reason": reason.to_string(),
+                }),
+                "Re-pin the named federation peer with a fresh handshake before retrying, \
+                 or route the request without naming a remote so the kernel-level default applies.",
             ),
         }
     }
@@ -1559,35 +1624,55 @@ impl ChioKernel {
         self.kernel_receipt_v2_default.load(Ordering::SeqCst)
     }
 
-    /// W2.1: resolve the [`KernelReceiptVersion`] for a request.
+    /// W2.1 / TRJ5-B2: resolve the [`KernelReceiptVersion`] for a
+    /// request.
     ///
     /// The resolution order is:
-    /// 1. If a federated peer is named on the request, the peer's
-    ///    negotiated `accepts_receipt_v2` feature flag wins.
-    /// 2. Otherwise, the kernel-level default
-    ///    (`kernel_receipt_v2_default`) supplies the answer.
+    /// 1. If a federated peer is named on the request and a matching
+    ///    peer is pinned fresh, the peer's negotiated
+    ///    `accepts_receipt_v2` feature flag wins.
+    /// 2. If a federated peer is named but no matching peer is pinned
+    ///    fresh (stale or never-pinned), the kernel **fails closed**
+    ///    with [`KernelError::ReceiptNegotiationDowngrade`]. This is
+    ///    the TRJ5-B2 hardening: PROTOCOL.md section 6 (post-B2
+    ///    normative MUST) requires the kernel to reject the dispatch
+    ///    rather than silently downgrade a v2-expected request to v1.
+    /// 3. Otherwise (no remote named), the kernel-level default
+    ///    ([`Self::receipt_v2_default`]) supplies the answer.
+    ///
+    /// Pre-B2 behaviour (the warn-and-continue path in case 2) was
+    /// removed: a `tracing::warn!` event followed by a v1 fallback
+    /// silently dropped peer-aware v2 negotiation. The reverse-test in
+    /// `crates/chio-conformance/tests/b2_receipt_v2_failclosed_under_negotiated_v2.rs`
+    /// pins the new contract: if this branch is reverted to warn-and-continue,
+    /// that fixture must FAIL.
     pub fn kernel_receipt_version_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
         now: u64,
-    ) -> KernelReceiptVersion {
+    ) -> Result<KernelReceiptVersion, KernelError> {
         if let Some(remote) = remote_kernel_id {
             if let Some(peer) = self.federation_peer(remote, now) {
-                return KernelReceiptVersion::from_capabilities(&peer.capabilities);
+                return Ok(KernelReceiptVersion::from_capabilities(&peer.capabilities));
             }
-            // Named peer that isn't pinned fresh: fall back to v1 with
-            // a warning log so operators see the negotiation downgrade.
-            tracing::warn!(
-                target: "chio_kernel.receipt_v2",
-                remote_kernel_id = remote,
-                "v2 receipt minting falling back to v1 because federation peer is not pinned fresh"
-            );
-            return KernelReceiptVersion::V1Legacy;
+            // TRJ5-B2: fail closed. Per PROTOCOL.md section 6 (post-B2
+            // normative MUST), when a federation peer is named but is
+            // not pinned fresh (stale or never-pinned), the kernel MUST
+            // reject the dispatch rather than warn-and-downgrade to v1.
+            // The legacy `tracing::warn!` + `return V1Legacy` block was
+            // removed in TRJ5-B2.2.
+            return Err(KernelError::ReceiptNegotiationDowngrade {
+                expected: KernelReceiptVersion::V2BodyHash,
+                actual: KernelReceiptVersion::V1Legacy,
+                reason: NegotiationDowngradeReason::PeerNotPinnedFresh {
+                    remote_kernel_id: remote.to_string(),
+                },
+            });
         }
         if self.receipt_v2_default() {
-            KernelReceiptVersion::V2BodyHash
+            Ok(KernelReceiptVersion::V2BodyHash)
         } else {
-            KernelReceiptVersion::V1Legacy
+            Ok(KernelReceiptVersion::V1Legacy)
         }
     }
 
