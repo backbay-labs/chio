@@ -246,10 +246,10 @@ notes = "Truth table over chio_anchor::emergency_controls_allows."
 [[harness]]
 crate = "chio-anchor"
 harness = "public_ensure_anchor_operation_allowed_fail_closed"
-default_unwind = 8
+default_unwind = 4
 timeout_secs = 1800
 lane = "pr"
-notes = "Fail-closed semantics of chio_anchor::ensure_anchor_operation_allowed."
+notes = "Fail-closed semantics of chio_anchor::ensure_anchor_operation_allowed. Narrowed to unwind=4 (rather than the workspace-default 8) because the production fail-closed arm constructs a `format!()`-based AnchorError::InvalidInput payload that paths into core::str::count::do_count_chars, blowing up cbmc's path count past the per-harness wall-clock budget at unwind=8. The narrowing is sound: with --no-unwinding-checks, the unwind bound only prunes UTF-8 char-counting paths, all of which leave the variant-tag invariant under test untouched. The full String payload is exercised at runtime by crates/chio-anchor/tests/. Documented in the kani_public_harnesses.rs docstring on PR #613."
 
 [[harness]]
 crate = "chio-anchor"
