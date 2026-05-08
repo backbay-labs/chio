@@ -405,7 +405,7 @@ the issuer's actual upstream parent capability. Concretely:
 The portable verifier entrypoint
 `chio_kernel_core::verify_capability_with_floor_and_trust_root(token,
 trusted_issuers, clock, crypto_floor, trust_root_scope_hash)` enforces
-the rule in isolation. Production kernels SHOULD prefer the Wave 1.5
+the rule in isolation. Production kernels SHOULD prefer the composite
 composite entrypoint
 `chio_kernel_core::verify_capability_full(token, trusted_issuers,
 clock, crypto_floor, peer, trust_root, budgets)`, which chains the W1.3
