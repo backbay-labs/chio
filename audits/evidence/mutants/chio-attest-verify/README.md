@@ -6,7 +6,7 @@ rate on 68 viable mutants (86 discovered, 18 unviable). PR #625 adds
 29 sigstore negative-path tests targeting surviving mutants from that
 baseline.
 
-## R2 status (T5-R2-P1-006 + T5-R2-P1-007)
+## R2 status (full-crate rerun requirement + full-crate rerun requirement)
 
 `2026-05-08-post-gap-closure.json` is **PENDING-RERUN**. The 97.9%
 "closed gap" claim in the PR description is based on a focused-line
@@ -28,7 +28,7 @@ cargo mutants -p chio-attest-verify \
   --output audits/evidence/mutants/chio-attest-verify
 
 # regenerate the summary (uses the durable-key whitelist from
-# T5-R2-P0-010 - hand-curated annotations like target_kill_rate
+# annotation preservation rule - hand-curated annotations like target_kill_rate
 # survive but stale release-truth keys are wiped):
 bash audits/mutation/summary.sh chio-attest-verify
 ```
