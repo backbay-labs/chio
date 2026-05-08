@@ -238,7 +238,8 @@ fn b1_single_entry_verifier_has_no_bypass_on_hosted_dispatch() {
         response.verdict,
         HostedVerdict::Deny,
         "hosted dispatch must DENY a v2 token across a v1-only peer; got verdict {:?} reason {:?}",
-        response.verdict, response.reason
+        response.verdict,
+        response.reason
     );
 
     let reason = response.reason.as_deref().unwrap_or("");
