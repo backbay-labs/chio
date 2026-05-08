@@ -55,11 +55,41 @@
 # USAGE
 # ============================================================================
 #
-#   ./scripts/check-anchor-batch-async-witness.sh
+#   ./scripts/check-anchor-batch-async-witness.sh [--advisory]
+#
+# `--advisory` is a no-op flag whose purpose is to mark caller intent.
+# The script's ALGORITHM is best-effort by design (see SOUNDNESS
+# CONTRACT above); the load-bearing public-witness lane gate is the
+# runtime `AnchorError::SyncRouteRequiresAdvisoryPolicy` arm in
+# `crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`.
+# This lint is a fast-feedback companion: it fails loudly on detected
+# violations, but a clean exit does NOT prove the absence of a bypass.
+# Audit T5-R2-P1-018 required the script's advisory nature be labelled
+# in its output; the [ADVISORY-LINT] prefix below makes every line
+# unambiguous about the contract.
 
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
+
+# `--advisory` is accepted purely to document caller intent; the
+# script's behaviour does not change. Audit T5-R2-P1-018.
+advisory_caller=0
+for arg in "$@"; do
+  case "$arg" in
+    --advisory)
+      advisory_caller=1
+      ;;
+    -h|--help)
+      sed -n '2,68p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *)
+      echo "check-anchor-batch-async-witness.sh: unknown argument: $arg" >&2
+      exit 2
+      ;;
+  esac
+done
 
 WINDOW_LINES=50
 SYNC_CALL_RE='verify_anchor_batch_with_witness_policy[[:space:]]*\('
@@ -123,16 +153,28 @@ while IFS= read -r file; do
 done < "$candidate_files"
 
 if [[ -s "$failures_file" ]]; then
-    echo "anchor-batch async-witness gate FAILED:"
+    echo "[ADVISORY-LINT] anchor-batch async-witness gate FAILED:"
     while IFS= read -r line; do
-        echo "  $line"
+        echo "  [ADVISORY-LINT] $line"
     done < "$failures_file"
     echo
-    echo "Hint: route public-witness verification through"
+    echo "[ADVISORY-LINT] Hint: route public-witness verification through"
     echo "  chio_anchor::verify_anchor_batch_with_witness_policy_async"
     echo "or set policy.require_public_witness=false for advisory-only callers."
+    echo
+    echo "[ADVISORY-LINT] NOTE: this lint is the fast-feedback companion to"
+    echo "  the runtime gate at crates/chio-anchor/src/batch.rs"
+    echo "  (AnchorError::SyncRouteRequiresAdvisoryPolicy). The runtime gate"
+    echo "  is load-bearing; this lint can produce false negatives (see"
+    echo "  SOUNDNESS CONTRACT in this script). Failing here is a real bug;"
+    echo "  passing here does NOT prove the absence of a bypass."
     exit 1
 fi
 
-echo "anchor-batch async-witness lint passed (best-effort; runtime gate is load-bearing)"
+if [[ "$advisory_caller" -eq 1 ]]; then
+    echo "[ADVISORY-LINT] anchor-batch async-witness lint passed (best-effort; --advisory caller acknowledged the load-bearing runtime gate at crates/chio-anchor/src/batch.rs)"
+else
+    echo "[ADVISORY-LINT] anchor-batch async-witness lint passed"
+    echo "[ADVISORY-LINT] NOTE: this is a best-effort grep heuristic. A clean exit does NOT prove the absence of a bypass; the load-bearing public-witness lane gate is the runtime AnchorError::SyncRouteRequiresAdvisoryPolicy arm in crates/chio-anchor/src/batch.rs. Pass --advisory to acknowledge."
+fi
 exit 0
