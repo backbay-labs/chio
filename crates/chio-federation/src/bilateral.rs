@@ -105,6 +105,20 @@ impl DualSignedReceipt {
     ///
     /// Neither half of the dual signature is sufficient on its own; a
     /// caller that can only check one side must still refuse the receipt.
+    ///
+    /// # Non-§6 disclaimer (TRJ5-B4 / R4 BLOCKER 1)
+    ///
+    /// **This method is NOT a `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
+    /// §6 verifier.** The signatures it checks are computed over the
+    /// canonical-JSON encoding of [`CoSigningBody`]; the §6 envelope's
+    /// signatures are computed over DSSE PAE bytes wrapping an in-toto
+    /// Statement. The two preimages share zero bytes (R4 finding 1).
+    ///
+    /// Verifiers seeking §6 conformance MUST instead use
+    /// [`crate::bilateral_dsse::verify_dsse_envelope`] against a
+    /// [`crate::bilateral_dsse::DsseEnvelope`]. The trj5 federation hot
+    /// path emits both artifacts under cohabitation; deprecation of this
+    /// legacy verifier is queued for trj6.
     pub fn verify(
         &self,
         org_a_public_key: &PublicKey,
@@ -363,4 +377,86 @@ fn co_sign_with_origin_inner(
     // would themselves pass third-party verification.
     dual.verify(origin_public_key, &tool_host_keypair.public_key())?;
     Ok(dual)
+}
+
+// ---------------------------------------------------------------------------
+// TRJ5-B4.3: federation hot path also emits the §6-conformant DSSE envelope.
+// ---------------------------------------------------------------------------
+
+/// Combined output of the trj5 bilateral co-sign hot path: the legacy
+/// [`DualSignedReceipt`] (retained for backward compatibility) plus the
+/// `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6-conformant DSSE
+/// envelope.
+///
+/// **Verifiers seeking §6 conformance MUST verify
+/// [`Self::dsse_envelope`].** The legacy `DualSignedReceipt` shares zero
+/// signed bytes with the DSSE PAE preimage and is therefore NOT a §6
+/// artifact; see `crate::bilateral_dsse` module docs.
+#[derive(Debug, Clone)]
+pub struct BilateralCoSignArtifacts {
+    /// Legacy artifact. Retained for federation transport callers that
+    /// have not yet migrated to DSSE-shaped envelopes. Trj6 may collapse
+    /// this surface; trj5 ships both.
+    pub dual_signed_receipt: DualSignedReceipt,
+    /// §6-conformant DSSE envelope. The trj5 hot path emits this whenever
+    /// both kernel keypairs are available locally (the in-process
+    /// federation demo path). Cross-host emission is queued for trj6
+    /// when a DSSE-aware `BilateralCoSigningProtocol` lands.
+    pub dsse_envelope: crate::bilateral_dsse::DsseEnvelope,
+}
+
+/// Drive the bilateral co-sign protocol AND emit the §6-conformant DSSE
+/// envelope. The DSSE envelope is produced by signing the DSSE PAE bytes
+/// locally with both kernel keypairs; this matches the in-process
+/// federation demo (Lane C) where both signing identities are co-located.
+///
+/// Cross-host deployments MUST wait for trj6's DSSE-aware
+/// [`BilateralCoSigningProtocol`] extension; until then those callers
+/// should continue invoking [`co_sign_with_origin`] (legacy artifact only,
+/// **NOT §6-conformant**) with full awareness of the disclaimer on
+/// [`DualSignedReceipt::verify`].
+///
+/// `tool_name` and `timestamp_unix_ms` are surfaced to callers because
+/// they are §5 predicate fields the §6 envelope binds. `tool_name` is
+/// typically `receipt.tool_name`; `timestamp_unix_ms` is the wall-clock
+/// at canonicalisation (Org B-side).
+#[allow(clippy::too_many_arguments)]
+pub fn co_sign_with_origin_full(
+    origin_kernel_id: &str,
+    origin_keypair: &Keypair,
+    tool_host_kernel_id: &str,
+    tool_host_keypair: &Keypair,
+    receipt: ChioReceipt,
+    cosigner: &dyn BilateralCoSigningProtocol,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+) -> Result<BilateralCoSignArtifacts, BilateralCoSigningError> {
+    // Legacy hop: produces the existing DualSignedReceipt (and emits the
+    // hop counter / histogram via co_sign_with_origin's wrapper).
+    let dual = co_sign_with_origin(
+        origin_kernel_id,
+        &origin_keypair.public_key(),
+        tool_host_kernel_id,
+        tool_host_keypair,
+        receipt.clone(),
+        cosigner,
+    )?;
+
+    // §6 envelope: the DSSE PAE preimage shares ZERO bytes with the
+    // legacy preimage (R4 BLOCKER 1). Both kernels sign the same PAE
+    // bytes; in the in-process demo we hold both keys directly.
+    let dsse_envelope = crate::bilateral_dsse::sign_dsse_envelope(
+        &receipt,
+        origin_keypair,
+        tool_host_keypair,
+        origin_kernel_id,
+        tool_host_kernel_id,
+        tool_name,
+        timestamp_unix_ms,
+    )?;
+
+    Ok(BilateralCoSignArtifacts {
+        dual_signed_receipt: dual,
+        dsse_envelope,
+    })
 }

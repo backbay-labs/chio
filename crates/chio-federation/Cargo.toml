@@ -23,6 +23,14 @@ chio-revocation-oracle = { path = "../chio-revocation-oracle" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# TRJ5-B4.2: DSSE-conformant bilateral envelope. The §6 envelope of
+# spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md serialises the canonical-JSON
+# in-toto Statement as Base64 in the wire payload; the keyid binding in §6
+# requires SHA-256 of the passport public key (hex-encoded, via the `hex`
+# crate). These three deps are used exclusively by `bilateral_dsse.rs`.
+base64 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
 
 [dev-dependencies]
 # Integration test crates/chio-federation/tests/oracle_gossip_e2e.rs walks

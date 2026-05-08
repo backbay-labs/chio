@@ -2781,6 +2781,7 @@ name = "chio-conformance"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "base64ct",
  "chio-a2a-adapter",
  "chio-a2a-edge",
@@ -3148,14 +3149,17 @@ dependencies = [
 name = "chio-federation"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-core-types",
  "chio-kernel-core",
  "chio-listing",
  "chio-metrics-spec",
  "chio-open-market",
  "chio-revocation-oracle",
+ "hex",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
 ]
 
