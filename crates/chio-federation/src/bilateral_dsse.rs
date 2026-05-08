@@ -87,10 +87,10 @@ pub struct Keyid(pub String);
 impl Keyid {
     /// Compute the §6 keyid for the given public key.
     ///
-    /// Reported by codex[bot] on PR #610 (P1) - earlier revisions hashed
-    /// `to_hex().as_bytes()` for Ed25519, which produced a different
-    /// fingerprint than any spec-conformant peer that hashes raw key
-    /// material. Cross-implementation envelopes were silently rejected.
+    /// Hashes raw key material (not hex-encoded bytes). An earlier
+    /// revision hashed `to_hex().as_bytes()` for Ed25519, which produced
+    /// a different fingerprint than any spec-conformant peer and caused
+    /// cross-implementation envelopes to be silently rejected.
     #[must_use]
     pub fn from_public_key(public_key: &PublicKey) -> Self {
         use chio_core_types::crypto::SigningAlgorithm;
@@ -471,9 +471,9 @@ pub fn verify_dsse_envelope(
     let org_a_keyid = Keyid::from_public_key(org_a_public_key);
     let org_b_keyid = Keyid::from_public_key(org_b_public_key);
 
-    // codex[bot] P1 on PR #610: bind verified keyids to the predicate's
-    // declared `passport_key_fingerprint` for both tool servers. Without
-    // this check, a signer could produce a validly signed envelope whose
+    // Bind verified keyids to the predicate's declared
+    // `passport_key_fingerprint` for both tool servers. Without this
+    // check, a signer could produce a validly signed envelope whose
     // predicate names different passport fingerprints, and downstream §7
     // peer-pinning / audit steps would act on identities that were never
     // verified.
@@ -596,7 +596,7 @@ mod tests {
             .expect("envelope must verify under matching public keys");
         assert_eq!(
             statement.predicate_type, PREDICATE_TYPE_BILATERAL,
-            "predicate type emitted by trj5 hot path"
+            "predicate type emitted by hot path"
         );
         assert_eq!(statement.subject.len(), 1);
     }

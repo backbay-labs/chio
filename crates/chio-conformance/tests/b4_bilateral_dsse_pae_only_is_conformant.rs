@@ -5,8 +5,8 @@
 //! ## What this fixture checks
 //!
 //! 1. **Byte-level non-overlap**: the legacy `CoSigningBody` canonical bytes
-//!    and the DSSE PAE preimage bytes share zero positions (the byte-stream
-//!    inequivalence the R4 review surfaced).
+//!    and the DSSE PAE preimage bytes share zero positions (byte-stream
+//!    inequivalence).
 //! 2. **§6 verifier accepts the §6 envelope** under matching public keys.
 //! 3. **Tampered payload bytes are rejected** (changes LEN(payload) and the
 //!    payload bytes; PAE preimage diverges).
@@ -44,9 +44,9 @@ fn sample_action() -> ToolCallAction {
 
 fn sample_receipt(tool_host_kp: &Keypair) -> ChioReceipt {
     let body = ChioReceiptBody {
-        id: "rcpt-trj5-b4-fixture".to_string(),
+        id: "rcpt-b4-fixture".to_string(),
         timestamp: 1_734_000_000,
-        capability_id: "cap-trj5-b4".to_string(),
+        capability_id: "cap-b4".to_string(),
         tool_server: "srv-orgb-files".to_string(),
         tool_name: "file_read".to_string(),
         action: sample_action(),
@@ -69,10 +69,10 @@ const ORG_B_KERNEL_ID: &str = "kernel.org-b";
 // Tests
 // ---------------------------------------------------------------------------
 
-/// Concrete byte-level proof for R4 finding 1: the legacy `CoSigningBody`
-/// canonical bytes and the DSSE PAE preimage share zero header bytes; their
-/// shapes are entirely incompatible. A single signature cannot authenticate
-/// both, which is precisely why §6 conformance requires a separate emission
+/// Concrete byte-level proof: the legacy `CoSigningBody` canonical bytes
+/// and the DSSE PAE preimage share zero header bytes; their shapes are
+/// entirely incompatible. A single signature cannot authenticate both,
+/// which is precisely why §6 conformance requires a separate emission
 /// path.
 #[test]
 fn legacy_preimage_and_dsse_pae_preimage_share_zero_bytes() {
@@ -280,7 +280,7 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     assert!(
         result.is_err(),
         "DSSE envelope forged from legacy DualSignedReceipt signatures MUST \
-         fail §6 verification (R4 BLOCKER 1: the two preimages share zero bytes, \
+         fail §6 verification (the two preimages share zero bytes, \
          so a legacy signature cannot authenticate the §6 preimage)"
     );
 }
