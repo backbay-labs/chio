@@ -236,9 +236,6 @@ impl StructuredErrorReport {
     }
 }
 
-/// TRJ5-B2: structured reason for a v2-negotiation receipt downgrade
-/// rejection.
-///
 /// The current variants enumerate the spec-MUST cases that the kernel
 /// fails closed on. Additional variants may be added as further
 /// downgrade modes are wired into the spec; the enum is non-exhaustive
@@ -423,11 +420,9 @@ pub enum KernelError {
     #[error("approval rejected: {0}")]
     ApprovalRejected(String),
 
-    /// TRJ5-B2 (receipt v2 fail-closed): the kernel was asked to mint a
     /// receipt for a request that named a federation peer expected to
     /// be v2-capable, but the peer-pin freshness check ruled the
     /// negotiated v2 receipt unattainable. Per PROTOCOL.md section 6
-    /// (post-B2 normative MUST), the kernel MUST reject the dispatch
     /// rather than silently downgrade to a v1 receipt.
     ///
     /// Enforcement site:
@@ -1101,15 +1096,6 @@ pub struct ChioKernel {
     /// locally signing the receipt to obtain the origin kernel's
     /// co-signature. Absent in non-federated deployments.
     federation_peers: ArcSwap<HashMap<String, chio_federation::FederationPeer>>,
-    /// Wave 1.1 chain-binding trust-root registry. Maps a trusted
-    /// capability issuer's public key (hex form) to the SHA-256 hex of
-    /// its root authority scope. The hosted verifier consults this map
-    /// when a v2 capability token is presented: the token's
-    /// `attenuation_proof.parent_scope_hash` MUST match either the
-    /// registered root (direct issue) or the predecessor delegation
-    /// link's `scope_hash` (delegated). Issuers absent from the map
-    /// fail-closed for v2 tokens; v1 tokens are unaffected.
-    ///
     /// `ArcSwap` so trust-root rotations can land without holding a
     /// kernel mutex. Hex-keyed because `chio_core::PublicKey` does not
     /// implement `Hash`.
@@ -1153,44 +1139,16 @@ pub struct ChioKernel {
     /// shape is feature-flag agnostic; consultation is gated by
     /// `cfg(feature = "delegation_v2")` on the read path.
     revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
-    /// W1.2 sibling-sum budget registry. Tracks admitted child shares
-    /// against each parent capability so a delegated chain cannot mint
-    /// two children whose `budget_share_bps` jointly exceed the parent's
-    /// own share. Wrapped in `Mutex` because the registry interface
-    /// takes `&mut dyn BudgetRegistry`; contention is negligible
-    /// because the lock is held only for the duration of one
-    /// `try_admit_child` call inside the verifier.
     budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
-    /// W2.1 receipt-version default. When `true`, the kernel mints a
-    /// `ChioReceiptV2` body_hash-addressed receipt alongside the v1
-    /// receipt that callers continue to receive in the `ToolCallResponse`.
-    /// The legacy UUIDv7 alias on the v2 receipt is set to the v1
-    /// receipt's id; replay identity is exclusively `body_hash`.
-    ///
     /// Defaults to `true` so a freshly-constructed kernel that has not
     /// yet observed peer feature bitsets still mints v2 receipts.
     /// Operators that need the previous v1-only behavior call
     /// [`ChioKernel::set_receipt_v2_default`] with `false`.
     kernel_receipt_v2_default: AtomicBool,
-    /// W2.1 in-memory v2 replay set keyed exclusively on `body_hash`.
-    /// The legacy UUIDv7 alias is non-authoritative and never consulted
-    /// by `insert`. Wrapped in `Mutex` because the type is small and
-    /// contention is bounded by the receipt mint rate; persistent
-    /// stores additionally enforce uniqueness on the `body_hash`
-    /// column.
     receipt_v2_replay: Mutex<chio_core::receipt::ReceiptV2ReplaySet>,
-    /// W2.1 monotonic counter that supplies the `dag_ordinal` field on
-    /// every minted v2 receipt. Initialized at zero on kernel start;
-    /// rotation across kernel restarts is fine because the v2 chain_id
-    /// is the federation kernel id, which uniquely scopes ordinals.
     receipt_v2_dag_ordinal: AtomicU64,
 }
 
-/// W2.1 per-session receipt-version selector populated from the
-/// negotiation handshake at receipt-mint time. The kernel branches on
-/// this value when constructing a receipt: `V1Legacy` mints only the
-/// existing v1 UUIDv7 receipt while `V2BodyHash` additionally mints a
-/// signed `ChioReceiptV2` and persists it in the v2 replay store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelReceiptVersion {
     /// Peer is v1-only or no negotiation profile is in scope: emit
@@ -1609,43 +1567,28 @@ impl ChioKernel {
         }
     }
 
-    /// W2.1: configure whether this kernel defaults to minting
-    /// body_hash-addressed v2 receipts when no per-session peer profile
-    /// is in scope. Tests and v1-only deployments can flip this off so
-    /// the kernel falls back to UUIDv7-only minting.
     pub fn set_receipt_v2_default(&self, accepts_v2: bool) {
         self.kernel_receipt_v2_default
             .store(accepts_v2, Ordering::SeqCst);
     }
 
-    /// W2.1: read the kernel-level receipt-version default.
     #[must_use]
     pub fn receipt_v2_default(&self) -> bool {
         self.kernel_receipt_v2_default.load(Ordering::SeqCst)
     }
 
-    /// W2.1 / TRJ5-B2: resolve the [`KernelReceiptVersion`] for a
-    /// request.
-    ///
     /// The resolution order is:
     /// 1. If a federated peer is named on the request and a matching
     ///    peer is pinned fresh, the peer's negotiated
     ///    `accepts_receipt_v2` feature flag wins.
     /// 2. If a federated peer is named but no matching peer is pinned
     ///    fresh (stale or never-pinned), the kernel **fails closed**
-    ///    with [`KernelError::ReceiptNegotiationDowngrade`]. This is
-    ///    the TRJ5-B2 hardening: PROTOCOL.md section 6 (post-B2
-    ///    normative MUST) requires the kernel to reject the dispatch
-    ///    rather than silently downgrade a v2-expected request to v1.
+    ///    with [`KernelError::ReceiptNegotiationDowngrade`]. PROTOCOL.md
+    ///    section 6 (normative MUST) requires the kernel to reject the
+    ///    dispatch rather than silently downgrade a v2-expected request
+    ///    to v1.
     /// 3. Otherwise (no remote named), the kernel-level default
     ///    ([`Self::receipt_v2_default`]) supplies the answer.
-    ///
-    /// Pre-B2 behaviour (the warn-and-continue path in case 2) was
-    /// removed: a `tracing::warn!` event followed by a v1 fallback
-    /// silently dropped peer-aware v2 negotiation. The reverse-test in
-    /// `crates/chio-conformance/tests/b2_receipt_v2_failclosed_under_negotiated_v2.rs`
-    /// pins the new contract: if this branch is reverted to warn-and-continue,
-    /// that fixture must FAIL.
     pub fn kernel_receipt_version_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
@@ -1655,12 +1598,9 @@ impl ChioKernel {
             if let Some(peer) = self.federation_peer(remote, now) {
                 return Ok(KernelReceiptVersion::from_capabilities(&peer.capabilities));
             }
-            // TRJ5-B2: fail closed. Per PROTOCOL.md section 6 (post-B2
-            // normative MUST), when a federation peer is named but is
-            // not pinned fresh (stale or never-pinned), the kernel MUST
+            // PROTOCOL.md section 6 (normative MUST): when a federation
+            // peer is named but is not pinned fresh, the kernel MUST
             // reject the dispatch rather than warn-and-downgrade to v1.
-            // The legacy `tracing::warn!` + `return V1Legacy` block was
-            // removed in TRJ5-B2.2.
             //
             // `expected` reports the kernel's CONFIGURED default, not a
             // hardcoded `V2BodyHash`. On a v1-default kernel both
@@ -1668,8 +1608,7 @@ impl ChioKernel {
             // accurate diagnostic - the kernel still rejects the
             // dispatch because the peer was never pinned fresh, and
             // operator observability sees the truthful version pair
-            // instead of a fictitious V2 expectation. (cursor[bot]
-            // MEDIUM on PR #611.)
+            // instead of a fictitious V2 expectation.
             let expected = if self.receipt_v2_default() {
                 KernelReceiptVersion::V2BodyHash
             } else {
@@ -1690,10 +1629,6 @@ impl ChioKernel {
         }
     }
 
-    /// W2.1: probe the in-memory v2 replay set for a body_hash. The
-    /// persistent store may also contain the body_hash; both are
-    /// consulted by [`ChioKernel::record_chio_receipt_v2`] before a
-    /// new v2 receipt is admitted.
     pub fn contains_chio_receipt_v2_body_hash(&self, body_hash: &str) -> bool {
         match self.receipt_v2_replay.lock() {
             Ok(replay) => replay.contains_body_hash(body_hash),
@@ -1701,11 +1636,6 @@ impl ChioKernel {
         }
     }
 
-    /// W2.1: snapshot a v2 receipt body_hash for tooling lookups
-    /// (returns true if present in either the in-memory replay set or
-    /// the persistent store). Replay-rejection in the mint path uses
-    /// [`Self::record_chio_receipt_v2`] which performs the
-    /// fail-closed insert.
     pub fn chio_receipt_v2_seen(&self, body_hash: &str) -> Result<bool, KernelError> {
         if self.contains_chio_receipt_v2_body_hash(body_hash) {
             return Ok(true);
@@ -1722,8 +1652,6 @@ impl ChioKernel {
         Ok(false)
     }
 
-    /// W2.1: record a v2 receipt fail-closed.
-    ///
     /// Inserts into the in-memory replay set first; replay rejection
     /// short-circuits the persistent write so a tampered alias on a
     /// previously-seen body_hash cannot resurface as a fresh receipt.
@@ -1778,8 +1706,6 @@ impl ChioKernel {
         Ok(())
     }
 
-    /// W2.1: monotonic dag_ordinal allocator. Increments on every
-    /// admitted v2 receipt minted by this kernel.
     pub(crate) fn next_v2_dag_ordinal(&self) -> u64 {
         self.receipt_v2_dag_ordinal.fetch_add(1, Ordering::SeqCst)
     }
@@ -2030,14 +1956,6 @@ impl ChioKernel {
         self
     }
 
-    /// Wave 1.1 chain-binding trust-root registration. Each entry maps a
-    /// trusted capability issuer's public key to the canonical-JSON
-    /// SHA-256 hex of that issuer's root authority scope. The verifier
-    /// uses this to bind v2 `attenuation_proof.parent_scope_hash` to a
-    /// verifier-known authority hash on direct-issue tokens, closing
-    /// the W1.1 P0 soundness gap. Issuers without an entry fail-closed
-    /// for v2 tokens; v1 tokens remain unaffected.
-    ///
     /// Builder-style so deployments can chain
     /// `.with_capability_trust_roots(...)` onto `ChioKernel::new(config)`.
     #[must_use]
@@ -2102,14 +2020,6 @@ impl ChioKernel {
         }
     }
 
-    /// Resolve the capability negotiation profile that should gate the
-    /// W1.3 schema-ceiling check on the hot path. When no remote
-    /// federation peer is in scope (the most common case for a hosted
-    /// kernel evaluating a local capability), the kernel's own v2
-    /// profile applies: v2 tokens are admitted, v1 tokens are admitted.
-    /// When a federation peer is identified by `remote_kernel_id`, the
-    /// peer's most recent negotiated profile is returned, which may
-    /// downgrade the ceiling to v1.
     pub(crate) fn capability_negotiation_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
@@ -2254,7 +2164,6 @@ impl ChioKernel {
     /// Phase 1.4 acceptance. When a future revision adds `revoke_all`,
     /// this method should call it; until then, capability revocation is
     /// delegated to natural expiration.
-    ///
     pub fn emergency_stop(&self, reason: &str) -> Result<(), KernelError> {
         let now = current_unix_timestamp();
         // Record the timestamp first so any concurrent reader that observes
@@ -2982,12 +2891,6 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Wave 1.5 hot-path wiring: route through the full verifier so
-        // hosted requests enforce the W1.3 schema ceiling and W1.1
-        // chain-binding feature negotiation from the pinned federation peer.
-        // The sibling-sum registry mutation is still deferred below so
-        // earlier denial paths do not consume the parent's share.
-        //
         // Round-3 codex P2 fix: signature is verified first (no budget
         // mutation); the actual `admit_capability_budget` call is
         // deferred until all subsequent checks (time, revocation,
@@ -3264,11 +3167,6 @@ impl ChioKernel {
             );
         }
 
-        // Round-3 codex P2 fix: now that signature, time, revocation,
-        // delegation-admission, subject, scope, and guards have all
-        // passed, commit the W1.2 sibling-sum budget admission. Doing
-        // this here (rather than upfront with signature verification)
-        // means a denied call no longer consumes the parent's share.
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
@@ -3492,10 +3390,6 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Wave 1.5 hot-path wiring: route through the full verifier so
-        // nested hosted requests enforce the same W1.3 schema ceiling and
-        // W1.1 chain-binding feature negotiation as the main hosted path.
-        //
         // Round-3 codex P2 fix: signature first; the budget admission
         // is deferred until after all subsequent checks pass, so a
         // denied call no longer consumes the parent's share.
@@ -3692,9 +3586,6 @@ impl ChioKernel {
             return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
         }
 
-        // Round-3 codex P2 fix: nested-flow path also defers W1.2 budget
-        // admission until after all preceding checks pass, mirroring the
-        // main hosted hot path.
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
@@ -4115,10 +4006,6 @@ impl ChioKernel {
             Err(e) => return Err(e.to_string()),
         }
 
-        // Wave 1.1 chain-binding: when a v2 token is presented, additionally
-        // require `attenuation_proof.parent_scope_hash` to bind to the
-        // registered trust-root scope hash (or the predecessor link).
-        // v1 tokens are unaffected (chain-binding is a v2-only check).
         if cap.schema == chio_core::capability::CHIO_CAPABILITY_V2_SCHEMA {
             let snapshot = self.capability_trust_roots.load_full();
             let issuer_root = snapshot.get(&cap.issuer.to_hex()).cloned().ok_or_else(|| {
@@ -4156,10 +4043,6 @@ impl ChioKernel {
         .map_err(|error| chio_kernel_core::KernelCoreError::InvalidCapability(error).deny_reason())
     }
 
-    /// Wave 1.5 hot-path wiring: signature + chain-binding verification
-    /// with W1.2 sibling-sum budget admission against the kernel's
-    /// persistent registry.
-    ///
     /// The hosted `evaluate_tool_call_*` paths historically called
     /// [`Self::verify_capability_signature`], which only enforced the
     /// signature, crypto-floor, and v2 chain-binding rule. The
@@ -4185,11 +4068,6 @@ impl ChioKernel {
     /// parent's share when the request was about to be denied, starving
     /// later valid siblings (PR #593 round-3 codex P2).
     fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
-        // W1.2 sibling-sum admit. Only fires for tokens that carry a
-        // delegation chain; root-issued tokens have nothing to split.
-        // The proposed share matches the portable hot path: a missing
-        // `budget_share_bps` is interpreted as a request for the full
-        // parent share so oversubscription is still detected.
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
             let proposed_share = cap
@@ -4241,14 +4119,6 @@ impl ChioKernel {
         session_filesystem_roots: Option<&'a [String]>,
     ) -> chio_kernel_core::EvaluationVerdict {
         let trusted = self.trusted_issuer_keys();
-        // Wave 1.5 hot-path wiring: enforce the W1.3 negotiated schema
-        // ceiling and the W1.1 chain-binding rule on the same hot path
-        // that already enforces signature, floor, time bounds, and W1.2
-        // sibling-sum budget admission. Hold the budget-registry lock
-        // for the duration of the verify step so two concurrent
-        // delegations cannot both observe the same residual headroom
-        // and admit beyond the parent's share. The registry is internally
-        // a deterministic BTreeMap; no async work happens under the lock.
         let peer_profile = self
             .capability_negotiation_for_remote(None, clock.now_unix_secs())
             .unwrap_or_else(|_| chio_core::capability::CapabilityNegotiation::t1_default());
@@ -4273,12 +4143,6 @@ impl ChioKernel {
         )
     }
 
-    /// W1.2: register a parent capability's `budget_share_bps` so
-    /// subsequent delegations are admitted against it. Hosted callers
-    /// should invoke this when a fresh capability enters the system
-    /// (issuance, federation gossip). Re-registering the same parent
-    /// with the same share is idempotent. The registry is the same one
-    /// consulted by [`Self::evaluate_portable_verdict`].
     pub fn register_budget_parent(
         &self,
         parent_token_id: String,
@@ -4292,8 +4156,6 @@ impl ChioKernel {
         budgets.register_parent(parent_token_id, parent_share_bps)
     }
 
-    /// W1.2: drop a parent's split from the registry. Idempotent on
-    /// unknown ids so revocation races do not abort verification.
     pub fn evict_budget_parent(&self, parent_token_id: &str) {
         use chio_kernel_core::BudgetRegistry;
         let mut budgets = match self.budget_registry.lock() {

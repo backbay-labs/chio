@@ -1261,13 +1261,6 @@ impl ChioKernel {
             })
     }
 
-    /// W2.1: produce the v1 receipt that callers continue to receive
-    /// PLUS a body_hash-addressed `ChioReceiptV2` when the negotiated
-    /// peer profile (or the kernel-level default) selects
-    /// `KernelReceiptVersion::V2BodyHash`. The legacy UUIDv7 alias on
-    /// the v2 receipt is set to the v1 receipt's id so external
-    /// readers can correlate; replay identity is exclusively
-    /// `body_hash`.
     pub(crate) fn build_and_sign_receipt_with_v2(
         &self,
         params: ReceiptParams<'_>,
@@ -1287,13 +1280,6 @@ impl ChioKernel {
         Ok((v1, Some(v2)))
     }
 
-    /// W2.1 hot-path test surface: same as
-    /// [`Self::mint_chio_receipt_v2_from_v1`] but exposed publicly so
-    /// the `crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs`
-    /// integration test can reconstruct the receipt the kernel just
-    /// minted and probe replay-set behavior. Production code should
-    /// continue to use [`Self::record_chio_receipt_with_federation`]
-    /// which folds the mint into the persistence path.
     pub fn mint_chio_receipt_v2_from_v1_for_test(
         &self,
         v1: &ChioReceipt,
@@ -1301,10 +1287,6 @@ impl ChioKernel {
         self.mint_chio_receipt_v2_from_v1(v1)
     }
 
-    /// W2.1: derive a signed `ChioReceiptV2` from the v1 receipt body
-    /// shape, addressed by `body_hash`. The kernel keypair signs the
-    /// canonical `ReceiptV2SigningBody`; the legacy UUIDv7 alias is
-    /// taken from the v1 receipt id.
     pub(crate) fn mint_chio_receipt_v2_from_v1(
         &self,
         v1: &ChioReceipt,
@@ -1394,21 +1376,12 @@ impl ChioKernel {
     /// receipt is never persisted without its paired remote signature.
     /// Non-federated requests (request.federated_origin_kernel_id is
     /// `None`) behave identically to [`Self::record_chio_receipt`].
-    ///
-    /// W2.1: when the negotiated peer accepts `ACCEPTS_RECEIPT_V2` (or
-    /// the kernel-level default selects v2), this path additionally
-    /// mints a body_hash-addressed `ChioReceiptV2`, persists it to the
-    /// `chio_receipts_v2` table, and inserts the `body_hash` into the
-    /// in-memory `ReceiptV2ReplaySet`. Replay rejection on the v2
-    /// store is fail-closed; the legacy UUIDv7 alias on the v2 row
-    /// is non-authoritative for replay.
     pub(crate) fn record_chio_receipt_with_federation(
         &self,
         request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
         let now = current_unix_timestamp();
-        // TRJ5-B2: fail-closed propagation. The resolver returns
         // `Err(KernelError::ReceiptNegotiationDowngrade)` when a named
         // federation peer is not pinned fresh; this `?` surfaces the
         // typed error to the dispatch path so the caller produces a
@@ -1467,17 +1440,6 @@ impl ChioKernel {
             }
             self.append_chio_receipt_to_local_log(receipt.clone());
         }
-        // M09 review follow-up (PR #378, Codex): drive the settlement
-        // observer slot from the receipt-persistence path so a
-        // registered hook actually runs during normal dispatches.
-        // The receipt is fully signed and persisted at this point;
-        // the observer is byte-irrelevant to the receipt itself, and
-        // the hook's return value is intentionally consumed without
-        // feeding back into the dispatch path. This preserves the
-        // documented invariant that hook failures NEVER block
-        // dispatch (P2.T4 byte-identity test). The write lock is
-        // released above so concurrent persistence is not stalled by
-        // observer I/O.
         let _settlement_status = self.run_settlement_observer(receipt);
         Ok(())
     }

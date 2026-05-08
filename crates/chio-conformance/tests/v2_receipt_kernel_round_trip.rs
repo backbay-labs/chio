@@ -1,9 +1,3 @@
-//! W2.1 hot-path integration test: kernel mints body_hash-addressed
-//! `ChioReceiptV2` receipts when the negotiated peer profile (or the
-//! kernel-level default) accepts `ACCEPTS_RECEIPT_V2`, persists them
-//! through the production `SqliteReceiptStore` migration, and
-//! fail-closes on replay against the in-memory `ReceiptV2ReplaySet`.
-//!
 //! The deliverable for the audit's "types-only, hot path unwired"
 //! finding on T1.2: this test exercises the public mint API
 //! (`evaluate_tool_call_blocking`) that all production callers use,
@@ -378,8 +372,6 @@ fn negotiation_v1_only_peer_disables_v2_minting() {
     let path = unique_db_path("v2-receipt-v1-only");
     let kernel = make_kernel(&path);
     kernel.set_receipt_v2_default(false);
-    // TRJ5-B2: resolver now returns Result; the no-remote-named +
-    // kernel-default-v1 branch must still produce Ok(V1Legacy).
     let resolved = kernel
         .kernel_receipt_version_for_remote(None, 1_700_000_000)
         .unwrap();

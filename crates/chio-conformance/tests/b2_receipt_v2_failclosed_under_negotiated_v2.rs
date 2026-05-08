@@ -1,21 +1,6 @@
-//! Trj5 B2 negative conformance: kernel MUST fail closed when a request
-//! names a federation peer expected to be v2-capable but no matching
-//! peer is pinned fresh.
-//!
 //! Spec MUST: spec/PROTOCOL.md section 6 ("Receipt v2 body_hash addressing
-//!   (W2.1)") "Negotiation downgrade" bullet, post-TRJ5-B2 normative MUST.
-//!   Pre-B2, the cited prose contained NEITHER `MUST` nor `SHOULD` (it
 //!   read "the kernel falls back to minting only the v1 UUIDv7 receipt").
-//!   B2 introduces a NEW normative MUST (a TIGHTENING, not a SHOULD->MUST
 //!   promotion).
-//!
-//! Enforced call site:
-//!   crates/chio-kernel/src/kernel/mod.rs (function
-//!   `kernel_receipt_version_for_remote`, ~mod.rs:1574-1591 pre-B2;
-//!   post-B2 the function returns
-//!   `Result<KernelReceiptVersion, KernelError>` and emits
-//!   `KernelError::ReceiptNegotiationDowngrade` when a federation peer
-//!   is named but not pinned fresh).
 //!
 //! Production call path (the chain this fixture exercises):
 //!   `ChioKernel::kernel_receipt_version_for_remote`
@@ -35,34 +20,6 @@
 //!   The `Allow`-dispatch path in `no_peer_named_kernel_default_v1_mints_v1_only`
 //!   still drives `evaluate_tool_call_blocking` end-to-end so the v1
 //!   mint side effect is observed against the real `SqliteReceiptStore`.
-//!
-//! Reverts-to-fail proof (Evidence Gate Artifact D, close bar):
-//!   If the function body of `kernel_receipt_version_for_remote` is
-//!   reverted to the pre-B2 warn-and-continue form (i.e. the legacy
-//!   `tracing::warn!` event followed by `return KernelReceiptVersion::V1Legacy`
-//!   for the named-peer-not-pinned-fresh branch), the
-//!   `v2_negotiation_with_stale_pin_fails_closed` and
-//!   `v2_negotiation_with_never_pinned_peer_fails_closed` sub-tests
-//!   MUST fail because the resolver returns `Ok(V1Legacy)` instead of
-//!   the typed error variant -- the `expect_err` will panic.
-//!   Local repro:
-//!     1. Edit `crates/chio-kernel/src/kernel/mod.rs` and replace the
-//!        `Err(KernelError::ReceiptNegotiationDowngrade { .. })` block
-//!        with the pre-B2 `tracing::warn!` + `return Ok(V1Legacy)`
-//!        body.
-//!     2. Adjust the function signature back to `-> KernelReceiptVersion`.
-//!        (Adjust callers to match.)
-//!     3. `cargo test -p chio-conformance --test b2_receipt_v2_failclosed_under_negotiated_v2`.
-//!     4. The two negative sub-tests fail with a panic on the
-//!        `expect_err`.
-//!
-//! Threat: an adversary or operator-misconfiguration causes a peer pin
-//!   to expire (or never be installed) for a federation peer whose
-//!   negotiated profile was v2-capable. The pre-B2 resolver silently
-//!   selects `V1Legacy`. The downgraded receipt does not carry
-//!   `body_hash` and the v2 replay store is not consulted; an attacker
-//!   who replays a request observes the silent regression and exfiltrates
-//!   v2-binding properties.
 //!
 //! Why this passes Artifact D (production call path exercise):
 //!   The fixture imports `chio_kernel::ChioKernel` (the production
@@ -260,13 +217,6 @@ fn count_v1_receipts(receipt_store_path: &std::path::Path) -> i64 {
 
 #[test]
 fn v2_negotiation_with_stale_pin_fails_closed() {
-    // CRITICAL B2 NEGATIVE: when the resolver is asked for the receipt
-    // version for a federation peer that is NOT pinned fresh, the
-    // kernel MUST return the typed
-    // `KernelError::ReceiptNegotiationDowngrade` error. The pre-B2
-    // warn-and-continue path returned `Ok(V1Legacy)` and silently let
-    // a v1 receipt be minted; that path is the threat this fixture
-    // defends against.
     let path = unique_db_path("b2-failclosed-stale");
     let kernel = make_kernel(&path);
 
@@ -381,11 +331,6 @@ fn v2_negotiation_with_never_pinned_peer_fails_closed() {
 
 #[test]
 fn no_peer_named_kernel_default_v1_mints_v1_only() {
-    // POSITIVE (advisory mode preserved): when the request does not
-    // name a federation peer and the kernel-level default is v1, the
-    // resolver returns Ok(V1Legacy) and v1 minting proceeds. This is
-    // the spec-conformant v1-only profile and B2 must NOT regress it.
-    //
     // This sub-test additionally exercises
     // `evaluate_tool_call_blocking` end-to-end through
     // `record_chio_receipt_with_federation` -> the resolver, so the
