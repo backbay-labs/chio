@@ -350,10 +350,37 @@ load-bearing for close.
 - `mutants.out/timeout.txt` - 0 lines.
 - `mutants.out/unviable.txt` - 9 lines.
 - `mutants.out/mutants.json` - 119-entry mutant catalogue.
-- `mutants.out/outcomes.json` - per-mutant outcome record.
-- `mutants.out/lock.json` - run start time + tool version.
+- `mutants.out/outcomes.json` - per-mutant outcome record. Intentionally
+  not committed; regenerate locally when argv-level replay evidence is
+  needed.
+- `mutants.out/lock.json` - run start time + tool version. Intentionally
+  not committed because cargo-mutants records operator identity and
+  workspace-absolute paths in this file.
 - `mutants.out/diff/*.diff` - per-mutant source diff.
 
 The `mutants.out/log/` and `mutants.out/debug.log` are NOT committed
 per `audits/evidence/mutants/.gitignore` (29MB+ per crate, contain
 absolute paths).
+
+## Reproducibility
+
+`mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
+omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
+operator identity, hostnames, workspace-absolute paths, argv paths, and
+per-mutant console transcripts in those files. The committed evidence is
+the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
+`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+
+To regenerate the omitted files locally, rerun:
+
+```sh
+cargo mutants \
+  --config audits/mutation/per-crate-configs/chio-guards.toml \
+  -p chio-guards \
+  --in-place \
+  --output audits/evidence/mutants/chio-guards
+```
+
+Then compare the regenerated counts against
+`audits/evidence/mutants/chio-guards/2026-05-08.json`; do not commit
+the regenerated `lock.json`, `outcomes.json`, `log/`, or `debug.log`.
