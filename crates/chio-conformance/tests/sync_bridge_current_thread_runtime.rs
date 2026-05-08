@@ -1,10 +1,9 @@
-//! P0-002 fix (audit 2026-05-08): the sync `evaluate_tool_call`
-//! bridge previously fell back to `futures::executor::block_on` when
-//! the surrounding Tokio runtime was a current-thread runtime. That
-//! parks the runtime's only worker thread and any tool-server future
-//! awaiting Tokio I/O deadlocks silently. The fix returns a typed
-//! `KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`
-//! instead.
+//! The sync `evaluate_tool_call` bridge must NOT fall back to
+//! `futures::executor::block_on` when the surrounding Tokio runtime
+//! is a current-thread runtime. That parks the runtime's only worker
+//! thread and any tool-server future awaiting Tokio I/O deadlocks
+//! silently. The bridge instead returns a typed
+//! `KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`.
 //!
 //! This fixture asserts the typed error surfaces from a real
 //! current-thread Tokio runtime calling `evaluate_tool_call_blocking`.

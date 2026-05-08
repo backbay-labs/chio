@@ -31,14 +31,12 @@ pub use metrics::{
 
 /// Sentinel error returned by [`block_on_tool_server_invoke`] when the
 /// passthrough is invoked from inside a current-thread Tokio runtime.
-/// Mirrors `chio_kernel::KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`
-/// (audit P0-002): polling an async tool-server future with
-/// `futures::executor::block_on` on the only worker thread can
-/// deadlock indefinitely if the future awaits Tokio I/O. The kernel
-/// bridge refuses this case fail-closed, and the edge shims must
-/// match instead of reintroducing the deadlock through the
-/// `compatibility-surface` feature. (codex[bot] P2 / cursor[bot] LOW
-/// follow-up on PR #606.)
+/// Mirrors `chio_kernel::KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`:
+/// polling an async tool-server future with `futures::executor::block_on`
+/// on the only worker thread can deadlock indefinitely if the future
+/// awaits Tokio I/O. The kernel bridge refuses this case fail-closed,
+/// and the edge shims must match instead of reintroducing the
+/// deadlock through the `compatibility-surface` feature.
 #[cfg(any(test, feature = "compatibility-surface"))]
 #[derive(Debug, thiserror::Error)]
 #[error(

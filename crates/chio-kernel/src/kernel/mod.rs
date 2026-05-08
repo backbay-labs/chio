@@ -179,16 +179,15 @@ impl LocalReceiptArtifact {
 
 /// Bridge a sync caller to the now-async tool-server dispatch path.
 ///
-/// P0-002 fix (audit 2026-05-08): the previous fallback used
-/// `futures::executor::block_on` from inside a current-thread Tokio
-/// runtime. That parks the very thread that the runtime needs to
-/// drive its reactor / timer wheel, and any tool-server future that
-/// awaits Tokio I/O (which is the production case once
-/// `chio-mcp-remote` and `chio-mcp-adapter` are wired in) deadlocks
-/// silently. Tokio refuses to nest `block_on` calls precisely because
-/// of this, but `futures::executor::block_on` is a different executor
-/// that does not see the surrounding runtime, so the deadlock manifests
-/// as a hung tool call rather than a typed error.
+/// Calling `futures::executor::block_on` from inside a current-thread
+/// Tokio runtime parks the very thread that the runtime needs to drive
+/// its reactor / timer wheel, and any tool-server future that awaits
+/// Tokio I/O (the production case once `chio-mcp-remote` and
+/// `chio-mcp-adapter` are wired in) deadlocks silently. Tokio refuses
+/// to nest `block_on` calls precisely because of this, but
+/// `futures::executor::block_on` is a different executor that does not
+/// see the surrounding runtime, so the deadlock manifests as a hung
+/// tool call rather than a typed error.
 ///
 /// We now explicitly distinguish three cases:
 ///   1. Multi-thread runtime active: use `block_in_place` so Tokio can
@@ -448,16 +447,16 @@ pub enum KernelError {
     #[error("approval rejected: {0}")]
     ApprovalRejected(String),
 
-    /// P0-002 fix (audit 2026-05-08): the sync `evaluate_tool_call`
-    /// path was invoked from a context where the only available
-    /// Tokio runtime is a current-thread runtime. The async tool-
-    /// dispatch path cannot be safely driven on a current-thread
-    /// runtime: bridging via `futures::executor::block_on` parks the
-    /// caller's thread, and Tokio I/O timers / reactor wakers cannot
-    /// progress on the same parked thread. Returning a typed error
-    /// rather than deadlocking lets callers either (a) move the
-    /// dispatch onto a multi-thread runtime, or (b) call the async
-    /// `evaluate_tool_call` path directly.
+    /// The sync `evaluate_tool_call` path was invoked from a context
+    /// where the only available Tokio runtime is a current-thread
+    /// runtime. The async tool-dispatch path cannot be safely driven
+    /// on a current-thread runtime: bridging via
+    /// `futures::executor::block_on` parks the caller's thread, and
+    /// Tokio I/O timers / reactor wakers cannot progress on the same
+    /// parked thread. Returning a typed error rather than deadlocking
+    /// lets callers either (a) move the dispatch onto a multi-thread
+    /// runtime, or (b) call the async `evaluate_tool_call` path
+    /// directly.
     #[error(
         "sync tool-dispatch bridge cannot drive an async tool server on a current-thread \
          Tokio runtime; switch the host to a multi-thread runtime or call the async \
@@ -2436,19 +2435,20 @@ impl ChioKernel {
     /// Open a new logical session for an agent and bind any capabilities that
     /// were issued during setup to that session.
     ///
-    /// P1-016 design note (audit 2026-05-08): unlike the hosted-tool and
-    /// nested-flow dispatch paths, this surface deliberately does NOT
-    /// call [`Self::admit_capability_budget`] after the pre-admit
-    /// verifier pass. Read-only resource/prompt operations
-    /// (`subscribe_resource`, `read_resource`, `get_prompt`, `complete`)
-    /// are not economic actions: they neither consume the
+    /// Design note: unlike the hosted-tool and nested-flow dispatch
+    /// paths, this surface deliberately does NOT call
+    /// [`Self::admit_capability_budget`] after the pre-admit verifier
+    /// pass. Read-only resource/prompt operations
+    /// (`subscribe_resource`, `read_resource`, `get_prompt`,
+    /// `complete`) are not economic actions: they neither consume the
     /// caller's per-tool invocation budget nor reserve the caller's
-    /// share against its parent in the sibling-sum registry. PROTOCOL.md
-    /// section "Single-entry capability verifier" already authorises
-    /// this split as MAY: the MUST is that every surface traverses
-    /// `verify_capability_full` exactly once (which this helper does);
-    /// the authoritative admit phase is reserved for surfaces that
-    /// actually execute a side-effecting action against the budget.
+    /// share against its parent in the sibling-sum registry.
+    /// PROTOCOL.md section "Single-entry capability verifier" already
+    /// authorises this split as MAY: the MUST is that every surface
+    /// traverses `verify_capability_full` exactly once (which this
+    /// helper does); the authoritative admit phase is reserved for
+    /// surfaces that actually execute a side-effecting action against
+    /// the budget.
     fn validate_non_tool_capability(
         &self,
         capability: &CapabilityToken,
@@ -2713,10 +2713,10 @@ impl ChioKernel {
         let now = current_unix_timestamp();
         let cap = &req.planner_capability;
 
-        // P1-016 design note (audit 2026-05-08): plan-evaluation is a
-        // PREVIEW path -- it answers "if this plan ran, would each step
-        // be allowed?" without dispatching the underlying tool calls.
-        // Calling [`Self::admit_capability_budget`] here would consume
+        // Design note: plan-evaluation is a PREVIEW path -- it answers
+        // "if this plan ran, would each step be allowed?" without
+        // dispatching the underlying tool calls. Calling
+        // [`Self::admit_capability_budget`] here would consume
         // sibling-sum budget for plans that may never execute, which
         // is the opposite of preview semantics. The pre-admit verifier
         // pass below covers the spec MUST (every surface traverses
@@ -2908,12 +2908,12 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Round-3 codex P2 fix: signature is verified first (no budget
-        // mutation); the actual `admit_capability_budget` call is
-        // deferred until all subsequent checks (time, revocation,
-        // delegation-admission, subject, scope, guards) have passed.
-        // Otherwise a denied call would still consume the parent's
-        // share, starving later valid siblings.
+        // Signature is verified first (no budget mutation); the actual
+        // `admit_capability_budget` call is deferred until all
+        // subsequent checks (time, revocation, delegation-admission,
+        // subject, scope, guards) have passed. Otherwise a denied call
+        // would still consume the parent's share, starving later valid
+        // siblings.
         if let Err(reason) = self.verify_capability_full_pre_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
@@ -3407,9 +3407,9 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Round-3 codex P2 fix: signature first; the budget admission
-        // is deferred until after all subsequent checks pass, so a
-        // denied call no longer consumes the parent's share.
+        // Signature first; the budget admission is deferred until
+        // after all subsequent checks pass, so a denied call no longer
+        // consumes the parent's share.
         if let Err(reason) = self.verify_capability_full_pre_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
@@ -4063,9 +4063,8 @@ impl ChioKernel {
     /// a `KernelError` dependency on the verifier shape.
     ///
     /// The split between pre-admit verification and budget admission
-    /// is the round-3 codex P2 ordering rule from PR #593: signature
-    /// first, admit last, so a denied request never starves later
-    /// valid siblings.
+    /// enforces the ordering rule "signature first, admit last", so a
+    /// denied request never starves later valid siblings.
     fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
