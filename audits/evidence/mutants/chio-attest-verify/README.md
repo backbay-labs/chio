@@ -21,13 +21,13 @@ This directory holds the per-mutant cargo-mutants output for the
 
 ```sh
 cargo mutants \
-  --config /tmp/mutants-config/attest-verify.toml \
+  --config audits/mutation/per-crate-configs/chio-attest-verify.toml \
   -p chio-attest-verify \
   --in-place \
   --output audits/evidence/mutants/chio-attest-verify
 ```
 
-The `--config /tmp/mutants-config/attest-verify.toml` override is necessary
+The `--config audits/mutation/per-crate-configs/chio-attest-verify.toml` override is necessary
 to scope the per-mutant test invocation to `--package chio-attest-verify`
 rather than the full workspace. Rationale below.
 
@@ -65,7 +65,7 @@ chio-acp-proxy unrelated failure to each chio-attest-verify mutant.
 
 To produce an honest signal, this run scopes the per-mutant test
 invocation to `--package chio-attest-verify` only, via the override
-config at `/tmp/mutants-config/attest-verify.toml`. The `examine_globs`
+config at `audits/mutation/per-crate-configs/chio-attest-verify.toml`. The `examine_globs`
 in that config matches the workspace `.cargo/mutants.toml`
 (lib.rs + sigstore.rs).
 
@@ -189,12 +189,39 @@ pass-through mutants per the T0.B audit convention. This work is
 - `mutants.out/timeout.txt` - 0 lines.
 - `mutants.out/unviable.txt` - 18 lines.
 - `mutants.out/mutants.json` - 86-entry mutant catalogue.
-- `mutants.out/outcomes.json` - per-mutant outcome record (committed
-  for re-derivability of `test_scope` from `phase_results[].argv`).
-- `mutants.out/lock.json` - run start time + tool version.
+- `mutants.out/outcomes.json` - per-mutant outcome record. Intentionally
+  not committed; regenerate locally when argv-level replay evidence is
+  needed.
+- `mutants.out/lock.json` - run start time + tool version. Intentionally
+  not committed because cargo-mutants records operator identity and
+  workspace-absolute paths in this file.
 - `mutants.out/diff/*.diff` - per-mutant source diff (one per evaluated
   mutant).
 
 The `mutants.out/log/` and `mutants.out/debug.log` are NOT committed
 per `audits/evidence/mutants/.gitignore` (29MB+ per crate, contain
 absolute paths).
+
+## Reproducibility
+
+`mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
+omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
+operator identity, hostnames, workspace-absolute paths, argv paths, and
+per-mutant console transcripts in those files. The committed evidence is
+the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
+`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+
+To regenerate the omitted files locally, rerun:
+
+```sh
+cargo mutants \
+  --config audits/mutation/per-crate-configs/chio-attest-verify.toml \
+  -p chio-attest-verify \
+  --in-place \
+  --output audits/evidence/mutants/chio-attest-verify
+```
+
+Then compare the regenerated counts against
+`audits/evidence/mutants/chio-attest-verify/2026-05-08.json`; do not
+commit the regenerated `lock.json`, `outcomes.json`, `log/`, or
+`debug.log`.
