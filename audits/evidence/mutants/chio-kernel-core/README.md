@@ -1,4 +1,4 @@
-# chio-kernel-core mutation baseline (TRJ5-A1)
+# chio-kernel-core mutation baseline (release work-A1)
 
 This directory holds the per-mutant cargo-mutants output for the
 `chio-kernel-core` crate; the seed measurement that retires the
@@ -11,7 +11,7 @@ for the largest trust-boundary crate.
 |---|---|
 | Crate | `chio-kernel-core` |
 | Date | 2026-05-08 |
-| Branch | `claude/trj5/a1-mutation-kernel-core` (PR continuation of `claude/trj5/a1-mutation-policy`, PR #623) |
+| Branch | `PR branch` (PR continuation of `PR branch`, PR #623) |
 | Base SHA | `e1662e5d0` (PR #623 tip) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | ~40 min on local workstation before manual kill |
@@ -178,7 +178,7 @@ authoritative full-sweep number.
 
 ## Closing the gap
 
-Out of scope for this baseline ticket; test additions are TRJ5-A1
+Out of scope for this baseline item; test additions are release work-A1
 follow-up. The categorization above gives a prioritized close path:
 
 1. `NormalizedScope::is_subset_of` boundary tests (close ~4 missed).
@@ -194,7 +194,7 @@ at `audits/evidence/mutants/chio-kernel-core/2026-05-08.json`.
 
 ## Post-merge re-run note
 
-trj5 has multiple PRs that touch chio-kernel-core (#606, #611, #612).
+release work has multiple PRs that touch chio-kernel-core (#606, #611, #612).
 Once those land on main, this baseline will need to be re-measured.
 The current run is against PR #623 tip (e1662e5d0), which is itself
 not yet merged.
