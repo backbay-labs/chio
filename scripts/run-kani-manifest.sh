@@ -117,6 +117,18 @@ crate_filter = sys.argv[3]
 exclude_csv = sys.argv[4]
 exclude_set = {x for x in exclude_csv.split(",") if x}
 
+# Lane is a closed enum. Validate both the requested lane filter and
+# every entry's lane value against this set so a typo in the manifest
+# (e.g. `lane = "prr"`) cannot silently drop a harness from CI by
+# never matching any filter. Audit T5-R2-P1-018.
+VALID_LANES = ("pr", "nightly")
+
+if lane_filter not in VALID_LANES:
+    sys.stderr.write(
+        f"run-kani-manifest.sh: --lane {lane_filter!r} is not one of {list(VALID_LANES)}\n"
+    )
+    sys.exit(2)
+
 data = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
 required_schema = "chio.kani.multi-crate.v1"
 schema = data.get("schema")
@@ -143,6 +155,14 @@ for idx, entry in enumerate(entries):
         sys.stderr.write(f"duplicate harness entry: {pair[0]}::{pair[1]}\n")
         sys.exit(2)
     seen.add(pair)
+    # Reject unknown lane values up front (fail-loud) rather than
+    # filtering them silently. Audit T5-R2-P1-018.
+    if entry["lane"] not in VALID_LANES:
+        sys.stderr.write(
+            f"harness[{idx}] ({pair[0]}::{pair[1]}) has invalid lane "
+            f"{entry['lane']!r}; expected one of {list(VALID_LANES)}\n"
+        )
+        sys.exit(2)
     if entry["lane"] != lane_filter:
         continue
     if crate_filter and entry["crate"] != crate_filter:
