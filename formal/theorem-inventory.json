@@ -735,7 +735,7 @@
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
       "mapsTo": ["P3"],
-      "notes": "a v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs. Status remains `assumed` until the Lean toolchain is available in CI; the Rust shell is covered by crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs."
+      "notes": "W1.3 downgrade-attack defense: a v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs. Status remains `assumed` until the Lean toolchain is available in CI; the Rust shell is covered by crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs."
     },
     {
       "id": "theorem.budget.sibling_sum_soundness",
