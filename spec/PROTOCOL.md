@@ -405,17 +405,39 @@ the issuer's actual upstream parent capability. Concretely:
 The portable verifier entrypoint
 `chio_kernel_core::verify_capability_with_floor_and_trust_root(token,
 trusted_issuers, clock, crypto_floor, trust_root_scope_hash)` enforces
-the rule in isolation. Production kernels SHOULD prefer the Wave 1.5
-composite entrypoint
+the rule in isolation. Production kernels MUST route every inbound
+capability admission through the Wave 1.5 composite entrypoint
 `chio_kernel_core::verify_capability_full(token, trusted_issuers,
 clock, crypto_floor, peer, trust_root, budgets)`, which chains the W1.3
 schema-ceiling check, the W1.1 chain-binding check, and the W1.2
 sibling-sum budget admission alongside signature, floor, and time-bound
-verification. Both rejection paths surface `CapabilityError::AttenuationViolation`
-with the offending hashes formatted as hex. The check costs a single hash
-comparison on the happy path and runs after the basic signature, time,
-and crypto-floor checks (the chain binding is meaningful only once those
-succeed).
+verification. The earlier partial entry points
+(`verify_capability_with_floor`,
+`verify_capability_with_negotiated_floor`,
+`verify_capability_with_floor_and_trust_root`,
+`verify_capability_with_floor_and_resolver`) remain available for
+isolated unit tests and bounded research adapters; they MUST NOT be
+the sole verifier on a production hot path because each one leaves
+at least one Wave 1 defense un-wired and the resulting bypass is
+silent. Kernel implementations MAY split the call into two phases --
+a pre-admit pass with `NoopBudgetRegistry` followed by an authoritative
+admit against the persistent registry once every other check has
+passed -- but every reachable kernel surface (hosted tool dispatch,
+plan-step pre-flight, session/resource/prompt operations, federated
+nested-flow bridges) MUST traverse `verify_capability_full` exactly
+once per admission decision. Both rejection paths surface
+`CapabilityError::AttenuationViolation` with the offending hashes
+formatted as hex. The check costs a single hash comparison on the
+happy path and runs after the basic signature, time, and crypto-floor
+checks (the chain binding is meaningful only once those succeed).
+
+The MUST above is enforced by the conformance fixture
+`crates/chio-conformance/tests/b1_capability_v2_single_entry_no_bypass.rs`,
+which constructs a v2 capability whose `attenuation_proof.parent_scope_hash`
+does not bind to any registered trust root and asserts that the
+production hosted dispatch path returns a deny verdict. If a future
+refactor reintroduces a kernel-side verifier shortcut that bypasses
+`verify_capability_full`, that fixture must fail.
 
 Worked example. An issuer with trust-root authority hash `H_root` mints
 a v2 capability directly (empty `delegation_chain`). The verifier accepts
