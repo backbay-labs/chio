@@ -1,4 +1,4 @@
-# chio-policy mutation baseline (TRJ5-A1.2a)
+# chio-policy mutation baseline (mutation evidence item)
 
 This directory holds the per-mutant cargo-mutants output for the
 `chio-policy` crate; the seed measurement that retires the
@@ -10,7 +10,7 @@ This directory holds the per-mutant cargo-mutants output for the
 |---|---|
 | Crate | `chio-policy` |
 | Date | 2026-05-08 |
-| Branch | `claude/trj5/a1-mutation-policy` (PR continuation of `claude/trj5/a1-mutation-attest-verify`, PR #619) |
+| Branch | `PR branch` (PR continuation of `PR branch`, PR #619) |
 | Base SHA | `7bc9fd0764f374ae252bf09bd873bbdf3192eb46` (PR #619 tip) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | ~3h 12m wall (interrupted by session budget) |
@@ -172,7 +172,7 @@ test-gap pattern:
    misc.
 
 These are concrete test-addition opportunities; closing the timezone-
-parser cluster alone (deferred to TRJ5-A1.4 follow-up) would push the
+parser cluster alone (deferred to mutation evidence item follow-up) would push the
 kill rate to ~85% without touching the un-evaluated 104 mutants.
 
 ## Why partial run
@@ -192,7 +192,7 @@ not a lopsided sample.
 ## What's NOT in this PR
 
 - Test additions to close the 56 missed mutants (deferred to a
-  TRJ5-A1.4 follow-up task; the categorization above gives a
+  mutation evidence item follow-up task; the categorization above gives a
   prioritized close path).
 - Re-run to evaluate the remaining 104 mutants (deferred to CI
   hosted-nightly).
