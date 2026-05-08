@@ -208,22 +208,25 @@ while IFS=$'\t' read -r crate harness unwind timeout features; do
   fi
 
   echo "::group::cargo kani ${crate}::${harness} (unwind=${unwind} timeout=${timeout}s)"
+  # Capture the harness exit status without negation. After `if ! cmd; then`,
+  # `$?` is 0 because `!` inverts the status before the conditional; running
+  # the command directly under a temporary `set +e` and stashing `$?`
+  # preserves the real failure code so CI fails on harness verification
+  # failure or `timeout`-induced 124.
+  set +e
   if [[ "$HAS_TIMEOUT" -eq 1 ]]; then
-    if ! timeout "${timeout}s" "${CMD[@]}"; then
-      rc=$?
-      FAILED=$((FAILED + 1))
-      echo "::endgroup::"
-      echo "FAIL: ${crate}::${harness} exited with code ${rc}" >&2
-      exit "$rc"
-    fi
+    timeout "${timeout}s" "${CMD[@]}"
+    rc=$?
   else
-    if ! "${CMD[@]}"; then
-      rc=$?
-      FAILED=$((FAILED + 1))
-      echo "::endgroup::"
-      echo "FAIL: ${crate}::${harness} exited with code ${rc}" >&2
-      exit "$rc"
-    fi
+    "${CMD[@]}"
+    rc=$?
+  fi
+  set -e
+  if [[ "$rc" -ne 0 ]]; then
+    FAILED=$((FAILED + 1))
+    echo "::endgroup::"
+    echo "FAIL: ${crate}::${harness} exited with code ${rc}" >&2
+    exit "$rc"
   fi
   echo "::endgroup::"
 done <<< "$ROWS"
