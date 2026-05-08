@@ -31,7 +31,7 @@
 -    //
 -    // Inserted between ForbiddenPathGuard and ShellCommandGuard so that
 -    // rate-limit denials are observed before any shell semantics fire.
--    // Wave 1.6 design; re-landed in Wave 5.0.1 after the Chio rename.
+-    // velocity guard design; re-landed in post-rename update after the Chio rename.
 -    if let Some(v) = &rules.velocity {
 -        if v.enabled {
 -            let (velocity_cfg, agent_cfg) = compile_velocity_rule(v);

@@ -20,7 +20,7 @@
 -    // match this tool does the same. Otherwise, if `human_in_loop` is
 -    // enabled and declares an `approve_above` threshold, use that threshold.
 -    //
--    // Wave 1.6 behaviour, re-landed in Wave 5.0.1 after the Chio rename
+-    // velocity guard behavior, re-landed in post-rename update after the Chio rename
 -    // rename.
 -    let mut approval_threshold: Option<u64> = None;
 -    if confirmation_overlap(tool_pattern, &rule.require_confirmation)? {
@@ -54,6 +54,6 @@
  /// Translate a `VelocityRule` into optional `VelocityConfig` +
  /// `AgentVelocityConfig`. If no invocation / spend / agent / session limit
  /// is set, returns `(None, None)` - i.e. the guard is effectively a no-op
- /// and no guard is pushed onto the pipeline. Wave 1.6 semantics.
+ /// and no guard is pushed onto the pipeline. velocity guard semantics.
  fn compile_velocity_rule(
      rule: &VelocityRule,
