@@ -93,7 +93,8 @@ denominator): **39 / (39 + 14 + 0) = 39/53 = 73.58%**.
 Per `lane-a-floor/mutation-budget.md` and `audits/T0.B-substrate-
 hardening.md`: chio-kernel-core is a `>=65%` target crate.
 
-**Measured 73.58% over 62 of 343 mutants; target >=65%; PARTIAL.**
+**Measured 73.58% over 62 of 343 mutants; target >=65%; PARTIAL;
+crate-level target NOT satisfied pending a full run.**
 
 The 281 not-evaluated mutants would need to flip proportions wildly
 (>=82 missed of the remaining 281) to drop the kill rate below 65%
@@ -191,6 +192,32 @@ follow-up. The categorization above gives a prioritized close path:
 The full per-mutant evidence is at
 `audits/evidence/mutants/chio-kernel-core/`. Per-crate JSON summary
 at `audits/evidence/mutants/chio-kernel-core/2026-05-08.json`.
+
+## Reproducibility
+
+`mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
+omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
+operator identity, hostnames, workspace-absolute paths, argv paths, and
+per-mutant console transcripts in those files. The committed evidence is
+the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
+`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+
+To regenerate the omitted files locally, rerun:
+
+```sh
+cargo mutants \
+  --config audits/mutation/per-crate-configs/chio-kernel-core.toml \
+  -p chio-kernel-core \
+  --in-place \
+  --output audits/evidence/mutants/chio-kernel-core \
+  --baseline=skip \
+  --timeout 300
+```
+
+Then compare the regenerated counts against
+`audits/evidence/mutants/chio-kernel-core/2026-05-08.json`; do not
+commit the regenerated `lock.json`, `outcomes.json`, `log/`, or
+`debug.log`.
 
 ## Post-merge re-run note
 
