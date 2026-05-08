@@ -117,5 +117,5 @@ total=$((count_implpub + count_implpartial + count_blocked))
 printf -- '\n**Total**: %d (expected 20)\n' "$total"
 
 if [ "$((count_implpartial + count_blocked))" -gt 2 ]; then
-  printf '\n**R3 escalation criterion fires** (`IMPL-PARTIAL + BLOCKED-BY-ARCHITECTURE` count = %d > 2).\n' "$((count_implpartial + count_blocked))"
+  printf '\n**Threat surface coverage gap** (`IMPL-PARTIAL + BLOCKED-BY-ARCHITECTURE` count = %d > 2; review the partial/blocked rows before declaring coverage complete).\n' "$((count_implpartial + count_blocked))"
 fi
