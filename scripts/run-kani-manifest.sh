@@ -25,15 +25,22 @@
 #                 and exit 0. Does not invoke Kani.
 #   --dry-run     Print the cargo-kani command for each matched entry
 #                 and exit 0. Does not invoke Kani.
+#   --allow-empty Treat an empty match set as success in normal runs.
+#                 Without this flag, an empty match exits 1 so a CI
+#                 gate cannot silently pass when a lane typo, manifest
+#                 bug, or `--exclude-crate` filter removes every
+#                 harness. `--list` and `--dry-run` are informational
+#                 and always exit 0 on empty match.
 #
 # Environment:
 #   KANI_MANIFEST    Path to the manifest TOML. Defaults to
 #                    `.kani/harnesses.toml` relative to repo root.
 #
 # Exit code: 0 if all matched harnesses pass (or the matched set is
-# empty under `--list` / `--dry-run`); non-zero on the first failing
-# harness. Per-harness wall-clock cap is enforced via `timeout(1)` if
-# present on PATH.
+# empty under `--list` / `--dry-run` / `--allow-empty`); non-zero on
+# the first failing harness, on an empty match in a normal run without
+# `--allow-empty`, or on manifest parse errors. Per-harness wall-clock
+# cap is enforced via `timeout(1)` if present on PATH.
 
 set -euo pipefail
 
@@ -44,6 +51,7 @@ CRATE_FILTER=""
 EXCLUDE_CRATES=""
 LIST_ONLY=0
 DRY_RUN=0
+ALLOW_EMPTY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -71,8 +79,12 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=1
       shift
       ;;
+    --allow-empty)
+      ALLOW_EMPTY=1
+      shift
+      ;;
     -h|--help)
-      sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -158,8 +170,16 @@ PY
 )
 
 if [[ -z "$ROWS" ]]; then
-  echo "run-kani-manifest.sh: no harnesses matched (lane=$LANE_FILTER crate=${CRATE_FILTER:-*})" >&2
-  exit 0
+  # Empty-match policy: informational modes (--list, --dry-run) and
+  # explicit opt-in (--allow-empty) succeed; everything else fails so a
+  # CI gate cannot silently pass when a lane typo, manifest bug, or
+  # `--exclude-crate` filter removes every harness from the sweep.
+  if [[ "$LIST_ONLY" -eq 1 || "$DRY_RUN" -eq 1 || "$ALLOW_EMPTY" -eq 1 ]]; then
+    echo "run-kani-manifest.sh: no harnesses matched (lane=$LANE_FILTER crate=${CRATE_FILTER:-*})" >&2
+    exit 0
+  fi
+  echo "run-kani-manifest.sh: no harnesses matched (lane=$LANE_FILTER crate=${CRATE_FILTER:-*}); pass --allow-empty to opt in to empty-match success" >&2
+  exit 1
 fi
 
 if [[ "$LIST_ONLY" -eq 1 ]]; then
