@@ -51,7 +51,7 @@ chio-acp-proxy::attestation_and_telemetry_tests::
                      capability issuer is not a trusted CA"
 ```
 
-This failure exists on `main` at SHA `708c7bb33` and on the `claude/release work/
+This failure exists on `main` at SHA `708c7bb33` and on the `release branch
 a1-mutation-baseline` branch tip. It is a pre-existing test/runtime drift
 where the runtime now returns a "trusted CA" message instead of the
 "signature"/"untrusted" wording the test expects.
