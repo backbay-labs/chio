@@ -6,10 +6,10 @@
 //! 3. Drive `chio_federation::execute_bilateral_invocation`, which:
 //!    - Drives the legacy `co_sign_with_origin` hop to produce the
 //!      legacy `DualSignedReceipt`.
-//!    - Calls `sign_dsse_envelope_full` to produce the §6-conformant
-//!      DSSE envelope, with the §5 predicate extensions
-//!      (`capability_lease_ref`, `policy_evaluation_summary`) the §7
-//!      verifier requires.
+//!    - Calls `sign_dsse_envelope_full` to produce the DSSE
+//!      signature-slice envelope, with the predicate extensions
+//!      (`capability_lease_ref`, `policy_evaluation_summary`) the
+//!      partial verifier requires.
 //!    - Runs `verify_bilateral_cosign_invocation` (the partial
 //!      local verifier covering a subset of §7) against the
 //!      freshly-signed envelope.
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         public_key: kp_tool_host.public_key(),
     });
 
-    // ---- 4. Bind §5 predicate extensions ------------------------------
+    // ---- 4. Bind predicate extensions ---------------------------------
     let extensions = BilateralPredicateExtensions {
         capability_lease_ref: Some(CapabilityLeaseRef {
             lease_id: lease_id.to_string(),
@@ -167,7 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         outcome.artifacts.dual_signed_receipt.schema
     );
     println!(
-        "  §6 DSSE envelope: payloadType={}, signatures.len={}",
+        "  DSSE signature-slice envelope: payloadType={}, signatures.len={}",
         outcome.artifacts.dsse_envelope.payload_type,
         outcome.artifacts.dsse_envelope.signatures.len()
     );

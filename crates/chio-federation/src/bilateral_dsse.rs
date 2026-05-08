@@ -1,6 +1,6 @@
 //! ## Why this module exists
 //!
-//! ## Wire format (spec §6 lines 308-353)
+//! ## Wire format
 //!
 //! ```text
 //! envelope = {
@@ -24,10 +24,14 @@
 //! (NOT the base64 of it: that goes on the wire, but the signed message is the
 //! pre-base64 bytes). LEN values are decimal ASCII per the DSSE v1 spec.
 //!
-//! ## Spec citation
+//! ## Scope boundary
 //!
-//! - §6 lines 308-353: DSSE envelope shape and PAE encoding.
-//! - §7 step 11-12: signature verification under tool-server fingerprints.
+//! This module intentionally emits a DSSE signature-slice profile, not the
+//! strict `CHIODOS_BILATERAL_COSIGN_INVOCATION` predicate. The strict
+//! CHIODOS schema requires fields this API does not receive
+//! (`tool_args_hash`, non-optional lease and policy summaries) and forbids
+//! the local `receipt_canonical_json` helper field. Callers must not present
+//! this artifact as a CHIODOS bilateral invocation envelope.
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -40,32 +44,34 @@ use sha2::{Digest, Sha256};
 use crate::bilateral::BilateralCoSigningError;
 
 // ---------------------------------------------------------------------------
-// Constants (spec §6, §7)
+// Constants (DSSE signature-slice profile)
 // ---------------------------------------------------------------------------
 
 /// DSSE v1 payload type used by chiodos bilateral envelopes.
 ///
-/// Spec §6 line 323: `"payloadType": "application/vnd.in-toto+json"`. The
-/// literal string is part of the PAE preimage: changing it changes the
+/// The literal string is part of the PAE preimage: changing it changes the
 /// signed bytes.
 pub const PAYLOAD_TYPE_IN_TOTO: &str = "application/vnd.in-toto+json";
 
-/// Predicate type for the in-toto Statement carried in the DSSE envelope.
-pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-cosign-invocation.v1";
+/// Predicate type for the in-toto Statement carried in the DSSE signature
+/// slice. Deliberately distinct from the strict CHIODOS bilateral
+/// invocation predicate.
+pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-cosign-signature-slice.v1";
 
 /// In-toto Statement `_type` per the v1 attestation framework (DSSE doc).
 pub const STATEMENT_TYPE_V1: &str = "https://in-toto.io/Statement/v1";
 
-/// `_type` field of the chio-bilateral predicate body. Distinct from
-/// `predicateType` so verifiers can distinguish "this is a chio predicate"
-/// from "this is a generic in-toto Statement".
-pub const PREDICATE_BODY_SCHEMA: &str = "chio.bilateral-cosign.invocation.v1";
+/// `_type` field of the chio-bilateral signature-slice predicate body.
+/// Distinct from `predicateType` so verifiers can distinguish this local
+/// profile from a generic in-toto Statement.
+pub const PREDICATE_BODY_SCHEMA: &str = "chio.bilateral-cosign.signature-slice.v1";
 
 /// Fixed prefix tag of the DSSE Pre-Authentication Encoding (DSSE v1).
 const PAE_PREFIX: &str = "DSSEv1";
 
 /// Wire schema for [`DsseEnvelope`] when carried over chiodos federation.
-pub const BILATERAL_DSSE_ENVELOPE_SCHEMA: &str = "chio.federation-bilateral-dsse-envelope.v1";
+pub const BILATERAL_DSSE_ENVELOPE_SCHEMA: &str =
+    "chio.federation-bilateral-dsse-signature-slice-envelope.v1";
 
 pub const DEFAULT_CONSISTENCY_MODEL: &str = "crdt-commutative";
 
@@ -78,18 +84,18 @@ pub const DEFAULT_COSIGN_MODE: &str = "bilateral_required";
 // ---------------------------------------------------------------------------
 
 /// SHA-256 fingerprint of a kernel's passport public key (hex, lowercase),
-/// used as the DSSE `keyid` per §6 line 327, 331 and as the `tool_server_*`
-/// `passport_key_fingerprint` per §5.
+/// used as the DSSE `keyid` and as the `tool_server_*`
+/// `passport_key_fingerprint` in this signature-slice profile.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Keyid(pub String);
 
 impl Keyid {
-    /// Compute the §6 keyid for the given public key.
+    /// Compute the DSSE keyid for the given public key.
     ///
     /// Reported by codex[bot] on PR #610 (P1) - earlier revisions hashed
     /// `to_hex().as_bytes()` for Ed25519, which produced a different
-    /// fingerprint than any spec-conformant peer that hashes raw key
+    /// fingerprint than any peer that hashes raw key
     /// material. Cross-implementation envelopes were silently rejected.
     #[must_use]
     pub fn from_public_key(public_key: &PublicKey) -> Self {
@@ -301,7 +307,7 @@ pub struct DsseSignature {
     pub sig: String,
 }
 
-/// DSSE v1 envelope carrying the §6-conformant bilateral co-signature.
+/// DSSE v1 envelope carrying the bilateral signature-slice artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DsseEnvelope {
@@ -488,15 +494,14 @@ pub fn build_statement(
 // Sign / verify
 // ---------------------------------------------------------------------------
 
-/// Sign a §6-conformant bilateral DSSE envelope.
+/// Sign a bilateral DSSE signature-slice envelope.
 ///
 /// `org_a_keypair` is the origin kernel (Org A); `org_b_keypair` is the
-/// tool-host kernel (Org B). Both signatures cover the same DSSE PAE bytes
-/// per spec §6 line 345 ("Both kernels sign the same PAE bytes.").
+/// tool-host kernel (Org B). Both signatures cover the same DSSE PAE bytes.
 ///
 /// Returns a fully-assembled [`DsseEnvelope`]; the function self-checks via
 /// [`verify_dsse_envelope`] before returning so callers receive only
-/// envelopes that already pass §7 step-11/12 verification.
+/// envelopes that already pass the signature-slice verification subset.
 pub fn sign_dsse_envelope(
     receipt: &ChioReceipt,
     org_a_keypair: &Keypair,
@@ -588,23 +593,19 @@ pub fn sign_dsse_envelope_full(
     Ok(envelope)
 }
 
-/// Verify a §6-conformant DSSE envelope per spec §7 steps 1, 10, 11, 12 (the
-/// signature-bearing subset of the algorithm). Returns the parsed Statement
-/// on success so callers can drive subsequent steps (peer pinning, lease
+/// Verify a DSSE signature-slice envelope. Returns the parsed Statement on
+/// success so callers can drive subsequent checks (peer pinning, lease
 /// resolution, anchor reconciliation) against a single decoded payload.
 ///
 /// 1. Payload base64-decodes (`dsse.malformed`).
 /// 2. Statement is parseable canonical JSON (`statement.malformed`).
 /// 3. `payload_type == PAYLOAD_TYPE_IN_TOTO` (PAE preimage shape).
-/// 4. `predicate_type` is `PREDICATE_TYPE_BILATERAL` (or its in-toto.io
-///    URL alias).
+/// 4. `predicate_type` is `PREDICATE_TYPE_BILATERAL`.
 /// 5. `signatures` carries exactly two entries.
 /// 6. Each signature's `keyid` matches the SHA-256 of the corresponding
-///    public key the verifier was given (`peer.unpinned_or_keyid_mismatch`,
-///    spec §7 step 8 / step 11/12).
+///    public key the verifier was given (`peer.unpinned_or_keyid_mismatch`).
 /// 7. Each signature, base64-decoded, is a valid Ed25519 signature over
-///    the recomputed DSSE PAE bytes (`signature.server_*_invalid`,
-///    spec §7 steps 11-12).
+///    the recomputed DSSE PAE bytes (`signature.server_*_invalid`).
 pub fn verify_dsse_envelope(
     envelope: &DsseEnvelope,
     org_a_public_key: &PublicKey,
@@ -631,10 +632,7 @@ pub fn verify_dsse_envelope(
             statement.statement_type, STATEMENT_TYPE_V1
         )));
     }
-    if statement.predicate_type != PREDICATE_TYPE_BILATERAL
-        && statement.predicate_type
-            != "https://in-toto.io/attestation/bilateral-cosign-invocation/v1"
-    {
+    if statement.predicate_type != PREDICATE_TYPE_BILATERAL {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
             "predicate.type_unrecognised: '{}'",
             statement.predicate_type
@@ -722,7 +720,7 @@ fn decode_ed25519_signature(b64: &str) -> Option<[u8; 64]> {
 
 // ---------------------------------------------------------------------------
 // Tests (encoding round-trip + happy path; negative paths live in
-// chio-conformance/tests/b4_bilateral_dsse_pae_only_is_conformant.rs)
+// chio-conformance/tests/b4_bilateral_dsse_signature_slice.rs)
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]

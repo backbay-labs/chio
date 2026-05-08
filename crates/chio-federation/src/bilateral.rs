@@ -106,11 +106,13 @@ impl DualSignedReceipt {
     /// Neither half of the dual signature is sufficient on its own; a
     /// caller that can only check one side must still refuse the receipt.
     ///
-    /// **This method is NOT a `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
-    /// §6 verifier.** The signatures it checks are computed over the
-    /// canonical-JSON encoding of [`CoSigningBody`]; the §6 envelope's
-    /// signatures are computed over DSSE PAE bytes wrapping an in-toto
-    /// Statement. The two preimages share zero bytes (R4 finding 1).
+    /// **This method is NOT a DSSE signature-slice verifier.** The
+    /// signatures it checks are computed over the canonical-JSON encoding
+    /// of [`CoSigningBody`]; the DSSE signature-slice signatures are
+    /// computed over DSSE PAE bytes wrapping an in-toto
+    /// Statement. On this branch that DSSE artifact is a signature-slice
+    /// profile, not the strict CHIODOS invocation predicate. The two
+    /// preimages share zero bytes (R4 finding 1).
     pub fn verify(
         &self,
         org_a_public_key: &PublicKey,
@@ -366,10 +368,9 @@ fn co_sign_with_origin_inner(
     Ok(dual)
 }
 
-/// **Verifiers seeking §6 conformance MUST verify
-/// [`Self::dsse_envelope`].** The legacy `DualSignedReceipt` shares zero
-/// signed bytes with the DSSE PAE preimage and is therefore NOT a §6
-/// artifact; see `crate::bilateral_dsse` module docs.
+/// Contains the legacy `DualSignedReceipt` plus the DSSE signature-slice
+/// artifact. Neither artifact is a strict CHIODOS bilateral invocation
+/// predicate; see `crate::bilateral_dsse` module docs.
 #[derive(Debug, Clone)]
 pub struct BilateralCoSignArtifacts {
     pub dual_signed_receipt: DualSignedReceipt,
@@ -377,9 +378,9 @@ pub struct BilateralCoSignArtifacts {
 }
 
 /// `tool_name` and `timestamp_unix_ms` are surfaced to callers because
-/// they are §5 predicate fields the §6 envelope binds. `tool_name` is
-/// typically `receipt.tool_name`; `timestamp_unix_ms` is the wall-clock
-/// at canonicalisation (Org B-side).
+/// the DSSE signature-slice predicate binds them. `tool_name` is typically
+/// `receipt.tool_name`; `timestamp_unix_ms` is the wall-clock at
+/// canonicalisation (Org B-side).
 #[allow(clippy::too_many_arguments)]
 pub fn co_sign_with_origin_full(
     origin_kernel_id: &str,
@@ -447,7 +448,7 @@ pub struct BilateralInvocationRequest<'a> {
 
 #[derive(Debug, Clone)]
 pub struct BilateralInvocationOutcome {
-    /// Legacy + §6 artifacts produced by the hot path.
+    /// Legacy + DSSE signature-slice artifacts produced by the hot path.
     pub artifacts: BilateralCoSignArtifacts,
     /// Verifier output. Constructed by running the partial local
     /// verifier (subset of §7) against the freshly-signed envelope.
@@ -471,7 +472,7 @@ pub enum BilateralInvocationError {
 
 /// 1. Drives [`co_sign_with_origin_full`] to produce the
 ///    [`BilateralCoSignArtifacts`] (legacy [`DualSignedReceipt`] +
-///    §6-conformant DSSE envelope) but layered with the
+///    DSSE signature-slice envelope) but layered with the
 ///    [`crate::bilateral_dsse::BilateralPredicateExtensions`] (lease ref,
 ///    policy summary, etc.) the verifier needs.
 /// 2. Runs the partial local verifier (subset of §7) from
@@ -490,7 +491,7 @@ pub fn execute_bilateral_invocation(
     verifier_config: &crate::bilateral_verifier::VerifierConfig<'_>,
 ) -> Result<BilateralInvocationOutcome, BilateralInvocationError> {
     // Step 1: legacy DualSignedReceipt hop (drives the cosigner) +
-    // §6-conformant envelope with predicate extensions.
+    // DSSE signature-slice envelope with predicate extensions.
     let dual = co_sign_with_origin(
         request.origin_kernel_id,
         &request.origin_keypair.public_key(),

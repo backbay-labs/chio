@@ -1,6 +1,6 @@
 //! Drives [`chio_federation::bilateral::execute_bilateral_invocation`]
 //! end-to-end (NOT a mock - exercises the production
-//! `sign_dsse_envelope_full` and the production partial local verifier
+//! `sign_dsse_envelope_full` signature-slice producer and the production partial local verifier
 //! `verify_bilateral_cosign_invocation`, which covers a subset of the
 //! §7 step list), then mutates one byte at a time and asserts the
 //! verifier rejects with the correct spec §7.1 code. Coverage:
@@ -26,6 +26,8 @@
 
 use std::collections::BTreeMap;
 
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_federation::{
@@ -241,7 +243,7 @@ fn happy_path_full_invocation_runs_end_to_end() {
     let outcome = run_default(&setup).unwrap_or_else(|e| panic!("happy path failed: {e:?}"));
     assert_eq!(outcome.verified.joint_verdict, "allow");
     assert_eq!(outcome.verified.resolved_receipt.id, setup.receipt.id);
-    // Both legacy and §6 artifacts populated.
+    // Both legacy and DSSE signature-slice artifacts populated.
     assert_eq!(outcome.artifacts.dsse_envelope.signatures.len(), 2);
 }
 
@@ -713,6 +715,36 @@ fn step_16_quorum_required_without_anchor_fails() {
     )
     .unwrap_err();
     assert_verifier_code(err, "consistency.quorum_underpopulated");
+}
+
+#[test]
+fn co_sign_n_of_m_is_rejected_until_quorum_verification_exists() {
+    let setup = setup();
+    let outcome = run_default(&setup).unwrap_or_else(|e| panic!("happy path: {e:?}"));
+    let mut envelope: DsseEnvelope = outcome.artifacts.dsse_envelope.clone();
+    let (mut statement, _) = envelope.decode_statement().unwrap();
+    statement.predicate.co_sign = "n_of_m".to_string();
+    envelope.payload = BASE64_STANDARD.encode(statement.canonical_bytes().unwrap());
+
+    let mut action_classes = BTreeMap::new();
+    action_classes.insert(TOOL.to_string(), ActionClassKind::Routine);
+    let config = VerifierConfig {
+        peer_pin_set: &setup.peer_pin_set,
+        receipt_store: &setup.receipt_store,
+        lease_registry: &setup.lease_registry,
+        governance_receipt_store: &setup.governance_store,
+        revocation_oracle: &setup.revocation_oracle,
+        pinned_epoch: PinnedEpoch {
+            now_unix_ms: now_ms(),
+            epoch_height: 0,
+        },
+        action_classes,
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
+    };
+
+    let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config)
+        .expect_err("n_of_m must not be accepted before quorum verification exists");
+    assert_eq!(err.code(), "predicate.schema_invalid");
 }
 
 #[test]

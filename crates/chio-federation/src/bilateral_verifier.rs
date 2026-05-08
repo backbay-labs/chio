@@ -1,6 +1,5 @@
-//! Implements the verification algorithm in
-//! `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7 (lines 361-410),
-//! driving an envelope produced by
+//! Implements a partial local verifier for the bilateral DSSE
+//! signature-slice profile produced by
 //! [`crate::bilateral_dsse::sign_dsse_envelope_full`].
 //!
 //! ## P0-007 honesty downgrade (audit 2026-05-08)
@@ -9,7 +8,8 @@
 //! implied full §7 conformance. Per the 2026-05-08 audit, the
 //! implementation does not yet cover the full predicate schema:
 //!
-//!   - `BilateralPredicate` is missing required fields the spec
+//!   - `BilateralPredicate` is intentionally not the strict CHIODOS
+//!     predicate: it is missing required fields the spec
 //!     enumerates (e.g. `tool_args_hash` per
 //!     `CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §5/§6) and accepts
 //!     internal non-schema fields that the spec does not define.
@@ -23,9 +23,10 @@
 //! Per the audit's guidance ("partial labels are acceptable when
 //! honest"), this verifier is now labeled as a **partial local
 //! verifier**: it implements the structural / cryptographic core
-//! plus a meaningful subset of the §7 step list, but full schema
-//! completion is deferred to TRJ6 (see `dsse-bilateral-signing.md`
-//! "TRJ6 schema completion" and the PR description).
+//! plus a meaningful subset of the §7 step list against the local
+//! signature-slice profile. Strict CHIODOS predicate completion is
+//! deferred to TRJ6 (see `dsse-bilateral-signing.md` "TRJ6 schema
+//! completion" and the PR description).
 //!
 //! Receipts that surface verifier output should NOT advertise full
 //! §7 conformance based on this implementation alone.
@@ -540,10 +541,7 @@ pub fn verify_bilateral_cosign_invocation(
     }
 
     // ---- Step 4: predicateType is recognised ---------------------------
-    if statement.predicate_type != PREDICATE_TYPE_BILATERAL
-        && statement.predicate_type
-            != "https://in-toto.io/attestation/bilateral-cosign-invocation/v1"
-    {
+    if statement.predicate_type != PREDICATE_TYPE_BILATERAL {
         return Err(VerifierError::PredicateTypeUnrecognised(
             statement.predicate_type.clone(),
         ));
@@ -886,10 +884,15 @@ fn validate_predicate_required_fields(pred: &BilateralPredicate) -> Result<(), V
         ));
     }
     match pred.co_sign.as_str() {
-        "bilateral_required" | "bilateral_if_cross_org" | "n_of_m" => {}
+        "bilateral_required" | "bilateral_if_cross_org" => {}
+        "n_of_m" => {
+            return Err(VerifierError::PredicateSchemaInvalid(
+                "co_sign \"n_of_m\" is rejected until quorum metadata and signature-set verification are implemented".to_string(),
+            ))
+        }
         other => {
             return Err(VerifierError::PredicateSchemaInvalid(format!(
-                "co_sign {:?} is not in {{bilateral_required, bilateral_if_cross_org, n_of_m}}",
+                "co_sign {:?} is not in {{bilateral_required, bilateral_if_cross_org}}",
                 other
             )))
         }
