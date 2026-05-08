@@ -365,15 +365,13 @@ fn pae_helper_matches_spec_format() {
 }
 
 /// Spec §7 step 7 substrate: the `subject[0].digest.sha256` field equals
-/// the SHA-256 of the canonical-JSON of the underlying receipt body. A
-/// verifier resolving the receipt via the predicate's
-/// P0-004 fix (audit 2026-05-08): the subject digest binds the
-/// receipt BODY (canonical JSON of `ChioReceiptBody`), not the full
-/// signed `ChioReceipt` wrapper. Resolving the receipt from a store
-/// (which exposes the body for re-verification) and re-hashing the
-/// body must reproduce this digest. Hashing the full wrapper would
-/// fold in the signature bytes, which the verifier cannot reproduce
-/// from a body-only re-emission.
+/// the SHA-256 of the canonical-JSON of the underlying receipt body.
+/// The subject digest binds the receipt BODY (canonical JSON of
+/// `ChioReceiptBody`), not the full signed `ChioReceipt` wrapper.
+/// Resolving the receipt from a store (which exposes the body for
+/// re-verification) and re-hashing the body must reproduce this
+/// digest. Hashing the full wrapper would fold in the signature bytes,
+/// which the verifier cannot reproduce from a body-only re-emission.
 #[test]
 fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     let kp_a = Keypair::generate();
@@ -397,13 +395,13 @@ fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     let want = chio_core::crypto::sha256_hex(&canonical_body);
     assert_eq!(
         statement.subject[0].digest.sha256, want,
-        "subject[0].digest.sha256 MUST equal sha256(canonical_json(receipt.body())) \
-         per P0-004 fix; cross-impl resolution from a body-only receipt store relies \
-         on this binding."
+        "subject[0].digest.sha256 MUST equal sha256(canonical_json(receipt.body())); \
+         cross-impl resolution from a body-only receipt store relies on this binding."
     );
 
     // Belt-and-suspenders: hashing the full signed wrapper must NOT
-    // match. If it did, P0-004 would have regressed silently.
+    // match. A wrapper-hash match would mean the body/wrapper binding
+    // had regressed silently.
     let canonical_full = canonical_json_bytes(&receipt).unwrap();
     let full_digest = chio_core::crypto::sha256_hex(&canonical_full);
     assert_ne!(
@@ -412,13 +410,12 @@ fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     );
 }
 
-/// P0-005 fix (audit 2026-05-08): the bilateral envelope profile
-/// pins exactly ONE subject. The pre-fix verifier rejected the
-/// empty-list case but accepted multi-subject envelopes and bound
-/// only `subject[0]`. A signer could insert a second arbitrary
-/// subject and any verifier walking the full subject list (the
-/// in-toto convention for membership) would resolve a different
-/// receipt than the producer signed.
+/// The bilateral envelope profile pins exactly ONE subject. Accepting
+/// a multi-subject envelope would let a signer insert a second
+/// arbitrary subject; any verifier walking the full subject list (the
+/// in-toto convention for membership) would then resolve a different
+/// receipt than the producer signed. The empty-list case is rejected
+/// for the same reason: there must be exactly one subject.
 #[test]
 fn dsse_envelope_with_two_subjects_is_rejected() {
     use chio_federation::bilateral_dsse::{DsseStatement, StatementSubject, SubjectDigest};
