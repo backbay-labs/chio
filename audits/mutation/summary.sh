@@ -94,7 +94,7 @@ for crate in "$@"; do
   # Defensive: missed.txt / timeout.txt may not be present on a run that
   # produced only `outcomes.json` (cargo-mutants 25.x has two layouts).
   # `--rawfile` errors fatally if the file is missing; provide an empty
-  # tmpfile fallback. (Per Cursor review on PR #603.)
+  # tmpfile fallback.
   missed_path="${out_dir}/missed.txt"
   timeout_path="${out_dir}/timeout.txt"
   empty=$(mktemp)
@@ -102,11 +102,11 @@ for crate in "$@"; do
   [ -f "${missed_path}"  ] || missed_path="${empty}"
   [ -f "${timeout_path}" ] || timeout_path="${empty}"
 
-  # T5-R2-P0-010: ONLY a strict whitelist of durable, hand-curated
-  # annotations is preserved across regenerations. Run-shape and
-  # release-truth keys (`run_status`, `target_met`, `result_label`,
-  # `evaluated`, `total_discovered`, etc.) are recomputed-or-cleared
-  # every run; preserving them caused a chio-policy summary that was
+  # ONLY a strict whitelist of durable, hand-curated annotations is
+  # preserved across regenerations. Run-shape and release-truth keys
+  # (`run_status`, `target_met`, `result_label`, `evaluated`,
+  # `total_discovered`, etc.) are recomputed-or-cleared every run.
+  # Preserving them previously caused a chio-policy summary that was
   # interrupted at 314/418 mutants to keep `target_met: true` from a
   # previous edit.
   #

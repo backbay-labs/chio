@@ -67,17 +67,17 @@ for crate in "$@"; do
   n=$((c + m + t + u))
   denom=$((c + m + t))
 
-  # T5-R2-P1-005: read result_label, examine_scope, run_status,
-  # target_met, evaluated, total_discovered from the per-crate
-  # summary JSON and propagate the most-specific label into the row.
-  # The previous mutants.json length comparison missed PARTIAL-SUBSET
-  # runs (operator-narrowed examine_globs) because the subset
-  # mutants.json length matches n.
+  # Read result_label, examine_scope, run_status, target_met,
+  # evaluated, total_discovered from the per-crate summary JSON and
+  # propagate the most-specific label into the row. A naive
+  # mutants.json length comparison misses PARTIAL-SUBSET runs
+  # (operator-narrowed examine_globs) because the subset mutants.json
+  # length matches n.
   #
-  # T5-R2-P1-004: missing summary JSON / mutants.json / jq parse
-  # errors are non-fatal under set -euo pipefail. Emit a warn on
-  # stderr when the summary JSON is absent so the operator knows
-  # the row may understate caveats.
+  # Missing summary JSON / mutants.json / jq parse errors are
+  # non-fatal under set -euo pipefail. Emit a warn on stderr when the
+  # summary JSON is absent so the operator knows the row may
+  # understate caveats.
   summary_json=""
   shopt -s nullglob
   for candidate in $(printf '%s\n' "${EVIDENCE_DIR}/${crate}"/*.json | sort -r); do
