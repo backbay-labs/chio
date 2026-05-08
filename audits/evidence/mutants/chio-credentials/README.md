@@ -72,6 +72,29 @@ where present) reflect the PARTIAL label.
 - Per-crate JSON: `audits/evidence/mutants/chio-credentials/2026-05-08.json`.
 - Per-mutant log: `audits/evidence/mutants/chio-credentials/mutants.out/`.
 
+## Reproducibility
+
+`mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
+omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
+operator identity, hostnames, workspace-absolute paths, argv paths, and
+per-mutant console transcripts in those files. The committed evidence is
+the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
+`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+
+To regenerate the omitted files locally, rerun:
+
+```sh
+cargo mutants \
+  -p chio-credentials \
+  --in-place \
+  --output audits/evidence/mutants/chio-credentials
+```
+
+Then compare the regenerated counts against
+`audits/evidence/mutants/chio-credentials/2026-05-08.json`; do not
+commit the regenerated `lock.json`, `outcomes.json`, `log/`, or
+`debug.log`.
+
 ## Follow-up
 
 - Convert `include!()` files to `mod` declarations; re-run.

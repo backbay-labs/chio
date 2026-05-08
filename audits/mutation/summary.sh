@@ -67,10 +67,10 @@ for crate in "$@"; do
 
   # Inspect the actual `cargo test` invocation cargo-mutants used.
   # cargo-mutants records the invocation in two places (in order of
-  # preference for re-derivability after `audits/evidence/mutants/.gitignore`
-  # excludes the verbose log):
-  #   1. `outcomes.json` (committed) - per-mutant `cargo_test_args` list
-  #   2. `debug.log` (NOT committed) - the literal command line
+  # preference for local regeneration after `audits/evidence/mutants/.gitignore`
+  # excludes PII-heavy run artifacts from VCS):
+  #   1. regenerated `outcomes.json` - per-mutant `cargo_test_args` list
+  #   2. regenerated `debug.log` - the literal command line
   # If either records `--workspace`, the run is workspace-scoped.
   test_scope="package-only (--test-package ${crate})"
   if [ -f "${out_dir}/outcomes.json" ] && \

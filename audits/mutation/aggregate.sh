@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Aggregate per-crate mutation kill rates from cargo-mutants 25.x output.
 # Reads `audits/evidence/mutants/<crate>/mutants.out/{caught,missed,timeout,unviable}.txt`
-# and emits a markdown table row per crate plus a workspace total row.
+# and emits a markdown table row per crate plus per-measurement-class
+# totals. It intentionally does not emit a single workspace total because
+# the evidence directory can mix workspace runs, package-only runs,
+# interrupted partial runs, and hand-picked subset runs.
 #
 # Usage:
 #   bash audits/mutation/aggregate.sh                # tabulate every directory in audits/evidence/mutants/
@@ -26,14 +29,11 @@ if [ "$#" -eq 0 ]; then
 fi
 
 # Markdown table header.
-printf "| Crate | Total mutants | Caught | Missed | Timeout | Unviable | Kill rate |\n"
-printf "|---|---|---|---|---|---|---|\n"
+printf "| Crate | Measurement class | Total mutants | Caught | Missed | Timeout | Unviable | Kill rate |\n"
+printf "|---|---|---|---|---|---|---|---|\n"
 
-total_c=0
-total_m=0
-total_t=0
-total_u=0
-total_n=0
+totals_tsv="$(mktemp)"
+trap 'rm -f "${totals_tsv}"' EXIT
 
 for crate in "$@"; do
   # cargo-mutants 25.x writes its outputs in one of two layouts depending
@@ -97,9 +97,11 @@ for crate in "$@"; do
 
   partial_label=""
   partial_detail=""
+  measurement_class="unknown-summary"
   if [ -n "${summary_json}" ]; then
     rl=$(jq -r '.result_label // empty' "${summary_json}" 2>/dev/null || echo "")
     es=$(jq -r '.examine_scope // empty' "${summary_json}" 2>/dev/null || echo "")
+    ts=$(jq -r '.test_scope // empty' "${summary_json}" 2>/dev/null || echo "")
     tm=$(jq -r '.target_met // empty' "${summary_json}" 2>/dev/null || echo "")
     ev=$(jq -r '.evaluated // empty' "${summary_json}" 2>/dev/null || echo "")
     td=$(jq -r '.total_discovered // empty' "${summary_json}" 2>/dev/null || echo "")
@@ -107,6 +109,7 @@ for crate in "$@"; do
       PARTIAL-SUBSET)
         partial_label="PARTIAL-SUBSET"
         partial_detail="${es:-subset}"
+        measurement_class="partial-subset"
         ;;
       PARTIAL)
         partial_label="PARTIAL"
@@ -117,14 +120,35 @@ for crate in "$@"; do
         elif [ -n "${es}" ]; then
           partial_detail="${es}"
         fi
+        if printf '%s' "${ts}" | grep -qi 'workspace'; then
+          measurement_class="partial-workspace"
+        elif printf '%s' "${ts}" | grep -qi 'package-only\|--package\|--test-package'; then
+          measurement_class="partial-package-only"
+        else
+          measurement_class="partial-unknown-scope"
+        fi
         ;;
       FULL-BELOW-TARGET)
         partial_label="BELOW-TARGET"
         partial_detail=""
+        if printf '%s' "${ts}" | grep -qi 'workspace'; then
+          measurement_class="full-workspace"
+        elif printf '%s' "${ts}" | grep -qi 'package-only\|--package\|--test-package'; then
+          measurement_class="full-package-only"
+        else
+          measurement_class="full-unknown-scope"
+        fi
         ;;
       FULL|"")
         if [ "${tm}" = "false" ]; then
           partial_label="BELOW-TARGET"
+        fi
+        if printf '%s' "${ts}" | grep -qi 'workspace'; then
+          measurement_class="full-workspace"
+        elif printf '%s' "${ts}" | grep -qi 'package-only\|--package\|--test-package'; then
+          measurement_class="full-package-only"
+        elif [ -n "${summary_json}" ]; then
+          measurement_class="full-unknown-scope"
         fi
         ;;
     esac
@@ -154,22 +178,42 @@ for crate in "$@"; do
 
   if [ "${denom}" -gt 0 ]; then
     rate=$(awk "BEGIN { printf \"%.1f\", (${c} / ${denom}) * 100 }")
-    printf "| \`%s\` | %d%s | %d | %d | %d | %d | **%s%%** |\n" \
-      "${crate}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}" "${rate}"
+    printf "| \`%s\` | \`%s\` | %d%s | %d | %d | %d | %d | **%s%%** |\n" \
+      "${crate}" "${measurement_class}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}" "${rate}"
   else
-    printf "| \`%s\` | %d%s | %d | %d | %d | %d | **n/a (no viable mutants tested)** |\n" \
-      "${crate}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}"
+    printf "| \`%s\` | \`%s\` | %d%s | %d | %d | %d | %d | **n/a (no viable mutants tested)** |\n" \
+      "${crate}" "${measurement_class}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}"
   fi
-  total_c=$((total_c + c))
-  total_m=$((total_m + m))
-  total_t=$((total_t + t))
-  total_u=$((total_u + u))
-  total_n=$((total_n + n))
+  printf '%s\t%d\t%d\t%d\t%d\t%d\n' "${measurement_class}" "${n}" "${c}" "${m}" "${t}" "${u}" >> "${totals_tsv}"
 done
 
-denom=$((total_c + total_m + total_t))
-if [ "${denom}" -gt 0 ]; then
-  rate=$(awk "BEGIN { printf \"%.1f\", (${total_c} / ${denom}) * 100 }")
-  printf "| **Workspace total** | **%d** | **%d** | **%d** | **%d** | **%d** | **%s%%** |\n" \
-    "${total_n}" "${total_c}" "${total_m}" "${total_t}" "${total_u}" "${rate}"
+if [ -s "${totals_tsv}" ]; then
+  printf "\nNo workspace total is emitted. These rows mix measurement classes, so a single workspace score would be misleading.\n\n"
+  printf "| Measurement class | Total mutants | Caught | Missed | Timeout | Unviable | Kill rate |\n"
+  printf "|---|---|---|---|---|---|---|\n"
+  sort "${totals_tsv}" | awk -F '\t' '
+    function emit(class, n, c, m, t, u, denom, rate) {
+      denom = c + m + t
+      if (denom > 0) {
+        rate = sprintf("%.1f%%", (c / denom) * 100)
+      } else {
+        rate = "n/a"
+      }
+      printf "| `%s` | **%d** | **%d** | **%d** | **%d** | **%d** | **%s** |\n", class, n, c, m, t, u, rate
+    }
+    NR == 1 {
+      class = $1; n = $2; c = $3; m = $4; t = $5; u = $6; next
+    }
+    $1 != class {
+      emit(class, n, c, m, t, u)
+      class = $1; n = $2; c = $3; m = $4; t = $5; u = $6; next
+    }
+    {
+      n += $2; c += $3; m += $4; t += $5; u += $6
+    }
+    END {
+      if (NR > 0) {
+        emit(class, n, c, m, t, u)
+      }
+    }'
 fi
