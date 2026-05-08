@@ -24,6 +24,54 @@
 //! `kani::assume(false)`; no harness targets a non-`pub` internal
 //! helper.
 //!
+//! # Honesty boundary: what "model" harnesses actually prove
+//!
+//! Per audit P0-018 in
+//! `.planning/trajectory-5/reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`:
+//!
+//! - The `public_expect_report_data_determinism_under_input_change`
+//!   harness exercises a real production `pub fn`
+//!   (`expect_report_data`); a regression in the production function
+//!   is caught by Kani.
+//! - The `public_nitro_verify_quote_rejects_report_data_mismatch`,
+//!   `public_sev_snp_verify_quote_rejects_unacceptable_tcb`, and
+//!   `public_tdx_verify_quote_rejects_algorithm_mismatch` harnesses
+//!   prove the local `model_verify_quote` function over
+//!   `ModelQuoteOutcome`; they do NOT prove the runtime impls of
+//!   `<NitroVerifier as QuoteVerifier>::verify_quote`,
+//!   `<SevSnpVerifier as QuoteVerifier>::verify_quote`, or
+//!   `<TdxDcapVerifier as QuoteVerifier>::verify_quote` directly. A
+//!   regression in those production impls that left the model
+//!   unchanged would NOT trip these Kani harnesses; the runtime
+//!   regression is caught instead by the negative conformance tests
+//!   listed below. Anyone reading the manifest must rely on those
+//!   tests, not Kani, for proof that production fail-closed
+//!   semantics hold.
+//!
+//! Negative-conformance regression coverage for the three modelled
+//! verify_quote impls (live runtime, not model):
+//!
+//! - Nitro: `crates/chio-attest-verify/tests/nitro_unit.rs`
+//!   (asserts `AttestError::ReportDataMismatch` on tampered fixtures).
+//! - SEV-SNP: `crates/chio-attest-verify/tests/expect_report_data.rs`
+//!   and the per-backend unit tests asserting `QuoteRejected` for
+//!   non-acceptable TCB.
+//! - TDX: `crates/chio-attest-verify/tests/tdx_integration.rs`
+//!   (asserts `ReportDataMismatch` on `intel-tdx-report-data-mismatch`
+//!   and `intel-tdx-upper-half-tamper` fixtures).
+//!
+//! TRJ6 follow-up: extract a per-backend dispatch-order helper
+//! (e.g. `pub(crate) fn dispatch_order_check(report_data_matches:
+//! bool, tcb_status: QuoteTcbStatus, algorithm_tag_matches: bool)
+//! -> Result<(), AttestError>`) used by both the runtime
+//! `verify_quote` impls and the Kani harnesses, replacing
+//! `model_verify_quote`. This is option (a) per audit P0-018; it was
+//! deferred from TRJ5 because the runtime impls' error variants
+//! (`QuoteRejected(String)`, `Malformed(String)`) carry contextual
+//! strings that interlock with the live verifier code paths and
+//! refactoring them in this PR would risk a regression in the
+//! load-bearing production paths.
+//!
 //! # Cross-references
 
 extern crate alloc;
