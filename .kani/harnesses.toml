@@ -1,6 +1,6 @@
 schema = "chio.kani.multi-crate.v1"
 
-# Multi-crate Kani harness manifest (TRJ5-A3.5).
+# Multi-crate Kani harness manifest (Kani multi-crate manifest).
 #
 # Each `[[harness]]` entry pins one (crate, harness) pair the CI
 # `kani-public-pr` job iterates. The job invokes the harness with:
@@ -174,7 +174,7 @@ lane = "pr"
 
 
 # ---------------------------------------------------------------------
-# Per-crate sections landed in their own PR (audit T5-R2-P0-011)
+# Per-crate sections landed in their own PR (audit review item)
 # ---------------------------------------------------------------------
 # To make manifest enrollment atomic with harness source, each non-core
 # crate's `[[harness]]` block now lands in the SAME PR that adds the
@@ -182,9 +182,9 @@ lane = "pr"
 # schema documentation, and the chio-kernel-core lane mirror; other
 # per-crate sections arrive via:
 #
-#   * chio-attest-verify  -> PR #605 (claude/trj5/a3-kani-attest-verify)
-#   * chio-anchor         -> PR #613 (claude/trj5/a3-kani-anchor-weights)
-#   * chio-weights        -> PR #613 (claude/trj5/a3-kani-anchor-weights)
+#   * chio-attest-verify  -> PR #605 (PR branch)
+#   * chio-anchor         -> PR #613 (PR branch)
+#   * chio-weights        -> PR #613 (PR branch)
 #
 # Integrator merges combine the per-crate sections additively. Adding a
 # new harness in the future: land the `#[kani::proof]` and the matching
@@ -192,7 +192,7 @@ lane = "pr"
 # it up without further workflow edits.
 
 # ---------------------------------------------------------------------
-# chio-attest-verify (TRJ5-A3.1, PR #605)
+# chio-attest-verify (Kani harness evidence, PR #605)
 # ---------------------------------------------------------------------
 # Four public-entry harnesses pinning the trust-boundary invariants of
 # `expect_report_data` and the three TEE quote backends. Algebraic

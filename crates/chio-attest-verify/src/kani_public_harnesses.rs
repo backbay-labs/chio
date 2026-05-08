@@ -66,7 +66,7 @@
 //! -> Result<(), AttestError>`) used by both the runtime
 //! `verify_quote` impls and the Kani harnesses, replacing
 //! `model_verify_quote`. This is option (a) per audit P0-018; it was
-//! deferred from TRJ5 because the runtime impls' error variants
+//! deferred from release work because the runtime impls' error variants
 //! (`QuoteRejected(String)`, `Malformed(String)`) carry contextual
 //! strings that interlock with the live verifier code paths and
 //! refactoring them in this PR would risk a regression in the

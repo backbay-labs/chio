@@ -1,18 +1,18 @@
-# chio-attest-verify Kani harness run evidence (TRJ5-A3.1)
+# chio-attest-verify Kani harness run evidence (Kani harness evidence)
 
 **Date**: 2026-05-08
-**PR**: #605 (claude/trj5/a3-kani-attest-verify)
-**Audit refs**: T5-R3-P1-008 (THIRD-ROUND-CODE-SECURITY-AUDIT-2026-05-08)
+**PR**: #605 (PR branch)
+**Audit refs**: review item (THIRD-ROUND-CODE-SECURITY-AUDIT-2026-05-08)
 **Status**: DEFERRED-PARTIAL (run-evidence not committed in this PR)
 
-## Required posture per audit T5-R3-P1-008
+## Required posture per audit review item
 
 The audit states the proof surface must EITHER:
 1. Commit a Kani run transcript for each PR-tier harness, OR
 2. Label the proof surface as partial/nightly-only in ship-bar truth.
 
 This evidence file selects option (2): the chio-attest-verify proof
-surface is labeled **MODEL-PARTIAL** for trj5; transcripts are deferred
+surface is labeled **MODEL-PARTIAL** for release work; transcripts are deferred
 to the trj6 follow-up that wires the multi-crate Kani CI workflow
 (PR #607) into a passing pipeline. Until then, the source-only enrollment
 is honest about its scope and the manifest pins exactly which harnesses
@@ -55,11 +55,11 @@ in the manifest `notes` for each entry (audit P0-018).
 
 ## Ship-bar truth
 
-`scripts/check-trj5-ship-bar.sh` does NOT (yet) gate on Kani run
+`scripts/check-release work-ship-bar.sh` does NOT (yet) gate on Kani run
 transcripts. The Bar 1 mutation kill-rate / Bar 2 negative-conformance
 fixtures / Bar 3 demo-receipt rows it does gate on are unaffected by
 this deferral. The chio-attest-verify Kani enrollment is recorded as
-**source-only PARTIAL** in the trj5 release notes (PR #618).
+**source-only PARTIAL** in the release notes (PR #618).
 
 ## Next steps (trj6)
 
