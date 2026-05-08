@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_allowlist.rs
++++ delete ! in <impl chio_kernel::Guard for PathAllowlistGuard>::evaluate
+@@ -190,17 +190,17 @@
+         };
+ 
+         if let Some(session_roots) = ctx.session_filesystem_roots {
+             if !self.matches_session_roots(path, session_roots) {
+                 return Ok(Verdict::Deny);
+             }
+         }
+ 
+-        if !self.enabled {
++        if  /* ~ changed by cargo-mutants ~ */self.enabled {
+             return Ok(Verdict::Allow);
+         }
+ 
+         let allowed = match &action {
+             ToolAction::FileAccess(path) => self.is_file_access_allowed(path),
+             ToolAction::FileWrite(path, _) => self.is_file_write_allowed(path),
+             ToolAction::Patch(path, _) => self.is_patch_allowed(path),
+             _ => unreachable!("non-filesystem actions should return early"),

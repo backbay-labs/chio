@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_allowlist.rs
++++ delete match arm ToolAction::Patch(path, _) in <impl chio_kernel::Guard for PathAllowlistGuard>::evaluate
+@@ -197,17 +197,17 @@
+ 
+         if !self.enabled {
+             return Ok(Verdict::Allow);
+         }
+ 
+         let allowed = match &action {
+             ToolAction::FileAccess(path) => self.is_file_access_allowed(path),
+             ToolAction::FileWrite(path, _) => self.is_file_write_allowed(path),
+-            ToolAction::Patch(path, _) => self.is_patch_allowed(path),
++             /* ~ changed by cargo-mutants ~ */
+             _ => unreachable!("non-filesystem actions should return early"),
+         };
+ 
+         if allowed {
+             Ok(Verdict::Allow)
+         } else {
+             Ok(Verdict::Deny)
+         }

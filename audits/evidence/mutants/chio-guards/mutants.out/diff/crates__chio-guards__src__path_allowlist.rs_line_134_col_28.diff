@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_allowlist.rs
++++ replace != with == in PathAllowlistGuard::matches_session_roots
+@@ -126,17 +126,17 @@
+             return false;
+         }
+ 
+         let lexical_path = normalize_path_for_policy(path);
+         let resolved_path = normalize_path_for_policy_with_fs(path);
+         let lexical_abs_path = normalize_path_for_policy_lexical_absolute(path);
+         let resolved_differs_from_lexical_target = lexical_abs_path
+             .as_deref()
+-            .map(|abs| abs != resolved_path.as_str())
++            .map(|abs| abs == /* ~ changed by cargo-mutants ~ */ resolved_path.as_str())
+             .unwrap_or(resolved_path != lexical_path);
+ 
+         if resolved_differs_from_lexical_target {
+             return session_roots
+                 .iter()
+                 .any(|root| Self::path_within_root(&resolved_path, root));
+         }
+ 
