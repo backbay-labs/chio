@@ -85,15 +85,30 @@ for crate in "$@"; do
   # would also match cargo-mutants' own `outcomes.json` / `mutants.json`
   # / `lock.json`, which are NOT summary JSONs and would be picked up
   # by `sort -r` whenever no dated summary has been produced yet.
+  #
+  # A newer PENDING-RERUN summary is an instruction to rerun, not a
+  # measured baseline. Prefer the newest non-PENDING-RERUN summary when
+  # one exists, so a post-gap-closure branch cannot mask the real
+  # baseline committed by an earlier evidence branch.
   summary_json=""
+  pending_summary_json=""
   shopt -s nullglob
   for candidate in $(printf '%s\n' "${EVIDENCE_DIR}/${crate}"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.json | sort -r); do
     if [ -f "${candidate}" ]; then
+      if jq -e '.result_label == "PENDING-RERUN"' "${candidate}" > /dev/null 2>&1; then
+        if [ -z "${pending_summary_json}" ]; then
+          pending_summary_json="${candidate}"
+        fi
+        continue
+      fi
       summary_json="${candidate}"
       break
     fi
   done
   shopt -u nullglob
+  if [ -z "${summary_json}" ] && [ -n "${pending_summary_json}" ]; then
+    summary_json="${pending_summary_json}"
+  fi
 
   partial_label=""
   partial_detail=""
@@ -150,6 +165,11 @@ for crate in "$@"; do
         elif [ -n "${summary_json}" ]; then
           measurement_class="full-unknown-scope"
         fi
+        ;;
+      PENDING-RERUN)
+        partial_label="PENDING-RERUN"
+        partial_detail="${es:-rerun-required}"
+        measurement_class="pending-rerun"
         ;;
     esac
   else
