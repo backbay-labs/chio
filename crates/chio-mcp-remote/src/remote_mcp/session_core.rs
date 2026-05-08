@@ -1835,6 +1835,7 @@ impl SharedUpstreamToolServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for SharedUpstreamToolServer {
     fn server_id(&self) -> &str {
         &self.server_id
@@ -1844,7 +1845,7 @@ impl ToolServerConnection for SharedUpstreamToolServer {
         self.tool_names.clone()
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: Value,
@@ -1856,6 +1857,7 @@ impl ToolServerConnection for SharedUpstreamToolServer {
             arguments,
             nested_flow_bridge,
         )
+        .await
     }
 }
 

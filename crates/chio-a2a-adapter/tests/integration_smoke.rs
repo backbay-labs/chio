@@ -221,8 +221,8 @@ fn status_text(status: u16) -> &'static str {
     }
 }
 
-#[test]
-fn adapter_discovers_and_invokes_over_a2a_jsonrpc() {
+#[tokio::test]
+async fn adapter_discovers_and_invokes_over_a2a_jsonrpc() {
     let Some(server) = FakeA2aJsonRpcServer::spawn() else {
         return;
     };
@@ -244,6 +244,7 @@ fn adapter_discovers_and_invokes_over_a2a_jsonrpc() {
             }),
             None,
         )
+        .await
         .expect("invoke A2A skill");
 
     assert_eq!(

@@ -216,6 +216,58 @@ impl LocalReceiptArtifact {
     }
 }
 
+/// Bridge a sync caller to the now-async tool-server dispatch path.
+///
+/// Calling `futures::executor::block_on` from inside a current-thread
+/// Tokio runtime parks the very thread that the runtime needs to drive
+/// its reactor / timer wheel, and any tool-server future that awaits
+/// Tokio I/O (the production case once `chio-mcp-remote` and
+/// `chio-mcp-adapter` are wired in) deadlocks silently. Tokio refuses
+/// to nest `block_on` calls precisely because of this, but
+/// `futures::executor::block_on` is a different executor that does not
+/// see the surrounding runtime, so the deadlock manifests as a hung
+/// tool call rather than a typed error.
+///
+/// We now explicitly distinguish three cases:
+///   1. Multi-thread runtime active: use `block_in_place` so Tokio can
+///      move the blocking work off the runtime threads. This is the
+///      production-supported path.
+///   2. Current-thread runtime active: refuse fail-closed with
+///      [`KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`].
+///      Callers are expected to move the host to a multi-thread runtime.
+///      The public async `evaluate_tool_call` entrypoint is still backed by
+///      the blocking evaluator on this branch, so it is not advertised as a
+///      current-thread escape hatch.
+///   3. No runtime active: drive the future with a non-tokio executor.
+///      No surrounding runtime exists to deadlock; tool-server impls
+///      that need Tokio I/O will simply fail when they try to spawn
+///      tasks, which is the correct, observable failure mode.
+fn block_on_async_tool_dispatch<F, T>(future: F) -> Result<T, KernelError>
+where
+    F: std::future::Future<Output = Result<T, KernelError>>,
+{
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        }
+        Ok(_handle) => {
+            // Current-thread runtime active. Bridging here would deadlock
+            // any tool-server future that awaits Tokio I/O because we
+            // would park the runtime's only worker thread. Surface a
+            // typed error so the caller sees the architectural
+            // incompatibility instead of a silent hang.
+            Err(KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime)
+        }
+        Err(_) => {
+            // No Tokio runtime active. The future cannot collide with a
+            // surrounding reactor; the non-tokio executor is the safe
+            // bridge. This is the path the in-process, compute-only
+            // tool servers used in unit tests rely on.
+            futures::executor::block_on(future)
+        }
+    }
+}
+
 fn extract_session_anchor_reference_from_metadata(
     metadata: Option<&serde_json::Value>,
 ) -> Option<chio_core::session::SessionAnchorReference> {
@@ -481,6 +533,23 @@ pub enum KernelError {
         /// honored.
         reason: NegotiationDowngradeReason,
     },
+
+    /// The sync `evaluate_tool_call` path was invoked from a context
+    /// where the only available Tokio runtime is a current-thread
+    /// runtime. The async tool-dispatch path cannot be safely driven
+    /// on a current-thread runtime: bridging via
+    /// `futures::executor::block_on` parks the caller's thread, and
+    /// Tokio I/O timers / reactor wakers cannot progress on the same
+    /// parked thread. Returning a typed error rather than deadlocking
+    /// lets callers move the dispatch onto a multi-thread runtime.
+    /// The public async `evaluate_tool_call` path is still backed by the
+    /// blocking evaluator on this branch, so it is not a current-thread
+    /// escape hatch.
+    #[error(
+        "sync tool-dispatch bridge cannot drive an async tool server on a current-thread \
+         Tokio runtime; switch the host to a multi-thread Tokio runtime"
+    )]
+    SyncBridgeIncompatibleWithCurrentThreadRuntime,
 }
 
 impl KernelError {
@@ -759,6 +828,11 @@ impl KernelError {
                 }),
                 "Re-pin the named federation peer with a fresh handshake before retrying, \
                  or route the request without naming a remote so the kernel-level default applies.",
+            ),
+            Self::SyncBridgeIncompatibleWithCurrentThreadRuntime => self.report_with_context(
+                "CHIO-KERNEL-SYNC-BRIDGE-INCOMPATIBLE",
+                serde_json::json!({}),
+                "Move the host process to a multi-thread Tokio runtime so block_in_place can drive async tool dispatch. The public async evaluate_tool_call path is still backed by the blocking evaluator on this branch and is not a current-thread runtime workaround.",
             ),
         }
     }
@@ -2514,6 +2588,21 @@ impl ChioKernel {
 
     /// Open a new logical session for an agent and bind any capabilities that
     /// were issued during setup to that session.
+    ///
+    /// Design note: unlike the hosted-tool and nested-flow dispatch
+    /// paths, this surface deliberately does NOT call
+    /// [`Self::admit_capability_budget`] after the pre-admit verifier
+    /// pass. Read-only resource/prompt operations
+    /// (`subscribe_resource`, `read_resource`, `get_prompt`,
+    /// `complete`) are not economic actions: they neither consume the
+    /// caller's per-tool invocation budget nor reserve the caller's
+    /// share against its parent in the sibling-sum registry.
+    /// PROTOCOL.md section "Single-entry capability verifier" already
+    /// authorises this split as MAY: the MUST is that every surface
+    /// traverses `verify_capability_full` exactly once (which this
+    /// helper does); the authoritative admit phase is reserved for
+    /// surfaces that actually execute a side-effecting action against
+    /// the budget.
     fn validate_non_tool_capability(
         &self,
         capability: &CapabilityToken,
@@ -2527,9 +2616,9 @@ impl ChioKernel {
                 EMERGENCY_STOP_DENY_REASON.to_string(),
             ));
         }
-        self.verify_capability_signature(capability)
-            .map_err(|_| KernelError::InvalidSignature)?;
-        check_time_bounds(capability, current_unix_timestamp())?;
+        let now = current_unix_timestamp();
+        self.verify_capability_full_pre_admit(capability, None, now)
+            .map_err(KernelError::GuardDenied)?;
         self.check_revocation(capability)?;
         self.validate_delegation_admission(capability)?;
         check_subject_binding(capability, agent_id)?;
@@ -2778,14 +2867,26 @@ impl ChioKernel {
         let now = current_unix_timestamp();
         let cap = &req.planner_capability;
 
+        // Design note: plan-evaluation is a PREVIEW path -- it answers
+        // "if this plan ran, would each step be allowed?" without
+        // dispatching the underlying tool calls. Calling
+        // [`Self::admit_capability_budget`] here would consume
+        // sibling-sum budget for plans that may never execute, which
+        // is the opposite of preview semantics. The pre-admit verifier
+        // pass below covers the spec MUST (every surface traverses
+        // `verify_capability_full` exactly once); the authoritative
+        // admit phase is reserved for the actual hosted-tool /
+        // nested-flow dispatch paths in
+        // `evaluate_tool_call_*_with_session_context`.
+        //
         // Capability-wide checks repeat per-step so a failure here is
         // still reflected in every step's verdict, keeping the per-step
         // output self-contained.
-        if let Err(reason) = self.verify_capability_signature(cap) {
+        if let Err(reason) = self.verify_capability_full_pre_admit(cap, None, now) {
             return StepVerdict {
                 step_index: index,
                 verdict: StepVerdictKind::Denied,
-                reason: Some(format!("signature verification failed: {reason}")),
+                reason: Some(format!("capability verification failed: {reason}")),
                 guard: None,
             };
         }
@@ -2998,7 +3099,7 @@ impl ChioKernel {
         // subject, scope, guards) have passed. Otherwise a denied call
         // would still consume the parent's share, starving later valid
         // siblings.
-        if let Err(reason) = self.verify_capability_full_without_budget_admit(
+        if let Err(reason) = self.verify_capability_full_pre_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
             now,
@@ -3336,7 +3437,7 @@ impl ChioKernel {
         let tool_started_at = Instant::now();
         let has_monetary = charge_result.is_some();
         let (tool_output, reported_cost) = match self
-            .dispatch_tool_call_with_cost_sync(request, has_monetary)
+            .dispatch_tool_call_with_cost_blocking(request, has_monetary)
         {
             Ok(result) => result,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
@@ -3516,7 +3617,7 @@ impl ChioKernel {
         // Signature first; the budget admission is deferred until
         // after all subsequent checks pass, so a denied call no longer
         // consumes the parent's share.
-        if let Err(reason) = self.verify_capability_full_without_budget_admit(
+        if let Err(reason) = self.verify_capability_full_pre_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
             now,
@@ -3779,22 +3880,32 @@ impl ChioKernel {
                 client,
             };
 
-            match server.invoke_stream(
-                &request.tool_name,
-                request.arguments.clone(),
-                Some(&mut bridge),
-            ) {
-                Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
-                Ok(None) => match server.invoke(
-                    &request.tool_name,
-                    request.arguments.clone(),
-                    Some(&mut bridge),
-                ) {
-                    Ok(result) => Ok(ToolServerOutput::Value(result)),
+            // The helper signature is `Result<T, KernelError>`. We flatten
+            // every arm here directly into that one Result instead of the
+            // earlier `Result<Result<_, _>, _>` shape - the outer Ok was
+            // always `Ok(...)` so the trailing `?` was a no-op. The flat
+            // form is equivalent but clearer.
+            block_on_async_tool_dispatch(async {
+                match server
+                    .invoke_stream(
+                        &request.tool_name,
+                        request.arguments.clone(),
+                        Some(&mut bridge),
+                    )
+                    .await
+                {
+                    Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
+                    Ok(None) => server
+                        .invoke(
+                            &request.tool_name,
+                            request.arguments.clone(),
+                            Some(&mut bridge),
+                        )
+                        .await
+                        .map(ToolServerOutput::Value),
                     Err(error) => Err(error),
-                },
-                Err(error) => Err(error),
-            }
+                }
+            })
         };
         self.record_child_receipts(child_receipts)?;
         let tool_output = match tool_output_result {
@@ -3983,7 +4094,9 @@ impl ChioKernel {
     pub fn drain_tool_server_events(&self) -> Vec<ToolServerEvent> {
         let mut events = Vec::new();
         for (server_id, server) in &self.tool_servers {
-            match server.drain_events() {
+            let outcome: Result<Vec<ToolServerEvent>, KernelError> =
+                block_on_async_tool_dispatch(server.drain_events());
+            match outcome {
                 Ok(mut server_events) => events.append(&mut server_events),
                 Err(error) => warn!(
                     server_id = %server_id,
@@ -4115,33 +4228,10 @@ impl ChioKernel {
         trusted
     }
 
-    fn verify_capability_signature(&self, cap: &CapabilityToken) -> Result<(), String> {
-        let trusted = self.trusted_issuer_keys();
-
-        if !trusted.contains(&cap.issuer) {
-            return Err("signer public key not found among trusted CAs".to_string());
-        }
-
-        match cap.verify_signature_with_floor(capability_crypto_floor(self.capability_crypto_floor))
-        {
-            Ok(true) => {}
-            Ok(false) => return Err("signature did not verify".to_string()),
-            Err(e) => return Err(e.to_string()),
-        }
-
-        if cap.schema == chio_core::capability::CHIO_CAPABILITY_V2_SCHEMA {
-            let snapshot = self.capability_trust_roots.load_full();
-            let issuer_root = snapshot.get(&cap.issuer.to_hex()).cloned().ok_or_else(|| {
-                "v2 chain-binding: no trust-root scope hash registered for issuer".to_string()
-            })?;
-            cap.validate_chain_binding(&issuer_root)
-                .map_err(|err| err.to_string())?;
-        }
-
-        Ok(())
-    }
-
-    fn verify_capability_full_without_budget_admit(
+    /// Spec: PROTOCOL.md introduces a MUST that production kernels
+    /// route every capability admission through `verify_capability_full`;
+    /// this wrapper is the kernel-side enforcement of that MUST.
+    fn verify_capability_full_pre_admit(
         &self,
         cap: &CapabilityToken,
         remote_kernel_id: Option<&str>,
@@ -4166,30 +4256,22 @@ impl ChioKernel {
         .map_err(|error| chio_kernel_core::KernelCoreError::InvalidCapability(error).deny_reason())
     }
 
-    /// The hosted `evaluate_tool_call_*` paths historically called
-    /// [`Self::verify_capability_signature`], which only enforced the
-    /// signature, crypto-floor, and v2 chain-binding rule. The
-    /// portable verdict path
-    /// ([`chio_kernel_core::evaluate_with_full_floor`]) additionally
-    /// runs the sibling-sum admit step, so production hosted tool
-    /// calls bypassed budget enforcement. This wrapper closes that
-    /// gap by invoking the same admit step that
-    /// [`Self::evaluate_portable_verdict`] uses, threading the
-    /// kernel's long-lived `budget_registry` through. The lock is
+    /// The hosted `evaluate_tool_call_*` paths route the full chain
+    /// through [`Self::verify_capability_full_pre_admit`], which runs
+    /// the production verifier with `NoopBudgetRegistry` so a token
+    /// that subsequently fails any other check does not consume the
+    /// parent's share. This method then performs the deferred admit
+    /// against the kernel's long-lived `budget_registry`. The lock is
     /// held only for the duration of the admit call, matching the
     /// portable hot path.
     ///
     /// Errors are returned as plain strings so the caller can route
     /// them through the existing deny-response paths without taking
     /// a `KernelError` dependency on the verifier shape.
-    /// Idempotently admit `cap`'s budget share against its parent in the
-    /// kernel's persistent registry. Split from
-    /// [`Self::verify_capability_with_budget_admit`] so hosted call sites
-    /// can defer admission until after time-bound, revocation, subject,
-    /// scope, and guard checks have all passed. Otherwise a token that
-    /// is signed but expired/revoked/scope-mismatched still consumed the
-    /// parent's share when the request was about to be denied, starving
-    /// later valid siblings.
+    ///
+    /// The split between pre-admit verification and budget admission
+    /// enforces the ordering rule "signature first, admit last", so a
+    /// denied request never starves later valid siblings.
     fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
@@ -6479,24 +6561,7 @@ impl ChioKernel {
     }
 
     /// Forward the validated request and optionally report actual invocation cost.
-    ///
-    /// Async-native dispatch entrypoint used by `ToolEvaluator::dispatch`.
-    /// Delegates to the sync helper while the tool-server trait remains
-    /// sync-only, preserving the exact dispatch and cost-accounting semantics.
     pub(crate) async fn dispatch_tool_call_with_cost(
-        &self,
-        request: &ToolCallRequest,
-        has_monetary_grant: bool,
-    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
-        self.dispatch_tool_call_with_cost_sync(request, has_monetary_grant)
-    }
-
-    /// Forward the validated request and optionally report actual invocation cost.
-    ///
-    /// When `has_monetary_grant` is true, calls `invoke_with_cost` so the server
-    /// can report the actual cost incurred. For non-monetary grants the standard
-    /// dispatch path is used and cost is always None.
-    fn dispatch_tool_call_with_cost_sync(
         &self,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
@@ -6509,20 +6574,34 @@ impl ChioKernel {
         })?;
 
         // Try streaming first regardless of monetary mode.
-        if let Some(stream) =
-            server.invoke_stream(&request.tool_name, request.arguments.clone(), None)?
+        if let Some(stream) = server
+            .invoke_stream(&request.tool_name, request.arguments.clone(), None)
+            .await?
         {
             return Ok((ToolServerOutput::Stream(stream), None));
         }
 
         if has_monetary_grant {
-            let (value, cost) =
-                server.invoke_with_cost(&request.tool_name, request.arguments.clone(), None)?;
+            let (value, cost) = server
+                .invoke_with_cost(&request.tool_name, request.arguments.clone(), None)
+                .await?;
             Ok((ToolServerOutput::Value(value), cost))
         } else {
-            let value = server.invoke(&request.tool_name, request.arguments.clone(), None)?;
+            let value = server
+                .invoke(&request.tool_name, request.arguments.clone(), None)
+                .await?;
             Ok((ToolServerOutput::Value(value), None))
         }
+    }
+
+    /// Synchronous dispatch shim used by the legacy
+    /// `evaluate_tool_call_blocking` path while it still exists.
+    pub(crate) fn dispatch_tool_call_with_cost_blocking(
+        &self,
+        request: &ToolCallRequest,
+        has_monetary_grant: bool,
+    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
+        block_on_async_tool_dispatch(self.dispatch_tool_call_with_cost(request, has_monetary_grant))
     }
 
     /// Build a denial response, including FinancialReceiptMetadata when the

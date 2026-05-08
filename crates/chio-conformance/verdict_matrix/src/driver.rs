@@ -727,6 +727,7 @@ impl MatrixToolServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for MatrixToolServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -739,7 +740,7 @@ impl ToolServerConnection for MatrixToolServer {
             .collect()
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: Value,
