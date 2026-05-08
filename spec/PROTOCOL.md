@@ -425,7 +425,25 @@ admit against the persistent registry once every other check has
 passed -- but every reachable kernel surface (hosted tool dispatch,
 plan-step pre-flight, session/resource/prompt operations, federated
 nested-flow bridges) MUST traverse `verify_capability_full` exactly
-once per admission decision. Both rejection paths surface
+once per admission decision.
+
+The two-phase split is intentionally asymmetric. The pre-admit
+verifier pass (signature + crypto-floor + W1.3 schema-ceiling + W1.1
+chain-binding + time-window) MUST run on every surface listed above.
+The authoritative budget admit phase (W1.2 sibling-sum) MUST run on
+hosted tool dispatch and federated nested-flow bridges -- the surfaces
+that actually execute a side-effecting action against the budget --
+and MAY be omitted on plan-step pre-flight (which is a verdict-only
+preview that does not dispatch the underlying tools) and on
+session/resource/prompt operations (which are read-only metadata
+exchanges that do not consume the caller's invocation budget). Kernel
+implementations that omit the admit phase on these stateless surfaces
+MUST document the omission alongside the surface helper. The
+`b1_capability_v2_single_entry_no_bypass.rs` fixture asserts the
+pre-admit pass MUST; the W1.2 sibling-sum admit MUST is asserted by
+the hosted-dispatch admit fixtures (e.g.
+`budget_split_cross_hop_rejects_amplification.rs`,
+`wave1_hot_path_enforcement.rs`). Both rejection paths surface
 `CapabilityError::AttenuationViolation` with the offending hashes
 formatted as hex. The check costs a single hash comparison on the
 happy path and runs after the basic signature, time, and crypto-floor

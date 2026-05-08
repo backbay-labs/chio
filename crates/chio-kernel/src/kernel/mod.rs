@@ -2435,6 +2435,20 @@ impl ChioKernel {
 
     /// Open a new logical session for an agent and bind any capabilities that
     /// were issued during setup to that session.
+    ///
+    /// P1-016 design note (audit 2026-05-08): unlike the hosted-tool and
+    /// nested-flow dispatch paths, this surface deliberately does NOT
+    /// call [`Self::admit_capability_budget`] after the pre-admit
+    /// verifier pass. Read-only resource/prompt operations
+    /// (`subscribe_resource`, `read_resource`, `get_prompt`, `complete`)
+    /// are not economic actions: they neither consume the
+    /// caller's per-tool invocation budget nor reserve the caller's
+    /// share against its parent in the sibling-sum registry. PROTOCOL.md
+    /// section "Single-entry capability verifier" already authorises
+    /// this split as MAY: the MUST is that every surface traverses
+    /// `verify_capability_full` exactly once (which this helper does);
+    /// the authoritative admit phase is reserved for surfaces that
+    /// actually execute a side-effecting action against the budget.
     fn validate_non_tool_capability(
         &self,
         capability: &CapabilityToken,
@@ -2699,6 +2713,18 @@ impl ChioKernel {
         let now = current_unix_timestamp();
         let cap = &req.planner_capability;
 
+        // P1-016 design note (audit 2026-05-08): plan-evaluation is a
+        // PREVIEW path -- it answers "if this plan ran, would each step
+        // be allowed?" without dispatching the underlying tool calls.
+        // Calling [`Self::admit_capability_budget`] here would consume
+        // sibling-sum budget for plans that may never execute, which
+        // is the opposite of preview semantics. The pre-admit verifier
+        // pass below covers the spec MUST (every surface traverses
+        // `verify_capability_full` exactly once); the authoritative
+        // admit phase is reserved for the actual hosted-tool /
+        // nested-flow dispatch paths in
+        // `evaluate_tool_call_*_with_session_context`.
+        //
         // Capability-wide checks repeat per-step so a failure here is
         // still reflected in every step's verdict, keeping the per-step
         // output self-contained.
