@@ -213,8 +213,12 @@ jobs:
           # callers under require_public_witness=true. The runtime gate
           # at crates/chio-anchor/src/batch.rs is the load-bearing
           # enforcement; this lint catches obvious literal-struct-init
-          # cases. See script header for the soundness contract.
-          bash ./scripts/check-anchor-batch-async-witness.sh
+          # cases. Per the script header it is advisory at first
+          # (not gating until B3.3 has lived in main for at least one
+          # wave) - use `|| true` so a heuristic false positive cannot
+          # block CI while still surfacing the warning text in the job
+          # log. cursor[bot] LOW + codex[bot] P2 on PR #609.
+          bash ./scripts/check-anchor-batch-async-witness.sh || true
 
       - name: Workspace proof report
         env:
