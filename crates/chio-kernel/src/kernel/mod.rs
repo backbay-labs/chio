@@ -179,13 +179,29 @@ impl LocalReceiptArtifact {
 
 /// Bridge a sync caller to the now-async tool-server dispatch path.
 ///
-/// Mirrors `block_on_price_oracle`: prefer `block_in_place` on a multi-thread
-/// runtime; otherwise drive the future to completion with the
-/// non-tokio `futures::executor::block_on` so we do not nest `block_on`
-/// calls on a current-thread runtime (tokio refuses that). Tool-server
-/// implementations that need real tokio I/O are expected to use the
-/// multi-thread arm via `block_in_place`; tests and in-process tool
-/// servers that compute synchronously are served by the executor arm.
+/// P0-002 fix (audit 2026-05-08): the previous fallback used
+/// `futures::executor::block_on` from inside a current-thread Tokio
+/// runtime. That parks the very thread that the runtime needs to
+/// drive its reactor / timer wheel, and any tool-server future that
+/// awaits Tokio I/O (which is the production case once
+/// `chio-mcp-remote` and `chio-mcp-adapter` are wired in) deadlocks
+/// silently. Tokio refuses to nest `block_on` calls precisely because
+/// of this, but `futures::executor::block_on` is a different executor
+/// that does not see the surrounding runtime, so the deadlock manifests
+/// as a hung tool call rather than a typed error.
+///
+/// We now explicitly distinguish three cases:
+///   1. Multi-thread runtime active: use `block_in_place` so Tokio can
+///      move the blocking work off the runtime threads. This is the
+///      production-supported path.
+///   2. Current-thread runtime active: refuse fail-closed with
+///      [`KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`].
+///      Callers are expected to either move the host to a multi-thread
+///      runtime or call the async `evaluate_tool_call` directly.
+///   3. No runtime active: drive the future with a non-tokio executor.
+///      No surrounding runtime exists to deadlock; tool-server impls
+///      that need Tokio I/O will simply fail when they try to spawn
+///      tasks, which is the correct, observable failure mode.
 fn block_on_async_tool_dispatch<F, T>(future: F) -> Result<T, KernelError>
 where
     F: std::future::Future<Output = Result<T, KernelError>>,
@@ -194,12 +210,21 @@ where
         Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
             tokio::task::block_in_place(|| handle.block_on(future))
         }
-        // Current-thread runtime active OR no runtime: drive the future
-        // with a non-tokio executor. The future's `?Send` futures are
-        // legal on this thread; tool-server impls that depend on tokio
-        // I/O primitives are expected to register against a multi-thread
-        // runtime. See doc comment.
-        _ => futures::executor::block_on(future),
+        Ok(_handle) => {
+            // Current-thread runtime active. Bridging here would deadlock
+            // any tool-server future that awaits Tokio I/O because we
+            // would park the runtime's only worker thread. Surface a
+            // typed error so the caller sees the architectural
+            // incompatibility instead of a silent hang.
+            Err(KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime)
+        }
+        Err(_) => {
+            // No Tokio runtime active. The future cannot collide with a
+            // surrounding reactor; the non-tokio executor is the safe
+            // bridge. This is the path the in-process, compute-only
+            // tool servers used in unit tests rely on.
+            futures::executor::block_on(future)
+        }
     }
 }
 
@@ -422,6 +447,23 @@ pub enum KernelError {
     /// expired, or replayed).
     #[error("approval rejected: {0}")]
     ApprovalRejected(String),
+
+    /// P0-002 fix (audit 2026-05-08): the sync `evaluate_tool_call`
+    /// path was invoked from a context where the only available
+    /// Tokio runtime is a current-thread runtime. The async tool-
+    /// dispatch path cannot be safely driven on a current-thread
+    /// runtime: bridging via `futures::executor::block_on` parks the
+    /// caller's thread, and Tokio I/O timers / reactor wakers cannot
+    /// progress on the same parked thread. Returning a typed error
+    /// rather than deadlocking lets callers either (a) move the
+    /// dispatch onto a multi-thread runtime, or (b) call the async
+    /// `evaluate_tool_call` path directly.
+    #[error(
+        "sync tool-dispatch bridge cannot drive an async tool server on a current-thread \
+         Tokio runtime; switch the host to a multi-thread runtime or call the async \
+         `evaluate_tool_call` API directly"
+    )]
+    SyncBridgeIncompatibleWithCurrentThreadRuntime,
 }
 
 impl KernelError {
@@ -686,6 +728,11 @@ impl KernelError {
                 "CHIO-KERNEL-APPROVAL-REJECTED",
                 serde_json::json!({ "reason": reason }),
                 "Obtain a fresh approval token bound to this exact request and retry once a human approver has signed it.",
+            ),
+            Self::SyncBridgeIncompatibleWithCurrentThreadRuntime => self.report_with_context(
+                "CHIO-KERNEL-SYNC-BRIDGE-INCOMPATIBLE",
+                serde_json::json!({}),
+                "Either move the host process to a multi-thread Tokio runtime (so block_in_place can drive the async tool dispatch) or call the async `evaluate_tool_call` API directly from your async caller.",
             ),
         }
     }
