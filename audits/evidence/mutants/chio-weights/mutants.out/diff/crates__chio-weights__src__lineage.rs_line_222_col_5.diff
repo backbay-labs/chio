@@ -1,0 +1,117 @@
+--- crates/chio-weights/src/lineage.rs
++++ replace verify_model_card_anchor -> Result<(), WeightsError> with Ok(())
+@@ -214,113 +214,17 @@
+ /// does not match `anchor.digest`. Consumers reading an anchor from the
+ /// public registry call this to verify the proof against the original
+ /// inputs without trusting the registry's stored digest.
+ pub fn verify_model_card_anchor(
+     anchor: &ModelCardLineageAnchor,
+     card_bytes: &[u8],
+     attestation: &chio_attest_verify::VerifiedAttestation,
+ ) -> Result<(), WeightsError> {
+-    if anchor.schema_version != MODEL_CARD_ANCHOR_SCHEMA {
+-        return Err(WeightsError::SchemaRejected(format!(
+-            "model card anchor schema_version must be {MODEL_CARD_ANCHOR_SCHEMA:?}, got {:?}",
+-            anchor.schema_version
+-        )));
+-    }
+-    if anchor.digest.algo != "sha256" {
+-        return Err(WeightsError::SchemaRejected(format!(
+-            "model card anchor digest algo must be \"sha256\", got {:?}",
+-            anchor.digest.algo
+-        )));
+-    }
+-    let expected_hex = sha256_hex(&anchor_projection_bytes(card_bytes, attestation)?);
+-    if expected_hex != anchor.digest.hex {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor digest mismatch: expected {expected_hex}, got {}",
+-            anchor.digest.hex
+-        )));
+-    }
+-    let card_sha = sha256_hex(card_bytes);
+-    if card_sha != anchor.card_canonical_sha256 {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor card_canonical_sha256 mismatch: expected {card_sha}, got {}",
+-            anchor.card_canonical_sha256
+-        )));
+-    }
+-    let expected_subject_sha = hex::encode(attestation.subject_digest_sha256);
+-    if expected_subject_sha != anchor.attestation_subject_sha256 {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor attestation_subject_sha256 mismatch: expected {expected_subject_sha}, got {}",
+-            anchor.attestation_subject_sha256
+-        )));
+-    }
+-    if attestation.certificate_identity != anchor.certificate_identity {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor certificate_identity mismatch: expected {:?}, got {:?}",
+-            attestation.certificate_identity, anchor.certificate_identity
+-        )));
+-    }
+-    if attestation.certificate_oidc_issuer != anchor.certificate_oidc_issuer {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor certificate_oidc_issuer mismatch: expected {:?}, got {:?}",
+-            attestation.certificate_oidc_issuer, anchor.certificate_oidc_issuer
+-        )));
+-    }
+-    if attestation.rekor_log_index != anchor.rekor_log_index {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor rekor_log_index mismatch: expected {}, got {}",
+-            attestation.rekor_log_index, anchor.rekor_log_index
+-        )));
+-    }
+-    if attestation.rekor_inclusion_verified != anchor.rekor_inclusion_verified {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor rekor_inclusion_verified mismatch: expected {}, got {}",
+-            attestation.rekor_inclusion_verified, anchor.rekor_inclusion_verified
+-        )));
+-    }
+-
+-    // Defense-in-depth: no local verifier is wired for lineage signature
+-    // payloads yet. Reject every imported Signed state so arbitrary hex
+-    // cannot be promoted into public trust evidence.
+-    if let SigningState::Signed {
+-        algorithm,
+-        signature_hex,
+-    } = &anchor.signing
+-    {
+-        if !is_lowercase_hex_signature_payload(signature_hex) {
+-            return Err(WeightsError::BundleRejected(
+-                "model card anchor signing state was Signed but signature_hex was empty or not lower-case hexadecimal"
+-                    .to_string(),
+-            ));
+-        }
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor signing algorithm {algorithm:?} is not verified by this build"
+-        )));
+-    }
+-
+-    let card = crate::card::ModelCard::from_canonical_json(card_bytes)?;
+-    if card.weights_hash != anchor.weights_hash {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor weights_hash mismatch: expected {:?}, got {:?}",
+-            card.weights_hash, anchor.weights_hash
+-        )));
+-    }
+-    if card.issuer != anchor.card_issuer {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor card_issuer mismatch: expected {:?}, got {:?}",
+-            card.issuer, anchor.card_issuer
+-        )));
+-    }
+-    if card.expires_at != anchor.card_expires_at {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card anchor card_expires_at mismatch: expected {}, got {}",
+-            card.expires_at, anchor.card_expires_at
+-        )));
+-    }
+-    Ok(())
++    Ok(()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use std::time::SystemTime;
+ 
+     use chio_attest_verify::VerifiedAttestation;

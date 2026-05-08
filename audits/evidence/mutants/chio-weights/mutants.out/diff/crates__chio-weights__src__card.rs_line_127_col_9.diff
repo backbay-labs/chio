@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/card.rs
++++ replace StringSet::contains_empty -> bool with false
+@@ -119,17 +119,17 @@
+ 
+     /// Borrow the underlying `BTreeSet` (canonical iteration order).
+     #[must_use]
+     pub fn as_set(&self) -> &BTreeSet<String> {
+         &self.0
+     }
+ 
+     fn contains_empty(&self) -> bool {
+-        self.0.iter().any(String::is_empty)
++        false /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// Signed declaration binding a model's loaded weights to a permitted
+ /// capability set, banned tools, and a training-data class.
+ ///
+ /// Schema locked at `spec/schemas/model-card.v1.json`. Canonical-JSON
+ /// encoding (RFC 8785 / JCS) is the on-the-wire byte form that cosign

@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/card.rs
++++ replace StringSet::covers -> bool with false
+@@ -80,17 +80,17 @@
+         S: Into<String>,
+     {
+         Self(items.into_iter().map(Into::into).collect())
+     }
+ 
+     /// True if every item in `subset` is also in `self`.
+     #[must_use]
+     pub fn covers(&self, subset: &StringSet) -> bool {
+-        subset.0.is_subset(&self.0)
++        false /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// True if `self` and `other` share at least one element.
+     #[must_use]
+     pub fn intersects(&self, other: &StringSet) -> bool {
+         self.0.intersection(&other.0).next().is_some()
+     }
+ 

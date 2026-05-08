@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/card.rs
++++ replace StringSet::iter -> impl Iterator<Item =&str> with ::std::iter::once("xyzzy")
+@@ -97,17 +97,17 @@
+     /// True if `self` contains the given item.
+     #[must_use]
+     pub fn contains(&self, item: &str) -> bool {
+         self.0.contains(item)
+     }
+ 
+     /// Iterate the items in canonical (lexicographic) order.
+     pub fn iter(&self) -> impl Iterator<Item = &str> {
+-        self.0.iter().map(String::as_str)
++        ::std::iter::once("xyzzy") /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Number of distinct items.
+     #[must_use]
+     pub fn len(&self) -> usize {
+         self.0.len()
+     }
+ 
