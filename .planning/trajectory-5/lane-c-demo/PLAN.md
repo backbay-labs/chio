@@ -1,0 +1,410 @@
+# Lane C Demo - Sub-Lane Plan
+
+This document decomposes Lane C into six sub-lanes (C1..C6). Each sub-lane
+has scope, acceptance, evidence, dependency on Lanes A/B, and a week
+range. Tickets implementing each sub-lane are in `tickets.md`.
+
+The single guiding principle from `00-SYNTHESIS.md` lines 173-175:
+the demo composes existing primitives. New code is rare, narrow, and
+named. Where new code appears (DSSE adapter, BBS+ projection, demo
+example crate), it is bounded by an existing spec section and an
+existing crate's API surface.
+
+---
+
+## C1. Demo architecture and scenario script
+
+### Scope
+
+- One scenario: cross-org `refund.execute` per
+  `debate/06-vision-strategist-chiodome.md` section 2.
+- Two `chio-federation` peers (Org A, Org B) bound by
+  `crates/chio-federation/src/trust_establishment.rs`
+  (`FEDERATION_HANDSHAKE_SCHEMA`, `FederationPeer`).
+- Action class: `refund.execute` (analogue of
+  `spec/CHIODOS_LADDER.md` section 5.2 `settle.rollback`,
+  `mode = receipt_backed`, `consistency_model = totally-ordered`,
+  `consistency_anchor = chio-anchor`, `co_sign = bilateral_required`).
+  No new spec section; uses the existing financial ladder.
+- Pinned ladder intersection: domain `financial`, exactly one action
+  class, no amendment lifecycle (`spec/CHIODOS_LADDER.md` section 8
+  is out of scope per Vision Strategist concession).
+- Two-kernel topology: in-process by default
+  (`InProcessCoSigner` at `crates/chio-federation/src/bilateral.rs:216`).
+  Optional split-process via mTLS-backed transport stub deferred to C6
+  unless trivially included.
+- `examples/chiodome-bilateral/` is the Cargo crate that runs the
+  scenario; one binary, one `smoke.sh`, one `README.md`.
+
+### Acceptance
+
+- `examples/chiodome-bilateral/orchestrate.rs` constructs both kernels,
+  runs the handshake, pins the ladder intersection artefact (in
+  memory; written to fixtures), and executes one refund.
+- The fixtures directory is empty after scenario reset and populated
+  with the six artifacts after a successful run.
+- Reviewer can read the scenario in `examples/chiodome-bilateral/README.md`
+  and reproduce it with `./smoke.sh` from a clean checkout.
+
+### Evidence
+
+- `examples/chiodome-bilateral/fixtures/handshake/` containing the
+  signed `FederationKernelHandshake` from each side.
+- `examples/chiodome-bilateral/fixtures/ladder-intersection.json` -
+  the co-pinned intersection per
+  `spec/CHIODOS_LADDER.md` section 6.1 `chio.chiodos-ladder-intersection.v1`.
+- Smoke run logged to `examples/chiodome-bilateral/fixtures/run.log`.
+
+### Lane A/B dependencies
+
+- Depends on `verify_capability_full` (Lane B `TRJ5-B1.x`). C1 builds
+  against the current verifier signature; if Lane B's surgery lands
+  first the example just compiles.
+- Depends on Lane B's `ToolServerConnection` -> `async_trait`
+  migration (`TRJ5-B0.5`) so the refund tool can register normally
+  on both kernels without manual sync-wrapping at the example layer.
+
+### Week range
+
+Per R1 §6.2 §10 and R4 Finding 10, Lane C scaffolding (C1.1, C1.2,
+C1.4) starts in W3 alongside in-progress Lane B work so the
+forcing-function smoke runs continuously against Lane B partial
+enforcement; full demo (C2-C6) waits for Lane B B0/B1/B2/B3/B4 to
+land. W3 start, full close W4-W5.
+
+---
+
+## C2. Bilateral cosigned invocation flow (consumes Lane B B4)
+
+### Scope
+
+**Wave 3 rework (R4 Finding 1):** the W1 plan's Option-A
+two-signature design was rejected. The DSSE-conformant signing
+primitive (envelope, PAE, signing surface) is now Lane B sub-lane
+B4 (`lane-b-wiring/dsse-bilateral-signing.md`,
+`TRJ5-B4.1..TRJ5-B4.6` plus `TRJ5-B4.E` Evidence Gate close).
+Lane C C2 simplifies from "ship a
+two-signature adapter" to "consume B4 and ship the §7 verifier".
+
+- Lane B B4 owns `crates/chio-federation/src/bilateral_dsse.rs`
+  which provides:
+  - `BilateralCoSignInvocationStatement` struct serialising to the
+    in-toto Statement shape with
+    `predicateType = "chio.bilateral-cosign-invocation.v1"` (not the
+    proposed in-toto URI; spec section 3 mandates the chio-namespaced
+    fallback until WG acceptance).
+  - `DsseEnvelope` plus the PAE function and signing helpers.
+  - The kernel-side cross-org dispatch hot path that emits the
+    envelope as the production signing surface.
+- Lane C C2 EXTENDS the same module with:
+  - `predicate_from_kernel_state` helper for demo orchestration.
+  - `CapabilityVerifier` trait + `ReceiptStore` re-export so the §7
+    verifier does not pull in `chio-kernel` directly (architecture
+    cut option B in `bilateral-cosign-flow.md`).
+  - `verify_envelope(envelope, peer_pin_set, pinned_epoch)` that
+    runs verification algorithm steps 1-17 from
+    `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 7.
+  - Error type extensions for the spec section 7.1 codes (e.g.
+    `PredicateSchemaInvalid`, `SubjectDigestMismatch`,
+    `CapabilityLeaseExpiredOrUnknown`).
+- `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA`
+  (`crates/chio-credit/src/lib.rs:32`) is wired in: the demo mints a
+  budget bond, the bond's `bond_id` becomes the predicate's
+  `capability_lease_ref.lease_id`, and `expires_at` populates
+  `capability_lease_ref.expires_at_unix_ms`.
+
+### Acceptance
+
+- Round-trip: produce envelope -> verify envelope -> all 17 steps
+  pass against happy-path fixture.
+- Negative conformance: each spec section 7.1 error code is exercised
+  in `crates/chio-federation/tests/bilateral_dsse_negative.rs` (16
+  tests, one per error code).
+- Demo emits `chio.bilateral-cosign-invocation.v1` envelope as
+  artifact #4 in the six-artifact list.
+
+### Evidence
+
+- `examples/chiodome-bilateral/fixtures/bilateral-cosign-invocation.json`
+  - the DSSE envelope.
+- `examples/chiodome-bilateral/fixtures/credit-bond.json` - the
+  `CreditBondArtifact` referenced via `lease_id`.
+- Negative-test files committed under `crates/chio-federation/tests/`.
+
+### Lane A/B dependencies
+
+- Hard dep on Lane B `TRJ5-B4.5` (DSSE-conformant signing surface;
+  the gating B4 negative conformance fixture, analogous to the
+  B1.6/B2.5/B3.5 gating pattern).
+- Hard dep on Lane B `TRJ5-B1.6` (lease-expiry enforcement; the §7
+  verifier step 14 only fails closed if the capability path
+  enforces).
+- Hard dep on Lane B `TRJ5-B2.5` (receipt v2 fail-closed; §7 step 7
+  subject digest depends on a real v2 body).
+- Hard dep on Lane B `TRJ5-B3.5` (anchor-batch async-only; §7 step 16).
+
+### Week range
+
+W4-W5 (after Lane B B0/B1/B2/B3/B4 close).
+
+---
+
+## C3. KB MCP integration via `chio mcp serve` over `mcp-remote`
+
+### Scope
+
+- The user-facing surface for the demo is `chio mcp serve --policy`
+  per `crates/chio-cli/src/cli/types.rs:993` wrapping the
+  `mcp-remote` stdio bridge (per
+  `ops/knowledge-base/README.md:136-151`) which proxies to the HTTP
+  KB MCP at `:8111/mcp/` (R4 Finding 2). `chio mcp serve` itself
+  only wraps stdio MCP servers; the bridge is what bridges to HTTP.
+- One HushSpec-shaped policy YAML at
+  `examples/chiodome-bilateral/policies/refund-policy.yaml`
+  (matches `examples/policies/canonical-hushspec.yaml` family).
+  The amount cap lives in the example-local chiodos-ladder
+  intersection (per R4 Finding 5b option a, `partition_fallback.blast_radius_cap`),
+  not in the policy YAML.
+- Each KB MCP tool call emits a `ChioReceipt` v2 through the kernel's
+  hot path (Lane B's enforcement is what makes this real, not
+  optional). Receipts persist to
+  `examples/chiodome-bilateral/fixtures/receipts/`.
+- Cross-org call: Org A's `chio mcp serve` instance forwards the
+  refund call to Org B's instance; Org B executes against its KB MCP
+  stand-in (or the real KB MCP if the demo uses a KB-resident refund
+  tool name); the bilateral cosign envelope wraps the result.
+
+### Acceptance
+
+- `chio mcp serve --policy examples/chiodome-bilateral/policies/refund-policy.yaml
+  -- npx -y mcp-remote http://localhost:8111/mcp/`
+  starts cleanly and proxies to the local KB MCP.
+- A `refund.execute` call against the proxied stack returns a v2
+  receipt and a co-signed envelope.
+- Smoke script asserts the over-cap refund (`amount_minor = 100000`)
+  is rejected by the example-local chiodos-ladder intersection,
+  producing a deny verdict in the bilateral envelope's
+  `policy_evaluation_summary.server_b_verdict.verdict`. The §7
+  verifier surfaces `joint_disposition = deny`.
+
+### Evidence
+
+- `examples/chiodome-bilateral/fixtures/policy-deny.json` - a denied
+  refund's receipt with the explicit verdict + reason.
+- `examples/chiodome-bilateral/fixtures/receipts/<id>.json` per call.
+
+### Lane A/B dependencies
+
+- Hard dep on Lane B's receipt-v2 fail-closed behavior: if the kernel
+  silently downgrades, the bilateral envelope's
+  `subject.digest.sha256` test fails non-deterministically.
+- Soft dep on Lane A: KB-MCP receipts surfaced into the bounded
+  release rely on the threat-coverage and mutation-kill banner having
+  real numbers.
+
+### Week range
+
+W2-W3.
+
+---
+
+## C4. Receipt explain UX
+
+### Scope
+
+- `chio receipt explain` (`crates/chio-cli/src/cli/types.rs:2660`,
+  `crates/chio-cli/src/cli/trust_commands.rs:2629`) is taught to walk
+  the bilateral chain end-to-end:
+  - Parent receipts (kernel A's local v2 + kernel B's local v2)
+  - The `DualSignedReceipt`
+  - The DSSE bilateral envelope (decoded; lists tool_server_a/b,
+    co_sign mode, joint_disposition)
+  - The anchor inclusion proof (`build_anchor_inclusion_proof` at
+    `crates/chio-anchor/src/lib.rs:178`)
+- Documentation page at `docs/guides/EXPLAIN_A_DENIAL.md` is updated
+  (or written) to walk a denied refund: the policy verdict
+  disagreement (`policy.verdict_disagreement`) shows in the explain
+  output; the operator can trace which side denied.
+- Closes `audits/T1.6-chio-explain.md` reopened row from trj4 by
+  attaching the demo's denied-receipt fixture as the canonical
+  example.
+
+### Acceptance
+
+- `chio receipt explain <happy-path-receipt-id>
+  --input-file examples/chiodome-bilateral/fixtures/receipts/<id>.json`
+  prints the joined view (parent IDs, anchor inclusion summary,
+  bilateral envelope summary).
+- Same command on the deny fixture surfaces the denying kernel,
+  policy ID, rationale code, and `repair_hint`.
+- A snapshot test in `crates/chio-cli/tests/explain_bilateral.rs`
+  pins the rendered output.
+
+### Evidence
+
+- `docs/guides/EXPLAIN_A_DENIAL.md` includes a copy-pasteable example
+  block citing the demo fixture filenames.
+- T1.6 audit row references this doc.
+
+### Lane A/B dependencies
+
+- Soft dep on Lane B (the explain output's signature_ok line is only
+  meaningful when the receipt is real; Lane B's enforcement is what
+  ensures the receipt was produced through the hot path).
+
+### Week range
+
+W3.
+
+---
+
+## C5. Selective disclosure auditor view (zk feature)
+
+### Scope
+
+- New workspace member `crates/chio-zk-receipts/` behind a default-off
+  Cargo feature `zk`. Lives next to
+  `crates/chio-attest-verify/` per
+  `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 2.1.
+- Implements the spec section 6.2 `chio.bbs-projection.step.v1`
+  projection over the demo refund's `StepRecord`.
+- Implements the spec section 8 envelope schema
+  `chio.selective-disclosure-proof.v1`.
+- One frozen predicate evaluated by the auditor:
+  `cmp(refund_amount_minor, <=, 25000, scale=2)` per spec section
+  6.4 worked example (matching `CHIODOS_LADDER` section 5.2's
+  `blast_radius_cap` of 10000 for `credit.facility_bind`; 25000
+  picks an explicit-deny adversarial fixture as well).
+- BBS+ implementation pins per spec section 3:
+  `bbs-2023` cryptosuite, `bls12-381-sha-256` ciphersuite.
+- Auditor view fixtures under
+  `examples/chiodome-bilateral/fixtures/auditor-view/` are produced
+  only when the `zk` feature is on; otherwise the demo gracefully
+  prints `[selective-disclosure: zk feature not enabled]`.
+
+### Acceptance
+
+- `cargo test -p chio-zk-receipts --features zk` passes the spec
+  section 6.4 worked example end-to-end.
+- The demo's auditor predicate verifies under `--features zk` and
+  fails closed when the predicate would otherwise reveal a wholesale
+  field (spec section 7.4).
+- Bounded-claim text in `selective-disclosure.md` is verbatim in
+  `release-bar.md` and the example README.
+
+### Evidence
+
+- `examples/chiodome-bilateral/fixtures/auditor-view/proof.json` -
+  the `chio.selective-disclosure-proof.v1` envelope.
+- `examples/chiodome-bilateral/fixtures/auditor-view/predicate-failed.json`
+  - the negative case.
+
+### Lane A/B dependencies
+
+- None. The zk feature is independent of Lane A and B; it is the only
+  Lane C subsection where Lane B does not provide forcing-function
+  enforcement. This is called out as bounded-claim language in
+  `selective-disclosure.md`: the auditor view is a local proof, not
+  a transparency-log artefact.
+
+### Week range
+
+W4.
+
+---
+
+## C6. v0.1.0-bounded-chiodome release packaging
+
+### Scope
+
+- Tag `v0.1.0-bounded-chiodome` per
+  `00-SYNTHESIS.md` line 131-132.
+- Release notes at `RELEASE_NOTES.md` (a copy of `release-bar.md` text
+  with formatting for the GitHub release body).
+- CI job `chio-demo-smoke` becomes required on `main` (via
+  `.github/workflows/` extension).
+- A signed tarball of `examples/chiodome-bilateral/fixtures/` ships
+  with the release as `chiodome-bilateral-fixtures-v0.1.0.tar.gz`,
+  produced by the production kernel - no hand-written fixtures.
+- README banner updated to reference the demo as a runnable artifact
+  ("see `examples/chiodome-bilateral/`").
+- `RELEASE_AUDIT.md` gets a new row documenting:
+  - What is claimed
+  - What is not claimed (chiefly: this is not a transparency-log
+    artefact; the auditor proof is local; settlement runs against a
+    `LocalDevnetDeployment`)
+  - Pointers to bounded-claim sources
+
+### Acceptance
+
+- Tag is signed; CI smoke is required; tarball is reproducible from
+  `./smoke.sh && tar -czf ...`.
+- `RELEASE_AUDIT.md` row references the tag and the demo path.
+- The four trj5 ship-bar conditions
+  (`00-SYNTHESIS.md` lines 148-158) are observably true for Lane C:
+  - Demo runs end-to-end
+  - Receipts are inspectable with `chio receipt explain`
+  - Demo run is captured as a fixture in `examples/`
+
+### Evidence
+
+- The tag in `git`.
+- The release tarball in repo releases.
+- The CI required-check status on main.
+
+### Lane A/B dependencies
+
+- Hard dep on Lane B's three negative conformance fixtures being
+  green; the release notes reference them by file path. If they are
+  red, the release is not bounded - it is theatre.
+- Hard dep on Lane A's mutation banner reading the real number; the
+  bounded-claim language in `release-bar.md` quotes the banner
+  verbatim.
+
+### Week range
+
+W4.
+
+---
+
+## Cross-cutting
+
+### Effort summary
+
+| Sub-lane | Effort | Risk |
+|---|---|---|
+| C1 architecture | M+L (4 tickets, includes new chiodos-ladder primitive) | Medium (R4 Finding 5a: ladder primitive is new code) |
+| C2 cosign | L+L (6 tickets; consumes Lane B B4 for signing surface) | Medium (depends on B4 close; verifier work + architecture cut) |
+| C3 KB MCP | M+L (4 tickets; uses mcp-remote stdio bridge) | Low-Medium (R4 Finding 2 resolved via bridge; HushSpec YAML simpler than fictional schema) |
+| C4 receipt explain | L+S (2 tickets; bumped per R4 Finding 9) | Low (extends existing explain function; bilateral chain walk is the new work) |
+| C5 zk feature | M+L+L (3 tickets) | Medium-High (R6 may force deferral to v0.2 if BBS+ deps don't resolve) |
+| C6 release | S+S+S+S+S (5 tickets; includes continuous CI hook) | Low (ceremonial, but all of the above must land) |
+
+### Forcing-function gates between Lanes
+
+Lane C scaffolding (C1.1, C1.2, C1.4) starts in W3 alongside
+in-progress Lane B work (R1 §6.2). Continuous CI workflow
+`chiodome-demo-continuous.yml` (TRJ5-C6.3, R4 Finding 10) runs the
+smoke nightly on `main` and on every push to Lane B paths so
+partial-enforcement bugs surface continuously, not at the worst
+possible time. Lane C will not tag at C6 if Lane B's four negative
+conformance fixtures (B1.6, B2.5, B3.5, B4.x) are not green or if
+the continuous workflow has not been green for 7 consecutive
+nights.
+
+### What we don't do
+
+- Refactor `chio-kernel/src/kernel/mod.rs` beyond what Lane B does
+  for `ToolServerConnection`. Out of scope per `00-SYNTHESIS.md`
+  lines 96-100.
+- Add a transparency log. Bounded-claim discipline says no.
+- Promote v2.71 Web3 live activation. Bounded-claim discipline says
+  no; spec already pins the demo to `LocalDevnetDeployment`.
+- Add OR / negation / nested predicates to selective disclosure;
+  spec section 7.3 freezes v0.1 at AND-only with eight-clause
+  ceiling.
+- Wrap the KB MCP HTTP server directly. `chio mcp serve` is
+  stdio-only; the demo uses `mcp-remote` as the bridge.
+- Bolt a second signature on `DualSignedReceipt` to pretend §6
+  conformance. Lane B B4 is the structural fix; Lane C consumes
+  the spec-conformant signing surface that B4 produces.

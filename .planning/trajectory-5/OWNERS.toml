@@ -1,0 +1,219 @@
+# trajectory-5 ownership manifest.
+#
+# Owner-classes only. Human assignment to owner-classes is a Wave-2 deliverable
+# and gates kickoff (see KICKOFF-CHECKLIST.md).
+#
+# Format mirrors trajectory-3 OWNERS.toml. Trj5 is the "honesty trajectory":
+# three coupled lanes, no separate brand from the trj4 wave plan, one ship-bar
+# visible from outside (per debate/00-SYNTHESIS.md).
+#
+# ---------------------------------------------------------------------------
+# AUTONOMOUS EXECUTION NOTE (Wave 5 kickoff, 2026-05-08)
+# ---------------------------------------------------------------------------
+#
+# Trj5 executes autonomously: agent waves orchestrated by Claude pick up and
+# close tickets. The `human_assignment` field on each lane below is the
+# escalation path (a real GitHub handle), NOT the implementer. The actual
+# ticket execution happens via `agent_orchestrator` agent waves, gated by the
+# `execution_mode = "autonomous"` field.
+#
+# Per-owner-class `assigned_to = "@bb-connor"` rows record the same escalation
+# path at the role granularity; they do not name fictitious teammates. The
+# only real human handle in the trj5 ledger is `@bb-connor` (verified by
+# `git config user.email` -> `whelan.connor11@gmail.com`).
+#
+# When an autonomous wave hits one of the eleven canonical halt triggers
+# (READINESS.md "Autonomous Orchestration Cadence"), control routes to
+# `human_assignment` for review and unblock. Otherwise wave-to-wave handoff
+# is by ticket-state transitions in `tickets.md` and Wave-N closeout docs in
+# `closeout/wave-NN-summary.md`.
+#
+# The `coordination_owner` field on `[overlaps]` rows mediates merge order
+# when multiple lanes touch the same path; it is also `@bb-connor` because
+# autonomous lanes do not arbitrate among themselves on path conflicts.
+# ---------------------------------------------------------------------------
+
+trajectory = "trajectory-5"
+genesis = "2026-05-07"
+single_owner = "@bb-connor"
+execution_mode = "autonomous"
+agent_orchestrator = "claude-trj5-orchestrator"
+
+# ---- Per-lane records ----
+
+[lanes.A]
+slug = "lane-a-floor"
+trust_boundary = true
+wave = "W1"
+duration_weeks = 8
+parallelizable = true
+primary_role = "substrate-rust"
+secondary_roles = ["formal-tla", "formal-lean", "formal-kani", "threat-modeling", "quality-rust"]
+owner_globs = [
+  "audits/evidence/mutation/**",
+  "audits/evidence/threats/**",
+  ".cargo/mutants.toml",
+  "mutants-baseline.toml",
+  ".github/workflows/mutation-coverage.yml",
+  "scripts/check-threat-coverage.sh",
+  "crates/chio-attest-verify/**",
+  "crates/chio-anchor/src/lib.rs",
+  "crates/chio-weights/**",
+  "crates/chio-equivalence-tests/**",
+  "formal/tla/**",
+  "formal/apalache/**",
+  "formal/lean4/**",
+  "formal/theorem-inventory.json",
+  "spec/registries/**",
+  ".planning/trajectory-5/lane-a-floor/**",
+]
+reviewer = "@bb-connor"
+review_x2 = true
+ship_bar = "Bar 1"
+trj4_absorbed = ["TRJ4-010", "TRJ4-011", "TRJ4-012", "TRJ4-013", "TRJ4-014", "TRJ4-015", "TRJ4-016", "TRJ4-017", "TRJ4-018", "TRJ4-019", "TRJ4-040", "TRJ4-041", "TRJ4-042", "TRJ4-043", "TRJ4-044", "TRJ4-045", "TRJ4-046", "TRJ4-047", "TRJ4-048", "TRJ4-049"]
+human_assignment = "@bb-connor"
+execution_mode = "autonomous"
+agent_orchestrator = "claude-trj5-orchestrator"
+
+[lanes.B]
+slug = "lane-b-wiring"
+trust_boundary = true
+wave = "W1"
+duration_weeks = 6
+parallelizable = false
+primary_role = "protocol-rust"
+secondary_roles = ["kernel-rust", "spec-rust"]
+owner_globs = [
+  "crates/chio-kernel/src/kernel/mod.rs",
+  "crates/chio-kernel-core/**",
+  "crates/chio-anchor/src/batch.rs",
+  "crates/chio-conformance/tests/single_entry_verifier_no_bypass.rs",
+  "crates/chio-conformance/tests/receipt_v2_fail_closed_under_negotiated_v2.rs",
+  "crates/chio-conformance/tests/anchor_batch_async_only_with_public_witness.rs",
+  "scripts/check-anchor-batch-async-witness.sh",
+  "spec/PROTOCOL.md",
+  "spec/schemas/chio-wire/**",
+  ".planning/trajectory-5/lane-b-wiring/**",
+]
+reviewer = "@bb-connor"
+review_x2 = true
+ship_bar = "Bar 2"
+trj4_absorbed = ["TRJ4-100", "TRJ4-101", "TRJ4-102", "TRJ4-103", "TRJ4-104", "TRJ4-T1.0.E", "TRJ4-120", "TRJ4-121", "TRJ4-122", "TRJ4-123", "TRJ4-124", "TRJ4-125", "TRJ4-126", "TRJ4-127", "TRJ4-128", "TRJ4-129", "TRJ4-130", "TRJ4-131", "TRJ4-T1.2.E", "TRJ4-140", "TRJ4-141", "TRJ4-142", "TRJ4-143", "TRJ4-144", "TRJ4-145", "TRJ4-146", "TRJ4-147", "TRJ4-T1.3.E"]
+human_assignment = "@bb-connor"
+execution_mode = "autonomous"
+agent_orchestrator = "claude-trj5-orchestrator"
+
+[lanes.C]
+slug = "lane-c-demo"
+trust_boundary = true
+wave = "W2"
+duration_weeks = 4
+parallelizable = false
+primary_role = "federation-rust"
+secondary_roles = ["cli-rust", "examples", "spec-rust"]
+owner_globs = [
+  "crates/chio-federation/src/bilateral.rs",
+  "crates/chio-credit/**",
+  "crates/chio-anchor/src/web3.rs",
+  "crates/chio-cli/src/receipt/**",
+  "examples/bounded-chiodome/**",
+  "ops/knowledge-base/**",
+  "spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md",
+  "spec/CHIODOS_SELECTIVE_DISCLOSURE.md",
+  ".planning/trajectory-5/lane-c-demo/**",
+]
+reviewer = "@bb-connor"
+review_x2 = true
+ship_bar = "Bar 3"
+trj4_absorbed = []
+human_assignment = "@bb-connor"
+execution_mode = "autonomous"
+agent_orchestrator = "claude-trj5-orchestrator"
+
+# ---- Path overlaps requiring orchestrator coordination ----
+#
+# Per R1 finding 3.4 / 3.5 (cross-lane review), every multi-lane overlap row
+# carries a `coordination_owner` so a Wave-3 evidence-gate script (and PR
+# reviewers) can resolve "which human signs off when lanes touch the same
+# path?". Defaults to the trj5 single_owner; per-row overrides allowed.
+#
+# `chio-federation` overlap is the most active: Lane B sub-lane B4 (DSSE
+# bilateral signing) lives at `crates/chio-federation/src/bilateral_dsse.rs`
+# and Lane C C2 (the §7 verifier and predicate helper) extends the same
+# module. Both lanes touch the file in weeks 5-7 of the timeline.
+
+[overlaps]
+"crates/chio-kernel/src/kernel/mod.rs" = { lanes = ["B"], coordination_owner = "@bb-connor" }
+"crates/chio-anchor/" = { lanes = ["A", "B", "C"], coordination_owner = "@bb-connor" }
+"crates/chio-conformance/tests/" = { lanes = ["A", "B"], coordination_owner = "@bb-connor" }
+"crates/chio-federation/" = { lanes = ["B", "C"], coordination_owner = "@bb-connor", path_overlaps = ["crates/chio-federation/src/bilateral_dsse.rs", "crates/chio-federation/src/bilateral.rs", "crates/chio-federation/src/lib.rs"], notes = "B4 (DSSE signing) and Lane C C2 (verifier + predicate helper) both extend `bilateral_dsse.rs`. Coordination owner mediates merge order." }
+"spec/PROTOCOL.md" = { lanes = ["B"], coordination_owner = "@bb-connor" }
+"spec/registries/" = { lanes = ["A", "B"], coordination_owner = "@bb-connor" }
+"audits/evidence/" = { lanes = ["A"], coordination_owner = "@bb-connor" }
+"formal/" = { lanes = ["A"], coordination_owner = "@bb-connor" }
+".planning/trajectory-5/" = { lanes = ["A", "B", "C"], coordination_owner = "@bb-connor" }
+
+# ---- Owner-class definitions (for human assignment in Wave 2) ----
+#
+# These class strings are the ones that appear in primary_role / secondary_roles
+# above. Human assignment maps a class to one or more GitHub handles.
+
+[owner_classes.substrate-rust]
+description = "Rust engineer on chio-attest-verify, chio-anchor, chio-weights, chio-equivalence-tests, mutation infrastructure"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.formal-tla]
+description = "TLA+ / apalache author working on revocation models, receipt-before-allow, EpochMax tuning"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.formal-lean]
+description = "Lean4 author working on negotiation_safety re-prove, theorem-inventory promotion"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.formal-kani]
+description = "Kani harness author for chio-attest-verify, chio-anchor, chio-weights"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.threat-modeling]
+description = "Threat-coverage author replacing 20 placeholder rows with real production-call-path evidence"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.quality-rust]
+description = "Rust engineer on cargo-mutants survival sweeps, conformance test plumbing"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.protocol-rust]
+description = "Rust engineer on PROTOCOL.md primitives: capability v2 single-entry verifier, receipt v2 fail-closed, anchor-batch async gate"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.kernel-rust]
+description = "Rust engineer on chio-kernel dispatch surface; async_trait migration; sync-helper hop collapse"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.spec-rust]
+description = "PROTOCOL.md / schema author updating SHOULD->MUST, falls-back->fails-closed, claim/proof/theorem registries"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.federation-rust]
+description = "Rust engineer on chio-federation::bilateral, chio-credit CREDIT_BOND_ARTIFACT_SCHEMA, chio-anchor::Web3CheckpointStatement"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.cli-rust]
+description = "Rust engineer on chio receipt explain, chio mcp serve --policy"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
+
+[owner_classes.examples]
+description = "examples/bounded-chiodome/ owner; demo recipe + transcripts + golden files"
+assigned_to = ["@bb-connor"]
+execution_mode = "autonomous"
