@@ -86,28 +86,28 @@ git -C /tmp/arc-r4-sim4.15uzIT/work merge --no-edit --no-stat <origin/pr/N>
 Simulation metadata:
 
 ```text
-base=708c7bb33 origin/main
-refs_refreshed=2026-05-08T21:27:26Z
+base=708c7bb33d origin/main
+refs_refreshed=2026-05-08T21:35:24Z
 ```
 
 Owned branch sequence:
 
 ```text
-merge #620 (ee7dd2137) ... OK
-merge #602 (f52da0953) ... OK
-merge #603 (326f748ac) ... OK
-merge #619 (52bc2b77d) ... OK
-merge #621 (a7ee55115) ... OK
-merge #622 (e7e3fc68d) ... OK
-merge #623 (a89cb9a59) ... OK
-merge #626 (afb26768a) ... OK
+merge #620 (cbe1736e5a) ... OK
+merge #602 (124d8a8869) ... OK
+merge #603 (d9b0219f75) ... OK
+merge #619 (0dc573e6e9) ... OK
+merge #621 (6f4095b600) ... OK
+merge #622 (1c0317bcc0) ... OK
+merge #623 (feb4559c19) ... OK
+merge #626 (ed3e772bfe) ... OK
 ```
 
 Threat branch current state:
 
 ```text
-merge #604 (6e974a20f) ... OK
-merge #608 (27bad9f84) ... CONFLICT
+merge #604 (ae633d478e) ... OK
+merge #608 (46cbaece80) ... CONFLICT
   crates/chio-conformance/tests/threats/agent_velocity_abuse.rs
   crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs
   crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs
