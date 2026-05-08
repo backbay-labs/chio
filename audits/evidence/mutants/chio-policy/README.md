@@ -94,12 +94,13 @@ Per `lane-a-floor/mutation-budget.md` and `audits/T0.B-substrate-
 hardening.md` line 16: chio-policy is a `>=65%` target crate
 ("substrate eng owner-class").
 
-**Measured 80.21% over 314 of 418 mutants; target >=65%; target met
-with margin.** The 104 not-evaluated mutants would need to flip
-proportions wildly (>=22 missed of the remaining 104) to drop the kill
-rate below 65% on the full 418, which is improbable given the file
-distribution of the unevaluated tail (mostly `validate.rs` and
-`evaluate.rs` umbrella, which mirror already-measured behavior).
+**Measured 80.21% over 314 of 418 mutants; target >=65%; crate-level
+target NOT satisfied by this run.** The dated JSON summary is the
+authoritative machine-readable result and records `target_met: false`
+with `result_label: "PARTIAL"`. The 104 not-evaluated mutants leave
+the full-crate kill rate unknown, so this partial run cannot retire
+the chio-policy baseline even though the evaluated subset clears the
+numeric threshold.
 
 ## Surviving-mutant categorization
 
@@ -183,7 +184,7 @@ times due to `--in-place` mode and a competing rustc on the system).
 At 75% completion the wall clock was already 3h 12m -- continuing to
 100% would require an estimated ~2 additional hours and exceeded the
 session budget for the agent. The honest call: stop, capture the
-274/418 evaluated set, document the gap, and let CI hosted-nightly
+314/418 evaluated set, document the gap, and let CI hosted-nightly
 mutants.yml (4-hour-per-crate budget) produce the authoritative full
 sweep. The 80.21% kill rate measured over 314 mutants spans every
 trust-boundary file in the chio-policy `examine_globs` set -- it is
@@ -208,7 +209,8 @@ not a lopsided sample.
 
 - `2026-05-08.json` -- per-crate JSON summary (the authoritative
   machine-readable result; consumed by `audits/mutation/aggregate.sh`).
-  Includes `run_status: "PARTIAL"` and `evaluated: 314, total: 418`.
+  Includes `run_status: "PARTIAL"`, `result_label: "PARTIAL"`,
+  `target_met: false`, and `evaluated: 314, total_discovered: 418`.
 - `mutants.out/caught.txt` -- 227 lines, one per caught mutant.
 - `mutants.out/missed.txt` -- 56 lines, one per missed mutant.
 - `mutants.out/timeout.txt` -- 0 lines.
@@ -216,12 +218,38 @@ not a lopsided sample.
 - `mutants.out/mutants.json` -- 418-entry mutant catalogue (full
   enumeration; not all evaluated).
 - `mutants.out/outcomes.json` -- per-mutant outcome record (314
-  entries; committed for re-derivability of `test_scope` from
-  `phase_results[].argv`).
+  entries). Intentionally not committed; regenerate locally when
+  argv-level replay evidence is needed.
 - `mutants.out/lock.json` -- run start time + tool version.
+  Intentionally not committed because cargo-mutants records operator
+  identity and workspace-absolute paths in this file.
 - `mutants.out/diff/*.diff` -- per-mutant source diff (one per
   evaluated mutant; 314 files).
 
 The `mutants.out/log/` and `mutants.out/debug.log` are NOT committed
 per `audits/evidence/mutants/.gitignore` (large; contain absolute
 paths).
+
+## Reproducibility
+
+`mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
+omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
+operator identity, hostnames, workspace-absolute paths, argv paths, and
+per-mutant console transcripts in those files. The committed evidence is
+the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
+`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+
+To regenerate the omitted files locally, rerun:
+
+```sh
+cargo mutants \
+  --config audits/mutation/per-crate-configs/chio-policy.toml \
+  -p chio-policy \
+  --in-place \
+  --output audits/evidence/mutants/chio-policy \
+  --baseline=skip
+```
+
+Then compare the regenerated counts against
+`audits/evidence/mutants/chio-policy/2026-05-08.json`; do not commit
+the regenerated `lock.json`, `outcomes.json`, `log/`, or `debug.log`.
