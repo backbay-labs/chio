@@ -1,0 +1,38 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace collect_string_values_strict -> bool with false
+@@ -586,34 +586,17 @@
+ 
+ /// Walk a JSON value collecting string leaves; returns false if any
+ /// non-string, non-array leaf is observed (including `null`). The
+ /// strict policy applies everywhere a relevant key is present. A bare
+ /// `audience: null` and a mixed array like `["security", null]` both
+ /// poison the constraint, matching the hosted kernel's
+ /// `request_matching::collect_string_values_strict`.
+ fn collect_string_values_strict(value: &serde_json::Value, out: &mut Vec<String>) -> bool {
+-    match value {
+-        serde_json::Value::String(s) => {
+-            out.push(s.clone());
+-            true
+-        }
+-        serde_json::Value::Array(values) => {
+-            for entry in values {
+-                if !collect_string_values_strict(entry, out) {
+-                    return false;
+-                }
+-            }
+-            true
+-        }
+-        serde_json::Value::Null
+-        | serde_json::Value::Bool(_)
+-        | serde_json::Value::Number(_)
+-        | serde_json::Value::Object(_) => false,
+-    }
++    false /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn memory_store_allowlist_matches(arguments: &serde_json::Value, allowed: &[String]) -> bool {
+     let mut observed = ObservedStringValues::default();
+     collect_memory_store_values(arguments, &mut observed);
+     if observed.invalid {
+         return false;
+     }

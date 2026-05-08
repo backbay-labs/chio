@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ delete ! in memory_store_allowlist_matches
+@@ -612,17 +612,17 @@
+ }
+ 
+ fn memory_store_allowlist_matches(arguments: &serde_json::Value, allowed: &[String]) -> bool {
+     let mut observed = ObservedStringValues::default();
+     collect_memory_store_values(arguments, &mut observed);
+     if observed.invalid {
+         return false;
+     }
+-    if !observed.saw_relevant_key {
++    if  /* ~ changed by cargo-mutants ~ */observed.saw_relevant_key {
+         return true;
+     }
+     observed
+         .values
+         .iter()
+         .all(|value| allowed.iter().any(|allowed_value| allowed_value == value))
+ }
+ 

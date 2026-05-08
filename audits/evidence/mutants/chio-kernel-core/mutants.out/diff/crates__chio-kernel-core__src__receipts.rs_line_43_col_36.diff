@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/receipts.rs
++++ replace != with == in sign_receipt
+@@ -35,17 +35,17 @@
+ /// The `body.kernel_key` must equal `backend.public_key()`; otherwise we
+ /// fail fast with [`ReceiptSigningError::KernelKeyMismatch`] so the caller
+ /// doesn't produce a receipt whose signature cannot be verified.
+ pub fn sign_receipt(
+     body: ChioReceiptBody,
+     backend: &dyn SigningBackend,
+ ) -> Result<ChioReceipt, ReceiptSigningError> {
+     let backend_key = backend.public_key();
+-    if body.kernel_key.algorithm() != backend_key.algorithm() || body.kernel_key != backend_key {
++    if body.kernel_key.algorithm() == /* ~ changed by cargo-mutants ~ */ backend_key.algorithm() || body.kernel_key != backend_key {
+         #[cfg(kani)]
+         core::mem::forget(body);
+ 
+         return Err(ReceiptSigningError::KernelKeyMismatch);
+     }
+ 
+     #[cfg(kani)]
+     {

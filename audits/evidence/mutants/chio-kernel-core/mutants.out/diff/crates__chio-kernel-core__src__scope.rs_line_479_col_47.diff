@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace == with != in wildcard_matches
+@@ -471,17 +471,17 @@
+     let pattern_chars: Vec<char> = pattern.chars().collect();
+     let candidate_chars: Vec<char> = candidate.chars().collect();
+     let (mut pattern_idx, mut candidate_idx) = (0usize, 0usize);
+     let (mut star_idx, mut match_idx) = (None, 0usize);
+ 
+     while candidate_idx < candidate_chars.len() {
+         if pattern_idx < pattern_chars.len()
+             && (pattern_chars[pattern_idx] == candidate_chars[candidate_idx]
+-                || pattern_chars[pattern_idx] == '*')
++                || pattern_chars[pattern_idx] != /* ~ changed by cargo-mutants ~ */ '*')
+         {
+             if pattern_chars[pattern_idx] == '*' {
+                 star_idx = Some(pattern_idx);
+                 match_idx = candidate_idx;
+                 pattern_idx += 1;
+             } else {
+                 pattern_idx += 1;
+                 candidate_idx += 1;

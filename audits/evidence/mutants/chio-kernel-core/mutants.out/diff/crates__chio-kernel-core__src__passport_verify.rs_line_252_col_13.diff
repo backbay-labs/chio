@@ -1,0 +1,17 @@
+--- crates/chio-kernel-core/src/passport_verify.rs
++++ delete match arm b'A'..= b'F' in payload_bytes_hex::from_hex_nibble
+@@ -244,13 +244,13 @@
+     const NIBBLES: [char; 16] = [
+         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+     ];
+ 
+     fn from_hex_nibble(byte: u8) -> Result<u8, &'static str> {
+         match byte {
+             b'0'..=b'9' => Ok(byte - b'0'),
+             b'a'..=b'f' => Ok(byte - b'a' + 10),
+-            b'A'..=b'F' => Ok(byte - b'A' + 10),
++             /* ~ changed by cargo-mutants ~ */
+             _ => Err("invalid hex character"),
+         }
+     }
+ }

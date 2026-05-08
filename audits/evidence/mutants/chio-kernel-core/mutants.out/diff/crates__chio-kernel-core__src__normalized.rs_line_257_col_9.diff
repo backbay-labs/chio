@@ -1,0 +1,57 @@
+--- crates/chio-kernel-core/src/normalized.rs
++++ replace NormalizedScope::is_subset_of -> bool with false
+@@ -249,53 +249,17 @@
+     pub resource_grants: Vec<NormalizedResourceGrant>,
+     pub prompt_grants: Vec<NormalizedPromptGrant>,
+ }
+ 
+ impl NormalizedScope {
+     /// Mirrors `ChioScope::is_subset_of` over the normalized proof-facing AST.
+     #[must_use]
+     pub fn is_subset_of(&self, parent: &Self) -> bool {
+-        #[cfg(kani)]
+-        {
+-            if !self.resource_grants.is_empty()
+-                || !parent.resource_grants.is_empty()
+-                || !self.prompt_grants.is_empty()
+-                || !parent.prompt_grants.is_empty()
+-            {
+-                return false;
+-            }
+-            if self.grants.is_empty() {
+-                return true;
+-            }
+-            if self.grants.len() == 1 && parent.grants.len() == 1 {
+-                return self.grants[0].is_subset_of(&parent.grants[0]);
+-            }
+-            return false;
+-        }
+-
+-        #[cfg(not(kani))]
+-        {
+-            self.grants.iter().all(|grant| {
+-                parent
+-                    .grants
+-                    .iter()
+-                    .any(|candidate| grant.is_subset_of(candidate))
+-            }) && self.resource_grants.iter().all(|grant| {
+-                parent
+-                    .resource_grants
+-                    .iter()
+-                    .any(|candidate| grant.is_subset_of(candidate))
+-            }) && self.prompt_grants.iter().all(|grant| {
+-                parent
+-                    .prompt_grants
+-                    .iter()
+-                    .any(|candidate| grant.is_subset_of(candidate))
+-            })
+-        }
++        false /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// Proof-facing capability token projection.
+ #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct NormalizedCapability {
+     pub id: String,
+     pub issuer_hex: String,

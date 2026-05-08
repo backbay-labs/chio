@@ -1,0 +1,23 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace collect_string_leaves -> Vec<StringLeaf> with vec![]
+@@ -364,19 +364,17 @@
+ 
+ #[derive(Clone)]
+ struct StringLeaf {
+     key: Option<String>,
+     value: String,
+ }
+ 
+ fn collect_string_leaves(arguments: &serde_json::Value) -> Vec<StringLeaf> {
+-    let mut leaves = Vec::new();
+-    collect_string_leaves_inner(arguments, None, &mut leaves);
+-    leaves
++    vec![] /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn collect_string_leaves_inner(
+     arguments: &serde_json::Value,
+     current_key: Option<&str>,
+     leaves: &mut Vec<StringLeaf>,
+ ) {
+     match arguments {

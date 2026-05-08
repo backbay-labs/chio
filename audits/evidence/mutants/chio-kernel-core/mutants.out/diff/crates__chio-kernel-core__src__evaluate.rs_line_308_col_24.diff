@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/evaluate.rs
++++ replace match guard matches.is_empty() with false in evaluate_with_crypto_floor_and_budgets
+@@ -300,17 +300,17 @@
+ 
+     // Step 3: scope match.
+     let matches: Vec<MatchedGrant<'_>> = match resolve_matching_grants(
+         &verified.scope,
+         &input.request.tool_name,
+         &input.request.server_id,
+         &input.request.arguments,
+     ) {
+-        Ok(matches) if matches.is_empty() => {
++        Ok(matches) if false /* ~ changed by cargo-mutants ~ */ => {
+             let core_err = KernelCoreError::OutOfScope {
+                 tool: input.request.tool_name.clone(),
+                 server: input.request.server_id.clone(),
+             };
+             return deny(core_err, None, Some(verified));
+         }
+         Ok(matches) => matches,
+         Err(crate::ScopeMatchError::OutOfScope) => {
