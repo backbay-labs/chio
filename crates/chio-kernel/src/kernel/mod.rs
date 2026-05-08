@@ -180,8 +180,14 @@ impl LocalReceiptArtifact {
 /// Bridge a sync caller to the now-async tool-server dispatch path.
 ///
 /// Mirrors `block_on_price_oracle`: prefer `block_in_place` on a multi-thread
-/// runtime, fall back to a fresh current-thread runtime if no runtime is
-/// active. The trj5 Lane B0 migration made `ToolServerConnection` async; this
+/// runtime; otherwise drive the future to completion with the
+/// non-tokio `futures::executor::block_on` so we do not nest `block_on`
+/// calls on a current-thread runtime (tokio refuses that). Tool-server
+/// implementations that need real tokio I/O are expected to use the
+/// multi-thread arm via `block_in_place`; tests and in-process tool
+/// servers that compute synchronously are served by the executor arm.
+///
+/// The trj5 Lane B0 migration made `ToolServerConnection` async; this
 /// helper is the load-bearing bridge that lets the legacy
 /// `evaluate_tool_call_blocking` synchronous path keep working without
 /// forcing a workspace-wide async migration in the same PR. Trj6 owns the
@@ -191,31 +197,15 @@ where
     F: std::future::Future<Output = Result<T, KernelError>>,
 {
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => match handle.runtime_flavor() {
-            tokio::runtime::RuntimeFlavor::MultiThread => {
-                tokio::task::block_in_place(|| handle.block_on(future))
-            }
-            // Single-threaded runtimes cannot block_on the current task; fall
-            // back to a nested current-thread runtime. This allocates a
-            // runtime per dispatch on this rare path; trj6 sync-evaluator
-            // removal eliminates the path entirely.
-            _ => tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|error| {
-                    KernelError::Internal(format!(
-                        "failed to build sync dispatch runtime: {error}"
-                    ))
-                })?
-                .block_on(future),
-        },
-        Err(_) => tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| {
-                KernelError::Internal(format!("failed to build sync dispatch runtime: {error}"))
-            })?
-            .block_on(future),
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        }
+        // Current-thread runtime active OR no runtime: drive the future
+        // with a non-tokio executor. The future's `?Send` futures are
+        // legal on this thread; tool-server impls that depend on tokio
+        // I/O primitives are expected to register against a multi-thread
+        // runtime. See doc comment.
+        _ => futures::executor::block_on(future),
     }
 }
 

@@ -297,7 +297,9 @@ pub trait ToolServerConnection: Send + Sync {
         arguments: serde_json::Value,
         nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<(serde_json::Value, Option<ToolInvocationCost>), KernelError> {
-        let value = self.invoke(tool_name, arguments, nested_flow_bridge).await?;
+        let value = self
+            .invoke(tool_name, arguments, nested_flow_bridge)
+            .await?;
         Ok((value, None))
     }
 

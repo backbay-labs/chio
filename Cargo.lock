@@ -3369,6 +3369,7 @@ dependencies = [
  "criterion",
  "dashmap 6.1.0",
  "dhat",
+ "futures",
  "loom",
  "lru",
  "opentelemetry-semantic-conventions",

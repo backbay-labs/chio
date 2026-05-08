@@ -718,10 +718,7 @@ mod tests {
     async fn bridge_tool_server_invoke_delegates() {
         let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
         let server = bridge.as_tool_server();
-        let result = server
-            .invoke("listPets", json!({}), None)
-            .await
-            .unwrap();
+        let result = server.invoke("listPets", json!({}), None).await.unwrap();
         assert_eq!(result["structuredContent"]["bridgeMode"], "simulation");
     }
 
@@ -742,10 +739,7 @@ mod tests {
         let owned = OwnedBridgeToolServer::from_bridge(bridge);
         assert_eq!(owned.server_id(), "petstore-bridge");
         assert_eq!(owned.tool_names().len(), 4);
-        let result = owned
-            .invoke("listPets", json!({}), None)
-            .await
-            .unwrap();
+        let result = owned.invoke("listPets", json!({}), None).await.unwrap();
         assert_eq!(result["structuredContent"]["bridgeMode"], "simulation");
     }
 
