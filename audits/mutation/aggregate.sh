@@ -48,13 +48,23 @@ for crate in "$@"; do
   c=${c:-0}; m=${m:-0}; t=${t:-0}; u=${u:-0}
   n=$((c + m + t + u))
   denom=$((c + m + t))
+  # Partial-run detection: compare evaluated count to total listed in
+  # mutants.json. If mutants.json has more entries than evaluated, the
+  # run was interrupted or is still in progress and the kill-rate is a
+  # partial number.
+  expected=$(jq 'length' "${out_dir}/mutants.json" 2>/dev/null || echo 0)
+  expected=${expected:-0}
+  partial=""
+  if [ "${expected}" -gt 0 ] && [ "${n}" -lt "${expected}" ]; then
+    partial=" (PARTIAL ${n}/${expected})"
+  fi
   if [ "${denom}" -gt 0 ]; then
     rate=$(awk "BEGIN { printf \"%.1f\", (${c} / ${denom}) * 100 }")
-    printf "| \`%s\` | %d | %d | %d | %d | %d | **%s%%** |\n" \
-      "${crate}" "${n}" "${c}" "${m}" "${t}" "${u}" "${rate}"
+    printf "| \`%s\` | %d%s | %d | %d | %d | %d | **%s%%** |\n" \
+      "${crate}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}" "${rate}"
   else
-    printf "| \`%s\` | %d | %d | %d | %d | %d | **n/a (no viable mutants tested)** |\n" \
-      "${crate}" "${n}" "${c}" "${m}" "${t}" "${u}"
+    printf "| \`%s\` | %d%s | %d | %d | %d | %d | **n/a (no viable mutants tested)** |\n" \
+      "${crate}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}"
   fi
   total_c=$((total_c + c))
   total_m=$((total_m + m))
