@@ -76,13 +76,34 @@ for crate in "$@"; do
   if [ "${expected}" -gt 0 ] && [ "${n}" -lt "${expected}" ]; then
     partial=" (PARTIAL ${n}/${expected})"
   fi
+  # Surface-scope partial (codex P2 follow-up): the per-crate summary
+  # JSON may carry `result_label: "PARTIAL"` or `examine_scope` /
+  # `excluded_files` to mark a run that is FULL on its evidence-tree
+  # mutants but PARTIAL on the crate's full surface (e.g. chio-credentials
+  # excludes 13 include!()d files). Pick that up in the same row label
+  # so the aggregate table does not silently turn a partial-surface
+  # number into a crate-level mutation result.
+  surface_label=""
+  summary_json=$(ls -1 "${EVIDENCE_DIR}/${crate}"/*.json 2>/dev/null \
+    | grep -Ev '/(mutants|outcomes)\.json$' | sort | tail -1)
+  if [ -n "${summary_json}" ] && [ -f "${summary_json}" ]; then
+    label=$(jq -r '.result_label // empty' "${summary_json}" 2>/dev/null || true)
+    scope=$(jq -r '.examine_scope // empty' "${summary_json}" 2>/dev/null || true)
+    if [ "${label}" = "PARTIAL" ] && [ -z "${partial}" ]; then
+      if [ -n "${scope}" ]; then
+        surface_label=" (PARTIAL surface: ${scope})"
+      else
+        surface_label=" (PARTIAL surface)"
+      fi
+    fi
+  fi
   if [ "${denom}" -gt 0 ]; then
     rate=$(awk "BEGIN { printf \"%.1f\", (${c} / ${denom}) * 100 }")
-    printf "| \`%s\` | %d%s | %d | %d | %d | %d | **%s%%** |\n" \
-      "${crate}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}" "${rate}"
+    printf "| \`%s\` | %d%s%s | %d | %d | %d | %d | **%s%%** |\n" \
+      "${crate}" "${n}" "${partial}" "${surface_label}" "${c}" "${m}" "${t}" "${u}" "${rate}"
   else
-    printf "| \`%s\` | %d%s | %d | %d | %d | %d | **n/a (no viable mutants tested)** |\n" \
-      "${crate}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}"
+    printf "| \`%s\` | %d%s%s | %d | %d | %d | %d | **n/a (no viable mutants tested)** |\n" \
+      "${crate}" "${n}" "${partial}" "${surface_label}" "${c}" "${m}" "${t}" "${u}"
   fi
   total_c=$((total_c + c))
   total_m=$((total_m + m))
