@@ -84,8 +84,11 @@ for crate in "$@"; do
   # so the aggregate table does not silently turn a partial-surface
   # number into a crate-level mutation result.
   surface_label=""
+  # Pipeline exits 1 cleanly under `set -euo pipefail` when the crate has no
+  # top-level summary JSON files (or all match the exclusion pattern). The
+  # `|| true` keeps the assignment from terminating the script.
   summary_json=$(ls -1 "${EVIDENCE_DIR}/${crate}"/*.json 2>/dev/null \
-    | grep -Ev '/(mutants|outcomes)\.json$' | sort | tail -1)
+    | grep -Ev '/(mutants|outcomes)\.json$' | sort | tail -1 || true)
   if [ -n "${summary_json}" ] && [ -f "${summary_json}" ]; then
     label=$(jq -r '.result_label // empty' "${summary_json}" 2>/dev/null || true)
     scope=$(jq -r '.examine_scope // empty' "${summary_json}" 2>/dev/null || true)

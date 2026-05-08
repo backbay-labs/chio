@@ -36,7 +36,6 @@ printf '| Row | ID | Symbol | File:Line(grep) | Symbol-found | Test-file | Test-
 printf '|---|---|---|---|---|---|---|---|---|\n'
 
 count_implpub=0
-count_implpriv=0
 count_implpartial=0
 count_blocked=0
 
@@ -114,7 +113,7 @@ printf -- '- IMPL-EXISTS-AND-PUBLIC: %d\n' "$count_implpub"
 printf -- '- IMPL-EXISTS-PRIVATE: 0 (none in this triage)\n'
 printf -- '- IMPL-PARTIAL: %d\n' "$count_implpartial"
 printf -- '- BLOCKED-BY-ARCHITECTURE: %d\n' "$count_blocked"
-total=$((count_implpub + count_implpriv + count_implpartial + count_blocked))
+total=$((count_implpub + count_implpartial + count_blocked))
 printf -- '\n**Total**: %d (expected 20)\n' "$total"
 
 if [ "$((count_implpartial + count_blocked))" -gt 2 ]; then
