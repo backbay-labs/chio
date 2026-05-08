@@ -36,8 +36,22 @@ total_u=0
 total_n=0
 
 for crate in "$@"; do
-  out_dir="${EVIDENCE_DIR}/${crate}/mutants.out"
-  if [ ! -d "${out_dir}" ]; then
+  # cargo-mutants 25.x writes its outputs in one of two layouts depending
+  # on the invocation:
+  #   * Newer/default: `<output>/outcomes.json` directly (no mutants.out/).
+  #   * Older/in-place: `<output>/mutants.out/outcomes.json`.
+  # Probe both, prefer whichever has caught.txt populated. This mirrors
+  # the dual-layout probe in `scripts/mutants-fuzz-cocoverage.sh`.
+  out_dir=""
+  for candidate in \
+    "${EVIDENCE_DIR}/${crate}/mutants.out" \
+    "${EVIDENCE_DIR}/${crate}"; do
+    if [ -f "${candidate}/caught.txt" ] || [ -f "${candidate}/outcomes.json" ]; then
+      out_dir="${candidate}"
+      break
+    fi
+  done
+  if [ -z "${out_dir}" ]; then
     printf "| \`%s\` | BASELINE-GAP | - | - | - | - | **n/a** |\n" "${crate}"
     continue
   fi

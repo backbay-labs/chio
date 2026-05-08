@@ -43,19 +43,24 @@ A `chio-weights`-targeted run can be added as a follow-up if a
   `.cargo/mutants.toml` header).
 - Per-crate invocation:
   `cargo mutants -p <crate> --in-place --test-package <crate> --output audits/evidence/mutants/<crate> --baseline=skip`
-- **Test scope deviation from CI**: this baseline uses
-  `--test-package <crate>` (test only the crate-under-test), not
+- **Test scope (workspace-wide; matches CI)**: although the invocation
+  passes `--test-package <crate>`, the
   `additional_cargo_test_args = ["--workspace", "--exclude", "chio-cpp-kernel-ffi"]`
-  from `.cargo/mutants.toml` (which runs the full workspace test suite
-  per mutant). The CI hosted-nightly invocation continues to run the
-  full workspace tests; this local baseline is therefore a **lower
-  bound on the CI-observed kill rate**, since fewer test files exercise
-  any given mutant. The deviation is honest: a 7-minute workspace test
-  build per mutant times 2400+ mutants is more compute time than a
-  single local session affords. The CI lane (`mutants.yml` nightly,
-  4-hour-per-crate budget) remains the authoritative measurement; this
-  baseline is the seed measurement that retires the six
-  `pending trajectory-3.1 phase 4.2 full-sweep measurement` strings.
+  from `.cargo/mutants.toml` IS appended by cargo-mutants 25.x. This
+  was verified empirically by reading
+  `audits/evidence/mutants/chio-credentials/mutants.out/debug.log`,
+  which records the actual test invocation as
+  `cargo test --verbose --package=chio-credentials@0.1.0 --workspace --exclude chio-cpp-kernel-ffi`.
+  The kill rate is therefore directly comparable to the CI hosted-
+  nightly invocation; it is NOT a scoped lower bound. The
+  per-crate JSON summary at `audits/evidence/mutants/<crate>/<date>.json`
+  encodes this fact empirically by grepping the per-crate
+  `debug.log` for `--workspace` rather than hard-coding a scope label.
+  This is the seed measurement that retires the six
+  `pending trajectory-3.1 phase 4.2 full-sweep measurement` strings
+  in `releases.toml [per_crate_kill_rate_percent]`; the CI lane
+  (`mutants.yml` nightly, 4-hour-per-crate budget) remains the
+  longer-running authoritative measurement.
 - `--baseline=skip` is used because the workspace test suite is known
   green at HEAD (`cargo test --workspace --exclude chio-cpp-kernel-ffi`
   on commit `708c7bb33`); skipping the baseline run avoids 7 minutes of

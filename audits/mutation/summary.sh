@@ -33,9 +33,21 @@ EVIDENCE_DIR="${ROOT_DIR}/audits/evidence/mutants"
 DATE="$(date -u +%Y-%m-%d)"
 
 for crate in "$@"; do
-  out_dir="${EVIDENCE_DIR}/${crate}/mutants.out"
-  if [ ! -d "${out_dir}" ]; then
-    echo "skip ${crate}: no mutants.out" >&2
+  # cargo-mutants 25.x writes outputs in one of two layouts (see
+  # `scripts/mutants-fuzz-cocoverage.sh` for the same probe pattern):
+  #   * `<output>/mutants.out/...` when `--in-place` is used.
+  #   * `<output>/...` directly otherwise.
+  out_dir=""
+  for candidate in \
+    "${EVIDENCE_DIR}/${crate}/mutants.out" \
+    "${EVIDENCE_DIR}/${crate}"; do
+    if [ -f "${candidate}/caught.txt" ] || [ -f "${candidate}/outcomes.json" ]; then
+      out_dir="${candidate}"
+      break
+    fi
+  done
+  if [ -z "${out_dir}" ]; then
+    echo "skip ${crate}: no cargo-mutants output found" >&2
     continue
   fi
 
@@ -47,6 +59,18 @@ for crate in "$@"; do
 
   ran_at=$(jq -r '.start_time' "${out_dir}/lock.json" 2>/dev/null || echo "unknown")
   tool_ver=$(jq -r '.cargo_mutants_version' "${out_dir}/lock.json" 2>/dev/null || echo "unknown")
+
+  # Inspect the actual `cargo test` invocation cargo-mutants used. The
+  # debug.log records each test process; if it carries `--workspace`
+  # the run is workspace-scoped, otherwise package-scoped. This avoids
+  # hard-coding a label that may not match the actual scope (per
+  # Codex P2 review on PR #603).
+  if [ -f "${out_dir}/debug.log" ] && \
+     grep -q -- "--workspace" "${out_dir}/debug.log"; then
+    test_scope="workspace (additional_cargo_test_args from .cargo/mutants.toml: --workspace --exclude chio-cpp-kernel-ffi)"
+  else
+    test_scope="package-only (--test-package ${crate})"
+  fi
 
   denom=$((c + m + t))
   if [ "${denom}" -gt 0 ]; then
@@ -62,7 +86,7 @@ for crate in "$@"; do
     --arg ran_at "${ran_at}" \
     --arg tool "cargo-mutants" \
     --arg tool_ver "${tool_ver}" \
-    --arg test_scope "workspace (additional_cargo_test_args from .cargo/mutants.toml)" \
+    --arg test_scope "${test_scope}" \
     --argjson caught "${c}" \
     --argjson missed "${m}" \
     --argjson timeout "${t}" \
