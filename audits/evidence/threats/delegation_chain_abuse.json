@@ -1,7 +1,8 @@
 {
-  "caught": 0,
-  "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
-  "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "caught": 4,
+  "needs_real_run": false,
+  "note": "trj5/A2 evidence backfill (batch 2): real conformance test at crates/chio-conformance/tests/threats/delegation_chain_abuse.rs imports chio_kernel_core::verify_capability_with_trusted_and_floor production code, then drives three attacker inputs against the chained issuer-trust + signature + time-window deny path: (1) UntrustedIssuer (attacker root key not in trust set), (2) InvalidSignature (signed body mutation breaks canonical-JSON binding), and (3) Expired (clock past expires_at). A sanity arm verifies a legitimate delegation issued by a trusted authority round-trips. The header documents the revert-to-prove-it-fails recipe (delete the trusted_issuers contains-check inside verify_capability_with_floor in chio-kernel-core/src/capability_verify.rs).",
+  "ran_at": "2026-05-08T00:00:00Z",
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs"
 }
