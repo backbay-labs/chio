@@ -52,6 +52,48 @@
 //! `model_`. No harness body bottoms out in `kani::assume(false)`;
 //! no harness targets a non-`pub` internal helper.
 //!
+//! # Honesty boundary: what "model" harnesses actually prove
+//!
+//! Per audit P0-018 in
+//! `.planning/trajectory-5/reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`:
+//!
+//! - The first four harnesses
+//!   (`public_anchor_emergency_controls_allows_truth_table`,
+//!    `public_ensure_anchor_operation_allowed_fail_closed`,
+//!    `public_classify_anchor_lane_invariants`,
+//!    `public_anchor_indexer_cursor_lag_classification`) call real
+//!   production `pub fn`s; a regression in the production function is
+//!   caught by Kani.
+//! - The fifth harness
+//!   (`public_evaluate_witness_policy_advisory_fail_closed_model`)
+//!   proves the local `model_evaluate_witness_policy` over
+//!   `ModelWitnessState`, NOT the production
+//!   `chio_anchor::witness::evaluate_witness_policy` (`src/witness.rs:312`).
+//!   A regression in the production function that left the model
+//!   unchanged would NOT trip Kani; the runtime regression is caught
+//!   instead by:
+//!     - `crates/chio-anchor/tests/witness_policy.rs` (pinned by
+//!       the existing integration tests for advisory-path
+//!       fail-closed semantics, including
+//!       `WitnessPolicyError::PendingNotAllowed`,
+//!       `WitnessPolicyError::SelfAssertedWitnessed`, and
+//!       `WitnessPolicyError::StaleNotPreviouslyVerified`).
+//!     - The negative conformance regression tests under
+//!       `crates/chio-conformance/tests/`.
+//!
+//! TRJ6 follow-up: extract a decision-algebra helper
+//! (e.g. `pub(crate) fn classify_witness_policy_outcome(state:
+//! &WitnessState, policy: &WitnessPolicy) -> WitnessPolicyClass`)
+//! used by both the runtime `evaluate_witness_policy` and the Kani
+//! harness, replacing `model_evaluate_witness_policy`. This is option
+//! (a) per audit P0-018; it was deferred from TRJ5 because the
+//! production function's `Stale` arm depends on `batch_body_hash`
+//! recomputation (canonical-JSON + SHA-256) and `WitnessPolicyError`
+//! constructors that carry hex-formatted body-hash strings. Decoupling
+//! those side-effects from the decision algebra requires touching the
+//! public error enum; doing so on the load-bearing M01 conformance
+//! lane risks a regression.
+//!
 //! # Cross-references
 
 extern crate alloc;
@@ -174,8 +216,35 @@ pub fn public_anchor_emergency_controls_allows_truth_table() {
 ///
 /// Production entry: `chio_anchor::ops::ensure_anchor_operation_allowed`
 /// (`pub fn` at `crates/chio-anchor/src/ops.rs:383`).
+///
+/// Bounds: the production function constructs an `AnchorError::InvalidInput`
+/// payload via `format!()` on the fail-closed arm. The `format!()`
+/// macro paths into `core::str::count::do_count_chars` for UTF-8
+/// length accounting, which inflates cbmc's symex into the millions
+/// of steps even at unwind=4 (~140s symex + minutes of SAT in local
+/// runs against a tight per-harness budget). PR-tier CI cannot
+/// afford that wall-clock; the manifest entry on PR #607 enrolls
+/// this harness in the **nightly** lane at a 3600s budget. PR-tier
+/// regression coverage for the same property comes from:
+///   - `public_anchor_emergency_controls_allows_truth_table` (the
+///     truth-table harness above, which calls `controls.allows()`
+///     directly and finishes in ~0.1s).
+///   - The runtime negative tests under
+///     `crates/chio-anchor/tests/` that exercise the
+///     `format!()`-based error path.
+///
+/// TRJ6 follow-up (option (a) per audit P0-017/P0-018): extract a
+/// `pub(crate) fn classify_operation_admission(controls:
+/// AnchorEmergencyControls, operation: AnchorOperationKind) ->
+/// Result<(), AnchorOperationAdmissionError>` where the error type
+/// is a small enum carrying only the variant tag (no `String`
+/// payload). The runtime fail-closed branch wraps that into the
+/// existing `AnchorError::InvalidInput` for backwards-compat. The
+/// Kani harness then exercises `classify_operation_admission`
+/// directly and skips the format-string path entirely, letting the
+/// tightened harness migrate back to the PR lane.
 #[kani::proof]
-#[kani::unwind(8)]
+#[kani::unwind(4)]
 pub fn public_ensure_anchor_operation_allowed_fail_closed() {
     let mode_pick: u8 = kani::any();
     kani::assume(mode_pick < 5);
@@ -190,7 +259,6 @@ pub fn public_ensure_anchor_operation_allowed_fail_closed() {
         changed_at,
         reason: None,
     };
-    // The function takes controls by value; clone before passing.
     let allowed = controls.allows(operation);
     let result = ensure_anchor_operation_allowed(controls, operation);
 
