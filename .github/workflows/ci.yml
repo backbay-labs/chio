@@ -475,7 +475,7 @@ jobs:
 
   # PR-tier Kani lane. Iterates the multi-crate manifest at
   # `.kani/harnesses.toml` (schema chio.kani.multi-crate.v1, landed by
-  # TRJ5-A3.5). Each `[[harness]]` entry whose `lane = "pr"` is run with
+  # Kani multi-crate manifest). Each `[[harness]]` entry whose `lane = "pr"` is run with
   #   cargo kani -p <crate> --lib --harness <name> \
   #     --default-unwind <unwind> --no-unwinding-checks
   # under a per-harness `timeout(1)` budget.
