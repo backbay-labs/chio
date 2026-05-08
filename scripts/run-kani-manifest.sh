@@ -120,7 +120,7 @@ exclude_set = {x for x in exclude_csv.split(",") if x}
 # Lane is a closed enum. Validate both the requested lane filter and
 # every entry's lane value against this set so a typo in the manifest
 # (e.g. `lane = "prr"`) cannot silently drop a harness from CI by
-# never matching any filter. Audit review item.
+# never matching any filter.
 VALID_LANES = ("pr", "nightly")
 
 if lane_filter not in VALID_LANES:
@@ -156,7 +156,7 @@ for idx, entry in enumerate(entries):
         sys.exit(2)
     seen.add(pair)
     # Reject unknown lane values up front (fail-loud) rather than
-    # filtering them silently. Audit review item.
+    # filtering them silently.
     if entry["lane"] not in VALID_LANES:
         sys.stderr.write(
             f"harness[{idx}] ({pair[0]}::{pair[1]}) has invalid lane "
