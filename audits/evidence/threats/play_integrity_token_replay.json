@@ -1,7 +1,8 @@
 {
-  "caught": 0,
-  "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
-  "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "caught": 3,
+  "needs_real_run": false,
+  "note": "trj5/A2 evidence backfill: real conformance test at crates/chio-conformance/tests/threats/play_integrity_token_replay.rs exercises three distinct Play Integrity rejection branches against verify_play_integrity (production code in chio-custody-hw): (1) replayed nonce -> AttestationError::PlayIntegrityNonceMismatch, (2) expired token (exp=1) -> AttestationError::PlayIntegrityInvalidToken, (3) audience mismatch -> AttestationError::PlayIntegrityInvalidToken. Header documents the revert-to-prove-it-fails recipe per branch.",
+  "ran_at": "2026-05-08T00:00:00Z",
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/play_integrity_token_replay.rs"
 }

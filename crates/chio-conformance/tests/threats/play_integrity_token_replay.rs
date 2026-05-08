@@ -1,3 +1,20 @@
+// Threat test for threat ID `play_integrity_token_replay`.
+//
+// Coverage strategy: present three Play Integrity tokens that fail
+// distinct gates: replayed nonce, stale exp, and audience mismatch.
+// The production verifier must reject each.
+//
+// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
+// In `crates/chio-custody-hw/src/attestation/play_integrity.rs`,
+// change the `return Err(AttestationError::PlayIntegrityNonceMismatch);`
+// at line ~122 to `Ok(())` after stubbing the verified output (the
+// replayed-nonce branch). The first `.err().ok_or("expected nonce
+// replay rejection")?` site below MUST then fail because the
+// production call returns Ok. Repeat for the exp and audience
+// branches in the same module. The fault injection proves each
+// assertion rides on a real Play Integrity rejection, not on a
+// test-only invariant.
+
 use std::error::Error;
 
 use chio_custody_hw::attestation::google_root::play_integrity_jwks_json;
