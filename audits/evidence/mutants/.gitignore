@@ -2,9 +2,16 @@
 # the developer who ran the sweep. That data is not load-bearing
 # evidence (the cargo_mutants_version and start_time are the only
 # auditable fields) and committing it leaks PII. New runs should keep
-# the file out of git; the committed copies have hostname/username
-# scrubbed to "redacted".
+# the file out of git.
 **/mutants.out/lock.json
+*/lock.json
+
+# outcomes.json carries dozens of absolute argv paths under
+# `/Users/.../.rustup` that leak local workstation identity. The
+# structured outcome is preserved in caught.txt / missed.txt /
+# timeout.txt / unviable.txt and the per-crate `<date>.json` summary.
+**/mutants.out/outcomes.json
+*/outcomes.json
 
 # cargo-mutants writes per-mutant log files (one cargo test transcript
 # per mutant) under mutants.out/log/. These are useful for debugging a
