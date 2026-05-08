@@ -115,7 +115,15 @@ bar1_floor_pct=65
 # `SHIP-BAR-TRACKER.md` Bar 1 chio-attest-verify >=80% requirement).
 bar1_target_chio_attest_verify_pct=80
 
-bar1_evidence_root="audits/evidence/mutation"
+# Lane A tickets (TRJ5-A1.2a / A1.3) write evidence under
+# audits/evidence/mutants/<crate>/ (plural). audits/evidence/mutation/
+# (singular) was an earlier-draft location. Probe the plural directory
+# first, fall back to the singular for legacy commits.
+if [ -d "audits/evidence/mutants" ]; then
+  bar1_evidence_root="audits/evidence/mutants"
+else
+  bar1_evidence_root="audits/evidence/mutation"
+fi
 
 for crate in "${bar1_crates[@]}"; do
   json_glob="$bar1_evidence_root/$crate"
