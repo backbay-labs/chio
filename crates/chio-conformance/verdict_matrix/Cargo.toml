@@ -15,6 +15,7 @@ path = "src/lib.rs"
 [workspace]
 
 [dependencies]
+async-trait = "0.1"
 chio-core = { package = "chio-core-types", path = "../../chio-core-types" }
 chio-kernel = { path = "../../chio-kernel" }
 chio-kernel-browser = { path = "../../chio-kernel-browser" }
