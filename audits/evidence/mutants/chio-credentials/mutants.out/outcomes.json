@@ -1,0 +1,1858 @@
+{
+  "outcomes": [
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 58,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 57,
+              "column": 5
+            },
+            "end": {
+              "line": 57,
+              "column": 66
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_57_col_5.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_57_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 145.756712583,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 159.81331975,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_challenge_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 64,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 66,
+              "column": 19
+            },
+            "end": {
+              "line": 66,
+              "column": 21
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_66_col_19.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_66_col_19.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 8.448025166,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 61.040542916,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/trust_tier.rs",
+          "function": {
+            "function_name": "synthesize_trust_tier",
+            "return_type": "-> TrustTier",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 87,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 78,
+              "column": 5
+            },
+            "end": {
+              "line": 86,
+              "column": 6
+            }
+          },
+          "replacement": "Default::default()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__chio-credentials__src__trust_tier.rs_line_78_col_5.log",
+      "diff_path": "diff/crates__chio-credentials__src__trust_tier.rs_line_78_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.96266775,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/trust_tier.rs",
+          "function": {
+            "function_name": "synthesize_trust_tier",
+            "return_type": "-> TrustTier",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 87,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 78,
+              "column": 54
+            },
+            "end": {
+              "line": 78,
+              "column": 55
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__trust_tier.rs_line_78_col_54.log",
+      "diff_path": "diff/crates__chio-credentials__src__trust_tier.rs_line_78_col_54.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.994126417,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 49.394547458,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 58,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 57,
+              "column": 5
+            },
+            "end": {
+              "line": 57,
+              "column": 66
+            }
+          },
+          "replacement": "true",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_57_col_5_001.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_57_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.762123458,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 52.03326675,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/trust_tier.rs",
+          "function": {
+            "function_name": "synthesize_trust_tier",
+            "return_type": "-> TrustTier",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 87,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 78,
+              "column": 51
+            },
+            "end": {
+              "line": 78,
+              "column": 53
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__trust_tier.rs_line_78_col_51.log",
+      "diff_path": "diff/crates__chio-credentials__src__trust_tier.rs_line_78_col_51.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.380369709,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 52.335687792,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_response_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 72,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 19
+            },
+            "end": {
+              "line": 71,
+              "column": 21
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_71_col_19.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_71_col_19.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.957580833,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 80.716901917,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/trust_tier.rs",
+          "function": {
+            "function_name": "synthesize_trust_tier",
+            "return_type": "-> TrustTier",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 87,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 82,
+              "column": 32
+            },
+            "end": {
+              "line": 82,
+              "column": 34
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__trust_tier.rs_line_82_col_32.log",
+      "diff_path": "diff/crates__chio-credentials__src__trust_tier.rs_line_82_col_32.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 13.712003750000001,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 108.595561458,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_response_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 72,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 9
+            },
+            "end": {
+              "line": 71,
+              "column": 11
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_71_col_9.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_71_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.602647917,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 67.864400458,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_challenge_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 64,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 65,
+              "column": 5
+            },
+            "end": {
+              "line": 66,
+              "column": 67
+            }
+          },
+          "replacement": "true",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_65_col_5.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_65_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.373727791,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 61.044631875,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_challenge_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 64,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 65,
+              "column": 12
+            },
+            "end": {
+              "line": 65,
+              "column": 14
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_65_col_12.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_65_col_12.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.599106708,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 51.899073834,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/trust_tier.rs",
+          "function": {
+            "function_name": "synthesize_trust_tier",
+            "return_type": "-> TrustTier",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 87,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 80,
+              "column": 32
+            },
+            "end": {
+              "line": 80,
+              "column": 34
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__trust_tier.rs_line_80_col_32.log",
+      "diff_path": "diff/crates__chio-credentials__src__trust_tier.rs_line_80_col_32.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 6.56090475,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 54.016367292,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/trust_tier.rs",
+          "function": {
+            "function_name": "TrustTier::label",
+            "return_type": "-> &'static str",
+            "span": {
+              "start": {
+                "line": 57,
+                "column": 5
+              },
+              "end": {
+                "line": 66,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 60,
+              "column": 9
+            },
+            "end": {
+              "line": 65,
+              "column": 10
+            }
+          },
+          "replacement": "\"\"",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__trust_tier.rs_line_60_col_9.log",
+      "diff_path": "diff/crates__chio-credentials__src__trust_tier.rs_line_60_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.9071605,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 60.059920583,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_response_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 72,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 70,
+              "column": 5
+            },
+            "end": {
+              "line": 71,
+              "column": 66
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_70_col_5.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_70_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.257919875,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 81.106356333,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/trust_tier.rs",
+          "function": {
+            "function_name": "synthesize_trust_tier",
+            "return_type": "-> TrustTier",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 87,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 78,
+              "column": 25
+            },
+            "end": {
+              "line": 78,
+              "column": 27
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__trust_tier.rs_line_78_col_25.log",
+      "diff_path": "diff/crates__chio-credentials__src__trust_tier.rs_line_78_col_25.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 14.424572458,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 83.353510083,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/trust_tier.rs",
+          "function": {
+            "function_name": "TrustTier::label",
+            "return_type": "-> &'static str",
+            "span": {
+              "start": {
+                "line": 57,
+                "column": 5
+              },
+              "end": {
+                "line": 66,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 60,
+              "column": 9
+            },
+            "end": {
+              "line": 65,
+              "column": 10
+            }
+          },
+          "replacement": "\"xyzzy\"",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__trust_tier.rs_line_60_col_9_001.log",
+      "diff_path": "diff/crates__chio-credentials__src__trust_tier.rs_line_60_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.894010875,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 72.532665833,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 58,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 57,
+              "column": 31
+            },
+            "end": {
+              "line": 57,
+              "column": 33
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_57_col_31.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_57_col_31.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 9.362013583,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 72.219773125,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_verifier_policy_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 60,
+                "column": 1
+              },
+              "end": {
+                "line": 62,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 61,
+              "column": 5
+            },
+            "end": {
+              "line": 61,
+              "column": 98
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_61_col_5.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_61_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.257741833,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 62.723541167,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_verifier_policy_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 60,
+                "column": 1
+              },
+              "end": {
+                "line": 62,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 61,
+              "column": 57
+            },
+            "end": {
+              "line": 61,
+              "column": 59
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_61_col_57.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_61_col_57.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.467974125,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 71.167989875,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_response_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 72,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 70,
+              "column": 12
+            },
+            "end": {
+              "line": 70,
+              "column": 14
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_70_col_12.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_70_col_12.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.573557583,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 67.871667583,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_response_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 72,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 70,
+              "column": 5
+            },
+            "end": {
+              "line": 71,
+              "column": 66
+            }
+          },
+          "replacement": "true",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_70_col_5_001.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_70_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.500913584,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 101.298444292,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_challenge_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 64,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 66,
+              "column": 9
+            },
+            "end": {
+              "line": 66,
+              "column": 11
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_66_col_9.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_66_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 7.8327145,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 300.104213917,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_verifier_policy_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 60,
+                "column": 1
+              },
+              "end": {
+                "line": 62,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 61,
+              "column": 12
+            },
+            "end": {
+              "line": 61,
+              "column": 14
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_61_col_12.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_61_col_12.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 235.80879325,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 300.038259916,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_verifier_policy_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 60,
+                "column": 1
+              },
+              "end": {
+                "line": 62,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 61,
+              "column": 47
+            },
+            "end": {
+              "line": 61,
+              "column": 49
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_61_col_47.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_61_col_47.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 55.702064709,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 300.046899958,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_presentation_challenge_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 64,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 65,
+              "column": 5
+            },
+            "end": {
+              "line": 66,
+              "column": 67
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_65_col_5_001.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_65_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 167.649539292,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 300.067490042,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 58,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 57,
+              "column": 12
+            },
+            "end": {
+              "line": 57,
+              "column": 14
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_57_col_12.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_57_col_12.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 56.738363083,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 300.080797417,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 58,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 57,
+              "column": 41
+            },
+            "end": {
+              "line": 57,
+              "column": 43
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_57_col_41.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_57_col_41.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 94.787028666,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 300.066803125,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "chio-credentials",
+          "file": "crates/chio-credentials/src/lib.rs",
+          "function": {
+            "function_name": "is_supported_passport_verifier_policy_schema",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 60,
+                "column": 1
+              },
+              "end": {
+                "line": 62,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 61,
+              "column": 5
+            },
+            "end": {
+              "line": 61,
+              "column": 98
+            }
+          },
+          "replacement": "true",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/crates__chio-credentials__src__lib.rs_line_61_col_5_001.log",
+      "diff_path": "diff/crates__chio-credentials__src__lib.rs_line_61_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 33.28047775,
+          "process_status": "Success",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=chio-credentials@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 300.048166667,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/connor/.rustup/toolchains/1.93.0-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=chio-credentials@0.1.0",
+            "--workspace",
+            "--exclude",
+            "chio-cpp-kernel-ffi"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 28,
+  "missed": 0,
+  "caught": 20,
+  "timeout": 7,
+  "unviable": 1,
+  "success": 0
+}

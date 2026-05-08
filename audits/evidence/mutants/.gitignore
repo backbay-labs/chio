@@ -1,0 +1,13 @@
+# cargo-mutants writes per-mutant log files (one cargo test transcript
+# per mutant) under mutants.out/log/. These are useful for debugging a
+# specific mutant locally but should not be committed:
+# - they are very large (29MB+ per crate)
+# - they have absolute paths in them (workspace-rooted)
+# - the structured outcome is captured in caught.txt / missed.txt /
+#   timeout.txt / unviable.txt and the per-crate <date>.json summary,
+#   which IS committed.
+**/mutants.out/log/
+
+# debug.log carries the same per-mutant detail and the cargo-mutants
+# version-specific timing trace. Not committed.
+**/mutants.out/debug.log

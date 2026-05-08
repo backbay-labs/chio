@@ -1,0 +1,22 @@
+{
+  "crate": "chio-credentials",
+  "ran_at": "2026-05-08T04:28:52.699405Z",
+  "tool": "cargo-mutants",
+  "tool_version": "25.3.1",
+  "test_scope": "workspace (additional_cargo_test_args from .cargo/mutants.toml: --workspace --exclude chio-cpp-kernel-ffi)",
+  "caught": 20,
+  "missed": 0,
+  "timeout": 7,
+  "unviable": 1,
+  "kill_rate_percent": 74.07,
+  "missed_mutants": [],
+  "timeout_mutants": [
+    "crates/chio-credentials/src/lib.rs:66:9: replace || with && in is_supported_passport_presentation_challenge_schema",
+    "crates/chio-credentials/src/lib.rs:61:12: replace == with != in is_supported_passport_verifier_policy_schema",
+    "crates/chio-credentials/src/lib.rs:61:47: replace || with && in is_supported_passport_verifier_policy_schema",
+    "crates/chio-credentials/src/lib.rs:65:5: replace is_supported_passport_presentation_challenge_schema -> bool with false",
+    "crates/chio-credentials/src/lib.rs:57:12: replace == with != in is_supported_passport_schema",
+    "crates/chio-credentials/src/lib.rs:57:41: replace == with != in is_supported_passport_schema",
+    "crates/chio-credentials/src/lib.rs:61:5: replace is_supported_passport_verifier_policy_schema -> bool with true"
+  ]
+}

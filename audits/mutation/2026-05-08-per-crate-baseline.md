@@ -100,8 +100,8 @@ below for per-crate detail):
 | Crate | Total mutants | Caught | Missed | Timeout | Unviable | Kill rate |
 |---|---|---|---|---|---|---|
 | `chio-policy` | BASELINE-GAP | - | - | - | - | **n/a** |
-| `chio-credentials` | (in progress at write-time) | (in progress) | (in progress) | (in progress) | (in progress) | **(in progress)** |
-| `chio-attest-verify` | (queued) | - | - | - | - | **(queued)** |
+| `chio-credentials` | 28 | 20 | 0 | 7 | 1 | **74.1%** |
+| `chio-attest-verify` | (in progress at session-close) | - | - | - | - | **(in progress)** |
 | `chio-kernel-core` | BASELINE-GAP | - | - | - | - | **n/a** |
 | `chio-guards` | BASELINE-GAP | - | - | - | - | **n/a** |
 | `chio-anchor` | BASELINE-GAP | - | - | - | - | **n/a** |
@@ -126,7 +126,42 @@ session.)
 
 ### chio-credentials (28 mutants)
 
-(in progress at write-time; results to be filled in below.)
+**Final**: caught=20, missed=0, timeout=7, unviable=1.
+**Kill rate**: 20 / (20+0+7) = **74.1%** (excluding 1 unviable).
+
+The 7 timeouts cluster on a small set of schema-recognition functions
+in `crates/chio-credentials/src/lib.rs` lines 57-71
+(`is_supported_passport_schema`,
+`is_supported_passport_verifier_policy_schema`,
+`is_supported_passport_presentation_challenge_schema`). The pattern:
+when the `==` operator in those functions is flipped to `!=` (or
+similar), downstream tests appear to enter a non-terminating loop
+(presumably validation retry / format-version negotiation against a
+schema that no longer matches anything). The 300-second per-mutant
+test-timeout (`--baseline=skip` default) fires.
+
+These are NOT missed mutants in the strict sense - the test suite
+DOES respond to the change, but the response is "spin until timeout"
+rather than "fail in seconds". Per cargo-mutants 25.x convention,
+timeout still does not count as caught. The kill rate is computed as
+`caught / (caught + missed + timeout) = 20 / 27 = 74.1%`.
+
+If the same run is re-executed against CI hosted-nightly with a
+longer per-mutant test timeout (the workflow gives a 4-hour
+per-crate budget, more permissive than the default 300s per-mutant
+floor used here), several of these timeouts may flip to `caught` and
+the kill rate would rise. The CI hosted-nightly remains the
+authoritative measurement.
+
+**Wall clock**: ~75 minutes on the local workstation.
+**Run started**: 2026-05-08 04:28:52 UTC.
+**Run finished**: 2026-05-08 05:44:24 UTC.
+
+The per-crate JSON summary is at
+`audits/evidence/mutants/chio-credentials/2026-05-08.json`. The
+`mutants.out/` directory under
+`audits/evidence/mutants/chio-credentials/` contains the full
+per-mutant log captured by cargo-mutants.
 
 ### chio-attest-verify (86 mutants)
 
