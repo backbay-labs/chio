@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 # scripts/check-anchor-batch-async-witness.sh
 #
-# TRJ5-B3.3 lint: best-effort fast feedback that catches the obvious case
-# where a production module calls the SYNC anchor-batch witness wrapper
-# (`verify_anchor_batch_with_witness_policy`) within a 50-line window of a
-# literal `WitnessPolicy { ... require_public_witness: true ... }`
-# struct-init in the SAME FILE.
-#
 # ============================================================================
 # SOUNDNESS CONTRACT (HONEST)
 # ============================================================================
@@ -31,19 +25,13 @@
 #       (d) Cross-crate / cross-file calls where the producer of the policy
 #           and the consumer of the sync wrapper live in different files.
 #
-# The LOAD-BEARING enforcement is the runtime gate at
 # `crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`,
 # which returns `AnchorError::SyncRouteRequiresAdvisoryPolicy` when the
 # policy carries `require_public_witness=true`. That gate is the spec MUST
-# (PROTOCOL.md "Anchor batch public-witness lane (W2.3)" lines ~980-993)
+# (PROTOCOL.md "Anchor batch public-witness lane" lines ~980-993)
 # enforcement. The companion negative conformance fixture at
 # `crates/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs`
 # pins the gate; if the gate is reverted, the fixture fails.
-#
-# A future trj6 ticket may upgrade this lint to a `syn`-parsed AST checker
-# that walks the call graph for true static guarantees. That is OUT OF
-# SCOPE for trj5; the runtime gate plus negative fixture closes the spec
-# MUST today.
 #
 # ============================================================================
 # ALGORITHM
@@ -68,10 +56,6 @@
 # ============================================================================
 #
 #   ./scripts/check-anchor-batch-async-witness.sh
-#
-# No arguments. Returns 0 on clean, 1 on violation. Intended to run in CI
-# (advisory at first per W3 review; not gating until B3.3 has lived in main
-# for at least one wave).
 
 set -uo pipefail
 

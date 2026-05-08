@@ -41,12 +41,6 @@ pub struct AnchorBatchInclusion {
 }
 
 /// Signed anchor-batch body. Per-receipt local signatures remain authoritative.
-///
-/// `witness_state` carries the lane lifecycle introduced by W2.3
-/// (`Pending` -> `Witnessed` -> `Stale`). The field defaults to
-/// [`WitnessState::Pending`] for older artifacts that pre-date the
-/// state machine, preserving wire compatibility for v1 batches that
-/// never went through a public-witness lane.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AnchorBatchBody {
@@ -141,9 +135,6 @@ pub fn build_anchor_batch(
     issued_at: u64,
     keypair: &Keypair,
 ) -> Result<AnchorBatch, AnchorError> {
-    // W2.4: emit `chio_anchor_round_latency_seconds` at the anchor
-    // publish boundary. The signing and Merkle-tree work happens here so
-    // round latency captures the full publish path.
     let started_at = std::time::Instant::now();
     let result = (|| {
         let body =
@@ -218,17 +209,12 @@ pub fn verify_anchor_batch(batch: &AnchorBatch) -> Result<(), AnchorError> {
 /// seconds) as the wall clock. This sync entry point does NOT call out
 /// to the witness lane and has no verifier-owned stale cache.
 ///
-/// # Public-witness gate (TRJ5-B3)
-///
 /// When `policy.require_public_witness=true`, this function fails
 /// closed at the entry with [`AnchorError::SyncRouteRequiresAdvisoryPolicy`]
 /// before any structural verification runs. Per PROTOCOL.md section
-/// "Anchor batch public-witness lane (W2.3)" lines 980-993, producers
-/// and consumers MUST route load-bearing public-witness verification
 /// through [`verify_anchor_batch_with_witness_policy_async`] so that
 /// [`AnchorWitnessClient::verify_inclusion`] runs and the verifier-owned
 /// stale cache is consulted. The runtime gate at this entry point is
-/// the load-bearing enforcement of the spec MUST; the companion
 /// `scripts/check-anchor-batch-async-witness.sh` lint is best-effort
 /// fast feedback only.
 ///
@@ -239,7 +225,6 @@ pub fn verify_anchor_batch_with_witness_policy(
     policy: &WitnessPolicy,
     now: i64,
 ) -> Result<(), AnchorError> {
-    // TRJ5-B3.2 gate. Reject load-bearing public-witness policies
     // before any structural work. This makes the routing rule from
     // PROTOCOL.md lines 980-993 load-bearing rather than relying on
     // the per-state table inside `evaluate_witness_policy` to fail
@@ -257,10 +242,6 @@ pub fn verify_anchor_batch_with_witness_policy(
 
 /// Verify the batch and apply [`WitnessPolicy`] WITH live
 /// witness-lane verification when `require_public_witness=true`.
-///
-/// `client`: the [`AnchorWitnessClient`] backing the lane named in
-/// `batch.body.witness.kind`. Required when the policy is
-/// load-bearing AND the state is `Witnessed`.
 ///
 /// `previously_verified_witnesses`: verifier-owned cache from
 /// recomputed `batch_body_hash` (witness-state-excluded) to the

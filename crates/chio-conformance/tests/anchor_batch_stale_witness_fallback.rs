@@ -1,35 +1,4 @@
-//! W2.3 negative conformance test: stale witness-lane fallback.
-//!
-//! Threat: the public-witness lane (Rekor or OTS) goes down. The
-//! verifier still holds a previously-witnessed receipt for batch B0
-//! and a brand-new pending batch B1.
-//!
 //! Required behaviour, per `WitnessPolicy`:
-//!
-//! - `require_public_witness: true` and B1 is `WitnessState::Pending`
-//!   -> reject (lane is required, no receipt).
-//! - `require_public_witness: true` and B0 is `WitnessState::Stale`
-//!   on the sync path -> reject because there is no verifier-owned cache.
-//! - `require_public_witness: true` and B0 is `WitnessState::Stale`
-//!   with the verifier-owned cache entry
-//!   `verified_at + stale_window_seconds >= now` -> accept.
-//! - `require_public_witness: true` and B0 is `WitnessState::Stale`
-//!   but the batch hash is NOT in the verifier-owned cache ->
-//!   reject (a producer cannot bootstrap themselves into the
-//!   verified set, and an attacker who has observed a
-//!   previously-verified receipt id cannot replay that id against
-//!   different batch content). Added in PR #594 review (HIGH-2),
-//!   strengthened in round-2 review (HIGH-1) by binding to the
-//!   batch body hash.
-//! - `require_public_witness: false` -> accept all states (advisory
-//!   mode for partner integrations that have not yet wired the lane).
-//!
-//! HIGH-2 from the PR review: when `require_public_witness=true` and
-//! state is `Witnessed`, the load-bearing path now requires a real
-//! `AnchorWitnessClient::verify_inclusion` call. The sync
-//! `verify_anchor_batch_with_witness_policy` path fails closed for
-//! self-asserted `Witnessed`; callers that require public witness must
-//! use `verify_anchor_batch_with_witness_policy_async`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -79,9 +48,6 @@ fn fresh_witnessed_state(batch: &chio_anchor::AnchorBatch, observed_at: i64) -> 
     }
 }
 
-/// Stub `AnchorWitnessClient` whose `verify_inclusion` always
-/// succeeds. Used in the positive-control tests that exercise the
-/// load-bearing async path with a (notional) lane round-trip.
 struct AlwaysOkClient;
 
 #[async_trait::async_trait]
@@ -97,10 +63,6 @@ impl AnchorWitnessClient for AlwaysOkClient {
     }
 }
 
-/// Stub whose `verify_inclusion` always rejects. Used to confirm
-/// that a self-asserted Witnessed state with `require_public_witness`
-/// is rejected by the load-bearing async path even when the
-/// structural invariants hold.
 struct AlwaysFailClient;
 
 #[async_trait::async_trait]
@@ -125,10 +87,6 @@ fn require_public_witness_rejects_pending_batch() {
         require_public_witness: true,
         stale_window_seconds: 60 * 60,
     };
-    // TRJ5-B3: under require_public_witness=true, the load-bearing
-    // route is the async wrapper. The Pending-state rejection lives
-    // there. The sync wrapper short-circuits with
-    // SyncRouteRequiresAdvisoryPolicy (covered by the B3 fixture).
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let verified = VerifiedWitnessCache::new();
     let err = runtime
@@ -173,9 +131,6 @@ fn require_public_witness_rejects_stale_on_sync_path_without_verifier_cache() {
         require_public_witness: true,
         stale_window_seconds: 60,
     };
-    // TRJ5-B3: the load-bearing route under require_public_witness=true
-    // is the async wrapper. The Stale-without-verifier-cache rejection
-    // lives there.
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let verified = VerifiedWitnessCache::new();
     // 500 seconds > 60 second stale window
@@ -225,10 +180,6 @@ fn require_public_witness_accepts_already_witnessed_during_lane_outage() {
         require_public_witness: true,
         stale_window_seconds: 60 * 60,
     };
-    // TRJ5-B3: the sync wrapper rejects load-bearing public-witness
-    // policies at the door with SyncRouteRequiresAdvisoryPolicy. That
-    // gate is what the B3 conformance fixture pins; here we exercise
-    // the async happy-path that admits the witnessed batch.
     let sync_err = verify_anchor_batch_with_witness_policy(&signed, &policy, 1_700_000_500)
         .expect_err("sync wrapper must reject require_public_witness=true at the door");
     assert!(
@@ -313,10 +264,6 @@ fn require_public_witness_rejects_already_witnessed_with_root_mismatch() {
         require_public_witness: true,
         stale_window_seconds: 60 * 60,
     };
-    // TRJ5-B3: under require_public_witness=true, the witness-root
-    // mismatch check fires on the load-bearing async path. The sync
-    // path now short-circuits on SyncRouteRequiresAdvisoryPolicy
-    // (covered by the B3 fixture).
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let client = AlwaysOkClient;
     let verified = VerifiedWitnessCache::new();
@@ -336,10 +283,6 @@ fn require_public_witness_rejects_already_witnessed_with_root_mismatch() {
     );
 }
 
-/// HIGH-2: a self-asserted Witnessed state must NOT satisfy the
-/// load-bearing policy on structural invariants alone. The async
-/// path must call AnchorWitnessClient::verify_inclusion and reject
-/// when the lane refuses the receipt.
 #[test]
 fn require_public_witness_rejects_self_asserted_witnessed_under_async_path() {
     let kp = Keypair::generate();

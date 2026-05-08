@@ -1,10 +1,5 @@
-//! Trj5 B3 negative conformance: anchor-batch sync routing under public witness.
-//!
-//! Spec MUST: spec/PROTOCOL.md "Anchor batch public-witness lane (W2.3)"
-//!   (the section ending around lines 980-993 in the W2.3 verifier-rule
-//!   block, plus the new normative MUST paragraph added by TRJ5-B3.4
+//! Spec MUST: spec/PROTOCOL.md "Anchor batch public-witness lane"
 //!   immediately following). Per the spec, "Producers and consumers MUST
-//!   route load-bearing public-witness verification through
 //!   verify_anchor_batch_with_witness_policy_async whenever
 //!   require_public_witness=true. The synchronous entry point
 //!   verify_anchor_batch_with_witness_policy MUST reject any policy
@@ -34,12 +29,9 @@
 //!
 //! Threat: a producer constructs `WitnessPolicy { require_public_witness:
 //!   true, ... }` and calls the SYNC verifier
-//!   `verify_anchor_batch_with_witness_policy`. Without the B3 gate, the
 //!   call structurally rejects Witnessed-on-sync only by accident of the
 //!   per-state table inside `evaluate_witness_policy`; a future state
 //!   addition or per-state rule change could re-open the bypass. PROTOCOL.md
-//!   makes the routing rule load-bearing: the sync wrapper MUST reject
-//!   load-bearing public-witness policies at the door, regardless of state.
 //!
 //! Why this passes Artifact D: this test imports
 //!   `chio_anchor::verify_anchor_batch_with_witness_policy` directly from
@@ -82,21 +74,6 @@ fn build_signed_batch_with_state(state: WitnessState) -> AnchorBatch {
     AnchorBatch::sign(batch.body, &kp).unwrap()
 }
 
-/// The B3 gate: under `require_public_witness=true`, the SYNC wrapper
-/// MUST short-circuit with `SyncRouteRequiresAdvisoryPolicy` BEFORE any
-/// structural verification runs. This test asserts the typed error
-/// variant via an exhaustive match so a regression that returns a
-/// different rejection (e.g. `PendingNotAllowed`) is detected as a
-/// failure, not a pass.
-///
-/// The witness state is `Pending`. Without the B3 gate, the sync wrapper
-/// would reach `evaluate_witness_policy`, which rejects Pending under
-/// `require_public_witness=true` with `WitnessPolicyError::PendingNotAllowed`
-/// surfaced as `AnchorError::Verification("witness policy violation: ...")`.
-/// With the B3 gate the function returns `SyncRouteRequiresAdvisoryPolicy`
-/// instead, even though Pending would have rejected anyway. The point of
-/// B3 is to make the routing rule load-bearing rather than the per-state
-/// table.
 #[test]
 fn sync_wrapper_rejects_require_public_witness_true_pending_state() {
     let batch = build_signed_batch_with_state(WitnessState::Pending);
@@ -118,10 +95,6 @@ fn sync_wrapper_rejects_require_public_witness_true_pending_state() {
     }
 }
 
-/// Same load-bearing assertion as above, but with a `Stale` state. The
-/// B3 gate fires before the structural per-state rule, so the witness
-/// state value is irrelevant to the gate's behaviour; the policy flag
-/// alone determines the outcome.
 #[test]
 fn sync_wrapper_rejects_require_public_witness_true_stale_state() {
     let batch = build_signed_batch_with_state(WitnessState::Stale {
@@ -140,16 +113,12 @@ fn sync_wrapper_rejects_require_public_witness_true_stale_state() {
 
     match err {
         AnchorError::SyncRouteRequiresAdvisoryPolicy => {}
-        other => panic!(
-            "B3 gate regression: expected SyncRouteRequiresAdvisoryPolicy, got: {other:?}"
-        ),
+        other => {
+            panic!("B3 gate regression: expected SyncRouteRequiresAdvisoryPolicy, got: {other:?}")
+        }
     }
 }
 
-/// Positive control: advisory mode (`require_public_witness=false`) is
-/// the supported sync use case and MUST continue to work. This sub-test
-/// fails if the B3 gate accidentally rejects advisory callers (a
-/// false-positive scope creep that B3 explicitly disallows).
 #[test]
 fn sync_wrapper_accepts_advisory_policy() {
     let batch = build_signed_batch_with_state(WitnessState::Pending);
@@ -164,14 +133,6 @@ fn sync_wrapper_accepts_advisory_policy() {
         .expect("advisory-mode sync wrapper MUST still accept all states");
 }
 
-/// Defence-in-depth: the gate MUST fire BEFORE any structural verify
-/// work. This sub-test constructs a batch whose tree_root is forged
-/// (would fail structural verify with `AnchorError::Verification`) but
-/// whose policy carries `require_public_witness=true`. The B3 gate
-/// returns SyncRouteRequiresAdvisoryPolicy without touching the
-/// structural verify; if the gate is moved AFTER structural verify, the
-/// caller would see `AnchorError::Verification(...)` instead and this
-/// test would fail.
 #[test]
 fn sync_wrapper_gate_fires_before_structural_verify() {
     use chio_core::hashing::sha256;
@@ -184,8 +145,7 @@ fn sync_wrapper_gate_fires_before_structural_verify() {
         root: Hash::zero(),
         observed_at: Some(1_700_000_000),
     };
-    let mut batch =
-        build_anchor_batch(checkpoint_ids, witness, 1_700_000_000, &kp).unwrap();
+    let mut batch = build_anchor_batch(checkpoint_ids, witness, 1_700_000_000, &kp).unwrap();
     // Forge the tree_root and witness root in a paired way so that the
     // signature still verifies but a structural Merkle re-compute would
     // fail. We bypass `AnchorBatch::sign` (which would itself reject the
