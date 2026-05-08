@@ -1661,8 +1661,22 @@ impl ChioKernel {
             // reject the dispatch rather than warn-and-downgrade to v1.
             // The legacy `tracing::warn!` + `return V1Legacy` block was
             // removed in TRJ5-B2.2.
+            //
+            // `expected` reports the kernel's CONFIGURED default, not a
+            // hardcoded `V2BodyHash`. On a v1-default kernel both
+            // `expected` and `actual` are `V1Legacy`, which is the
+            // accurate diagnostic - the kernel still rejects the
+            // dispatch because the peer was never pinned fresh, and
+            // operator observability sees the truthful version pair
+            // instead of a fictitious V2 expectation. (cursor[bot]
+            // MEDIUM on PR #611.)
+            let expected = if self.receipt_v2_default() {
+                KernelReceiptVersion::V2BodyHash
+            } else {
+                KernelReceiptVersion::V1Legacy
+            };
             return Err(KernelError::ReceiptNegotiationDowngrade {
-                expected: KernelReceiptVersion::V2BodyHash,
+                expected,
                 actual: KernelReceiptVersion::V1Legacy,
                 reason: NegotiationDowngradeReason::PeerNotPinnedFresh {
                     remote_kernel_id: remote.to_string(),

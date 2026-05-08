@@ -1407,7 +1407,6 @@ impl ChioKernel {
         request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
-        self.apply_federation_cosign(request, receipt)?;
         let now = current_unix_timestamp();
         // TRJ5-B2: fail-closed propagation. The resolver returns
         // `Err(KernelError::ReceiptNegotiationDowngrade)` when a named
@@ -1416,10 +1415,21 @@ impl ChioKernel {
         // structured Deny rather than minting a v1 receipt under a
         // v2-negotiated dispatch. PROTOCOL.md section 6 normative MUST
         // (post-B2).
+        //
+        // Resolver runs BEFORE `apply_federation_cosign`. Both helpers
+        // perform a peer-freshness lookup against the same registry,
+        // but only this resolver returns the typed
+        // `ReceiptNegotiationDowngrade` error - `apply_federation_cosign`
+        // returns `KernelError::Internal` for the same condition. By
+        // resolving first, callers see the structured downgrade error
+        // (and ultimately a fail-closed Deny receipt) instead of a
+        // generic Internal that drops the typed denial diagnostics.
+        // (codex[bot] P2 on PR #611.)
         let version = self.kernel_receipt_version_for_remote(
             request.federated_origin_kernel_id.as_deref(),
             now,
         )?;
+        self.apply_federation_cosign(request, receipt)?;
         if version.mints_v2() {
             let v2 = self
                 .mint_chio_receipt_v2_from_v1(receipt)
