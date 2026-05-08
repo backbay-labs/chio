@@ -51,7 +51,7 @@ for root in ROOTS:
 
 if violations:
     print(
-        "trj5/B0 gate violation: sync `fn invoke*` found inside `impl ToolServerConnection` blocks"
+        "ToolServerConnection async-trait sync-fn detected: sync `fn invoke*` found inside `impl ToolServerConnection` blocks"
     )
     print(
         "Each `impl ToolServerConnection` must use `#[async_trait::async_trait(?Send)]` and `async fn` bodies."

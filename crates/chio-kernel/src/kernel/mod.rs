@@ -179,16 +179,15 @@ impl LocalReceiptArtifact {
 
 /// Bridge a sync caller to the now-async tool-server dispatch path.
 ///
-/// P0-002 fix (audit 2026-05-08): the previous fallback used
-/// `futures::executor::block_on` from inside a current-thread Tokio
-/// runtime. That parks the very thread that the runtime needs to
-/// drive its reactor / timer wheel, and any tool-server future that
-/// awaits Tokio I/O (which is the production case once
-/// `chio-mcp-remote` and `chio-mcp-adapter` are wired in) deadlocks
-/// silently. Tokio refuses to nest `block_on` calls precisely because
-/// of this, but `futures::executor::block_on` is a different executor
-/// that does not see the surrounding runtime, so the deadlock manifests
-/// as a hung tool call rather than a typed error.
+/// Calling `futures::executor::block_on` from inside a current-thread
+/// Tokio runtime parks the very thread that the runtime needs to drive
+/// its reactor / timer wheel, and any tool-server future that awaits
+/// Tokio I/O (the production case once `chio-mcp-remote` and
+/// `chio-mcp-adapter` are wired in) deadlocks silently. Tokio refuses
+/// to nest `block_on` calls precisely because of this, but
+/// `futures::executor::block_on` is a different executor that does not
+/// see the surrounding runtime, so the deadlock manifests as a hung
+/// tool call rather than a typed error.
 ///
 /// We now explicitly distinguish three cases:
 ///   1. Multi-thread runtime active: use `block_in_place` so Tokio can
@@ -448,16 +447,16 @@ pub enum KernelError {
     #[error("approval rejected: {0}")]
     ApprovalRejected(String),
 
-    /// P0-002 fix (audit 2026-05-08): the sync `evaluate_tool_call`
-    /// path was invoked from a context where the only available
-    /// Tokio runtime is a current-thread runtime. The async tool-
-    /// dispatch path cannot be safely driven on a current-thread
-    /// runtime: bridging via `futures::executor::block_on` parks the
-    /// caller's thread, and Tokio I/O timers / reactor wakers cannot
-    /// progress on the same parked thread. Returning a typed error
-    /// rather than deadlocking lets callers either (a) move the
-    /// dispatch onto a multi-thread runtime, or (b) call the async
-    /// `evaluate_tool_call` path directly.
+    /// The sync `evaluate_tool_call` path was invoked from a context
+    /// where the only available Tokio runtime is a current-thread
+    /// runtime. The async tool-dispatch path cannot be safely driven
+    /// on a current-thread runtime: bridging via
+    /// `futures::executor::block_on` parks the caller's thread, and
+    /// Tokio I/O timers / reactor wakers cannot progress on the same
+    /// parked thread. Returning a typed error rather than deadlocking
+    /// lets callers either (a) move the dispatch onto a multi-thread
+    /// runtime, or (b) call the async `evaluate_tool_call` path
+    /// directly.
     #[error(
         "sync tool-dispatch bridge cannot drive an async tool server on a current-thread \
          Tokio runtime; switch the host to a multi-thread runtime or call the async \
@@ -2882,12 +2881,12 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Round-3 codex P2 fix: signature is verified first (no budget
-        // mutation); the actual `admit_capability_budget` call is
-        // deferred until all subsequent checks (time, revocation,
-        // delegation-admission, subject, scope, guards) have passed.
-        // Otherwise a denied call would still consume the parent's
-        // share, starving later valid siblings.
+        // Signature is verified first (no budget mutation); the actual
+        // `admit_capability_budget` call is deferred until all
+        // subsequent checks (time, revocation, delegation-admission,
+        // subject, scope, guards) have passed. Otherwise a denied call
+        // would still consume the parent's share, starving later valid
+        // siblings.
         if let Err(reason) = self.verify_capability_full_without_budget_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
@@ -3381,9 +3380,9 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Round-3 codex P2 fix: signature first; the budget admission
-        // is deferred until after all subsequent checks pass, so a
-        // denied call no longer consumes the parent's share.
+        // Signature first; the budget admission is deferred until
+        // after all subsequent checks pass, so a denied call no longer
+        // consumes the parent's share.
         if let Err(reason) = self.verify_capability_full_without_budget_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
