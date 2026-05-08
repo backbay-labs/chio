@@ -128,7 +128,7 @@ jobs:
           done
           echo "Nightly chio-kernel-core Kani sweep passed (${#HARNESSES[@]} harnesses)"
 
-      # Multi-crate manifest sweep (TRJ5-A3.5). Picks up every
+      # Multi-crate manifest sweep (Kani multi-crate manifest). Picks up every
       # `[[harness]]` entry in `.kani/harnesses.toml` whose `lane = "pr"`
       # or `lane = "nightly"`, excluding chio-kernel-core (handled
       # above). When more crates land Kani harnesses they appear here

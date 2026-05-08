@@ -1,10 +1,9 @@
-# Kani live-run evidence: chio-anchor + chio-weights (TRJ5-A3.2/A3.3)
+# Kani live-run evidence: chio-anchor + chio-weights (Kani harness evidence/A3.3)
 
 Audit cross-reference: P0-017 in
 `.planning/trajectory-5/reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`.
 
-This file records the live `cargo kani` outputs for every harness the
-audit P0-017 fix enrolled in `.kani/harnesses.toml` (PR #607). Without
+This file records the live `cargo kani` outputs for every enrolled harness in `.kani/harnesses.toml` (PR #607). Without
 this evidence the harnesses would be enrolled-but-never-run, the same
 trj4 anti-pattern P0-017 calls out.
 
@@ -16,7 +15,7 @@ trj4 anti-pattern P0-017 calls out.
 | Host           | macOS aarch64 (Apple silicon)        |
 | cargo-kani     | 0.67.0                               |
 | Rust toolchain | nightly-2025-11-21 (kani-pinned)     |
-| Branch         | claude/trj5/a3-kani-anchor-weights   |
+| Branch         | PR branch   |
 | HEAD at run    | (filled in below per-harness)        |
 
 Each block records the command, `VERIFICATION:` line, total checks,

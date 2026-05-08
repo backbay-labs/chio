@@ -86,7 +86,7 @@
 //! &WitnessState, policy: &WitnessPolicy) -> WitnessPolicyClass`)
 //! used by both the runtime `evaluate_witness_policy` and the Kani
 //! harness, replacing `model_evaluate_witness_policy`. This is option
-//! (a) per audit P0-018; it was deferred from TRJ5 because the
+//! (a) per audit P0-018; it was deferred from release work because the
 //! production function's `Stale` arm depends on `batch_body_hash`
 //! recomputation (canonical-JSON + SHA-256) and `WitnessPolicyError`
 //! constructors that carry hex-formatted body-hash strings. Decoupling

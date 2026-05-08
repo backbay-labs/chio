@@ -47,7 +47,7 @@ fuzz = ["web3", "dep:arbitrary"]
 # `kani` implies `web3`: the entire crate body in `src/lib.rs` is gated
 # by `#![cfg(feature = "web3")]`. Without this implication
 # `cargo kani -p chio-anchor --features kani` would compile a crate
-# with zero items and find zero harnesses. Audit T5-R2-P1-014.
+# with zero items and find zero harnesses. Audit review item.
 kani = ["web3"]
 
 [dependencies]
