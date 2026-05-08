@@ -282,7 +282,7 @@ bar1_floor_pct=65
 # `SHIP-BAR-TRACKER.md` Bar 1 chio-attest-verify >=80% requirement).
 bar1_target_chio_attest_verify_pct=80
 
-# Lane A tickets (mutation evidence item / A1.3) write evidence under
+# Lane A planning entries (mutation evidence item / A1.3) write evidence under
 # audits/evidence/mutants/<crate>/ (plural). audits/evidence/mutation/
 # (singular) was an earlier-draft location. Probe the plural directory
 # first, fall back to the singular for legacy commits.
