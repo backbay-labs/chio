@@ -1,21 +1,30 @@
-// DO NOT EDIT - regenerate via 'make regen-rust' or 'cargo xtask codegen rust'.
+// Threat test for threat ID `weights_hash_spoof` (Weights hash spoof).
 //
-// Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Tool:   typify =0.4.3 (see xtask/codegen-tools.lock.toml)
-// Crate:  chio-spec-codegen
+// Surfaces: kernel_to_tool, native_chio.
 //
-// Manual edits will be overwritten by the next regeneration; the
-// `_generated_check` integration test enforces this header on every file
-// under `crates/chio-core-types/src/_generated/`.
-
-//! Threat test for threat ID `weights_hash_spoof` (Weights hash spoof).
-//!
-//! Surfaces: kernel_to_tool, native_chio.
-//!
-//! Owner: M05.P1.T3. The test exercises the loaded-weight recomputation
-//! contract added by M05.P1.T1/T2: a matching recomputed digest can bind,
-//! a spoofed digest rejects, and an unavailable loaded-weight surface
-//! rejects fail-closed.
+// Owner: M05.P1.T3. The test exercises the loaded-weight recomputation
+// contract added by M05.P1.T1/T2: a matching recomputed digest can bind,
+// a spoofed digest rejects, and an unavailable loaded-weight surface
+// rejects fail-closed.
+//
+// Coverage strategy: import production
+// `chio_kernel::weights_binding::evaluate_weights_binding_with_loaded_hash`
+// directly. Build a `ModelCard` whose declared weights hash matches the
+// recomputed `loaded_weights_hash_of` digest, then drive the production
+// function with three inputs: matching digest (Ok), spoofed digest
+// (`WeightsError::CardMismatch`), and `LoadedWeightsUnavailable`
+// (`WeightsError::SchemaRejected`). The two failure-path arms are the
+// production deny branches that catch a spoofed weights hash.
+//
+// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
+// In `crates/chio-kernel/src/weights_binding.rs`, locate the loaded-hash
+// equality check inside `evaluate_weights_binding_with_loaded_hash` and
+// flip the comparison so a mismatched recomputed digest returns Ok
+// instead of `Err(WeightsError::CardMismatch)`. Re-run
+// `cargo test -p chio-conformance --test threats -- weights_hash_spoof`
+// and the `assert!(matches!(spoofed, WeightsError::CardMismatch { .. }))`
+// arm MUST fail. That fault injection demonstrates the assertion is
+// wired to the production CardMismatch branch, not a stub.
 
 use chio_core::{loaded_weights_hash_of, LoadedWeights, LoadedWeightsUnavailable};
 use chio_kernel::weights_binding::evaluate_weights_binding_with_loaded_hash;
