@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# TRJ5-A2.0 triage helper. Verifies the public-symbol claim from
-# threat-evidence-backfill.md for each of the 20 threat rows.
-# Output: a markdown table with the triage_status column.
-#
-# This is a Wave 1 critical-path deliverable per
-# `.planning/trajectory-5/lane-a-floor/PLAN.md` Wave 1 section.
 set -uo pipefail
 
 ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null)"
