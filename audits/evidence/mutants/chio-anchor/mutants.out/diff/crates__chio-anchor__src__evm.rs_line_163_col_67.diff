@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace != with == in prepare_root_publication
+@@ -155,17 +155,17 @@
+         publisher_address: target.publisher_address.clone(),
+         checkpoint_seq: checkpoint.body.checkpoint_seq,
+         batch_start_seq: checkpoint.body.batch_start_seq,
+         batch_end_seq: checkpoint.body.batch_end_seq,
+         tree_size: checkpoint.body.tree_size as u64,
+         merkle_root: checkpoint.body.merkle_root,
+         operator_key_hash: operator_key_hash_hex(binding),
+         call_data: format!("0x{}", hex::encode(call.abi_encode())),
+-        requires_delegate_authorization: target.publisher_address != target.operator_address,
++        requires_delegate_authorization: target.publisher_address == /* ~ changed by cargo-mutants ~ */ target.operator_address,
+     })
+ }
+ 
+ pub fn prepare_delegate_registration(
+     target: &EvmAnchorTarget,
+     delegate_address: &str,
+     expires_at: u64,
+ ) -> Result<PreparedDelegateRegistration, AnchorError> {

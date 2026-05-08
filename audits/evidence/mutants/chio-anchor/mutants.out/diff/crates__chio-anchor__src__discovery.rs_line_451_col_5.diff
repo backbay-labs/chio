@@ -1,0 +1,45 @@
+--- crates/chio-anchor/src/discovery.rs
++++ replace build_current_freshness_state -> AnchorDiscoveryFreshnessState with Default::default()
+@@ -443,41 +443,17 @@
+     }
+     build_current_freshness_state(runtime_report, freshness_window_secs)
+ }
+ 
+ fn build_current_freshness_state(
+     runtime_report: &AnchorRuntimeReport,
+     freshness_window_secs: u64,
+ ) -> AnchorDiscoveryFreshnessState {
+-    let lane = runtime_report
+-        .lanes
+-        .iter()
+-        .find(|lane| lane.lane == AnchorLaneKind::EvmPrimary);
+-
+-    let status = classify_discovery_status(
+-        runtime_report,
+-        freshness_window_secs,
+-        AnchorLaneKind::EvmPrimary,
+-        lane.and_then(|lane| lane.chain_id.as_deref()),
+-        lane,
+-    );
+-
+-    AnchorDiscoveryFreshnessState {
+-        status,
+-        checked_at: runtime_report.generated_at,
+-        freshness_window_secs,
+-        latest_checkpoint_seq: lane.map(|lane| lane.latest_checkpoint_seq).unwrap_or(0),
+-        indexed_checkpoint_seq: lane.map(|lane| lane.indexed_checkpoint_seq).unwrap_or(0),
+-        last_published_at: lane.and_then(|lane| lane.last_published_at),
+-        publication_age_secs: lane
+-            .and_then(|lane| lane.last_published_at)
+-            .and_then(|published_at| runtime_report.generated_at.checked_sub(published_at)),
+-        note: lane.and_then(|lane| lane.note.clone()),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn classify_discovery_status(
+     runtime_report: &AnchorRuntimeReport,
+     freshness_window_secs: u64,
+     lane_kind: AnchorLaneKind,
+     chain_id: Option<&str>,
+     lane: Option<&crate::AnchorLaneRuntimeStatus>,

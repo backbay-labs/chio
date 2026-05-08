@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace operator_key_hash -> B256 with Default::default()
+@@ -92,17 +92,17 @@
+ 
+ #[derive(Debug, Deserialize)]
+ struct JsonRpcError {
+     code: i64,
+     message: String,
+ }
+ 
+ pub fn operator_key_hash(binding: &SignedWeb3IdentityBinding) -> B256 {
+-    keccak256(binding.certificate.chio_public_key.as_bytes())
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn operator_key_hash_hex(binding: &SignedWeb3IdentityBinding) -> String {
+     format!("0x{}", hex::encode(operator_key_hash(binding).as_slice()))
+ }
+ 
+ pub fn prepare_root_publication(
+     target: &EvmAnchorTarget,

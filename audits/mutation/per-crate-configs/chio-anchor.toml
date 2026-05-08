@@ -1,0 +1,56 @@
+# Per-run override config for chio-anchor mutation baseline.
+# Same as workspace .cargo/mutants.toml EXCEPT:
+#  1. additional_cargo_test_args is scoped to the chio-anchor package
+#     only, to avoid a pre-existing unrelated test failure in
+#     chio-acp-proxy (assertion failed:
+#     verdict.reason.contains("signature")...) which would otherwise
+#     cause every mutant to register as caught regardless of its own
+#     effect on chio-anchor behavior.
+#  2. The known-failing chio-anchor test
+#     `evm::tests::validate_rpc_egress_contract_accepts_hostname_rpc`
+#     is skipped via `--skip` since it ALSO fails pre-existing on main
+#     (commit 708c7bb33; failure: "hostname RPC dispatch is
+#     resolver-enforced" panic at evm.rs:660). Without this skip,
+#     every mutant would be marked CAUGHT because the test always
+#     panics before any chio-anchor mutation can register an effect.
+#
+# Both deviations are methodology fixes, not test fixes. The
+# pre-existing failures are out of scope for the A1 mutation baseline.
+# The CI hosted-nightly remains the authoritative workspace-scope
+# measurement once those failures are resolved.
+#
+# This config mirrors the chio-attest-verify.toml pattern; see PR #619
+# evidence README for the longer rationale.
+
+additional_cargo_test_args = [
+    "--package",
+    "chio-anchor",
+    "--",
+    "--skip",
+    "evm::tests::validate_rpc_egress_contract_accepts_hostname_rpc",
+]
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/chio-anchor/src/lib.rs",
+    "crates/chio-anchor/src/automation.rs",
+    "crates/chio-anchor/src/bitcoin.rs",
+    "crates/chio-anchor/src/bundle.rs",
+    "crates/chio-anchor/src/discovery.rs",
+    "crates/chio-anchor/src/evm.rs",
+    "crates/chio-anchor/src/functions.rs",
+    "crates/chio-anchor/src/ops.rs",
+    "crates/chio-anchor/src/solana.rs",
+]
+
+exclude_globs = [
+    "**/tests.rs",
+    "**/test_*.rs",
+    "**/*_test.rs",
+    "**/tests/**",
+    "**/benches/**",
+    "**/build.rs",
+    "**/fuzz.rs",
+    "crates/chio-anchor/src/fuzz.rs",
+]

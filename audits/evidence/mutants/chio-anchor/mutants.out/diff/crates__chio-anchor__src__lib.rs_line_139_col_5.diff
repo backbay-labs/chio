@@ -1,0 +1,32 @@
+--- crates/chio-anchor/src/lib.rs
++++ replace checkpoint_statement_from_kernel -> Web3CheckpointStatement with Default::default()
+@@ -131,28 +131,17 @@
+     pub evm_targets: Vec<EvmAnchorTarget>,
+     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+     pub ots_calendars: Vec<String>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub solana_cluster: Option<String>,
+ }
+ 
+ pub fn checkpoint_statement_from_kernel(checkpoint: &KernelCheckpoint) -> Web3CheckpointStatement {
+-    Web3CheckpointStatement {
+-        schema: CHIO_CHECKPOINT_STATEMENT_SCHEMA.to_string(),
+-        checkpoint_seq: checkpoint.body.checkpoint_seq,
+-        batch_start_seq: checkpoint.body.batch_start_seq,
+-        batch_end_seq: checkpoint.body.batch_end_seq,
+-        tree_size: checkpoint.body.tree_size as u64,
+-        merkle_root: checkpoint.body.merkle_root,
+-        issued_at: checkpoint.body.issued_at,
+-        previous_checkpoint_sha256: checkpoint.body.previous_checkpoint_sha256.clone(),
+-        kernel_key: checkpoint.body.kernel_key.clone(),
+-        signature: checkpoint.signature.clone(),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn kernel_checkpoint_from_statement(statement: &Web3CheckpointStatement) -> KernelCheckpoint {
+     KernelCheckpoint {
+         body: KernelCheckpointBody {
+             schema: statement.schema.clone(),
+             checkpoint_seq: statement.checkpoint_seq,
+             batch_start_seq: statement.batch_start_seq,

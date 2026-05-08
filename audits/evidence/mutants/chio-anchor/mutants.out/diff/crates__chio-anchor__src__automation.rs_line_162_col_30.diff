@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/automation.rs
++++ replace != with == in assess_anchor_automation_execution
+@@ -154,17 +154,17 @@
+         && execution.outcome != AnchorAutomationExecutionOutcome::DelayedButSafe
+     {
+         return Err(AnchorError::Verification(format!(
+             "anchor automation delay {} exceeds replay window {} without explicit delayed-safe outcome",
+             delay, job.replay_window_secs
+         )));
+     }
+     if execution.duplicate_suppressed
+-        && execution.outcome != AnchorAutomationExecutionOutcome::DuplicateSuppressed
++        && execution.outcome == /* ~ changed by cargo-mutants ~ */ AnchorAutomationExecutionOutcome::DuplicateSuppressed
+     {
+         return Err(AnchorError::Verification(
+             "duplicate suppression must be reported explicitly".to_string(),
+         ));
+     }
+     if job.operator_override_required && !execution.operator_override_used {
+         return Err(AnchorError::Verification(
+             "delegate-driven anchor automation must record operator override availability"

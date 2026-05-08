@@ -1,0 +1,46 @@
+--- crates/chio-anchor/src/bitcoin.rs
++++ replace verify_ots_proof_for_submission -> Result<ParsedOtsProof, AnchorError> with Ok(Default::default())
+@@ -124,42 +124,17 @@
+     })
+ }
+ 
+ pub fn verify_ots_proof_for_submission(
+     submission: &PreparedOtsSubmission,
+     ots_proof_b64: &str,
+     expected_bitcoin_height: Option<u64>,
+ ) -> Result<ParsedOtsProof, AnchorError> {
+-    let inspection = inspect_ots_proof(ots_proof_b64)?;
+-    if inspection.digest_algorithm != submission.document_hash_algorithm {
+-        return Err(AnchorError::Verification(format!(
+-            "OTS digest algorithm {} does not match expected {}",
+-            inspection.digest_algorithm, submission.document_hash_algorithm
+-        )));
+-    }
+-    if inspection.start_digest != submission.document_digest.to_hex_prefixed() {
+-        return Err(AnchorError::Verification(
+-            "OTS proof does not commit to the expected Chio super-root document digest".to_string(),
+-        ));
+-    }
+-    if inspection.bitcoin_attestation_heights.is_empty() {
+-        return Err(AnchorError::Verification(
+-            "OTS proof is still pending and does not yet contain a Bitcoin attestation".to_string(),
+-        ));
+-    }
+-    if let Some(height) = expected_bitcoin_height {
+-        if !inspection.bitcoin_attestation_heights.contains(&height) {
+-            return Err(AnchorError::Verification(format!(
+-                "OTS proof does not attest to Bitcoin block height {}",
+-                height
+-            )));
+-        }
+-    }
+-    Ok(inspection)
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn verify_bitcoin_anchor_for_proof(
+     proof: &AnchorInclusionProof,
+ ) -> Result<ParsedOtsProof, AnchorError> {
+     let bitcoin_anchor = proof.bitcoin_anchor.as_ref().ok_or_else(|| {
+         AnchorError::Verification("proof does not include Bitcoin anchor data".to_string())
+     })?;

@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace < with > in ensure_publication_ready
+@@ -404,17 +404,17 @@
+ ) -> Result<EvmPublicationGuard, AnchorError> {
+     let guard = inspect_publication_guard(target, egress_contract).await?;
+     if !guard.publisher_authorized {
+         return Err(AnchorError::Verification(format!(
+             "publisher {} is not authorized for operator {} on {}",
+             guard.publisher_address, guard.operator_address, guard.chain_id
+         )));
+     }
+-    if checkpoint_seq < guard.next_checkpoint_seq_min {
++    if checkpoint_seq > /* ~ changed by cargo-mutants ~ */ guard.next_checkpoint_seq_min {
+         return Err(AnchorError::Verification(format!(
+             "checkpoint sequence {} must be >= {} on {}",
+             checkpoint_seq, guard.next_checkpoint_seq_min, guard.chain_id
+         )));
+     }
+     Ok(guard)
+ }
+ 
