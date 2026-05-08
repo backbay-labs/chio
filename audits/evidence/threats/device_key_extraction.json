@@ -4,5 +4,8 @@
   "note": "Conformance evidence: real conformance test at crates/chio-conformance/tests/threats/device_key_extraction.rs presents (1) an App Attest fixture whose key_id is bound to a different credential and asserts verify_app_attest returns AttestationError::KeyIdMismatch, and (2) a Play Integrity token without a hardware-backed verdict and asserts verify_play_integrity returns AttestationError::PlayIntegrityDeviceRejected. Both calls hit production code in chio-custody-hw. Header documents the revert-to-prove-it-fails recipe.",
   "ran_at": "2026-05-08T00:00:00Z",
   "survivors": [],
-  "test_path": "crates/chio-conformance/tests/threats/device_key_extraction.rs"
+  "test_path": "crates/chio-conformance/tests/threats/device_key_extraction.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats device_key_extraction"
 }

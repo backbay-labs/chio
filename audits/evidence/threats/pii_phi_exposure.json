@@ -4,5 +4,8 @@
   "note": "Conformance evidence: real conformance test at crates/chio-conformance/tests/threats/pii_phi_exposure.rs constructs a payload carrying explicit MRN and SSN markers and exercises ResponseSanitizationGuard::scan_response (production code from chio-guards) twice: once with SanitizationAction::Block (asserts ScanResult::Blocked with both findings present) and once with SanitizationAction::Redact (asserts ScanResult::Redacted with redaction_count >= 2 and the raw identifiers stripped from redacted_text). Header documents the revert-to-prove-it-fails recipe (swap the Block branch in chio-guards/src/response_sanitization.rs).",
   "ran_at": "2026-05-08T00:00:00Z",
   "survivors": [],
-  "test_path": "crates/chio-conformance/tests/threats/pii_phi_exposure.rs"
+  "test_path": "crates/chio-conformance/tests/threats/pii_phi_exposure.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats pii_phi_exposure"
 }
