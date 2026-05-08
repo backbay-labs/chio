@@ -5,6 +5,14 @@
 **Audit refs**: review item (THIRD-ROUND-CODE-SECURITY-AUDIT-2026-05-08)
 **Status**: DEFERRED-PARTIAL (run-evidence not committed in this PR)
 
+## Scope boundary
+
+This is bounded Kani enrollment evidence, not an implementation-complete
+proof of `chio-attest-verify`. DIRECT harnesses cover the named public
+function paths only. MODEL-ONLY harnesses cover the local algebraic
+surrogate named in the manifest and do not prove the production
+cryptographic verifier implementation.
+
 ## Required posture per audit review item
 
 The audit states the proof surface must EITHER:
