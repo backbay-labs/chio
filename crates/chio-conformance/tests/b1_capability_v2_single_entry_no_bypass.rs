@@ -65,7 +65,7 @@ fn make_kernel(issuer: Keypair) -> ChioKernel {
         keypair: issuer,
         ca_public_keys: vec![],
         max_delegation_depth: 5,
-        policy_hash: "trj5-b1-single-entry-test-policy".to_string(),
+        policy_hash: "single-entry-test-policy".to_string(),
         allow_sampling: false,
         allow_sampling_tool_use: false,
         allow_elicitation: false,
@@ -199,7 +199,7 @@ fn b1_single_entry_verifier_has_no_bypass_on_hosted_dispatch() {
     let subject = Keypair::generate();
 
     let token = direct_v2_token(
-        "cap-trj5-b1-no-bypass",
+        "cap-b1-no-bypass",
         &issuer,
         &subject,
         scope.clone(),
@@ -224,7 +224,7 @@ fn b1_single_entry_verifier_has_no_bypass_on_hosted_dispatch() {
     )));
     kernel.register_tool_server(Box::new(EchoToolServer));
 
-    let mut request = hosted_request("req-trj5-b1-no-bypass", &token);
+    let mut request = hosted_request("req-b1-no-bypass", &token);
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 
     // PRODUCTION DISPATCH SURFACE. This is the public hot-path entry.
@@ -237,14 +237,14 @@ fn b1_single_entry_verifier_has_no_bypass_on_hosted_dispatch() {
     assert_eq!(
         response.verdict,
         HostedVerdict::Deny,
-        "TRJ5-B1: hosted dispatch must DENY a v2 token across a v1-only peer; got verdict {:?} reason {:?}",
+        "hosted dispatch must DENY a v2 token across a v1-only peer; got verdict {:?} reason {:?}",
         response.verdict, response.reason
     );
 
     let reason = response.reason.as_deref().unwrap_or("");
     assert!(
         reason.contains("schema") && reason.contains("ceiling"),
-        "TRJ5-B1: expected schema-ceiling diagnostic from unified verifier, got: {reason}. \
+        "expected schema-ceiling diagnostic from unified verifier, got: {reason}. \
          If this assertion fails with a non-ceiling diagnostic, a verifier shortcut may have \
          been reintroduced and routed through the kernel hot path. See revert procedure in \
          this file's header comment."
@@ -280,7 +280,7 @@ fn b1_positive_control_unified_verifier_accepts_same_token_under_v2_peer() {
     let subject = Keypair::generate();
 
     let token = direct_v2_token(
-        "cap-trj5-b1-positive-control",
+        "cap-b1-positive-control",
         &issuer,
         &subject,
         scope.clone(),
@@ -309,7 +309,7 @@ fn b1_positive_control_unified_verifier_accepts_same_token_under_v2_peer() {
     .expect("token must verify under unified entry with a v2-admitting peer profile");
 
     assert_eq!(
-        verified.id, "cap-trj5-b1-positive-control",
+        verified.id, "cap-b1-positive-control",
         "verified projection must surface the token id"
     );
 }

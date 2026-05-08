@@ -33,8 +33,7 @@ pub use metrics::{
 /// or no runtime at all) drive the future with the non-tokio
 /// `futures::executor::block_on`. Building a fresh tokio runtime inside
 /// an active current-thread runtime panics with "Cannot start a runtime
-/// from within a runtime", which is the exact case both Cursor Bugbot
-/// and Codex flagged on PR #612.
+/// from within a runtime".
 #[cfg(any(test, feature = "compatibility-surface"))]
 fn block_on_tool_server_invoke<F, T>(future: F) -> T
 where

@@ -3604,7 +3604,7 @@ impl ChioKernel {
             // every arm here directly into that one Result instead of the
             // earlier `Result<Result<_, _>, _>` shape - the outer Ok was
             // always `Ok(...)` so the trailing `?` was a no-op. The flat
-            // form is equivalent but clearer (cursor[bot] LOW on PR #612).
+            // form is equivalent but clearer.
             block_on_async_tool_dispatch(async {
                 match server
                     .invoke_stream(
