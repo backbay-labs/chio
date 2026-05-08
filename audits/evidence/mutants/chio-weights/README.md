@@ -1,4 +1,4 @@
-# chio-weights mutation baseline (TRJ5-A1)
+# chio-weights mutation baseline (release work-A1)
 
 This directory holds the per-mutant cargo-mutants output for the
 `chio-weights` crate (the M10 phase 4 model-card surface: signed
@@ -12,7 +12,7 @@ BASELINE-GAP row.
 |---|---|
 | Crate | `chio-weights` |
 | Date | 2026-05-08 |
-| Branch | `claude/trj5/a1-mutation-weights` |
+| Branch | `PR branch` |
 | Base SHA | `708c7bb33df43594f5e76542b05fca7a56d9689e` (current main) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 6m 41s (per cargo-mutants stdout summary line) |
@@ -177,7 +177,7 @@ distinct survival pattern):
 | `verify_model_card_anchor` negation delete | 1 | 1 branch-coverage test in lineage.rs |
 
 Closing the gap would push the kill rate from 68.25% toward 100% on
-this surface. **Follow-up is a separate PR** (TRJ5-A1.8 style); this
+this surface. **Follow-up is a separate PR** (mutation evidence item style); this
 PR scope is the BASELINE measurement only.
 
 ## Unviable mutants

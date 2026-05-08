@@ -6,7 +6,7 @@
 # chio-guards, chio-anchor). The crate is the M10 phase 4 model-card
 # surface (signed weights cards, cosign bundle helper, kernel binding
 # refusal, arc bind --card) and IS a trust-boundary surface for the
-# purposes of TRJ5-A1: a malformed `weights_hash`, an out-of-set
+# purposes of release work-A1: a malformed `weights_hash`, an out-of-set
 # capability scope, or a banned tool intersection MUST cause the
 # kernel to refuse a provider bind. Mutation kill on this crate is
 # therefore the right honest signal even though the crate is not in

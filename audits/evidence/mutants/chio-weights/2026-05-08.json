@@ -6,7 +6,6 @@
   "tool_version": "25.3.1",
   "test_scope": "package-only (cargo test --verbose --package=chio-weights@0.1.0 --package chio-weights; verified empirically by inspecting cargo-mutants debug log during the run; same scope methodology as PR #619 / #623)",
   "wall_clock": "6m 41s (per cargo-mutants stdout summary line)",
-  "branch": "claude/trj5/a1-mutation-weights",
   "base_sha": "708c7bb33df43594f5e76542b05fca7a56d9689e",
   "command": "cargo mutants --config audits/mutation/per-crate-configs/chio-weights.toml -p chio-weights --in-place --baseline=skip --output audits/evidence/mutants/chio-weights",
   "run_status": "FULL: 66/66 mutants evaluated; cargo-mutants returned exit 2 (mutants missed; expected)",
