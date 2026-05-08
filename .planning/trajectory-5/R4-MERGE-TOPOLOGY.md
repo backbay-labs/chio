@@ -73,17 +73,17 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
 
 ## Fix Wave 2 Lane B Sequencing
 
-Refresh time: 2026-05-08T22:39:33Z
+Refresh time: 2026-05-08T22:47:38Z
 
 Worker A's Lane B slice is now explicitly stacked after #620 in this order:
 
 | Step | PR | Head used for simulation | Role | Sequencing note |
 |---:|---|---|---|---|
-| 1 | #620 | `7e3d4f5cd1` | planning and ship-bar coordination | Planning branch only; this document update itself is not included in the self-referential SHA. |
+| 1 | #620 | `b68b6cc8e5` | planning and ship-bar coordination | Latest observed planning head before this refresh commit. |
 | 2 | #606 | `92a78bd958` | async trait foundation | Base for the protocol stack. |
-| 3 | #612 | `bb0684500d` | single-entry verifier | Merge parent includes #606 and carries the narrowed current-thread runtime diagnostic. |
-| 4 | #611 | `dc36020870` | receipt v2 fail-closed | Merge parent includes #612 and preserves receipt admission snapshots. |
-| 5 | #609 | `c05ced924d` | anchor batch async-only | Merge parent includes #611; CI anchor lint is a separate step so it can coexist with #620 ship-bar wiring. |
+| 3 | #612 | `c524768185` | single-entry verifier | Merge parent includes #606 and carries the narrowed current-thread runtime diagnostic. |
+| 4 | #611 | `9e895a189d` | receipt v2 fail-closed | Merge parent includes #612 and preserves receipt admission snapshots. |
+| 5 | #609 | `84beeb88c4` | anchor batch async-only | Merge parent includes #611; CI anchor lint is a separate step so it can coexist with #620 ship-bar wiring. |
 
 The required local integration order for this slice is therefore:
 
@@ -114,11 +114,11 @@ refs_refreshed=2026-05-08T21:35:24Z
 Owned branch sequence:
 
 ```text
-merge #620 (7e3d4f5cd1) ... OK
+merge #620 (b68b6cc8e5) ... OK
 merge #606 (92a78bd958) ... OK
-merge #612 (bb0684500d) ... OK
-merge #611 (dc36020870) ... OK
-merge #609 (c05ced924d) ... OK
+merge #612 (c524768185) ... OK
+merge #611 (9e895a189d) ... OK
+merge #609 (84beeb88c4) ... OK
 ```
 
 Earlier evidence-branch simulation, retained for context:
