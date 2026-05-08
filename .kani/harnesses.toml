@@ -172,148 +172,21 @@ default_unwind = 8
 timeout_secs = 1800
 lane = "pr"
 
-# ---------------------------------------------------------------------
-# chio-attest-verify (TRJ5-A3.1, PR #605)
-# ---------------------------------------------------------------------
-# Four public-entry harnesses pinning the trust-boundary invariants of
-# `expect_report_data` and the three TEE quote backends. Algebraic
-# `verify_quote` models reflect the post-fix production order
-# TCB -> algorithm -> report_data; a bug had inverted that order and was
-# caught + fixed in PR #605. See the harness module doc comment for
-# bound parameters (default_unwind = 8, symbolic byte-arrays <= 64).
-
-[[harness]]
-crate = "chio-attest-verify"
-harness = "public_expect_report_data_determinism_under_input_change"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "Direct call into pub fn expect_report_data; pure determinism + tampering arms."
-
-[[harness]]
-crate = "chio-attest-verify"
-harness = "public_nitro_verify_quote_rejects_report_data_mismatch"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "MODEL-ONLY: proves model_verify_quote algebra over ModelQuoteOutcome, NOT the production <NitroVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: crates/chio-attest-verify/tests/nitro_unit.rs (ReportDataMismatch). See audit P0-018."
-
-[[harness]]
-crate = "chio-attest-verify"
-harness = "public_sev_snp_verify_quote_rejects_unacceptable_tcb"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "MODEL-ONLY: proves model_verify_quote algebra, NOT the production <SevSnpVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: per-backend unit tests asserting QuoteRejected for non-acceptable TCB. See audit P0-018."
-
-[[harness]]
-crate = "chio-attest-verify"
-harness = "public_tdx_verify_quote_rejects_algorithm_mismatch"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "MODEL-ONLY: proves model_verify_quote algebra, NOT the production <TdxDcapVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: crates/chio-attest-verify/tests/tdx_integration.rs (ReportDataMismatch on intel-tdx-report-data-mismatch and intel-tdx-upper-half-tamper fixtures). See audit P0-018."
 
 # ---------------------------------------------------------------------
-# chio-anchor (TRJ5-A3.2)
+# Per-crate sections landed in their own PR (audit T5-R2-P0-011)
 # ---------------------------------------------------------------------
-# Source: crates/chio-anchor/src/kani_public_harnesses.rs (PR #613).
-# Names verified by `grep '#\[kani::proof\]' -A2` against PR #613 head.
-# Activated by audit P0-017 to close the trj4 anti-pattern (harnesses
-# present, manifest entries un-enrolled). After PR #613 merges to main
-# the kani-public-pr CI gate will iterate these alongside the
-# chio-attest-verify entries above.
+# To make manifest enrollment atomic with harness source, each non-core
+# crate's `[[harness]]` block now lands in the SAME PR that adds the
+# harness source. This file (PR #607) ships the runner script, the
+# schema documentation, and the chio-kernel-core lane mirror; other
+# per-crate sections arrive via:
 #
-# Honest note on coverage: the four `public_*_emergency_controls_*`,
-# `public_ensure_anchor_operation_*`, `public_classify_anchor_lane_*`,
-# and `public_anchor_indexer_cursor_lag_*` harnesses prove invariants
-# of real `pub fn`s in `crates/chio-anchor/src/lib.rs`. The
-# `public_evaluate_witness_policy_advisory_fail_closed_model` harness
-# is a model harness over the witness-policy decision algebra (audit
-# P0-018); the docstring in the harness file is the source of truth on
-# what it covers and what TRJ6 follow-up is required to extract the
-# decision logic into a production helper called by both runtime and
-# Kani.
-
-[[harness]]
-crate = "chio-anchor"
-harness = "public_anchor_emergency_controls_allows_truth_table"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "Truth table over chio_anchor::emergency_controls_allows."
-
-[[harness]]
-crate = "chio-anchor"
-harness = "public_ensure_anchor_operation_allowed_fail_closed"
-default_unwind = 4
-timeout_secs = 3600
-lane = "nightly"
-notes = "NIGHTLY-ONLY: Fail-closed semantics of chio_anchor::ensure_anchor_operation_allowed. The production fail-closed arm constructs an AnchorError::InvalidInput payload via format!(), whose UTF-8 char-counting paths inflate cbmc's SSA into the millions of steps even at unwind=4 (~140s symex + minutes of SAT in local runs). PR-tier wall-clock budgets are too tight; this harness runs in the nightly lane at a 3600s budget. The fail-closed property is also pinned at PR-tier by the runtime negative tests under crates/chio-anchor/tests/ and by the truth-table harness `public_anchor_emergency_controls_allows_truth_table` which exercises the same `controls.allows()` predicate without the format-string path. TRJ6 follow-up: extract a `pub(crate) fn classify_operation_admission(...)` helper used by both the runtime fail-closed branch and a tighter Kani harness, replacing the format!-based error construction with a small enum-only variant tag - this would let the tightened harness run in the PR lane. See audit P0-017 + P0-018 for the option (a) vs (b) decision."
-
-[[harness]]
-crate = "chio-anchor"
-harness = "public_classify_anchor_lane_invariants"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "Lane classification invariants for chio_anchor::classify_anchor_lane."
-
-[[harness]]
-crate = "chio-anchor"
-harness = "public_anchor_indexer_cursor_lag_classification"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "Cursor-lag classification for chio_anchor::anchor_indexer_cursor_lag."
-
-[[harness]]
-crate = "chio-anchor"
-harness = "public_evaluate_witness_policy_advisory_fail_closed_model"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "MODEL-ONLY: proves the local model_evaluate_witness_policy decision algebra, not the production chio_anchor::witness::evaluate_witness_policy. Live runtime regression is checked separately by crates/chio-anchor/tests/witness_policy.rs and the chio-conformance negative tests. See audit P0-018 and the harness module docstring for the TRJ6 follow-up."
-
-# ---------------------------------------------------------------------
-# chio-weights (TRJ5-A3.3)
-# ---------------------------------------------------------------------
-# Source: crates/chio-weights/src/kani_public_harnesses.rs (PR #613).
-# Names verified by `grep '#\[kani::proof\]' -A2` against PR #613 head.
-# A `public_string_set_predicate_algebra` stanza was sketched in the
-# A3.5 commented draft but does not exist in PR #613's harness file
-# (the existing predicate harnesses are inlined inside the four
-# entries below); the manifest only lists harnesses that actually
-# exist.
-
-[[harness]]
-crate = "chio-weights"
-harness = "public_weights_hash_of_determinism_and_tampering"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "Determinism + tamper-detection of chio_weights::hash_weights."
-
-[[harness]]
-crate = "chio-weights"
-harness = "public_model_card_require_live_fail_closed"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "Fail-closed semantics of ModelCard::require_live."
-
-[[harness]]
-crate = "chio-weights"
-harness = "public_weights_error_urn_is_stable"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "URN stability under chio_weights::WeightsError::Display."
-
-[[harness]]
-crate = "chio-weights"
-harness = "public_model_card_new_pins_schema_version"
-default_unwind = 8
-timeout_secs = 1800
-lane = "pr"
-notes = "Schema-version pinning under chio_weights::ModelCard::new."
+#   * chio-attest-verify  -> PR #605 (claude/trj5/a3-kani-attest-verify)
+#   * chio-anchor         -> PR #613 (claude/trj5/a3-kani-anchor-weights)
+#   * chio-weights        -> PR #613 (claude/trj5/a3-kani-anchor-weights)
+#
+# Integrator merges combine the per-crate sections additively. Adding a
+# new harness in the future: land the `#[kani::proof]` and the matching
+# `[[harness]]` block in the same PR; the multi-crate runner will pick
+# it up without further workflow edits.
