@@ -66,21 +66,18 @@ fn threat_native_channel_replay_replayed_nonce_rejected() {
     };
 
     // First presentation succeeds and consumes the nonce.
-    if let Err(err) =
-        verify_execution_nonce(&signed, &kp.public_key(), &binding, now + 1, &store)
-    {
+    if let Err(err) = verify_execution_nonce(&signed, &kp.public_key(), &binding, now + 1, &store) {
         panic!("first verify must succeed; got {err:?}");
     }
 
     // Replay: present the same SignedExecutionNonce a second time.
-    let err =
-        match verify_execution_nonce(&signed, &kp.public_key(), &binding, now + 2, &store) {
-            Ok(()) => panic!(
-                "production verify_execution_nonce MUST reject a replayed nonce; \
+    let err = match verify_execution_nonce(&signed, &kp.public_key(), &binding, now + 2, &store) {
+        Ok(()) => panic!(
+            "production verify_execution_nonce MUST reject a replayed nonce; \
                  got Ok on second presentation"
-            ),
-            Err(err) => err,
-        };
+        ),
+        Err(err) => err,
+    };
     assert!(
         matches!(err, ExecutionNonceError::Replayed),
         "expected ExecutionNonceError::Replayed on replayed nonce, got {err:?}"
@@ -107,14 +104,13 @@ fn threat_native_channel_replay_binding_mismatch_rejected() {
     let mut presented = minted;
     presented.tool_name = "write_file".to_string();
 
-    let err =
-        match verify_execution_nonce(&signed, &kp.public_key(), &presented, now + 1, &store) {
-            Ok(()) => panic!(
-                "production verify_execution_nonce MUST reject a binding mismatch; \
+    let err = match verify_execution_nonce(&signed, &kp.public_key(), &presented, now + 1, &store) {
+        Ok(()) => panic!(
+            "production verify_execution_nonce MUST reject a binding mismatch; \
                  got Ok"
-            ),
-            Err(err) => err,
-        };
+        ),
+        Err(err) => err,
+    };
     assert!(
         matches!(
             err,
@@ -145,14 +141,13 @@ fn threat_native_channel_replay_tampered_signature_rejected() {
     let mut expected = binding;
     expected.tool_name = "write_file".to_string();
 
-    let err =
-        match verify_execution_nonce(&signed, &kp.public_key(), &expected, now + 1, &store) {
-            Ok(()) => panic!(
-                "production verify_execution_nonce MUST reject tampered signature; \
+    let err = match verify_execution_nonce(&signed, &kp.public_key(), &expected, now + 1, &store) {
+        Ok(()) => panic!(
+            "production verify_execution_nonce MUST reject tampered signature; \
                  got Ok"
-            ),
-            Err(err) => err,
-        };
+        ),
+        Err(err) => err,
+    };
     assert!(
         matches!(err, ExecutionNonceError::InvalidSignature),
         "expected InvalidSignature, got {err:?}"

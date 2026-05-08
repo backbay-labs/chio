@@ -159,9 +159,7 @@ fn threat_tee_quote_forgery_forged_signature_rejected() {
     );
 
     let err = match verify_tenant_sig(&forged, &public_key) {
-        Ok(()) => panic!(
-            "verify_tenant_sig MUST reject a forged 64-byte signature; got Ok"
-        ),
+        Ok(()) => panic!("verify_tenant_sig MUST reject a forged 64-byte signature; got Ok"),
         Err(err) => err,
     };
     assert!(
