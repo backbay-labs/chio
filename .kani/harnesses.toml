@@ -1,0 +1,302 @@
+schema = "chio.kani.multi-crate.v1"
+
+# Multi-crate Kani harness manifest (TRJ5-A3.5).
+#
+# Each `[[harness]]` entry pins one (crate, harness) pair the CI
+# `kani-public-pr` job iterates. The job invokes the harness with:
+#
+#     cargo kani -p <crate> --lib --harness <name> \
+#       --default-unwind <default_unwind> --no-unwinding-checks
+#
+# Wrapped under a per-harness wall-clock cap of `timeout_secs`.
+#
+# Lanes:
+#   * lane = "pr"      Always runs on every PR and on push-to-main.
+#   * lane = "nightly" Runs only in the nightly Kani sweep workflow.
+#
+# This file is the source of truth for the multi-crate sweep. The
+# legacy `formal/rust-verification/kani-public-harnesses.toml` retains
+# the v1 chio-kernel-core schema for backwards-compatible consumers
+# (`scripts/check-kani-public-core.sh` and the M06 evidence bundle
+# expect `[lanes.pr]`); the entries below for chio-kernel-core mirror
+# that lane so there is exactly one place to extend the sweep.
+#
+# Adding a harness:
+#   1. Land the `#[kani::proof]` in `crates/<crate>/src/<file>.rs`,
+#      gated by `#[cfg(kani)]`.
+#   2. Append a `[[harness]]` block here.
+#   3. The CI workflow auto-iterates; no workflow edit required.
+#
+# Schema:
+#   crate           string  Cargo package name (-p flag value).
+#   harness         string  Symbol passed to `--harness`.
+#   default_unwind  int     Value for `--default-unwind`.
+#   timeout_secs    int     Per-harness wall-clock cap.
+#   lane            string  "pr" | "nightly".
+#   features        list    Optional Cargo features (e.g. ["pq"]).
+#   notes           string  Free-form comment for future maintainers.
+
+# ---------------------------------------------------------------------
+# chio-kernel-core (TRJ4 floor, originally landed)
+# ---------------------------------------------------------------------
+# Mirrors `[lanes.pr]` of formal/rust-verification/kani-public-harnesses.toml.
+# Per-harness wall-clock figures (Apple M-series, hot cargo cache,
+# kani 0.67.0): see that file's comment block. CI runner overhead is
+# typically 2-3x; the heaviest harness (`public_verify_capability...`)
+# is ~31s locally and stays well under the 1800s cap.
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_verify_capability_rejects_untrusted_issuer_before_signature"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+notes = "Concrete Ed25519 + canonical-JSON path; heaviest in the lane (~31s local)."
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_normalized_scope_subset_rejects_widened_child"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_normalized_scope_subset_rejects_value_widened_child"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_normalized_scope_subset_rejects_identity_mismatch"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_resolve_matching_grants_rejects_out_of_scope_request"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_resolve_matching_grants_preserves_wildcard_matching"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_evaluate_rejects_untrusted_issuer_before_dispatch"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_sign_receipt_rejects_kernel_key_mismatch_before_signing"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_sign_receipt_accepts_matching_kernel_key"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_scope_intersection_associative"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_revocation_predicate_idempotent"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_delegation_chain_step"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_receipt_roundtrip"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_budget_checked_add_no_overflow"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_delegate_no_widen"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_delegation_receipt_canonical"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_revocation_view_freshness"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_oracle_inclusion_soundness"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+# ---------------------------------------------------------------------
+# chio-attest-verify (TRJ5-A3.1, PR #605)
+# ---------------------------------------------------------------------
+# Four public-entry harnesses pinning the trust-boundary invariants of
+# `expect_report_data` and the three TEE quote backends. Algebraic
+# `verify_quote` models reflect the post-fix production order
+# TCB -> algorithm -> report_data; a bug had inverted that order and was
+# caught + fixed in PR #605. See the harness module doc comment for
+# bound parameters (default_unwind = 8, symbolic byte-arrays <= 64).
+
+[[harness]]
+crate = "chio-attest-verify"
+harness = "public_expect_report_data_determinism_under_input_change"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+notes = "Direct call into pub fn expect_report_data; pure determinism + tampering arms."
+
+[[harness]]
+crate = "chio-attest-verify"
+harness = "public_nitro_verify_quote_rejects_report_data_mismatch"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+notes = "Algebraic model of <NitroVerifier as QuoteVerifier>::verify_quote fail-closed arms."
+
+[[harness]]
+crate = "chio-attest-verify"
+harness = "public_sev_snp_verify_quote_rejects_unacceptable_tcb"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+notes = "Algebraic model of <SevSnpVerifier as QuoteVerifier>::verify_quote TCB arm."
+
+[[harness]]
+crate = "chio-attest-verify"
+harness = "public_tdx_verify_quote_rejects_algorithm_mismatch"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+notes = "Algebraic model of <TdxDcapVerifier as QuoteVerifier>::verify_quote algorithm arm."
+
+# ---------------------------------------------------------------------
+# chio-anchor (TRJ5-A3.2)  -- entries added by the A3.2 PR.
+# ---------------------------------------------------------------------
+# The chio-anchor Kani harness PR is in flight in a sibling worktree
+# (branch claude/trj5/a3-kani-anchor-weights, not yet pushed at the
+# time of A3.5). Once that PR lands, copy these stanzas in:
+#
+#   [[harness]]
+#   crate = "chio-anchor"
+#   harness = "public_anchor_emergency_controls_allows_truth_table"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+#   [[harness]]
+#   crate = "chio-anchor"
+#   harness = "public_ensure_anchor_operation_allowed_fail_closed"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+#   [[harness]]
+#   crate = "chio-anchor"
+#   harness = "public_classify_anchor_lane_invariants"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+#   [[harness]]
+#   crate = "chio-anchor"
+#   harness = "public_anchor_indexer_cursor_lag_classification"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+#   [[harness]]
+#   crate = "chio-anchor"
+#   harness = "public_evaluate_witness_policy_advisory_fail_closed_model"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+# Names captured by inspecting the sibling worktree's
+# `crates/chio-anchor/src/kani_public_harnesses.rs` at the time of A3.5
+# authoring; the canonical source is whatever lands in the A3.2 PR.
+# Verify the names against the merged file before copying.
+
+# ---------------------------------------------------------------------
+# chio-weights (TRJ5-A3.3)  -- entries added by the A3.3 PR.
+# ---------------------------------------------------------------------
+# Same situation as chio-anchor above. Expected entries:
+#
+#   [[harness]]
+#   crate = "chio-weights"
+#   harness = "public_weights_hash_of_determinism_and_tampering"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+#   [[harness]]
+#   crate = "chio-weights"
+#   harness = "public_string_set_predicate_algebra"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+#   [[harness]]
+#   crate = "chio-weights"
+#   harness = "public_model_card_require_live_fail_closed"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+#   [[harness]]
+#   crate = "chio-weights"
+#   harness = "public_weights_error_urn_is_stable"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
+#
+#   [[harness]]
+#   crate = "chio-weights"
+#   harness = "public_model_card_new_pins_schema_version"
+#   default_unwind = 8
+#   timeout_secs = 1800
+#   lane = "pr"
