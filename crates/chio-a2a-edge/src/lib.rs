@@ -789,25 +789,22 @@ impl ChioA2aEdge {
         let arguments = extract_arguments_from_message(&request.message);
         let task_id = self.next_task_id();
 
-        let invoke_result = match crate::block_on_tool_server_invoke(server.invoke(
-            &tool_name,
-            arguments,
-            None,
-        )) {
-            Ok(inner) => inner,
-            Err(bridge_err) => {
-                // Fail-closed mirror of the kernel sync-bridge gate:
-                // current-thread runtime detected, refuse to deadlock.
-                let msg = bridge_err.to_string();
-                return Ok(TaskResponse {
-                    id: task_id,
-                    status: TaskStatus::Failed,
-                    status_message: Some(msg.clone()),
-                    message: None,
-                    metadata: Some(passthrough_metadata(Some(&msg))),
-                });
-            }
-        };
+        let invoke_result =
+            match crate::block_on_tool_server_invoke(server.invoke(&tool_name, arguments, None)) {
+                Ok(inner) => inner,
+                Err(bridge_err) => {
+                    // Fail-closed mirror of the kernel sync-bridge gate:
+                    // current-thread runtime detected, refuse to deadlock.
+                    let msg = bridge_err.to_string();
+                    return Ok(TaskResponse {
+                        id: task_id,
+                        status: TaskStatus::Failed,
+                        status_message: Some(msg.clone()),
+                        message: None,
+                        metadata: Some(passthrough_metadata(Some(&msg))),
+                    });
+                }
+            };
         match invoke_result {
             Ok(result) => {
                 let response_parts = result_to_parts(&result);
