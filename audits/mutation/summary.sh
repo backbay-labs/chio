@@ -102,6 +102,46 @@ for crate in "$@"; do
   [ -f "${missed_path}"  ] || missed_path="${empty}"
   [ -f "${timeout_path}" ] || timeout_path="${empty}"
 
+  # T5-R2-P0-010: ONLY a strict whitelist of durable, hand-curated
+  # annotations is preserved across regenerations. Run-shape and
+  # release-truth keys (`run_status`, `target_met`, `result_label`,
+  # `evaluated`, `total_discovered`, etc.) are recomputed-or-cleared
+  # every run; preserving them caused a chio-policy summary that was
+  # interrupted at 314/418 mutants to keep `target_met: true` from a
+  # previous edit.
+  #
+  # Durable (preserved when present, never invented):
+  #   * `command`          - the exact cargo-mutants invocation recorded
+  #                          by the operator (audit trail).
+  #   * `run_started_at`   - operator-recorded wall-clock start.
+  #   * `evidence_dir`     - relative path the operator pinned for the run.
+  #   * `notes`            - free-form operator commentary.
+  #   * `target_kill_rate` - the configured threshold (e.g. 0.65).
+  #
+  # Recomputed/cleared every run (NOT preserved):
+  #   * caught / missed / timeout / unviable / kill_rate_percent
+  #   * crate / ran_at / tool / tool_version / test_scope
+  #   * missed_mutants / timeout_mutants
+  #   * run_status / target_met / result_label / evaluated /
+  #     total_discovered / examine_scope / kill_rate_formula /
+  #     subset_invalidated_for_files / subset_invalidation_reason /
+  #     result_label_reason / target_explanation
+  #
+  # If a previous summary recorded any of the recomputed/cleared keys,
+  # the operator (or a separate annotate-partial step) MUST re-assert
+  # them after this script runs. The script never silently re-emits
+  # stale release-truth from prior runs.
+  durable_keys='["command", "run_started_at", "evidence_dir", "notes", "target_kill_rate"]'
+  prev_extra="${empty}"
+  if [ -f "${out_file}" ]; then
+    prev_extra=$(mktemp)
+    if ! jq --argjson keys "${durable_keys}" \
+          'with_entries(select(.key as $k | $keys | index($k)))' \
+          "${out_file}" > "${prev_extra}" 2>/dev/null; then
+      echo "{}" > "${prev_extra}"
+    fi
+  fi
+
   jq -n \
     --arg crate "${crate}" \
     --arg ran_at "${ran_at}" \
@@ -115,7 +155,8 @@ for crate in "$@"; do
     --arg kill_rate "${rate}" \
     --rawfile missed_text "${missed_path}" \
     --rawfile timeout_text "${timeout_path}" \
-    '{
+    --slurpfile prev_extra "${prev_extra}" \
+    '($prev_extra[0] // {}) + {
       crate: $crate,
       ran_at: $ran_at,
       tool: $tool,
@@ -131,5 +172,6 @@ for crate in "$@"; do
     }' > "${out_file}"
 
   rm -f "${empty}"
+  [ "${prev_extra}" != "${empty}" ] && rm -f "${prev_extra}" || true
   echo "wrote ${out_file} (caught=${c} missed=${m} timeout=${t} unviable=${u} rate=${rate}%)"
 done

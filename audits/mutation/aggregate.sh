@@ -66,47 +66,88 @@ for crate in "$@"; do
   c=${c:-0}; m=${m:-0}; t=${t:-0}; u=${u:-0}
   n=$((c + m + t + u))
   denom=$((c + m + t))
-  # Partial-run detection: compare evaluated count to total listed in
-  # mutants.json. If mutants.json has more entries than evaluated, the
-  # run was interrupted or is still in progress and the kill-rate is a
-  # partial number.
-  expected=$(jq 'length' "${out_dir}/mutants.json" 2>/dev/null || echo 0)
-  expected=${expected:-0}
-  partial=""
-  if [ "${expected}" -gt 0 ] && [ "${n}" -lt "${expected}" ]; then
-    partial=" (PARTIAL ${n}/${expected})"
+
+  # T5-R2-P1-005: read result_label, examine_scope, run_status,
+  # target_met, evaluated, total_discovered from the per-crate
+  # summary JSON and propagate the most-specific label into the row.
+  # The previous mutants.json length comparison missed PARTIAL-SUBSET
+  # runs (operator-narrowed examine_globs) because the subset
+  # mutants.json length matches n.
+  #
+  # T5-R2-P1-004: missing summary JSON / mutants.json / jq parse
+  # errors are non-fatal under set -euo pipefail. Emit a warn on
+  # stderr when the summary JSON is absent so the operator knows
+  # the row may understate caveats.
+  summary_json=""
+  shopt -s nullglob
+  for candidate in $(printf '%s\n' "${EVIDENCE_DIR}/${crate}"/*.json | sort -r); do
+    if [ -f "${candidate}" ]; then
+      summary_json="${candidate}"
+      break
+    fi
+  done
+  shopt -u nullglob
+
+  partial_label=""
+  partial_detail=""
+  if [ -n "${summary_json}" ]; then
+    rl=$(jq -r '.result_label // empty' "${summary_json}" 2>/dev/null || echo "")
+    es=$(jq -r '.examine_scope // empty' "${summary_json}" 2>/dev/null || echo "")
+    tm=$(jq -r '.target_met // empty' "${summary_json}" 2>/dev/null || echo "")
+    ev=$(jq -r '.evaluated // empty' "${summary_json}" 2>/dev/null || echo "")
+    td=$(jq -r '.total_discovered // empty' "${summary_json}" 2>/dev/null || echo "")
+    case "${rl}" in
+      PARTIAL-SUBSET)
+        partial_label="PARTIAL-SUBSET"
+        partial_detail="${es:-subset}"
+        ;;
+      PARTIAL)
+        partial_label="PARTIAL"
+        if [ -n "${ev}" ] && [ -n "${td}" ]; then
+          partial_detail="${ev}/${td}"
+        fi
+        ;;
+      FULL-BELOW-TARGET)
+        partial_label="BELOW-TARGET"
+        partial_detail=""
+        ;;
+      FULL|"")
+        if [ "${tm}" = "false" ]; then
+          partial_label="BELOW-TARGET"
+        fi
+        ;;
+    esac
+  else
+    echo "warn: ${crate} has no per-crate summary JSON; partial-run label may understate caveats" >&2
   fi
-  # Surface-scope partial (codex P2 follow-up): the per-crate summary
-  # JSON may carry `result_label: "PARTIAL"` or `examine_scope` /
-  # `excluded_files` to mark a run that is FULL on its evidence-tree
-  # mutants but PARTIAL on the crate's full surface (e.g. chio-credentials
-  # excludes 13 include!()d files). Pick that up in the same row label
-  # so the aggregate table does not silently turn a partial-surface
-  # number into a crate-level mutation result.
-  surface_label=""
-  # Pipeline exits 1 cleanly under `set -euo pipefail` when the crate has no
-  # top-level summary JSON files (or all match the exclusion pattern). The
-  # `|| true` keeps the assignment from terminating the script.
-  summary_json=$(ls -1 "${EVIDENCE_DIR}/${crate}"/*.json 2>/dev/null \
-    | grep -Ev '/(mutants|outcomes)\.json$' | sort | tail -1 || true)
-  if [ -n "${summary_json}" ] && [ -f "${summary_json}" ]; then
-    label=$(jq -r '.result_label // empty' "${summary_json}" 2>/dev/null || true)
-    scope=$(jq -r '.examine_scope // empty' "${summary_json}" 2>/dev/null || true)
-    if [ "${label}" = "PARTIAL" ] && [ -z "${partial}" ]; then
-      if [ -n "${scope}" ]; then
-        surface_label=" (PARTIAL surface: ${scope})"
-      else
-        surface_label=" (PARTIAL surface)"
-      fi
+
+  if [ -z "${partial_label}" ]; then
+    # Fall back to count-based detection from mutants.json length when
+    # no summary JSON is available or it didn't carry a result_label.
+    expected=$(jq 'length' "${out_dir}/mutants.json" 2>/dev/null || echo 0)
+    expected=${expected:-0}
+    if [ "${expected}" -gt 0 ] && [ "${n}" -lt "${expected}" ]; then
+      partial_label="PARTIAL"
+      partial_detail="${n}/${expected}"
     fi
   fi
+
+  partial=""
+  if [ -n "${partial_label}" ]; then
+    if [ -n "${partial_detail}" ]; then
+      partial=" (${partial_label} ${partial_detail})"
+    else
+      partial=" (${partial_label})"
+    fi
+  fi
+
   if [ "${denom}" -gt 0 ]; then
     rate=$(awk "BEGIN { printf \"%.1f\", (${c} / ${denom}) * 100 }")
-    printf "| \`%s\` | %d%s%s | %d | %d | %d | %d | **%s%%** |\n" \
-      "${crate}" "${n}" "${partial}" "${surface_label}" "${c}" "${m}" "${t}" "${u}" "${rate}"
+    printf "| \`%s\` | %d%s | %d | %d | %d | %d | **%s%%** |\n" \
+      "${crate}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}" "${rate}"
   else
-    printf "| \`%s\` | %d%s%s | %d | %d | %d | %d | **n/a (no viable mutants tested)** |\n" \
-      "${crate}" "${n}" "${partial}" "${surface_label}" "${c}" "${m}" "${t}" "${u}"
+    printf "| \`%s\` | %d%s | %d | %d | %d | %d | **n/a (no viable mutants tested)** |\n" \
+      "${crate}" "${n}" "${partial}" "${c}" "${m}" "${t}" "${u}"
   fi
   total_c=$((total_c + c))
   total_m=$((total_m + m))

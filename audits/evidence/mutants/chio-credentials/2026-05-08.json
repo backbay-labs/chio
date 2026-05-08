@@ -38,5 +38,6 @@
     "crates/chio-credentials/src/lib.rs:57:12: replace == with != in is_supported_passport_schema",
     "crates/chio-credentials/src/lib.rs:57:41: replace == with != in is_supported_passport_schema",
     "crates/chio-credentials/src/lib.rs:61:5: replace is_supported_passport_verifier_policy_schema -> bool with true"
-  ]
+  ],
+  "target_met": false
 }
