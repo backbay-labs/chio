@@ -108,6 +108,12 @@ base64 = { workspace = true }
 coset = { workspace = true }
 jsonwebtoken = { workspace = true }
 sha2 = { workspace = true }
+# TRJ5-C2: c2_bilateral_invocation_verifier_17_step.rs hex-encodes a
+# canonical-JSON SHA-256 to populate the predicate's
+# governance_receipt_ref.digest field; the workspace-pinned `hex` crate
+# matches what `chio-federation::bilateral_dsse` already uses on the
+# producer side, so the two encodings are identical.
+hex = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 # M05.P5.T3: threat-model coverage tests load curated adversarial
 # vectors and assert each of the six initial threat IDs is backed

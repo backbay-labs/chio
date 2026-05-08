@@ -460,3 +460,130 @@ pub fn co_sign_with_origin_full(
         dsse_envelope,
     })
 }
+
+// ---------------------------------------------------------------------------
+// TRJ5-C2: bilateral invocation flow + §7 17-step verifier integration
+// ---------------------------------------------------------------------------
+
+/// **TRJ5-C2:** Single-call bilateral co-signed invocation request. Bundles
+/// the two kernels' identities and signing keys, the receipt the agent
+/// produced for the invocation, and the §5 predicate extensions
+/// (`capability_lease_ref`, `policy_evaluation_summary`, etc.) that the
+/// §7 17-step verifier requires.
+///
+/// Both kernel keypairs are owned locally because the trj5 hot path
+/// runs the bilateral demo in-process (Lane C); a cross-host
+/// `BilateralCoSigningProtocol` is queued for trj6.
+pub struct BilateralInvocationRequest<'a> {
+    /// `did:chio` identifier of the origin kernel (Org A).
+    pub origin_kernel_id: &'a str,
+    /// Origin kernel's signing keypair.
+    pub origin_keypair: &'a Keypair,
+    /// `did:chio` identifier of the tool-host kernel (Org B).
+    pub tool_host_kernel_id: &'a str,
+    /// Tool-host kernel's signing keypair.
+    pub tool_host_keypair: &'a Keypair,
+    /// Receipt the agent produced for the invocation. Both kernels'
+    /// signatures bind the canonical-JSON of this body.
+    pub receipt: ChioReceipt,
+    /// Tool name as exposed by both kernels. Typically equals
+    /// `receipt.tool_name`.
+    pub tool_name: &'a str,
+    /// Org B's wall-clock at predicate canonicalisation (Unix ms).
+    pub timestamp_unix_ms: u64,
+    /// §5 predicate extensions; the §7 verifier requires
+    /// `capability_lease_ref` and `policy_evaluation_summary` to be
+    /// present, otherwise verification fails-closed at step 13/14.
+    pub predicate_extensions: crate::bilateral_dsse::BilateralPredicateExtensions,
+    /// Cosigner driving the legacy DualSignedReceipt hop. Production
+    /// kernels supply a `BilateralCoSigningProtocol` over an mTLS-backed
+    /// RPC client; demos use [`InProcessCoSigner`].
+    pub cosigner: &'a dyn BilateralCoSigningProtocol,
+}
+
+/// **TRJ5-C2:** Successful output of [`execute_bilateral_invocation`].
+/// Carries both signed artifacts plus the verified §7 step-17 record.
+#[derive(Debug, Clone)]
+pub struct BilateralInvocationOutcome {
+    /// Legacy + §6 artifacts produced by the hot path.
+    pub artifacts: BilateralCoSignArtifacts,
+    /// §7 step 17 verifier output. Constructed by running the full
+    /// 17-step protocol against the freshly-signed envelope.
+    pub verified: crate::bilateral_verifier::VerifiedBilateralCoSignInvocation,
+}
+
+/// Errors surfaced by [`execute_bilateral_invocation`]. Distinct from
+/// [`BilateralCoSigningError`] because the verifier's spec §7.1 codes
+/// have their own taxonomy; the helper folds both surfaces into one
+/// kernel-boundary result.
+#[derive(Debug, thiserror::Error)]
+pub enum BilateralInvocationError {
+    /// The signing path failed before the verifier ran.
+    #[error("co-signing failed: {0}")]
+    CoSigning(#[from] BilateralCoSigningError),
+    /// The §7 17-step verifier rejected the freshly-signed envelope.
+    #[error("§7 verifier rejected envelope: {0}")]
+    Verifier(#[from] crate::bilateral_verifier::VerifierError),
+}
+
+/// **TRJ5-C2:** End-to-end bilateral co-signed invocation, including
+/// the §7 17-step verifier check.
+///
+/// 1. Drives [`co_sign_with_origin_full`] to produce the
+///    [`BilateralCoSignArtifacts`] (legacy [`DualSignedReceipt`] +
+///    §6-conformant DSSE envelope) but layered with the
+///    [`crate::bilateral_dsse::BilateralPredicateExtensions`] (lease ref,
+///    policy summary, etc.) the verifier needs.
+/// 2. Runs the §7 17-step verifier from
+///    [`crate::bilateral_verifier::verify_bilateral_cosign_invocation`]
+///    against the just-emitted envelope. The verifier resolves the
+///    receipt store, lease registry, governance store, and revocation
+///    oracle the kernel passes in.
+/// 3. Returns the artifacts + the verifier's step-17 output, or fails
+///    closed with a `BilateralInvocationError` carrying either the
+///    co-signing error or the verifier's spec §7.1 code.
+///
+/// This is the kernel-boundary surface the chiodome demo executes; the
+/// bilateral_invocation example wires it end-to-end.
+pub fn execute_bilateral_invocation(
+    request: BilateralInvocationRequest<'_>,
+    verifier_config: &crate::bilateral_verifier::VerifierConfig<'_>,
+) -> Result<BilateralInvocationOutcome, BilateralInvocationError> {
+    // Step 1: legacy DualSignedReceipt hop (drives the cosigner) +
+    // §6-conformant envelope with predicate extensions.
+    let dual = co_sign_with_origin(
+        request.origin_kernel_id,
+        &request.origin_keypair.public_key(),
+        request.tool_host_kernel_id,
+        request.tool_host_keypair,
+        request.receipt.clone(),
+        request.cosigner,
+    )?;
+
+    let dsse_envelope = crate::bilateral_dsse::sign_dsse_envelope_full(
+        &request.receipt,
+        request.origin_keypair,
+        request.tool_host_keypair,
+        request.origin_kernel_id,
+        request.tool_host_kernel_id,
+        request.tool_name,
+        request.timestamp_unix_ms,
+        request.predicate_extensions,
+    )?;
+
+    let artifacts = BilateralCoSignArtifacts {
+        dual_signed_receipt: dual,
+        dsse_envelope,
+    };
+
+    // Step 2: §7 17-step verifier.
+    let verified = crate::bilateral_verifier::verify_bilateral_cosign_invocation(
+        &artifacts.dsse_envelope,
+        verifier_config,
+    )?;
+
+    Ok(BilateralInvocationOutcome {
+        artifacts,
+        verified,
+    })
+}

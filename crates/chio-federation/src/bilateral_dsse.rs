@@ -186,6 +186,18 @@ pub struct KernelIdentity {
 /// capability_lease_ref, etc.); trj5 emits the load-bearing subset
 /// required by the §7 verification path on the federation hop. See module
 /// docs for the bounded scope.
+///
+/// **TRJ5-C2 extension:** the §7 17-step verifier requires
+/// `capability_lease_ref` (step 14), `policy_evaluation_summary` (step 13),
+/// and optionally `governance_receipt_ref` (step 15) and
+/// `consistency_anchor` (step 16). Those fields are added here as
+/// `Option`-typed entries with `skip_serializing_if`, so envelopes
+/// produced by B4's narrower hot path remain wire-compatible: an
+/// envelope without them serialises to bytes byte-for-byte identical
+/// to the B4 era. Verifiers requiring step-14/15/16 conformance MUST
+/// reject envelopes whose predicate omits the corresponding field
+/// (codes `capability.lease_expired_or_unknown`,
+/// `governance.receipt_required_missing`, `consistency.anchor_unverified`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct BilateralPredicate {
@@ -220,6 +232,116 @@ pub struct BilateralPredicate {
     /// external pointer (mirroring the existing `CoSigningBody`
     /// `receipt_canonical_json` pattern).
     pub receipt_canonical_json: String,
+    /// **TRJ5-C2:** capability lease reference, per spec §5 lines
+    /// 180-204. The §7 step 14 verifier requires this field for
+    /// fail-closed lease-expiry enforcement. Optional in B4, required
+    /// at the C2 verifier (a missing field maps to
+    /// `capability.lease_expired_or_unknown`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_lease_ref: Option<CapabilityLeaseRef>,
+    /// **TRJ5-C2:** policy evaluation summary, per spec §5 lines
+    /// 205-220. Carries each kernel's verdict and (optionally) the
+    /// joint disposition; the §7 step 13 verifier requires both
+    /// verdicts to agree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_evaluation_summary: Option<PolicyEvaluationSummary>,
+    /// **TRJ5-C2:** governance receipt reference, per spec §5 lines
+    /// 221-244. REQUIRED only when the local ladder declares the
+    /// action-class `receipt-backed` (§7 step 15).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governance_receipt_ref: Option<GovernanceReceiptRef>,
+    /// **TRJ5-C2:** consistency anchor selector, per spec §5 lines
+    /// 254-258. REQUIRED for `totally-ordered` and `quorum-required`
+    /// consistency models (§7 step 16). Optional for
+    /// `crdt-commutative` (the trj5 hot-path default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consistency_anchor: Option<String>,
+}
+
+/// Capability lease reference, per spec §5 (`capability_lease_ref`).
+/// Carries the lease id, issuing kernel, and an absolute Unix-ms
+/// expiry that the §7 step 14 verifier compares against the verifier's
+/// pinned-epoch wall clock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct CapabilityLeaseRef {
+    /// Globally-unique lease id. The verifier (step 14) MUST resolve
+    /// this against a trusted lease registry; an unresolvable id
+    /// fails-closed with `capability.lease_expired_or_unknown`.
+    pub lease_id: String,
+    /// `did:chio` identifier of the kernel that minted the lease. Step
+    /// 14 verifies the resolved registry record's issuer matches.
+    pub issuer: String,
+    /// Absolute lease expiry in Unix milliseconds. Step 14 enforces
+    /// `expires_at_unix_ms > pinned_epoch.now`; a non-strictly-greater
+    /// value is rejected as expired.
+    pub expires_at_unix_ms: u64,
+    /// Optional SHA-256 of the canonical-JSON encoding of the
+    /// capability scope (`{"alg":"sha256","value":"..."}`). When
+    /// present the registry record's scope digest MUST match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_digest: Option<HashRecord>,
+}
+
+/// SHA-256 hash record (`{"alg":"sha256","value":"<hex>"}`) used by
+/// `tool_args_hash`, `capability_lease_ref.scope_digest`, and
+/// `governance_receipt_ref.digest` per spec §5.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct HashRecord {
+    /// MUST be `"sha256"` for trj5 envelopes.
+    pub alg: String,
+    /// Hex-lowercase 64-character SHA-256.
+    pub value: String,
+}
+
+/// Single kernel's policy verdict, per spec §5 (`policyVerdict`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct PolicyVerdict {
+    /// `"allow"` or `"deny"`. Step 13 of the §7 verifier requires the
+    /// two kernels' verdicts to be equal.
+    pub verdict: String,
+    /// Identifier of the policy that produced the verdict.
+    pub policy_id: String,
+    /// Version of the policy (e.g. `"v1.2.0"` or a content hash).
+    pub policy_version: String,
+    /// Optional rationale code (verifier-opaque; logged for audit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale_code: Option<String>,
+}
+
+/// Joint policy evaluation summary covering both kernels, per spec
+/// §5 (`policy_evaluation_summary`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct PolicyEvaluationSummary {
+    /// Org A (origin kernel) policy verdict.
+    pub server_a_verdict: PolicyVerdict,
+    /// Org B (tool-host kernel) policy verdict.
+    pub server_b_verdict: PolicyVerdict,
+    /// Joint disposition; spec §5 line 213 says it MUST equal `"allow"`
+    /// only when both verdicts are `"allow"`. Optional on the wire so
+    /// callers that haven't computed it can still emit a predicate;
+    /// the §7 step 13 verifier still cross-checks the two
+    /// `server_*_verdict` strings directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_disposition: Option<String>,
+}
+
+/// Governance receipt reference, per spec §5 (`governance_receipt_ref`).
+/// REQUIRED when the action-class is declared `receipt-backed` in the
+/// local ladder manifest (§7 step 15).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct GovernanceReceiptRef {
+    /// Globally-unique receipt id. The verifier (step 15) resolves
+    /// this against a governance receipt store.
+    pub receipt_id: String,
+    /// `did:chio` identifier of the kernel that issued the receipt.
+    pub kernel_id: String,
+    /// SHA-256 of the canonical-JSON of the resolved receipt body.
+    pub digest: HashRecord,
 }
 
 /// In-toto Statement carried inside the DSSE envelope's `payload` (after
@@ -356,6 +478,11 @@ pub fn pae(payload_type: &str, payload: &[u8]) -> Vec<u8> {
 /// Build a `BilateralPredicate` from a receipt and the two participating
 /// kernels' identities. Used by both the local sign path and the
 /// in-process verifier under test.
+///
+/// Emits the B4 narrow predicate (no `capability_lease_ref`,
+/// `policy_evaluation_summary`, `governance_receipt_ref`, or
+/// `consistency_anchor`). Trj5 C2 callers that need a §7-17-step
+/// conformant predicate MUST use [`build_predicate_full`] instead.
 pub fn build_predicate(
     receipt: &ChioReceipt,
     org_a: KernelIdentity,
@@ -378,7 +505,62 @@ pub fn build_predicate(
         cross_org_visibility: DEFAULT_CROSS_ORG_VISIBILITY.to_string(),
         timestamp_unix_ms,
         receipt_canonical_json,
+        capability_lease_ref: None,
+        policy_evaluation_summary: None,
+        governance_receipt_ref: None,
+        consistency_anchor: None,
     })
+}
+
+/// Optional fields a TRJ5-C2 caller layers onto the B4 narrow predicate
+/// to satisfy the §7 17-step verifier. Each field corresponds to a
+/// verifier step that fails-closed on a missing value.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BilateralPredicateExtensions {
+    /// Spec §5 `capability_lease_ref`; required by §7 step 14.
+    pub capability_lease_ref: Option<CapabilityLeaseRef>,
+    /// Spec §5 `policy_evaluation_summary`; required by §7 step 13.
+    pub policy_evaluation_summary: Option<PolicyEvaluationSummary>,
+    /// Spec §5 `governance_receipt_ref`; required by §7 step 15 when
+    /// the action-class is `receipt-backed`.
+    pub governance_receipt_ref: Option<GovernanceReceiptRef>,
+    /// Spec §5 `consistency_anchor`; required by §7 step 16 for
+    /// non-`crdt-commutative` consistency models.
+    pub consistency_anchor: Option<String>,
+    /// Override `consistency_model`. None = `DEFAULT_CONSISTENCY_MODEL`
+    /// (`crdt-commutative`).
+    pub consistency_model: Option<String>,
+    /// Override `cross_org_visibility`. None =
+    /// `DEFAULT_CROSS_ORG_VISIBILITY` (`federated`).
+    pub cross_org_visibility: Option<String>,
+}
+
+/// **TRJ5-C2:** Build a §7-17-step-conformant predicate from a receipt
+/// and the optional extensions. Mirrors [`build_predicate`] but layers
+/// in the `capability_lease_ref`, `policy_evaluation_summary`,
+/// `governance_receipt_ref`, and `consistency_anchor` fields so the
+/// resulting envelope verifies under
+/// `crate::bilateral_verifier::verify_bilateral_cosign_invocation`.
+pub fn build_predicate_full(
+    receipt: &ChioReceipt,
+    org_a: KernelIdentity,
+    org_b: KernelIdentity,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+    extensions: BilateralPredicateExtensions,
+) -> Result<BilateralPredicate, BilateralCoSigningError> {
+    let mut predicate = build_predicate(receipt, org_a, org_b, tool_name, timestamp_unix_ms)?;
+    if let Some(model) = extensions.consistency_model {
+        predicate.consistency_model = model;
+    }
+    if let Some(vis) = extensions.cross_org_visibility {
+        predicate.cross_org_visibility = vis;
+    }
+    predicate.capability_lease_ref = extensions.capability_lease_ref;
+    predicate.policy_evaluation_summary = extensions.policy_evaluation_summary;
+    predicate.governance_receipt_ref = extensions.governance_receipt_ref;
+    predicate.consistency_anchor = extensions.consistency_anchor;
+    Ok(predicate)
 }
 
 /// Build the in-toto Statement carrying the bilateral predicate.
@@ -428,12 +610,43 @@ pub fn sign_dsse_envelope(
     tool_name: &str,
     timestamp_unix_ms: u64,
 ) -> Result<DsseEnvelope, BilateralCoSigningError> {
+    sign_dsse_envelope_full(
+        receipt,
+        org_a_keypair,
+        org_b_keypair,
+        org_a_kernel_id,
+        org_b_kernel_id,
+        tool_name,
+        timestamp_unix_ms,
+        BilateralPredicateExtensions::default(),
+    )
+}
+
+/// **TRJ5-C2:** sign a §6-conformant DSSE envelope with the spec §5
+/// predicate extensions required by the §7 17-step verifier.
+///
+/// Wraps [`sign_dsse_envelope`] (which signs the B4 narrow predicate) by
+/// layering in `capability_lease_ref`, `policy_evaluation_summary`,
+/// `governance_receipt_ref`, and `consistency_anchor` per
+/// `BilateralPredicateExtensions`. The resulting envelope verifies
+/// under [`crate::bilateral_verifier::verify_bilateral_cosign_invocation`].
+#[allow(clippy::too_many_arguments)]
+pub fn sign_dsse_envelope_full(
+    receipt: &ChioReceipt,
+    org_a_keypair: &Keypair,
+    org_b_keypair: &Keypair,
+    org_a_kernel_id: &str,
+    org_b_kernel_id: &str,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+    extensions: BilateralPredicateExtensions,
+) -> Result<DsseEnvelope, BilateralCoSigningError> {
     let org_a_pub = org_a_keypair.public_key();
     let org_b_pub = org_b_keypair.public_key();
     let org_a_keyid = Keyid::from_public_key(&org_a_pub);
     let org_b_keyid = Keyid::from_public_key(&org_b_pub);
 
-    let predicate = build_predicate(
+    let predicate = build_predicate_full(
         receipt,
         KernelIdentity {
             kernel_id: org_a_kernel_id.to_string(),
@@ -447,6 +660,7 @@ pub fn sign_dsse_envelope(
         },
         tool_name,
         timestamp_unix_ms,
+        extensions,
     )?;
 
     let statement = build_statement(receipt, predicate)?;

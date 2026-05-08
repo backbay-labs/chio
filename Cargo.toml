@@ -124,6 +124,7 @@ members = [
     "crates/chio-spec-validate",
     #
     # Examples
+    "examples/bilateral-invocation",
     "examples/cross-provider-policy",
     "examples/guards/enriched-inspector",
     "examples/guards/tool-gate",

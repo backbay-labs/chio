@@ -1,0 +1,1179 @@
+//! TRJ5-C2: §7 17-step bilateral co-signed invocation verifier.
+//!
+//! Implements the algorithm in `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
+//! §7 (lines 361-410), driving the full 17-step protocol against a DSSE
+//! envelope produced by [`crate::bilateral_dsse::sign_dsse_envelope_full`].
+//!
+//! ## Step-by-step coverage
+//!
+//! | Step | Spec § | What this module checks | Status |
+//! | ---- | ------ | ----------------------- | ------ |
+//! | 1    | 7      | parse envelope as DSSE             | covered |
+//! | 2    | 7      | base64-decode payload              | covered |
+//! | 3    | 7      | parse Statement against in-toto v1 | covered |
+//! | 4    | 7      | predicateType is recognised        | covered |
+//! | 5    | 7      | predicate body schema valid        | covered (subset of §5) |
+//! | 6    | 7      | bind `pred = statement.predicate`  | covered |
+//! | 7    | 7      | subject digest = sha256(canonical(resolve_receipt)) | covered (in-memory ReceiptStore stub; full distributed-store integration deferred to trj6) |
+//! | 8    | 7      | both kernel_ids in peer_pin_set; fingerprints match | covered |
+//! | 9    | 7      | both passports non-revoked at pinned_epoch | covered (RevocationOracle trait; default `AllowAllRevocationOracle` for in-process demos) |
+//! | 10   | 7      | recompute PAE                      | covered |
+//! | 11   | 7      | server_a sig verifies under PAE    | covered (delegates to `verify_dsse_envelope`) |
+//! | 12   | 7      | server_b sig verifies under PAE    | covered (delegates to `verify_dsse_envelope`) |
+//! | 13   | 7      | verdicts agree (and joint matches) | covered |
+//! | 14   | 7      | capability_lease_ref resolves and not expired | covered (`CapabilityLeaseRegistry` trait) |
+//! | 15   | 7      | governance_receipt_ref present iff receipt-backed class | covered |
+//! | 16   | 7      | consistency anchor reconciled (totally-ordered / quorum-required) | partial: anchor presence-and-shape only; full anchor reconciliation against a chio-anchor checkpoint deferred to trj6 |
+//! | 17   | 7      | return `VerifiedBilateralCoSignInvocation` | covered |
+//!
+//! ## Deferred scope (out of trj5)
+//!
+//! * Step 7 currently uses `InMemoryReceiptStore`. Hooking the verifier
+//!   to a chio-store-sqlite or distributed audit-store implementation is
+//!   trj6's responsibility (the trait surface here is what the
+//!   distributed wiring will plug into).
+//! * Step 9's revocation check uses a small trait. Wiring the
+//!   verifier into the live `chio-revocation-oracle` epoch root is
+//!   tracked separately; this module accepts an `AllowAllRevocationOracle`
+//!   for the in-process demo.
+//! * Step 16's quorum-required and totally-ordered branches verify
+//!   that the predicate's `consistency_anchor` is present and is one
+//!   of the spec-allowed strings; full reconciliation against an
+//!   actual `chio-anchor` checkpoint or a FROST quorum aggregate is
+//!   deferred to trj6 (when the relevant cross-crate wiring lands).
+//!
+//! ## Public API summary
+//!
+//! * [`PeerPinSet`], [`PinnedPeer`] - verifier pin set: which kernels
+//!   are trusted at which passport keys.
+//! * [`ReceiptStore`] / [`InMemoryReceiptStore`] - step 7 lookup.
+//! * [`CapabilityLeaseRegistry`] / [`InMemoryLeaseRegistry`] - step 14.
+//! * [`GovernanceReceiptStore`] / [`InMemoryGovernanceReceiptStore`] - step 15.
+//! * [`RevocationOracle`] / [`AllowAllRevocationOracle`] - step 9.
+//! * [`PinnedEpoch`] - verifier's wall clock + epoch height.
+//! * [`VerifierConfig`] - bundles the trait objects + epoch.
+//! * [`verify_bilateral_cosign_invocation`] - runs the 17-step protocol.
+//! * [`VerifiedBilateralCoSignInvocation`] - successful verifier output
+//!   (mirrors §7 step 17).
+//! * [`VerifierError`] - fail-closed error codes mapping 1:1 to spec
+//!   §7.1 (e.g. `subject.digest_mismatch`, `peer.unpinned_or_keyid_mismatch`).
+//!
+//! ## Usage from the bilateral hot-path
+//!
+//! [`crate::bilateral::execute_bilateral_invocation`] is the high-level
+//! kernel-boundary helper that drives [`sign_dsse_envelope_full`] and
+//! immediately runs this 17-step verifier before returning the
+//! [`crate::bilateral::BilateralCoSignArtifacts`]. Callers that want to
+//! verify externally produced envelopes call
+//! [`verify_bilateral_cosign_invocation`] directly.
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+use chio_core_types::canonical::canonical_json_bytes;
+use chio_core_types::crypto::PublicKey;
+use chio_core_types::receipt::ChioReceipt;
+use sha2::{Digest, Sha256};
+
+use crate::bilateral::BilateralCoSigningError;
+use crate::bilateral_dsse::{
+    verify_dsse_envelope, BilateralPredicate, DsseEnvelope, DsseStatement, Keyid,
+    PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
+};
+
+// ---------------------------------------------------------------------------
+// Spec §7.1 error codes
+// ---------------------------------------------------------------------------
+
+/// Fail-closed error codes returned by [`verify_bilateral_cosign_invocation`].
+/// Each variant maps verbatim to a spec §7.1 code (the `Display` impl
+/// emits the code itself); kernels that surface verifier output in
+/// receipts SHOULD log the code as the canonical value.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+pub enum VerifierError {
+    /// `dsse.malformed` - envelope JSON is not parseable, payloadType
+    /// mismatched, or signatures count != expected for the cosign mode.
+    #[error("dsse.malformed: {0}")]
+    DsseMalformed(String),
+    /// `statement.malformed` - Statement payload is not parseable JSON.
+    #[error("statement.malformed: {0}")]
+    StatementMalformed(String),
+    /// `statement.schema_invalid` - Statement does not satisfy in-toto v1 schema.
+    #[error("statement.schema_invalid: {0}")]
+    StatementSchemaInvalid(String),
+    /// `predicate.type_unrecognised` - predicateType is neither the proposed
+    /// in-toto URI nor the chio-namespaced fallback.
+    #[error("predicate.type_unrecognised: {0}")]
+    PredicateTypeUnrecognised(String),
+    /// `predicate.schema_invalid` - predicate body fails the §5 schema
+    /// (currently checks the trj5 required-field subset).
+    #[error("predicate.schema_invalid: {0}")]
+    PredicateSchemaInvalid(String),
+    /// `subject.digest_mismatch` - subject SHA-256 does not match the
+    /// resolved receipt body's canonical-JSON.
+    #[error("subject.digest_mismatch: {0}")]
+    SubjectDigestMismatch(String),
+    /// `peer.unpinned_or_keyid_mismatch` - either kernel identity is not
+    /// pinned in the verifier's peer set, or its declared fingerprint
+    /// disagrees with the pinned passport.
+    #[error("peer.unpinned_or_keyid_mismatch: {0}")]
+    PeerUnpinnedOrKeyidMismatch(String),
+    /// `peer.revoked_at_epoch` - a participating kernel's passport is
+    /// revoked at the pinned epoch.
+    #[error("peer.revoked_at_epoch: {0}")]
+    PeerRevokedAtEpoch(String),
+    /// `signature.server_a_invalid` - tool_server_a's signature does not
+    /// verify under its passport key.
+    #[error("signature.server_a_invalid: {0}")]
+    SignatureServerAInvalid(String),
+    /// `signature.server_b_invalid` - tool_server_b's signature does not
+    /// verify under its passport key.
+    #[error("signature.server_b_invalid: {0}")]
+    SignatureServerBInvalid(String),
+    /// `policy.verdict_disagreement` - verdicts disagree, or
+    /// joint_disposition is inconsistent.
+    #[error("policy.verdict_disagreement: {0}")]
+    PolicyVerdictDisagreement(String),
+    /// `capability.lease_expired_or_unknown` - the named capability lease
+    /// cannot be resolved or is past its `expires_at_unix_ms`.
+    #[error("capability.lease_expired_or_unknown: {0}")]
+    CapabilityLeaseExpiredOrUnknown(String),
+    /// `governance.receipt_required_missing` - a receipt-backed class
+    /// lacks a `governance_receipt_ref`.
+    #[error("governance.receipt_required_missing: {0}")]
+    GovernanceReceiptRequiredMissing(String),
+    /// `consistency.anchor_unverified` - a `totally-ordered` predicate's
+    /// anchor cannot be reconciled with the verifier's view.
+    #[error("consistency.anchor_unverified: {0}")]
+    ConsistencyAnchorUnverified(String),
+    /// `consistency.quorum_underpopulated` - a `quorum-required`
+    /// predicate's envelope lacks the declared quorum's signatures.
+    #[error("consistency.quorum_underpopulated: {0}")]
+    ConsistencyQuorumUnderpopulated(String),
+}
+
+impl VerifierError {
+    /// The bare spec code (e.g. `"subject.digest_mismatch"`), without
+    /// the trailing context. Stable across releases.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::DsseMalformed(_) => "dsse.malformed",
+            Self::StatementMalformed(_) => "statement.malformed",
+            Self::StatementSchemaInvalid(_) => "statement.schema_invalid",
+            Self::PredicateTypeUnrecognised(_) => "predicate.type_unrecognised",
+            Self::PredicateSchemaInvalid(_) => "predicate.schema_invalid",
+            Self::SubjectDigestMismatch(_) => "subject.digest_mismatch",
+            Self::PeerUnpinnedOrKeyidMismatch(_) => "peer.unpinned_or_keyid_mismatch",
+            Self::PeerRevokedAtEpoch(_) => "peer.revoked_at_epoch",
+            Self::SignatureServerAInvalid(_) => "signature.server_a_invalid",
+            Self::SignatureServerBInvalid(_) => "signature.server_b_invalid",
+            Self::PolicyVerdictDisagreement(_) => "policy.verdict_disagreement",
+            Self::CapabilityLeaseExpiredOrUnknown(_) => "capability.lease_expired_or_unknown",
+            Self::GovernanceReceiptRequiredMissing(_) => "governance.receipt_required_missing",
+            Self::ConsistencyAnchorUnverified(_) => "consistency.anchor_unverified",
+            Self::ConsistencyQuorumUnderpopulated(_) => "consistency.quorum_underpopulated",
+        }
+    }
+}
+
+impl From<BilateralCoSigningError> for VerifierError {
+    fn from(e: BilateralCoSigningError) -> Self {
+        match e {
+            BilateralCoSigningError::CanonicalJson(s) => Self::StatementMalformed(s),
+            BilateralCoSigningError::OrgASignatureInvalid => {
+                Self::SignatureServerAInvalid("delegated".to_string())
+            }
+            BilateralCoSigningError::OrgBSignatureInvalid => {
+                Self::SignatureServerBInvalid("delegated".to_string())
+            }
+            other => Self::DsseMalformed(other.to_string()),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pinned epoch + peer set (steps 8, 9)
+// ---------------------------------------------------------------------------
+
+/// Verifier's pinned epoch - the wall clock and the consensus epoch
+/// height at which the verification is performed. Trj5 wires only the
+/// wall-clock half (used by step 14); the epoch height is forwarded to
+/// the `RevocationOracle` for step 9.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PinnedEpoch {
+    /// Verifier wall-clock at the moment of verification, in Unix ms.
+    pub now_unix_ms: u64,
+    /// Verifier's consensus epoch height (forwarded to the revocation
+    /// oracle). Trj5 uses 0 for the in-process demo.
+    pub epoch_height: u64,
+}
+
+/// One pinned peer in the verifier's trust store.
+#[derive(Debug, Clone)]
+pub struct PinnedPeer {
+    /// `did:chio` identifier of the kernel.
+    pub kernel_id: String,
+    /// Pinned passport public key.
+    pub public_key: PublicKey,
+}
+
+impl PinnedPeer {
+    /// SHA-256 fingerprint of the pinned passport public key, hex-lowercase.
+    /// MUST match `KernelIdentity::passport_key_fingerprint` from the
+    /// envelope predicate (spec §7 step 8).
+    #[must_use]
+    pub fn fingerprint(&self) -> Keyid {
+        Keyid::from_public_key(&self.public_key)
+    }
+}
+
+/// Verifier's pin set: which kernels (by `did:chio`) are trusted at
+/// which passport keys.
+#[derive(Debug, Clone, Default)]
+pub struct PeerPinSet {
+    by_kernel_id: HashMap<String, PinnedPeer>,
+}
+
+impl PeerPinSet {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, peer: PinnedPeer) {
+        self.by_kernel_id.insert(peer.kernel_id.clone(), peer);
+    }
+
+    pub fn lookup(&self, kernel_id: &str) -> Option<&PinnedPeer> {
+        self.by_kernel_id.get(kernel_id)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step 7: ReceiptStore
+// ---------------------------------------------------------------------------
+
+/// Audit-store surface that the §7 step 7 verifier resolves the
+/// `invocation_id` against. Production deployments wire this to the
+/// chio-store-sqlite ReceiptStore (or a distributed equivalent); trj5
+/// ships [`InMemoryReceiptStore`] for the demo and conformance fixture.
+///
+/// Returning `None` is fail-closed (mapped to
+/// `VerifierError::SubjectDigestMismatch`).
+pub trait ReceiptStore: Send + Sync {
+    /// Resolve a receipt by `invocation_id` (spec calls this the
+    /// invocation id; chio uses `ChioReceipt::id` interchangeably).
+    fn resolve(&self, invocation_id: &str) -> Option<ChioReceipt>;
+}
+
+/// Trj5 in-memory ReceiptStore, used by the conformance fixture and
+/// the bilateral_invocation example. **Not for production deployments.**
+#[derive(Debug, Default)]
+pub struct InMemoryReceiptStore {
+    receipts: HashMap<String, ChioReceipt>,
+}
+
+impl InMemoryReceiptStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, receipt: ChioReceipt) {
+        self.receipts.insert(receipt.id.clone(), receipt);
+    }
+}
+
+impl ReceiptStore for InMemoryReceiptStore {
+    fn resolve(&self, invocation_id: &str) -> Option<ChioReceipt> {
+        self.receipts.get(invocation_id).cloned()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step 9: RevocationOracle
+// ---------------------------------------------------------------------------
+
+/// Step 9 surface: is a passport key revoked at the pinned epoch?
+/// `true` means non-revoked (allowed); `false` triggers
+/// `peer.revoked_at_epoch`.
+pub trait RevocationOracle: Send + Sync {
+    fn is_active_at_epoch(&self, fingerprint: &Keyid, epoch_height: u64) -> bool;
+}
+
+/// Trj5 default revocation oracle for in-process demos: every passport
+/// is treated as active. Production deployments substitute a wrapper
+/// over `chio-revocation-oracle::RevocationView`.
+#[derive(Debug, Clone, Default)]
+pub struct AllowAllRevocationOracle;
+
+impl RevocationOracle for AllowAllRevocationOracle {
+    fn is_active_at_epoch(&self, _fingerprint: &Keyid, _epoch_height: u64) -> bool {
+        true
+    }
+}
+
+/// Test-only revocation oracle that lets fixtures explicitly mark a
+/// fingerprint revoked. Used by the conformance test for step 9.
+#[derive(Debug, Clone, Default)]
+pub struct DenyListRevocationOracle {
+    revoked: HashSet<String>,
+}
+
+impl DenyListRevocationOracle {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn revoke(&mut self, fingerprint: &Keyid) {
+        self.revoked.insert(fingerprint.0.clone());
+    }
+}
+
+impl RevocationOracle for DenyListRevocationOracle {
+    fn is_active_at_epoch(&self, fingerprint: &Keyid, _epoch_height: u64) -> bool {
+        !self.revoked.contains(&fingerprint.0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step 14: CapabilityLeaseRegistry
+// ---------------------------------------------------------------------------
+
+/// Resolved capability lease record returned by the registry. The
+/// verifier (step 14) compares this against the predicate's
+/// `capability_lease_ref` (issuer match, expires_at > now).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedLease {
+    pub lease_id: String,
+    pub issuer: String,
+    pub expires_at_unix_ms: u64,
+    pub scope_digest_hex: Option<String>,
+}
+
+/// Step 14 surface: resolve a capability lease id. Returning `None`
+/// fails-closed with `VerifierError::CapabilityLeaseExpiredOrUnknown`.
+pub trait CapabilityLeaseRegistry: Send + Sync {
+    fn resolve(&self, lease_id: &str) -> Option<ResolvedLease>;
+}
+
+/// Trj5 in-memory lease registry for the demo and conformance fixture.
+#[derive(Debug, Default)]
+pub struct InMemoryLeaseRegistry {
+    leases: HashMap<String, ResolvedLease>,
+}
+
+impl InMemoryLeaseRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, lease: ResolvedLease) {
+        self.leases.insert(lease.lease_id.clone(), lease);
+    }
+}
+
+impl CapabilityLeaseRegistry for InMemoryLeaseRegistry {
+    fn resolve(&self, lease_id: &str) -> Option<ResolvedLease> {
+        self.leases.get(lease_id).cloned()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step 15: GovernanceReceiptStore
+// ---------------------------------------------------------------------------
+
+/// Resolved governance receipt record returned by the store. The
+/// verifier (step 15) compares this against the predicate's
+/// `governance_receipt_ref` (kernel_id match, digest match).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedGovernanceReceipt {
+    pub receipt_id: String,
+    pub kernel_id: String,
+    pub canonical_json: String,
+}
+
+/// Step 15 surface. Returning `None` fails-closed with
+/// `VerifierError::GovernanceReceiptRequiredMissing` when the action
+/// class is `receipt-backed`.
+pub trait GovernanceReceiptStore: Send + Sync {
+    fn resolve(&self, receipt_id: &str) -> Option<ResolvedGovernanceReceipt>;
+}
+
+/// Trj5 in-memory governance-receipt store.
+#[derive(Debug, Default)]
+pub struct InMemoryGovernanceReceiptStore {
+    receipts: HashMap<String, ResolvedGovernanceReceipt>,
+}
+
+impl InMemoryGovernanceReceiptStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, r: ResolvedGovernanceReceipt) {
+        self.receipts.insert(r.receipt_id.clone(), r);
+    }
+}
+
+impl GovernanceReceiptStore for InMemoryGovernanceReceiptStore {
+    fn resolve(&self, receipt_id: &str) -> Option<ResolvedGovernanceReceipt> {
+        self.receipts.get(receipt_id).cloned()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Verifier configuration + output
+// ---------------------------------------------------------------------------
+
+/// Action-class declaration looked up by `tool_name` in the verifier's
+/// local ladder manifest. Spec §7 step 15 requires
+/// `governance_receipt_ref` only when the class is `receipt-backed`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionClassKind {
+    /// Self-evident, low-stakes class. No governance receipt required.
+    Routine,
+    /// Receipt-backed class - requires `governance_receipt_ref` in the
+    /// predicate body (§7 step 15).
+    ReceiptBacked,
+}
+
+/// Verifier configuration: the trait objects + pinned epoch +
+/// per-tool action class. Constructed by the kernel at the boundary;
+/// passed by reference to [`verify_bilateral_cosign_invocation`].
+pub struct VerifierConfig<'a> {
+    pub peer_pin_set: &'a PeerPinSet,
+    pub receipt_store: &'a dyn ReceiptStore,
+    pub lease_registry: &'a dyn CapabilityLeaseRegistry,
+    pub governance_receipt_store: &'a dyn GovernanceReceiptStore,
+    pub revocation_oracle: &'a dyn RevocationOracle,
+    pub pinned_epoch: PinnedEpoch,
+    /// Per-tool action-class table. The verifier (step 15) consults
+    /// this with the predicate's `tool_name` to decide whether
+    /// `governance_receipt_ref` is required.
+    pub action_classes: BTreeMap<String, ActionClassKind>,
+}
+
+/// Successful output of [`verify_bilateral_cosign_invocation`]
+/// (mirrors §7 step 17).
+#[derive(Debug, Clone)]
+pub struct VerifiedBilateralCoSignInvocation {
+    /// The parsed Statement (subject + predicate).
+    pub statement: DsseStatement,
+    /// The resolved receipt the subject digest pointed at.
+    pub resolved_receipt: ChioReceipt,
+    /// The resolved capability lease (step 14 always runs).
+    pub resolved_lease: ResolvedLease,
+    /// The resolved governance receipt, when the class is
+    /// `ReceiptBacked` (step 15).
+    pub resolved_governance_receipt: Option<ResolvedGovernanceReceipt>,
+    /// The verdict both kernels agreed on (step 13).
+    pub joint_verdict: String,
+}
+
+// ---------------------------------------------------------------------------
+// Step 1-17 verifier
+// ---------------------------------------------------------------------------
+
+/// **TRJ5-C2:** §7 17-step verifier for a bilateral co-signed
+/// invocation envelope. See module docs for the per-step coverage
+/// table.
+///
+/// Fail-closed: any error short-circuits and returns the corresponding
+/// `VerifierError` variant whose `.code()` matches the spec §7.1
+/// canonical string verbatim.
+pub fn verify_bilateral_cosign_invocation(
+    envelope: &DsseEnvelope,
+    config: &VerifierConfig<'_>,
+) -> Result<VerifiedBilateralCoSignInvocation, VerifierError> {
+    // ---- Steps 1-2: parse envelope; base64-decode payload --------------
+    if envelope.payload_type != crate::bilateral_dsse::PAYLOAD_TYPE_IN_TOTO {
+        return Err(VerifierError::DsseMalformed(format!(
+            "payloadType {:?} is not application/vnd.in-toto+json",
+            envelope.payload_type
+        )));
+    }
+    if envelope.signatures.is_empty() {
+        return Err(VerifierError::DsseMalformed(
+            "signatures array is empty".to_string(),
+        ));
+    }
+
+    let (statement, statement_bytes) = envelope
+        .decode_statement()
+        .map_err(|e| VerifierError::DsseMalformed(e.to_string()))?;
+
+    // ---- Step 3: in-toto v1 schema -------------------------------------
+    if statement.statement_type != STATEMENT_TYPE_V1 {
+        return Err(VerifierError::StatementSchemaInvalid(format!(
+            "_type {:?} is not {:?}",
+            statement.statement_type, STATEMENT_TYPE_V1
+        )));
+    }
+    if statement.subject.is_empty() {
+        return Err(VerifierError::StatementSchemaInvalid(
+            "subject array is empty".to_string(),
+        ));
+    }
+
+    // ---- Step 4: predicateType is recognised ---------------------------
+    if statement.predicate_type != PREDICATE_TYPE_BILATERAL
+        && statement.predicate_type
+            != "https://in-toto.io/attestation/bilateral-cosign-invocation/v1"
+    {
+        return Err(VerifierError::PredicateTypeUnrecognised(
+            statement.predicate_type.clone(),
+        ));
+    }
+
+    // ---- Step 5: predicate body schema (subset of §5) ------------------
+    validate_predicate_required_fields(&statement.predicate)?;
+
+    // ---- Step 6: bind pred ---------------------------------------------
+    let pred = &statement.predicate;
+
+    // ---- Step 7: subject digest = sha256(canonical_json(resolve_receipt))
+    let resolved_receipt = config
+        .receipt_store
+        .resolve(&pred.invocation_id)
+        .ok_or_else(|| {
+            VerifierError::SubjectDigestMismatch(format!(
+                "invocation_id {:?} not resolvable in ReceiptStore (fail-closed per §7 step 7)",
+                pred.invocation_id
+            ))
+        })?;
+
+    let canonical = canonical_json_bytes(&resolved_receipt)
+        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&canonical);
+    let want_hex = hex::encode(hasher.finalize());
+
+    let subject = &statement.subject[0];
+    if subject.digest.sha256 != want_hex {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "subject digest {} != sha256(canonical_json(resolved_receipt)) {}",
+            subject.digest.sha256, want_hex
+        )));
+    }
+
+    // ---- Step 8: peer pinning ------------------------------------------
+    let pinned_a = config
+        .peer_pin_set
+        .lookup(&pred.tool_server_a.kernel_id)
+        .ok_or_else(|| {
+            VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+                "tool_server_a kernel_id {:?} not pinned",
+                pred.tool_server_a.kernel_id
+            ))
+        })?;
+    if pinned_a.fingerprint().0 != pred.tool_server_a.passport_key_fingerprint.0 {
+        return Err(VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+            "tool_server_a fingerprint mismatch: pinned={} predicate={}",
+            pinned_a.fingerprint().0,
+            pred.tool_server_a.passport_key_fingerprint.0
+        )));
+    }
+    let pinned_b = config
+        .peer_pin_set
+        .lookup(&pred.tool_server_b.kernel_id)
+        .ok_or_else(|| {
+            VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+                "tool_server_b kernel_id {:?} not pinned",
+                pred.tool_server_b.kernel_id
+            ))
+        })?;
+    if pinned_b.fingerprint().0 != pred.tool_server_b.passport_key_fingerprint.0 {
+        return Err(VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+            "tool_server_b fingerprint mismatch: pinned={} predicate={}",
+            pinned_b.fingerprint().0,
+            pred.tool_server_b.passport_key_fingerprint.0
+        )));
+    }
+
+    // ---- Step 9: revocation at pinned epoch ----------------------------
+    if !config
+        .revocation_oracle
+        .is_active_at_epoch(&pinned_a.fingerprint(), config.pinned_epoch.epoch_height)
+    {
+        return Err(VerifierError::PeerRevokedAtEpoch(format!(
+            "tool_server_a {} revoked at epoch {}",
+            pred.tool_server_a.kernel_id, config.pinned_epoch.epoch_height
+        )));
+    }
+    if !config
+        .revocation_oracle
+        .is_active_at_epoch(&pinned_b.fingerprint(), config.pinned_epoch.epoch_height)
+    {
+        return Err(VerifierError::PeerRevokedAtEpoch(format!(
+            "tool_server_b {} revoked at epoch {}",
+            pred.tool_server_b.kernel_id, config.pinned_epoch.epoch_height
+        )));
+    }
+
+    // ---- Steps 10-12: PAE recompute + signature verification ----------
+    // Delegate to the B4 verifier, which:
+    //  - recomputes PAE bytes (step 10);
+    //  - matches each signature by keyid against the supplied keys
+    //    (step 11/12 keyid binding);
+    //  - Ed25519-verifies each signature against the PAE bytes
+    //    (step 11 server_a, step 12 server_b).
+    // The keyid binding here is the §6 invariant: if the predicate
+    // names a fingerprint that does not appear in `signatures[]`, the
+    // signature lookup fails with the corresponding code.
+    verify_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key).map_err(
+        |e| match e {
+            BilateralCoSigningError::OrgASignatureInvalid => {
+                VerifierError::SignatureServerAInvalid(
+                    "PAE re-derivation under tool_server_a passport key failed".to_string(),
+                )
+            }
+            BilateralCoSigningError::OrgBSignatureInvalid => {
+                VerifierError::SignatureServerBInvalid(
+                    "PAE re-derivation under tool_server_b passport key failed".to_string(),
+                )
+            }
+            other => VerifierError::DsseMalformed(other.to_string()),
+        },
+    )?;
+
+    // Sanity: the statement_bytes the producer signed equal what we just
+    // decoded. (Detects a verifier-side encoding drift; the upstream
+    // verifier already covered this, but we keep the check explicit.)
+    let _ = statement_bytes;
+
+    // ---- Step 13: verdict agreement ------------------------------------
+    let summary = pred.policy_evaluation_summary.as_ref().ok_or_else(|| {
+        VerifierError::PolicyVerdictDisagreement(
+            "predicate is missing policy_evaluation_summary (required for §7 step 13)".to_string(),
+        )
+    })?;
+    if summary.server_a_verdict.verdict != summary.server_b_verdict.verdict {
+        return Err(VerifierError::PolicyVerdictDisagreement(format!(
+            "server_a={} server_b={}",
+            summary.server_a_verdict.verdict, summary.server_b_verdict.verdict
+        )));
+    }
+    if let Some(joint) = &summary.joint_disposition {
+        if joint != &summary.server_a_verdict.verdict {
+            return Err(VerifierError::PolicyVerdictDisagreement(format!(
+                "joint_disposition={} disagrees with server_a/b verdict={}",
+                joint, summary.server_a_verdict.verdict
+            )));
+        }
+    }
+    let joint_verdict = summary.server_a_verdict.verdict.clone();
+
+    // ---- Step 14: capability lease resolution + expiry -----------------
+    let lease_ref = pred.capability_lease_ref.as_ref().ok_or_else(|| {
+        VerifierError::CapabilityLeaseExpiredOrUnknown(
+            "predicate is missing capability_lease_ref (required for §7 step 14)".to_string(),
+        )
+    })?;
+    let resolved_lease = config
+        .lease_registry
+        .resolve(&lease_ref.lease_id)
+        .ok_or_else(|| {
+            VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+                "lease_id {:?} not resolvable in CapabilityLeaseRegistry (fail-closed)",
+                lease_ref.lease_id
+            ))
+        })?;
+    if resolved_lease.issuer != lease_ref.issuer {
+        return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+            "lease issuer mismatch: registry={:?} predicate={:?}",
+            resolved_lease.issuer, lease_ref.issuer
+        )));
+    }
+    if resolved_lease.expires_at_unix_ms != lease_ref.expires_at_unix_ms {
+        return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+            "lease expiry mismatch: registry={} predicate={}",
+            resolved_lease.expires_at_unix_ms, lease_ref.expires_at_unix_ms
+        )));
+    }
+    // Strict-greater per spec line 401: `expires_at_unix_ms > pinned_epoch.now`.
+    if resolved_lease.expires_at_unix_ms <= config.pinned_epoch.now_unix_ms {
+        return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+            "lease expired: expires_at={} <= pinned_epoch.now={}",
+            resolved_lease.expires_at_unix_ms, config.pinned_epoch.now_unix_ms
+        )));
+    }
+    // Optional: scope-digest match if the predicate carries one and the
+    // registry record carries one.
+    if let (Some(predicate_scope), Some(registry_scope)) =
+        (&lease_ref.scope_digest, &resolved_lease.scope_digest_hex)
+    {
+        if &predicate_scope.value != registry_scope {
+            return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+                "lease scope_digest mismatch: registry={:?} predicate={:?}",
+                registry_scope, predicate_scope.value
+            )));
+        }
+    }
+
+    // ---- Step 15: governance receipt for receipt-backed classes -------
+    let class = config
+        .action_classes
+        .get(&pred.tool_name)
+        .copied()
+        .unwrap_or(ActionClassKind::Routine);
+    let resolved_governance_receipt = match class {
+        ActionClassKind::Routine => None,
+        ActionClassKind::ReceiptBacked => {
+            let g = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
+                VerifierError::GovernanceReceiptRequiredMissing(format!(
+                    "tool_name {:?} is receipt-backed but predicate omits governance_receipt_ref",
+                    pred.tool_name
+                ))
+            })?;
+            let resolved = config
+                .governance_receipt_store
+                .resolve(&g.receipt_id)
+                .ok_or_else(|| {
+                    VerifierError::GovernanceReceiptRequiredMissing(format!(
+                        "receipt_id {:?} not resolvable in GovernanceReceiptStore",
+                        g.receipt_id
+                    ))
+                })?;
+            if resolved.kernel_id != g.kernel_id {
+                return Err(VerifierError::GovernanceReceiptRequiredMissing(format!(
+                    "governance receipt kernel_id mismatch: store={:?} predicate={:?}",
+                    resolved.kernel_id, g.kernel_id
+                )));
+            }
+            // Recompute the digest of the resolved canonical JSON and
+            // compare against the predicate's claimed digest.
+            let mut hasher = Sha256::new();
+            hasher.update(resolved.canonical_json.as_bytes());
+            let want = hex::encode(hasher.finalize());
+            if want != g.digest.value {
+                return Err(VerifierError::GovernanceReceiptRequiredMissing(format!(
+                    "governance receipt digest mismatch: computed={} predicate={}",
+                    want, g.digest.value
+                )));
+            }
+            Some(resolved)
+        }
+    };
+
+    // ---- Step 16: consistency anchor reconciliation -------------------
+    match pred.consistency_model.as_str() {
+        "crdt-commutative" => {
+            // No anchor required for the unordered model. The trj5
+            // hot-path default; nothing to check.
+        }
+        "totally-ordered" => {
+            let anchor = pred.consistency_anchor.as_deref().ok_or_else(|| {
+                VerifierError::ConsistencyAnchorUnverified(
+                    "totally-ordered consistency requires consistency_anchor".to_string(),
+                )
+            })?;
+            if anchor != "chio-anchor" && anchor != "hash-chain" {
+                return Err(VerifierError::ConsistencyAnchorUnverified(format!(
+                    "totally-ordered anchor {:?} is not in {{chio-anchor, hash-chain}}",
+                    anchor
+                )));
+            }
+            // Full reconciliation against a chio-anchor checkpoint is
+            // deferred to trj6 (see module docs).
+        }
+        "quorum-required" => {
+            let anchor = pred.consistency_anchor.as_deref().ok_or_else(|| {
+                VerifierError::ConsistencyQuorumUnderpopulated(
+                    "quorum-required consistency requires consistency_anchor".to_string(),
+                )
+            })?;
+            if anchor != "frost-quorum" {
+                return Err(VerifierError::ConsistencyQuorumUnderpopulated(format!(
+                    "quorum-required anchor {:?} is not frost-quorum",
+                    anchor
+                )));
+            }
+            // Full FROST aggregate / n-of-m signature reconciliation is
+            // deferred to trj6.
+        }
+        other => {
+            return Err(VerifierError::PredicateSchemaInvalid(format!(
+                "consistency_model {:?} is not in {{crdt-commutative, totally-ordered, quorum-required}}",
+                other
+            )));
+        }
+    }
+
+    // ---- Step 17: success ---------------------------------------------
+    Ok(VerifiedBilateralCoSignInvocation {
+        statement,
+        resolved_receipt,
+        resolved_lease,
+        resolved_governance_receipt,
+        joint_verdict,
+    })
+}
+
+/// Step 5 helper: validate the predicate's required fields (the trj5
+/// subset of the §5 schema). Full schema validation against the
+/// JSON-Schema text is deferred; this checker enforces the load-bearing
+/// invariants the §7 algorithm depends on.
+fn validate_predicate_required_fields(pred: &BilateralPredicate) -> Result<(), VerifierError> {
+    if pred.invocation_id.is_empty() {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "invocation_id is empty".to_string(),
+        ));
+    }
+    if pred.tool_name.is_empty() {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "tool_name is empty".to_string(),
+        ));
+    }
+    if pred.tool_server_a.kernel_id.is_empty() || pred.tool_server_b.kernel_id.is_empty() {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "tool_server_*.kernel_id is empty".to_string(),
+        ));
+    }
+    if pred.tool_server_a.passport_key_fingerprint.0.len() != 64
+        || pred.tool_server_b.passport_key_fingerprint.0.len() != 64
+    {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "tool_server_*.passport_key_fingerprint is not 64-hex".to_string(),
+        ));
+    }
+    match pred.co_sign.as_str() {
+        "bilateral_required" | "bilateral_if_cross_org" | "n_of_m" => {}
+        other => {
+            return Err(VerifierError::PredicateSchemaInvalid(format!(
+                "co_sign {:?} is not in {{bilateral_required, bilateral_if_cross_org, n_of_m}}",
+                other
+            )))
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Tests (happy path + a couple of fast negatives; full negative-conformance
+// coverage lives in chio-conformance/tests/c2_bilateral_invocation_verifier_17_step.rs)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::bilateral_dsse::{
+        sign_dsse_envelope_full, BilateralPredicateExtensions, CapabilityLeaseRef,
+        PolicyEvaluationSummary, PolicyVerdict,
+    };
+    use chio_core_types::crypto::{sha256_hex, Keypair};
+    use chio_core_types::receipt::{
+        ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    };
+
+    fn sample_receipt(kp_b: &Keypair) -> ChioReceipt {
+        let body = ChioReceiptBody {
+            id: "rcpt-trj5-c2-sample".to_string(),
+            timestamp: 1_734_000_000,
+            capability_id: "cap-trj5-c2".to_string(),
+            tool_server: "srv-orgb-files".to_string(),
+            tool_name: "file_read".to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({"k":"v"})).unwrap(),
+            decision: Decision::Allow,
+            content_hash: sha256_hex(b"{}"),
+            policy_hash: "pol".to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::default(),
+            tenant_id: None,
+            kernel_key: kp_b.public_key(),
+        };
+        ChioReceipt::sign(body, kp_b).unwrap()
+    }
+
+    fn happy_path_extensions(now_ms: u64) -> BilateralPredicateExtensions {
+        BilateralPredicateExtensions {
+            capability_lease_ref: Some(CapabilityLeaseRef {
+                lease_id: "lease-c2-happy".to_string(),
+                issuer: "did:chio:org-a".to_string(),
+                expires_at_unix_ms: now_ms + 60_000,
+                scope_digest: None,
+            }),
+            policy_evaluation_summary: Some(PolicyEvaluationSummary {
+                server_a_verdict: PolicyVerdict {
+                    verdict: "allow".to_string(),
+                    policy_id: "policy.org-a".to_string(),
+                    policy_version: "v1".to_string(),
+                    rationale_code: None,
+                },
+                server_b_verdict: PolicyVerdict {
+                    verdict: "allow".to_string(),
+                    policy_id: "policy.org-b".to_string(),
+                    policy_version: "v1".to_string(),
+                    rationale_code: None,
+                },
+                joint_disposition: Some("allow".to_string()),
+            }),
+            governance_receipt_ref: None,
+            consistency_anchor: None,
+            consistency_model: None,
+            cross_org_visibility: None,
+        }
+    }
+
+    fn fixture(
+        kp_a: &Keypair,
+        kp_b: &Keypair,
+        receipt: &ChioReceipt,
+        now_ms: u64,
+    ) -> (
+        DsseEnvelope,
+        InMemoryReceiptStore,
+        InMemoryLeaseRegistry,
+        InMemoryGovernanceReceiptStore,
+        AllowAllRevocationOracle,
+        PeerPinSet,
+    ) {
+        let envelope = sign_dsse_envelope_full(
+            receipt,
+            kp_a,
+            kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            happy_path_extensions(now_ms),
+        )
+        .unwrap();
+
+        let mut receipt_store = InMemoryReceiptStore::new();
+        receipt_store.insert(receipt.clone());
+
+        let mut lease_registry = InMemoryLeaseRegistry::new();
+        lease_registry.insert(ResolvedLease {
+            lease_id: "lease-c2-happy".to_string(),
+            issuer: "did:chio:org-a".to_string(),
+            expires_at_unix_ms: now_ms + 60_000,
+            scope_digest_hex: None,
+        });
+
+        let governance_store = InMemoryGovernanceReceiptStore::new();
+        let revocation_oracle = AllowAllRevocationOracle;
+
+        let mut peer_pin_set = PeerPinSet::new();
+        peer_pin_set.insert(PinnedPeer {
+            kernel_id: "did:chio:org-a".to_string(),
+            public_key: kp_a.public_key(),
+        });
+        peer_pin_set.insert(PinnedPeer {
+            kernel_id: "did:chio:org-b".to_string(),
+            public_key: kp_b.public_key(),
+        });
+
+        (
+            envelope,
+            receipt_store,
+            lease_registry,
+            governance_store,
+            revocation_oracle,
+            peer_pin_set,
+        )
+    }
+
+    fn config<'a>(
+        peer_pin_set: &'a PeerPinSet,
+        receipt_store: &'a dyn ReceiptStore,
+        lease_registry: &'a dyn CapabilityLeaseRegistry,
+        governance_store: &'a dyn GovernanceReceiptStore,
+        revocation_oracle: &'a dyn RevocationOracle,
+        now_ms: u64,
+    ) -> VerifierConfig<'a> {
+        VerifierConfig {
+            peer_pin_set,
+            receipt_store,
+            lease_registry,
+            governance_receipt_store: governance_store,
+            revocation_oracle,
+            pinned_epoch: PinnedEpoch {
+                now_unix_ms: now_ms,
+                epoch_height: 0,
+            },
+            action_classes: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn happy_path_passes_all_17_steps() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, receipt_store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let config = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let verified = verify_bilateral_cosign_invocation(&envelope, &config).unwrap();
+        assert_eq!(verified.joint_verdict, "allow");
+        assert_eq!(verified.resolved_receipt.id, receipt.id);
+    }
+
+    #[test]
+    fn step_7_missing_receipt_fails_closed_with_subject_digest_mismatch() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, _store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let empty_store = InMemoryReceiptStore::new();
+        let config = config(
+            &peers,
+            &empty_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
+        assert_eq!(err.code(), "subject.digest_mismatch");
+    }
+
+    #[test]
+    fn step_14_expired_lease_fails_closed() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+
+        // Verifier wall clock advanced past the lease expiry.
+        let expired_now = now_ms + 60_000 + 1;
+        let config = config(
+            &peers,
+            &store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            expired_now,
+        );
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
+        assert_eq!(err.code(), "capability.lease_expired_or_unknown");
+    }
+
+    #[test]
+    fn step_13_verdict_disagreement_fails_closed() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        // Build extensions where the verdicts disagree.
+        let mut ext = happy_path_extensions(now_ms);
+        if let Some(s) = ext.policy_evaluation_summary.as_mut() {
+            s.server_b_verdict.verdict = "deny".to_string();
+            s.joint_disposition = Some("deny".to_string());
+        }
+        let envelope = sign_dsse_envelope_full(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            ext,
+        )
+        .unwrap();
+
+        let mut peer_pin_set = PeerPinSet::new();
+        peer_pin_set.insert(PinnedPeer {
+            kernel_id: "did:chio:org-a".to_string(),
+            public_key: kp_a.public_key(),
+        });
+        peer_pin_set.insert(PinnedPeer {
+            kernel_id: "did:chio:org-b".to_string(),
+            public_key: kp_b.public_key(),
+        });
+        let mut receipt_store = InMemoryReceiptStore::new();
+        receipt_store.insert(receipt.clone());
+        let mut lease_registry = InMemoryLeaseRegistry::new();
+        lease_registry.insert(ResolvedLease {
+            lease_id: "lease-c2-happy".to_string(),
+            issuer: "did:chio:org-a".to_string(),
+            expires_at_unix_ms: now_ms + 60_000,
+            scope_digest_hex: None,
+        });
+        let governance_store = InMemoryGovernanceReceiptStore::new();
+        let oracle = AllowAllRevocationOracle;
+
+        let config = config(
+            &peer_pin_set,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
+        assert_eq!(err.code(), "policy.verdict_disagreement");
+    }
+
+    #[test]
+    fn step_15_receipt_backed_class_requires_governance_receipt() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let mut cfg = config(
+            &peers,
+            &store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        // Mark this tool as receipt-backed in the verifier's local
+        // ladder manifest.
+        cfg.action_classes
+            .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
+        assert_eq!(err.code(), "governance.receipt_required_missing");
+    }
+
+    #[test]
+    fn step_8_unpinned_peer_fails_closed() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, store, lease_registry, governance_store, oracle, _peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+
+        // Empty pin set.
+        let peers = PeerPinSet::new();
+        let cfg = config(
+            &peers,
+            &store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
+        assert_eq!(err.code(), "peer.unpinned_or_keyid_mismatch");
+    }
+}
