@@ -26,7 +26,7 @@
 //!
 //! # Honesty boundary: what "model" harnesses actually prove
 //!
-//! Per audit P0-018 in
+//! Per model-only scope note in
 //! `.planning/trajectory-5/reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`:
 //!
 //! - The `public_expect_report_data_determinism_under_input_change`
@@ -65,7 +65,7 @@
 //! bool, tcb_status: QuoteTcbStatus, algorithm_tag_matches: bool)
 //! -> Result<(), AttestError>`) used by both the runtime
 //! `verify_quote` impls and the Kani harnesses, replacing
-//! `model_verify_quote`. This is option (a) per audit P0-018; it was
+//! `model_verify_quote`. This is option (a) per model-only scope note; it was
 //! deferred from release work because the runtime impls' error variants
 //! (`QuoteRejected(String)`, `Malformed(String)`) carry contextual
 //! strings that interlock with the live verifier code paths and

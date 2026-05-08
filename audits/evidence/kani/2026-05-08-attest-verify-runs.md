@@ -40,13 +40,13 @@ MODEL-ONLY = the harness proves an algebraic surrogate
 (`model_verify_quote`) over the post-fix production order
 `TCB -> algorithm -> report_data`. Live-runtime regression for the
 MODEL-ONLY harnesses is asserted by the per-backend unit tests cited
-in the manifest `notes` for each entry (audit P0-018).
+in the manifest `notes` for each entry (model-only scope note).
 
 ## Why the run transcripts are deferred
 
 1. cargo-kani 0.67.0 PR-tier runs for the chio-attest-verify backend
    harnesses depend on cryptographic-verification call paths
-   (`Ed25519`, `X.509`, `COSE/CBOR`) that the audit P0-018 deferral
+   (`Ed25519`, `X.509`, `COSE/CBOR`) that the model-only scope note deferral
    classifies as out-of-symbex-budget for synchronous PR runs without
    the algebraic surrogate. The MODEL-ONLY harnesses execute the
    surrogate; the DIRECT harness on `expect_report_data` is a pure
@@ -79,7 +79,7 @@ this deferral. The chio-attest-verify Kani enrollment is recorded as
 3. The MODEL-ONLY harnesses are upgraded to direct-impl harnesses
    only after the algebraic surrogate is replaced by the
    `pub(crate) fn classify_quote_outcome(...)` extraction the
-   audit P0-018 calls for.
+   model-only scope note calls for.
 
 ## Honesty note
 
