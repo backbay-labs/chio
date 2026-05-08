@@ -101,8 +101,8 @@ chio-guards = { version = "0.1.0", path = "../chio-guards" }
 chio-weights = { version = "0.1.0", path = "../chio-weights" }
 base64ct = { workspace = true, features = ["alloc"] }
 # Negative conformance fixture
-# `b4_bilateral_dsse_pae_only_is_conformant.rs` re-encodes signature bytes
-# in base64 to forge a §6 envelope; chio-federation's DSSE envelope wire
+# `b4_bilateral_dsse_signature_slice.rs` re-encodes signature bytes
+# in base64 to forge a DSSE envelope; chio-federation's DSSE envelope wire
 # format is RFC 4648 standard base64 (workspace-pinned `base64` crate).
 base64 = { workspace = true }
 coset = { workspace = true }

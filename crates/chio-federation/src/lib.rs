@@ -29,11 +29,11 @@ pub use bilateral::{
     BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 pub use bilateral_dsse::{
-    build_predicate, build_statement, pae, sign_dsse_envelope, verify_dsse_envelope,
-    BilateralPredicate, DsseEnvelope, DsseSignature, DsseStatement, KernelIdentity, Keyid,
-    StatementSubject, SubjectDigest, BILATERAL_DSSE_ENVELOPE_SCHEMA, DEFAULT_CONSISTENCY_MODEL,
-    DEFAULT_COSIGN_MODE, DEFAULT_CROSS_ORG_VISIBILITY, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
-    PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
+    build_predicate, build_statement, pae, receipt_subject_name, sign_dsse_envelope,
+    verify_dsse_envelope, BilateralPredicate, DsseEnvelope, DsseSignature, DsseStatement,
+    KernelIdentity, Keyid, StatementSubject, SubjectDigest, BILATERAL_DSSE_ENVELOPE_SCHEMA,
+    DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE, DEFAULT_CROSS_ORG_VISIBILITY,
+    PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
 };
 pub use revocation_gossip::{
     respond_to_catchup, RevocationCatchupHistory, RevocationCatchupRequest,

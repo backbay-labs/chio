@@ -106,11 +106,11 @@ impl DualSignedReceipt {
     /// Neither half of the dual signature is sufficient on its own; a
     /// caller that can only check one side must still refuse the receipt.
     ///
-    /// **This method is NOT a `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
-    /// §6 verifier.** The signatures it checks are computed over the
-    /// canonical-JSON encoding of [`CoSigningBody`]; the §6 envelope's
-    /// signatures are computed over DSSE PAE bytes wrapping an in-toto
-    /// Statement. The two preimages share zero bytes (R4 finding 1).
+    /// **This method is NOT a DSSE signature-slice verifier.** The
+    /// signatures it checks are computed over the canonical-JSON encoding of
+    /// [`CoSigningBody`]; the DSSE signature-slice signatures are computed
+    /// over PAE bytes wrapping an in-toto Statement. The two preimages share
+    /// zero bytes.
     pub fn verify(
         &self,
         org_a_public_key: &PublicKey,
@@ -366,9 +366,9 @@ fn co_sign_with_origin_inner(
     Ok(dual)
 }
 
-/// **Verifiers seeking §6 conformance MUST verify
+/// **Verifiers seeking DSSE signature-slice coverage MUST verify
 /// [`Self::dsse_envelope`].** The legacy `DualSignedReceipt` shares zero
-/// signed bytes with the DSSE PAE preimage and is therefore NOT a §6
+/// signed bytes with the DSSE PAE preimage and is therefore not a DSSE
 /// artifact; see `crate::bilateral_dsse` module docs.
 #[derive(Debug, Clone)]
 pub struct BilateralCoSignArtifacts {
@@ -377,9 +377,9 @@ pub struct BilateralCoSignArtifacts {
 }
 
 /// `tool_name` and `timestamp_unix_ms` are surfaced to callers because
-/// they are §5 predicate fields the §6 envelope binds. `tool_name` is
-/// typically `receipt.tool_name`; `timestamp_unix_ms` is the wall-clock
-/// at canonicalisation (Org B-side).
+/// they are predicate fields the DSSE signature-slice envelope binds.
+/// `tool_name` is typically `receipt.tool_name`; `timestamp_unix_ms` is the
+/// wall-clock at canonicalisation (Org B-side).
 #[allow(clippy::too_many_arguments)]
 pub fn co_sign_with_origin_full(
     origin_kernel_id: &str,
