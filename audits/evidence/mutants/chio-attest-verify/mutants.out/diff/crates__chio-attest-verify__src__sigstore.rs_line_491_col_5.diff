@@ -1,0 +1,26 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace verify_signature_bytes -> Result<(), AttestError> with Ok(())
+@@ -483,22 +483,17 @@
+ }
+ 
+ fn verify_signature_bytes(
+     key: &CosignVerificationKey,
+     signature: &[u8],
+     msg: &[u8],
+ ) -> Result<(), AttestError> {
+     // Try base64 first (cosign emits base64). Fall back to raw bytes.
+-    let base64_attempt = key.verify_signature(SigstoreSignature::Base64Encoded(signature), msg);
+-    if base64_attempt.is_ok() {
+-        return Ok(());
+-    }
+-    key.verify_signature(SigstoreSignature::Raw(signature), msg)
+-        .map_err(|_| AttestError::SignatureMismatch)
++    Ok(()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn bundle_leaf_certificate_der(bundle: &Bundle) -> Result<Vec<u8>, AttestError> {
+     use sigstore_protobuf_specs_compat::leaf_der;
+     leaf_der(bundle).ok_or_else(|| AttestError::Malformed("bundle has no leaf certificate".into()))
+ }
+ 
+ fn bundle_rekor_metadata(bundle: &Bundle) -> (u64, SystemTime) {

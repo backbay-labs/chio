@@ -1,0 +1,50 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace run_async_bundle_verify -> sigstore::bundle::verify::VerificationResult with Default::default()
+@@ -277,46 +277,17 @@
+ /// `verifier` / `bundle` are owned.
+ fn run_async_bundle_verify(
+     fallback_runtime: &tokio::runtime::Runtime,
+     verifier: AsyncBundleVerifier,
+     hasher: Sha256,
+     bundle: Bundle,
+     issuer_policy: IssuerOnlyPolicy,
+ ) -> sigstore::bundle::verify::VerificationResult {
+-    if tokio::runtime::Handle::try_current().is_ok() {
+-        // Caller is inside a tokio runtime. A fresh OS thread with
+-        // its own runtime side-steps the nested-runtime panic. The
+-        // join handle is consumed in-line; if the new thread panics
+-        // mid-verify (e.g. allocator failure inside sigstore-rs) we
+-        // surface that as `VerificationError::Other` instead of
+-        // unwinding the trust-boundary caller.
+-        std::thread::spawn(move || {
+-            let rt = match tokio::runtime::Builder::new_current_thread()
+-                .enable_all()
+-                .build()
+-            {
+-                Ok(rt) => rt,
+-                Err(err) => {
+-                    return Err(sigstore::bundle::verify::VerificationError::Input(
+-                        io::Error::other(format!("spawn helper-runtime: {err}")),
+-                    ));
+-                }
+-            };
+-            rt.block_on(verifier.verify_digest(hasher, bundle, &issuer_policy, true))
+-        })
+-        .join()
+-        .unwrap_or_else(|_| {
+-            Err(sigstore::bundle::verify::VerificationError::Input(
+-                io::Error::other("verify helper thread panicked"),
+-            ))
+-        })
+-    } else {
+-        fallback_runtime.block_on(verifier.verify_digest(hasher, bundle, &issuer_policy, true))
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Accept either a PEM-armored or raw-DER certificate input. The cosign
+ /// CLI emits PEM by default; some pipelines double-base64-encode. We
+ /// strip one base64 layer if the bytes do not begin with the PEM header.
+ fn parse_certificate_to_der(input: &[u8]) -> Result<Vec<u8>, AttestError> {
+     // Fast path: input is already PEM-armored.
+     if let Ok(parsed) = pem::parse(input) {

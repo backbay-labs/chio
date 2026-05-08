@@ -1,0 +1,34 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace read_oidc_issuer_extension -> Result<String, AttestError> with Ok(String::new())
+@@ -425,30 +425,17 @@
+             }
+         }
+     }
+ 
+     Err(AttestError::IdentityMismatch)
+ }
+ 
+ fn read_oidc_issuer_extension(cert: &Certificate) -> Result<String, AttestError> {
+-    let extensions = cert
+-        .tbs_certificate
+-        .extensions
+-        .as_ref()
+-        .ok_or_else(|| AttestError::Malformed("certificate has no extensions".into()))?;
+-
+-    for ext in extensions.iter() {
+-        if ext.extn_id == OIDC_ISSUER_OID {
+-            let bytes = ext.extn_value.as_bytes();
+-            return decode_oidc_issuer_value(bytes);
+-        }
+-    }
+-
+-    Err(AttestError::IssuerMismatch)
++    Ok(String::new()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Decode the bytes of the Fulcio OIDC issuer X.509 extension. Real-world
+ /// Fulcio leaves wrap the issuer as a DER UTF8String (tag 0x0C); some
+ /// older / hand-rolled emitters embed the raw UTF-8 directly. The DER
+ /// path is tried FIRST so that an extension carrying the DER prefix
+ /// (`0x0C <len> ...`) is not silently misread as raw UTF-8: `0x0C` is a
+ /// valid ASCII byte (form feed), so a naive `str::from_utf8` +
