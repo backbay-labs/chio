@@ -21,6 +21,7 @@
 //! | 15   | mark class receipt-backed; omit gov ref | governance.receipt_required_missing |
 //! | 16   | totally-ordered with no anchor | consistency.anchor_unverified  |
 //! | 16   | quorum-required with no anchor | consistency.quorum_underpopulated |
+//! | 16   | quorum-required with bare anchor | consistency.quorum_underpopulated |
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -31,7 +32,7 @@ use base64::Engine;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_federation::{
-    execute_bilateral_invocation, ActionClassKind, AllowAllRevocationOracle,
+    execute_bilateral_invocation, receipt_subject_name, ActionClassKind, AllowAllRevocationOracle,
     BilateralCoSigningProtocol, BilateralInvocationError, BilateralInvocationRequest,
     BilateralPredicateExtensions, CapabilityLeaseRef, DenyListRevocationOracle, DsseEnvelope,
     GovernanceReceiptRef, GovernanceReceiptStore, HashRecord, InMemoryGovernanceReceiptStore,
@@ -268,6 +269,40 @@ fn step_7_missing_receipt_in_store_fails_with_subject_digest_mismatch() {
     )
     .unwrap_err();
     assert_verifier_code(err, "subject.digest_mismatch");
+}
+
+#[test]
+fn step_7_raw_receipt_id_subject_name_fails_with_subject_digest_mismatch() {
+    let setup = setup();
+    let outcome = run_default(&setup).unwrap_or_else(|e| panic!("happy path: {e:?}"));
+    let mut envelope: DsseEnvelope = outcome.artifacts.dsse_envelope.clone();
+    let (mut statement, _) = envelope.decode_statement().unwrap();
+    assert_eq!(
+        statement.subject[0].name,
+        receipt_subject_name(&setup.receipt.id)
+    );
+    statement.subject[0].name = setup.receipt.id.clone();
+    envelope.payload = BASE64_STANDARD.encode(statement.canonical_bytes().unwrap());
+
+    let mut action_classes = BTreeMap::new();
+    action_classes.insert(TOOL.to_string(), ActionClassKind::Routine);
+    let config = VerifierConfig {
+        peer_pin_set: &setup.peer_pin_set,
+        receipt_store: &setup.receipt_store,
+        lease_registry: &setup.lease_registry,
+        governance_receipt_store: &setup.governance_store,
+        revocation_oracle: &setup.revocation_oracle,
+        pinned_epoch: PinnedEpoch {
+            now_unix_ms: now_ms(),
+            epoch_height: 0,
+        },
+        action_classes,
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
+    };
+
+    let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config)
+        .expect_err("raw receipt id subject must fail closed");
+    assert_eq!(err.code(), "subject.digest_mismatch");
 }
 
 // ---------------------------------------------------------------------------
@@ -702,6 +737,27 @@ fn step_16_quorum_required_without_anchor_fails() {
     let mut ext = happy_extensions();
     ext.consistency_model = Some("quorum-required".to_string());
     ext.consistency_anchor = None;
+    let err = run_invocation_with(
+        &setup,
+        ext,
+        &setup.receipt_store,
+        &setup.lease_registry,
+        &setup.governance_store,
+        &setup.revocation_oracle,
+        &setup.peer_pin_set,
+        now_ms(),
+        BTreeMap::new(),
+    )
+    .unwrap_err();
+    assert_verifier_code(err, "consistency.quorum_underpopulated");
+}
+
+#[test]
+fn step_16_quorum_required_with_bare_anchor_still_fails_without_quorum_proof() {
+    let setup = setup();
+    let mut ext = happy_extensions();
+    ext.consistency_model = Some("quorum-required".to_string());
+    ext.consistency_anchor = Some("frost-quorum".to_string());
     let err = run_invocation_with(
         &setup,
         ext,

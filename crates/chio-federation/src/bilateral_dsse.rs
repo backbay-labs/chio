@@ -73,6 +73,9 @@ const PAE_PREFIX: &str = "DSSEv1";
 pub const BILATERAL_DSSE_ENVELOPE_SCHEMA: &str =
     "chio.federation-bilateral-dsse-signature-slice-envelope.v1";
 
+/// Canonical in-toto subject-name prefix for signed Chio receipt bodies.
+pub const RECEIPT_SUBJECT_NAME_PREFIX: &str = "chio-receipt:";
+
 pub const DEFAULT_CONSISTENCY_MODEL: &str = "crdt-commutative";
 
 pub const DEFAULT_CROSS_ORG_VISIBILITY: &str = "federated";
@@ -383,6 +386,12 @@ pub fn pae(payload_type: &str, payload: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Canonical subject name for the signed Chio receipt body.
+#[must_use]
+pub fn receipt_subject_name(receipt_id: &str) -> String {
+    format!("{RECEIPT_SUBJECT_NAME_PREFIX}{receipt_id}")
+}
+
 /// Build a `BilateralPredicate` from a receipt and the two participating
 /// kernels' identities. Used by both the local sign path and the
 /// in-process verifier under test.
@@ -482,7 +491,7 @@ pub fn build_statement(
     Ok(DsseStatement {
         statement_type: STATEMENT_TYPE_V1.to_string(),
         subject: vec![StatementSubject {
-            name: receipt.id.clone(),
+            name: receipt_subject_name(&receipt.id),
             digest: SubjectDigest { sha256: digest_hex },
         }],
         predicate_type: PREDICATE_TYPE_BILATERAL.to_string(),
@@ -653,6 +662,13 @@ pub fn verify_dsse_envelope(
             statement.subject.len()
         )));
     }
+    let expected_subject_name = receipt_subject_name(&statement.predicate.invocation_id);
+    if statement.subject[0].name != expected_subject_name {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "statement.malformed: subject name '{}' is not canonical receipt subject '{}'",
+            statement.subject[0].name, expected_subject_name
+        )));
+    }
 
     let pae_bytes = pae(&envelope.payload_type, &statement_bytes);
 
@@ -787,6 +803,7 @@ mod tests {
             "predicate type emitted by release work hot path"
         );
         assert_eq!(statement.subject.len(), 1);
+        assert_eq!(statement.subject[0].name, receipt_subject_name(&receipt.id));
     }
 
     #[test]

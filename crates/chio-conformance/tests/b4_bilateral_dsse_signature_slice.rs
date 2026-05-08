@@ -34,7 +34,7 @@ use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_federation::bilateral::{co_sign_with_origin_full, CoSigningBody, InProcessCoSigner};
 use chio_federation::bilateral_dsse::{
-    pae, sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope, Keyid,
+    pae, receipt_subject_name, sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope, Keyid,
     BILATERAL_DSSE_ENVELOPE_SCHEMA, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
     PREDICATE_TYPE_BILATERAL,
 };
@@ -157,7 +157,7 @@ fn signature_slice_verifier_accepts_freshly_signed_envelope() {
         .expect("signature-slice verifier must accept envelope under matching pinned public keys");
     assert_eq!(statement.predicate_type, PREDICATE_TYPE_BILATERAL);
     assert_eq!(statement.subject.len(), 1);
-    assert_eq!(statement.subject[0].name, receipt.id);
+    assert_eq!(statement.subject[0].name, receipt_subject_name(&receipt.id));
 
     // Spec §7 step 8 partial: the fingerprint declared in the predicate
     // matches the keyid the verifier derives from the public key.
@@ -453,6 +453,38 @@ fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     assert_ne!(
         statement.subject[0].digest.sha256, full_digest,
         "subject digest MUST hash body, not full wrapper; got matching wrapper hash"
+    );
+}
+
+#[test]
+fn statement_subject_name_is_canonical_receipt_name_and_raw_id_is_rejected() {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let receipt = sample_receipt(&kp_b);
+
+    let mut envelope = sign_dsse_envelope(
+        &receipt,
+        &kp_a,
+        &kp_b,
+        ORG_A_KERNEL_ID,
+        ORG_B_KERNEL_ID,
+        "file_read",
+        1_734_000_000_000,
+    )
+    .unwrap();
+    let (mut statement, _) = envelope.decode_statement().unwrap();
+    assert_eq!(statement.subject[0].name, receipt_subject_name(&receipt.id));
+
+    statement.subject[0].name = receipt.id.clone();
+    let new_statement_bytes = chio_core::canonical::canonical_json_bytes(&statement).unwrap();
+    envelope.payload = BASE64_STANDARD.encode(&new_statement_bytes);
+
+    let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+        .expect_err("raw receipt id subject must be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("subject name") && msg.contains("chio-receipt:"),
+        "expected canonical subject-name rejection, got: {msg}"
     );
 }
 

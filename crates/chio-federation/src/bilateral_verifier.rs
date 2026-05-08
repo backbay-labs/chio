@@ -66,8 +66,8 @@ use sha2::{Digest, Sha256};
 
 use crate::bilateral::BilateralCoSigningError;
 use crate::bilateral_dsse::{
-    verify_dsse_envelope, BilateralPredicate, DsseEnvelope, DsseStatement, Keyid,
-    PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
+    receipt_subject_name, verify_dsse_envelope, BilateralPredicate, DsseEnvelope, DsseStatement,
+    Keyid, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
 };
 
 // ---------------------------------------------------------------------------
@@ -578,6 +578,13 @@ pub fn verify_bilateral_cosign_invocation(
     let want_hex = hex::encode(hasher.finalize());
 
     let subject = &statement.subject[0];
+    let expected_subject_name = receipt_subject_name(&resolved_receipt.id);
+    if subject.name != expected_subject_name {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "subject name {} != canonical receipt subject {}",
+            subject.name, expected_subject_name
+        )));
+    }
     if subject.digest.sha256 != want_hex {
         return Err(VerifierError::SubjectDigestMismatch(format!(
             "subject digest {} != sha256(canonical_json(resolved_receipt.body())) {}",
@@ -830,17 +837,9 @@ pub fn verify_bilateral_cosign_invocation(
             }
         }
         "quorum-required" => {
-            let anchor = pred.consistency_anchor.as_deref().ok_or_else(|| {
-                VerifierError::ConsistencyQuorumUnderpopulated(
-                    "quorum-required consistency requires consistency_anchor".to_string(),
-                )
-            })?;
-            if anchor != "frost-quorum" {
-                return Err(VerifierError::ConsistencyQuorumUnderpopulated(format!(
-                    "quorum-required anchor {:?} is not frost-quorum",
-                    anchor
-                )));
-            }
+            return Err(VerifierError::ConsistencyQuorumUnderpopulated(
+                "quorum-required consistency is rejected until quorum metadata and signature-set verification are implemented".to_string(),
+            ));
         }
         other => {
             return Err(VerifierError::PredicateSchemaInvalid(format!(

@@ -31,8 +31,8 @@ pub use bilateral::{
     BILATERAL_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 pub use bilateral_dsse::{
-    build_predicate, build_predicate_full, build_statement, pae, sign_dsse_envelope,
-    sign_dsse_envelope_full, verify_dsse_envelope, BilateralPredicate,
+    build_predicate, build_predicate_full, build_statement, pae, receipt_subject_name,
+    sign_dsse_envelope, sign_dsse_envelope_full, verify_dsse_envelope, BilateralPredicate,
     BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope, DsseSignature, DsseStatement,
     GovernanceReceiptRef, HashRecord, KernelIdentity, Keyid, PolicyEvaluationSummary,
     PolicyVerdict, StatementSubject, SubjectDigest, BILATERAL_DSSE_ENVELOPE_SCHEMA,
@@ -44,8 +44,8 @@ pub use bilateral_verifier::{
     CapabilityLeaseRegistry, DenyListRevocationOracle, GovernanceReceiptStore,
     InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet,
     PinnedEpoch, PinnedPeer, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
-    RevocationOracle, UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation,
-    VerifierConfig, VerifierError,
+    RevocationOracle, UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig,
+    VerifierError,
 };
 pub use revocation_gossip::{
     respond_to_catchup, RevocationCatchupHistory, RevocationCatchupRequest,
