@@ -34,6 +34,7 @@ impl<T> TestUnwrap<T> for Option<T> {
 
 struct EchoServer;
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         "srv"
@@ -43,7 +44,7 @@ impl ToolServerConnection for EchoServer {
         vec!["echo_json".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: Value,

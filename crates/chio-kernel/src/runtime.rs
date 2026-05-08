@@ -251,6 +251,24 @@ pub struct ToolInvocationCost {
 /// The kernel holds one `ToolServerConnection` per registered server. In
 /// production this is an mTLS connection over UDS or TCP. For testing,
 /// an in-process implementation can be used.
+///
+/// Trj5 Lane B0 migration: the dispatch methods (`invoke`, `invoke_with_cost`,
+/// `invoke_stream`, `drain_events`) are `async fn` via `#[async_trait]` so
+/// remote/network-backed servers can perform real I/O without blocking the
+/// kernel runtime. The `#[async_trait]` macro is required for dyn-compatibility:
+/// the kernel registers tool servers as `Box<dyn ToolServerConnection>`, which
+/// rules out native `async fn in trait` until the workspace pins a Rust
+/// version where dyn-compatible native async methods are stable.
+///
+/// `#[async_trait(?Send)]` is used because the existing nested-flow bridge
+/// argument (`&mut dyn NestedFlowBridge`) is constructed from kernel-internal
+/// state that is not `Send` (it borrows a transport client and lives only for
+/// the duration of a single dispatch). Since dispatch happens in a controlled
+/// runtime where the future is awaited on the same task, dropping the
+/// `Send` bound is safe and avoids forcing every nested-flow client to be
+/// `Send + Sync`. Setter migration of the surrounding kernel runtime is the
+/// trj6 follow-up where `Send` futures will be reconsidered.
+#[async_trait::async_trait(?Send)]
 pub trait ToolServerConnection: Send + Sync {
     /// The server's unique identifier.
     fn server_id(&self) -> &str;
@@ -260,7 +278,7 @@ pub trait ToolServerConnection: Send + Sync {
 
     /// Invoke a tool on this server. The kernel has already validated the
     /// capability and run guards before calling this.
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
@@ -273,20 +291,20 @@ pub trait ToolServerConnection: Send + Sync {
     /// The default implementation delegates to `invoke` and returns `None`
     /// cost, meaning the kernel will charge `max_cost_per_invocation` as
     /// the worst-case debit.
-    fn invoke_with_cost(
+    async fn invoke_with_cost(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
         nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<(serde_json::Value, Option<ToolInvocationCost>), KernelError> {
-        let value = self.invoke(tool_name, arguments, nested_flow_bridge)?;
+        let value = self.invoke(tool_name, arguments, nested_flow_bridge).await?;
         Ok((value, None))
     }
 
     /// Invoke a tool that can emit multiple streamed chunks before its final terminal state.
     ///
     /// Servers that do not support streaming can ignore this and rely on `invoke`.
-    fn invoke_stream(
+    async fn invoke_stream(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
@@ -300,7 +318,7 @@ pub trait ToolServerConnection: Send + Sync {
     ///
     /// Native tool servers can use this to surface late URL-elicitation completions and
     /// catalog/resource notifications without depending on a still-live request-local bridge.
-    fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
+    async fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
         Ok(vec![])
     }
 }

@@ -406,6 +406,7 @@ impl AdaptedMcpServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for AdaptedMcpServer {
     fn server_id(&self) -> &str {
         &self.manifest.server_id
@@ -419,7 +420,7 @@ impl ToolServerConnection for AdaptedMcpServer {
             .collect()
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,

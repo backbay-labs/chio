@@ -177,6 +177,48 @@ impl LocalReceiptArtifact {
     }
 }
 
+/// Bridge a sync caller to the now-async tool-server dispatch path.
+///
+/// Mirrors `block_on_price_oracle`: prefer `block_in_place` on a multi-thread
+/// runtime, fall back to a fresh current-thread runtime if no runtime is
+/// active. The trj5 Lane B0 migration made `ToolServerConnection` async; this
+/// helper is the load-bearing bridge that lets the legacy
+/// `evaluate_tool_call_blocking` synchronous path keep working without
+/// forcing a workspace-wide async migration in the same PR. Trj6 owns the
+/// removal of this shim alongside the broader sync-evaluator migration.
+fn block_on_async_tool_dispatch<F, T>(future: F) -> Result<T, KernelError>
+where
+    F: std::future::Future<Output = Result<T, KernelError>>,
+{
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => match handle.runtime_flavor() {
+            tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(|| handle.block_on(future))
+            }
+            // Single-threaded runtimes cannot block_on the current task; fall
+            // back to a nested current-thread runtime. This allocates a
+            // runtime per dispatch on this rare path; trj6 sync-evaluator
+            // removal eliminates the path entirely.
+            _ => tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| {
+                    KernelError::Internal(format!(
+                        "failed to build sync dispatch runtime: {error}"
+                    ))
+                })?
+                .block_on(future),
+        },
+        Err(_) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                KernelError::Internal(format!("failed to build sync dispatch runtime: {error}"))
+            })?
+            .block_on(future),
+    }
+}
+
 fn extract_session_anchor_reference_from_metadata(
     metadata: Option<&serde_json::Value>,
 ) -> Option<chio_core::session::SessionAnchorReference> {
@@ -3238,7 +3280,7 @@ impl ChioKernel {
         let tool_started_at = Instant::now();
         let has_monetary = charge_result.is_some();
         let (tool_output, reported_cost) = match self
-            .dispatch_tool_call_with_cost_sync(request, has_monetary)
+            .dispatch_tool_call_with_cost_blocking(request, has_monetary)
         {
             Ok(result) => result,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
@@ -3666,22 +3708,36 @@ impl ChioKernel {
                 client,
             };
 
-            match server.invoke_stream(
-                &request.tool_name,
-                request.arguments.clone(),
-                Some(&mut bridge),
-            ) {
-                Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
-                Ok(None) => match server.invoke(
-                    &request.tool_name,
-                    request.arguments.clone(),
-                    Some(&mut bridge),
-                ) {
-                    Ok(result) => Ok(ToolServerOutput::Value(result)),
-                    Err(error) => Err(error),
-                },
-                Err(error) => Err(error),
-            }
+            // Trj5 Lane B0: tool-server methods are async. The nested-flow
+            // path is still synchronous so we bridge via `block_on_async_tool_dispatch`,
+            // identical in spirit to `block_on_price_oracle`. The bridge
+            // borrows non-Send transport state, hence the `?Send` flavor of
+            // the trait. Removal of this bridge tracks with the trj6
+            // sync-evaluator migration.
+            block_on_async_tool_dispatch(async {
+                match server
+                    .invoke_stream(
+                        &request.tool_name,
+                        request.arguments.clone(),
+                        Some(&mut bridge),
+                    )
+                    .await
+                {
+                    Ok(Some(stream)) => Ok(Ok::<_, KernelError>(ToolServerOutput::Stream(stream))),
+                    Ok(None) => match server
+                        .invoke(
+                            &request.tool_name,
+                            request.arguments.clone(),
+                            Some(&mut bridge),
+                        )
+                        .await
+                    {
+                        Ok(result) => Ok(Ok::<_, KernelError>(ToolServerOutput::Value(result))),
+                        Err(error) => Ok(Err::<ToolServerOutput, KernelError>(error)),
+                    },
+                    Err(error) => Ok(Err::<ToolServerOutput, KernelError>(error)),
+                }
+            })?
         };
         self.record_child_receipts(child_receipts)?;
         let tool_output = match tool_output_result {
@@ -3870,7 +3926,13 @@ impl ChioKernel {
     pub fn drain_tool_server_events(&self) -> Vec<ToolServerEvent> {
         let mut events = Vec::new();
         for (server_id, server) in &self.tool_servers {
-            match server.drain_events() {
+            // Trj5 Lane B0: drain_events is async; bridge via block_on for
+            // sync callers. Returns Ok with the (possibly-empty) drained
+            // batch even when the inner future returns Err so the caller
+            // can warn-and-continue per the existing behaviour.
+            let outcome: Result<Vec<ToolServerEvent>, KernelError> =
+                block_on_async_tool_dispatch(server.drain_events());
+            match outcome {
                 Ok(mut server_events) => events.append(&mut server_events),
                 Err(error) => warn!(
                     server_id = %server_id,
@@ -6397,22 +6459,14 @@ impl ChioKernel {
     /// Forward the validated request and optionally report actual invocation cost.
     ///
     /// Async-native dispatch entrypoint used by `ToolEvaluator::dispatch`.
-    /// Delegates to the sync helper while the tool-server trait remains
-    /// sync-only, preserving the exact dispatch and cost-accounting semantics.
+    /// Trj5 Lane B0 collapsed the prior async-then-sync hop: this method now
+    /// contains the dispatch logic and awaits the (now-async) tool-server
+    /// methods directly. Streaming is attempted first; for non-streaming
+    /// invocations, `invoke_with_cost` runs when the caller has a monetary
+    /// grant (so the server can report the actual cost), otherwise the plain
+    /// `invoke` path runs and the kernel debits the worst-case
+    /// `max_cost_per_invocation`.
     pub(crate) async fn dispatch_tool_call_with_cost(
-        &self,
-        request: &ToolCallRequest,
-        has_monetary_grant: bool,
-    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
-        self.dispatch_tool_call_with_cost_sync(request, has_monetary_grant)
-    }
-
-    /// Forward the validated request and optionally report actual invocation cost.
-    ///
-    /// When `has_monetary_grant` is true, calls `invoke_with_cost` so the server
-    /// can report the actual cost incurred. For non-monetary grants the standard
-    /// dispatch path is used and cost is always None.
-    fn dispatch_tool_call_with_cost_sync(
         &self,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
@@ -6425,20 +6479,45 @@ impl ChioKernel {
         })?;
 
         // Try streaming first regardless of monetary mode.
-        if let Some(stream) =
-            server.invoke_stream(&request.tool_name, request.arguments.clone(), None)?
+        if let Some(stream) = server
+            .invoke_stream(&request.tool_name, request.arguments.clone(), None)
+            .await?
         {
             return Ok((ToolServerOutput::Stream(stream), None));
         }
 
         if has_monetary_grant {
-            let (value, cost) =
-                server.invoke_with_cost(&request.tool_name, request.arguments.clone(), None)?;
+            let (value, cost) = server
+                .invoke_with_cost(&request.tool_name, request.arguments.clone(), None)
+                .await?;
             Ok((ToolServerOutput::Value(value), cost))
         } else {
-            let value = server.invoke(&request.tool_name, request.arguments.clone(), None)?;
+            let value = server
+                .invoke(&request.tool_name, request.arguments.clone(), None)
+                .await?;
             Ok((ToolServerOutput::Value(value), None))
         }
+    }
+
+    /// Synchronous dispatch shim used by the legacy
+    /// `evaluate_tool_call_blocking` path while it still exists.
+    ///
+    /// Trj5 Lane B0 made the underlying tool-server trait async. The
+    /// synchronous evaluator (`evaluate_tool_call_sync_with_session_context`,
+    /// reachable through `evaluate_tool_call_blocking` and its `_with_metadata`
+    /// sibling) calls dispatch from a sync context. This shim bridges to the
+    /// async dispatch via `block_on`, mirroring the existing pattern at
+    /// `block_on_price_oracle`. Removal of this shim requires migrating
+    /// `evaluate_tool_call_blocking` (and its many production callers in
+    /// `chio-http-core`, `chio-mcp-edge`, `chio-cross-protocol`,
+    /// `chio-conformance`, etc.) to async, which is a trj6 setter-migration
+    /// responsibility per the Lane B0 scope-lock.
+    pub(crate) fn dispatch_tool_call_with_cost_blocking(
+        &self,
+        request: &ToolCallRequest,
+        has_monetary_grant: bool,
+    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
+        block_on_async_tool_dispatch(self.dispatch_tool_call_with_cost(request, has_monetary_grant))
     }
 
     /// Build a denial response, including FinancialReceiptMetadata when the

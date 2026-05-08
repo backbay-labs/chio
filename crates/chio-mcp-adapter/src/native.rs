@@ -380,6 +380,7 @@ impl NativeChioService {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for NativeChioService {
     fn server_id(&self) -> &str {
         &self.manifest.server_id
@@ -393,7 +394,7 @@ impl ToolServerConnection for NativeChioService {
             .collect()
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: Value,
@@ -406,7 +407,7 @@ impl ToolServerConnection for NativeChioService {
         (registration.handler)(arguments, nested_flow_bridge)
     }
 
-    fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
+    async fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
         let mut guard = self.emitted_events.lock().map_err(|error| {
             KernelError::ToolServerError(format!("native service event queue poisoned: {error}"))
         })?;

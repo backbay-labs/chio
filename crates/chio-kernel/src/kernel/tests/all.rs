@@ -1295,6 +1295,7 @@ impl PaymentAdapter for PrepaidSettledPaymentAdapter {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1302,7 +1303,7 @@ impl ToolServerConnection for EchoServer {
     fn tool_names(&self) -> Vec<String> {
         self.tools.clone()
     }
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
@@ -1315,6 +1316,7 @@ impl ToolServerConnection for EchoServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for NestedFlowServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1329,7 +1331,7 @@ impl ToolServerConnection for NestedFlowServer {
         ]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         _arguments: serde_json::Value,
@@ -1406,6 +1408,7 @@ impl ToolServerConnection for NestedFlowServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for IncompleteServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1415,7 +1418,7 @@ impl ToolServerConnection for IncompleteServer {
         vec!["drop_stream".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,
@@ -1427,6 +1430,7 @@ impl ToolServerConnection for IncompleteServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for StreamingServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1436,7 +1440,7 @@ impl ToolServerConnection for StreamingServer {
         vec!["stream_file".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,
@@ -1445,7 +1449,7 @@ impl ToolServerConnection for StreamingServer {
         Ok(serde_json::json!({"unused": true}))
     }
 
-    fn invoke_stream(
+    async fn invoke_stream(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,
@@ -5263,6 +5267,7 @@ impl MonetaryCostServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for MonetaryCostServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5276,7 +5281,7 @@ impl ToolServerConnection for MonetaryCostServer {
         ]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,
@@ -5285,7 +5290,7 @@ impl ToolServerConnection for MonetaryCostServer {
         Ok(serde_json::json!({"result": "ok"}))
     }
 
-    fn invoke_with_cost(
+    async fn invoke_with_cost(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
@@ -5296,6 +5301,7 @@ impl ToolServerConnection for MonetaryCostServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for FailingMonetaryServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5305,7 +5311,7 @@ impl ToolServerConnection for FailingMonetaryServer {
         vec!["compute".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,
@@ -5314,7 +5320,7 @@ impl ToolServerConnection for FailingMonetaryServer {
         Err(KernelError::Internal("tool server failure".to_string()))
     }
 
-    fn invoke_with_cost(
+    async fn invoke_with_cost(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
@@ -5325,6 +5331,7 @@ impl ToolServerConnection for FailingMonetaryServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for CountingMonetaryServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5334,7 +5341,7 @@ impl ToolServerConnection for CountingMonetaryServer {
         vec!["compute".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,
@@ -5345,7 +5352,7 @@ impl ToolServerConnection for CountingMonetaryServer {
         Ok(serde_json::json!({"result": "ok"}))
     }
 
-    fn invoke_with_cost(
+    async fn invoke_with_cost(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
@@ -9661,6 +9668,7 @@ async fn async_evaluate_tool_call_supports_shared_kernel_concurrency() {
         max_concurrent: Arc<AtomicUsize>,
     }
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for ConcurrentServer {
         fn server_id(&self) -> &str {
             "srv"
@@ -9670,7 +9678,7 @@ async fn async_evaluate_tool_call_supports_shared_kernel_concurrency() {
             vec!["echo".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             tool_name: &str,
             arguments: serde_json::Value,

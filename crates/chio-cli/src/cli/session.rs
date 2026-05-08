@@ -308,6 +308,7 @@ struct StubToolServer {
     id: String,
 }
 
+#[async_trait::async_trait(?Send)]
 impl chio_kernel::ToolServerConnection for StubToolServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -317,7 +318,7 @@ impl chio_kernel::ToolServerConnection for StubToolServer {
         vec!["*".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
@@ -337,6 +338,7 @@ struct StubSqlResultToolServer {
 }
 
 #[cfg(test)]
+#[async_trait::async_trait(?Send)]
 impl chio_kernel::ToolServerConnection for StubSqlResultToolServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -346,7 +348,7 @@ impl chio_kernel::ToolServerConnection for StubSqlResultToolServer {
         vec!["sql".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,
@@ -367,6 +369,7 @@ struct StubStreamingToolServer {
 }
 
 #[cfg(test)]
+#[async_trait::async_trait(?Send)]
 impl chio_kernel::ToolServerConnection for StubStreamingToolServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -376,7 +379,7 @@ impl chio_kernel::ToolServerConnection for StubStreamingToolServer {
         vec!["stream_file".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,
@@ -385,7 +388,7 @@ impl chio_kernel::ToolServerConnection for StubStreamingToolServer {
         Ok(serde_json::json!({"unused": true}))
     }
 
-    fn invoke_stream(
+    async fn invoke_stream(
         &self,
         _tool_name: &str,
         arguments: serde_json::Value,

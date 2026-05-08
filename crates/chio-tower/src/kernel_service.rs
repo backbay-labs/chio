@@ -380,6 +380,7 @@ mod tests {
 
     struct EchoServer;
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for EchoServer {
         fn server_id(&self) -> &str {
             "srv-a"
@@ -389,7 +390,7 @@ mod tests {
             vec!["echo".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             tool_name: &str,
             arguments: serde_json::Value,
@@ -401,7 +402,7 @@ mod tests {
             }))
         }
 
-        fn invoke_stream(
+        async fn invoke_stream(
             &self,
             _tool_name: &str,
             _arguments: serde_json::Value,

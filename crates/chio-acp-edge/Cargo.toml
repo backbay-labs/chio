@@ -21,6 +21,7 @@ compatibility-surface = []
 fuzz = ["dep:arbitrary"]
 
 [dependencies]
+async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }
 chio-kernel = { path = "../chio-kernel" }

@@ -38,6 +38,7 @@ static RECEIPT_METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 struct MetricsToolServer;
 
+#[async_trait::async_trait(?Send)]
 impl chio_kernel::ToolServerConnection for MetricsToolServer {
     fn server_id(&self) -> &str {
         "metrics-srv"
@@ -47,7 +48,7 @@ impl chio_kernel::ToolServerConnection for MetricsToolServer {
         vec!["echo".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         arguments: Value,

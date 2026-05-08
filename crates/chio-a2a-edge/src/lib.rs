@@ -1631,6 +1631,7 @@ mod tests {
         response: Value,
     }
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for MockToolServer {
         fn server_id(&self) -> &str {
             &self.server_id
@@ -1640,7 +1641,7 @@ mod tests {
             self.tools.clone()
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,
@@ -1652,6 +1653,7 @@ mod tests {
 
     struct FailingToolServer;
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for FailingToolServer {
         fn server_id(&self) -> &str {
             "fail-srv"
@@ -1661,7 +1663,7 @@ mod tests {
             vec!["fail_tool".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,
@@ -1673,6 +1675,7 @@ mod tests {
 
     struct StreamingToolServer;
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for StreamingToolServer {
         fn server_id(&self) -> &str {
             "stream-srv"
@@ -1682,7 +1685,7 @@ mod tests {
             vec!["stream".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,
@@ -1691,7 +1694,7 @@ mod tests {
             Ok(json!({"result": "fallback"}))
         }
 
-        fn invoke_stream(
+        async fn invoke_stream(
             &self,
             _tool_name: &str,
             _arguments: Value,
