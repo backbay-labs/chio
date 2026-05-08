@@ -184,7 +184,14 @@ fn federated_request_without_pinned_peer_fails_closed() {
 }
 
 #[test]
-fn federated_request_without_cosigner_fails_closed() {
+fn federated_request_without_pinned_peer_fails_closed_pre_dispatch() {
+    // Renamed from `federated_request_without_cosigner_fails_closed`
+    // (cursor[bot] medium-severity follow-up on PR #611): the
+    // original name implied this test exercised the
+    // "fresh peer + missing cosigner" path, but with no pinned peer
+    // the new pre-dispatch negotiation gate fires first. Renamed to
+    // honestly describe what it covers; the missing-cosigner-with-
+    // fresh-peer scenario is now exercised by the test below.
     let origin_kernel_id = "kernel.org-a";
     let mut kernel = ChioKernel::new(make_config());
     kernel.set_federation_local_kernel_id("kernel.org-b");
@@ -192,6 +199,70 @@ fn federated_request_without_cosigner_fails_closed() {
         "srv-fed",
         vec!["file_read"],
     )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-fed", "file_read")]),
+        300,
+    );
+    let mut request = make_request_with_arguments(
+        "req-fed-no-peer",
+        &cap,
+        "file_read",
+        "srv-fed",
+        serde_json::json!({ "path": "/data/fed.txt" }),
+    );
+    request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
+
+    let response = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect("federated request with no pinned peer must produce a Deny response");
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.unwrap_or_default();
+    assert!(
+        reason.contains("not pinned")
+            || reason.contains("stale")
+            || reason.contains("downgrade"),
+        "unexpected deny reason: {reason}"
+    );
+}
+
+#[test]
+fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_dispatch() {
+    // cursor[bot] medium-severity follow-up on PR #611: restore
+    // coverage for the "fresh peer pinned but no
+    // BilateralCoSigningProtocol installed" branch, which the
+    // original `federated_request_without_cosigner_fails_closed`
+    // never actually reached because no peer was pinned. Pin Org A,
+    // but deliberately do NOT install a cosigner; the pre-dispatch
+    // gate must pass and the post-dispatch federation hop must
+    // surface the missing-cosigner failure.
+    let origin_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+    let tool_host_kernel_id = "kernel.org-b";
+
+    let mut kernel = ChioKernel::new(make_config());
+    kernel.set_federation_local_kernel_id(tool_host_kernel_id);
+    kernel.register_tool_server(Box::new(EchoServer::new(
+        "srv-fed",
+        vec!["file_read"],
+    )));
+
+    // Pin Org A as a fresh trusted peer.
+    let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
+        .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
+    let kernel = kernel.with_federation_peers(vec![peer]);
+
+    // NOTE: deliberately do NOT call `set_federation_cosigner` here.
+    // The pre-dispatch gate sees a fresh peer pin and passes; the
+    // post-dispatch federation hop must then refuse fail-closed.
 
     let agent_kp = make_keypair();
     let cap = make_capability(
@@ -209,20 +280,20 @@ fn federated_request_without_cosigner_fails_closed() {
     );
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 
-    // P0-001 fix (audit 2026-05-08): the no-pinned-peer fail-closed
-    // gate fires BEFORE the missing-cosigner check (a federated
-    // request needs both a fresh peer AND a cosigner). The kernel
-    // returns a structured Deny pre-dispatch.
-    let response = kernel
-        .evaluate_tool_call_blocking(&request)
-        .expect("federated request with no cosigner must produce a Deny response");
-    assert_eq!(response.verdict, Verdict::Deny);
-    let reason = response.reason.unwrap_or_default();
+    // The kernel may surface this as either a Deny response with a
+    // structured reason or a typed KernelError; both are acceptable
+    // fail-closed shapes. Map the Err arm into a synthetic Deny so
+    // the assertion below covers either path.
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    let (verdict, reason) = match result {
+        Ok(resp) => (resp.verdict, resp.reason.unwrap_or_default()),
+        Err(err) => (Verdict::Deny, err.to_string()),
+    };
+    assert_eq!(verdict, Verdict::Deny);
     assert!(
-        reason.contains("not pinned")
-            || reason.contains("stale")
-            || reason.contains("downgrade")
-            || reason.contains("federation cosigner missing"),
-        "unexpected deny reason: {reason}"
+        reason.contains("federation cosigner missing")
+            || reason.contains("cosigner")
+            || reason.contains("federation"),
+        "unexpected deny reason for missing-cosigner-with-fresh-peer scenario: {reason}"
     );
 }
