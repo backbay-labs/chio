@@ -40,6 +40,15 @@ pub mod card;
 pub mod error;
 pub mod lineage;
 
+// Kani public-harness module (TRJ5-A3.3). Only compiled under
+// `cargo kani` (which sets `cfg(kani)` automatically), so production
+// builds and the workspace `cargo build` / `cargo test` paths never
+// see it. Models the trust-boundary invariants for `weights_hash_of`,
+// the `StringSet` predicate algebra, `ModelCard::require_live`, and
+// the `WeightsError::urn` mapping.
+#[cfg(kani)]
+mod kani_public_harnesses;
+
 pub use bundle::{verify_model_card_bundle, VerifiedModelCard};
 pub use card::{weights_hash_of, ModelCard, StringSet, CARD_VERSION_V1};
 pub use error::WeightsError;
