@@ -178,21 +178,35 @@ struct ModelQuoteOutcome {
 /// Algebra of a fail-closed `verify_quote` impl. A backend MUST reject
 /// when ANY of the three axes is unsatisfied:
 ///
-/// - `report_data` does not match the expected binding ->
-///   `Err(AttestError::ReportDataMismatch)`.
 /// - The TCB status is not acceptable per
 ///   `QuoteTcbStatus::is_acceptable` -> `Err(AttestError::QuoteRejected)`.
 /// - The signature algorithm tag does not match the dispatch path ->
 ///   `Err(AttestError::Malformed)` (this is the
 ///   `verify_p256_signature_with_attestation_key` /
 ///   `verify_p384_signature_with_attestation_key` dispatch arm).
+/// - `report_data` does not match the expected binding ->
+///   `Err(AttestError::ReportDataMismatch)`.
 ///
-/// The arm priority below mirrors the production order: report-data
-/// is checked before TCB, TCB is checked before signature dispatch.
+/// The arm priority below mirrors the production order observed in all
+/// three TEE backends:
+///   - TDX (`crates/chio-attest-verify/src/tdx.rs:164-191`): TCB
+///     collateral verification -> parse -> algorithm dispatch ->
+///     report_data comparison.
+///   - Nitro (`crates/chio-attest-verify/src/nitro.rs:237-254`): COSE
+///     algorithm tag check -> parse -> TCB collateral -> signature ->
+///     report_data comparison.
+///   - SEV-SNP (`crates/chio-attest-verify/src/sev_snp.rs:252-268`):
+///     TCB collateral -> signature dispatch -> measurement ->
+///     report_data comparison.
+///
+/// The model coalesces the three dispatch orders into a single
+/// canonical priority (TCB -> algorithm -> report_data) that holds
+/// across all backends: in every backend the report_data comparison is
+/// the LAST of these three checks. Harnesses that need to pin a
+/// backend-specific ordering between TCB and algorithm dispatch
+/// document and assert that ordering locally (see the TDX harness for
+/// algorithm-vs-report_data ordering).
 fn model_verify_quote(outcome: ModelQuoteOutcome) -> Result<(), AttestError> {
-    if !outcome.report_data_matches {
-        return Err(AttestError::ReportDataMismatch);
-    }
     if !outcome.tcb_status.is_acceptable() {
         return Err(AttestError::QuoteRejected(
             "model: tcb rejected".to_string(),
@@ -202,6 +216,9 @@ fn model_verify_quote(outcome: ModelQuoteOutcome) -> Result<(), AttestError> {
         return Err(AttestError::Malformed(
             "model: algorithm tag mismatch".to_string(),
         ));
+    }
+    if !outcome.report_data_matches {
+        return Err(AttestError::ReportDataMismatch);
     }
     Ok(())
 }
@@ -264,14 +281,15 @@ pub fn public_nitro_verify_quote_rejects_report_data_mismatch() {
 
     let result = model_verify_quote(outcome);
 
-    // (1) Fail-closed on report-data mismatch (load-bearing arm).
-    if !report_data_matches {
-        assert!(matches!(result, Err(AttestError::ReportDataMismatch)));
-    } else if !tcb_acceptable {
-        // (2) When report-data matches but TCB is unacceptable, the
-        // backend MUST still reject. The error variant is
-        // `QuoteRejected` per the production impl.
+    // (1) Fail-closed on unacceptable TCB (production checks TCB
+    // collateral first, before report_data).
+    if !tcb_acceptable {
         assert!(matches!(result, Err(AttestError::QuoteRejected(_))));
+    } else if !report_data_matches {
+        // (2) TCB acceptable + matching algorithm tag + report-data
+        // mismatch: the backend MUST reject with
+        // `ReportDataMismatch` (load-bearing arm for this harness).
+        assert!(matches!(result, Err(AttestError::ReportDataMismatch)));
     } else {
         // (3) Both axes satisfied: the model accepts. The runtime
         // path adds cryptographic checks the model abstracts, so
@@ -379,18 +397,22 @@ pub fn public_tdx_verify_quote_rejects_algorithm_mismatch() {
         assert!(result.is_ok());
     }
 
-    // (3) Pin the dispatch order against accidental flips: a
-    // report-data mismatch MUST short-circuit before the algorithm
-    // dispatch is consulted, so a quote with a bad tag and a bad
-    // report-data is rejected as `ReportDataMismatch`, not
-    // `Malformed`. This guards against a future regression that
-    // would re-order the production checks and silently accept a
-    // partial verification.
+    // (3) Pin the dispatch order against accidental flips: in the
+    // production TDX path
+    // (`crates/chio-attest-verify/src/tdx.rs:171-191`), the
+    // algorithm dispatch (`ATT_KEY_TYPE_ECDSA_P256` /
+    // `ATT_KEY_TYPE_ECDSA_P384` arms returning
+    // `AttestError::Malformed`) runs BEFORE the `report_data`
+    // comparison. So a quote with both a bad algorithm tag and a
+    // bad report_data MUST be rejected as `Malformed`, not
+    // `ReportDataMismatch`. This guards against a future regression
+    // that would re-order the production checks and short-circuit
+    // on report_data before the algorithm dispatch.
     let bad_outcome = ModelQuoteOutcome {
         report_data_matches: false,
         tcb_status: QuoteTcbStatus::UpToDate,
         algorithm_tag_matches: false,
     };
     let bad_result = model_verify_quote(bad_outcome);
-    assert!(matches!(bad_result, Err(AttestError::ReportDataMismatch)));
+    assert!(matches!(bad_result, Err(AttestError::Malformed(_))));
 }
