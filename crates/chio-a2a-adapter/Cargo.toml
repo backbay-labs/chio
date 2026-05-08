@@ -12,6 +12,7 @@ publish = false
 name = "chio_a2a_adapter"
 
 [dependencies]
+async-trait = { workspace = true }
 base64 = "0.22"
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-egress-contract = { path = "../chio-egress-contract" }

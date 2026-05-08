@@ -38,6 +38,7 @@ struct FormalClosureToolErrorServer {
     id: String,
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for FormalClosureToolErrorServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -47,7 +48,7 @@ impl ToolServerConnection for FormalClosureToolErrorServer {
         vec!["read_file".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: serde_json::Value,

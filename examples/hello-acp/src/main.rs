@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 
 struct HelloToolServer;
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for HelloToolServer {
     fn server_id(&self) -> &str {
         "hello-acp-srv"
@@ -23,7 +24,7 @@ impl ToolServerConnection for HelloToolServer {
         vec!["hello_tool".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         arguments: Value,
@@ -35,7 +36,7 @@ impl ToolServerConnection for HelloToolServer {
         }))
     }
 
-    fn invoke_stream(
+    async fn invoke_stream(
         &self,
         _tool_name: &str,
         arguments: Value,

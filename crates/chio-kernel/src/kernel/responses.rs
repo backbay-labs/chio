@@ -800,6 +800,79 @@ impl ChioKernel {
         )
     }
 
+    /// Build a Deny response for the pre-dispatch receipt-version
+    /// negotiation gate. By definition the named federation peer is
+    /// NOT pinned fresh on this path, so we cannot run the federation
+    /// cosign hook nor mint a v2 receipt -- both would attempt the same
+    /// peer-freshness lookup that just failed. The v1 deny receipt is
+    /// signed by the local kernel and persisted as evidence of the
+    /// closed admission.
+    ///
+    /// The receipt is always v1: the very condition that triggered
+    /// this deny path is a stale or never-pinned peer, which means
+    /// negotiation cannot resolve a v2-capable counterpart. Recording
+    /// the deny under v1 is consistent with PROTOCOL.md section 6's
+    /// fall-back semantics for ungoverned negotiation.
+    pub(crate) fn build_negotiation_failclosed_deny_response_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let cap = &request.capability;
+        let receipt_content = receipt_content_for_output(None, None)?;
+
+        let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
+            KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
+        })?;
+        let request_metadata = request_receipt_metadata(
+            request,
+            self.attestation_trust_policy.as_ref(),
+            timestamp,
+            extra_metadata.as_ref(),
+        )?;
+
+        let receipt = self.build_and_sign_receipt(ReceiptParams {
+            capability_id: &cap.id,
+            tool_name: &request.tool_name,
+            server_id: &request.server_id,
+            decision: Decision::Deny {
+                reason: reason.to_string(),
+                guard: "kernel.negotiation".to_string(),
+            },
+            action,
+            content_hash: receipt_content.content_hash,
+            metadata: merge_metadata_objects(
+                merge_metadata_objects(
+                    merge_metadata_objects(receipt_content.metadata, request_metadata),
+                    extra_metadata,
+                ),
+                receipt_attribution_metadata(cap, matched_grant_index),
+            ),
+            timestamp,
+            trust_level: chio_core::TrustLevel::default(),
+            tenant_id: None,
+        })?;
+
+        // Local v1 record only: skip
+        // `record_chio_receipt_with_federation` because that helper
+        // would re-run the freshness check we just lost. The fail-
+        // closed deny is intentionally non-federated.
+        self.record_chio_receipt(&receipt)?;
+
+        Ok(ToolCallResponse {
+            request_id: request.request_id.clone(),
+            verdict: Verdict::Deny,
+            output: None,
+            reason: Some(reason.to_string()),
+            terminal_state: OperationTerminalState::Completed,
+            receipt,
+            execution_nonce: None,
+        })
+    }
+
     pub(crate) fn build_deny_response_with_metadata(
         &self,
         request: &ToolCallRequest,
@@ -1261,39 +1334,6 @@ impl ChioKernel {
             })
     }
 
-    /// W2.1: produce the v1 receipt that callers continue to receive
-    /// PLUS a body_hash-addressed `ChioReceiptV2` when the negotiated
-    /// peer profile (or the kernel-level default) selects
-    /// `KernelReceiptVersion::V2BodyHash`. The legacy UUIDv7 alias on
-    /// the v2 receipt is set to the v1 receipt's id so external
-    /// readers can correlate; replay identity is exclusively
-    /// `body_hash`.
-    pub(crate) fn build_and_sign_receipt_with_v2(
-        &self,
-        params: ReceiptParams<'_>,
-        version: KernelReceiptVersion,
-    ) -> Result<(ChioReceipt, Option<chio_core::receipt::ChioReceiptV2>), KernelError> {
-        let v1 = self.build_and_sign_receipt(params)?;
-        if !version.mints_v2() {
-            return Ok((v1, None));
-        }
-        let v2 = self.mint_chio_receipt_v2_from_v1(&v1).map_err(|error| {
-            KernelError::ReceiptSigningFailed(format!(
-                "v2 receipt mint failed (v1 alias={}): {error}",
-                v1.id
-            ))
-        })?;
-        self.record_chio_receipt_v2(&v2, Some(v1.id.as_str()))?;
-        Ok((v1, Some(v2)))
-    }
-
-    /// W2.1 hot-path test surface: same as
-    /// [`Self::mint_chio_receipt_v2_from_v1`] but exposed publicly so
-    /// the `crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs`
-    /// integration test can reconstruct the receipt the kernel just
-    /// minted and probe replay-set behavior. Production code should
-    /// continue to use [`Self::record_chio_receipt_with_federation`]
-    /// which folds the mint into the persistence path.
     pub fn mint_chio_receipt_v2_from_v1_for_test(
         &self,
         v1: &ChioReceipt,
@@ -1301,10 +1341,6 @@ impl ChioKernel {
         self.mint_chio_receipt_v2_from_v1(v1)
     }
 
-    /// W2.1: derive a signed `ChioReceiptV2` from the v1 receipt body
-    /// shape, addressed by `body_hash`. The kernel keypair signs the
-    /// canonical `ReceiptV2SigningBody`; the legacy UUIDv7 alias is
-    /// taken from the v1 receipt id.
     pub(crate) fn mint_chio_receipt_v2_from_v1(
         &self,
         v1: &ChioReceipt,
@@ -1394,23 +1430,35 @@ impl ChioKernel {
     /// receipt is never persisted without its paired remote signature.
     /// Non-federated requests (request.federated_origin_kernel_id is
     /// `None`) behave identically to [`Self::record_chio_receipt`].
-    ///
-    /// W2.1: when the negotiated peer accepts `ACCEPTS_RECEIPT_V2` (or
-    /// the kernel-level default selects v2), this path additionally
-    /// mints a body_hash-addressed `ChioReceiptV2`, persists it to the
-    /// `chio_receipts_v2` table, and inserts the `body_hash` into the
-    /// in-memory `ReceiptV2ReplaySet`. Replay rejection on the v2
-    /// store is fail-closed; the legacy UUIDv7 alias on the v2 row
-    /// is non-authoritative for replay.
     pub(crate) fn record_chio_receipt_with_federation(
         &self,
         request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
-        self.apply_federation_cosign(request, receipt)?;
-        let now = current_unix_timestamp();
-        let version = self
-            .kernel_receipt_version_for_remote(request.federated_origin_kernel_id.as_deref(), now);
+        // Persistence uses the admission-time receipt-version and peer-key
+        // snapshot installed by the evaluate path. Re-resolving freshness
+        // here is unsafe: the tool has already executed, so a peer that
+        // expires mid-dispatch must not downgrade v2 persistence or skip
+        // dual-sign evidence for the side effect admitted under the fresh
+        // snapshot.
+        let scoped_admission = current_scoped_receipt_federation_admission();
+        let scoped_admission = scoped_admission.as_ref().filter(|admission| {
+            admission.remote_kernel_id.as_deref() == request.federated_origin_kernel_id.as_deref()
+        });
+        let version = if let Some(admission) = scoped_admission {
+            admission.receipt_version
+        } else {
+            let now = current_unix_timestamp();
+            self.kernel_receipt_version_for_remote(
+                request.federated_origin_kernel_id.as_deref(),
+                now,
+            )?
+        };
+        self.apply_federation_cosign(
+            request,
+            receipt,
+            scoped_admission.and_then(|admission| admission.peer.as_ref()),
+        )?;
         if version.mints_v2() {
             let v2 = self
                 .mint_chio_receipt_v2_from_v1(receipt)
@@ -1427,13 +1475,12 @@ impl ChioKernel {
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
-        // Scope the receipt-store write lock so it is released before the
-        // settlement observer runs. M09 review follow-up (PR #387,
-        // Cursor Bugbot + Codex): holding the mutex across
-        // `run_settlement_observer` serialized all concurrent receipt
-        // persistence behind potentially I/O-bound hook latency. The
-        // observer needs only a fully-persisted receipt, so we drop the
-        // guard first.
+        // Scope the receipt-store write lock so it is released before
+        // the settlement observer runs. Holding the mutex across
+        // `run_settlement_observer` would serialize all concurrent
+        // receipt persistence behind potentially I/O-bound hook
+        // latency; the observer needs only a fully-persisted receipt,
+        // so the guard is dropped first.
         {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
@@ -1448,17 +1495,6 @@ impl ChioKernel {
             }
             self.append_chio_receipt_to_local_log(receipt.clone());
         }
-        // M09 review follow-up (PR #378, Codex): drive the settlement
-        // observer slot from the receipt-persistence path so a
-        // registered hook actually runs during normal dispatches.
-        // The receipt is fully signed and persisted at this point;
-        // the observer is byte-irrelevant to the receipt itself, and
-        // the hook's return value is intentionally consumed without
-        // feeding back into the dispatch path. This preserves the
-        // documented invariant that hook failures NEVER block
-        // dispatch (P2.T4 byte-identity test). The write lock is
-        // released above so concurrent persistence is not stalled by
-        // observer I/O.
         let _settlement_status = self.run_settlement_observer(receipt);
         Ok(())
     }

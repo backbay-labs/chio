@@ -209,11 +209,9 @@ jobs:
           bash ./scripts/check-log-redaction.sh
           bash ./scripts/check-http-egress-contract.sh
           bash ./scripts/tests/check-http-egress-contract.test.sh
-          # TRJ5-B3.3: lint for sync anchor-batch wrapper callers under
-          # require_public_witness=true. Runtime enforcement remains the
-          # load-bearing gate at crates/chio-anchor/src/batch.rs; this
-          # companion CI check blocks on obvious source-level violations.
-          bash ./scripts/check-anchor-batch-async-witness.sh
+
+      - name: Anchor batch async witness lint
+        run: bash ./scripts/check-anchor-batch-async-witness.sh
 
       - name: Workspace proof report
         env:

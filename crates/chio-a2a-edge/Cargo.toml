@@ -17,6 +17,9 @@ compatibility-surface = []
 otel = ["chio-kernel/otel", "chio-mcp-edge/otel"]
 
 [dependencies]
+async-trait = { workspace = true }
+futures = "0.3"
+tokio = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-cross-protocol = { path = "../chio-cross-protocol" }
 chio-kernel = { path = "../chio-kernel" }
