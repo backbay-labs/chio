@@ -73,17 +73,17 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
 
 ## Fix Wave 2 Lane B Sequencing
 
-Refresh time: 2026-05-08T22:47:38Z
+Refresh time: 2026-05-08T22:53:03Z
 
 Worker A's Lane B slice is now explicitly stacked after #620 in this order:
 
 | Step | PR | Head used for simulation | Role | Sequencing note |
 |---:|---|---|---|---|
-| 1 | #620 | `b68b6cc8e5` | planning and ship-bar coordination | Latest observed planning head before this refresh commit. |
-| 2 | #606 | `92a78bd958` | async trait foundation | Base for the protocol stack. |
-| 3 | #612 | `c524768185` | single-entry verifier | Merge parent includes #606 and carries the narrowed current-thread runtime diagnostic. |
-| 4 | #611 | `9e895a189d` | receipt v2 fail-closed | Merge parent includes #612 and preserves receipt admission snapshots. |
-| 5 | #609 | `84beeb88c4` | anchor batch async-only | Merge parent includes #611; CI anchor lint is a separate step so it can coexist with #620 ship-bar wiring. |
+| 1 | #620 | `c2c06ec0fc` | planning and ship-bar coordination | Latest observed planning head before this refresh commit. |
+| 2 | #606 | `76865083bb` | async trait foundation | Base for the protocol stack. |
+| 3 | #612 | `63b63dafe5` | single-entry verifier | Merge parent includes #606 and carries the narrowed current-thread runtime diagnostic. |
+| 4 | #611 | `05165c11d4` | receipt v2 fail-closed | Merge parent includes #612 and preserves receipt admission snapshots. |
+| 5 | #609 | `246345f66e` | anchor batch async-only | Merge parent includes #611; CI anchor lint is a separate step so it can coexist with #620 ship-bar wiring. |
 
 The required local integration order for this slice is therefore:
 
@@ -114,11 +114,11 @@ refs_refreshed=2026-05-08T21:35:24Z
 Owned branch sequence:
 
 ```text
-merge #620 (b68b6cc8e5) ... OK
-merge #606 (92a78bd958) ... OK
-merge #612 (c524768185) ... OK
-merge #611 (9e895a189d) ... OK
-merge #609 (84beeb88c4) ... OK
+merge #620 (c2c06ec0fc) ... OK
+merge #606 (76865083bb) ... OK
+merge #612 (63b63dafe5) ... OK
+merge #611 (05165c11d4) ... OK
+merge #609 (246345f66e) ... OK
 ```
 
 Earlier evidence-branch simulation, retained for context:
