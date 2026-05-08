@@ -22,14 +22,6 @@ mod ops;
 mod solana;
 mod witness;
 
-// Kani public-harness module (TRJ5-A3.2). Only compiled under
-// `cargo kani` (which sets `cfg(kani)` automatically), so production
-// builds and the workspace `cargo build` / `cargo test` paths never
-// see it. Models the trust-boundary invariants for
-// `AnchorEmergencyControls::allows`, `ensure_anchor_operation_allowed`,
-// `classify_anchor_lane`, `AnchorIndexerCursor::from_sequences`, and
-// the witness-state policy algebra consumed by
-// `evaluate_witness_policy`.
 #[cfg(kani)]
 mod kani_public_harnesses;
 

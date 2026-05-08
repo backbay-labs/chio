@@ -1,5 +1,3 @@
-//! Public-entry Kani harnesses for `chio-anchor` (TRJ5-A3.2).
-//!
 //! # Scope
 //!
 //! This module models the trust-boundary invariants of the public
@@ -26,19 +24,6 @@
 //! sequence numbers. Kani enumerates every input combination
 //! directly; the harnesses exercise the real `pub fn` rather than an
 //! algebraic surrogate.
-//!
-//! `evaluate_witness_policy` and the rest of the witness-policy
-//! surface internally call `batch_body_hash`, which transits canonical
-//! JSON encoding and SHA-256 hashing over a structurally rich
-//! `AnchorBatch`. That path is intractable for symbolic execution
-//! under Kani's default unwind budget. Per the convention in
-//! `crates/chio-attest-verify/src/kani_public_harnesses.rs` (TRJ5-A3.1)
-//! and `crates/chio-kernel-core/src/kani_public_harnesses.rs`, the
-//! invariant is modelled at the smallest algebraic level that
-//! preserves the fail-closed property the production path is required
-//! to satisfy. The runtime tests in `src/witness.rs::tests` and the
-//! integration tests in `crates/chio-anchor/tests/` pin the concrete
-//! impl behaviour against fixed fixtures.
 //!
 //! `verify_proof_bundle`, the EVM publication helpers, and the
 //! Rekor/OTS clients all transit cryptographic verification (ECDSA
@@ -68,11 +53,6 @@
 //! no harness targets a non-`pub` internal helper.
 //!
 //! # Cross-references
-//!
-//! - Reference pattern: `crates/chio-attest-verify/src/kani_public_harnesses.rs`
-//!   (TRJ5-A3.1, PR #605).
-//! - Sibling harness: `crates/chio-weights/src/kani_public_harnesses.rs`
-//!   (TRJ5-A3.3).
 
 extern crate alloc;
 
@@ -392,19 +372,6 @@ pub fn public_anchor_indexer_cursor_lag_classification() {
     assert_eq!(cursor.checked_at, checked_at);
 }
 
-// ---------------------------------------------------------------------
-// Algebraic model for `evaluate_witness_policy`. The production path
-// transits canonical-JSON encoding and SHA-256 hashing over a
-// structurally rich `AnchorBatch`, which is intractable for symbolic
-// execution under Kani's default unwind budget. The model captures
-// only the algebra each branch is required to preserve and is the
-// same kind of model the `chio-attest-verify` harness uses for its
-// `verify_quote` block (see TRJ5-A3.1, PR #605). The runtime tests
-// at `crates/chio-anchor/src/witness.rs::tests` and the integration
-// tests at `crates/chio-anchor/tests/` pin the concrete impl
-// behaviour against fixed fixtures.
-// ---------------------------------------------------------------------
-
 /// Witness-state shape, abstracted away from the receipt's
 /// cryptographic content. The three variants mirror the production
 /// `WitnessState` enum.
@@ -488,13 +455,6 @@ fn model_evaluate_witness_policy(
     }
 }
 
-/// Algebraic surface exercised symbolically: the witness-state policy
-/// MUST be fail-closed under `require_public_witness == true` for
-/// every state except a structurally valid `Witnessed` honored by an
-/// active verifier (the latter is the load-bearing path tested by
-/// `evaluate_witness_policy_with_verifier`'s integration tests; this
-/// harness covers the advisory variant only).
-///
 /// This harness pins the algebra of `evaluate_witness_policy` (the
 /// advisory variant). The fail-closed property is what
 /// `verify_anchor_batch_with_witness_policy` relies on when the
@@ -534,10 +494,6 @@ pub fn public_evaluate_witness_policy_advisory_fail_closed_model() {
         assert_eq!(outcome, ModelWitnessOutcome::Accepted);
     }
 
-    // (3) Stale fail-closed under require_public_witness=true. The
-    // advisory variant cannot consult the verifier-owned cache, so
-    // every stale state under the load-bearing policy MUST be
-    // rejected.
     if matches!(state, ModelWitnessState::Stale) && require_public_witness {
         assert_eq!(outcome, ModelWitnessOutcome::StaleNotPreviouslyVerified);
     }
@@ -558,11 +514,6 @@ pub fn public_evaluate_witness_policy_advisory_fail_closed_model() {
         assert_eq!(outcome, ModelWitnessOutcome::SelfAssertedWitnessed);
     }
 
-    // (6) Witnessed advisory accept under
-    // require_public_witness=false WITH structurally valid
-    // invariants. A regression that rejected good Witnessed states
-    // under the advisory path would block every batch verifier that
-    // did not opt into the load-bearing policy.
     if matches!(state, ModelWitnessState::Witnessed)
         && !require_public_witness
         && witnessed_invariants_hold
@@ -570,15 +521,6 @@ pub fn public_evaluate_witness_policy_advisory_fail_closed_model() {
         assert_eq!(outcome, ModelWitnessOutcome::Accepted);
     }
 
-    // (7) Witnessed structural-invariant violation always rejects,
-    // regardless of policy. The structural checks
-    // (witness_root == batch.body.tree_root,
-    //  body_hash == batch_body_hash(batch),
-    //  receipt.kind == batch.body.witness.kind)
-    // are load-bearing in BOTH the advisory and load-bearing
-    // variants; a regression that admitted a mismatched receipt
-    // would let the lane substitute a different batch behind the
-    // verifier's back.
     if matches!(state, ModelWitnessState::Witnessed) && !witnessed_invariants_hold {
         assert_eq!(outcome, ModelWitnessOutcome::SelfAssertedWitnessed);
     }

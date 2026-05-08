@@ -1,5 +1,3 @@
-//! Public-entry Kani harnesses for `chio-weights` (TRJ5-A3.3).
-//!
 //! # Scope
 //!
 //! This module models the trust-boundary invariants of the public
@@ -63,11 +61,6 @@
 //! helper.
 //!
 //! # Cross-references
-//!
-//! - Reference pattern: `crates/chio-attest-verify/src/kani_public_harnesses.rs`
-//!   (TRJ5-A3.1, PR #605).
-//! - Sibling harness: `crates/chio-anchor/src/kani_public_harnesses.rs`
-//!   (TRJ5-A3.2).
 
 extern crate alloc;
 
@@ -153,21 +146,6 @@ pub fn public_weights_hash_of_determinism_and_tampering() {
     let tampered_digest = weights_hash_of(&tampered);
     assert_ne!(first, tampered_digest);
 }
-
-// `StringSet::contains`, `StringSet::covers`, and `StringSet::intersects`
-// are intentionally NOT exercised symbolically. The underlying
-// `BTreeSet<String>` involves bounded-but-deep tree-rebalancing paths
-// (`alloc::collections::btree::node::NodeRef::correct_childrens_parent_links`)
-// that exceed the workspace `#[kani::unwind(8)]` envelope under
-// symbolic input. Increasing the unwind budget would either timeout
-// or produce spurious unwinding-budget violations. Per the convention
-// in `crates/chio-attest-verify/src/kani_public_harnesses.rs`
-// (TRJ5-A3.1, PR #605), surfaces that transit container internals are
-// pinned by the runtime tests at
-// `crates/chio-weights/src/card.rs::tests` rather than by symbolic
-// model-checking. The card-binding refusal path is exercised
-// end-to-end by the conformance fixtures at
-// `crates/chio-weights/tests/`.
 
 /// Real public surface exercised symbolically: `ModelCard::require_live`
 /// MUST return `Ok(())` when `now < expires_at` and
