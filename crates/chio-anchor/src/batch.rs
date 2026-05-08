@@ -218,10 +218,20 @@ pub fn verify_anchor_batch(batch: &AnchorBatch) -> Result<(), AnchorError> {
 /// seconds) as the wall clock. This sync entry point does NOT call out
 /// to the witness lane and has no verifier-owned stale cache.
 ///
+/// # Public-witness gate (TRJ5-B3)
+///
 /// When `policy.require_public_witness=true`, this function fails
-/// closed for `Witnessed` and `Stale` states after structural checks.
-/// Use [`verify_anchor_batch_with_witness_policy_async`] for
-/// load-bearing public-witness verification and stale fallback.
+/// closed at the entry with [`AnchorError::SyncRouteRequiresAdvisoryPolicy`]
+/// before any structural verification runs. Per PROTOCOL.md section
+/// "Anchor batch public-witness lane (W2.3)" lines 980-993, producers
+/// and consumers MUST route load-bearing public-witness verification
+/// through [`verify_anchor_batch_with_witness_policy_async`] so that
+/// [`AnchorWitnessClient::verify_inclusion`] runs and the verifier-owned
+/// stale cache is consulted. The runtime gate at this entry point is
+/// the load-bearing enforcement of the spec MUST; the companion
+/// `scripts/check-anchor-batch-async-witness.sh` lint is best-effort
+/// fast feedback only.
+///
 /// Advisory mode (`require_public_witness=false`) remains available
 /// for callers that intentionally treat witness state as non-binding.
 pub fn verify_anchor_batch_with_witness_policy(
@@ -229,6 +239,17 @@ pub fn verify_anchor_batch_with_witness_policy(
     policy: &WitnessPolicy,
     now: i64,
 ) -> Result<(), AnchorError> {
+    // TRJ5-B3.2 gate. Reject load-bearing public-witness policies
+    // before any structural work. This makes the routing rule from
+    // PROTOCOL.md lines 980-993 load-bearing rather than relying on
+    // the per-state table inside `evaluate_witness_policy` to fail
+    // closed by happenstance. Reverting this early-return is what
+    // the negative conformance fixture
+    // `crates/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs`
+    // detects.
+    if policy.require_public_witness {
+        return Err(AnchorError::SyncRouteRequiresAdvisoryPolicy);
+    }
     verify_anchor_batch(batch)?;
     evaluate_witness_policy(batch, &batch.body.witness_state, policy, now)
         .map_err(witness_policy_to_anchor_error)

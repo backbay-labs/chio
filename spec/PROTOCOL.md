@@ -991,6 +991,23 @@ Each batch carries a `WitnessState` lifecycle:
     batches).
   - `require_public_witness: false` -> accept all states (advisory mode).
 
+Producers and consumers MUST route load-bearing public-witness verification
+through `verify_anchor_batch_with_witness_policy_async` whenever
+`require_public_witness=true`. The synchronous entry point
+`verify_anchor_batch_with_witness_policy` MUST reject any policy carrying
+`require_public_witness=true` at runtime, before structural verification,
+regardless of `WitnessState`. The synchronous wrapper is reserved for
+advisory-mode callers (`require_public_witness=false`) that intentionally
+treat witness state as non-binding. This is a tightening of the per-state
+arrow rules above: making the routing rule load-bearing decouples it from
+the per-state table so a future state addition cannot accidentally re-open
+the bypass. The runtime gate at
+`crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`
+returning `AnchorError::SyncRouteRequiresAdvisoryPolicy` is the load-bearing
+enforcement; the companion `scripts/check-anchor-batch-async-witness.sh`
+lint is best-effort fast feedback only and does not provide a soundness
+guarantee.
+
 Rejection criteria the W2.3 negative-conformance suite exercises:
 
 - forged Merkle root (real Merkle re-compute, not a label compare): rebuilding

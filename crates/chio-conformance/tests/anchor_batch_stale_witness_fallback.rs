@@ -125,7 +125,20 @@ fn require_public_witness_rejects_pending_batch() {
         require_public_witness: true,
         stale_window_seconds: 60 * 60,
     };
-    let err = verify_anchor_batch_with_witness_policy(&batch, &policy, 1_700_000_100)
+    // TRJ5-B3: under require_public_witness=true, the load-bearing
+    // route is the async wrapper. The Pending-state rejection lives
+    // there. The sync wrapper short-circuits with
+    // SyncRouteRequiresAdvisoryPolicy (covered by the B3 fixture).
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let verified = VerifiedWitnessCache::new();
+    let err = runtime
+        .block_on(verify_anchor_batch_with_witness_policy_async(
+            &batch,
+            &policy,
+            1_700_000_100,
+            None,
+            &verified,
+        ))
         .expect_err("Pending batch must be rejected when require_public_witness=true");
     let msg = err.to_string();
     assert!(
@@ -160,9 +173,21 @@ fn require_public_witness_rejects_stale_on_sync_path_without_verifier_cache() {
         require_public_witness: true,
         stale_window_seconds: 60,
     };
+    // TRJ5-B3: the load-bearing route under require_public_witness=true
+    // is the async wrapper. The Stale-without-verifier-cache rejection
+    // lives there.
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let verified = VerifiedWitnessCache::new();
     // 500 seconds > 60 second stale window
-    let err = verify_anchor_batch_with_witness_policy(&signed, &policy, 1_700_000_500)
-        .expect_err("sync stale admission without verifier cache must be rejected");
+    let err = runtime
+        .block_on(verify_anchor_batch_with_witness_policy_async(
+            &signed,
+            &policy,
+            1_700_000_500,
+            None,
+            &verified,
+        ))
+        .expect_err("stale admission without verifier cache must be rejected");
     let msg = err.to_string();
     assert!(
         msg.contains("not in the verifier-owned previously_verified cache")
@@ -200,8 +225,19 @@ fn require_public_witness_accepts_already_witnessed_during_lane_outage() {
         require_public_witness: true,
         stale_window_seconds: 60 * 60,
     };
-    verify_anchor_batch_with_witness_policy(&signed, &policy, 1_700_000_500)
-        .expect_err("sync require_public_witness rejects self-asserted Witnessed");
+    // TRJ5-B3: the sync wrapper rejects load-bearing public-witness
+    // policies at the door with SyncRouteRequiresAdvisoryPolicy. That
+    // gate is what the B3 conformance fixture pins; here we exercise
+    // the async happy-path that admits the witnessed batch.
+    let sync_err = verify_anchor_batch_with_witness_policy(&signed, &policy, 1_700_000_500)
+        .expect_err("sync wrapper must reject require_public_witness=true at the door");
+    assert!(
+        matches!(
+            sync_err,
+            chio_anchor::AnchorError::SyncRouteRequiresAdvisoryPolicy
+        ),
+        "expected SyncRouteRequiresAdvisoryPolicy, got: {sync_err:?}"
+    );
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let client = AlwaysOkClient;
@@ -277,7 +313,21 @@ fn require_public_witness_rejects_already_witnessed_with_root_mismatch() {
         require_public_witness: true,
         stale_window_seconds: 60 * 60,
     };
-    let err = verify_anchor_batch_with_witness_policy(&signed, &policy, 1_700_000_500)
+    // TRJ5-B3: under require_public_witness=true, the witness-root
+    // mismatch check fires on the load-bearing async path. The sync
+    // path now short-circuits on SyncRouteRequiresAdvisoryPolicy
+    // (covered by the B3 fixture).
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let client = AlwaysOkClient;
+    let verified = VerifiedWitnessCache::new();
+    let err = runtime
+        .block_on(verify_anchor_batch_with_witness_policy_async(
+            &signed,
+            &policy,
+            1_700_000_500,
+            Some(&client),
+            &verified,
+        ))
         .expect_err("witness root must match batch tree_root");
     let msg = err.to_string();
     assert!(

@@ -209,6 +209,12 @@ jobs:
           bash ./scripts/check-log-redaction.sh
           bash ./scripts/check-http-egress-contract.sh
           bash ./scripts/tests/check-http-egress-contract.test.sh
+          # TRJ5-B3.3: best-effort lint for sync anchor-batch wrapper
+          # callers under require_public_witness=true. The runtime gate
+          # at crates/chio-anchor/src/batch.rs is the load-bearing
+          # enforcement; this lint catches obvious literal-struct-init
+          # cases. See script header for the soundness contract.
+          bash ./scripts/check-anchor-batch-async-witness.sh
 
       - name: Workspace proof report
         env:
