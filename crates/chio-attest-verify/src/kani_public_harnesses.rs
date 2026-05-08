@@ -64,8 +64,8 @@
 //! bool, tcb_status: QuoteTcbStatus, algorithm_tag_matches: bool)
 //! -> Result<(), AttestError>`) used by both the runtime
 //! `verify_quote` impls and the Kani harnesses, replacing
-//! `model_verify_quote`. This is option (a) for future hardening; it was
-//! deferred from this release because the runtime impls' error variants
+//! `model_verify_quote`. This is option (a) for future hardening; it is
+//! deferred here because the runtime impls' error variants
 //! (`QuoteRejected(String)`, `Malformed(String)`) carry contextual
 //! strings that interlock with the live verifier code paths and
 //! refactoring them in this PR would risk a regression in the
