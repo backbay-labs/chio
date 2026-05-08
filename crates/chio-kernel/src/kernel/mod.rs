@@ -2863,9 +2863,42 @@ impl ChioKernel {
 
         let now = current_unix_timestamp();
 
+        // P0-001 fix (audit 2026-05-08, refined round-3): receipt-version
+        // negotiation is a TRUST-BOUNDARY admission check that must run
+        // BEFORE any dispatch path AND before the emergency-stop deny
+        // helper. The emergency-stop helper uses
+        // `record_chio_receipt_with_federation`, which itself re-runs
+        // the freshness lookup and fails with
+        // `ReceiptNegotiationDowngrade` for a stale named peer; that
+        // propagation would replace the structured emergency-stop Deny
+        // with a generic Err. Running the negotiation gate first keeps
+        // the local fail-closed deny path (which records via
+        // `record_chio_receipt`, no federation lookup) reachable.
+        if let Err(error) = self.kernel_receipt_version_for_remote(
+            request.federated_origin_kernel_id.as_deref(),
+            now,
+        ) {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "receipt-version negotiation failed pre-dispatch"
+            );
+            return self.build_negotiation_failclosed_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
+        }
+
         // Phase 1.4 emergency kill switch: every evaluate path checks the flag
         // BEFORE capability validation, guard evaluation, or budget mutation so
-        // a stopped kernel cannot be coerced into doing any work.
+        // a stopped kernel cannot be coerced into doing any work. The
+        // negotiation gate above means the federation lookup inside
+        // `build_deny_response_with_metadata` is now safe to run for
+        // emergency-stopped requests.
         if self.is_emergency_stopped() {
             warn!(
                 request_id = %request.request_id,
@@ -2890,36 +2923,6 @@ impl ChioKernel {
         );
 
         let cap = &request.capability;
-
-        // P0-001 fix (audit 2026-05-08): receipt-version negotiation is
-        // a TRUST-BOUNDARY admission check that must run BEFORE any
-        // dispatch path. When a named federation peer is not pinned
-        // fresh (stale or never-pinned), the kernel MUST refuse to
-        // dispatch instead of executing the tool and then refusing to
-        // mint the receipt. PROTOCOL.md section 6 (normative MUST).
-        //
-        // Running this check first also keeps subsequent deny paths
-        // working: `record_chio_receipt_with_federation` re-runs the
-        // same lookup, so any later code that falls into a normal
-        // "build deny response" helper would loop on the same failure.
-        if let Err(error) = self.kernel_receipt_version_for_remote(
-            request.federated_origin_kernel_id.as_deref(),
-            now,
-        ) {
-            let msg = error.to_string();
-            warn!(
-                request_id = %request.request_id,
-                reason = %redacted!(&msg),
-                "receipt-version negotiation failed pre-dispatch"
-            );
-            return self.build_negotiation_failclosed_deny_response_with_metadata(
-                request,
-                &msg,
-                now,
-                None,
-                extra_metadata.clone(),
-            );
-        }
 
         // Round-3 codex P2 fix: signature is verified first (no budget
         // mutation); the actual `admit_capability_budget` call is
@@ -3397,6 +3400,34 @@ impl ChioKernel {
         let _tenant_scope = scope_receipt_tenant_id(tenant_id);
 
         let now = current_unix_timestamp();
+
+        // P0-001 fix (round-3 follow-up): the pre-dispatch receipt-
+        // version admission gate must run on the nested-flow path too,
+        // and BEFORE emergency-stop deny because `build_deny_response`
+        // ultimately routes through `record_chio_receipt_with_federation`
+        // which itself re-runs the freshness lookup. Without the gate
+        // here, a tool dispatched via the nested-flow bridge with a
+        // stale or never-pinned federated peer would execute first and
+        // only then fail at receipt minting -- the exact fail-open
+        // window the gate is meant to close.
+        if let Err(error) = self.kernel_receipt_version_for_remote(
+            request.federated_origin_kernel_id.as_deref(),
+            now,
+        ) {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "receipt-version negotiation failed pre-dispatch (nested flow)"
+            );
+            return self.build_negotiation_failclosed_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                None,
+            );
+        }
 
         // Phase 1.4 emergency kill switch: the nested-flow path also deny-fast
         // so sampling/elicitation-bearing tool calls cannot slip past while
