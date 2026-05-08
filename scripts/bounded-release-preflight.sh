@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# release work kickoff preflight gate.
+# Bounded release kickoff preflight gate.
 #
 # Returns exit 0 only if every kickoff prerequisite enumerated in
 # `.planning/trajectory-5/KICKOFF-CHECKLIST.md` is satisfied:
@@ -9,13 +9,13 @@
 #   Gate 3: templates and architecture docs present
 #   Gate 4: Wave-2 reviews + Wave-3 fix logs + Wave-4 closeout + Wave-2 sign-off ledgers
 #   Gate 5: OWNERS.toml human_assignment populated for all three lanes
-#   Gate 6: releases.toml [trajectory_5] block exists with status set
+#   Gate 6: releases.toml [v0_1_0_bounded_chiodome] block exists with status set
 #   Gate 7: ship-bar baseline measurements present
 #   Gate 8: drift-cleanup checks (no LB-* aliases in Depends-on rows;
 #           no live Option A design references; ToolServer mentions
 #           confined to retraction notes)
 #
-# Run from the chio repo root: `bash scripts/trj5-preflight.sh`.
+# Run from the chio repo root: `bash scripts/bounded-release-preflight.sh`.
 # Output is one OK/FAIL line per check. Exit 0 if all PASS, 1 otherwise.
 
 set -uo pipefail
@@ -194,26 +194,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Gate 6: releases.toml has [trajectory_5] block with status set
+# Gate 6: releases.toml has [v0_1_0_bounded_chiodome] block with status set
 # ---------------------------------------------------------------------------
-printf '\n[Gate 6] releases.toml [trajectory_5] block\n'
+printf '\n[Gate 6] releases.toml [v0_1_0_bounded_chiodome] block\n'
 if [ ! -f releases.toml ]; then
   failure "releases.toml is missing"
 else
-  if grep -q -E '^\[trajectory_5\]' releases.toml; then
-    ok "releases.toml has [trajectory_5] section"
+  if grep -q -E '^\[v0_1_0_bounded_chiodome\]' releases.toml; then
+    ok "releases.toml has [v0_1_0_bounded_chiodome] section"
   else
-    failure "releases.toml is missing [trajectory_5] section"
+    failure "releases.toml is missing [v0_1_0_bounded_chiodome] section"
   fi
-  if grep -q -E '^trj5_release_status[[:space:]]*=' releases.toml; then
-    ok "releases.toml has trj5_release_status set"
+  if grep -q -E '^release_status[[:space:]]*=' releases.toml; then
+    ok "releases.toml has release_status set"
   else
-    failure "releases.toml is missing trj5_release_status"
+    failure "releases.toml is missing release_status"
   fi
-  if grep -q -E '^trj5_baseline_sha[[:space:]]*=' releases.toml; then
-    ok "releases.toml has trj5_baseline_sha set"
+  if grep -q -E '^baseline_sha[[:space:]]*=' releases.toml; then
+    ok "releases.toml has baseline_sha set"
   else
-    failure "releases.toml is missing trj5_baseline_sha"
+    failure "releases.toml is missing baseline_sha"
   fi
 fi
 
@@ -318,13 +318,13 @@ fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-printf '\n----- trj5-preflight summary -----\n'
+printf '\n----- bounded-release-preflight summary -----\n'
 printf 'checks run: %d\n' "$checks"
 printf 'failures:   %d\n' "$fail"
 if [ "$fail" -eq 0 ]; then
-  printf '\ntrj5 preflight: PASS\n'
+  printf '\nbounded release preflight: PASS\n'
   exit 0
 else
-  printf '\ntrj5 preflight: %d FAIL(s)\n' "$fail"
+  printf '\nbounded release preflight: %d FAIL(s)\n' "$fail"
   exit 1
 fi

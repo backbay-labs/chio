@@ -37,7 +37,7 @@ Each primitive closes with: enforced call site + spec MUST citation + signed neg
 | Two-kernel cross-org bilateral cosigned invocation using existing `crates/chio-federation/src/bilateral.rs`. | federation | release work-C1 |
 | Capability lease + budget bond via `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA`. | federation | release work-C2 |
 | Anchored through `crates/chio-anchor::Web3CheckpointStatement` (no new live deployment required). | federation | release work-C3 |
-| Selective-disclosure auditor view behind `zk` Cargo feature flag. No new spec ratification. | federation | release work-C4 |
+| Selective-disclosure auditor view behind `bbs-stub` Cargo feature flag. No new spec ratification. | federation | release work-C4 |
 | Wrapped at the user surface by `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Receipts dogfooded through `chio receipt explain`. | cli | release work-C5 |
 | `examples/chiodome-bilateral/` end-to-end fixture; honest release tag `v0.1.0-bounded-chiodome` under v3.18 bounded-claim discipline. | examples | release work-C6 |
 

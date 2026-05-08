@@ -270,10 +270,10 @@ done
 chio receipt explain "fixture" \
     --input-file fixtures/bilateral-cosign-invocation.json > /dev/null
 
-# 6. Optional zk auditor view (only if compiled with --features zk).
-if cargo run -p chiodome-bilateral --features zk -- --print-zk-status \
+# 6. Optional selective-disclosure auditor view (only if compiled with --features bbs-stub).
+if cargo run -p chiodome-bilateral --features bbs-stub -- --print-selective-disclosure-status \
    2>/dev/null | grep -q enabled; then
-    cargo run -p chiodome-bilateral --features zk -- \
+    cargo run -p chiodome-bilateral --features bbs-stub -- \
         --policy policies/refund-policy.yaml \
         --fixtures-dir fixtures \
         --scenario auditor-view

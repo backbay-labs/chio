@@ -46,12 +46,12 @@ The release tag includes:
    - `policy-deny.json` - the deny scenario's bilateral envelope
      showing `policy.verdict_disagreement`.
    - `auditor-view/proof.json` - selective-disclosure proof
-     (only when built with `--features zk`; deferable to v0.2 per
+     (only when built with `--features bbs-stub`; deferable to v0.2 per
      RISK-REGISTER R6 if BBS+ deps cannot resolve).
 3. A new `chio-federation::bilateral_dsse` module wrapping the
    spec section 6 envelope shape.
-4. A new `chio-zk-receipts` workspace member behind a
-   default-off `zk` feature.
+4. A new `chio-federation` workspace member behind a
+   default-off `bbs-stub` feature.
 5. Updated `chio receipt explain` rendering for bilateral chains.
 6. A new doc page `docs/guides/EXPLAIN_A_DENIAL.md`.
 7. A required CI check `chio-demo-smoke` that runs
@@ -81,7 +81,7 @@ example artifacts shipped with the tag.
    `DualSignedReceipt::verify` is rewired to validate against PAE
    bytes; legacy `CoSigningBody` preimage signing is retained only
    as a fixture-only signer used by B4's negative conformance test.
-3. The DSSE envelope verifies under the spec section 7 17-step
+3. The DSSE envelope verifies under the spec section 7 section 7
    verification algorithm. Each spec section 7.1 error code has a
    negative conformance fixture in
    `crates/chio-federation/tests/bilateral_dsse_negative.rs`.
@@ -103,7 +103,7 @@ example artifacts shipped with the tag.
    `crates/chio-cli/src/cli/trust_commands.rs:2629`) walks the
    bilateral chain end-to-end and surfaces the cosign summary,
    anchor checkpoint summary, and policy verdict details.
-8. When built with `--features zk`, the demo emits a
+8. When built with `--features bbs-stub`, the demo emits a
    `chio.selective-disclosure-proof.v1` envelope verifying the
    single predicate
    `cmp(refund_amount_minor, <=, 25000, scale=2)` against a hidden
@@ -274,7 +274,7 @@ slips. The tag is unblocked when all four exist and pass.
   for the DSSE adapter design.
 - Read
   `.planning/trajectory-5/lane-c-demo/selective-disclosure.md`
-  for the bounded-claim text governing the `zk` feature.
+  for the bounded-claim text governing the `bbs-stub` feature.
 - Run `make kb-up && make ci-demo` to reproduce the full smoke
   locally.
 

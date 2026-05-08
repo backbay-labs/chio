@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Trajectory 5 ship-bar checker.
+# Bounded release ship-bar checker.
 #
 # Verifies the per-bar machine-readable signals enumerated in
 # `.planning/trajectory-5/SHIP-BAR-TRACKER.md`. This script is the
-# closing-bar companion to `scripts/trj5-preflight.sh` (which gates
+# closing-bar companion to `scripts/bounded-release-preflight.sh` (which gates
 # kickoff). Together they form the release close gate:
 #
-#   - trj5-preflight.sh: planning artifacts, OWNERS, releases.toml,
+#   - bounded-release-preflight.sh: planning artifacts, OWNERS, releases.toml,
 #     review trail, drift cleanup.
-#   - check-trj5-ship-bar.sh (this file): per-bar evidence presence
+#   - check-bounded-ship-bar.sh (this file): per-bar evidence presence
 #     for the three closing bars.
 #
 # The script is deliberately presence-and-shape oriented. It is NOT a
@@ -28,12 +28,12 @@
 # Bar 3 (Lane C): demo directory + a pinned receipt fixture under
 # `examples/chiodome-bilateral/`. Missing artifacts FAIL.
 #
-# Run from the chio repo root: `bash scripts/check-trj5-ship-bar.sh`.
+# Run from the chio repo root: `bash scripts/check-bounded-ship-bar.sh`.
 # Output is one OK/FAIL/PARTIAL line per check.
 #
 # Exit modes:
 #   * Default (release-gate mode): PARTIAL is treated as a FAIL. The
-#     trajectory closes only when every bar is fully MET, so the close
+#     release closes only when every bar is fully MET, so the close
 #     gate must reject any bar that is still in baseline / in-progress
 #     state. Exits 1 if any partial OR failure row is recorded.
 #   * `--diagnostic` (opt-in): PARTIAL is reported but does not
@@ -42,7 +42,7 @@
 #     wants the honest snapshot without flipping the gate red. Real
 #     FAIL rows still flip the gate red.
 #
-# The strict default is the audit's required behaviour. The diagnostic
+# The strict default is required release-gate behaviour. The diagnostic
 # flag is opt-in and clearly labelled in the summary footer.
 
 set -uo pipefail
@@ -61,11 +61,11 @@ for arg in "$@"; do
       ;;
     -h|--help)
       sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-      printf '\nUsage: check-trj5-ship-bar.sh [--diagnostic]\n'
+      printf '\nUsage: check-bounded-ship-bar.sh [--diagnostic]\n'
       exit 0
       ;;
     *)
-      printf 'check-trj5-ship-bar.sh: unknown argument: %s\n' "$arg" >&2
+      printf 'check-bounded-ship-bar.sh: unknown argument: %s\n' "$arg" >&2
       exit 2
       ;;
   esac
@@ -343,7 +343,7 @@ for crate in "${bar1_crates[@]}"; do
   fi
 done
 
-# Bar 1 also requires the threats directory; trj5-preflight.sh already
+# Bar 1 also requires the threats directory; bounded-release-preflight.sh already
 # checks count == 20. Here we additionally verify each file has
 # `caught >= 1` and a non-1970 `ran_at` (the SHIP-BAR-TRACKER.md
 # machine-readable signal).
@@ -475,22 +475,22 @@ fi
 # releases.toml carries the recorded release tag (or the explicit
 # `pending` placeholder during baseline baseline). PARTIAL until tagged.
 if [ -f releases.toml ]; then
-  tag_line=$(grep -E '^v0_1_0_bounded_chiodome_release_tag[[:space:]]*=' releases.toml | head -1 || true)
+  tag_line=$(grep -E '^release_tag[[:space:]]*=' releases.toml | head -1 || true)
   if [ -n "$tag_line" ]; then
     if echo "$tag_line" | grep -q 'v0.1.0-bounded-chiodome' \
        && ! echo "$tag_line" | grep -q '"pending"'; then
-      ok "Bar3 releases.toml carries v0_1_0_bounded_chiodome_release_tag"
+      ok "Bar3 releases.toml carries release_tag"
     else
-      partial "Bar3 releases.toml v0_1_0_bounded_chiodome_release_tag is placeholder ($tag_line)"
+      partial "Bar3 releases.toml release_tag is placeholder ($tag_line)"
     fi
   else
-    failure "Bar3 releases.toml missing v0_1_0_bounded_chiodome_release_tag entry"
+    failure "Bar3 releases.toml missing release_tag entry"
   fi
 else
   failure "Bar3 releases.toml missing"
 fi
 
-printf '\n----- check-trj5-ship-bar summary -----\n'
+printf '\n----- check-bounded-ship-bar summary -----\n'
 printf 'checks run: %d\n' "$checks"
 printf 'failures:   %d\n' "$fail"
 printf 'partials:   %d\n' "$partials"
@@ -505,24 +505,24 @@ fi
 # `--diagnostic` mode is opt-in and only allows real FAIL rows to flip
 # the gate red.
 if [ "$fail" -ne 0 ]; then
-  printf '\ntrj5 ship-bar: FAIL (%d fail row(s), %d partial row(s))\n' "$fail" "$partials"
+  printf '\nbounded ship-bar: FAIL (%d fail row(s), %d partial row(s))\n' "$fail" "$partials"
   exit 1
 fi
 
 if [ "$diagnostic_mode" -eq 1 ]; then
   if [ "$partials" -gt 0 ]; then
-    printf '\ntrj5 ship-bar: PASS (diagnostic mode; %d partial row(s) reported as warnings)\n' "$partials"
+    printf '\nbounded ship-bar: PASS (diagnostic mode; %d partial row(s) reported as warnings)\n' "$partials"
   else
-    printf '\ntrj5 ship-bar: PASS (diagnostic mode; no partial rows)\n'
+    printf '\nbounded ship-bar: PASS (diagnostic mode; no partial rows)\n'
   fi
   exit 0
 fi
 
 if [ "$partials" -ne 0 ]; then
-  printf '\ntrj5 ship-bar: FAIL (release-gate mode; %d partial row(s) block close)\n' "$partials"
+  printf '\nbounded ship-bar: FAIL (release-gate mode; %d partial row(s) block close)\n' "$partials"
   printf '  re-run with --diagnostic for an advisory snapshot during baseline measurement\n'
   exit 1
 fi
 
-printf '\ntrj5 ship-bar: PASS (release-gate mode; all bars MET)\n'
+printf '\nbounded ship-bar: PASS (release-gate mode; all bars MET)\n'
 exit 0

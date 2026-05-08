@@ -22,6 +22,7 @@ matrix_src="docs/standards/CHIO_COMPTROLLER_MARKET_POSITION_MATRIX.json"
 matrix_snapshot="${output_root}/CHIO_COMPTROLLER_MARKET_POSITION_MATRIX.json"
 proof_src="docs/release/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md"
 proof_snapshot="${output_root}/CHIO_COMPTROLLER_MARKET_POSITION_PROOF.md"
+gsd_tools_bin="${GSD_TOOLS_BIN:-gsd-tools.cjs}"
 
 rm -rf "${output_root}"
 mkdir -p "${log_root}"
@@ -42,7 +43,7 @@ run_and_log universal-control-plane ./scripts/qualify-universal-control-plane.sh
 run_and_log operator-surfaces ./scripts/qualify-comptroller-operator-surfaces.sh
 run_and_log partner-contracts ./scripts/qualify-comptroller-partner-contracts.sh
 run_and_log federation ./scripts/qualify-comptroller-federation.sh
-run_and_log planning-truth node "/Users/connor/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze
+run_and_log planning-truth node "${gsd_tools_bin}" roadmap analyze
 
 cat >"${report_path}" <<'EOF'
 # Comptroller Market-Position Qualification Gate
@@ -69,7 +70,7 @@ Executed command set:
 - `./scripts/qualify-comptroller-operator-surfaces.sh`
 - `./scripts/qualify-comptroller-partner-contracts.sh`
 - `./scripts/qualify-comptroller-federation.sh`
-- `node "/Users/connor/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze`
+- `node "${GSD_TOOLS_BIN:-gsd-tools.cjs}" roadmap analyze`
 
 Supporting documents:
 

@@ -30,6 +30,7 @@ runbook_snapshot="${output_root}/CHIO_UNIVERSAL_CONTROL_PLANE_RUNBOOK.md"
 partner_proof_src="docs/release/CHIO_UNIVERSAL_CONTROL_PLANE_PARTNER_PROOF.md"
 partner_proof_snapshot="${output_root}/CHIO_UNIVERSAL_CONTROL_PLANE_PARTNER_PROOF.md"
 cargo_target_dir="target/qualify-universal-control-plane-build"
+gsd_tools_bin="${GSD_TOOLS_BIN:-gsd-tools.cjs}"
 
 rm -rf "${output_root}" "${cargo_target_dir}"
 mkdir -p "${log_root}"
@@ -56,7 +57,7 @@ run_and_log kernel-authority \
 run_and_log control-plane-authority \
   cargo test -p chio-openai-adapter -p chio-acp-proxy
 run_and_log planning-truth \
-  node "/Users/connor/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze
+  node "${gsd_tools_bin}" roadmap analyze
 
 cat >"${report_path}" <<'EOF'
 # Universal Control-Plane Qualification Gate
@@ -90,7 +91,7 @@ Executed command set:
 - `cargo test -p chio-cross-protocol -p chio-mcp-edge -p chio-a2a-edge -p chio-acp-edge`
 - `cargo test -p chio-http-core -p chio-api-protect -p chio-tower`
 - `cargo test -p chio-openai-adapter -p chio-acp-proxy`
-- `node "/Users/connor/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze`
+- `node "${GSD_TOOLS_BIN:-gsd-tools.cjs}" roadmap analyze`
 
 Supporting documents:
 

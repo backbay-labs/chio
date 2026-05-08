@@ -221,8 +221,8 @@ on those dimensions. The pairing rebuts the false dichotomy.
   live-chain artifacts, and OTS tooling. The Chiodome demo does not
   promote v2.71 to live; it consumes v2.71's testnet artefacts and
   labels accordingly.
-- BBS+ ships behind the default-off `zk` Cargo feature in a new
-  `chio-zk-receipts` workspace member, exactly as
+- BBS+ ships behind the default-off `bbs-stub` Cargo feature in a new
+  `chio-federation` workspace member, exactly as
   `CHIODOS_SELECTIVE_DISCLOSURE` section 2.1 prescribes. Verifiers
   uninterested in selective disclosure ignore the secondary commitment
   -- Ed25519 over RFC 8785 JCS remains authoritative.

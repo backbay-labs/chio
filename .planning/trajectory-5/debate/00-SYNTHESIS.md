@@ -143,7 +143,7 @@ Champion's KB-MCP dogfood. One demo -- not two, not five.
 - **Capability lease + budget bond** via `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA`.
 - **Anchored** through `crates/chio-anchor::Web3CheckpointStatement` (no new
   Web3 live deployment required; bounded claim).
-- **Selective-disclosure auditor view** behind `zk` Cargo feature flag. No
+- **Selective-disclosure auditor view** behind `bbs-stub` Cargo feature flag. No
   new spec ratification. Per `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` §6.
 - **Wrapped at the user surface** by `chio mcp serve --policy` against the
   local KB MCP stack at `ops/knowledge-base/`. The receipts produced by the

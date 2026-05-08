@@ -115,7 +115,7 @@ two-signature adapter" to "consume B4 and ship the §7 verifier".
 
 ### Acceptance
 
-- Round-trip: produce envelope -> verify envelope -> all 17 steps
+- Round-trip: produce envelope -> verify envelope -> implemented verifier subset
   pass against happy-path fixture.
 - Negative conformance: each spec section 7.1 error code is exercised
   in `crates/chio-federation/tests/bilateral_dsse_negative.rs` (16
@@ -258,12 +258,12 @@ W3.
 
 ---
 
-## C5. Selective disclosure auditor view (zk feature)
+## C5. Selective disclosure auditor view (bbs-stub feature)
 
 ### Scope
 
-- New workspace member `crates/chio-zk-receipts/` behind a default-off
-  Cargo feature `zk`. Lives next to
+- New workspace member `crates/chio-federation/` behind a default-off
+  Cargo feature `bbs-stub`. Lives next to
   `crates/chio-attest-verify/` per
   `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 2.1.
 - Implements the spec section 6.2 `chio.bbs-projection.step.v1`
@@ -279,14 +279,14 @@ W3.
   `bbs-2023` cryptosuite, `bls12-381-sha-256` ciphersuite.
 - Auditor view fixtures under
   `examples/chiodome-bilateral/fixtures/auditor-view/` are produced
-  only when the `zk` feature is on; otherwise the demo gracefully
-  prints `[selective-disclosure: zk feature not enabled]`.
+  only when the `bbs-stub` feature is on; otherwise the demo gracefully
+  prints `[selective-disclosure: bbs-stub feature not enabled]`.
 
 ### Acceptance
 
-- `cargo test -p chio-zk-receipts --features zk` passes the spec
+- `cargo test -p chio-federation --features bbs-stub` passes the spec
   section 6.4 worked example end-to-end.
-- The demo's auditor predicate verifies under `--features zk` and
+- The demo's auditor predicate verifies under `--features bbs-stub` and
   fails closed when the predicate would otherwise reveal a wholesale
   field (spec section 7.4).
 - Bounded-claim text in `selective-disclosure.md` is verbatim in
@@ -301,7 +301,7 @@ W3.
 
 ### Lane A/B dependencies
 
-- None. The zk feature is independent of Lane A and B; it is the only
+- None. The bbs-stub feature is independent of Lane A and B; it is the only
   Lane C subsection where Lane B does not provide forcing-function
   enforcement. This is called out as bounded-claim language in
   `selective-disclosure.md`: the auditor view is a local proof, not
@@ -377,7 +377,7 @@ W4.
 | C2 cosign | L+L (6 tickets; consumes Lane B B4 for signing surface) | Medium (depends on B4 close; verifier work + architecture cut) |
 | C3 KB MCP | M+L (4 tickets; uses mcp-remote stdio bridge) | Low-Medium (review finding 2 resolved via bridge; HushSpec YAML simpler than fictional schema) |
 | C4 receipt explain | L+S (2 tickets; bumped per review finding 9) | Low (extends existing explain function; bilateral chain walk is the new work) |
-| C5 zk feature | M+L+L (3 tickets) | Medium-High (R6 may force deferral to v0.2 if BBS+ deps don't resolve) |
+| C5 bbs-stub feature | M+L+L (3 tickets) | Medium-High (R6 may force deferral to v0.2 if BBS+ deps don't resolve) |
 | C6 release | S+S+S+S+S (5 tickets; includes continuous CI hook) | Low (ceremonial, but all of the above must land) |
 
 ### Forcing-function gates between Lanes

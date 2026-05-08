@@ -41,7 +41,6 @@ automation_coordinator = "release automation coordinator"
 
 [planning_ownership]
 owner_pr = 620
-owner_branch = "claude/charming-feistel-8595da"
 owner_globs = [".planning/trajectory-5/**"]
 rule = "No non-planning PR may carry .planning/trajectory-5 paths. Lane docs are planning truth owned by PR 620, not by source/evidence lanes."
 

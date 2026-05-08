@@ -151,10 +151,10 @@ If Lane B slips beyond W4, Lane C slips with it.
 | Week | Sub-lane | Deliverable | Forcing function |
 |---|---|---|---|
 | W3 | C1 (architecture, scaffolding) | Demo flow doc + scenario script + fixture skeleton in `examples/chiodome-bilateral/`; trust-establishment handshake between two in-process kernels; example-local chiodos-ladder primitive; refund tool registration | Picks up Lane B's `verify_capability_full` signature and `ToolServerConnection` async migration; if either changes, C1 surfaces it immediately |
-| W4 | C2 (cosign verifier) | Consume Lane B B4's `bilateral_dsse.rs` envelope; ship the §7 17-step verifier with the 16-case negative fixture set; capability lease binding via `chio-credit`; anchor inclusion proof emission; orchestrator wiring | Lane B B4's signing surface is exercised end-to-end; lease-expiration enforcement (B1) gets exercised under both happy and deny path; receipt-v2 fail-closed (B2) drives subject digest validity; anchor-batch async-only (B3) drives §7 step 16 |
+| W4 | C2 (cosign verifier) | Consume Lane B B4's `bilateral_dsse.rs` envelope; ship the §7 partial local verifier subset with the 16-case negative fixture set; capability lease binding via `chio-credit`; anchor inclusion proof emission; orchestrator wiring | Lane B B4's signing surface is exercised end-to-end; lease-expiration enforcement (B1) gets exercised under both happy and deny path; receipt-v2 fail-closed (B2) drives subject digest validity; anchor-batch async-only (B3) drives §7 step 16 |
 | W4 | C3 (KB MCP) | `chio mcp serve --policy ... -- npx -y mcp-remote http://localhost:8111/mcp/` wraps the HTTP KB MCP via the stdio bridge; HushSpec policy YAML; receipts written to `examples/chiodome-bilateral/fixtures/` per call; cross-org refund + over-cap deny scenario | Validates Lane B's receipt-v2-on-the-hot-path enforcement (B2.5); validates the chiodos-ladder cap (over-cap deny) |
 | W4 | C4 (receipt explain) | `chio receipt explain` walks the bilateral chain (parent -> step -> dual-signed -> envelope -> anchor); doc page; snapshot tests | T1.6 (`audits/T1.6-chio-explain.md`) reopened row in trj4 closes |
-| W5 | C5 (zk feature; deferable per R6) | `chio-zk-receipts` workspace member behind `zk` Cargo feature; `chio.bbs-projection.workflow.v1` + `chio.bbs-projection.step.v1` projection; one auditor predicate (`cmp(refund_amount_minor, <=, 25000, scale=2)`); fixture under `examples/chiodome-bilateral/fixtures/auditor-view/`. **DEFERRABLE to v0.2 if BBS+ deps don't resolve at W4 dep-tree validation.** | The auditor predicate is the only thing in the demo that does NOT come from kernel-emitted receipts; bounded-claim discipline calls this out |
+| W5 | C5 (bbs-stub feature; deferable per R6) | `chio-federation` workspace member behind `bbs-stub` Cargo feature; `chio.bbs-projection.workflow.v1` + `chio.bbs-projection.step.v1` projection; one auditor predicate (`cmp(refund_amount_minor, <=, 25000, scale=2)`); fixture under `examples/chiodome-bilateral/fixtures/auditor-view/`. **DEFERRABLE to v0.2 if BBS+ deps don't resolve at W4 dep-tree validation.** | The auditor predicate is the only thing in the demo that does NOT come from kernel-emitted receipts; bounded-claim discipline calls this out |
 | W5 | C6 (release) | `v0.1.0-bounded-chiodome` tag; `release-bar.md` text becomes release notes; `examples/chiodome-bilateral/README.md` is the end-user surface; CI jobs `chio-demo-smoke` (PR gate) and `chiodome-demo-continuous` (nightly + Lane B path push) both required and green | Tag goes out under v3.18 bounded-claim discipline; what is and is not claimed is explicit |
 
 ## Acceptance
@@ -176,7 +176,7 @@ Lane C closes when all of:
    `signature_ok` flag, and surfaces `policy.verdict_disagreement`
    on the deny fixture.
 4. The selective-disclosure auditor view fixture verifies under the
-   `zk` feature when explicitly enabled, and the rest of the demo
+   `bbs-stub` feature when explicitly enabled, and the rest of the demo
    verifies without it. **OR** C5 has been deferred per R6 and the
    release ships as a five-artifact bundle with bounded-claim
    language acknowledging the deferral.
@@ -208,5 +208,5 @@ recreate it.
 - `bilateral-cosign-flow.md` - DSSE adapter design over `CoSigningBody`
 - `kb-mcp-integration.md` - `chio mcp serve --policy` wrapping the
   local KB MCP stack
-- `selective-disclosure.md` - `zk` feature design + bounded-claim text
+- `selective-disclosure.md` - `bbs-stub` feature design + bounded-claim text
 - `release-bar.md` - what `v0.1.0-bounded-chiodome` actually claims

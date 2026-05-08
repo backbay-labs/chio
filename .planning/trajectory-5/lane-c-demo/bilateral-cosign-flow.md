@@ -23,7 +23,7 @@ After B4 lands:
   legacy preimage).
 - Lane C consumes the B4-produced envelope, drives the demo
   orchestration that constructs the §5 predicate body from kernel
-  state, and walks the §7 17-step verifier.
+  state, and walks the §7 partial local verifier subset.
 
 The remainder of this document specifies (a) the spec §6 wire
 shape, (b) the §5 predicate body fields the demo populates,
@@ -118,7 +118,7 @@ lands:
   conformance fixture (a fixture-only signer that proves a legacy
   signature is REJECTED by the production verifier).
 - Lane C's adapter is a thin wrapper that consumes the B4-produced
-  envelope and walks the spec section 7 17-step verifier; it does
+  envelope and walks the spec section 7 partial local verifier subset; it does
   not introduce its own parallel signing surface.
 
 Lane C therefore depends on `bilateral DSSE signing item` (the gating B4 negative
@@ -146,7 +146,7 @@ Lane C extends this module with:
   during the demo's orchestration (the kernel exposes this state via
   trait objects so the federation crate does not need a kernel
   dependency; see Finding 8 below).
-- The full §7 17-step verifier (`verify_envelope`), invoked by the
+- The full §7 partial local verifier subset (`verify_envelope`), invoked by the
   demo and by `chio receipt explain` for bilateral chains.
 
 ```rust
@@ -272,7 +272,7 @@ pub fn verify_envelope(
 
 ## Verification algorithm gap analysis
 
-Spec section 7 lists 17 steps; here is what each requires from
+Spec section 7 defines verification obligations; here is what each requires from
 existing crates:
 
 | Step | What it needs | Have it? |

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Behavioral regression test for scripts/check-trj5-ship-bar.sh strict
+# Behavioral regression test for scripts/check-bounded-ship-bar.sh strict
 # default mode and `--diagnostic` opt-in.
 #
 # The audit's required behaviour:
@@ -8,7 +8,7 @@
 #   * Real FAIL rows still exit 1 in either mode (sanity).
 #
 # This test creates a synthesized repo layout under a tempdir and copies
-# the real `check-trj5-ship-bar.sh` into it, then exercises the strict
+# the real `check-bounded-ship-bar.sh` into it, then exercises the strict
 # and diagnostic exit modes against a Bar 1 fixture with a high numeric
 # kill rate but explicit partial metadata.
 #
@@ -20,7 +20,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-REAL_GATE="$REAL_REPO_ROOT/scripts/check-trj5-ship-bar.sh"
+REAL_GATE="$REAL_REPO_ROOT/scripts/check-bounded-ship-bar.sh"
 
 if [ ! -f "$REAL_GATE" ]; then
     echo "FAIL: cannot locate $REAL_GATE" >&2
@@ -42,10 +42,10 @@ ERR="$WORK/err"
 # Copy the script unchanged so its `BASH_SOURCE`-based repo_root pivots
 # to $WORK.
 mkdir -p "$WORK/scripts"
-cp "$REAL_GATE" "$WORK/scripts/check-trj5-ship-bar.sh"
-chmod +x "$WORK/scripts/check-trj5-ship-bar.sh"
+cp "$REAL_GATE" "$WORK/scripts/check-bounded-ship-bar.sh"
+chmod +x "$WORK/scripts/check-bounded-ship-bar.sh"
 
-GATE="$WORK/scripts/check-trj5-ship-bar.sh"
+GATE="$WORK/scripts/check-bounded-ship-bar.sh"
 
 # Bar 1 evidence:
 #   * Five trust-boundary crates with full target-met baselines.
@@ -110,13 +110,13 @@ printf 'golden line\n' \
 printf '{"receipt":"v0.1.0"}\n' \
     > "$WORK/examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/receipt.json"
 
-# releases.toml carries the v0_1_0_bounded_chiodome_release_tag entry.
+# releases.toml carries the release_tag entry.
 # Use the placeholder so Bar 3's tag check fires PARTIAL too -- this
 # strengthens the test by ensuring at least two PARTIAL rows are
 # reported (chio-policy + tag placeholder), so the diagnostic-vs-strict
 # gate flip is unambiguous.
 cat > "$WORK/releases.toml" <<'EOF'
-v0_1_0_bounded_chiodome_release_tag = "pending"
+release_tag = "pending"
 EOF
 
 # ---------------------------------------------------------------------
@@ -208,4 +208,4 @@ fi
 echo "ok: stage 5 real FAIL row exits 1 even under --diagnostic (rc=1)"
 
 # Stage 6 (cleanup) is implicit via `trap rm -rf $WORK`.
-echo "PASS: check-trj5-ship-bar behavioral regression test"
+echo "PASS: check-bounded-ship-bar behavioral regression test"

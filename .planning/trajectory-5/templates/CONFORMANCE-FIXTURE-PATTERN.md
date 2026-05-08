@@ -45,7 +45,7 @@ plus `examples/<demo>/fixtures/<case>.rs` for the executable fixture body.
 | C1 | Bilateral cosign | `crates/chio-conformance/tests/c_bilateral_single_signer_rejected.rs` |
 | C2 | Capability lease + budget bond | `crates/chio-conformance/tests/c_lease_overdraft_rejected.rs` |
 | C3 | Anchored receipts | `crates/chio-conformance/tests/c_anchor_missing_witness_rejected.rs` |
-| C4 | Selective disclosure (zk feature) | `crates/chio-conformance/tests/c_zk_disclosure_unauthorized_view_rejected.rs` |
+| C4 | Selective disclosure (bbs-stub feature) | `crates/chio-conformance/tests/c_zk_disclosure_unauthorized_view_rejected.rs` |
 
 Lane C tests MUST also export a fixture artifact under `examples/<demo>/fixtures/`
 that the demo binary consumes, so the demo run replays exactly the input the
@@ -204,7 +204,7 @@ chio-kernel-core = { workspace = true }
 # Async (Lane B3 anchor-batch-async, Lane C bilateral)
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Optional Lane C selective-disclosure (gated)
-# chio-zk = { workspace = true, optional = true }
+# chio-federation = { workspace = true, optional = true }
 ```
 
 If a test needs a dependency not on this list, the addition MUST be reviewed

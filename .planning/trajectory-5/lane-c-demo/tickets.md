@@ -277,7 +277,7 @@ IDs current at W3 close.
    pass.
 5. **Banner update**: not applicable.
 
-### release work-C2.4 - 17-step verifier + spec-7.1 negative fixture set
+### release work-C2.4 - partial local verifier subset + spec-7.1 negative fixture set
 
 - **Scope:** Implement spec section 7 verification algorithm steps
   1-17 in order, returning the spec section 7.1 error code on
@@ -298,7 +298,7 @@ IDs current at W3 close.
    orchestrator and from `chio receipt explain` for bilateral chains.
    - Enforced call site:
      `crates/chio-federation/src/bilateral_dsse.rs::verify_envelope`
-2. **Spec MUST**: "Receivers MUST run the 17-step verification
+2. **Spec MUST**: "Receivers MUST run the section 7 verification
    algorithm in order and reject on the first failing step with
    the §7.1 error code".
    - Citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7
@@ -576,7 +576,7 @@ IDs current at W3 close.
 
 ---
 
-## C5 - Selective disclosure (zk feature; deferable per R6)
+## C5 - Selective disclosure (bbs-stub feature; deferable per R6)
 
 **Scope guard (review finding 6):** if BBS+ Cargo dependencies
 (`bbs-2023` cryptosuite, `bls12_381`, AnonCreds v2 RangeStatement)
@@ -586,16 +586,16 @@ bump that does not pass review, C5 is DROPPED from
 This decision is owned by the Lane C lead with sign-off by the release work
 owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 
-### release work-C5.1 - `chio-zk-receipts` skeleton + dep-tree validation
+### release work-C5.1 - `chio-federation` skeleton + dep-tree validation
 
-- **Scope:** New workspace member `crates/chio-zk-receipts/` with
-  Cargo feature `zk` default-off. Sibling to
+- **Scope:** New workspace member `crates/chio-federation/` with
+  Cargo feature `bbs-stub` default-off. Sibling to
   `crates/chio-attest-verify/`. **Critical pre-flight:** the W1
   Lane C deliverable is to commit a Cargo.toml skeleton that
   resolves against the current MSRV. If `cargo metadata` does not
-  succeed with `--features zk`, R6 fires immediately and C5 is
+  succeed with `--features bbs-stub`, R6 fires immediately and C5 is
   dropped per the scope guard above.
-- **Files:** `crates/chio-zk-receipts/{Cargo.toml,src/lib.rs}`;
+- **Files:** `crates/chio-federation/{Cargo.toml,src/lib.rs}`;
   workspace `Cargo.toml`; root feature declaration.
 - **Effort:** M
 - **Depends on:** none (independent of Lane B/A)
@@ -603,10 +603,10 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 
 #### Acceptance
 
-1. **Production wiring**: `cargo build -p chio-zk-receipts`
-   succeeds; `cargo build -p chio-zk-receipts --features zk`
+1. **Production wiring**: `cargo build -p chio-federation`
+   succeeds; `cargo build -p chio-federation --features bbs-stub`
    succeeds against the current MSRV without bumping it.
-   - Enforced call site: `crates/chio-zk-receipts/src/lib.rs`
+   - Enforced call site: `crates/chio-federation/src/lib.rs`
 2. **Spec MUST**: "Implementations MUST pin the `bbs-2023`
    cryptosuite parameters".
    - Citation: `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` §3.
@@ -623,7 +623,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   Stop step projection at index 8 (v0.1; indices 9-13 are gated on
   chio-workflow v0.2 per spec §6.2 lines 274-277). Hash-to-scalar
   per spec §5.2. (Merges W1's C5.2 and C5.3.)
-- **Files:** `crates/chio-zk-receipts/src/projection.rs`.
+- **Files:** `crates/chio-federation/src/projection.rs`.
 - **Effort:** L
 - **Depends on:** release work-C5.1
 - **Owner-class:** federation-eng
@@ -633,13 +633,13 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 1. **Production wiring**: projection function callable; spec §6.4
    worked example reproduces bit-for-bit on a known fixture.
    - Enforced call site:
-     `crates/chio-zk-receipts/src/projection.rs`
+     `crates/chio-federation/src/projection.rs`
 2. **Spec MUST**: "Verifiers MUST replay the projection
    alphabetically".
    - Citation: `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` §6.1, §6.2
      (lines to be filled in by audit-doc owner).
 3. **Negative conformance test**:
-   `crates/chio-zk-receipts/tests/spec_64_worked_example.rs`
+   `crates/chio-federation/tests/spec_64_worked_example.rs`
    - Imports the projection function directly.
    - Asserts the §6.4 example bit-for-bit.
 4. **Audit-doc evidence**: projection-replay test green.
@@ -652,11 +652,11 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   BBS+ proof bytes, and the eight-clause ceiling on AND-only
   predicates (§7.3). Generate
   `examples/chiodome-bilateral/fixtures/auditor-view/proof.json`
-  and `predicate-failed.json` under the `zk` feature. Without `zk`,
+  and `predicate-failed.json` under the `bbs-stub` feature. Without `bbs-stub`,
   the demo prints the bounded-claim disclaimer and exits 0.
   (Merges W1's C5.4 and C5.5.)
-- **Files:** `crates/chio-zk-receipts/src/envelope.rs`;
-  `crates/chio-zk-receipts/src/predicates.rs`;
+- **Files:** `crates/chio-federation/src/envelope.rs`;
+  `crates/chio-federation/src/predicates.rs`;
   `examples/chiodome-bilateral/src/auditor.rs`;
   `examples/chiodome-bilateral/fixtures/auditor-view/{proof.json,predicate-failed.json}`.
 - **Effort:** L
@@ -666,9 +666,9 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 #### Acceptance
 
 1. **Production wiring**: envelope construction + verification;
-   demo emits the auditor-view fixtures under `--features zk`.
+   demo emits the auditor-view fixtures under `--features bbs-stub`.
    - Enforced call site:
-     `crates/chio-zk-receipts/src/envelope.rs`,
+     `crates/chio-federation/src/envelope.rs`,
      `examples/chiodome-bilateral/src/auditor.rs`.
 2. **Spec MUST**: "Auditor-view envelopes MUST validate against the
    §8 JSON Schema".

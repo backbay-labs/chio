@@ -70,7 +70,7 @@ function unless explicitly marked NEW.
                   | spec §6 PAE            |
                   | (Lane C extends with   |
                   |  predicate helper +    |
-                  |  §7 17-step verifier)  |
+                  |  §7 partial local verifier subset)  |
                   +-----------+-----------+
                               |
                               | feed receipt body to anchor batch
@@ -103,10 +103,10 @@ function unless explicitly marked NEW.
                   | bilateral/fixtures/    |
                   +-----------+-----------+
                               |
-                              | optional auditor view (zk feature only)
+                              | optional auditor view (bbs-stub feature only)
                               v
                   +-----------+-----------+
-                  | chio-zk-receipts (NEW) |
+                  | chio-federation (NEW) |
                   | bbs-2023 / bls12-381   |
                   | spec §6.1 + §6.2       |
                   | projection             |
@@ -131,13 +131,13 @@ plays, and whether the demo introduces new code in it.
 | Crate | Role | New code? |
 |---|---|---|
 | `chio-kernel` | Kernel A and Kernel B; v2 receipt issuance; capability verification | No - consumes Lane B B0/B1/B2/B3 enforcement |
-| `chio-federation` | Trust handshake; bilateral cosigning; DSSE envelope | Lane B B4 introduces `bilateral_dsse.rs` (envelope, signing, PAE); Lane C extends with `predicate_from_kernel_state` helper, `CapabilityVerifier` trait, and `verify_envelope` 17-step verifier |
+| `chio-federation` | Trust handshake; bilateral cosigning; DSSE envelope | Lane B B4 introduces `bilateral_dsse.rs` (envelope, signing, PAE); Lane C extends with `predicate_from_kernel_state` helper, `CapabilityVerifier` trait, and `verify_envelope` partial local verifier subset |
 | `chio-credit` | `CreditBondArtifact` minting for `capability_lease_ref` | No - consumes existing schema |
 | `chio-anchor` | `Web3CheckpointStatement` + inclusion proof | No - consumes existing functions; Lane B B3 enforces async-only |
 | `chio-settle` | `LocalDevnetDeployment` for the on-chain leg | No - consumes existing config |
 | `chio-mcp-adapter` | `chio mcp serve --policy` proxy to KB MCP via `mcp-remote` stdio bridge | No - consumes existing adapter |
 | `chio-cli` | `Mcp::Serve` and `Receipt::Explain` commands | Yes - extended explain path; new snapshot tests |
-| `chio-zk-receipts` | BBS+ projections and disclosure envelope (gated on R6 BBS+ dep resolution) | Yes - NEW workspace member behind `zk` feature; deferable to v0.2 if R6 fires |
+| `chio-federation` | BBS+ projections and disclosure envelope (gated on R6 BBS+ dep resolution) | Yes - NEW workspace member behind `bbs-stub` feature; deferable to v0.2 if R6 fires |
 | `chio-conformance` | Lane B-owned negative conformance fixtures | No - Lane B owns this; Lane C cites it |
 | `examples/chiodome-bilateral` | The demo example crate | Yes - NEW example crate |
 
@@ -147,7 +147,7 @@ plays, and whether the demo introduces new code in it.
   signing, PAE function). Lane C adds a Lane-C-side predicate helper
   and the §7 verifier inside the same module (or as a sibling
   module if the file grows).
-- One new workspace member (`chio-zk-receipts`); deferable to v0.2
+- One new workspace member (`chio-federation`); deferable to v0.2
   per RISK-REGISTER R6 if BBS+ deps don't resolve.
 - One new example crate (`examples/chiodome-bilateral`) including
   an example-local minimal `chiodos-ladder` primitive (review finding 5a).
@@ -237,7 +237,7 @@ without it, the demo could be silently using the sync path and the
 
 ### Selective disclosure envelope (artifact #6)
 
-`crates/chio-zk-receipts/src/envelope.rs` (NEW) emits the
+`crates/chio-federation/src/envelope.rs` (NEW) emits the
 `chio.selective-disclosure-proof.v1` envelope per
 `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 8. The demo's
 auditor predicate is
@@ -250,11 +250,11 @@ per spec section 6.4 worked example. The auditor learns nothing
 beyond the predicate outcome plus disclosed step fields (index 0
 `step_index`, index 2 `tool_name`, index 5 `outcome`).
 
-This artifact only emits when the `zk` feature is on. Without it the
+This artifact only emits when the `bbs-stub` feature is on. Without it the
 demo prints
 
 ```
-[selective-disclosure: built without --features zk; this demo's
+[selective-disclosure: built without --features bbs-stub; this demo's
  v0.1 bounded label notes the auditor view is gated on the feature]
 ```
 

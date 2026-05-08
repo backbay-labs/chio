@@ -242,7 +242,7 @@ inventory"; the executable-model re-proof moves to trj6.
 
 ---
 
-## R6: Selective disclosure (`zk` feature) cargo-dep weight
+## R6: Selective disclosure (`bbs-stub` feature) cargo-dep weight
 
 | Field | Value |
 |---|---|
@@ -252,27 +252,27 @@ inventory"; the executable-model re-proof moves to trj6.
 | Lane | C4 (selective disclosure demo) |
 
 **Description**: Lane C4 ships an auditor-view selective-disclosure
-fixture behind a `zk` Cargo feature flag. ZK-friendly libraries
+fixture behind a `bbs-stub` Cargo feature flag. Proof-friendly libraries
 (`arkworks-rs`, `bellman`, `halo2`, etc.) carry significant compile-time
 weight and may pull in MSRV-sensitive transitive crates. Adding the
 feature to `chio-conformance` or `chio-federation` could meaningfully
 slow CI.
 
 **Mitigation**:
-- The `zk` feature is OFF by default. Only the C4 conformance test and
+- The `bbs-stub` feature is OFF by default. Only the C4 conformance test and
   the demo binary opt in.
-- CI runs the `zk`-feature build in a dedicated workflow job
-  (TBD-from-W1: `.github/workflows/conformance-zk.yml`), not as part of
+- CI runs the `bbs-stub`-feature build in a dedicated workflow job
+  (TBD-from-W1: `.github/workflows/conformance-selective-disclosure.yml`), not as part of
   the main `ci.yml` matrix.
 - If the dep weight forces a MSRV bump, accept it as a documented
   constraint of release work OR drop C4 from the demo and ship the bilateral
   cosign demo without the auditor-view slice.
-- Bounded claim: "selective disclosure available behind `zk` feature; not
+- Bounded claim: "selective disclosure available behind `bbs-stub` feature; not
   on by default."
 
 **Escalation criteria**:
-- `zk`-feature build adds >5 minutes to CI critical path.
-- `zk`-feature requires a workspace-wide MSRV bump that breaks any
+- `bbs-stub`-feature build adds >5 minutes to CI critical path.
+- `bbs-stub`-feature requires a workspace-wide MSRV bump that breaks any
   current consumer.
 
 If escalated, drop C4 from the demo. The Lane C ship bar narrows to
@@ -331,7 +331,7 @@ trj6.
 | R3 | Unprovable threat row | medium | high | A2 |
 | R4 | Demo reveals Lane B partial enforcement | medium | high | C |
 | R5 | Lean re-proof needs executable model | high | medium | A3 |
-| R6 | `zk` feature cargo-dep weight | medium | low-medium | C4 |
+| R6 | `bbs-stub` feature cargo-dep weight | medium | low-medium | C4 |
 | R7 | DSSE-conformant bilateral signing complexity | medium | medium-high | B4 |
 
 **Top-of-list for review**: R4. The demo is the forcing function;

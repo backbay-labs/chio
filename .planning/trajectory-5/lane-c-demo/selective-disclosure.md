@@ -1,7 +1,7 @@
-# Selective Disclosure - The `zk` Cargo Feature
+# Selective Disclosure - The `bbs-stub` Cargo Feature
 
-This document specifies the design of the `zk` Cargo feature for Lane
-C, the new workspace member `crates/chio-zk-receipts/`, and the
+This document specifies the design of the `bbs-stub` Cargo feature for Lane
+C, the new workspace member `crates/chio-federation/`, and the
 bounded-claim text the demo uses when emitting (or refusing to emit)
 the auditor view.
 
@@ -16,7 +16,7 @@ tree (`bbs-2023` cryptosuite, `bls12_381`, AnonCreds v2
 no Wave 1 deliverable verified that the proposed dep set even
 compiles together against the current chio MSRV. review finding 6 and
 RISK-REGISTER R6 require an explicit fallback: if Wave 1 cannot
-land a `crates/chio-zk-receipts/Cargo.toml` skeleton that resolves
+land a `crates/chio-federation/Cargo.toml` skeleton that resolves
 against the current MSRV by W2 of Lane C, the auditor view is
 DROPPED from `v0.1.0-bounded-chiodome` and shipped in
 `v0.2.0-bounded-chiodome`. The release tag's bounded-claim text
@@ -25,14 +25,14 @@ already enumerates this possibility (`release-bar.md` item 14).
 ## Feature shape
 
 ```toml
-# crates/chio-zk-receipts/Cargo.toml
+# crates/chio-federation/Cargo.toml
 [features]
 default = []
-zk = ["dep:bbs", "dep:bls12_381", "dep:anoncreds-rs"]   # default OFF
+bbs-stub = ["dep:bbs", "dep:bls12_381", "dep:anoncreds-rs"]   # default OFF
 ```
 
-Spec section 2.1 explicitly mandates "default-off `zk` Cargo feature"
-in a "new workspace member `chio-zk-receipts`" sibling to
+Spec section 2.1 explicitly mandates "default-off `bbs-stub` Cargo feature"
+in a "new workspace member `chio-federation`" sibling to
 `chio-attest-verify`. The demo and the example crate both opt-in
 explicitly when the auditor scenario runs.
 
@@ -116,7 +116,7 @@ revisions without a schema-version bump.
 Per spec section 3 lines 97-103, Ed25519 over RFC 8785 JCS remains
 the **authoritative** signature on every chio receipt. BBS+ is a
 **secondary commitment** scoped to the auditor projection. The
-demo's receipts are signed Ed25519 exactly as today; if the `zk`
+demo's receipts are signed Ed25519 exactly as today; if the `bbs-stub`
 feature is off, verifiers ignore the absent BBS+ commitment and
 the rest of the demo verifies normally.
 
@@ -131,7 +131,7 @@ cosign envelope as of W3.)
 
 ## Auditor view fixtures
 
-When the demo runs with `--features zk`:
+When the demo runs with `--features bbs-stub`:
 
 ```
 examples/chiodome-bilateral/fixtures/auditor-view/
@@ -144,17 +144,17 @@ Each file is canonical JSON. `proof.json` validates against the
 spec section 8 envelope schema and verifies under spec section 9's
 verification algorithm.
 
-When the demo runs WITHOUT `--features zk`, the orchestrator prints:
+When the demo runs WITHOUT `--features bbs-stub`, the orchestrator prints:
 
 ```
-[selective-disclosure: built without --features zk]
+[selective-disclosure: built without --features bbs-stub]
 [                      this demo's v0.1 bounded-claim acknowledges]
 [                      the auditor view is gated on the feature.   ]
 [                      see selective-disclosure.md.                ]
 ```
 
 and exits 0. The smoke does not require the auditor view fixtures
-unless the workflow opts into the zk feature.
+unless the workflow opts into the bbs-stub feature.
 
 ## Bounded-claim text (verbatim for release notes)
 
@@ -171,7 +171,7 @@ deliberately conservative.
 > produced by this release. Verifiers MUST treat the fixture as
 > illustrative until a Recommendation-grade implementation lands.
 >
-> When built with `--features zk`, the demo emits a
+> When built with `--features bbs-stub`, the demo emits a
 > `chio.selective-disclosure-proof.v1` envelope per
 > `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 8. The envelope
 > verifies under spec section 9 against a single AND-composed
@@ -211,9 +211,9 @@ deliberately conservative.
 >    list audit. `bbs-2023` is at Candidate Recommendation Draft;
 >    implementations MUST track CR exit and bind to the eventual
 >    Recommendation hash. This release does not.
-> 7. **The auditor predicate IS the demo's only zk emission.** No
->    other zk paths are claimed (no proof-carrying chained
->    receipts, no zk over Ed25519 itself, etc.).
+> 7. **The auditor predicate IS the demo's only selective-disclosure emission.** No
+>    other proof paths are claimed (no proof-carrying chained
+>    receipts, no proof over Ed25519 itself, etc.).
 > 8. **The auditor view fixture's BBS+ implementation may not be
 >    cryptographically conformant with the eventual `bbs-2023`
 >    W3C Recommendation.** A research-grade Rust BBS+ crate is
@@ -226,7 +226,7 @@ deliberately conservative.
 
 ## What this contributes to Lane C's forcing function
 
-The zk feature is the only sub-lane in Lane C where Lane B does NOT
+The bbs-stub feature is the only sub-lane in Lane C where Lane B does NOT
 provide forcing-function enforcement. That is by design:
 
 - The auditor predicate is constructed from a receipt that came out
@@ -240,14 +240,14 @@ provide forcing-function enforcement. That is by design:
   receipt body, not here).
 
 The bounded-claim language says so explicitly. The demo's smoke does
-not gate on the zk feature; the release tag does not depend on the
-zk fixture's existence; the release notes label the zk path as
+not gate on the bbs-stub feature; the release tag does not depend on the
+selective-disclosure fixture's existence; the release notes label the stub path as
 optional.
 
 ## Fallback if BBS+ deps cannot resolve (R6 escalation)
 
-If by W2 of Lane C the `crates/chio-zk-receipts/Cargo.toml`
-skeleton does not resolve `--features zk` against the current chio
+If by W2 of Lane C the `crates/chio-federation/Cargo.toml`
+skeleton does not resolve `--features bbs-stub` against the current chio
 MSRV, **C5 is dropped from `v0.1.0-bounded-chiodome`** and the
 release ships as a five-artifact bundle:
 
@@ -257,7 +257,7 @@ release ships as a five-artifact bundle:
 4. `chio.bilateral-cosign-invocation.v1` DSSE envelope
 5. `Web3CheckpointStatement` + `AnchorInclusionProof`
 
-The auditor view fixture (#6) and the `chio-zk-receipts` workspace
+The auditor view fixture (#6) and the `chio-federation` workspace
 member become a `v0.2.0-bounded-chiodome` deliverable. Release
 notes cite the deferral as known and intentional, not a regression.
 
@@ -269,7 +269,7 @@ dropping it does not change the demo's "Lane B canary" behavior.
 The decision-owner is the Lane C lead. Sign-off by the release work owner.
 Trigger conditions are itemized in `architecture/RISK-REGISTER.md` R6.
 
-## What we don't ship under the zk feature
+## What we don't ship under the bbs-stub feature
 
 - BBS#, threshold-BBS, hardware-token-bound BBS+ - spec section 3
   pins narrowly.
@@ -283,15 +283,15 @@ Trigger conditions are itemized in `architecture/RISK-REGISTER.md` R6.
 
 ## Files touched
 
-- `crates/chio-zk-receipts/Cargo.toml` - new
-- `crates/chio-zk-receipts/src/lib.rs` - new
-- `crates/chio-zk-receipts/src/projection.rs` - new (workflow + step
+- `crates/chio-federation/Cargo.toml` - new
+- `crates/chio-federation/src/lib.rs` - new
+- `crates/chio-federation/src/projection.rs` - new (workflow + step
   projections)
-- `crates/chio-zk-receipts/src/envelope.rs` - new (envelope
+- `crates/chio-federation/src/envelope.rs` - new (envelope
   construction + verify)
-- `crates/chio-zk-receipts/src/predicates.rs` - new (eq, cmp, member,
+- `crates/chio-federation/src/predicates.rs` - new (eq, cmp, member,
   AND composition, eight-clause ceiling)
-- `crates/chio-zk-receipts/tests/spec_64_worked_example.rs` - new
+- `crates/chio-federation/tests/spec_64_worked_example.rs` - new
   (round-trip the spec section 6.4 example bit-for-bit)
 - `examples/chiodome-bilateral/src/auditor.rs` - new (demo wiring)
 - `examples/chiodome-bilateral/fixtures/auditor-view/proof.json` -

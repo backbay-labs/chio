@@ -117,11 +117,11 @@ copyright rule.
 
 ---
 
-## 11. Selective Disclosure (Lane C4, behind `zk` feature)
+## 11. Selective Disclosure (Lane C4, behind `bbs-stub` feature)
 
 | Spec citation | MUST text (short) | Production call site | Status | Trj5 ticket |
 |---|---|---|---|---|
-| `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 6 (TBD-from-W1: lines) | "auditor view MUST verify without revealing private fields" | TBD-from-W1: `crates/chio-zk/src/...` or equivalent | structural-only (research draft) | release work-C4.E (gated `zk` feature; bounded claim) |
+| `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 6 (TBD-from-W1: lines) | "auditor view MUST verify without revealing private fields" | TBD-from-W1: `crates/chio-federation/src/...` selective-disclosure stub or equivalent | structural-only (research draft) | release work-C4.E (gated `bbs-stub` feature; bounded claim) |
 
 ---
 

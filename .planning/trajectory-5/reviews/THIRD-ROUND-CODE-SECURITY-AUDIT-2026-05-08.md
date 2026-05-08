@@ -84,7 +84,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
   - `audits/evidence/mutants/chio-credentials/mutants.out/outcomes.json`
 - Evidence:
   - `lock.json` contains `hostname = Connors-MacBook-Pro.local` and `username = connor`.
-  - `outcomes.json` contains repeated absolute paths such as `/Users/connor/.rustup/toolchains/...`.
+  - `outcomes.json` contains repeated user-local Rust toolchain paths.
 - Impact: R2 claimed PII artifacts were removed, but #619 still leaks workstation identity and local absolute paths.
 - Required fix: remove or sanitize committed `lock.json` and `outcomes.json` artifacts from #619. Do not rely only on `.gitignore` for future runs.
 
@@ -203,7 +203,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
   - `.planning/trajectory-5/lane-a-floor/evidence/*.log`
 - Evidence:
   - README says negative tests are not run by CI.
-  - committed logs include absolute `.claude/worktrees/agent-*` paths.
+  - committed logs include local worktree paths.
 - Impact: non-tautology evidence is manual and logs leak local machine paths.
 - Required fix: add expected-failure CI or downgrade the gate; scrub absolute paths from committed logs.
 

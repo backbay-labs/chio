@@ -83,8 +83,8 @@ detects a current-thread Tokio runtime (cleanup-wave response to
 audit P0-002); full sync-evaluator migration to async is deferred to
 the next trajectory.
 
-The 17-step bilateral verifier (`bilateral_verifier.rs`, PR #615) was
-honestly downgraded from "17-step verifier" to "partial local
+The section 7 bilateral verifier (`bilateral_verifier.rs`, PR #615) was
+honestly downgraded from "partial local verifier subset" to "partial local
 verifier" during the cleanup wave (audit P0-007); predicate schema
 completion (`tool_args_hash`, `statement.malformed` mapping) is
 tracked in `crates/chio-federation/NOTES.md`. Step 15 now defaults to
@@ -102,7 +102,7 @@ hashing (cleanup-wave fix to audit P0-013).
 `chio receipt --inspect-bilateral` (renamed from `--explain-bilateral`
 after the audit caught the over-claim of cryptographic verification
 in P0-008) renders the artifacts. The `chio-federation` `bbs-stub`
-cargo feature (renamed from `zk` per audit P0-009) provides a
+cargo feature (renamed from `bbs-stub` per audit P0-009) provides a
 structured selective-disclosure placeholder that is explicitly labeled
 NOT zero-knowledge; real BBS+ is deferred. KB MCP integration (PR #614)
 uses an `mcp-remote` stdio bridge against `:8111/mcp/`; the wrap path
@@ -224,7 +224,7 @@ Use `R4-MERGE-TOPOLOGY.md` as the current truth. The short form is:
   for the §7 verifier
 - Cross-host DSSE envelope emission via a DSSE-aware
   `BilateralCoSigningProtocol`
-- Move `selective_disclosure` to a dedicated `chio-zk-receipts`
+- Move `selective_disclosure` to a dedicated `chio-federation`
   crate
 - Restructure chio-credentials `include!()` to `mod` for full
   mutation coverage
