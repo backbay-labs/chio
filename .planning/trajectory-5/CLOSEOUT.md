@@ -1,8 +1,13 @@
 # Trajectory 5 closeout
 
-Status: release blocked; 26 PRs open; integrator action required.
+Status: R4 topology corrected; release integration still blocked.
 
-This document is the integration-coordination map for release work. The numbers
+This document is a historical closeout map for release work. R4 supersedes the
+previous merge-order language for release purposes. The current planning
+ownership record, replacement strategy, and local merge simulation live in
+`R4-MERGE-TOPOLOGY.md`.
+
+The numbers
 below are taken from the actual PR titles, the post-cleanup-wave state
 of `baselines/BAR-1-MUTATION.md`, and the midpoint security audit at
 `reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`. Where a bar
@@ -190,24 +195,20 @@ The remaining items are integrator-only:
 - **P1-004** (TLA+ negative specs are local-only): documented;
   inverted CI wrapper deferred.
 
-## Recommended merge sequence
+## R4 replacement merge strategy
 
-1. **Planning bundle**: #620 (this branch).
-2. **Foundational evidence** (no code overlap): #601, #602, #604.
-3. **B0 async-trait foundation**: #606 first; rebase #612 to B1-only;
-   merge #612.
-4. **DSSE foundation**: #610; rebase #615, #617, #614 to remove
-   vendored DSSE; merge #615; #617; #614 (mutual order ok within
-   this group).
-5. **Other Lane B and Lane A**: #609 (B3); #605 + #607 + #613 (Kani
-   trio); #611 (B2); #608 + #616 (threat batches 2+3).
-6. **Mutation evidence**: #603 first (sets aggregate-state header
-   per audit P0-025), then #619, #621, #622, #623, #624, #625, #626
-   in any order; final merge resolves the coordinated aggregate
-   block trivially.
-7. **Release packaging**: #618 last; regenerate fixtures, release
-   notes, ship-bar status, and `releases.toml [trajectory_5]` from
-   merged `main`; only then push the `v0.1.0-bounded-chiodome` tag.
+The old recommended merge sequence is superseded. Do not use it as a release
+train.
+
+Use `R4-MERGE-TOPOLOGY.md` as the current truth. The short form is:
+
+1. #620 is the sole planning owner for `.planning/trajectory-5/**`.
+2. Release-source integration starts with Lane B enforcement on a clean branch.
+3. Evidence PRs merge after branch ownership is clean.
+4. #608 and #616 remain active, not superseded, until the threat owner
+   collapses or rebases the threat series.
+5. #618 release packaging remains last and must be regenerated from merged
+   `main`.
 
 ## Deferred to subsequent trajectory
 

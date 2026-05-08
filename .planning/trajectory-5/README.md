@@ -1,6 +1,6 @@
 # Trajectory-5 Planning
 
-**Status**: planning. Wave 1 producing lane PLAN.md drafts. Wave 2 review and OWNERS.toml owner-class assignment pending. Kickoff gated on `KICKOFF-CHECKLIST.md`.
+**Status**: R4 topology corrected. PR #620 is the sole planning-truth owner for `.planning/trajectory-5/**`; release integration remains blocked until Lane B enforcement is merged from a clean source branch and #608/#616 threat topology is collapsed by the threat owner. See `R4-MERGE-TOPOLOGY.md`.
 
 **Tagline**: release work is the **honesty trajectory**. It absorbs trj4 wave plan items and adds one forcing demo. There is no separate brand and no scope-widening.
 
@@ -16,11 +16,29 @@ Trj5 closes that gap by:
 
 If any of the three lanes fails to close, release work stays open. The bar is the kind a third party can verify.
 
+## R4 topology update
+
+The R4 audit invalidated the previous merge train. Do not run the old
+planning-led sequence and do not tag `v0.1.0-bounded-chiodome` from the
+current PR set.
+
+The replacement plan is:
+
+1. Keep #620 as the only `.planning/trajectory-5/**` owner.
+2. Start release-source integration with Lane B enforcement from a clean branch.
+3. Merge Lane A evidence only after branch ownership is clean.
+4. Treat Lane C as canary/demo until Lane B is real and evidence is rerun.
+5. Regenerate #618 release packaging from merged `main` last.
+
+The current simulation log and exact remaining threat conflicts are recorded in
+`R4-MERGE-TOPOLOGY.md`.
+
 ## Doc layout
 
 | File | Purpose |
 |---|---|
 | `README.md` | This file. Trajectory overview and the three observable ship-bar items. |
+| `R4-MERGE-TOPOLOGY.md` | R4 replacement merge strategy, planning ownership record, and local merge simulation log. |
 | `EXECUTION-BOARD.md` | Master ticket board organized by lane and week. Cross-lane dependency table. Evidence Gate template reference. |
 | `SHIP-BAR-TRACKER.md` | Per-bar state ledger: current state, target state, evidence required, machine-readable signal, validator. |
 | `OWNERS.toml` | Per-lane owner-class manifest. Owner-classes (not human assignments) until Wave 2. |
@@ -48,7 +66,10 @@ For implementers picking up a ticket: open the relevant `lane-{a-floor,b-wiring,
 
 ## Status
 
-Planning. Wave 0 (debate) complete. Wave 1 (this set of artifacts plus per-lane PLAN.md drafts) in flight. Wave 2 (review) not started. Kickoff gated on `KICKOFF-CHECKLIST.md` items.
+R4 topology-corrected planning. Historical Wave 0 through Wave 4 planning
+records remain in this directory, but current release truth is governed by
+`R4-MERGE-TOPOLOGY.md`, not by older closeout prose. The release package is not
+ready for tag.
 
 `releases.toml` `[trajectory_5]` is `pending_upstream_merges` after R4+ release-truth reconciliation. It cannot be tagged until upstream PRs merge, release packaging is regenerated from merged `main`, checks are green on the integrated merge SHA, and a human pushes the tag.
 

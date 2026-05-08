@@ -39,6 +39,12 @@ single_owner = "release owner"
 execution_mode = "autonomous"
 agent_orchestrator = "claude-release work-orchestrator"
 
+[planning_ownership]
+owner_pr = 620
+owner_branch = "claude/charming-feistel-8595da"
+owner_globs = [".planning/trajectory-5/**"]
+rule = "No non-planning PR may carry .planning/trajectory-5 paths. Lane docs are planning truth owned by PR 620, not by source/evidence lanes."
+
 # ---- Per-lane records ----
 
 [lanes.A]
@@ -65,7 +71,6 @@ owner_globs = [
   "formal/lean4/**",
   "formal/theorem-inventory.json",
   "spec/registries/**",
-  ".planning/trajectory-5/lane-a-floor/**",
 ]
 reviewer = "release owner"
 review_x2 = true
@@ -99,7 +104,6 @@ owner_globs = [
   "scripts/check-anchor-batch-async-witness.sh",
   "spec/PROTOCOL.md",
   "spec/schemas/chio-wire/**",
-  ".planning/trajectory-5/lane-b-wiring/**",
 ]
 reviewer = "release owner"
 review_x2 = true
@@ -126,7 +130,6 @@ owner_globs = [
   "ops/knowledge-base/**",
   "spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md",
   "spec/CHIODOS_SELECTIVE_DISCLOSURE.md",
-  ".planning/trajectory-5/lane-c-demo/**",
 ]
 reviewer = "release owner"
 review_x2 = true
@@ -157,7 +160,7 @@ agent_orchestrator = "claude-release work-orchestrator"
 "spec/registries/" = { lanes = ["A", "B"], coordination_owner = "release owner" }
 "audits/evidence/" = { lanes = ["A"], coordination_owner = "release owner" }
 "formal/" = { lanes = ["A"], coordination_owner = "release owner" }
-".planning/trajectory-5/" = { lanes = ["A", "B", "C"], coordination_owner = "release owner" }
+".planning/trajectory-5/" = { lanes = [], coordination_owner = "release owner", owner_pr = 620, notes = "Sole planning truth owner. Source, evidence, mutation, threat, demo, and release-package PRs must not carry this path." }
 
 # ---- Owner-class definitions (for human assignment in Wave 2) ----
 #

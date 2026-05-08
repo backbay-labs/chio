@@ -2,15 +2,14 @@
 
 **Author**: Wave 4 final-pass agent. **Date**: 2026-05-08.
 **Baseline SHA**: `708c7bb33df43594f5e76542b05fca7a56d9689e`.
-**Status**: RELEASE BLOCKED; 26 PRs open; awaiting upstream
-merges, release-package regeneration, green checks on the integrated
-merge SHA, and a human tag push per `CLOSEOUT.md`.
+**Status**: R4 BLOCKED FOR RELEASE; planning ownership centralized in #620;
+source integration must follow `R4-MERGE-TOPOLOGY.md`.
 
-This document was the pre-execution readiness summary. The trajectory
-worker branches have now been prepared, but the release is not complete.
-The integration-coordination map, ship-bar reconciliation, audit closure
-status, and recommended merge sequence live in `CLOSEOUT.md`. The text
-below is preserved as the historical pre-execution record.
+This document was the pre-execution readiness summary. R4 supersedes the
+previous execution-complete framing for release purposes. The current
+integration-coordination map, planning ownership rule, and merge simulation
+log live in `R4-MERGE-TOPOLOGY.md`. The text below is preserved as the
+historical pre-execution record.
 
 ## R4+ release truth
 
