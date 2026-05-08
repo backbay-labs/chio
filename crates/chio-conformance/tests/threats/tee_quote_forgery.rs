@@ -57,24 +57,36 @@ use chio_tee_frame::schema::{
 // existence + named-fixture pins from the previous stub so a
 // regression in those validator paths still trips this conformance
 // test, not just the new tenant-sig attack-call-deny arms.
+// Each entry pins a covered_by_tests evidence file AND a named test
+// function inside that file that exercises a quote-rejection arm.
+// `Some(needle)` ensures the file does more than just exist -- a
+// regression that renames or guts the cited test trips this gate
+// before tee_quote_forgery.json can claim validator-side coverage
+// (cursor[bot] LOW + codex[bot] P2 on PR #608).
 const VALIDATOR_EVIDENCE_FILES: &[(&str, Option<&str>)] = &[
     (
         "crates/chio-attest-verify/tests/cross_backend_conformance.rs",
-        None,
+        Some("tdx_backend_rejects_sev_snp_and_nitro_fixtures"),
     ),
     (
         "crates/chio-attest-verify/tests/expect_report_data.rs",
-        None,
+        Some("report_data_changes_when_kernel_key_changes"),
     ),
-    ("crates/chio-attest-verify/tests/tdx_integration.rs", None),
+    (
+        "crates/chio-attest-verify/tests/tdx_integration.rs",
+        Some("manifest_pins_match_on_disk_sha256"),
+    ),
     (
         "crates/chio-attest-verify/tests/sev_snp_integration.rs",
-        None,
+        Some("manifest_pins_match_on_disk_sha256"),
     ),
-    ("crates/chio-attest-verify/tests/nitro_unit.rs", None),
+    (
+        "crates/chio-attest-verify/tests/nitro_unit.rs",
+        Some("build_document"),
+    ),
     (
         "crates/chio-attest-verify/tests/nitro_root_rotation.rs",
-        None,
+        Some("rotated_verifier_at"),
     ),
     (
         "crates/chio-kernel/tests/pq_key_load_after_self_quote.rs",
