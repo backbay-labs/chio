@@ -5,12 +5,12 @@
 //! and can fail the receipt for an already-executed side-effecting
 //! tool.
 //!
-//! P0-003 (audit 2026-05-08): a peer that was fresh at admission could
-//! expire while the tool was running, and the post-dispatch persistence
-//! path -- which re-ran `kernel_receipt_version_for_remote` AND a
-//! second freshness check inside `apply_federation_cosign` -- would
-//! then return `KernelError::ReceiptNegotiationDowngrade` /
-//! `KernelError::Internal("...not pinned or has gone stale")`.  The
+//! A peer that was fresh at admission could expire while the tool was
+//! running, and the post-dispatch persistence path -- which re-ran
+//! `kernel_receipt_version_for_remote` AND a second freshness check
+//! inside `apply_federation_cosign` -- would then return
+//! `KernelError::ReceiptNegotiationDowngrade` /
+//! `KernelError::Internal("...not pinned or has gone stale")`. The
 //! tool had already produced its side effect; the kernel would
 //! nonetheless drop the receipt.
 //!
@@ -209,12 +209,12 @@ fn freshness_window_v2_capable_peer(
 fn admission_time_freshness_carried_through_persistence() {
     // 1-second freshness window; tool sleeps 2 seconds.  The peer is
     // fresh at admission (`now < rotation_due`), the tool runs, the
-    // peer's freshness window lapses, and persistence runs.  Without
-    // the P0-003 fix, the post-dispatch resolver would return
-    // `ReceiptNegotiationDowngrade` and the receipt for the
-    // already-executed tool would be lost.  With the fix, persistence
-    // honors the admission-time decision (degrading the v2 alias to
-    // v1 on drift) and the receipt is minted.
+    // peer's freshness window lapses, and persistence runs. Without
+    // admission-time-carried freshness, the post-dispatch resolver
+    // would return `ReceiptNegotiationDowngrade` and the receipt for
+    // the already-executed tool would be lost. With the
+    // admission-time decision honored, persistence degrades the v2
+    // alias to v1 on drift and the receipt is minted.
     let path = unique_db_path("b2-toctou-fresh-then-stale");
     let (mut kernel, counter) =
         make_kernel_with_slow_tool(&path, Duration::from_millis(2_000));

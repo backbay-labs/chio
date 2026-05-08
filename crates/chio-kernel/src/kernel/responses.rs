@@ -1492,13 +1492,12 @@ impl ChioKernel {
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
-        // Scope the receipt-store write lock so it is released before the
-        // settlement observer runs. M09 review follow-up (PR #387,
-        // Cursor Bugbot + Codex): holding the mutex across
-        // `run_settlement_observer` serialized all concurrent receipt
-        // persistence behind potentially I/O-bound hook latency. The
-        // observer needs only a fully-persisted receipt, so we drop the
-        // guard first.
+        // Scope the receipt-store write lock so it is released before
+        // the settlement observer runs. Holding the mutex across
+        // `run_settlement_observer` would serialize all concurrent
+        // receipt persistence behind potentially I/O-bound hook
+        // latency; the observer needs only a fully-persisted receipt,
+        // so the guard is dropped first.
         {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())

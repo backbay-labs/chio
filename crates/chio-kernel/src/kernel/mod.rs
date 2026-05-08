@@ -2129,18 +2129,18 @@ impl ChioKernel {
         };
         let now = current_unix_timestamp();
         let Some(peer) = self.federation_peer(origin_kernel_id, now) else {
-            // P0-003 fix (audit 2026-05-08): admission-time freshness
-            // is the authoritative decision for this request. The
-            // companion fix in `record_chio_receipt_with_federation`
-            // already degrades the post-dispatch version resolver from
-            // fail-closed to a logged warning + V1Legacy on drift.
-            // This hook performs a SECOND post-dispatch freshness
-            // probe that would otherwise reintroduce the same TOCTOU:
-            // a peer fresh at admission could expire while the tool
-            // ran, the bare receipt is recorded but the
-            // DualSignedReceipt assembly fails, the receipt for the
-            // already-executed side-effecting tool is then dropped by
-            // the propagating `?` in the persistence path.
+            // Admission-time freshness is the authoritative decision
+            // for this request. The companion code in
+            // `record_chio_receipt_with_federation` degrades the
+            // post-dispatch version resolver from fail-closed to a
+            // logged warning + V1Legacy on drift. This hook performs a
+            // SECOND post-dispatch freshness probe that would otherwise
+            // reintroduce the same TOCTOU: a peer fresh at admission
+            // could expire while the tool ran, the bare receipt is
+            // recorded but the DualSignedReceipt assembly fails, the
+            // receipt for the already-executed side-effecting tool is
+            // then dropped by the propagating `?` in the persistence
+            // path.
             //
             // Degrade to a logged warning here, mirroring the
             // version-resolver fallback. The bare `ChioReceipt` is
@@ -2152,8 +2152,7 @@ impl ChioKernel {
                 request_id = %request.request_id,
                 origin_kernel_id = %redacted!(origin_kernel_id),
                 "federation peer pin drifted stale between admission and persistence; \
-                 skipping dual-signed receipt assembly to honor admission-time decision \
-                 (P0-003)"
+                 skipping dual-signed receipt assembly to honor admission-time decision"
             );
             return Ok(());
         };
@@ -2948,12 +2947,12 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Round-3 codex P2 fix: signature is verified first (no budget
-        // mutation); the actual `admit_capability_budget` call is
-        // deferred until all subsequent checks (time, revocation,
-        // delegation-admission, subject, scope, guards) have passed.
-        // Otherwise a denied call would still consume the parent's
-        // share, starving later valid siblings.
+        // Signature is verified first (no budget mutation); the actual
+        // `admit_capability_budget` call is deferred until all
+        // subsequent checks (time, revocation, delegation-admission,
+        // subject, scope, guards) have passed. Otherwise a denied call
+        // would still consume the parent's share, starving later valid
+        // siblings.
         if let Err(reason) = self.verify_capability_full_without_budget_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
@@ -3474,9 +3473,9 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Round-3 codex P2 fix: signature first; the budget admission
-        // is deferred until after all subsequent checks pass, so a
-        // denied call no longer consumes the parent's share.
+        // Signature first; the budget admission is deferred until
+        // after all subsequent checks pass, so a denied call no longer
+        // consumes the parent's share.
         if let Err(reason) = self.verify_capability_full_without_budget_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
