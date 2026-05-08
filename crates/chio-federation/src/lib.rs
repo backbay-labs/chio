@@ -28,11 +28,6 @@ pub use bilateral::{
     CoSigningResponse, DualSignedReceipt, InProcessCoSigner, BILATERAL_COSIGNING_SCHEMA,
     BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
-// TRJ5-B4: §6-conformant bilateral envelope (DSSE PAE). Coexists with
-// the legacy `DualSignedReceipt`; verifiers seeking spec
-// `CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 conformance MUST use
-// `verify_dsse_envelope`. See `bilateral_dsse.rs` module docs for the
-// cohabitation rationale.
 pub use bilateral_dsse::{
     build_predicate, build_statement, pae, sign_dsse_envelope, verify_dsse_envelope,
     BilateralPredicate, DsseEnvelope, DsseSignature, DsseStatement, KernelIdentity, Keyid,

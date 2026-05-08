@@ -1,23 +1,4 @@
-//! TRJ5-B4: DSSE-conformant bilateral co-signing per
-//! `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 (envelope shape) and §7
-//! (verification algorithm).
-//!
 //! ## Why this module exists
-//!
-//! The legacy bilateral artifact (see [`crate::bilateral`]) signs Ed25519 over
-//! the canonical-JSON encoding of `CoSigningBody`. The §6 envelope, by
-//! contrast, requires Ed25519 over the DSSE Pre-Authentication Encoding (PAE)
-//! of an in-toto Statement carrying a chiodos-bilateral-cosign predicate.
-//! These two preimages share zero bytes; a signature over one does NOT
-//! authenticate the other (R4 BLOCKER 1).
-//!
-//! Trj5 ships both surfaces in **cohabitation** (per
-//! `.planning/trajectory-5/lane-b-wiring/dsse-bilateral-signing.md` §
-//! "Migration strategy"). The legacy `DualSignedReceipt::verify` is retained
-//! for backward compatibility with existing federation transport callers, but
-//! is explicitly **NOT** §6-conformant. Verifiers seeking spec §6 conformance
-//! MUST use [`verify_dsse_envelope`] against a [`DsseEnvelope`] produced by
-//! [`sign_dsse_envelope`].
 //!
 //! ## Wire format (spec §6 lines 308-353)
 //!
@@ -42,23 +23,6 @@
 //! where `statement_bytes` is the raw canonical-JSON of the in-toto Statement
 //! (NOT the base64 of it: that goes on the wire, but the signed message is the
 //! pre-base64 bytes). LEN values are decimal ASCII per the DSSE v1 spec.
-//!
-//! ## Bounded scope (TRJ5)
-//!
-//! - Only the Ed25519 signing algorithm is wired; hybrid + post-quantum keyid
-//!   semantics are out of scope (see `dsse-bilateral-signing.md` §"Out of
-//!   scope for B4"). The keyid is `sha256_hex(public_key.to_bytes())` for
-//!   Ed25519; non-Ed25519 keys construct a domain-separated keyid via
-//!   [`Keyid::from_public_key`] but are not exercised on the trj5 hot path.
-//! - Predicate-schema validation against §5 is left to a later pass; trj5
-//!   carries the predicate fields the §7 verifier needs (`tool_server_*`,
-//!   `co_sign`, `consistency_model`, `cross_org_visibility`,
-//!   `timestamp_unix_ms`, `tool_name`, plus the chio-internal `receipt_id`
-//!   and `receipt_canonical_json` to anchor subject hashing). Adding the
-//!   full schema-validation pipeline is trj6 follow-up.
-//! - `governance_receipt_ref`, `consistency_anchor`, and `n_of_m` quorum
-//!   are NOT carried by trj5's predicate body; the bilateral mode is
-//!   `bilateral_required` only. Extension is straightforward.
 //!
 //! ## Spec citation
 //!
@@ -87,10 +51,6 @@ use crate::bilateral::BilateralCoSigningError;
 pub const PAYLOAD_TYPE_IN_TOTO: &str = "application/vnd.in-toto+json";
 
 /// Predicate type for the in-toto Statement carried in the DSSE envelope.
-///
-/// The spec §7 step 4 admits both the in-toto.io URL and the chio-namespaced
-/// fallback; trj5 emits the chio-namespaced form for self-contained
-/// verifiability.
 pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-cosign-invocation.v1";
 
 /// In-toto Statement `_type` per the v1 attestation framework (DSSE doc).
@@ -107,16 +67,10 @@ const PAE_PREFIX: &str = "DSSEv1";
 /// Wire schema for [`DsseEnvelope`] when carried over chiodos federation.
 pub const BILATERAL_DSSE_ENVELOPE_SCHEMA: &str = "chio.federation-bilateral-dsse-envelope.v1";
 
-/// Default consistency model emitted by trj5's federation hot path. The
-/// chiodos ladder admits three values; trj5 emits `"crdt-commutative"` for
-/// the unanchored federation hop, matching what `DualSignedReceipt` already
-/// implies (no anchor pinned beyond the receipt body itself).
 pub const DEFAULT_CONSISTENCY_MODEL: &str = "crdt-commutative";
 
-/// Default cross-org visibility for trj5 envelopes (`"federated"`).
 pub const DEFAULT_CROSS_ORG_VISIBILITY: &str = "federated";
 
-/// Default `co_sign` field for the trj5 production hot path.
 pub const DEFAULT_COSIGN_MODE: &str = "bilateral_required";
 
 // ---------------------------------------------------------------------------
@@ -133,15 +87,6 @@ pub struct Keyid(pub String);
 impl Keyid {
     /// Compute the §6 keyid for the given public key.
     ///
-    /// Per CHIODOS §6, the keyid (and the matching `passport_key_fingerprint`
-    /// in the predicate) is the SHA-256 of the raw passport public-key bytes,
-    /// hex-lowercase. For Ed25519 (the trj5 hot-path algorithm), this is the
-    /// 32-byte verifying-key encoding, NOT the 64-character ASCII-hex
-    /// rendering. Non-Ed25519 callers fall back to hashing the algorithm-
-    /// prefixed hex form so the keyid remains a domain-separable hex string;
-    /// trj5 production paths only emit Ed25519, so this branch is only
-    /// reached by future P-256/P-384 work.
-    ///
     /// Reported by codex[bot] on PR #610 (P1) - earlier revisions hashed
     /// `to_hex().as_bytes()` for Ed25519, which produced a different
     /// fingerprint than any spec-conformant peer that hashes raw key
@@ -155,9 +100,6 @@ impl Keyid {
                 hasher.update(public_key.as_bytes());
             }
             _ => {
-                // Non-Ed25519: hash the algorithm-prefixed hex string so
-                // distinct algorithm-tagged keys still produce distinct
-                // fingerprints. trj5 does not exercise this branch.
                 hasher.update(public_key.to_hex().as_bytes());
             }
         }
@@ -198,24 +140,15 @@ pub struct KernelIdentity {
     pub kernel_id: String,
     /// SHA-256 of the kernel's passport public key (hex-lowercase).
     pub passport_key_fingerprint: Keyid,
-    /// Signing algorithm. Trj5 emits `"ed25519"` only.
     pub alg: String,
 }
 
-/// Predicate body of the chio bilateral cosign Statement. Spec §5 lines
-/// 128-301 carry many additional fields (policy_evaluation_summary,
-/// capability_lease_ref, etc.); trj5 emits the load-bearing subset
-/// required by the §7 verification path on the federation hop. See module
-/// docs for the bounded scope.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct BilateralPredicate {
     /// Internal schema discriminator (`PREDICATE_BODY_SCHEMA`). Distinct
     /// from `predicateType` on the parent Statement.
     pub schema: String,
-    /// Globally-unique identifier of the underlying invocation. Trj5 uses
-    /// the receipt id (`ChioReceipt::id`), which is itself unique per
-    /// federation hop.
     pub invocation_id: String,
     /// Origin kernel (Org A) identity.
     pub tool_server_a: KernelIdentity,
@@ -223,14 +156,8 @@ pub struct BilateralPredicate {
     pub tool_server_b: KernelIdentity,
     /// Tool name as exposed by both kernels.
     pub tool_name: String,
-    /// Co-sign mode. Trj5 emits `DEFAULT_COSIGN_MODE`
-    /// (`"bilateral_required"`).
     pub co_sign: String,
-    /// Consistency model per CHIODOS_LADDER §4. Trj5 emits
-    /// `DEFAULT_CONSISTENCY_MODEL`.
     pub consistency_model: String,
-    /// Cross-org visibility per CHIODOS_LADDER. Trj5 emits
-    /// `DEFAULT_CROSS_ORG_VISIBILITY`.
     pub cross_org_visibility: String,
     /// Tool-server B's wall-clock timestamp at the moment the joint body
     /// was canonicalised (Unix milliseconds).
@@ -251,13 +178,10 @@ pub struct DsseStatement {
     /// `_type` per in-toto v1: `"https://in-toto.io/Statement/v1"`.
     #[serde(rename = "_type")]
     pub statement_type: String,
-    /// Subject array; trj5 emits exactly one entry pointing at the
-    /// underlying receipt.
     pub subject: Vec<StatementSubject>,
     /// `predicateType` distinguishing chio bilateral envelopes from other
     /// in-toto attestations.
     pub predicate_type: String,
-    /// Chio-internal predicate body. Spec §5 fields the trj5 hot path emits.
     pub predicate: BilateralPredicate,
 }
 
@@ -285,28 +209,14 @@ pub struct DsseSignature {
 }
 
 /// DSSE v1 envelope carrying the §6-conformant bilateral co-signature.
-///
-/// The wire shape per spec §6 lines 319-336. Trj5 emits exactly two
-/// signatures (one per kernel) under the default `bilateral_required`
-/// co-sign mode.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DsseEnvelope {
-    /// Wire schema discriminator. Trj5 emits
-    /// `BILATERAL_DSSE_ENVELOPE_SCHEMA`. NOT part of the §6 shape itself
-    /// (DSSE knows nothing of chio schemas); the verifier `verify_dsse_envelope`
-    /// MUST tolerate envelopes that did not originate from a chio kernel
-    /// and therefore lack this field. To keep the §6 wire bytes narrow,
-    /// we only serialize this when set, and verification ignores it
-    /// entirely (it is signed-data-adjacent metadata).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
-    /// MUST equal `PAYLOAD_TYPE_IN_TOTO` for trj5.
     pub payload_type: String,
     /// Base64 (standard alphabet) of canonical-JSON of [`DsseStatement`].
     pub payload: String,
-    /// Detached signatures over `pae(payload_type, base64_decode(payload))`.
-    /// Trj5 emits exactly two; verifiers in the trj5 path MUST find both.
     pub signatures: Vec<DsseSignature>,
 }
 
@@ -433,10 +343,6 @@ pub fn build_statement(
 /// tool-host kernel (Org B). Both signatures cover the same DSSE PAE bytes
 /// per spec §6 line 345 ("Both kernels sign the same PAE bytes.").
 ///
-/// The trj5 hot path provides `tool_name` and `timestamp_unix_ms` (Org B's
-/// wall-clock at canonicalisation). The Statement subject digest is computed
-/// from the canonical-JSON of `receipt`.
-///
 /// Returns a fully-assembled [`DsseEnvelope`]; the function self-checks via
 /// [`verify_dsse_envelope`] before returning so callers receive only
 /// envelopes that already pass §7 step-11/12 verification.
@@ -512,8 +418,6 @@ pub fn sign_dsse_envelope(
 /// on success so callers can drive subsequent steps (peer pinning, lease
 /// resolution, anchor reconciliation) against a single decoded payload.
 ///
-/// **What this function checks (trj5 scope):**
-///
 /// 1. Payload base64-decodes (`dsse.malformed`).
 /// 2. Statement is parseable canonical JSON (`statement.malformed`).
 /// 3. `payload_type == PAYLOAD_TYPE_IN_TOTO` (PAE preimage shape).
@@ -526,13 +430,6 @@ pub fn sign_dsse_envelope(
 /// 7. Each signature, base64-decoded, is a valid Ed25519 signature over
 ///    the recomputed DSSE PAE bytes (`signature.server_*_invalid`,
 ///    spec §7 steps 11-12).
-///
-/// **Out of trj5 scope:** subject digest re-resolution against an external
-/// receipt store (§7 step 7), revocation/freshness of the passport at the
-/// pinned epoch (§7 step 9), capability-lease resolution (§7 step 14),
-/// governance-receipt resolution (§7 step 15), and consistency-anchor
-/// reconciliation (§7 step 16). These are out-of-scope per
-/// `dsse-bilateral-signing.md` §"Out of scope for B4".
 pub fn verify_dsse_envelope(
     envelope: &DsseEnvelope,
     org_a_public_key: &PublicKey,
@@ -571,12 +468,6 @@ pub fn verify_dsse_envelope(
 
     let pae_bytes = pae(&envelope.payload_type, &statement_bytes);
 
-    // Spec §7 step 11: keyid for tool_server_a (here: bound to the caller-
-    // supplied org_a_public_key). The trj5 verifier matches by the keyid
-    // hash (SHA-256 of public key) rather than by signature index in the
-    // array, so an envelope whose signatures are reordered still
-    // verifies, matching the spec wording "exactly one signature with
-    // keyid == server_a fingerprint".
     let org_a_keyid = Keyid::from_public_key(org_a_public_key);
     let org_b_keyid = Keyid::from_public_key(org_b_public_key);
 
@@ -593,12 +484,6 @@ pub fn verify_dsse_envelope(
         return Err(BilateralCoSigningError::OrgBSignatureInvalid);
     }
 
-    // cursor[bot] LOW on PR #610: when org_a == org_b the same keyid
-    // resolves both lookups; the second signature could carry arbitrary
-    // garbage and never be inspected. Reject identical-key cosigning so
-    // the §6 envelope can't be forged by a single key holder. (This is
-    // a load-bearing distinct-org invariant; bilateral co-signing is
-    // meaningless when one party signs both halves.)
     if org_a_keyid == org_b_keyid {
         return Err(BilateralCoSigningError::OrgBSignatureInvalid);
     }

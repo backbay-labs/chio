@@ -1,33 +1,6 @@
-//! TRJ5-B4 negative conformance: bilateral DSSE envelope is the §6-conformant
-//! artifact; legacy `DualSignedReceipt` is NOT.
-//!
 //! Spec MUST: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
 //!   - §6 lines 308-353: DSSE envelope shape and PAE encoding.
 //!   - §7 step 11-12: signature verification under tool-server fingerprints.
-//!
-//! Enforced call sites (production):
-//!   - `crates/chio-federation/src/bilateral_dsse.rs` (NEW per TRJ5-B4.2):
-//!     `sign_dsse_envelope`, `verify_dsse_envelope`, `pae`, `Keyid`.
-//!   - `crates/chio-federation/src/bilateral.rs::co_sign_with_origin_full`
-//!     (TRJ5-B4.3): the federation hot path that emits BOTH the legacy
-//!     `DualSignedReceipt` and the §6-conformant `DsseEnvelope`.
-//!
-//! Production call path (Lane B/C demo):
-//!   `co_sign_with_origin_full`
-//!     -> `chio_federation::bilateral_dsse::sign_dsse_envelope`
-//!     -> Ed25519 over `pae("application/vnd.in-toto+json", canonical_json(Statement))`.
-//!
-//! ## Reverts-to-fail proof (Evidence Gate close bar)
-//!
-//! If TRJ5-B4.2 is reverted (delete `bilateral_dsse.rs` and the production
-//! emission point at `co_sign_with_origin_full`), this fixture FAILS at
-//! compile time: the imports `chio_federation::bilateral_dsse::*` and
-//! `chio_federation::co_sign_with_origin_full` no longer resolve. On a
-//! softer revert (the module exists but the §6 verifier accepts
-//! signatures whose preimage is not the DSSE PAE bytes), assertions
-//! `tampered_pae_bytes_rejected_by_section_6_verifier` and
-//! `forged_envelope_using_legacy_signature_bytes_is_rejected` FAIL because
-//! the verifier no longer enforces the §6 preimage shape.
 //!
 //! ## What this fixture checks
 //!
@@ -42,7 +15,7 @@
 //!    signature bytes into the `signatures` array is rejected** because
 //!    the legacy signatures cover a different preimage.
 //! 6. **The hot-path emitter (`co_sign_with_origin_full`) produces
-//!    artifacts that BOTH verify under their respective verifiers** — the
+//!    artifacts that BOTH verify under their respective verifiers** - the
 //!    legacy verifier accepts the legacy artifact; the §6 verifier accepts
 //!    the DSSE envelope. Cross-acceptance (e.g. the §6 verifier accepting
 //!    a legacy `CoSigningBody`-shaped input) is structurally impossible:
@@ -262,12 +235,6 @@ fn mismatched_payload_type_rejected_by_section_6_verifier() {
 /// (CoSigningBody)`) and stuffs them into a §6 envelope's
 /// `signatures` array. The §6 verifier MUST reject because the legacy
 /// signature does not authenticate the DSSE PAE preimage.
-///
-/// **This test is the load-bearing R4 refutation.** If the §6 verifier
-/// were to accept this forged envelope, the cohabitation strategy in
-/// `dsse-bilateral-signing.md` would be unsound: an attacker who could
-/// forge a legacy artifact (different preimage, possibly easier oracle)
-/// would gain a valid §6 envelope. The test asserts that's not the case.
 #[test]
 fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     let kp_a = Keypair::generate();
@@ -318,9 +285,6 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     );
 }
 
-/// Hot-path emission: `co_sign_with_origin_full` produces both artifacts and
-/// each verifies under its own verifier. This is the production call site
-/// the Evidence Gate requires for B4.E close.
 #[test]
 fn hot_path_emits_both_artifacts_and_each_verifies() {
     let kp_a = Keypair::generate();
