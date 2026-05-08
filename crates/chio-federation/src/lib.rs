@@ -30,11 +30,6 @@ pub use bilateral::{
     CoSigningBody, CoSigningRequest, CoSigningResponse, DualSignedReceipt, InProcessCoSigner,
     BILATERAL_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
-// TRJ5-B4: §6-conformant bilateral envelope (DSSE PAE). Coexists with
-// the legacy `DualSignedReceipt`; verifiers seeking spec
-// `CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 conformance MUST use
-// `verify_dsse_envelope`. See `bilateral_dsse.rs` module docs for the
-// cohabitation rationale.
 pub use bilateral_dsse::{
     build_predicate, build_predicate_full, build_statement, pae, sign_dsse_envelope,
     sign_dsse_envelope_full, verify_dsse_envelope, BilateralPredicate,
@@ -44,7 +39,6 @@ pub use bilateral_dsse::{
     DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE, DEFAULT_CROSS_ORG_VISIBILITY,
     PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
 };
-// TRJ5-C2: §7 17-step verifier and supporting trait surface.
 pub use bilateral_verifier::{
     verify_bilateral_cosign_invocation, ActionClassKind, AllowAllRevocationOracle,
     CapabilityLeaseRegistry, DenyListRevocationOracle, GovernanceReceiptStore,

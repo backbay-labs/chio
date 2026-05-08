@@ -1,5 +1,3 @@
-//! TRJ5-C2 bilateral co-signed invocation example.
-//!
 //! Runs the production hot path end-to-end:
 //!
 //! 1. Construct two kernel keypairs (the two `did:chio` identities).
@@ -117,7 +115,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cross_org_visibility: None,
     };
 
-    // ---- 5. In-process cosigner (Lane C demo, both keys local) -------
     let cosigner = InProcessCoSigner::new(
         origin_kernel_id,
         kp_origin.clone(),

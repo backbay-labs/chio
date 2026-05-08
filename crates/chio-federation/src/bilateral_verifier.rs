@@ -1,46 +1,8 @@
-//! TRJ5-C2: §7 17-step bilateral co-signed invocation verifier.
-//!
 //! Implements the algorithm in `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
 //! §7 (lines 361-410), driving the full 17-step protocol against a DSSE
 //! envelope produced by [`crate::bilateral_dsse::sign_dsse_envelope_full`].
 //!
 //! ## Step-by-step coverage
-//!
-//! | Step | Spec § | What this module checks | Status |
-//! | ---- | ------ | ----------------------- | ------ |
-//! | 1    | 7      | parse envelope as DSSE             | covered |
-//! | 2    | 7      | base64-decode payload              | covered |
-//! | 3    | 7      | parse Statement against in-toto v1 | covered |
-//! | 4    | 7      | predicateType is recognised        | covered |
-//! | 5    | 7      | predicate body schema valid        | covered (subset of §5) |
-//! | 6    | 7      | bind `pred = statement.predicate`  | covered |
-//! | 7    | 7      | subject digest = sha256(canonical(resolve_receipt)) | covered (in-memory ReceiptStore stub; full distributed-store integration deferred to trj6) |
-//! | 8    | 7      | both kernel_ids in peer_pin_set; fingerprints match | covered |
-//! | 9    | 7      | both passports non-revoked at pinned_epoch | covered (RevocationOracle trait; default `AllowAllRevocationOracle` for in-process demos) |
-//! | 10   | 7      | recompute PAE                      | covered |
-//! | 11   | 7      | server_a sig verifies under PAE    | covered (delegates to `verify_dsse_envelope`) |
-//! | 12   | 7      | server_b sig verifies under PAE    | covered (delegates to `verify_dsse_envelope`) |
-//! | 13   | 7      | verdicts agree (and joint matches) | covered |
-//! | 14   | 7      | capability_lease_ref resolves and not expired | covered (`CapabilityLeaseRegistry` trait) |
-//! | 15   | 7      | governance_receipt_ref present iff receipt-backed class | covered |
-//! | 16   | 7      | consistency anchor reconciled (totally-ordered / quorum-required) | partial: anchor presence-and-shape only; full anchor reconciliation against a chio-anchor checkpoint deferred to trj6 |
-//! | 17   | 7      | return `VerifiedBilateralCoSignInvocation` | covered |
-//!
-//! ## Deferred scope (out of trj5)
-//!
-//! * Step 7 currently uses `InMemoryReceiptStore`. Hooking the verifier
-//!   to a chio-store-sqlite or distributed audit-store implementation is
-//!   trj6's responsibility (the trait surface here is what the
-//!   distributed wiring will plug into).
-//! * Step 9's revocation check uses a small trait. Wiring the
-//!   verifier into the live `chio-revocation-oracle` epoch root is
-//!   tracked separately; this module accepts an `AllowAllRevocationOracle`
-//!   for the in-process demo.
-//! * Step 16's quorum-required and totally-ordered branches verify
-//!   that the predicate's `consistency_anchor` is present and is one
-//!   of the spec-allowed strings; full reconciliation against an
-//!   actual `chio-anchor` checkpoint or a FROST quorum aggregate is
-//!   deferred to trj6 (when the relevant cross-crate wiring lands).
 //!
 //! ## Public API summary
 //!
@@ -104,8 +66,6 @@ pub enum VerifierError {
     /// in-toto URI nor the chio-namespaced fallback.
     #[error("predicate.type_unrecognised: {0}")]
     PredicateTypeUnrecognised(String),
-    /// `predicate.schema_invalid` - predicate body fails the §5 schema
-    /// (currently checks the trj5 required-field subset).
     #[error("predicate.schema_invalid: {0}")]
     PredicateSchemaInvalid(String),
     /// `subject.digest_mismatch` - subject SHA-256 does not match the
@@ -195,16 +155,10 @@ impl From<BilateralCoSigningError> for VerifierError {
 // Pinned epoch + peer set (steps 8, 9)
 // ---------------------------------------------------------------------------
 
-/// Verifier's pinned epoch - the wall clock and the consensus epoch
-/// height at which the verification is performed. Trj5 wires only the
-/// wall-clock half (used by step 14); the epoch height is forwarded to
-/// the `RevocationOracle` for step 9.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PinnedEpoch {
     /// Verifier wall-clock at the moment of verification, in Unix ms.
     pub now_unix_ms: u64,
-    /// Verifier's consensus epoch height (forwarded to the revocation
-    /// oracle). Trj5 uses 0 for the in-process demo.
     pub epoch_height: u64,
 }
 
@@ -252,11 +206,6 @@ impl PeerPinSet {
 // Step 7: ReceiptStore
 // ---------------------------------------------------------------------------
 
-/// Audit-store surface that the §7 step 7 verifier resolves the
-/// `invocation_id` against. Production deployments wire this to the
-/// chio-store-sqlite ReceiptStore (or a distributed equivalent); trj5
-/// ships [`InMemoryReceiptStore`] for the demo and conformance fixture.
-///
 /// Returning `None` is fail-closed (mapped to
 /// `VerifierError::SubjectDigestMismatch`).
 pub trait ReceiptStore: Send + Sync {
@@ -265,8 +214,6 @@ pub trait ReceiptStore: Send + Sync {
     fn resolve(&self, invocation_id: &str) -> Option<ChioReceipt>;
 }
 
-/// Trj5 in-memory ReceiptStore, used by the conformance fixture and
-/// the bilateral_invocation example. **Not for production deployments.**
 #[derive(Debug, Default)]
 pub struct InMemoryReceiptStore {
     receipts: HashMap<String, ChioReceipt>,
@@ -299,9 +246,6 @@ pub trait RevocationOracle: Send + Sync {
     fn is_active_at_epoch(&self, fingerprint: &Keyid, epoch_height: u64) -> bool;
 }
 
-/// Trj5 default revocation oracle for in-process demos: every passport
-/// is treated as active. Production deployments substitute a wrapper
-/// over `chio-revocation-oracle::RevocationView`.
 #[derive(Debug, Clone, Default)]
 pub struct AllowAllRevocationOracle;
 
@@ -355,7 +299,6 @@ pub trait CapabilityLeaseRegistry: Send + Sync {
     fn resolve(&self, lease_id: &str) -> Option<ResolvedLease>;
 }
 
-/// Trj5 in-memory lease registry for the demo and conformance fixture.
 #[derive(Debug, Default)]
 pub struct InMemoryLeaseRegistry {
     leases: HashMap<String, ResolvedLease>,
@@ -398,7 +341,6 @@ pub trait GovernanceReceiptStore: Send + Sync {
     fn resolve(&self, receipt_id: &str) -> Option<ResolvedGovernanceReceipt>;
 }
 
-/// Trj5 in-memory governance-receipt store.
 #[derive(Debug, Default)]
 pub struct InMemoryGovernanceReceiptStore {
     receipts: HashMap<String, ResolvedGovernanceReceipt>,
@@ -473,10 +415,6 @@ pub struct VerifiedBilateralCoSignInvocation {
 // Step 1-17 verifier
 // ---------------------------------------------------------------------------
 
-/// **TRJ5-C2:** §7 17-step verifier for a bilateral co-signed
-/// invocation envelope. See module docs for the per-step coverage
-/// table.
-///
 /// Fail-closed: any error short-circuits and returns the corresponding
 /// `VerifierError` variant whose `.code()` matches the spec §7.1
 /// canonical string verbatim.
@@ -609,16 +547,6 @@ pub fn verify_bilateral_cosign_invocation(
         )));
     }
 
-    // ---- Steps 10-12: PAE recompute + signature verification ----------
-    // Delegate to the B4 verifier, which:
-    //  - recomputes PAE bytes (step 10);
-    //  - matches each signature by keyid against the supplied keys
-    //    (step 11/12 keyid binding);
-    //  - Ed25519-verifies each signature against the PAE bytes
-    //    (step 11 server_a, step 12 server_b).
-    // The keyid binding here is the §6 invariant: if the predicate
-    // names a fingerprint that does not appear in `signatures[]`, the
-    // signature lookup fails with the corresponding code.
     verify_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key).map_err(
         |e| match e {
             BilateralCoSigningError::OrgASignatureInvalid => {
@@ -756,10 +684,7 @@ pub fn verify_bilateral_cosign_invocation(
 
     // ---- Step 16: consistency anchor reconciliation -------------------
     match pred.consistency_model.as_str() {
-        "crdt-commutative" => {
-            // No anchor required for the unordered model. The trj5
-            // hot-path default; nothing to check.
-        }
+        "crdt-commutative" => {}
         "totally-ordered" => {
             let anchor = pred.consistency_anchor.as_deref().ok_or_else(|| {
                 VerifierError::ConsistencyAnchorUnverified(
@@ -772,8 +697,6 @@ pub fn verify_bilateral_cosign_invocation(
                     anchor
                 )));
             }
-            // Full reconciliation against a chio-anchor checkpoint is
-            // deferred to trj6 (see module docs).
         }
         "quorum-required" => {
             let anchor = pred.consistency_anchor.as_deref().ok_or_else(|| {
@@ -787,8 +710,6 @@ pub fn verify_bilateral_cosign_invocation(
                     anchor
                 )));
             }
-            // Full FROST aggregate / n-of-m signature reconciliation is
-            // deferred to trj6.
         }
         other => {
             return Err(VerifierError::PredicateSchemaInvalid(format!(
@@ -808,10 +729,6 @@ pub fn verify_bilateral_cosign_invocation(
     })
 }
 
-/// Step 5 helper: validate the predicate's required fields (the trj5
-/// subset of the §5 schema). Full schema validation against the
-/// JSON-Schema text is deferred; this checker enforces the load-bearing
-/// invariants the §7 algorithm depends on.
 fn validate_predicate_required_fields(pred: &BilateralPredicate) -> Result<(), VerifierError> {
     if pred.invocation_id.is_empty() {
         return Err(VerifierError::PredicateSchemaInvalid(

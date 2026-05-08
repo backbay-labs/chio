@@ -1,6 +1,3 @@
-//! TRJ5-C2 negative conformance fixture: bilateral co-signed invocation
-//! flow + §7 17-step verifier.
-//!
 //! Drives [`chio_federation::bilateral::execute_bilateral_invocation`]
 //! end-to-end (NOT a mock - exercises the production
 //! `sign_dsse_envelope_full` and the production
@@ -24,11 +21,6 @@
 //! | 15   | mark class receipt-backed; omit gov ref | governance.receipt_required_missing |
 //! | 16   | totally-ordered with no anchor | consistency.anchor_unverified  |
 //! | 16   | quorum-required with no anchor | consistency.quorum_underpopulated |
-//!
-//! The "tampered DSSE envelope" test (steps 11-12) is the first-order
-//! cryptographic check; the "expired lease" and "missing receipt"
-//! tests are the load-bearing kernel-boundary checks the §7 verifier
-//! adds beyond raw signature verification.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
