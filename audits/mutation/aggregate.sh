@@ -78,9 +78,16 @@ for crate in "$@"; do
   # non-fatal under set -euo pipefail. Emit a warn on stderr when the
   # summary JSON is absent so the operator knows the row may
   # understate caveats.
+  #
+  # Restrict the glob to date-prefixed filenames (YYYY-MM-DD*.json)
+  # because in the direct cargo-mutants layout `out_dir` is the same
+  # directory as the summary JSON, and a permissive `*.json` glob
+  # would also match cargo-mutants' own `outcomes.json` / `mutants.json`
+  # / `lock.json`, which are NOT summary JSONs and would be picked up
+  # by `sort -r` whenever no dated summary has been produced yet.
   summary_json=""
   shopt -s nullglob
-  for candidate in $(printf '%s\n' "${EVIDENCE_DIR}/${crate}"/*.json | sort -r); do
+  for candidate in $(printf '%s\n' "${EVIDENCE_DIR}/${crate}"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.json | sort -r); do
     if [ -f "${candidate}" ]; then
       summary_json="${candidate}"
       break
@@ -103,8 +110,12 @@ for crate in "$@"; do
         ;;
       PARTIAL)
         partial_label="PARTIAL"
-        if [ -n "${ev}" ] && [ -n "${td}" ]; then
+        if [ -n "${ev}" ] && [ -n "${td}" ] && [ -n "${es}" ]; then
+          partial_detail="${ev}/${td} ${es}"
+        elif [ -n "${ev}" ] && [ -n "${td}" ]; then
           partial_detail="${ev}/${td}"
+        elif [ -n "${es}" ]; then
+          partial_detail="${es}"
         fi
         ;;
       FULL-BELOW-TARGET)
