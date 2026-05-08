@@ -10,8 +10,9 @@
 //!      DSSE envelope, with the §5 predicate extensions
 //!      (`capability_lease_ref`, `policy_evaluation_summary`) the §7
 //!      verifier requires.
-//!    - Runs `verify_bilateral_cosign_invocation` (the §7 17-step
-//!      verifier) against the freshly-signed envelope.
+//!    - Runs `verify_bilateral_cosign_invocation` (the partial
+//!      local verifier covering a subset of §7) against the
+//!      freshly-signed envelope.
 //! 4. Print the resolved verdict, the lease id, and the wire envelope
 //!    bytes for inspection.
 //!
@@ -23,10 +24,11 @@ use chio_core_types::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
 };
 use chio_federation::{
-    execute_bilateral_invocation, AllowAllRevocationOracle, BilateralCoSigningProtocol,
-    BilateralInvocationRequest, BilateralPredicateExtensions, CapabilityLeaseRef,
-    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, InProcessCoSigner,
-    PeerPinSet, PinnedEpoch, PinnedPeer, PolicyEvaluationSummary, PolicyVerdict, ResolvedLease,
+    execute_bilateral_invocation, ActionClassKind, AllowAllRevocationOracle,
+    BilateralCoSigningProtocol, BilateralInvocationRequest, BilateralPredicateExtensions,
+    CapabilityLeaseRef, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
+    InMemoryReceiptStore, InProcessCoSigner, PeerPinSet, PinnedEpoch, PinnedPeer,
+    PolicyEvaluationSummary, PolicyVerdict, ResolvedLease, UnknownActionClassPolicy,
     VerifierConfig,
 };
 use std::collections::BTreeMap;
@@ -134,6 +136,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cosigner: &cosigner as &dyn BilateralCoSigningProtocol,
     };
 
+    // Register the tool's action class. With the strict
+    // `UnknownActionClassPolicy::Reject` default, an unknown
+    // `tool_name` would be rejected at step 15 with
+    // `governance.unknown_action_class`.
+    let mut action_classes = BTreeMap::new();
+    action_classes.insert(receipt.body().tool_name.clone(), ActionClassKind::Routine);
+
     let config = VerifierConfig {
         peer_pin_set: &peer_pin_set,
         receipt_store: &receipt_store,
@@ -144,7 +153,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             now_unix_ms,
             epoch_height: 0,
         },
-        action_classes: BTreeMap::new(),
+        action_classes,
+        unknown_action_class_policy: UnknownActionClassPolicy::Reject,
     };
 
     let outcome = execute_bilateral_invocation(request, &config)?;
@@ -167,7 +177,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!();
-    println!("== §7 17-step verifier accepted envelope ==");
+    println!("== Partial local verifier accepted envelope ==");
     println!("  joint_verdict: {}", outcome.verified.joint_verdict);
     println!(
         "  resolved lease: id={} issuer={} expires_at_unix_ms={}",

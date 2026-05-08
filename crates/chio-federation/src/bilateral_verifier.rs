@@ -881,7 +881,7 @@ fn validate_predicate_required_fields(pred: &BilateralPredicate) -> Result<(), V
 
 // ---------------------------------------------------------------------------
 // Tests (happy path + a couple of fast negatives; full negative-conformance
-// coverage lives in chio-conformance/tests/c2_bilateral_invocation_verifier_17_step.rs)
+// coverage lives in chio-conformance/tests/c2_bilateral_invocation_partial_verifier.rs)
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -1035,7 +1035,7 @@ mod tests {
     }
 
     #[test]
-    fn happy_path_passes_all_17_steps() {
+    fn happy_path_passes_partial_local_verifier() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);

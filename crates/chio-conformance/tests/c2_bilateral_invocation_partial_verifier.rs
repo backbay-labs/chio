@@ -1,9 +1,9 @@
 //! Drives [`chio_federation::bilateral::execute_bilateral_invocation`]
 //! end-to-end (NOT a mock - exercises the production
-//! `sign_dsse_envelope_full` and the production
-//! `verify_bilateral_cosign_invocation`), then mutates one byte at a
-//! time and asserts the verifier rejects with the correct spec §7.1
-//! code. Coverage:
+//! `sign_dsse_envelope_full` and the production partial local verifier
+//! `verify_bilateral_cosign_invocation`, which covers a subset of the
+//! §7 step list), then mutates one byte at a time and asserts the
+//! verifier rejects with the correct spec §7.1 code. Coverage:
 //!
 //! | Step | Tampering              | Expected code                          |
 //! | ---- | ---------------------- | -------------------------------------- |
@@ -165,7 +165,7 @@ fn run_invocation_with(
     revocation_oracle: &dyn RevocationOracle,
     peer_pin_set: &PeerPinSet,
     pinned_now_ms: u64,
-    action_classes: BTreeMap<String, ActionClassKind>,
+    mut action_classes: BTreeMap<String, ActionClassKind>,
 ) -> Result<chio_federation::BilateralInvocationOutcome, BilateralInvocationError> {
     let request = BilateralInvocationRequest {
         origin_kernel_id: ORG_A,
@@ -178,6 +178,16 @@ fn run_invocation_with(
         predicate_extensions: extensions,
         cosigner: &setup.cosigner as &dyn BilateralCoSigningProtocol,
     };
+    // P1-015 fix (audit 2026-05-08): positive helpers must run under
+    // the strict fail-closed default `Reject` so they actually prove
+    // the new default. Tests that don't pass a custom class for `TOOL`
+    // get a `Routine` registration here so the assertion still proves
+    // the *non-step-15* code path; tests that exercise step 15 (the
+    // `step_15_*` cases) pass their own `ReceiptBacked` mapping which
+    // is preserved via the `entry().or_insert(...)` semantics below.
+    action_classes
+        .entry(TOOL.to_string())
+        .or_insert(ActionClassKind::Routine);
     let config = VerifierConfig {
         peer_pin_set,
         receipt_store,
@@ -189,12 +199,7 @@ fn run_invocation_with(
             epoch_height: 0,
         },
         action_classes,
-        // Existing positive paths register every tool they exercise.
-        // Use the legacy fallback to keep the existing assertions
-        // exercising the structural step-15 behavior; strict-mode
-        // negative coverage lives in the dedicated unknown_action_class
-        // tests added by the P0-006 fix.
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
     };
     execute_bilateral_invocation(request, &config)
 }
@@ -292,8 +297,12 @@ fn steps_11_12_flipped_payload_byte_breaks_pae_preimage() {
             now_unix_ms: now_ms(),
             epoch_height: 0,
         },
-        action_classes: BTreeMap::new(),
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
+        action_classes: {
+            let mut m = BTreeMap::new();
+            m.insert(TOOL.to_string(), ActionClassKind::Routine);
+            m
+        },
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
     };
     let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
     // The first thing a payload-byte flip breaks is base64 decode or
@@ -363,8 +372,12 @@ fn step_11_flipped_sig_a_byte_yields_signature_server_a_invalid() {
             now_unix_ms: now_ms(),
             epoch_height: 0,
         },
-        action_classes: BTreeMap::new(),
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
+        action_classes: {
+            let mut m = BTreeMap::new();
+            m.insert(TOOL.to_string(), ActionClassKind::Routine);
+            m
+        },
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
     };
     let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
     assert_eq!(err.code(), "signature.server_a_invalid");
@@ -413,8 +426,12 @@ fn step_12_flipped_sig_b_byte_yields_signature_server_b_invalid() {
             now_unix_ms: now_ms(),
             epoch_height: 0,
         },
-        action_classes: BTreeMap::new(),
-        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
+        action_classes: {
+            let mut m = BTreeMap::new();
+            m.insert(TOOL.to_string(), ActionClassKind::Routine);
+            m
+        },
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
     };
     let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
     assert_eq!(err.code(), "signature.server_b_invalid");
@@ -716,5 +733,49 @@ fn step_16_totally_ordered_with_chio_anchor_passes() {
         BTreeMap::new(),
     )
     .unwrap_or_else(|e| panic!("totally-ordered+chio-anchor happy path failed: {e:?}"));
+    assert_eq!(outcome.verified.joint_verdict, "allow");
+}
+
+// ---------------------------------------------------------------------------
+// P1-015 fix (audit 2026-05-08): legacy DefaultRoutine fallback regression.
+// All other positive tests in this file run under the strict `Reject`
+// default. This test (and only this test) explicitly opts into the
+// legacy `DefaultRoutine` behavior so the legacy bootstrap path is
+// still covered by the conformance suite. If the legacy variant is
+// ever removed, this test should be deleted with it.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bilateral_verifier_legacy_default_routine_fallback() {
+    let setup = setup();
+    // No `action_classes` registration for `TOOL`; the request must
+    // still pass because legacy `DefaultRoutine` silently treats the
+    // unknown tool as `Routine` (no governance receipt required).
+    let request = BilateralInvocationRequest {
+        origin_kernel_id: ORG_A,
+        origin_keypair: &setup.kp_a,
+        tool_host_kernel_id: ORG_B,
+        tool_host_keypair: &setup.kp_b,
+        receipt: setup.receipt.clone(),
+        tool_name: TOOL,
+        timestamp_unix_ms: now_ms(),
+        predicate_extensions: happy_extensions(),
+        cosigner: &setup.cosigner as &dyn BilateralCoSigningProtocol,
+    };
+    let config = VerifierConfig {
+        peer_pin_set: &setup.peer_pin_set,
+        receipt_store: &setup.receipt_store,
+        lease_registry: &setup.lease_registry,
+        governance_receipt_store: &setup.governance_store,
+        revocation_oracle: &setup.revocation_oracle,
+        pinned_epoch: PinnedEpoch {
+            now_unix_ms: now_ms(),
+            epoch_height: 0,
+        },
+        action_classes: BTreeMap::new(),
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
+    };
+    let outcome = execute_bilateral_invocation(request, &config)
+        .unwrap_or_else(|e| panic!("legacy DefaultRoutine fallback path failed: {e:?}"));
     assert_eq!(outcome.verified.joint_verdict, "allow");
 }

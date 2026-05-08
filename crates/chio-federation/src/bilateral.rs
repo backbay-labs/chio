@@ -449,8 +449,8 @@ pub struct BilateralInvocationRequest<'a> {
 pub struct BilateralInvocationOutcome {
     /// Legacy + §6 artifacts produced by the hot path.
     pub artifacts: BilateralCoSignArtifacts,
-    /// §7 step 17 verifier output. Constructed by running the full
-    /// 17-step protocol against the freshly-signed envelope.
+    /// Verifier output. Constructed by running the partial local
+    /// verifier (subset of §7) against the freshly-signed envelope.
     pub verified: crate::bilateral_verifier::VerifiedBilateralCoSignInvocation,
 }
 
@@ -463,7 +463,8 @@ pub enum BilateralInvocationError {
     /// The signing path failed before the verifier ran.
     #[error("co-signing failed: {0}")]
     CoSigning(#[from] BilateralCoSigningError),
-    /// The §7 17-step verifier rejected the freshly-signed envelope.
+    /// The partial local verifier (subset of §7) rejected the
+    /// freshly-signed envelope.
     #[error("§7 verifier rejected envelope: {0}")]
     Verifier(#[from] crate::bilateral_verifier::VerifierError),
 }
@@ -473,12 +474,12 @@ pub enum BilateralInvocationError {
 ///    §6-conformant DSSE envelope) but layered with the
 ///    [`crate::bilateral_dsse::BilateralPredicateExtensions`] (lease ref,
 ///    policy summary, etc.) the verifier needs.
-/// 2. Runs the §7 17-step verifier from
+/// 2. Runs the partial local verifier (subset of §7) from
 ///    [`crate::bilateral_verifier::verify_bilateral_cosign_invocation`]
 ///    against the just-emitted envelope. The verifier resolves the
 ///    receipt store, lease registry, governance store, and revocation
 ///    oracle the kernel passes in.
-/// 3. Returns the artifacts + the verifier's step-17 output, or fails
+/// 3. Returns the artifacts + the verifier output, or fails
 ///    closed with a `BilateralInvocationError` carrying either the
 ///    co-signing error or the verifier's spec §7.1 code.
 ///
@@ -515,7 +516,7 @@ pub fn execute_bilateral_invocation(
         dsse_envelope,
     };
 
-    // Step 2: §7 17-step verifier.
+    // Step 2: partial local verifier (subset of §7).
     let verified = crate::bilateral_verifier::verify_bilateral_cosign_invocation(
         &artifacts.dsse_envelope,
         verifier_config,
