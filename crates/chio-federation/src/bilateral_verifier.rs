@@ -1032,6 +1032,16 @@ mod tests {
         revocation_oracle: &'a dyn RevocationOracle,
         now_ms: u64,
     ) -> VerifierConfig<'a> {
+        // R3W4 P1-002 fix: the helper now returns the strict default
+        // (`UnknownActionClassPolicy::Reject`) and pre-registers the
+        // tool exercised by `fixture` (`file_read`) as `Routine`. The
+        // happy-path test must pass under the production-shape policy
+        // rather than relying on the legacy `DefaultRoutine` fallback.
+        // Negative tests that exercise the strict-mode rejection or
+        // the receipt-backed class path mutate `action_classes` /
+        // `unknown_action_class_policy` explicitly.
+        let mut action_classes = BTreeMap::new();
+        action_classes.insert("file_read".to_string(), ActionClassKind::Routine);
         VerifierConfig {
             peer_pin_set,
             receipt_store,
@@ -1042,13 +1052,8 @@ mod tests {
                 now_unix_ms: now_ms,
                 epoch_height: 0,
             },
-            action_classes: BTreeMap::new(),
-            // Tests construct a registry that explicitly registers
-            // every tool they exercise; opt into the legacy
-            // `Routine` fallback so the strict-mode rejection
-            // doesn't fire from incidental missing entries.
-            // Negative tests for the strict mode override this.
-            unknown_action_class_policy: UnknownActionClassPolicy::DefaultRoutine,
+            action_classes,
+            unknown_action_class_policy: UnknownActionClassPolicy::Reject,
         }
     }
 
@@ -1306,9 +1311,12 @@ mod tests {
             now_ms,
         );
         // Strict policy: any unregistered tool is rejected. The
-        // `action_classes` table is intentionally empty so the
-        // predicate's `tool_name` cannot resolve.
+        // `action_classes` table is intentionally cleared so the
+        // predicate's `tool_name` cannot resolve. (The R3W4 helper
+        // pre-registers `file_read` for the happy path; this negative
+        // test removes that registration.)
         cfg.unknown_action_class_policy = UnknownActionClassPolicy::Reject;
+        cfg.action_classes.clear();
 
         let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
         assert_eq!(err.code(), "governance.unknown_action_class");
@@ -1321,11 +1329,14 @@ mod tests {
     }
 
     #[test]
-    fn step_15_unknown_action_class_falls_back_under_legacy_policy() {
+    fn happy_path_under_legacy_default_routine_fallback() {
         // The legacy policy (DefaultRoutine) is retained for explicit
         // opt-in by integrators whose registry is incomplete during
         // bootstrap. It must continue to pass when no governance
-        // receipt is required (Routine class).
+        // receipt is required (Routine class). Renamed in R3W4
+        // P1-002 to make clear this is the legacy fallback path,
+        // distinct from the strict happy path
+        // (`happy_path_passes_partial_local_verifier`).
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -1342,13 +1353,14 @@ mod tests {
             now_ms,
         );
         cfg.unknown_action_class_policy = UnknownActionClassPolicy::DefaultRoutine;
+        // Clear the helper's pre-registration so we genuinely
+        // exercise the fallback (not the explicit Routine entry).
+        cfg.action_classes.clear();
 
         // Empty action_classes + DefaultRoutine = silently treats the
         // tool as Routine, passing through to step 16+. The verifier
-        // returns Ok or fails on a different step (NOT step 15).
+        // must not raise `governance.unknown_action_class`.
         let result = verify_bilateral_cosign_invocation(&envelope, &cfg);
-        // Either Ok (entire flow passes) or some other code; what we
-        // forbid is `governance.unknown_action_class`.
         if let Err(err) = result {
             assert_ne!(
                 err.code(),
