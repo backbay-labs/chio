@@ -19,6 +19,13 @@
 // Production call site:
 // `crates/chio-kernel/src/execution_nonce.rs:364` (`verify_execution_nonce`).
 // `crates/chio-kernel/src/execution_nonce.rs:206` (`InMemoryExecutionNonceStore`).
+//
+// Revert-to-prove-it-fails recipe: inside `verify_execution_nonce` in
+// `crates/chio-kernel/src/execution_nonce.rs`, replace
+// `Ok(false) => Err(ExecutionNonceError::Replayed)` with
+// `Ok(false) => Ok(())`. The replay deny-arm assertion below fails
+// because the second presentation of the same nonce no longer
+// returns `ExecutionNonceError::Replayed`.
 
 use chio_core::crypto::Keypair;
 use chio_kernel::execution_nonce::{

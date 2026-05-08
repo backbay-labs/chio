@@ -27,6 +27,15 @@
 //   `crates/chio-kernel-core/src/receipts.rs:38` (`sign_receipt`).
 //   `crates/chio-core-types/src/receipt.rs:292`
 //     (`ChioReceipt::verify_signature`).
+//
+// Revert-to-prove-it-fails recipe: delete the kernel_key /
+// backend_key mismatch guard inside `sign_receipt` in
+// `crates/chio-kernel-core/src/receipts.rs` (so the body's
+// `kernel_key` field is no longer compared to the signing backend's
+// public key before signing). The mint-side deny-arm assertion below
+// fails because the attacker can mint a forged receipt that claims
+// the legitimate kernel's `kernel_key` while signing with their own
+// key.
 
 use chio_core::crypto::{Ed25519Backend, Keypair};
 use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction};

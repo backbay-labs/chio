@@ -18,6 +18,17 @@
 //     (`verify_capability_with_trusted_and_floor`).
 //   `crates/chio-kernel-core/src/budget_split.rs:225`
 //     (`InMemoryBudgetRegistry::try_admit_child`).
+//
+// Revert-to-prove-it-fails recipes:
+//   (a) swallow the `?` on `try_admit_child` inside
+//       `verify_capability_with_floor` in
+//       `crates/chio-kernel-core/src/capability_verify.rs` (so the
+//       sibling-sum / unknown-parent deny branches no longer
+//       propagate). The sibling-budget / unknown-parent deny-arm
+//       assertions below fail.
+//   (b) delete the trusted-issuer guard inside
+//       `verify_capability_with_trusted_and_floor`. The
+//       untrusted-issuer deny-arm assertion below fails.
 
 use chio_core::capability::{
     CapabilityCryptoFloor, CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink,

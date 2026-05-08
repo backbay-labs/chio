@@ -14,6 +14,12 @@
 //
 // Production call site:
 // `crates/chio-custody-hw/src/capability.rs:172` (`require_audience`).
+//
+// Revert-to-prove-it-fails recipe: replace the body of
+// `PasskeyCapability::require_audience` in
+// `crates/chio-custody-hw/src/capability.rs` with `Ok(())` (drop the
+// audience comparison). Both deny-arm assertions below then fail
+// because the verifier accepts the cross-audience capability.
 
 use chio_custody_hw::capability::{PasskeyCapability, ScopeSet};
 use chio_custody_hw::error::CustodyError;
