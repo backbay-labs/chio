@@ -1,12 +1,12 @@
 # chio-attest-verify mutation evidence (post-gap-closure, PR #625)
 
-This directory holds the post-test-uplift mutation evidence for
+This file records the post-test-uplift mutation evidence state for
 `chio-attest-verify`. The PR #619 baseline established a 44.12% kill
 rate on 68 viable mutants (86 discovered, 18 unviable). PR #625 adds
 29 sigstore negative-path tests targeting surviving mutants from that
 baseline.
 
-## R2 status (full-crate rerun requirement + full-crate rerun requirement)
+## Rerun Status
 
 `2026-05-08-post-gap-closure.json` is **PENDING-RERUN**. The 97.9%
 "closed gap" claim in the PR description is based on a focused-line
@@ -20,7 +20,7 @@ updated kill-rate row.
 Until that rerun lands, the aggregate continues to use the PR #619
 baseline (44.12%).
 
-## How to capture evidence
+## How to Capture Evidence
 
 ```bash
 # from the workspace root
