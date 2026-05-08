@@ -1,8 +1,34 @@
-//! Implements the algorithm in `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
-//! §7 (lines 361-410), driving the full 17-step protocol against a DSSE
-//! envelope produced by [`crate::bilateral_dsse::sign_dsse_envelope_full`].
+//! Implements the verification algorithm in
+//! `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7 (lines 361-410),
+//! driving an envelope produced by
+//! [`crate::bilateral_dsse::sign_dsse_envelope_full`].
 //!
-//! ## Step-by-step coverage
+//! ## P0-007 honesty downgrade (audit 2026-05-08)
+//!
+//! This module previously self-described as a "17-step verifier" and
+//! implied full §7 conformance. Per the 2026-05-08 audit, the
+//! implementation does not yet cover the full predicate schema:
+//!
+//!   - `BilateralPredicate` is missing required fields the spec
+//!     enumerates (e.g. `tool_args_hash` per
+//!     `CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §5/§6) and accepts
+//!     internal non-schema fields that the spec does not define.
+//!   - The error mapping conflates parseable-but-schema-malformed
+//!     Statement JSON with `dsse.malformed` rather than the spec's
+//!     `statement.malformed`.
+//!   - The receipt digest binding shape was wrong in an earlier
+//!     revision (P0-004; fixed alongside this label change in
+//!     `bilateral_dsse::build_statement`).
+//!
+//! Per the audit's guidance ("partial labels are acceptable when
+//! honest"), this verifier is now labeled as a **partial local
+//! verifier**: it implements the structural / cryptographic core
+//! plus a meaningful subset of the §7 step list, but full schema
+//! completion is deferred to TRJ6 (see `dsse-bilateral-signing.md`
+//! "TRJ6 schema completion" and the PR description).
+//!
+//! Receipts that surface verifier output should NOT advertise full
+//! §7 conformance based on this implementation alone.
 //!
 //! ## Public API summary
 //!
@@ -14,9 +40,10 @@
 //! * [`RevocationOracle`] / [`AllowAllRevocationOracle`] - step 9.
 //! * [`PinnedEpoch`] - verifier's wall clock + epoch height.
 //! * [`VerifierConfig`] - bundles the trait objects + epoch.
-//! * [`verify_bilateral_cosign_invocation`] - runs the 17-step protocol.
+//! * [`verify_bilateral_cosign_invocation`] - runs the partial
+//!   local verifier (not full §7 conformance pending TRJ6).
 //! * [`VerifiedBilateralCoSignInvocation`] - successful verifier output
-//!   (mirrors §7 step 17).
+//!   (mirrors §7 step 17 for the steps this implementation covers).
 //! * [`VerifierError`] - fail-closed error codes mapping 1:1 to spec
 //!   §7.1 (e.g. `subject.digest_mismatch`, `peer.unpinned_or_keyid_mismatch`).
 //!
@@ -24,7 +51,7 @@
 //!
 //! [`crate::bilateral::execute_bilateral_invocation`] is the high-level
 //! kernel-boundary helper that drives [`sign_dsse_envelope_full`] and
-//! immediately runs this 17-step verifier before returning the
+//! immediately runs this partial local verifier before returning the
 //! [`crate::bilateral::BilateralCoSignArtifacts`]. Callers that want to
 //! verify externally produced envelopes call
 //! [`verify_bilateral_cosign_invocation`] directly.
@@ -109,6 +136,15 @@ pub enum VerifierError {
     /// predicate's envelope lacks the declared quorum's signatures.
     #[error("consistency.quorum_underpopulated: {0}")]
     ConsistencyQuorumUnderpopulated(String),
+    /// P0-006 fix (audit 2026-05-08): `governance.unknown_action_class`.
+    /// The predicate's `tool_name` is not registered in the verifier's
+    /// `action_classes` table. The pre-fix verifier silently fell back
+    /// to `Routine` (no governance receipt required) when the table
+    /// did not contain the tool, which is fail-OPEN for receipt-backed
+    /// classes that were misspelled or omitted from the registry. The
+    /// strict mode requires explicit registration.
+    #[error("governance.unknown_action_class: {tool_name:?}")]
+    UnknownActionClass { tool_name: String },
 }
 
 impl VerifierError {
@@ -132,6 +168,7 @@ impl VerifierError {
             Self::GovernanceReceiptRequiredMissing(_) => "governance.receipt_required_missing",
             Self::ConsistencyAnchorUnverified(_) => "consistency.anchor_unverified",
             Self::ConsistencyQuorumUnderpopulated(_) => "consistency.quorum_underpopulated",
+            Self::UnknownActionClass { .. } => "governance.unknown_action_class",
         }
     }
 }
@@ -378,6 +415,23 @@ pub enum ActionClassKind {
     ReceiptBacked,
 }
 
+/// P0-006 fix (audit 2026-05-08): policy controlling step 15's
+/// reaction to an unknown `tool_name`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UnknownActionClassPolicy {
+    /// Default. An unknown tool name is rejected with
+    /// [`VerifierError::UnknownActionClass`]. Prevents a misspelled
+    /// or missing registration from silently downgrading a
+    /// receipt-backed class to `Routine` (fail-open).
+    #[default]
+    Reject,
+    /// Legacy fallback. Falls back to [`ActionClassKind::Routine`]
+    /// when the table does not contain the tool. Integrators must
+    /// opt in explicitly; production deployments are expected to
+    /// migrate to `Reject`.
+    DefaultRoutine,
+}
+
 /// Verifier configuration: the trait objects + pinned epoch +
 /// per-tool action class. Constructed by the kernel at the boundary;
 /// passed by reference to [`verify_bilateral_cosign_invocation`].
@@ -392,6 +446,20 @@ pub struct VerifierConfig<'a> {
     /// this with the predicate's `tool_name` to decide whether
     /// `governance_receipt_ref` is required.
     pub action_classes: BTreeMap<String, ActionClassKind>,
+    /// P0-006 fix (audit 2026-05-08): controls how step 15 reacts
+    /// to a `tool_name` that is not present in `action_classes`.
+    ///
+    /// - [`UnknownActionClassPolicy::Reject`] (default per the
+    ///   audit): the verifier returns
+    ///   [`VerifierError::UnknownActionClass`] so a misspelled or
+    ///   missing registration cannot silently downgrade a
+    ///   receipt-backed class to `Routine`.
+    /// - [`UnknownActionClassPolicy::DefaultRoutine`]: the legacy
+    ///   behavior, retained as an explicit opt-in for integrators
+    ///   whose classification table is genuinely incomplete during
+    ///   bootstrap. Kernels that opt in MUST also pin a strictness
+    ///   schedule for production cutover.
+    pub unknown_action_class_policy: UnknownActionClassPolicy,
 }
 
 /// Successful output of [`verify_bilateral_cosign_invocation`]
@@ -412,12 +480,20 @@ pub struct VerifiedBilateralCoSignInvocation {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1-17 verifier
+// Partial local verifier (subset of spec §7 step list)
 // ---------------------------------------------------------------------------
 
 /// Fail-closed: any error short-circuits and returns the corresponding
 /// `VerifierError` variant whose `.code()` matches the spec §7.1
 /// canonical string verbatim.
+///
+/// **P0-007 honesty downgrade (audit 2026-05-08)**: this is a partial
+/// local verifier. It implements the structural / cryptographic core
+/// plus a meaningful subset of the §7 step list but is not full §7
+/// conformance: predicate schema fields are missing (e.g.
+/// `tool_args_hash`) and the `statement.malformed` vs
+/// `dsse.malformed` mapping is approximate. Full schema completion
+/// is deferred to TRJ6.
 pub fn verify_bilateral_cosign_invocation(
     envelope: &DsseEnvelope,
     config: &VerifierConfig<'_>,
@@ -638,11 +714,24 @@ pub fn verify_bilateral_cosign_invocation(
     }
 
     // ---- Step 15: governance receipt for receipt-backed classes -------
-    let class = config
-        .action_classes
-        .get(&pred.tool_name)
-        .copied()
-        .unwrap_or(ActionClassKind::Routine);
+    //
+    // P0-006 fix (audit 2026-05-08): an unknown `tool_name` previously
+    // silently fell back to `Routine`, which is fail-OPEN for any
+    // receipt-backed class that was misspelled or omitted from the
+    // registry. The default policy now rejects unknown tools; legacy
+    // behavior is available as an explicit opt-in via
+    // `UnknownActionClassPolicy::DefaultRoutine`.
+    let class = match config.action_classes.get(&pred.tool_name).copied() {
+        Some(known) => known,
+        None => match config.unknown_action_class_policy {
+            UnknownActionClassPolicy::Reject => {
+                return Err(VerifierError::UnknownActionClass {
+                    tool_name: pred.tool_name.clone(),
+                });
+            }
+            UnknownActionClassPolicy::DefaultRoutine => ActionClassKind::Routine,
+        },
+    };
     let resolved_governance_receipt = match class {
         ActionClassKind::Routine => None,
         ActionClassKind::ReceiptBacked => {
@@ -910,6 +999,12 @@ mod tests {
                 epoch_height: 0,
             },
             action_classes: BTreeMap::new(),
+            // Tests construct a registry that explicitly registers
+            // every tool they exercise; opt into the legacy
+            // `Routine` fallback so the strict-mode rejection
+            // doesn't fire from incidental missing entries.
+            // Negative tests for the strict mode override this.
+            unknown_action_class_policy: UnknownActionClassPolicy::DefaultRoutine,
         }
     }
 
@@ -1092,5 +1187,81 @@ mod tests {
 
         let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
         assert_eq!(err.code(), "peer.unpinned_or_keyid_mismatch");
+    }
+
+    #[test]
+    fn step_15_unknown_action_class_rejected_under_strict_policy() {
+        // P0-006 fix (audit 2026-05-08): the pre-fix verifier silently
+        // fell back to `Routine` for any tool name not present in
+        // `action_classes`, fail-OPEN for receipt-backed classes
+        // misspelled or omitted from the registry. The strict default
+        // (Reject) returns the typed `governance.unknown_action_class`
+        // diagnostic.
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let mut cfg = config(
+            &peers,
+            &store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        // Strict policy: any unregistered tool is rejected. The
+        // `action_classes` table is intentionally empty so the
+        // predicate's `tool_name` cannot resolve.
+        cfg.unknown_action_class_policy = UnknownActionClassPolicy::Reject;
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
+        assert_eq!(err.code(), "governance.unknown_action_class");
+        match err {
+            VerifierError::UnknownActionClass { tool_name } => {
+                assert_eq!(tool_name, "file_read");
+            }
+            other => panic!("expected UnknownActionClass, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn step_15_unknown_action_class_falls_back_under_legacy_policy() {
+        // The legacy policy (DefaultRoutine) is retained for explicit
+        // opt-in by integrators whose registry is incomplete during
+        // bootstrap. It must continue to pass when no governance
+        // receipt is required (Routine class).
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let mut cfg = config(
+            &peers,
+            &store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        cfg.unknown_action_class_policy = UnknownActionClassPolicy::DefaultRoutine;
+
+        // Empty action_classes + DefaultRoutine = silently treats the
+        // tool as Routine, passing through to step 16+. The verifier
+        // returns Ok or fails on a different step (NOT step 15).
+        let result = verify_bilateral_cosign_invocation(&envelope, &cfg);
+        // Either Ok (entire flow passes) or some other code; what we
+        // forbid is `governance.unknown_action_class`.
+        if let Err(err) = result {
+            assert_ne!(
+                err.code(),
+                "governance.unknown_action_class",
+                "DefaultRoutine policy must NOT raise UnknownActionClass"
+            );
+        }
     }
 }

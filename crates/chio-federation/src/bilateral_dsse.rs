@@ -787,12 +787,22 @@ mod tests {
     }
 
     #[test]
-    fn keyid_is_sha256_of_public_key_hex() {
+    fn keyid_is_sha256_of_raw_ed25519_public_key_bytes() {
+        // P0-003 fix (audit 2026-05-08): the spec's keyid contract is
+        // SHA-256 of raw key material (Ed25519 = 32 verifying-key
+        // bytes). An earlier revision hashed `to_hex().as_bytes()`
+        // which silently broke cross-implementation interop. This
+        // test pins the raw-bytes invariant.
         let kp = Keypair::generate();
         let pk = kp.public_key();
         let keyid = Keyid::from_public_key(&pk);
-        let want = sha256_hex(pk.to_hex().as_bytes());
+        let want = sha256_hex(pk.as_bytes());
         assert_eq!(keyid.0, want);
+        let hex_form = sha256_hex(pk.to_hex().as_bytes());
+        assert_ne!(
+            keyid.0, hex_form,
+            "Ed25519 keyid must hash raw bytes, not hex string"
+        );
     }
 
     #[test]

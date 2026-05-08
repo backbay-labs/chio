@@ -189,6 +189,12 @@ fn run_invocation_with(
             epoch_height: 0,
         },
         action_classes,
+        // Existing positive paths register every tool they exercise.
+        // Use the legacy fallback to keep the existing assertions
+        // exercising the structural step-15 behavior; strict-mode
+        // negative coverage lives in the dedicated unknown_action_class
+        // tests added by the P0-006 fix.
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
     };
     execute_bilateral_invocation(request, &config)
 }
@@ -287,6 +293,7 @@ fn steps_11_12_flipped_payload_byte_breaks_pae_preimage() {
             epoch_height: 0,
         },
         action_classes: BTreeMap::new(),
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
     };
     let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
     // The first thing a payload-byte flip breaks is base64 decode or
@@ -357,6 +364,7 @@ fn step_11_flipped_sig_a_byte_yields_signature_server_a_invalid() {
             epoch_height: 0,
         },
         action_classes: BTreeMap::new(),
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
     };
     let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
     assert_eq!(err.code(), "signature.server_a_invalid");
@@ -406,6 +414,7 @@ fn step_12_flipped_sig_b_byte_yields_signature_server_b_invalid() {
             epoch_height: 0,
         },
         action_classes: BTreeMap::new(),
+        unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
     };
     let err = chio_federation::verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
     assert_eq!(err.code(), "signature.server_b_invalid");

@@ -44,7 +44,8 @@ pub use bilateral_verifier::{
     CapabilityLeaseRegistry, DenyListRevocationOracle, GovernanceReceiptStore,
     InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet,
     PinnedEpoch, PinnedPeer, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
-    RevocationOracle, VerifiedBilateralCoSignInvocation, VerifierConfig, VerifierError,
+    RevocationOracle, UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation,
+    VerifierConfig, VerifierError,
 };
 pub use revocation_gossip::{
     respond_to_catchup, RevocationCatchupHistory, RevocationCatchupRequest,
