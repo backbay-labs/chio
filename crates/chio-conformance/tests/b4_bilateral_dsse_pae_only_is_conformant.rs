@@ -42,7 +42,7 @@
 //!    signature bytes into the `signatures` array is rejected** because
 //!    the legacy signatures cover a different preimage.
 //! 6. **The hot-path emitter (`co_sign_with_origin_full`) produces
-//!    artifacts that BOTH verify under their respective verifiers** — the
+//!    artifacts that BOTH verify under their respective verifiers** - the
 //!    legacy verifier accepts the legacy artifact; the §6 verifier accepts
 //!    the DSSE envelope. Cross-acceptance (e.g. the §6 verifier accepting
 //!    a legacy `CoSigningBody`-shaped input) is structurally impossible:
