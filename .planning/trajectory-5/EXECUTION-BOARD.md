@@ -71,7 +71,7 @@ Adopts the Vision Strategist's chiodome slice and the Productization Champion's 
 | TRJ5-C3 | **Anchored** through `crates/chio-anchor::Web3CheckpointStatement`. No new Web3 live deployment required (bounded claim per v3.18 discipline). | federation | M | TRJ5-C1, TRJ5-B3 | (synthesis Lane C) |
 | TRJ5-C4 | **Selective-disclosure auditor view** behind `zk` Cargo feature flag. No new spec ratification. Per `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 6. | federation | M | TRJ5-C1 | (synthesis Lane C) |
 | TRJ5-C5 | **Wrapped at the user surface** by `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Receipts produced by the bilateral invocation are dogfooded through `chio receipt explain`. | cli | M | TRJ5-C1 | (synthesis Lane C) |
-| TRJ5-C6 | `examples/bounded-chiodome/` end-to-end fixture: demo run captured, two-kernel transcripts committed, `chio receipt explain` output recorded as golden file. Honest release tag `v0.1.0-bounded-chiodome` cut under v3.18 bounded-claim discipline. | examples | L | TRJ5-C1, TRJ5-C2, TRJ5-C3, TRJ5-C4, TRJ5-C5 | (Bar 3 closing artifact) |
+| TRJ5-C6 | `examples/chiodome-bilateral/` end-to-end fixture: demo run captured, two-kernel transcripts committed, `chio receipt explain` output recorded as golden file. Honest release tag `v0.1.0-bounded-chiodome` cut under v3.18 bounded-claim discipline. | examples | L | TRJ5-C1, TRJ5-C2, TRJ5-C3, TRJ5-C4, TRJ5-C5 | (Bar 3 closing artifact) |
 | TRJ5-C* | (additional supporting rows per `lane-c-demo/tickets.md`) | federation/cli/examples | TBD | TBD | TBD |
 
 Detail rows land in `lane-c-demo/tickets.md`.
@@ -93,7 +93,7 @@ Detail rows land in `lane-c-demo/tickets.md`.
 | TRJ5-A2 | (Bar 1) | hard | Threat-coverage evidence directory is Bar 1's non-placeholder requirement. |
 | TRJ5-A1, TRJ5-A7 | (Bar 1) | hard | Mutation banner shows observed kill rate; per-crate evidence under `audits/evidence/mutation/`. |
 | TRJ5-B1.E, TRJ5-B2.E, TRJ5-B3.E, TRJ5-B4.E | (Bar 2) | hard | Four signed negative conformance fixtures are the externally-checkable artifact. |
-| TRJ5-C6 | (Bar 3) | hard | `examples/bounded-chiodome/` fixture + `chio receipt explain` golden file is the externally-checkable artifact. |
+| TRJ5-C6 | (Bar 3) | hard | `examples/chiodome-bilateral/` fixture + `chio receipt explain` golden file is the externally-checkable artifact. |
 
 There is no Lane A -> Lane B or Lane A -> Lane C dependency. Lane A and Lane B run in parallel from week 1. Lane C unlocks at the end of week 4 once TRJ5-B1, TRJ5-B2, TRJ5-B3 land.
 

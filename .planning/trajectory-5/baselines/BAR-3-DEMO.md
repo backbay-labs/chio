@@ -21,8 +21,11 @@ $ ls examples/ | grep -i 'chiodome\|bounded'
 ```
 
 `examples/chiodome-bilateral/` does NOT exist at baseline.
-`examples/bounded-chiodome/` (the directory name used in the synthesis
-and per-lane docs) also does NOT exist. Verified by:
+(The synthesis text and earlier per-lane docs sometimes referred to
+`examples/bounded-chiodome/`; that name is a drift artifact corrected
+across the planning set. The canonical demo path is
+`examples/chiodome-bilateral/`; the release tag retains the
+`v0.1.0-bounded-chiodome` identifier.) Verified by:
 
 ```
 $ ls examples/
@@ -40,7 +43,6 @@ None of the `hello-*` examples exercise the cross-org bilateral path.
 | Field | Baseline value |
 |---|---|
 | `examples/chiodome-bilateral/` exists | NO |
-| `examples/bounded-chiodome/` exists | NO |
 | Bilateral demo runs end-to-end against production code | ZERO times |
 | `cargo run --example chiodome-bilateral` | command fails (no such example) |
 

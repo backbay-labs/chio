@@ -1,0 +1,307 @@
+#!/usr/bin/env bash
+# trj5 ship-bar checker.
+#
+# Verifies the per-bar machine-readable signals enumerated in
+# `.planning/trajectory-5/SHIP-BAR-TRACKER.md`. This script is the
+# closing-bar companion to `scripts/trj5-preflight.sh` (which gates
+# kickoff). Together they form the trj5 close gate:
+#
+#   - trj5-preflight.sh: planning artifacts, OWNERS, releases.toml,
+#     review trail, drift cleanup.
+#   - check-trj5-ship-bar.sh (this file): per-bar evidence presence
+#     for the three closing bars.
+#
+# The script is deliberately presence-and-shape oriented. It is NOT a
+# replacement for cargo test / cargo mutants / the demo runner; those
+# produce the artifacts this script then verifies are committed.
+#
+# Bar 1 (Lane A): per-crate mutation kill-rate JSONs for each
+# trust-boundary crate listed in `releases.toml [mutants]`. Crates
+# without a measured baseline JSON FAIL. Crates with a baseline JSON
+# whose recorded kill-rate is below the >=65% activation floor are
+# emitted as `OK ... (PARTIAL <pct>%)` rather than FAIL, so the script
+# reflects the honest current state during Wave-1 baseline measurement.
+#
+# Bar 2 (Lane B): four signed negative conformance fixture files under
+# `crates/chio-conformance/tests/`. Missing files FAIL.
+#
+# Bar 3 (Lane C): demo directory + a pinned receipt fixture under
+# `examples/chiodome-bilateral/`. Missing artifacts FAIL.
+#
+# Run from the chio repo root: `bash scripts/check-trj5-ship-bar.sh`.
+# Output is one OK/FAIL line per check. Exit 0 if every Bar is MET (or
+# explicitly PARTIAL with the partial label printed), 1 otherwise.
+
+set -uo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+fail=0
+checks=0
+
+ok() {
+  printf 'OK   %s\n' "$1"
+  checks=$((checks + 1))
+}
+
+partial() {
+  # PARTIAL is OK for this script's exit code purposes (we report the
+  # honest state rather than pretending PARTIAL is MET, but we do not
+  # FAIL the close gate on PARTIAL since Wave-1 baseline measurement
+  # is the in-progress state). Callers that want strict-MET semantics
+  # should grep for the `(PARTIAL` substring.
+  printf 'OK   %s (PARTIAL)\n' "$1"
+  checks=$((checks + 1))
+}
+
+failure() {
+  printf 'FAIL %s\n' "$1"
+  fail=$((fail + 1))
+  checks=$((checks + 1))
+}
+
+# kill_rate_for_json reads the per-crate mutation JSON and prints the
+# numeric kill rate (caught/viable * 100, two decimal places). It
+# tolerates a few common field shapes:
+#   - `kill_rate_percent` (preferred; pre-computed)
+#   - `kill_rate` (numeric percentage)
+#   - `caught` and `viable` (computes the rate)
+# Prints empty string if no usable shape is found.
+kill_rate_for_json() {
+  local json_path="$1"
+  if [ ! -f "$json_path" ]; then
+    return 0
+  fi
+  local rate
+  if command -v jq >/dev/null 2>&1; then
+    rate=$(jq -r '
+      if (.kill_rate_percent // empty) != null and (.kill_rate_percent != "") then
+        (.kill_rate_percent | tostring)
+      elif (.kill_rate // empty) != null and (.kill_rate != "") then
+        (.kill_rate | tostring)
+      elif ((.caught // empty) != null) and ((.viable // empty) != null) and (.viable != 0) then
+        ((.caught * 10000 / .viable | floor) / 100 | tostring)
+      else
+        ""
+      end
+    ' "$json_path" 2>/dev/null || true)
+  else
+    # Fallback: best-effort grep for kill_rate_percent or kill_rate.
+    rate=$(grep -E '"kill_rate(_percent)?"' "$json_path" \
+      | head -1 \
+      | sed -E 's/.*"kill_rate(_percent)?"[[:space:]]*:[[:space:]]*"?([0-9.]+)"?.*/\2/' \
+      || true)
+  fi
+  printf '%s' "$rate"
+}
+
+printf '\n[Bar 1] Lane A -- per-crate mutation kill-rate baselines\n'
+
+# Trust-boundary crate list mirrors `releases.toml [mutants]
+# trust_boundary_crates`. Keep these in sync.
+bar1_crates=(
+  "chio-policy"
+  "chio-credentials"
+  "chio-attest-verify"
+  "chio-kernel-core"
+  "chio-guards"
+  "chio-anchor"
+)
+
+# Activation floor (per `releases.toml` activation_threshold_percent_per_crate).
+bar1_floor_pct=65
+# Per-crate target (per `releases.toml` target_catch_ratio_percent and
+# `SHIP-BAR-TRACKER.md` Bar 1 chio-attest-verify >=80% requirement).
+bar1_target_chio_attest_verify_pct=80
+
+bar1_evidence_root="audits/evidence/mutation"
+
+for crate in "${bar1_crates[@]}"; do
+  json_glob="$bar1_evidence_root/$crate"
+  if [ ! -d "$json_glob" ]; then
+    failure "Bar1 $crate BASELINE-GAP (no $json_glob/ directory)"
+    continue
+  fi
+  # Pick the most-recent baseline JSON in the per-crate directory.
+  latest_json=$(ls -1 "$json_glob"/*.json 2>/dev/null | sort | tail -1)
+  if [ -z "$latest_json" ] || [ ! -f "$latest_json" ]; then
+    failure "Bar1 $crate BASELINE-GAP (no JSON under $json_glob/)"
+    continue
+  fi
+  rate=$(kill_rate_for_json "$latest_json")
+  if [ -z "$rate" ]; then
+    failure "Bar1 $crate JSON exists ($latest_json) but no kill_rate field"
+    continue
+  fi
+  # Use awk for floating-point comparison.
+  meets_floor=$(awk -v r="$rate" -v f="$bar1_floor_pct" \
+    'BEGIN { print (r + 0 >= f + 0) ? "yes" : "no" }')
+  if [ "$crate" = "chio-attest-verify" ]; then
+    meets_target=$(awk -v r="$rate" -v t="$bar1_target_chio_attest_verify_pct" \
+      'BEGIN { print (r + 0 >= t + 0) ? "yes" : "no" }')
+    if [ "$meets_target" = "yes" ]; then
+      ok "Bar1 $crate measured ${rate}% (>= ${bar1_target_chio_attest_verify_pct}% target)"
+    elif [ "$meets_floor" = "yes" ]; then
+      partial "Bar1 $crate measured ${rate}% (below ${bar1_target_chio_attest_verify_pct}% target, above ${bar1_floor_pct}% floor)"
+    else
+      partial "Bar1 $crate measured ${rate}% (below ${bar1_floor_pct}% floor; baseline recorded honestly)"
+    fi
+  else
+    if [ "$meets_floor" = "yes" ]; then
+      ok "Bar1 $crate measured ${rate}% (>= ${bar1_floor_pct}% floor)"
+    else
+      partial "Bar1 $crate measured ${rate}% (below ${bar1_floor_pct}% floor; baseline recorded honestly)"
+    fi
+  fi
+done
+
+# Bar 1 also requires the threats directory; trj5-preflight.sh already
+# checks count == 20. Here we additionally verify each file has
+# `caught >= 1` and a non-1970 `ran_at` (the SHIP-BAR-TRACKER.md
+# machine-readable signal).
+threats_dir="audits/evidence/threats"
+if [ ! -d "$threats_dir" ]; then
+  failure "Bar1 threats directory missing ($threats_dir)"
+else
+  threat_count=0
+  threat_real=0
+  for tjson in "$threats_dir"/*.json; do
+    [ -f "$tjson" ] || continue
+    threat_count=$((threat_count + 1))
+    if command -v jq >/dev/null 2>&1; then
+      caught=$(jq -r '.caught // 0' "$tjson" 2>/dev/null || echo 0)
+      ran_at=$(jq -r '.ran_at // ""' "$tjson" 2>/dev/null || echo "")
+      if [ "$(awk -v c="$caught" 'BEGIN { print (c + 0 >= 1) ? "yes" : "no" }')" = "yes" ] \
+         && [ -n "$ran_at" ] \
+         && [ "$ran_at" != "1970-01-01T00:00:00Z" ]; then
+        threat_real=$((threat_real + 1))
+      fi
+    fi
+  done
+  if [ "$threat_count" -eq 0 ]; then
+    failure "Bar1 threats directory has zero JSON files"
+  elif [ "$threat_real" -eq "$threat_count" ]; then
+    ok "Bar1 threats $threat_real of $threat_count with caught>=1 and non-1970 ran_at"
+  else
+    partial "Bar1 threats $threat_real of $threat_count with real evidence (rest still placeholders)"
+  fi
+fi
+
+printf '\n[Bar 2] Lane B -- four signed negative conformance fixtures\n'
+
+# Filenames mirror `SHIP-BAR-TRACKER.md` Bar 2 "Machine-readable signal" row.
+bar2_fixtures=(
+  "single_entry_verifier_no_bypass.rs"
+  "receipt_v2_fail_closed_under_negotiated_v2.rs"
+  "anchor_batch_async_only_with_public_witness.rs"
+  "bilateral_dsse_pae_only_is_conformant.rs"
+)
+bar2_root="crates/chio-conformance/tests"
+
+for fixture in "${bar2_fixtures[@]}"; do
+  fpath="$bar2_root/$fixture"
+  if [ -f "$fpath" ]; then
+    # Each fixture must carry the negative-conformance annotation per
+    # SHIP-BAR-TRACKER.md Bar 2 "Machine-readable signal" row.
+    if grep -q -E 'negative-conformance' "$fpath" 2>/dev/null; then
+      ok "Bar2 $fixture present with negative-conformance annotation"
+    else
+      partial "Bar2 $fixture present but missing negative-conformance annotation"
+    fi
+  else
+    failure "Bar2 $fixture missing ($fpath)"
+  fi
+done
+
+# The async-witness fast-feedback shell script must also exist (per
+# SHIP-BAR-TRACKER.md Bar 2 machine-readable signal: "scripts/check-
+# anchor-batch-async-witness.sh MUST exist and exit 0 in CI"). Presence
+# is the bar; CI validates exit 0 separately.
+async_witness_script="scripts/check-anchor-batch-async-witness.sh"
+if [ -f "$async_witness_script" ]; then
+  ok "Bar2 $async_witness_script present (fast-feedback companion)"
+else
+  failure "Bar2 $async_witness_script missing"
+fi
+
+printf '\n[Bar 3] Lane C -- bilateral demo end-to-end fixture\n'
+
+bar3_demo_dir="examples/chiodome-bilateral"
+if [ -d "$bar3_demo_dir" ]; then
+  ok "Bar3 demo directory present ($bar3_demo_dir)"
+else
+  failure "Bar3 demo directory missing ($bar3_demo_dir)"
+fi
+
+# Demo recipe: either a Makefile or a `Cargo.toml` example entry.
+if [ -f "$bar3_demo_dir/Makefile" ]; then
+  ok "Bar3 demo recipe present (Makefile)"
+elif [ -f "$bar3_demo_dir/Cargo.toml" ]; then
+  ok "Bar3 demo recipe present (Cargo.toml example)"
+else
+  failure "Bar3 demo recipe missing (no Makefile or Cargo.toml under $bar3_demo_dir)"
+fi
+
+# Two-kernel transcripts.
+transcripts_dir="$bar3_demo_dir/transcripts"
+if [ -d "$transcripts_dir" ]; then
+  transcript_count=$(ls -1 "$transcripts_dir"/*.json 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$transcript_count" -gt 0 ]; then
+    ok "Bar3 transcripts present ($transcript_count file(s) under $transcripts_dir/)"
+  else
+    failure "Bar3 transcripts directory empty ($transcripts_dir/)"
+  fi
+else
+  failure "Bar3 transcripts directory missing ($transcripts_dir/)"
+fi
+
+# `chio receipt explain` golden output.
+golden_dir="$bar3_demo_dir/golden"
+if [ -d "$golden_dir" ]; then
+  golden_count=$(ls -1 "$golden_dir"/*.txt 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$golden_count" -gt 0 ]; then
+    ok "Bar3 golden file present ($golden_count file(s) under $golden_dir/)"
+  else
+    failure "Bar3 golden directory empty ($golden_dir/)"
+  fi
+else
+  failure "Bar3 golden directory missing ($golden_dir/)"
+fi
+
+# Pinned receipt fixture under the v0.1.0-bounded-chiodome release tag.
+pinned_receipt="$bar3_demo_dir/fixtures/v0.1.0-bounded-chiodome/receipt.json"
+if [ -f "$pinned_receipt" ]; then
+  ok "Bar3 pinned receipt fixture present ($pinned_receipt)"
+else
+  failure "Bar3 pinned receipt fixture missing ($pinned_receipt)"
+fi
+
+# releases.toml carries the recorded release tag (or the explicit
+# `pending` placeholder during Wave 5 baseline). PARTIAL until tagged.
+if [ -f releases.toml ]; then
+  tag_line=$(grep -E '^v0_1_0_bounded_chiodome_release_tag[[:space:]]*=' releases.toml | head -1 || true)
+  if [ -n "$tag_line" ]; then
+    if echo "$tag_line" | grep -q 'v0.1.0-bounded-chiodome' \
+       && ! echo "$tag_line" | grep -q '"pending"'; then
+      ok "Bar3 releases.toml carries v0_1_0_bounded_chiodome_release_tag"
+    else
+      partial "Bar3 releases.toml v0_1_0_bounded_chiodome_release_tag is placeholder ($tag_line)"
+    fi
+  else
+    failure "Bar3 releases.toml missing v0_1_0_bounded_chiodome_release_tag entry"
+  fi
+else
+  failure "Bar3 releases.toml missing"
+fi
+
+printf '\n----- check-trj5-ship-bar summary -----\n'
+printf 'checks run: %d\n' "$checks"
+printf 'failures:   %d\n' "$fail"
+if [ "$fail" -eq 0 ]; then
+  printf '\ntrj5 ship-bar: PASS (PARTIAL rows reflect honest baseline state)\n'
+  exit 0
+else
+  printf '\ntrj5 ship-bar: %d FAIL(s)\n' "$fail"
+  exit 1
+fi

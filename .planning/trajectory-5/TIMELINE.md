@@ -86,7 +86,7 @@ W1  W2  W3  W4  W5  W6  W7  W8
                                 [C6]   examples/ fixture + tag
 ```
 
-Lane C unlocks at end of week 4 once B1/B2/B3 land. C1 (bilateral cosigned invocation skeleton) runs week 5. C2-C5 (capability lease + bond, anchor, selective-disclosure, MCP wrap) run week 6. C6 (`examples/bounded-chiodome/` fixture + golden file + honest release tag) runs week 7. Integration / ship-bar week is week 8.
+Lane C unlocks at end of week 4 once B1/B2/B3 land. C1 (bilateral cosigned invocation skeleton) runs week 5. C2-C5 (capability lease + bond, anchor, selective-disclosure, MCP wrap) run week 6. C6 (`examples/chiodome-bilateral/` fixture + golden file + honest release tag) runs week 7. Integration / ship-bar week is week 8.
 
 Lane C closes when Bar 3 verification passes at week 8.
 

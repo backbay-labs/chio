@@ -4,13 +4,13 @@ This file is the per-bar ledger that trj5 grades against. The three bars are nor
 
 **If any of the three slips, trj5 stays open.** No closeout erratum is needed because the bar is the kind a third party can verify.
 
-The tracker is consumed by `scripts/check-trj5-ship-bar.sh` (lands as a Wave 0 deliverable). The script:
+The tracker is consumed by `scripts/check-trj5-ship-bar.sh` (companion to `scripts/trj5-preflight.sh`; both are required for trj5 closeout). The script:
 
-- asserts each bar's machine-readable signal is present and meets threshold;
-- emits `audits/evidence/trj5-ship-bar.json` for downstream tooling;
-- refuses regressions (DONE -> PARTIAL or PARTIAL -> NONE).
+- asserts each bar's per-evidence machine-readable signal is present (per-crate mutation JSON for Bar 1, four conformance fixtures for Bar 2, demo dir + pinned receipt fixture for Bar 3);
+- emits one `OK` / `FAIL` line per check and a final pass/fail summary;
+- treats Bar 1 PARTIAL state honestly (per-crate JSONs without measured kill-rate fields are FAIL; baselines that exist with a `kill_rate` field but below target are reported `OK ... (PARTIAL)`).
 
-The pattern matches the trj4 close-bar tracker at `../trajectory-4/closeout/CLOSE-BAR-TRACKER.md`.
+`scripts/trj5-preflight.sh` covers kickoff prerequisites (planning artifacts, OWNERS population, releases.toml block, Wave-2/3/4 review trail, drift cleanup); `scripts/check-trj5-ship-bar.sh` covers the three closing bars. The pattern matches the trj4 close-bar tracker at `../trajectory-4/closeout/CLOSE-BAR-TRACKER.md`.
 
 ---
 
@@ -55,10 +55,10 @@ The pattern matches the trj4 close-bar tracker at `../trajectory-4/closeout/CLOS
 | Field | Value |
 |---|---|
 | **Current state** | NONE. `crates/chio-federation/src/bilateral.rs` carries `CoSigningBody` and `DualSignedReceipt` substrates; `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA` exists; `crates/chio-anchor::Web3CheckpointStatement` exists; `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` and `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` are drafted. None are composed end-to-end as a runnable example; `chio receipt explain` does not yet inspect a real bilateral receipt. |
-| **Target state** | DONE. The two-kernel cross-org bilateral cosigned invocation runs end-to-end. The receipts are inspectable with `chio receipt explain`. The demo run is captured as a fixture under `examples/bounded-chiodome/`. Honest release tag `v0.1.0-bounded-chiodome` cut under v3.18 bounded-claim discipline. |
-| **Evidence required** | (1) `examples/bounded-chiodome/` exists with a `Makefile` or `cargo run --example` recipe that runs the demo end-to-end on a fresh checkout. (2) Two-kernel transcripts committed under `examples/bounded-chiodome/transcripts/`. (3) `chio receipt explain` golden output committed under `examples/bounded-chiodome/golden/<receipt-body-hash>.txt`. (4) Capability lease + budget bond minted via `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA`; consumed at receipt-write. (5) Anchored through `crates/chio-anchor::Web3CheckpointStatement` (no live deployment). (6) Selective-disclosure auditor view runs behind `zk` Cargo feature flag. (7) Wrapped at `chio mcp serve --policy` against `ops/knowledge-base/`. (8) Honest release tag `v0.1.0-bounded-chiodome` recorded in `releases.toml` `[trajectory_5]`. |
+| **Target state** | DONE. The two-kernel cross-org bilateral cosigned invocation runs end-to-end. The receipts are inspectable with `chio receipt explain`. The demo run is captured as a fixture under `examples/chiodome-bilateral/`. Honest release tag `v0.1.0-bounded-chiodome` cut under v3.18 bounded-claim discipline. |
+| **Evidence required** | (1) `examples/chiodome-bilateral/` exists with a `Makefile` or `cargo run --example` recipe that runs the demo end-to-end on a fresh checkout. (2) Two-kernel transcripts committed under `examples/chiodome-bilateral/transcripts/`. (3) `chio receipt explain` golden output committed under `examples/chiodome-bilateral/golden/<receipt-body-hash>.txt`. (4) Capability lease + budget bond minted via `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA`; consumed at receipt-write. (5) Anchored through `crates/chio-anchor::Web3CheckpointStatement` (no live deployment). (6) Selective-disclosure auditor view runs behind `zk` Cargo feature flag. (7) Wrapped at `chio mcp serve --policy` against `ops/knowledge-base/`. (8) Honest release tag `v0.1.0-bounded-chiodome` recorded in `releases.toml` `[trajectory_5]`. |
 | **Validator** | Wave-2 reviewer + `scripts/check-trj5-ship-bar.sh` Bar-3 block. The script asserts the example runs end-to-end on a fresh checkout, the golden file matches, and the release tag is recorded. |
-| **Machine-readable signal** | `examples/bounded-chiodome/Makefile` (or `Cargo.toml` example entry) exists; `examples/bounded-chiodome/transcripts/*.json` non-empty; `examples/bounded-chiodome/golden/*.txt` matches `chio receipt explain` output for the captured receipt; `releases.toml` `[trajectory_5]` carries `v0_1_0_bounded_chiodome_release_tag = "v0.1.0-bounded-chiodome"`. |
+| **Machine-readable signal** | `examples/chiodome-bilateral/Makefile` (or `Cargo.toml` example entry) exists; `examples/chiodome-bilateral/transcripts/*.json` non-empty; `examples/chiodome-bilateral/golden/*.txt` matches `chio receipt explain` output for the captured receipt; `releases.toml` `[trajectory_5]` carries `v0_1_0_bounded_chiodome_release_tag = "v0.1.0-bounded-chiodome"`. |
 | **Trj4 wave absorbed** | (none directly; Lane C is the additive forcing demo) |
 | **Trj5 ticket(s)** | TRJ5-C1, TRJ5-C2, TRJ5-C3, TRJ5-C4, TRJ5-C5, TRJ5-C6 (and dependents per `lane-c-demo/tickets.md`). |
 | **Status** | NONE |

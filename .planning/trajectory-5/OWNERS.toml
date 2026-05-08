@@ -116,7 +116,7 @@ owner_globs = [
   "crates/chio-credit/**",
   "crates/chio-anchor/src/web3.rs",
   "crates/chio-cli/src/receipt/**",
-  "examples/bounded-chiodome/**",
+  "examples/chiodome-bilateral/**",
   "ops/knowledge-base/**",
   "spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md",
   "spec/CHIODOS_SELECTIVE_DISCLOSURE.md",
@@ -214,6 +214,6 @@ assigned_to = ["@bb-connor"]
 execution_mode = "autonomous"
 
 [owner_classes.examples]
-description = "examples/bounded-chiodome/ owner; demo recipe + transcripts + golden files"
+description = "examples/chiodome-bilateral/ owner; demo recipe + transcripts + golden files"
 assigned_to = ["@bb-connor"]
 execution_mode = "autonomous"

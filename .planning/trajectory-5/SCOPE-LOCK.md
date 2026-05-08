@@ -39,7 +39,7 @@ Each primitive closes with: enforced call site + spec MUST citation + signed neg
 | Anchored through `crates/chio-anchor::Web3CheckpointStatement` (no new live deployment required). | federation | TRJ5-C3 |
 | Selective-disclosure auditor view behind `zk` Cargo feature flag. No new spec ratification. | federation | TRJ5-C4 |
 | Wrapped at the user surface by `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Receipts dogfooded through `chio receipt explain`. | cli | TRJ5-C5 |
-| `examples/bounded-chiodome/` end-to-end fixture; honest release tag `v0.1.0-bounded-chiodome` under v3.18 bounded-claim discipline. | examples | TRJ5-C6 |
+| `examples/chiodome-bilateral/` end-to-end fixture; honest release tag `v0.1.0-bounded-chiodome` under v3.18 bounded-claim discipline. | examples | TRJ5-C6 |
 
 ## Out of scope (verbatim from synthesis, with elaboration)
 
