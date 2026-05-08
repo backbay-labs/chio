@@ -186,12 +186,6 @@ impl LocalReceiptArtifact {
 /// implementations that need real tokio I/O are expected to use the
 /// multi-thread arm via `block_in_place`; tests and in-process tool
 /// servers that compute synchronously are served by the executor arm.
-///
-/// The trj5 Lane B0 migration made `ToolServerConnection` async; this
-/// helper is the load-bearing bridge that lets the legacy
-/// `evaluate_tool_call_blocking` synchronous path keep working without
-/// forcing a workspace-wide async migration in the same PR. Trj6 owns the
-/// removal of this shim alongside the broader sync-evaluator migration.
 fn block_on_async_tool_dispatch<F, T>(future: F) -> Result<T, KernelError>
 where
     F: std::future::Future<Output = Result<T, KernelError>>,
@@ -1068,15 +1062,6 @@ pub struct ChioKernel {
     /// locally signing the receipt to obtain the origin kernel's
     /// co-signature. Absent in non-federated deployments.
     federation_peers: ArcSwap<HashMap<String, chio_federation::FederationPeer>>,
-    /// Wave 1.1 chain-binding trust-root registry. Maps a trusted
-    /// capability issuer's public key (hex form) to the SHA-256 hex of
-    /// its root authority scope. The hosted verifier consults this map
-    /// when a v2 capability token is presented: the token's
-    /// `attenuation_proof.parent_scope_hash` MUST match either the
-    /// registered root (direct issue) or the predecessor delegation
-    /// link's `scope_hash` (delegated). Issuers absent from the map
-    /// fail-closed for v2 tokens; v1 tokens are unaffected.
-    ///
     /// `ArcSwap` so trust-root rotations can land without holding a
     /// kernel mutex. Hex-keyed because `chio_core::PublicKey` does not
     /// implement `Hash`.
@@ -1120,44 +1105,16 @@ pub struct ChioKernel {
     /// shape is feature-flag agnostic; consultation is gated by
     /// `cfg(feature = "delegation_v2")` on the read path.
     revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
-    /// W1.2 sibling-sum budget registry. Tracks admitted child shares
-    /// against each parent capability so a delegated chain cannot mint
-    /// two children whose `budget_share_bps` jointly exceed the parent's
-    /// own share. Wrapped in `Mutex` because the registry interface
-    /// takes `&mut dyn BudgetRegistry`; contention is negligible
-    /// because the lock is held only for the duration of one
-    /// `try_admit_child` call inside the verifier.
     budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
-    /// W2.1 receipt-version default. When `true`, the kernel mints a
-    /// `ChioReceiptV2` body_hash-addressed receipt alongside the v1
-    /// receipt that callers continue to receive in the `ToolCallResponse`.
-    /// The legacy UUIDv7 alias on the v2 receipt is set to the v1
-    /// receipt's id; replay identity is exclusively `body_hash`.
-    ///
     /// Defaults to `true` so a freshly-constructed kernel that has not
     /// yet observed peer feature bitsets still mints v2 receipts.
     /// Operators that need the previous v1-only behavior call
     /// [`ChioKernel::set_receipt_v2_default`] with `false`.
     kernel_receipt_v2_default: AtomicBool,
-    /// W2.1 in-memory v2 replay set keyed exclusively on `body_hash`.
-    /// The legacy UUIDv7 alias is non-authoritative and never consulted
-    /// by `insert`. Wrapped in `Mutex` because the type is small and
-    /// contention is bounded by the receipt mint rate; persistent
-    /// stores additionally enforce uniqueness on the `body_hash`
-    /// column.
     receipt_v2_replay: Mutex<chio_core::receipt::ReceiptV2ReplaySet>,
-    /// W2.1 monotonic counter that supplies the `dag_ordinal` field on
-    /// every minted v2 receipt. Initialized at zero on kernel start;
-    /// rotation across kernel restarts is fine because the v2 chain_id
-    /// is the federation kernel id, which uniquely scopes ordinals.
     receipt_v2_dag_ordinal: AtomicU64,
 }
 
-/// W2.1 per-session receipt-version selector populated from the
-/// negotiation handshake at receipt-mint time. The kernel branches on
-/// this value when constructing a receipt: `V1Legacy` mints only the
-/// existing v1 UUIDv7 receipt while `V2BodyHash` additionally mints a
-/// signed `ChioReceiptV2` and persists it in the v2 replay store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelReceiptVersion {
     /// Peer is v1-only or no negotiation profile is in scope: emit
@@ -1576,23 +1533,16 @@ impl ChioKernel {
         }
     }
 
-    /// W2.1: configure whether this kernel defaults to minting
-    /// body_hash-addressed v2 receipts when no per-session peer profile
-    /// is in scope. Tests and v1-only deployments can flip this off so
-    /// the kernel falls back to UUIDv7-only minting.
     pub fn set_receipt_v2_default(&self, accepts_v2: bool) {
         self.kernel_receipt_v2_default
             .store(accepts_v2, Ordering::SeqCst);
     }
 
-    /// W2.1: read the kernel-level receipt-version default.
     #[must_use]
     pub fn receipt_v2_default(&self) -> bool {
         self.kernel_receipt_v2_default.load(Ordering::SeqCst)
     }
 
-    /// W2.1: resolve the [`KernelReceiptVersion`] for a request.
-    ///
     /// The resolution order is:
     /// 1. If a federated peer is named on the request, the peer's
     ///    negotiated `accepts_receipt_v2` feature flag wins.
@@ -1623,10 +1573,6 @@ impl ChioKernel {
         }
     }
 
-    /// W2.1: probe the in-memory v2 replay set for a body_hash. The
-    /// persistent store may also contain the body_hash; both are
-    /// consulted by [`ChioKernel::record_chio_receipt_v2`] before a
-    /// new v2 receipt is admitted.
     pub fn contains_chio_receipt_v2_body_hash(&self, body_hash: &str) -> bool {
         match self.receipt_v2_replay.lock() {
             Ok(replay) => replay.contains_body_hash(body_hash),
@@ -1634,11 +1580,6 @@ impl ChioKernel {
         }
     }
 
-    /// W2.1: snapshot a v2 receipt body_hash for tooling lookups
-    /// (returns true if present in either the in-memory replay set or
-    /// the persistent store). Replay-rejection in the mint path uses
-    /// [`Self::record_chio_receipt_v2`] which performs the
-    /// fail-closed insert.
     pub fn chio_receipt_v2_seen(&self, body_hash: &str) -> Result<bool, KernelError> {
         if self.contains_chio_receipt_v2_body_hash(body_hash) {
             return Ok(true);
@@ -1655,8 +1596,6 @@ impl ChioKernel {
         Ok(false)
     }
 
-    /// W2.1: record a v2 receipt fail-closed.
-    ///
     /// Inserts into the in-memory replay set first; replay rejection
     /// short-circuits the persistent write so a tampered alias on a
     /// previously-seen body_hash cannot resurface as a fresh receipt.
@@ -1711,8 +1650,6 @@ impl ChioKernel {
         Ok(())
     }
 
-    /// W2.1: monotonic dag_ordinal allocator. Increments on every
-    /// admitted v2 receipt minted by this kernel.
     pub(crate) fn next_v2_dag_ordinal(&self) -> u64 {
         self.receipt_v2_dag_ordinal.fetch_add(1, Ordering::SeqCst)
     }
@@ -1963,14 +1900,6 @@ impl ChioKernel {
         self
     }
 
-    /// Wave 1.1 chain-binding trust-root registration. Each entry maps a
-    /// trusted capability issuer's public key to the canonical-JSON
-    /// SHA-256 hex of that issuer's root authority scope. The verifier
-    /// uses this to bind v2 `attenuation_proof.parent_scope_hash` to a
-    /// verifier-known authority hash on direct-issue tokens, closing
-    /// the W1.1 P0 soundness gap. Issuers without an entry fail-closed
-    /// for v2 tokens; v1 tokens remain unaffected.
-    ///
     /// Builder-style so deployments can chain
     /// `.with_capability_trust_roots(...)` onto `ChioKernel::new(config)`.
     #[must_use]
@@ -2035,14 +1964,6 @@ impl ChioKernel {
         }
     }
 
-    /// Resolve the capability negotiation profile that should gate the
-    /// W1.3 schema-ceiling check on the hot path. When no remote
-    /// federation peer is in scope (the most common case for a hosted
-    /// kernel evaluating a local capability), the kernel's own v2
-    /// profile applies: v2 tokens are admitted, v1 tokens are admitted.
-    /// When a federation peer is identified by `remote_kernel_id`, the
-    /// peer's most recent negotiated profile is returned, which may
-    /// downgrade the ceiling to v1.
     pub(crate) fn capability_negotiation_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
@@ -2187,7 +2108,6 @@ impl ChioKernel {
     /// Phase 1.4 acceptance. When a future revision adds `revoke_all`,
     /// this method should call it; until then, capability revocation is
     /// delegated to natural expiration.
-    ///
     pub fn emergency_stop(&self, reason: &str) -> Result<(), KernelError> {
         let now = current_unix_timestamp();
         // Record the timestamp first so any concurrent reader that observes
@@ -2915,12 +2835,6 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Wave 1.5 hot-path wiring: route through the full verifier so
-        // hosted requests enforce the W1.3 schema ceiling and W1.1
-        // chain-binding feature negotiation from the pinned federation peer.
-        // The sibling-sum registry mutation is still deferred below so
-        // earlier denial paths do not consume the parent's share.
-        //
         // Round-3 codex P2 fix: signature is verified first (no budget
         // mutation); the actual `admit_capability_budget` call is
         // deferred until all subsequent checks (time, revocation,
@@ -3197,11 +3111,6 @@ impl ChioKernel {
             );
         }
 
-        // Round-3 codex P2 fix: now that signature, time, revocation,
-        // delegation-admission, subject, scope, and guards have all
-        // passed, commit the W1.2 sibling-sum budget admission. Doing
-        // this here (rather than upfront with signature verification)
-        // means a denied call no longer consumes the parent's share.
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
@@ -3425,10 +3334,6 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Wave 1.5 hot-path wiring: route through the full verifier so
-        // nested hosted requests enforce the same W1.3 schema ceiling and
-        // W1.1 chain-binding feature negotiation as the main hosted path.
-        //
         // Round-3 codex P2 fix: signature first; the budget admission
         // is deferred until after all subsequent checks pass, so a
         // denied call no longer consumes the parent's share.
@@ -3625,9 +3530,6 @@ impl ChioKernel {
             return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
         }
 
-        // Round-3 codex P2 fix: nested-flow path also defers W1.2 budget
-        // admission until after all preceding checks pass, mirroring the
-        // main hosted hot path.
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
@@ -3698,17 +3600,6 @@ impl ChioKernel {
                 client,
             };
 
-            // Trj5 Lane B0: tool-server methods are async. The nested-flow
-            // path is still synchronous so we bridge via `block_on_async_tool_dispatch`,
-            // identical in spirit to `block_on_price_oracle`. The bridge
-            // borrows non-Send transport state, hence the `?Send` flavor of
-            // the trait. Removal of this bridge tracks with the trj6
-            // sync-evaluator migration.
-            // The helper signature is `Result<T, KernelError>`. Flatten
-            // every arm here directly into that single Result instead of
-            // the earlier `Result<Result<_, _>, _>` shape - the outer Ok
-            // was always present so the trailing `?` was a no-op.
-            // (cursor[bot] LOW on PR #606.)
             block_on_async_tool_dispatch(async {
                 match server
                     .invoke_stream(
@@ -3918,10 +3809,6 @@ impl ChioKernel {
     pub fn drain_tool_server_events(&self) -> Vec<ToolServerEvent> {
         let mut events = Vec::new();
         for (server_id, server) in &self.tool_servers {
-            // Trj5 Lane B0: drain_events is async; bridge via block_on for
-            // sync callers. Returns Ok with the (possibly-empty) drained
-            // batch even when the inner future returns Err so the caller
-            // can warn-and-continue per the existing behaviour.
             let outcome: Result<Vec<ToolServerEvent>, KernelError> =
                 block_on_async_tool_dispatch(server.drain_events());
             match outcome {
@@ -4070,10 +3957,6 @@ impl ChioKernel {
             Err(e) => return Err(e.to_string()),
         }
 
-        // Wave 1.1 chain-binding: when a v2 token is presented, additionally
-        // require `attenuation_proof.parent_scope_hash` to bind to the
-        // registered trust-root scope hash (or the predecessor link).
-        // v1 tokens are unaffected (chain-binding is a v2-only check).
         if cap.schema == chio_core::capability::CHIO_CAPABILITY_V2_SCHEMA {
             let snapshot = self.capability_trust_roots.load_full();
             let issuer_root = snapshot.get(&cap.issuer.to_hex()).cloned().ok_or_else(|| {
@@ -4111,10 +3994,6 @@ impl ChioKernel {
         .map_err(|error| chio_kernel_core::KernelCoreError::InvalidCapability(error).deny_reason())
     }
 
-    /// Wave 1.5 hot-path wiring: signature + chain-binding verification
-    /// with W1.2 sibling-sum budget admission against the kernel's
-    /// persistent registry.
-    ///
     /// The hosted `evaluate_tool_call_*` paths historically called
     /// [`Self::verify_capability_signature`], which only enforced the
     /// signature, crypto-floor, and v2 chain-binding rule. The
@@ -4140,11 +4019,6 @@ impl ChioKernel {
     /// parent's share when the request was about to be denied, starving
     /// later valid siblings (PR #593 round-3 codex P2).
     fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
-        // W1.2 sibling-sum admit. Only fires for tokens that carry a
-        // delegation chain; root-issued tokens have nothing to split.
-        // The proposed share matches the portable hot path: a missing
-        // `budget_share_bps` is interpreted as a request for the full
-        // parent share so oversubscription is still detected.
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
             let proposed_share = cap
@@ -4196,14 +4070,6 @@ impl ChioKernel {
         session_filesystem_roots: Option<&'a [String]>,
     ) -> chio_kernel_core::EvaluationVerdict {
         let trusted = self.trusted_issuer_keys();
-        // Wave 1.5 hot-path wiring: enforce the W1.3 negotiated schema
-        // ceiling and the W1.1 chain-binding rule on the same hot path
-        // that already enforces signature, floor, time bounds, and W1.2
-        // sibling-sum budget admission. Hold the budget-registry lock
-        // for the duration of the verify step so two concurrent
-        // delegations cannot both observe the same residual headroom
-        // and admit beyond the parent's share. The registry is internally
-        // a deterministic BTreeMap; no async work happens under the lock.
         let peer_profile = self
             .capability_negotiation_for_remote(None, clock.now_unix_secs())
             .unwrap_or_else(|_| chio_core::capability::CapabilityNegotiation::t1_default());
@@ -4228,12 +4094,6 @@ impl ChioKernel {
         )
     }
 
-    /// W1.2: register a parent capability's `budget_share_bps` so
-    /// subsequent delegations are admitted against it. Hosted callers
-    /// should invoke this when a fresh capability enters the system
-    /// (issuance, federation gossip). Re-registering the same parent
-    /// with the same share is idempotent. The registry is the same one
-    /// consulted by [`Self::evaluate_portable_verdict`].
     pub fn register_budget_parent(
         &self,
         parent_token_id: String,
@@ -4247,8 +4107,6 @@ impl ChioKernel {
         budgets.register_parent(parent_token_id, parent_share_bps)
     }
 
-    /// W1.2: drop a parent's split from the registry. Idempotent on
-    /// unknown ids so revocation races do not abort verification.
     pub fn evict_budget_parent(&self, parent_token_id: &str) {
         use chio_kernel_core::BudgetRegistry;
         let mut budgets = match self.budget_registry.lock() {
@@ -6449,15 +6307,6 @@ impl ChioKernel {
     }
 
     /// Forward the validated request and optionally report actual invocation cost.
-    ///
-    /// Async-native dispatch entrypoint used by `ToolEvaluator::dispatch`.
-    /// Trj5 Lane B0 collapsed the prior async-then-sync hop: this method now
-    /// contains the dispatch logic and awaits the (now-async) tool-server
-    /// methods directly. Streaming is attempted first; for non-streaming
-    /// invocations, `invoke_with_cost` runs when the caller has a monetary
-    /// grant (so the server can report the actual cost), otherwise the plain
-    /// `invoke` path runs and the kernel debits the worst-case
-    /// `max_cost_per_invocation`.
     pub(crate) async fn dispatch_tool_call_with_cost(
         &self,
         request: &ToolCallRequest,
@@ -6493,17 +6342,6 @@ impl ChioKernel {
 
     /// Synchronous dispatch shim used by the legacy
     /// `evaluate_tool_call_blocking` path while it still exists.
-    ///
-    /// Trj5 Lane B0 made the underlying tool-server trait async. The
-    /// synchronous evaluator (`evaluate_tool_call_sync_with_session_context`,
-    /// reachable through `evaluate_tool_call_blocking` and its `_with_metadata`
-    /// sibling) calls dispatch from a sync context. This shim bridges to the
-    /// async dispatch via `block_on`, mirroring the existing pattern at
-    /// `block_on_price_oracle`. Removal of this shim requires migrating
-    /// `evaluate_tool_call_blocking` (and its many production callers in
-    /// `chio-http-core`, `chio-mcp-edge`, `chio-cross-protocol`,
-    /// `chio-conformance`, etc.) to async, which is a trj6 setter-migration
-    /// responsibility per the Lane B0 scope-lock.
     pub(crate) fn dispatch_tool_call_with_cost_blocking(
         &self,
         request: &ToolCallRequest,

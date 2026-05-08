@@ -306,11 +306,6 @@ impl HttpAuthority {
         &self,
         input: HttpAuthorityInput<'_>,
     ) -> Result<HttpAuthorityEvaluation, HttpAuthorityError> {
-        // W2.4: emit `chio_guard_evaluations_total` and observe
-        // `chio_kernel_decision_latency_seconds` at the verdict-edge
-        // dispatch boundary. Errors emerging from `prepare` or
-        // `sign_decision_receipt` are recorded under the error counter so
-        // operators can spot fail-closed paths.
         let started_at = std::time::Instant::now();
         let result = self.prepare(input).and_then(|prepared| {
             let receipt = self.sign_decision_receipt(&prepared)?;

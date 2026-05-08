@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Trj5 Lane B0 gate: every `impl ToolServerConnection` must use the async-trait
-# form. The trait at `crates/chio-kernel/src/runtime.rs` requires `async fn invoke`,
-# `async fn invoke_with_cost`, `async fn invoke_stream`, `async fn drain_events`.
-# A sync `fn invoke(` *inside an `impl ToolServerConnection` block* is a
-# regression of the migration; this script exits 1 if it finds one.
-#
 # Scope guard: we only flag method bodies that appear in the same `impl` block as
 # the trait. Other functions named `invoke` (e.g. `pub fn invoke` on adapter
 # structs) are not flagged.

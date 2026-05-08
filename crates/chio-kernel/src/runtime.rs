@@ -251,23 +251,6 @@ pub struct ToolInvocationCost {
 /// The kernel holds one `ToolServerConnection` per registered server. In
 /// production this is an mTLS connection over UDS or TCP. For testing,
 /// an in-process implementation can be used.
-///
-/// Trj5 Lane B0 migration: the dispatch methods (`invoke`, `invoke_with_cost`,
-/// `invoke_stream`, `drain_events`) are `async fn` via `#[async_trait]` so
-/// remote/network-backed servers can perform real I/O without blocking the
-/// kernel runtime. The `#[async_trait]` macro is required for dyn-compatibility:
-/// the kernel registers tool servers as `Box<dyn ToolServerConnection>`, which
-/// rules out native `async fn in trait` until the workspace pins a Rust
-/// version where dyn-compatible native async methods are stable.
-///
-/// `#[async_trait(?Send)]` is used because the existing nested-flow bridge
-/// argument (`&mut dyn NestedFlowBridge`) is constructed from kernel-internal
-/// state that is not `Send` (it borrows a transport client and lives only for
-/// the duration of a single dispatch). Since dispatch happens in a controlled
-/// runtime where the future is awaited on the same task, dropping the
-/// `Send` bound is safe and avoids forcing every nested-flow client to be
-/// `Send + Sync`. Setter migration of the surrounding kernel runtime is the
-/// trj6 follow-up where `Send` futures will be reconsidered.
 #[async_trait::async_trait(?Send)]
 pub trait ToolServerConnection: Send + Sync {
     /// The server's unique identifier.

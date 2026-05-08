@@ -27,11 +27,6 @@ pub use metrics::{
     RECEIPT_WRITE_OUTCOME_ERROR, RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
 };
 
-/// Trj5 Lane B0: bridge sync compatibility helpers to the now-async
-/// `ToolServerConnection` trait. The passthrough surface in this crate is
-/// already documented as non-authoritative; it does not enter the Chio
-/// kernel hot path and is not subject to the kernel's runtime invariants.
-///
 /// Mirrors `chio_kernel::kernel::block_on_async_tool_dispatch`: on a
 /// multi-thread runtime use `block_in_place` so we yield the runtime;
 /// otherwise (current-thread runtime, e.g. `#[tokio::test(flavor = "current_thread")]`,
@@ -769,9 +764,6 @@ impl ChioA2aEdge {
         let arguments = extract_arguments_from_message(&request.message);
         let task_id = self.next_task_id();
 
-        // Trj5 Lane B0: ToolServerConnection::invoke is now async. This is a
-        // sync compatibility helper that does not go through the kernel; we
-        // bridge via a current-thread runtime if no tokio runtime is active.
         match crate::block_on_tool_server_invoke(server.invoke(&tool_name, arguments, None)) {
             Ok(result) => {
                 let response_parts = result_to_parts(&result);
@@ -1456,9 +1448,6 @@ fn task_response_from_orchestrated(
     annotate_authoritative_a2a_metadata(&mut metadata, response.output.as_ref());
     let receipt_metadata = Some(metadata);
 
-    // W2.4: emit `chio_receipt_write_total` at the A2A receipt-sink
-    // boundary. PendingApproval is normal HITL flow, so it must not feed
-    // infrastructure error burn-rate numerators.
     crate::metrics::record_receipt_write_verdict(response.verdict);
 
     match response.verdict {
