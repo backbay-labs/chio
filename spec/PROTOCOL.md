@@ -713,8 +713,7 @@ without relying on one global clock.
 
 #### Receipt v2 body_hash addressing (W2.1)
 
-Wave 2.1 closes the audit's "types-only, hot path unwired" finding on T1.2 by
-wiring the producer side. The verifier-side check landed in Wave 1; the kernel
+This section records producer-side wiring for T1.2. The verifier-side check is already present; the kernel
 now mints v2 receipts at production mint time when peer negotiation selects v2.
 
 - **Mint path.** `ChioKernel::record_chio_receipt_with_federation` is the
