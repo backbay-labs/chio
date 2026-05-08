@@ -115,7 +115,7 @@ table above:
 - `BLOCKED-BY-ARCHITECTURE`: 1 (row 19).
 
 If Wave 1 confirms 1 BLOCKED-BY-ARCHITECTURE and >= 2 IMPL-PARTIAL, R3
-escalation fires (>2 sum). Wave 2 review reconsiders the release work banner.
+escalation fires (>2 sum). review reconsiders the release work banner.
 
 ## Sweep / closeout
 

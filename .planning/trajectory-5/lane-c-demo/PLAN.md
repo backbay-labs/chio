@@ -2,7 +2,7 @@
 
 This document decomposes Lane C into six sub-lanes (C1..C6). Each sub-lane
 has scope, acceptance, evidence, dependency on Lanes A/B, and a week
-range. Tickets implementing each sub-lane are in `tickets.md`.
+range. Tickets implementing each sub-lane are in planning docs.
 
 The single guiding principle from `00-SYNTHESIS.md` lines 173-175:
 the demo composes existing primitives. New code is rare, narrow, and
@@ -66,7 +66,7 @@ existing crate's API surface.
 
 ### Week range
 
-Per R1 §6.2 §10 and R4 Finding 10, Lane C scaffolding (C1.1, C1.2,
+Per R1 §6.2 §10 and review finding 10, Lane C scaffolding (C1.1, C1.2,
 C1.4) starts in W3 alongside in-progress Lane B work so the
 forcing-function smoke runs continuously against Lane B partial
 enforcement; full demo (C2-C6) waits for Lane B B0/B1/B2/B3/B4 to
@@ -78,7 +78,7 @@ land. W3 start, full close W4-W5.
 
 ### Scope
 
-**Wave 3 rework (R4 Finding 1):** the W1 plan's Option-A
+**Wave 3 rework (review finding 1):** the W1 plan's Option-A
 two-signature design was rejected. The DSSE-conformant signing
 primitive (envelope, PAE, signing surface) is now Lane B sub-lane
 B4 (`lane-b-wiring/dsse-bilateral-signing.md`,
@@ -157,13 +157,13 @@ W4-W5 (after Lane B B0/B1/B2/B3/B4 close).
   per `crates/chio-cli/src/cli/types.rs:993` wrapping the
   `mcp-remote` stdio bridge (per
   `ops/knowledge-base/README.md:136-151`) which proxies to the HTTP
-  KB MCP at `:8111/mcp/` (R4 Finding 2). `chio mcp serve` itself
+  KB MCP at `:8111/mcp/` (review finding 2). `chio mcp serve` itself
   only wraps stdio MCP servers; the bridge is what bridges to HTTP.
 - One HushSpec-shaped policy YAML at
   `examples/chiodome-bilateral/policies/refund-policy.yaml`
   (matches `examples/policies/canonical-hushspec.yaml` family).
   The amount cap lives in the example-local chiodos-ladder
-  intersection (per R4 Finding 5b option a, `partition_fallback.blast_radius_cap`),
+  intersection (per review finding 5b option a, `partition_fallback.blast_radius_cap`),
   not in the policy YAML.
 - Each KB MCP tool call emits a `ChioReceipt` v2 through the kernel's
   hot path (Lane B's enforcement is what makes this real, not
@@ -373,10 +373,10 @@ W4.
 
 | Sub-lane | Effort | Risk |
 |---|---|---|
-| C1 architecture | M+L (4 tickets, includes new chiodos-ladder primitive) | Medium (R4 Finding 5a: ladder primitive is new code) |
+| C1 architecture | M+L (4 tickets, includes new chiodos-ladder primitive) | Medium (review finding 5a: ladder primitive is new code) |
 | C2 cosign | L+L (6 tickets; consumes Lane B B4 for signing surface) | Medium (depends on B4 close; verifier work + architecture cut) |
-| C3 KB MCP | M+L (4 tickets; uses mcp-remote stdio bridge) | Low-Medium (R4 Finding 2 resolved via bridge; HushSpec YAML simpler than fictional schema) |
-| C4 receipt explain | L+S (2 tickets; bumped per R4 Finding 9) | Low (extends existing explain function; bilateral chain walk is the new work) |
+| C3 KB MCP | M+L (4 tickets; uses mcp-remote stdio bridge) | Low-Medium (review finding 2 resolved via bridge; HushSpec YAML simpler than fictional schema) |
+| C4 receipt explain | L+S (2 tickets; bumped per review finding 9) | Low (extends existing explain function; bilateral chain walk is the new work) |
 | C5 zk feature | M+L+L (3 tickets) | Medium-High (R6 may force deferral to v0.2 if BBS+ deps don't resolve) |
 | C6 release | S+S+S+S+S (5 tickets; includes continuous CI hook) | Low (ceremonial, but all of the above must land) |
 
@@ -384,7 +384,7 @@ W4.
 
 Lane C scaffolding (C1.1, C1.2, C1.4) starts in W3 alongside
 in-progress Lane B work (R1 §6.2). Continuous CI workflow
-`chiodome-demo-continuous.yml` (release work-C6.3, R4 Finding 10) runs the
+`chiodome-demo-continuous.yml` (release work-C6.3, review finding 10) runs the
 smoke nightly on `main` and on every push to Lane B paths so
 partial-enforcement bugs surface continuously, not at the worst
 possible time. Lane C will not tag at C6 if Lane B's four negative

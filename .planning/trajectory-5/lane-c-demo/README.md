@@ -127,13 +127,13 @@ gateway at `:8111/mcp/`.
 | Receipt v2 fails closed when negotiated | B | Receipt v2 hot path | release work-B2.5 | synthesis lines 104-107 |
 | Anchor-batch async only when witness required | B | Anchor-batch enforcement | release work-B3.5 | synthesis lines 108-111 |
 | `ToolServerConnection` -> `async_trait` | B | Architectural prerequisite | release work-B0.5 | synthesis lines 96-100 |
-| DSSE-conformant bilateral signing | B | Sub-lane B4 (added W3 per R4 Finding 1) | bilateral DSSE signing item | `lane-b-wiring/dsse-bilateral-signing.md` |
+| DSSE-conformant bilateral signing | B | Sub-lane B4 (added W3 per review finding 1) | bilateral DSSE signing item | `lane-b-wiring/dsse-bilateral-signing.md` |
 | Mutation kill banner credible | A | Realize the floor | n/a | synthesis lines 76-89 |
 | Real threat-coverage evidence | A | `audits/evidence/threats/*.json` | n/a | synthesis lines 78-82 |
 
 Lane C scaffolding (C1.1, C1.2, C1.4) starts in W3 alongside
 in-progress Lane B work so the smoke runs continuously against
-partial enforcement (R1 §6.2 §10, R4 Finding 10). The full demo
+partial enforcement (R1 §6.2 §10, review finding 10). The full demo
 ships **after** the four Lane B negative conformance fixtures
 (B1.6, B2.5, B3.5, B4.5) exist in
 `crates/chio-conformance/tests/`. The continuous CI workflow
@@ -145,7 +145,7 @@ honest between W3 start and W4-W5 close.
 The five-week target assumes a single engineer plus reviewer, with
 Lane B's four primitives (B0/B1/B2/B3/B4) wired by W4. Lane C
 scaffolding starts in W3 alongside in-progress Lane B work to
-make the forcing-function continuous (R1 §6.2 §10, R4 Finding 10).
+make the forcing-function continuous (R1 §6.2 §10, review finding 10).
 If Lane B slips beyond W4, Lane C slips with it.
 
 | Week | Sub-lane | Deliverable | Forcing function |
@@ -203,7 +203,7 @@ recreate it.
 ## Files
 
 - `PLAN.md` - sub-lanes C1..C6 with scope, acceptance, evidence, deps
-- `tickets.md` - concrete tickets `release work-C1.x..C6.x`
+- planning docs - concrete tickets `release work-C1.x..C6.x`
 - `architecture.md` - end-to-end flow with crate map
 - `bilateral-cosign-flow.md` - DSSE adapter design over `CoSigningBody`
 - `kb-mcp-integration.md` - `chio mcp serve --policy` wrapping the

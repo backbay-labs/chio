@@ -17,7 +17,7 @@ This document is the fix-log for Wave 3 Lane B remediation, addressing R3 (Lane 
 **Files patched**:
 - `lane-b-wiring/receipt-v2-failclosed.md`: added explicit "Spec-language framing (R3 BLOCKER #1 fix)" paragraph; clarified Case E covers both "stale" and "never-pinned"; updated "Why this design satisfies the Evidence Gate" to explicitly call out tightening vs promotion.
 - `lane-b-wiring/PLAN.md`: rewrote B2 "Spec citation" to call out the descriptive-prose-with-no-modal-verb starting state and frame the change as introducing a NEW normative MUST. Updated acceptance criterion 4 to say "tightening, not promotion".
-- `lane-b-wiring/tickets.md`: rewrote release work-B2.4 ticket title and description to say "introduces NEW normative MUST" with explicit tightening framing.
+- `lane-b-wiring/planning docs`: rewrote release work-B2.4 ticket title and description to say "introduces NEW normative MUST" with explicit tightening framing.
 - `templates/EVIDENCE-GATE.md`: §1.2 (Artifact B) extended to explicitly recognize TWO valid paths (promotion AND tightening); the script reads from merged-branch HEAD so a same-PR spec edit satisfies the gate.
 
 ### R3 BLOCKER #2: B3 lint script soundness contract
@@ -29,7 +29,7 @@ This document is the fix-log for Wave 3 Lane B remediation, addressing R3 (Lane 
 **Files patched**:
 - `lane-b-wiring/anchor-batch-async-only.md`: rewrote "The script's contract" section to explicitly enumerate the false-negative scenarios (cross-function policy construction, JSON-deserialized policies, builder-pattern construction, cross-crate calls) and reframe the lint as fast-feedback only. Updated "Why this design satisfies the Evidence Gate" footer.
 - `lane-b-wiring/PLAN.md`: B3 acceptance criterion 2 reframed honestly.
-- `lane-b-wiring/tickets.md`: release work-B3.3 effort reduced from M to S (since the lint is no longer claiming soundness, scope is smaller); ticket text records the reframed contract.
+- `lane-b-wiring/planning docs`: release work-B3.3 effort reduced from M to S (since the lint is no longer claiming soundness, scope is smaller); ticket text records the reframed contract.
 
 ### R3 BLOCKER #3: B0 impl count audit (47 sites in 31 files, not 31 impls)
 
@@ -39,7 +39,7 @@ This document is the fix-log for Wave 3 Lane B remediation, addressing R3 (Lane 
 
 **Files patched**:
 - `lane-b-wiring/async-trait-migration.md`: "Blast-radius numbers" section updated to reconcile 31 (files) vs 47 (sites); added enumeration of files with multiple impls.
-- `lane-b-wiring/tickets.md`: release work-B0.1 ticket updated to require BOTH file-count and site-count verification.
+- `lane-b-wiring/planning docs`: release work-B0.1 ticket updated to require BOTH file-count and site-count verification.
 - `architecture/ASYNC-KERNEL-MIGRATION.md`: §1.3 inventory table shows both site-count (47) and file-count (31), plus the corrected `&mut self` count (24 method definitions, 36 occurrences). §5 diff size table notes the impl-site count.
 
 ### R3 MAJORs addressed
@@ -54,7 +54,7 @@ This document is the fix-log for Wave 3 Lane B remediation, addressing R3 (Lane 
 
 - **#2 wording fix on receipt-v2 reverse-test**: already in correct form per the existing reverse-test description.
 - **B0 OBSERVATION on sanity test**: documented as a static lint, not a fixture.
-- **B1 Q5 trybuild dev-dependency**: B1.6 will need to add `trybuild` to `[dev-dependencies]` (noted in tickets.md).
+- **B1 Q5 trybuild dev-dependency**: B1.6 will need to add `trybuild` to `[dev-dependencies]` (noted in planning docs).
 
 ---
 
@@ -82,7 +82,7 @@ This document is the fix-log for Wave 3 Lane B remediation, addressing R3 (Lane 
 - `templates/CONFORMANCE-FIXTURE-PATTERN.md`: §3.3 worked-example diff; §7 sample skeleton header; §8a B4 fixture pattern added.
 - `lane-b-wiring/README.md`: Lane B duration extended to 7 weeks; B4 added to sub-lane summary; week-by-week timeline updated; synthesis quote footnoted.
 - `lane-b-wiring/PLAN.md`: window updated; B4 sub-lane section added; B2 spec citation reframed.
-- `lane-b-wiring/tickets.md`: ticket-ID convention header; B4.1-B4.6 added; B1.E/B2.E/B3.E/B4.E added; B.CLOSE retired; ticket count summary updated.
+- `lane-b-wiring/planning docs`: ticket-ID convention header; B4.1-B4.6 added; B1.E/B2.E/B3.E/B4.E added; B.CLOSE retired; ticket count summary updated.
 - `lane-b-wiring/receipt-v2-failclosed.md`: spec-language framing paragraph; helper functions guidance; case enumeration.
 - `lane-b-wiring/anchor-batch-async-only.md`: lint contract reframed.
 - `lane-b-wiring/async-trait-migration.md`: blast-radius numbers; `&mut self` count.
@@ -113,7 +113,7 @@ See "B4 sub-lane" section below.
 **Summary of fix**: Picked the canonical `.E` suffix per sub-lane (matching `templates/TICKET-TEMPLATE.md` §38). Retired `release work-B-EG` (master shorthand) and `release work-B.CLOSE` (Lane B shorthand). Each Lane B sub-lane now carries one `.E` ticket: `release work-B1.E`, `release work-B2.E`, `release work-B3.E`, `bilateral DSSE signing item`.
 
 **Files patched**:
-- `lane-b-wiring/tickets.md`: header convention paragraph added; per-primitive `.E` close tickets replace the single `B.CLOSE` aggregator.
+- `lane-b-wiring/planning docs`: header convention paragraph added; per-primitive `.E` close tickets replace the single `B.CLOSE` aggregator.
 - `EXECUTION-BOARD.md`: Lane B table entry uses `release work-B1.E` ... `bilateral DSSE signing item`; cross-lane dependency table; status conventions footer.
 
 ---
@@ -135,7 +135,7 @@ See "B4 sub-lane" section below.
 **Files updated for B4**:
 - `lane-b-wiring/README.md`: sub-lane summary table; week-by-week timeline; ship-bar item count (3 -> 4).
 - `lane-b-wiring/PLAN.md`: new "Sub-lane B4: DSSE-conformant bilateral signing" section.
-- `lane-b-wiring/tickets.md`: new bilateral DSSE signing item sub-lane (6 tickets); new bilateral DSSE signing item close ticket; ticket count summary updated 23 -> 32.
+- `lane-b-wiring/planning docs`: new bilateral DSSE signing item sub-lane (6 tickets); new bilateral DSSE signing item close ticket; ticket count summary updated 23 -> 32.
 - `lane-b-wiring/conformance-fixture-spec.md`: §8a (B4 negative-conformance fixture pattern); fixture inventory table extended.
 - `templates/CONFORMANCE-FIXTURE-PATTERN.md`: §1.1 lane-table extended; §8a (B4 negative-conformance pattern subsection).
 - `architecture/SPEC-TO-RUNTIME-MAP.md`: §8 (Cross-Org Bilateral Cosign) extended with two new rows for §6 PAE encoding and §7 signature verification, both citing bilateral DSSE signing item
@@ -168,7 +168,7 @@ All 7 remaining `1148-1165` matches are explanatory footnotes that explicitly de
 ```
 $ grep -rn "ToolServer\b" .planning/trajectory-5/ 2>/dev/null | grep -v ToolServerConnection | grep -v ToolServerOutput | grep -v ToolServerEvent | grep -v ToolServerStreamResult | grep -v /reviews/ | grep -v /debate/ | grep -v /lane-c-demo/
 lane-a-floor/threat-evidence-backfill.md:102:     ... release work-B0 ToolServer async migration ...  [Lane A doc, NOT my scope]
-lane-a-floor/tickets.md:136:                       ... release work-B0 ToolServer migration ...  [Lane A doc, NOT my scope]
+lane-a-floor/planning docs:136:                       ... release work-B0 ToolServer migration ...  [Lane A doc, NOT my scope]
 lane-b-wiring/conformance-fixture-spec.md:50: kernel.register_tool_server(Box::new(EchoToolServer::new()));  [method name + struct name, NOT trait]
 lane-b-wiring/async-trait-migration.md:36:  the SharedUpstreamToolServer at line 2682 + 2860.  [struct name, NOT trait]
 lane-b-wiring/async-trait-migration.md:65:  (the `EchoToolServer` at lines 58-77)  [struct name, NOT trait]
@@ -183,7 +183,7 @@ All remaining bare `ToolServer` matches in master/template/architecture/lane-b a
 
 ## Anything left for Wave 4 final-pass
 
-1. **Lane A `tool_server_escape` references**: `lane-a-floor/threat-evidence-backfill.md:102` and `lane-a-floor/tickets.md:136` reference "release work-B0 ToolServer async migration". These are out of my scope (Lane A fix agent's domain). They are informational context about whether the threat row defers; the trait-name correction is cosmetic but consistent.
+1. **Lane A `tool_server_escape` references**: `lane-a-floor/threat-evidence-backfill.md:102` and `lane-a-floor/planning docs:136` reference "release work-B0 ToolServer async migration". These are out of my scope (Lane A fix agent's domain). They are informational context about whether the threat row defers; the trait-name correction is cosmetic but consistent.
 
 2. **Synthesis source text**: `debate/00-SYNTHESIS.md` lines 31, 38, 95, 105 still cite `:1148-1165` and `ToolServer`. Per the task instruction, "the synthesis itself can carry a SUPERSEDED footnote rather than be rewritten." I did not add a footnote to the synthesis itself; instead, the Lane B docs and master docs all contain explicit correction-footnotes. If Wave 4 wants a SUPERSEDED stub at the synthesis, it can be added to a new file `debate/00a-errata.md` (not attempted in Wave 3 to avoid synthesis-mutation risk).
 

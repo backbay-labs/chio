@@ -120,7 +120,7 @@ merge #608 (46cbaece80) ... CONFLICT
 The #608 conflict is owned by the threat-evidence lane, not by planning
 topology. #616 was not reached in that simulation because #608 blocks first.
 
-## R4 Finding Status
+## review finding Status
 
 | Finding | Status after this update |
 |---|---|

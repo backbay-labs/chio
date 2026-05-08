@@ -275,7 +275,7 @@ locally with the proposed bounds:
 
 ## Anti-pattern guard
 
-Per Lane A's close bar (PLAN.md and tickets.md):
+Per Lane A's close bar (PLAN.md and planning docs):
 
 - A harness file that imports `kani::` but contains zero
   `#[kani::proof]` functions fails the close bar.

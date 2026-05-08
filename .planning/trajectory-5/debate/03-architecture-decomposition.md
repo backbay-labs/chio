@@ -98,7 +98,7 @@ If release work takes any focus other than decomposition, it inherits the same s
 
 **Wave 4 -- Integration test floor (2 phases).** All 20 zero-tests crates get at least one integration test exercising one real failure path. Priority: `chio-cross-protocol`, `chio-mcp-remote`, `chio-egress-contract`, `chio-a2a-edge`, `chio-acp-edge`. CI gate: zero is no longer acceptable for any crate.
 
-**Wave 5 -- `too_many_arguments` burn-down (1 phase).** The kernel/store seam (top 8 files) gets parameter-object structs. Suppression count target: <10 from 46.
+**baseline -- `too_many_arguments` burn-down (1 phase).** The kernel/store seam (top 8 files) gets parameter-object structs. Suppression count target: <10 from 46.
 
 ---
 

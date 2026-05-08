@@ -43,11 +43,11 @@ Lane A is wholly responsible for ship-bar item 1, partially for item 2:
 | A5 | Lean4 `negotiation_safety` against executable model | (new, from synthesis Quality #3) | M |
 
 (`TRJ4-019` (proptest hosted-vs-portable equivalence) is **deferred to
-trj6** per Wave 3 review; rationale recorded in `tickets.md`'s
+trj6** per Wave 3 review; rationale recorded in planning docs's
 "On the dropped TRJ4-019" section and in `SCOPE-LOCK.md`.)
 
 Detailed per-sub-lane scope, acceptance, and evidence is in `PLAN.md`. Concrete
-tickets live in `tickets.md`. Sub-lane-specific deep dives live in
+tickets live in planning docs. Sub-lane-specific deep dives live in
 `mutation-budget.md`, `threat-evidence-backfill.md`, `kani-harness-design.md`,
 `tla-rewrites.md`, and `lean4-fix.md`.
 

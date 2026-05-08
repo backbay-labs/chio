@@ -10,7 +10,7 @@ The release work synthesis is explicit (`.planning/trajectory-5/debate/00-SYNTHE
 
 > "Architectural prerequisite: convert `ToolServer` trait to `async_trait`, collapse the dispatch sync-helper hop in `chio-kernel/src/kernel/mod.rs:6402`. This is the smallest decomposition cut that unblocks hot-path wiring; everything else (chio-cli trust-control extraction, gravity-well surgery) stays out of release work."
 
-(Synthesis-quote correction: the trait's actual name in the codebase is `ToolServerConnection`, defined at `crates/chio-kernel/src/runtime.rs:254-306`. The dispatch hop spans `mod.rs:6402-6442`. The synthesis text is left verbatim above; the corrected references propagate through PLAN.md, tickets.md, and `async-trait-migration.md`.)
+(Synthesis-quote correction: the trait's actual name in the codebase is `ToolServerConnection`, defined at `crates/chio-kernel/src/runtime.rs:254-306`. The dispatch hop spans `mod.rs:6402-6442`. The synthesis text is left verbatim above; the corrected references propagate through PLAN.md, planning docs, and `async-trait-migration.md`.)
 >
 > "Each primitive closes with: enforced call site + spec MUST citation + signed negative conformance test that fails when wiring is removed. No Evidence Gate row closes without all three."
 
@@ -30,7 +30,7 @@ Lane B is wholly responsible for ship-bar item 2 (synthesis lines 152-155, expan
 | B3 | Anchor-batch async-only when `require_public_witness=true` | 107-110 | M | B0 |
 | B4 | **DSSE-conformant bilateral signing** (NEW per R4 BLOCKER 1) | promoted from Lane C "Option A two-signature" framing | L | B0 (hard), B1 (soft) |
 
-Detailed per-sub-lane scope, acceptance, and evidence in [`PLAN.md`](./PLAN.md). Concrete tickets in [`tickets.md`](./tickets.md). Sub-lane deep dives in [`async-trait-migration.md`](./async-trait-migration.md), [`single-entry-verifier.md`](./single-entry-verifier.md), [`receipt-v2-failclosed.md`](./receipt-v2-failclosed.md), [`anchor-batch-async-only.md`](./anchor-batch-async-only.md), [`dsse-bilateral-signing.md`](./dsse-bilateral-signing.md). The pattern every Lane B ticket follows is in [`conformance-fixture-spec.md`](./conformance-fixture-spec.md).
+Detailed per-sub-lane scope, acceptance, and evidence in [`PLAN.md`](./PLAN.md). Concrete tickets in [planning docs](./planning docs). Sub-lane deep dives in [`async-trait-migration.md`](./async-trait-migration.md), [`single-entry-verifier.md`](./single-entry-verifier.md), [`receipt-v2-failclosed.md`](./receipt-v2-failclosed.md), [`anchor-batch-async-only.md`](./anchor-batch-async-only.md), [`dsse-bilateral-signing.md`](./dsse-bilateral-signing.md). The pattern every Lane B ticket follows is in [`conformance-fixture-spec.md`](./conformance-fixture-spec.md).
 
 ## Why B0 is the architectural prerequisite
 

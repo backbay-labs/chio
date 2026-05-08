@@ -5,7 +5,7 @@ Base MCP gateway (HTTP at `http://localhost:8111/mcp/`, per
 `ops/knowledge-base/README.md` line 11) using `chio mcp serve
 --policy` (per `crates/chio-cli/src/cli/types.rs:993`).
 
-**Wave 3 rework (R4 Finding 2):** the original Wave 1 plan tried
+**Wave 3 rework (review finding 2):** the original Wave 1 plan tried
 to invoke `chio mcp serve --policy ... -- chio-kb-mcp` as if the KB
 MCP exposed a stdio MCP server binary. It does not. The KB MCP is
 HTTP-only at `:8111/mcp/`. `chio mcp serve` is a stdio wrapper
@@ -115,7 +115,7 @@ proposed a non-HushSpec schema with keys like `version`,
 `policy_id`, `default_decision`, `allow_rules`, and conditions
 `amount_minor_max` / `co_sign_required` / `receipt_v2_required`.
 That schema is fictional - none of those keys exist in
-`crates/chio-policy`. R4 Finding 5b rejected it.
+`crates/chio-policy`. review finding 5b rejected it.
 
 The HushSpec-shaped policy at
 `examples/chiodome-bilateral/policies/refund-policy.yaml`:
@@ -150,13 +150,13 @@ rules:
 
 The cap (25000 minor units, matching `CHIODOS_LADDER §5.2`) is
 enforced by the example's chiodos-ladder pinned-intersection logic
-in `examples/chiodome-bilateral/src/ladder.rs` (per R4 Finding 5a).
+in `examples/chiodome-bilateral/src/ladder.rs` (per review finding 5a).
 The smoke's over-cap deny scenario fails the ladder intersection
 check before reaching the kernel; the bilateral envelope's
 `policy_evaluation_summary.server_b_verdict.verdict` carries
 `deny` as a result.
 
-This is option (a) from R4 Finding 5b: the deny path is
+This is option (a) from review finding 5b: the deny path is
 ladder-driven, not policy-YAML-driven. The HushSpec policy YAML's
 job is to gate which MCP tools the kernel will dispatch at all; the
 amount cap and other ladder-shaped invariants live in

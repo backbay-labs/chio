@@ -107,7 +107,7 @@ today only because of the placeholder bootstrap.
 ## Measurement command pattern (post-release work)
 
 The canonical `cargo mutants` invocation Lane A uses (from
-`lane-a-floor/mutation-budget.md` and `tickets.md` mutation evidence item):
+`lane-a-floor/mutation-budget.md` and planning docs mutation evidence item):
 
 ```
 cargo mutants -p <crate> --no-shuffle --jobs <N> \
@@ -153,7 +153,7 @@ subsection per W3 Lane A fix.
 
 - Lane A README: `.planning/trajectory-5/lane-a-floor/README.md`
 - Lane A PLAN: `.planning/trajectory-5/lane-a-floor/PLAN.md`
-- Lane A tickets: `.planning/trajectory-5/lane-a-floor/tickets.md`
+- Lane A tickets: `.planning/trajectory-5/lane-a-floor/planning docs`
 - Mutation budget deep-dive: `.planning/trajectory-5/lane-a-floor/mutation-budget.md`
 - Threat-evidence backfill deep-dive: `.planning/trajectory-5/lane-a-floor/threat-evidence-backfill.md`
 - Risk Register R3 (deferred threat rows): `.planning/trajectory-5/architecture/RISK-REGISTER.md`

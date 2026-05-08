@@ -14,7 +14,7 @@ and use real Lane B ticket IDs.
 - `.planning/trajectory-5/lane-c-demo/architecture.md`
 - `.planning/trajectory-5/lane-c-demo/release-bar.md`
 - `.planning/trajectory-5/lane-c-demo/kb-mcp-integration.md`
-- `.planning/trajectory-5/lane-c-demo/tickets.md` (full rewrite)
+- `.planning/trajectory-5/lane-c-demo/planning docs` (full rewrite)
 - `.planning/trajectory-5/lane-c-demo/selective-disclosure.md`
 - `.planning/trajectory-5/lane-c-demo/PLAN.md`
 - `.planning/trajectory-5/lane-c-demo/README.md`
@@ -53,7 +53,7 @@ Patches:
 - `release-bar.md`: dropped the weasel "AND a DSSE envelope"
   language; release notes now claim spec §6 conformance directly
   via Lane B B4.
-- `tickets.md`: release work-C2.1..C2.6 now consume B4 (`Depends on:
+- planning docs: release work-C2.1..C2.6 now consume B4 (`Depends on:
   bilateral DSSE signing item`) and the C2 sub-lane simplifies from "ship Option-A
   adapter" to "consume B4, ship §7 verifier".
 
@@ -69,9 +69,9 @@ Patches:
   pre-requisites section (Node.js 18+ on PATH; air-gapped CI runners
   pre-warm npm cache). Replaced the fictional policy YAML schema
   with a HushSpec-shaped one matching
-  `examples/policies/canonical-hushspec.yaml` (R4 Finding 5b option
+  `examples/policies/canonical-hushspec.yaml` (review finding 5b option
   a: amount cap is ladder-driven, not policy-YAML-driven).
-- `tickets.md`: release work-C3.2 wraps the new command:
+- planning docs: release work-C3.2 wraps the new command:
   `chio mcp serve --policy ... -- npx -y mcp-remote
   http://localhost:8111/mcp/`. Pre-requisite bullet "Node.js / npx
   available in the smoke container" added.
@@ -83,7 +83,7 @@ Patches:
   resolved by replacing every alias use in `Depends on` rows with
   literal Lane B ticket IDs (`release work-B0.5`, `release work-B1.6`, `release work-B2.5`,
   `release work-B3.5`, `bilateral DSSE signing item`). The alias->ID map is preserved in
-  `tickets.md` as a documentation table for traceability but no
+  planning docs as a documentation table for traceability but no
   ticket dep cites the alias.
 
 - **Finding 4 (release-bar.md AND overclaims §6 conformance):**
@@ -129,7 +129,7 @@ Patches:
 
 - **Finding 10 (forcing-function CI hook missing):** resolved by
   adding release work-C6.3 "Continuous chiodome demo workflow" with the
-  spec from R4 Finding 10 verbatim (nightly + Lane B path push,
+  spec from review finding 10 verbatim (nightly + Lane B path push,
   failures open issues, 7 consecutive nights green pre-tag).
 
 ### R4 MINORs
@@ -143,7 +143,7 @@ Patches:
 
 - **Finding 11 (demo fixture reproducibility):** resolved. New
   release work-C6.4 "Diff-stable fixture tarball" includes the
-  `tools/diff-stable.py` (or Rust binary) per R4 Finding 11; smoke
+  `tools/diff-stable.py` (or Rust binary) per review finding 11; smoke
   step 5 calls it; the rule is "diff-stable across runs", not
   "byte-identical".
 
@@ -168,7 +168,7 @@ Patches:
 
 ### R1 BLOCKER (Lane C zero Evidence Gate references) - RESOLVED
 
-Patches to `tickets.md`:
+Patches to planning docs:
 - New introductory paragraph: "Every ticket closes under the release work
   Evidence Gate trio".
 - Every release work-C* ticket Acceptance is now a five-row block matching
@@ -179,12 +179,12 @@ Patches to `tickets.md`:
 
 ### R1 BLOCKER (Lane C cross-lane aliases) - RESOLVED
 
-See R4 Finding 3 above. Aliases preserved only in the cross-reference
+See review finding 3 above. Aliases preserved only in the cross-reference
 documentation table, never in `Depends on` rows.
 
 ### R1 MAJOR (continuous Lane C run) - RESOLVED
 
-See R4 Finding 10 above. release work-C6.3 added; W3 scaffolding start
+See review finding 10 above. release work-C6.3 added; W3 scaffolding start
 (R1 §6.2) reflected in the README.md timeline and PLAN.md week
 range fields.
 
@@ -199,7 +199,7 @@ Lane-C-internal occurrences fixed:
 - `README.md`: same line-range fix; trait name corrections;
   "ToolServer" -> "ToolServerConnection".
 - `bilateral-cosign-flow.md`: bare `ToolServer` -> `ToolServerConnection`.
-- `tickets.md`: rewritten from scratch using post-correction line
+- planning docs: rewritten from scratch using post-correction line
   ranges and trait names.
 - `PLAN.md`: `ToolServer` -> `ToolServerConnection`.
 
@@ -208,13 +208,13 @@ worktree-internal references are now consistent.
 
 ### R1 MINOR (ticket count over budget) - RESOLVED
 
-See R4 Finding 14 above. 30 -> 24 tickets.
+See review finding 14 above. 30 -> 24 tickets.
 
 ## DSSE rework summary (most material change)
 
 Lane C's W1 plan claimed §6 conformance via a Lane-C-side adapter
 that bolted a DSSE PAE signature alongside the existing
-`CoSigningBody` signature. R4 Finding 1 rejected this as
+`CoSigningBody` signature. review finding 1 rejected this as
 structural-framing-without-wiring (`templates/EVIDENCE-GATE.md`
 §2.4) - the spec verifier would be honored by the DSSE envelope
 alone, but the `DualSignedReceipt`'s built-in `verify` would still
@@ -268,7 +268,7 @@ wrapping.
 - C2: 6 (release work-C2.1 .. C2.6) - consumes B4; 16-case negative
   fixture set merged into C2.4; new C2.5 anchor inclusion
 - C3: 4 (release work-C3.1 .. C3.4) - merged W1's C3.4+C3.5
-- C4: 2 (release work-C4.1, C4.2) - bumped C4.1 to L per R4 Finding 9;
+- C4: 2 (release work-C4.1, C4.2) - bumped C4.1 to L per review finding 9;
   merged C4.3 snapshot into C4.1 acceptance; merged C4.4 doc with
   T1.6 close
 - C5: 3 (release work-C5.1 .. C5.3) - deferable per R6
@@ -293,7 +293,7 @@ discipline:
   eventual W3C Recommendation) and 9 (auditor view may be DEFERRED
   to v0.2 per R6).
 - **W3C CR caveat promoted to headline** of the release-bar
-  selective-disclosure block, per R4 Finding 6 recommendation.
+  selective-disclosure block, per review finding 6 recommendation.
 - **No overclaim of §6 conformance via the AND structure:**
   resolved. The release notes now cite Lane B B4 directly for the
   §6 signing surface, with no parallel "DualSignedReceipt AND DSSE"

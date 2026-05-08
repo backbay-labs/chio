@@ -53,7 +53,7 @@ and OBSERVATIONs".
 |---|---|---|---|---|
 | R1-BLOCKER-4.3 | BLOCKER | Master / template / architecture / Lane C docs cite pre-correction line range `mod.rs:1148-1165` and trait name `ToolServer` | `W3-lane-b-fixes.md` § "R1 BLOCKER on line-range and trait-name drift" (full file inventory in W3 fix log) | CLOSED |
 | R1-MAJOR-2.1 | MAJOR | Three different Evidence-Gate ticket suffix conventions (`release work-B-EG`, `release work-B.CLOSE`, `release work-B<n>.E`) | `W3-lane-b-fixes.md` § "R1 MAJOR on Evidence-Gate ticket suffix convention" | CLOSED |
-| R1-MAJOR-7.3 | MAJOR | Lane B / Lane C tickets lack trj4 back-references | Lane B `tickets.md` carries `trj4_absorbed` columns at sub-lane summary; OWNERS.toml `trj4_absorbed = [...]` lane-B row | CLOSED |
+| R1-MAJOR-7.3 | MAJOR | Lane B / Lane C tickets lack trj4 back-references | Lane B planning docs carries `trj4_absorbed` columns at sub-lane summary; OWNERS.toml `trj4_absorbed = [...]` lane-B row | CLOSED |
 | R4-BLOCKER-1 | BLOCKER (R4 origin; affects Lane B) | DSSE Option-A two-signature insufficient -- promote DSSE-conformant signing to a Lane B fourth primitive (B4) | `W3-lane-b-fixes.md` § "B4 sub-lane (NEW per R4 BLOCKER 1)" -- adds B4.1..B4.6 plus B4.E close ticket | CLOSED |
 
 ### Wave-4 residual coordination items affecting Lane B (CLOSED in W4)

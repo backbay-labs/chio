@@ -2,8 +2,8 @@
 
 **Status**: living catalog of the six release work risks identified at synthesis time.
 Each row is owned by a lane; each row has an escalation criterion that
-flips it into a Wave 2 review item. Wave 1 Creator emits this document;
-Wave 2 reviewers update it; the release work closeout doc retires it.
+flips it into a review item. Wave 1 Creator emits this document;
+reviewers update it; the release work closeout doc retires it.
 
 **Origin**: `.planning/trajectory-5/debate/00-SYNTHESIS.md` "Where the agents
 disagreed" plus the residual concessions in
@@ -150,7 +150,7 @@ Concrete candidates (Wave 1 confirms via per-row triage):
   multiple primitives are still partial-enforcement, which makes the
   release work banner claim too soft to count as a closeout.)
 
-If >2 rows defer, Wave 2 review reconsiders the release work ship bar. The
+If >2 rows defer, review reconsiders the release work ship bar. The
 synthesis stipulated "all 20 contain real `caught >= 1`" (read with
 the on-disk count); meaningful deferral changes the bar.
 
@@ -334,7 +334,7 @@ trj6.
 | R6 | `zk` feature cargo-dep weight | medium | low-medium | C4 |
 | R7 | DSSE-conformant bilateral signing complexity | medium | medium-high | B4 |
 
-**Top-of-list for Wave 2 review**: R4. The demo is the forcing function;
+**Top-of-list for review**: R4. The demo is the forcing function;
 its job is to falsify the Lane B claim if it is false. R4 has a 40%
 probability of firing and a high impact, and it is the risk most likely
 to surface trj4-pattern partial enforcement that the conformance fixtures

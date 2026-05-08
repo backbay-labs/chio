@@ -136,7 +136,7 @@ NONE -> DONE.
 
 - Lane B README: `.planning/trajectory-5/lane-b-wiring/README.md`
 - Lane B PLAN: `.planning/trajectory-5/lane-b-wiring/PLAN.md`
-- Lane B tickets: `.planning/trajectory-5/lane-b-wiring/tickets.md`
+- Lane B tickets: `.planning/trajectory-5/lane-b-wiring/planning docs`
 - Sub-lane deep dives: `.planning/trajectory-5/lane-b-wiring/{async-trait-migration,single-entry-verifier,receipt-v2-failclosed,anchor-batch-async-only,dsse-bilateral-signing}.md`
 - Conformance fixture pattern: `.planning/trajectory-5/lane-b-wiring/conformance-fixture-spec.md`
 - Conformance fixture template: `.planning/trajectory-5/templates/CONFORMANCE-FIXTURE-PATTERN.md`

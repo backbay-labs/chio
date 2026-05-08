@@ -150,7 +150,7 @@ plays, and whether the demo introduces new code in it.
 - One new workspace member (`chio-zk-receipts`); deferable to v0.2
   per RISK-REGISTER R6 if BBS+ deps don't resolve.
 - One new example crate (`examples/chiodome-bilateral`) including
-  an example-local minimal `chiodos-ladder` primitive (R4 Finding 5a).
+  an example-local minimal `chiodos-ladder` primitive (review finding 5a).
 - One snapshot-test file in `chio-cli/tests/`.
 - A handful of doc updates and CI workflow files.
 

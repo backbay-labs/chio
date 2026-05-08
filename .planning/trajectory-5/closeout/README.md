@@ -19,7 +19,7 @@ The wave numbering above is the canonical execution-week numbering per `TIMELINE
 
 ## Close-bar tracker
 
-A close-bar tracker analogous to `../trajectory-4/closeout/CLOSE-BAR-TRACKER.md` will be populated as Lane A / B / C tickets close. Until kickoff, the live close-bar truth is the per-lane `tickets.md` files (Lane A / B / C) plus the four `reviews/W3-lane-*-fixes.md` fix logs and `reviews/W4-closeout-matrix.md`.
+A close-bar tracker analogous to `../trajectory-4/closeout/CLOSE-BAR-TRACKER.md` will be populated as Lane A / B / C tickets close. Until kickoff, the live close-bar truth is the per-lane planning docs files (Lane A / B / C) plus the four `reviews/W3-lane-*-fixes.md` fix logs and `reviews/W4-closeout-matrix.md`.
 
 ## Pointers
 

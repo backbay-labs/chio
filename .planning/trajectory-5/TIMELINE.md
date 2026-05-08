@@ -52,7 +52,7 @@ Note: The earlier draft listed `release work-A5` as `chio-equivalence-tests`
 (TRJ4-019). Per Wave 3 review, TRJ4-019 is **deferred to trj6** and
 the Lean4 `negotiation_safety` re-proof (originally `release work-A6`) is
 renumbered to `release work-A5`. Lane A has 5 work sub-lanes plus the banner
-update (A1, A2, A3, A4, A5, A7); see `lane-a-floor/tickets.md` for
+update (A1, A2, A3, A4, A5, A7); see `lane-a-floor/planning docs` for
 the per-sub-lane Evidence Gate `.E` ticket.
 
 Lane A has no hard internal week-by-week ordering aside from `A4 depends on A3` (TLA+ rewrites depend on Kani harness landing first to share infrastructure) and `A5 depends on A4` (Lean refinement uses the rewritten TLA+ models as the executable model). Lane A is independent of Lane B and Lane C; it can start on week 1 and finish anywhere from week 7 to week 8.

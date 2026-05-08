@@ -744,7 +744,7 @@ A ticket acceptance.
 ### 7.1 `caught: 0, ran_at: "1970-01-01T00:00:00Z"` (PASS)
 
 release work-A2.<n> tickets each cite the trio "caught >= 1", "needs_real_run:
-false", "ran_at non-1970" (`tickets.md:42-50`). The acceptance text
+false", "ran_at non-1970" (`planning docs:42-50`). The acceptance text
 literally enumerates the anti-pattern fields and forbids them. **Pass.**
 
 ### 7.2 `rfl`-tautological proof (PARTIAL)
@@ -955,7 +955,7 @@ applied, Lane A is ready to start Wave 1 measurements.
 (Tally counts findings, not patches; some patches address multiple
 findings.)
 
-### 11.2 Open questions for Wave 2 reviewer round 2
+### 11.2 Open questions for reviewer round 2
 
 - Q1: Is TRJ4-033 closed? If not, A2 mobile rows are blocked on Lane A-
   external dependency.
@@ -994,7 +994,7 @@ Files to edit and approximate diff shape (file paths absolute):
   invoked in test" column to the per-row table (Section 2.3). Update
   the bootstrap-bypass retirement to script-deletion (Section 2.6).
 
-- `/.../lane-a-floor/tickets.md`: each release work-A2.<n> ticket gains a
+- `/.../lane-a-floor/planning docs`: each release work-A2.<n> ticket gains a
   required Artifact A line (Section 6.2). threat evidence item changes scope
   from doc-update to script-deletion (Section 2.6). Add mutation exclusion audit
   exclusion-audit and Kani harness evidence Kani-feasibility-spike tickets.

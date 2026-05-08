@@ -2,7 +2,7 @@
 
 This document is the per-sub-lane plan. Each sub-lane below lists scope,
 acceptance criteria, evidence required, owner-class, week range, and
-dependencies. Tickets are enumerated in `tickets.md`.
+dependencies. Tickets are enumerated in planning docs.
 
 ## Evidence Gate close bar (adopted from synthesis)
 

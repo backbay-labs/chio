@@ -8,13 +8,13 @@
 # visible from outside (per debate/00-SYNTHESIS.md).
 #
 # ---------------------------------------------------------------------------
-# AUTONOMOUS EXECUTION NOTE (Wave 5 kickoff, 2026-05-08)
+# AUTONOMOUS EXECUTION NOTE (baseline kickoff, 2026-05-08)
 # ---------------------------------------------------------------------------
 #
 # Trj5 executes autonomously: agent waves orchestrated by Claude pick up and
 # close tickets. The `human_assignment` field on each lane below is the
 # escalation path (a real GitHub handle), NOT the implementer. The actual
-# ticket execution happens via `agent_orchestrator` agent waves, gated by the
+# ticket execution happens via `automation_coordinator` agent waves, gated by the
 # `execution_mode = "autonomous"` field.
 #
 # Per-owner-class `assigned_to = "release owner"` rows record the same escalation
@@ -25,7 +25,7 @@
 # When an autonomous wave hits one of the eleven canonical halt triggers
 # (READINESS.md "Autonomous Orchestration Cadence"), control routes to
 # `human_assignment` for review and unblock. Otherwise wave-to-wave handoff
-# is by ticket-state transitions in `tickets.md` and Wave-N closeout docs in
+# is by ticket-state transitions in planning docs and Wave-N closeout docs in
 # `closeout/wave-NN-summary.md`.
 #
 # The `coordination_owner` field on `[overlaps]` rows mediates merge order
@@ -37,7 +37,7 @@ trajectory = "trajectory-5"
 genesis = "2026-05-07"
 single_owner = "release owner"
 execution_mode = "autonomous"
-agent_orchestrator = "claude-release work-orchestrator"
+automation_coordinator = "release automation coordinator"
 
 [planning_ownership]
 owner_pr = 620
@@ -78,7 +78,7 @@ ship_bar = "Bar 1"
 trj4_absorbed = ["TRJ4-010", "TRJ4-011", "TRJ4-012", "TRJ4-013", "TRJ4-014", "TRJ4-015", "TRJ4-016", "TRJ4-017", "TRJ4-018", "TRJ4-019", "TRJ4-040", "TRJ4-041", "TRJ4-042", "TRJ4-043", "TRJ4-044", "TRJ4-045", "TRJ4-046", "TRJ4-047", "TRJ4-048", "TRJ4-049"]
 human_assignment = "release owner"
 execution_mode = "autonomous"
-agent_orchestrator = "claude-release work-orchestrator"
+automation_coordinator = "release automation coordinator"
 
 [lanes.B]
 slug = "lane-b-wiring"
@@ -111,7 +111,7 @@ ship_bar = "Bar 2"
 trj4_absorbed = ["TRJ4-100", "TRJ4-101", "TRJ4-102", "TRJ4-103", "TRJ4-104", "TRJ4-T1.0.E", "TRJ4-120", "TRJ4-121", "TRJ4-122", "TRJ4-123", "TRJ4-124", "TRJ4-125", "TRJ4-126", "TRJ4-127", "TRJ4-128", "TRJ4-129", "TRJ4-130", "TRJ4-131", "TRJ4-T1.2.E", "TRJ4-140", "TRJ4-141", "TRJ4-142", "TRJ4-143", "TRJ4-144", "TRJ4-145", "TRJ4-146", "TRJ4-147", "TRJ4-T1.3.E"]
 human_assignment = "release owner"
 execution_mode = "autonomous"
-agent_orchestrator = "claude-release work-orchestrator"
+automation_coordinator = "release automation coordinator"
 
 [lanes.C]
 slug = "lane-c-demo"
@@ -137,7 +137,7 @@ ship_bar = "Bar 3"
 trj4_absorbed = []
 human_assignment = "release owner"
 execution_mode = "autonomous"
-agent_orchestrator = "claude-release work-orchestrator"
+automation_coordinator = "release automation coordinator"
 
 # ---- Path overlaps requiring orchestrator coordination ----
 #

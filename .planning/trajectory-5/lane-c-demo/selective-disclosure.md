@@ -10,11 +10,11 @@ The spec source of truth is
 6 (BBS+ workflow projection) for the workflow + step projections,
 plus spec section 8 for the disclosure envelope schema.
 
-**Wave 3 honesty pass (R4 Finding 6):** the BBS+ Cargo dependency
+**Wave 3 honesty pass (review finding 6):** the BBS+ Cargo dependency
 tree (`bbs-2023` cryptosuite, `bls12_381`, AnonCreds v2
 `RangeStatement`) is not assembled in the chio workspace today and
 no Wave 1 deliverable verified that the proposed dep set even
-compiles together against the current chio MSRV. R4 Finding 6 and
+compiles together against the current chio MSRV. review finding 6 and
 RISK-REGISTER R6 require an explicit fallback: if Wave 1 cannot
 land a `crates/chio-zk-receipts/Cargo.toml` skeleton that resolves
 against the current MSRV by W2 of Lane C, the auditor view is
@@ -123,7 +123,7 @@ the rest of the demo verifies normally.
 (Note: an earlier W1 design tried to apply the same
 "two-signatures-per-side, one authoritative + one supplementary"
 pattern to the bilateral cosign DSSE envelope. That design was
-rejected by R4 Finding 1 and replaced with Lane B sub-lane B4
+rejected by review finding 1 and replaced with Lane B sub-lane B4
 (`lane-b-wiring/dsse-bilateral-signing.md`) which makes DSSE PAE
 the single canonical signing surface. The "secondary commitment"
 language is correct for BBS+ but does NOT apply to the bilateral

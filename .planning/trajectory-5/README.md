@@ -48,11 +48,11 @@ The current simulation log and exact remaining threat conflicts are recorded in
 | `debate/00-SYNTHESIS.md` | The contract. Six debate papers reconciled. The three ship-bar items live here in normative form. |
 | `debate/01..06` | Independent debate position papers. |
 | `lane-a-floor/PLAN.md` | Lane A plan. Substrate hardening realization. Owned by Wave 1 Lane A agent. |
-| `lane-a-floor/tickets.md` | Lane A ticket list (mutation evidence item?). |
+| `lane-a-floor/planning docs` | Lane A ticket list (mutation evidence item?). |
 | `lane-b-wiring/PLAN.md` | Lane B plan. Spec hot-path wiring + architectural prerequisite. Owned by Wave 1 Lane B agent. |
-| `lane-b-wiring/tickets.md` | Lane B ticket list (release work-B0..B?). |
+| `lane-b-wiring/planning docs` | Lane B ticket list (release work-B0..B?). |
 | `lane-c-demo/PLAN.md` | Lane C plan. Bilateral demo + bounded chiodome v0.1.0. Owned by Wave 1 Lane C agent. |
-| `lane-c-demo/tickets.md` | Lane C ticket list (release work-C1..C?). |
+| `lane-c-demo/planning docs` | Lane C ticket list (release work-C1..C?). |
 | `templates/EVIDENCE-GATE.md` | Evidence Gate template (PROTOCOL.md + schemas + claim/proof/theorem registries + signed negative conformance). Reused from trj4. |
 | `reviews/` | Wave-2 reviewer output (lands when Wave 2 runs). |
 

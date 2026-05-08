@@ -17,7 +17,7 @@ should know about.
 
 - **Files**:
   `.planning/trajectory-5/lane-a-floor/threat-evidence-backfill.md`,
-  `.planning/trajectory-5/lane-a-floor/tickets.md`.
+  `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: replaced every `TBD` and hand-wavy production path with a
   verified `pub fn` import path, drawn from grep against the workspace
   on 2026-05-07. Added a triage-status column ({IMPL-EXISTS-AND-PUBLIC,
@@ -35,7 +35,7 @@ should know about.
 
 - **Files**:
   `.planning/trajectory-5/lane-a-floor/kani-harness-design.md`,
-  `.planning/trajectory-5/lane-a-floor/tickets.md`.
+  `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: rewrote tables (1), (2), (3) to cite real production
   entries verified by `grep -nE '^pub fn|^pub async fn'` on 2026-05-07.
   - chio-attest-verify: targets `expect_report_data` (free `pub fn`)
@@ -56,7 +56,7 @@ should know about.
 
 - **Files**:
   `.planning/trajectory-5/lane-a-floor/kani-harness-design.md`,
-  `.planning/trajectory-5/lane-a-floor/tickets.md`.
+  `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: removed the `strategy.matrix.crate` sketch (which does
   not match the actual workflow shape). Replaced with concrete diff
   shape against `.github/workflows/nightly.yml` lines 102-128 and
@@ -71,7 +71,7 @@ should know about.
 ### R2 BLOCKER 5.1 -- Lean4 Rust signature mis-stated
 
 - **Files**: `.planning/trajectory-5/lane-a-floor/lean4-fix.md`,
-  `.planning/trajectory-5/lane-a-floor/tickets.md`.
+  `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: rewrote lines 75-85 against the actual signature at
   `crates/chio-kernel-core/src/capability_verify.rs:226-232`. Three
   type fixes: `CapabilityCryptoFloor` (not `CryptoFloor`);
@@ -83,7 +83,7 @@ should know about.
 
 ### R2 BLOCKER 6.2 -- A2 ticket Artifact A specificity too loose
 
-- **Files**: `.planning/trajectory-5/lane-a-floor/tickets.md`,
+- **Files**: `.planning/trajectory-5/lane-a-floor/planning docs`,
   `.planning/trajectory-5/lane-a-floor/threat-evidence-backfill.md`.
 - **Change**: Lane A tickets file now opens with an "Artifact A" rule
   requiring each release work-A2.<n> ticket to name a literal `pub fn` import
@@ -98,7 +98,7 @@ should know about.
 
 ### R2 MAJOR 1.1 -- Mutation uplift target backed by no sample run
 
-- **File**: `.planning/trajectory-5/lane-a-floor/tickets.md`.
+- **File**: `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: mutation evidence item split into mutation evidence item (run baseline) and
   mutation evidence item (publish per-crate numbers). Tightened R2 escalation
   criterion: if `chio-attest-verify` baseline is below 50%, escalate to
@@ -117,7 +117,7 @@ should know about.
 
 ### R2 MAJOR 2.6 -- Bootstrap-bypass clause not retired
 
-- **File**: `.planning/trajectory-5/lane-a-floor/tickets.md`.
+- **File**: `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: threat evidence item scope changed from doc-update to script-
   deletion. Acceptance: delete the `needs_real_run` clause from
   `scripts/check-threat-coverage-mutants.sh` after Lane A closes; the
@@ -127,7 +127,7 @@ should know about.
 
 - **Files**:
   `.planning/trajectory-5/lane-a-floor/kani-harness-design.md`,
-  `.planning/trajectory-5/lane-a-floor/tickets.md`.
+  `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: added Kani harness evidence (Kani feasibility spike). Each invariant
   is run locally before Kani harness evidence starts; if any harness exceeds 30
   minutes locally, escalate. Per-harness bound parameters and
@@ -136,7 +136,7 @@ should know about.
 ### R2 MAJOR 4.2 -- Apalache bounded transitive-closure feasibility
 
 - **File**: `.planning/trajectory-5/lane-a-floor/tla-rewrites.md`,
-  `.planning/trajectory-5/lane-a-floor/tickets.md`.
+  `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: release work-A4.2 includes feasibility-spike sub-task (20-line
   TLA fragment run against Apalache 0.50.x standalone). Fallback
   documented: hand-written `Reachable_step1`/`step2`/`step3` chain.
@@ -144,7 +144,7 @@ should know about.
 ### R2 MAJOR 5.2 -- Lean refinement claim too weak
 
 - **File**: `.planning/trajectory-5/lane-a-floor/lean4-fix.md`,
-  `.planning/trajectory-5/lane-a-floor/tickets.md`.
+  `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: release work-A5.3 expanded from one theorem to three:
   `negotiation_safety_admit_implies_le`,
   `negotiation_safety_reject_implies_not_le_or_other_failure`, and
@@ -157,7 +157,7 @@ should know about.
 
 - **Files**:
   `.planning/trajectory-5/lane-a-floor/mutation-budget.md`,
-  `.planning/trajectory-5/lane-a-floor/tickets.md`.
+  `.planning/trajectory-5/lane-a-floor/planning docs`.
 - **Change**: added mutation exclusion audit (`.cargo/mutants.toml` exclusion-list
   audit). Each exclusion is marked `OK` or `FOR-REMOVAL`; output to
   `audits/evidence/mutation exclusion audit/exclude-audit.md`.
@@ -178,19 +178,19 @@ should know about.
 
 ### R2 MINOR 1.4 -- mutants.yml workflow status check
 
-- **File**: `tickets.md` mutation evidence item acceptance.
+- **File**: planning docs mutation evidence item acceptance.
 - **Change**: verify `status_at_capture` of last 7 nightly runs;
   un-flake before per-crate measurement starts.
 
 ### R2 MINOR 2.7 -- Mobile rows scheduling
 
-- **File**: `tickets.md` threat evidence item / A2.9 / A2.13 acceptance.
+- **File**: planning docs threat evidence item / A2.9 / A2.13 acceptance.
 - **Change**: each fails closed if TRJ4-033 is not in its `closed`
   bucket; Wave 1 confirms.
 
 ### R2 MINOR 3.4 -- Theorem-inventory cross-reference filename
 
-- **File**: `kani-harness-design.md`, `tickets.md` Kani harness evidence.
+- **File**: `kani-harness-design.md`, planning docs Kani harness evidence.
 - **Change**: Kani harness evidence references the actual file
   `formal/rust-verification/kani-public-harnesses.toml`; mirror in
   `formal/proof-manifest.toml` only if that file references the
@@ -198,14 +198,14 @@ should know about.
 
 ### R2 MINOR 4.3 -- DEPTH_MAX bump wall-clock evidence
 
-- **File**: `tla-rewrites.md`, `tickets.md` release work-A4.3.
+- **File**: `tla-rewrites.md`, planning docs release work-A4.3.
 - **Change**: record apalache wall-clock BEFORE and AFTER the bump in
   `audits/evidence/release work-A4.3/length-budget.md`. If post-bump >25
   minutes, fallback to DEPTH_MAX=5 or extend timeout.
 
 ### R2 MINOR 4.4 -- Branch-protection screenshot
 
-- **File**: `tla-rewrites.md`, `tickets.md` release work-A4.4.
+- **File**: `tla-rewrites.md`, planning docs release work-A4.4.
 - **Change**: capture
   `audits/evidence/release work-A4.4/branch-protection.png` (screenshot of
   GitHub branch-protection settings showing `apalache-temporal` in
@@ -213,41 +213,41 @@ should know about.
 
 ### R2 MINOR 4.5 -- Tautology-shortcut audit
 
-- **File**: `tla-rewrites.md`, `tickets.md` release work-A4.5.
+- **File**: `tla-rewrites.md`, planning docs release work-A4.5.
 - **Change**: release work-A4.5 reviews `theorem-inventory.json` AND the
   `PublishAllow` definition for evidence of unfolding shortcuts.
 
 ### R2 MINOR 5.3 -- Lean toolchain CI re-scope
 
-- **File**: `lean4-fix.md`, `tickets.md` release work-A5.1.
+- **File**: `lean4-fix.md`, planning docs release work-A5.1.
 - **Change**: re-scoped from M to L; pin Lean toolchain version in
   `formal/lean4/lean-toolchain` (or equivalent); document elaboration
   time + CI cache strategy.
 
 ### R2 MINOR 6.5 -- A4.1 counterexample-on-revert
 
-- **File**: `tickets.md` release work-A4.1 acceptance.
+- **File**: planning docs release work-A4.1 acceptance.
 - **Change**: remove ReceiptBeforeAllow invariant from cfg and confirm
   apalache produces counterexample trace; capture to
   `audits/evidence/release work-A4.1/counterexample-on-revert.tla`.
 
 ### R2 MINOR 7.2 -- rfl-tautology against new model
 
-- **File**: `lean4-fix.md`, `tickets.md` release work-A5.3 acceptance.
+- **File**: `lean4-fix.md`, planning docs release work-A5.3 acceptance.
 - **Change**: proof body MUST include at least one of `cases`,
   `induction`, `split_ifs`, or `intro`-with-non-rfl. One-line `by ...`
   proofs that elaborate without case analysis fail the close bar.
 
 ### R2 MINOR 8.3 -- Cross-lane overlap on chio-anchor
 
-- **File**: `tickets.md` Kani harness evidence acceptance, also
+- **File**: planning docs Kani harness evidence acceptance, also
   `kani-harness-design.md` "Lane B coordination note".
 - **Change**: explicit Lane B coordination -- the harness is updated
   within the same PR or one wave behind, never more than one wave.
 
 ### R2 MINOR 10.3 -- Kani lane advisory-to-required promotion
 
-- **File**: `tickets.md` Kani harness evidence.
+- **File**: planning docs Kani harness evidence.
 - **Change**: new ticket promoting the new multi-crate Kani lane to
   required after two consecutive green runs.
 
@@ -295,15 +295,15 @@ should know about.
   - `TIMELINE.md` (Gantt updated; old `A5 = chio-equivalence-tests`
     and `A6 = Lean` flipped to `A5 = Lean`).
   - `lane-a-floor/README.md`,
-    `lane-a-floor/tickets.md` (release work-A5 sub-lane is Lean; "On the
-    dropped TRJ4-019" section added to tickets.md).
+    `lane-a-floor/planning docs` (release work-A5 sub-lane is Lean; "On the
+    dropped TRJ4-019" section added to planning docs).
 
 ### R1 MAJOR section 2.1 -- Evidence-Gate ticket-ID suffix convention drift
 
 - **Decision**: adopt `release work-A<n>.E` as the canonical Evidence Gate
   ticket suffix per `templates/TICKET-TEMPLATE.md` section 1.1.
 - **File patched**:
-  - `lane-a-floor/tickets.md` (header section "Ticket-ID
+  - `lane-a-floor/planning docs` (header section "Ticket-ID
     convention" added explicitly stating the `.E` suffix; one `.E`
     ticket per sub-lane added: `mutation evidence item`, `threat evidence item`,
     `release work-A3.E`, `release work-A4.E`, `release work-A5.E`).

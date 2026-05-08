@@ -6,7 +6,7 @@ This file is the pre-execution checklist for release work. Trj5 enters execution
 
 **Wave-status banner** (updated at the top of each wave; do NOT remove):
 
-- [x] **Wave 1 complete (2026-05-07)**. Synthesis ratified; six debate position papers archived; templates landed; per-lane PLAN.md / tickets.md authored. Three coupled lanes locked: Lane A (floor), Lane B (wiring), Lane C (forcing demo).
+- [x] **Wave 1 complete (2026-05-07)**. Synthesis ratified; six debate position papers archived; templates landed; per-lane PLAN.md / planning docs authored. Three coupled lanes locked: Lane A (floor), Lane B (wiring), Lane C (forcing demo).
 - [x] **Wave 2 complete (2026-05-07)**. Cross-lane review (R1) plus three lane-depth reviews (R2 lane A, R3 lane B, R4 lane C) authored under `reviews/`. Total: 13 BLOCKER + 30 MAJOR findings tracked.
 - [x] **Wave 3 complete (2026-05-07)**. Per-lane Wave 3 fix logs landed under `reviews/W3-lane-{a,b,c}-fixes.md`. R4 BLOCKER 1 promoted Lane C "Option A" to a fourth Lane B primitive (B4 DSSE-conformant bilateral signing). Bar 2 expanded from three to four primitives.
 - [x] **Wave 4 complete (2026-05-08)**. Final integration pass: residual coordination items closed; closeout matrix (`reviews/W4-closeout-matrix.md`) maps all BLOCKER + MAJOR findings to Wave 3 fixes; SUPERSEDED-NOTE added to synthesis; OWNERS.toml `[overlaps]` rows carry coordination owners. Zero BLOCKERs end OPEN-FOR-OWNER.
@@ -23,18 +23,18 @@ This file is the pre-execution checklist for release work. Trj5 enters execution
 - [x] `TIMELINE.md` committed; critical path matches `EXECUTION-BOARD.md` cross-lane dependency table.
 - [x] `templates/EVIDENCE-GATE.md` committed.
 - [x] `lane-a-floor/PLAN.md` committed and reviewed.
-- [x] `lane-a-floor/tickets.md` committed with release work-A* enumeration (A1.E..A5.E close tickets per `.E` suffix convention).
+- [x] `lane-a-floor/planning docs` committed with release work-A* enumeration (A1.E..A5.E close tickets per `.E` suffix convention).
 - [x] `lane-b-wiring/PLAN.md` committed and reviewed.
-- [x] `lane-b-wiring/tickets.md` committed with release work-B* enumeration including the new B4 sub-lane (B4.1..B4.6 plus B4.E close ticket).
+- [x] `lane-b-wiring/planning docs` committed with release work-B* enumeration including the new B4 sub-lane (B4.1..B4.6 plus B4.E close ticket).
 - [x] `lane-c-demo/PLAN.md` committed and reviewed.
-- [x] `lane-c-demo/tickets.md` committed with release work-C* enumeration; cross-lane deps cite literal Lane B ticket IDs (no aliases).
+- [x] `lane-c-demo/planning docs` committed with release work-C* enumeration; cross-lane deps cite literal Lane B ticket IDs (no aliases).
 
 ### Wave-2 review
 
 - [x] Wave-2 reviewer authored R1 (cross-lane), R2 (lane A), R3 (lane B), R4 (lane C) under `reviews/`.
 - [x] Wave-2 reviewer confirmed the three Bars in `SHIP-BAR-TRACKER.md` are externally verifiable (Bar 2 now four primitives).
 - [x] Wave-2 reviewer cross-checked `EXECUTION-BOARD.md` cross-lane dependency table against the per-lane tickets.
-- [x] **Wave-2 reviewer sign-off ledger landed** under `reviews/lane-{a,b,c}-wave2.md` (per-lane sign-off file). Wave 5 kickoff agent landed all three sign-off ledgers on 2026-05-08; each maps every R2/R3/R4 BLOCKER and MAJOR to its W3 fix-log entry per `W4-closeout-matrix.md`, and records the autonomous-execution sign-off context.
+- [x] **Wave-2 reviewer sign-off ledger landed** under `reviews/lane-{a,b,c}-wave2.md` (per-lane sign-off file). baseline kickoff agent landed all three sign-off ledgers on 2026-05-08; each maps every R2/R3/R4 BLOCKER and MAJOR to its W3 fix-log entry per `W4-closeout-matrix.md`, and records the autonomous-execution sign-off context.
 
 ### Owner-class assignment
 
@@ -48,7 +48,7 @@ This file is the pre-execution checklist for release work. Trj5 enters execution
 
 - [x] `scripts/release work-preflight.sh` exists (landed 2026-05-08, executable). The script enforces 8 gates: planning artifacts present, per-lane PLAN/tickets/README present, templates and architecture present, Wave-2 reviews + Wave-3 fixes + Wave-4 closeout + Wave-2 sign-offs present, OWNERS.toml `human_assignment` populated for all three lanes, releases.toml `[trajectory_5]` block with status set, ship-bar baselines present, drift-cleanup checks (no LB-* aliases in `Depends on` rows; no live Option-A design references; pre-correction trait-name mentions confined to retraction notes; 20 threat-evidence files on disk).
 - [x] `bash scripts/release work-preflight.sh` returns exit 0 (verified 2026-05-08; 49 checks PASS, 0 failures).
-- [ ] `scripts/check-release work-ship-bar.sh` exists (consumed by the integration / ship-bar week verification). Wave 5 scaffolding follow-up; not gating preflight.
+- [ ] `scripts/check-release work-ship-bar.sh` exists (consumed by the integration / ship-bar week verification). baseline scaffolding follow-up; not gating preflight.
 
 ### releases.toml block
 
@@ -63,7 +63,7 @@ This file is the pre-execution checklist for release work. Trj5 enters execution
 
 The trj4 wave-plan absorption is the crucial framing that release work is not "yet another trajectory". The note below is normative; tick the boxes as the absorption is wired into the lane tickets.
 
-- [x] **TRJ4-010, TRJ4-011** (mutation-kill 65% / 80%) absorbed by **release work-A1**. Lane A `tickets.md` references the trj4 IDs in the "trj4-absorbed" column. (release work-A7 banner ticket folded into mutation evidence item per Wave 3 fix.)
+- [x] **TRJ4-010, TRJ4-011** (mutation-kill 65% / 80%) absorbed by **release work-A1**. Lane A planning docs references the trj4 IDs in the "trj4-absorbed" column. (release work-A7 banner ticket folded into mutation evidence item per Wave 3 fix.)
 - [x] **TRJ4-012, TRJ4-013, TRJ4-014** (Kani harnesses) absorbed by **release work-A3**.
 - [x] **TRJ4-015, TRJ4-016, TRJ4-017, TRJ4-018** (TLA+ rewrites + apalache-temporal promotion) absorbed by **release work-A4**.
 - [x] **TRJ4-019** (proptest hosted-vs-portable equivalence) **deferred to trj6** per Wave 3 review (rationale in `SCOPE-LOCK.md` "Deferred to trj6 with rationale" subsection). Lane A's `release work-A5` slot is reused for the Lean4 `negotiation_safety` re-proof.
@@ -89,7 +89,7 @@ The three Bars are the anchoring refrain. Confirm they are restated verbatim in:
 - [x] `SHIP-BAR-TRACKER.md` per-bar table.
 - [x] This file's "The three Bars" reference block (below).
 
-### Bar baseline measurements (Wave 5 scaffolding)
+### Bar baseline measurements (baseline scaffolding)
 
 The three Bars require a baseline measurement at kickoff so progress can be observed against a fixed reference:
 
@@ -125,11 +125,11 @@ If exit code is 0, release work enters execution. If exit code is non-zero, the 
 
 ## Final sign-off block
 
-The Wave 4 final-pass agent prepared this checklist. Wave 5 kickoff agent
+The Wave 4 final-pass agent prepared this checklist. baseline kickoff agent
 (this run, 2026-05-08) landed all five remaining prerequisites for autonomous
 execution.
 
-- [x] **Owner-class human assignments landed** (three lane.X.human_assignment + per owner-class assigned_to). All set to `release owner` per autonomous-execution mode (the agent_orchestrator role is `claude-release work-orchestrator`; `release owner` is the escalation path).
+- [x] **Owner-class human assignments landed** (three lane.X.human_assignment + per owner-class assigned_to). All set to `release owner` per autonomous-execution mode (the automation_coordinator role is `release automation coordinator`; `release owner` is the escalation path).
 - [x] **Wave-2 reviewer per-lane sign-off** under `reviews/lane-{a,b,c}-wave2.md` (separate from Wave 3 fix logs). Three ledgers landed; each maps every BLOCKER/MAJOR to its W3 fix-log entry per `W4-closeout-matrix.md`.
 - [x] **`scripts/release work-preflight.sh` authored** and executable; returns exit 0 (49 checks PASS, 0 failures) verified 2026-05-08.
 - [x] **`releases.toml [trajectory_5]` block opened** with kickoff values, then corrected after R4+ to `pending_upstream_merges` until upstream PRs merge, release packaging is regenerated from merged `main`, checks are green on the integrated merge SHA, and a human pushes the tag. Baseline SHA remains `708c7bb33df43594f5e76542b05fca7a56d9689e`, baseline branch `planning branch`, started_at `2026-05-08T00:00:00Z`.

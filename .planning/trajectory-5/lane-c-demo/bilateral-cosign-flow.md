@@ -5,10 +5,10 @@ This document maps the spec wire format
 types and specifies how Lane C consumes Lane B's B4 DSSE-conformant
 signing primitive.
 
-**Wave 3 rework (R4 Finding 1):** the original Wave 1 plan proposed
+**Wave 3 rework (review finding 1):** the original Wave 1 plan proposed
 a Lane-C-side "Option A" two-signature adapter that bolted a DSSE
 PAE signature alongside the existing `CoSigningBody` signature. The
-Wave 2 review (`reviews/R4-lane-c-feasibility.md` Finding 1)
+review (`reviews/R4-lane-c-feasibility.md` Finding 1)
 rejected that design as structural-framing-without-wiring and
 escalated the DSSE-conformant signing primitive to Lane B as
 sub-lane B4 (`lane-b-wiring/dsse-bilateral-signing.md`, tickets
@@ -94,7 +94,7 @@ PAE (RFC 8785 + DSSEv1):
 
 ## Single signing surface: DSSE PAE produced by Lane B B4
 
-Wave 2 review (R4 Finding 1) rejected the original "Option A:
+review (review finding 1) rejected the original "Option A:
 two co-existing signatures" design. The reasoning, in brief: the
 existing `CoSigningBody`-scoped signature is not in any sense the
 spec section 6 PAE-over-Statement signature; shipping both alongside
@@ -128,7 +128,7 @@ for the production signing hot path; the C2 sub-lane simplifies from
 "consume B4 envelopes and run the §7 verifier".
 
 If Lane B reports during W2/W3 that B4 cannot fit the release work budget,
-the fallback (R4 Finding 1 option 2) is to ship Lane C with explicit
+the fallback (review finding 1 option 2) is to ship Lane C with explicit
 bounded-claim language disclaiming spec-§6 conformance for the
 legacy `DualSignedReceipt` and asserting §6 conformance only of a
 Lane-C-side DSSE adapter. This fallback is documented in

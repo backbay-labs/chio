@@ -27,7 +27,7 @@ Cross-lane dependencies (literal Lane B ticket IDs as of W3):
 | `LB-AB`  | `release work-B3.5` | Anchor-batch async-only negative conformance fixture (gating artifact) |
 | `LB-AT`  | `release work-B0.5` | Dispatch-hop collapse (gating artifact for `async_trait` migration) |
 
-Plus the new sub-lane added by R4 Finding 1:
+Plus the new sub-lane added by review finding 1:
 
 | Lane B ticket | What it provides |
 |---|---|
@@ -107,9 +107,9 @@ IDs current at W3 close.
   `settle.rollback` from §5.2), and emit the
   `chio.chiodos-ladder-intersection.v1` artefact per §6.1. The
   `partition_fallback.blast_radius_cap.amount_minor` field is what
-  enforces the demo's 25000-unit cap (per R4 Finding 5b option a -
+  enforces the demo's 25000-unit cap (per review finding 5b option a -
   the cap is ladder-driven, not policy-YAML-driven).
-  **This is NEW Rust code** (R4 Finding 5a): the codebase has no
+  **This is NEW Rust code** (review finding 5a): the codebase has no
   prior chiodos-ladder primitive. The example-local version is
   sufficient for v0.1; a production `chio-chiodos-ladder` crate is
   deferred to trj6.
@@ -385,7 +385,7 @@ IDs current at W3 close.
   `examples/chiodome-bilateral/policies/refund-policy.yaml` in
   the canonical Chio HushSpec format (matches
   `examples/policies/canonical-hushspec.yaml` family). The amount
-  cap is NOT a HushSpec primitive (per R4 Finding 5b); it lives in
+  cap is NOT a HushSpec primitive (per review finding 5b); it lives in
   the example-local chiodos-ladder intersection logic and is
   enforced upstream of the kernel by release work-C1.3.
 - **Files:** `examples/chiodome-bilateral/policies/refund-policy.yaml`.
@@ -524,7 +524,7 @@ IDs current at W3 close.
     a child reference resolvable via
     `crates/chio-anchor/src/lib.rs::build_anchor_inclusion_proof`
     is available.
-  Effort bumped from M to L per R4 Finding 9 (the bilateral chain
+  Effort bumped from M to L per review finding 9 (the bilateral chain
   walk is closer to a tree-renderer than a flat JSON formatter).
 - **Files:** `crates/chio-cli/src/cli/trust_commands.rs`;
   `examples/chiodome-bilateral/src/anchor.rs` (data exposure).
@@ -578,7 +578,7 @@ IDs current at W3 close.
 
 ## C5 - Selective disclosure (zk feature; deferable per R6)
 
-**Scope guard (R4 Finding 6):** if BBS+ Cargo dependencies
+**Scope guard (review finding 6):** if BBS+ Cargo dependencies
 (`bbs-2023` cryptosuite, `bls12_381`, AnonCreds v2 RangeStatement)
 cannot be assembled within the release work window or force a chio MSRV
 bump that does not pass review, C5 is DROPPED from
@@ -743,7 +743,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   Lane B branch (path filters: `crates/chio-kernel/**`,
   `crates/chio-anchor/**`, `crates/chio-federation/**`,
   `crates/chio-conformance/**`). Failures open an issue with the
-  matching commit SHA. (R4 Finding 10 and R1 §6.2 §10: the
+  matching commit SHA. (review finding 10 and R1 §6.2 §10: the
   forcing-function CI hook is non-negotiable; without it Lane B
   partial-enforcement bugs the demo would catch get caught at the
   worst possible time, the day before tag.)
@@ -772,7 +772,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   `fixtures/` directory. Add a `tools/diff-stable.py` (or Rust
   binary) under the example crate that compares two fixture
   directories modulo allowed-varying fields (timestamps, UUIDs,
-  signing nonces). Smoke step 5 calls this tool. (R4 Finding 11:
+  signing nonces). Smoke step 5 calls this tool. (review finding 11:
   byte-identical reproducibility is impractical; "diff-stable
   modulo allow-list of varying fields" is the rule.)
 - **Files:** `examples/chiodome-bilateral/scripts/build-tarball.sh`;

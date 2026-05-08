@@ -245,7 +245,7 @@ review concludes B4 is too much for the release work budget.**
 **Direct contradiction between the plan and the runtime CLI shape.**
 
 `kb-mcp-integration.md` line 18-30 says `chio mcp serve --policy` will
-"wrap the local KB MCP gateway at `:8111/mcp/`". `tickets.md` release work-C3.2
+"wrap the local KB MCP gateway at `:8111/mcp/`". planning docs release work-C3.2
 says:
 
 > `chio mcp serve --policy
@@ -329,7 +329,7 @@ day Lane C tags.
 the "simplest configuration" paragraph with the mcp-remote-bridge
 shape.
 
-`tickets.md` release work-C3.2: change the wrapped command to
+planning docs release work-C3.2: change the wrapped command to
 `-- npx -y mcp-remote http://localhost:8111/mcp/` and add a
 prerequisite bullet "Node.js / npx available in the smoke container".
 
@@ -337,7 +337,7 @@ prerequisite bullet "Node.js / npx available in the smoke container".
 
 ### Finding 3 [MAJOR]: Cross-lane dependency reality - depends-on fields are present but Lane B ticket IDs are aliased, not anchored
 
-`tickets.md` lines 9-13 introduces aliases:
+planning docs lines 9-13 introduces aliases:
 
 ```
 - LB-CAP = Lane B single-entry capability verifier
@@ -363,12 +363,12 @@ update.
 
 Two fixes:
 - Cite Lane B ticket IDs verbatim in `depends-on` fields. Lane B's
-  `tickets.md` should be the source of truth.
-- Add a cross-reference table at the top of Lane C `tickets.md` that
+  planning docs should be the source of truth.
+- Add a cross-reference table at the top of Lane C planning docs that
   maps `LB-CAP` -> `release work-B1.x` (specific) for the version of Lane B
   current as of W1 close.
 
-**Patch:** Add a section at top of `tickets.md` after the alias list:
+**Patch:** Add a section at top of planning docs after the alias list:
 
 ```
 **Cross-reference (W1 snapshot):**
@@ -380,7 +380,7 @@ Two fixes:
 | LB-AB  | release work-B3.[N] |
 | LB-AT  | release work-B0.[N] |
 
-(Updated when Lane B `tickets.md` revises.)
+(Updated when Lane B planning docs revises.)
 ```
 
 #### Could Lane C work begin earlier on stubs?
@@ -503,7 +503,7 @@ does not exist in code today, even a minimal implementation closer to
   to "Yes - new minimal ladder primitive in `examples/chiodome-bilateral`
   or a new tiny crate `chio-chiodos-ladder-min`").
 
-- `tickets.md` release work-C1.3: split into release work-C1.3a (manifest types and
+- planning docs release work-C1.3: split into release work-C1.3a (manifest types and
   schema) and release work-C1.3b (intersection emit + signing).
 
 - Consider whether Lane C should depend on a Lane B item "B5: chiodos
@@ -562,7 +562,7 @@ reason).
 
 **Patch:**
 
-- `tickets.md` release work-C3.1 acceptance ("`chio check --policy <yaml>`
+- planning docs release work-C3.1 acceptance ("`chio check --policy <yaml>`
   returns success") MUST be the first thing executed by the smoke;
   if it fails, the entire policy block needs to be re-cast in HushSpec
   shape.
@@ -880,7 +880,7 @@ The R4 mitigation in `RISK-REGISTER.md` lines 168-174 says:
 > Lane C tickets are scheduled to START before Lane B closes, so demo
 > smoke-tests run continuously against in-progress Lane B work.
 
-`tickets.md` release work-C6.2 adds `chio-demo-smoke` as a CI required check
+planning docs release work-C6.2 adds `chio-demo-smoke` as a CI required check
 on PRs:
 
 > Add a CI workflow that runs `examples/chiodome-bilateral/smoke.sh`
@@ -918,7 +918,7 @@ before tag).
 
 ### Finding 11 [MINOR]: Demo fixture as evidence - reproducibility unclear
 
-`tickets.md` release work-C6.3 says:
+planning docs release work-C6.3 says:
 
 > Two consecutive `./smoke.sh && build-tarball.sh` runs produce
 > byte-identical tarballs (or document the fields that vary -
@@ -990,7 +990,7 @@ The W1 plan handles this correctly. No patch.
 
 ### Finding 14 [OBSERVATION]: Ticket count is appropriate for the lane scope
 
-W1 plan ships 30 tickets (`tickets.md` lines 422-431) where the
+W1 plan ships 30 tickets (planning docs lines 422-431) where the
 templates target was "14-22 tickets". The W1 author justifies the
 overshoot:
 
@@ -1079,7 +1079,7 @@ no-patch-needed).**
 
 5. **Does Lane B explicitly accept that B4 (DSSE signing) is its
    responsibility, or does Lane B insist this is a Lane C concern?**
-   The Wave 2 reviewer for Lane B should be looped in.
+   The reviewer for Lane B should be looped in.
 
 6. **What is the W3C BBS+ Recommendation timeline?** If
    Recommendation lands during release work, the bounded-claim language

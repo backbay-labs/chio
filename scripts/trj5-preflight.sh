@@ -5,7 +5,7 @@
 # `.planning/trajectory-5/KICKOFF-CHECKLIST.md` is satisfied:
 #
 #   Gate 1: planning artifacts present (master docs)
-#   Gate 2: per-lane PLAN.md / tickets.md / README.md present
+#   Gate 2: per-lane PLAN.md / planning docs / README.md present
 #   Gate 3: templates and architecture docs present
 #   Gate 4: Wave-2 reviews + Wave-3 fix logs + Wave-4 closeout + Wave-2 sign-off ledgers
 #   Gate 5: OWNERS.toml human_assignment populated for all three lanes
@@ -116,12 +116,12 @@ check_file ".planning/trajectory-5/OWNERS.toml"
 check_file ".planning/trajectory-5/READINESS.md"
 
 # ---------------------------------------------------------------------------
-# Gate 2: per-lane PLAN.md / tickets.md / README.md
+# Gate 2: per-lane PLAN.md / planning docs / README.md
 # ---------------------------------------------------------------------------
 printf '\n[Gate 2] per-lane planning files\n'
 for lane in lane-a-floor lane-b-wiring lane-c-demo; do
   check_file ".planning/trajectory-5/$lane/PLAN.md"
-  check_file ".planning/trajectory-5/$lane/tickets.md"
+  check_file ".planning/trajectory-5/$lane/planning docs"
   check_file ".planning/trajectory-5/$lane/README.md"
 done
 
@@ -232,7 +232,7 @@ printf '\n[Gate 8] drift cleanup\n'
 
 # (a) No LB-CAP/LB-RV2/LB-AB/LB-AT aliases in Depends-on rows.
 # The aliases are allowed in the cross-reference documentation table
-# at `lane-c-demo/tickets.md` lines ~21-34 (as table rows starting
+# at `lane-c-demo/planning docs` lines ~21-34 (as table rows starting
 # with `|`). Failure case: appearance in `Depends on:` lines.
 if grep -rn -E '^\s*Depends on:.*(LB-CAP|LB-RV2|LB-AB|LB-AT)\b' .planning/trajectory-5/ 2>/dev/null | grep -v /reviews/ | grep -v /debate/; then
   failure "LB-* aliases still appear in 'Depends on:' rows"
@@ -292,7 +292,7 @@ else
     line_no=${line_no%%:*}
     # Read +/- 2 line window around the match.
     if ! awk -v line="$line_no" 'NR >= line - 2 && NR <= line + 2' "$file_part" 2>/dev/null \
-      | grep -q -i -E 'rejected|superseded|dropped|originally|previously|original|insufficient|R4 Finding|Wave 2 review|REWORKED|two-signature'; then
+      | grep -q -i -E 'rejected|superseded|dropped|originally|previously|original|insufficient|review finding|review|REWORKED|two-signature'; then
       bad_opta="$bad_opta\n$line"
     fi
   done <<< "$opta_hits"

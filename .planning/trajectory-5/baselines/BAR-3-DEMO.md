@@ -153,7 +153,7 @@ crates/chio-cli/src/cli/trust_commands.rs:2432:    let report = explain_receipt_
 | Anchored through `crates/chio-anchor::Web3CheckpointStatement` | not exercised | anchored (no live deployment) |
 | Selective-disclosure auditor view (behind `zk` Cargo feature flag) | none | runs (or deferred to v0.2 per R6) |
 | Wrapped at `chio mcp serve --policy` against `ops/knowledge-base/` via `mcp-remote` | none | wrapped |
-| Honest release tag `v0.1.0-bounded-chiodome` recorded in `releases.toml` `[trajectory_5]` | `pending` (placeholder set by Wave 5 kickoff per `releases.toml` `v0_1_0_bounded_chiodome_release_tag = "pending"`) | recorded as `v0.1.0-bounded-chiodome` |
+| Honest release tag `v0.1.0-bounded-chiodome` recorded in `releases.toml` `[trajectory_5]` | `pending` (placeholder set by baseline kickoff per `releases.toml` `v0_1_0_bounded_chiodome_release_tag = "pending"`) | recorded as `v0.1.0-bounded-chiodome` |
 
 ## Re-measurement protocol (release close)
 
@@ -184,7 +184,7 @@ flips NONE -> DONE.
 
 - Lane C README: `.planning/trajectory-5/lane-c-demo/README.md`
 - Lane C PLAN: `.planning/trajectory-5/lane-c-demo/PLAN.md`
-- Lane C tickets: `.planning/trajectory-5/lane-c-demo/tickets.md`
+- Lane C tickets: `.planning/trajectory-5/lane-c-demo/planning docs`
 - Architecture: `.planning/trajectory-5/lane-c-demo/architecture.md`
 - Bilateral cosign flow: `.planning/trajectory-5/lane-c-demo/bilateral-cosign-flow.md`
 - KB MCP integration: `.planning/trajectory-5/lane-c-demo/kb-mcp-integration.md`

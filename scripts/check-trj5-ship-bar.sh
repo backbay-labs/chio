@@ -473,7 +473,7 @@ else
 fi
 
 # releases.toml carries the recorded release tag (or the explicit
-# `pending` placeholder during Wave 5 baseline). PARTIAL until tagged.
+# `pending` placeholder during baseline baseline). PARTIAL until tagged.
 if [ -f releases.toml ]; then
   tag_line=$(grep -E '^v0_1_0_bounded_chiodome_release_tag[[:space:]]*=' releases.toml | head -1 || true)
   if [ -n "$tag_line" ]; then

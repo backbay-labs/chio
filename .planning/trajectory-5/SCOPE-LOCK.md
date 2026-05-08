@@ -6,7 +6,7 @@ This file is the IN-SCOPE / OUT-OF-SCOPE catalog for release work. The OUT-OF-SC
 
 ## In-scope
 
-The in-scope catalog is normative in `debate/00-SYNTHESIS.md` and re-stated here for grep convenience. Each in-scope item is owned by a lane and tracked under that lane's `tickets.md`.
+The in-scope catalog is normative in `debate/00-SYNTHESIS.md` and re-stated here for grep convenience. Each in-scope item is owned by a lane and tracked under that lane's planning docs.
 
 ### Lane A -- Realize the floor
 
@@ -16,7 +16,7 @@ The in-scope catalog is normative in `debate/00-SYNTHESIS.md` and re-stated here
 | All 20 `audits/evidence/threats/*.json` files contain real `caught >= 1` data with non-1970 `ran_at`. Replace placeholder fixture with the production call path executed under each threat row. (Synthesis says "21"; on-disk count is 20, one per row in `spec/security/chio-threat-model.v1.json`. Lane A targets 20 as authoritative; see `lane-a-floor/README.md` "Authoritative threat count" footnote. If Wave 1 triage flips one or more rows to `BLOCKED-BY-ARCHITECTURE`, the close bar narrows accordingly.) | threat-modeling | release work-A2 | TRJ4-040..049 |
 | Real Kani harnesses for `chio-attest-verify`, `chio-anchor`, `chio-weights`. | formal-methods | release work-A3 | TRJ4-012, TRJ4-013, TRJ4-014 |
 | TLA+ rewrites: `ReceiptBeforeAllow` split, `RevocationCutCompleteness` bounded transitive-closure, apalache-temporal lane required, `EpochMax` 4 -> 6. | formal-methods | release work-A4 | TRJ4-015, TRJ4-016, TRJ4-017, TRJ4-018 |
-| Lean4 `negotiation_safety` re-proved against the executable model, not by `rfl` against its own definition. (Lane A renumbered: this work is now `release work-A5`, not `release work-A6`. See `lane-a-floor/tickets.md`.) | formal-methods | release work-A5 | (synthesis Quality #3) |
+| Lean4 `negotiation_safety` re-proved against the executable model, not by `rfl` against its own definition. (Lane A renumbered: this work is now `release work-A5`, not `release work-A6`. See `lane-a-floor/planning docs`.) | formal-methods | release work-A5 | (synthesis Quality #3) |
 
 ### Lane B -- Wire the spec hot path
 

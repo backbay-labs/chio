@@ -288,9 +288,9 @@ This satisfies the four-artifact rule. PASS.
 
 OBSERVATION: section 3.2 says "A ticket can sit in `EVIDENCE-PENDING` for at most one wave." Lane B has six weeks and four sub-lanes; if B1 lands its fixture in week 4 and the audit-doc update slips to week 5, the ticket is in EVIDENCE-PENDING for one week, which is fine per the rule. If the slip extends to two weeks, the rule says escalate or downgrade to trj6. The Lane B PLAN.md correctly schedules audit-doc updates inline with each fixture landing, so this risk is low. Not a blocker.
 
-The `tickets.md` per-sub-lane Evidence Gate close ticket (release work-B.CLOSE) is the right closing instrument: it requires each fixture to be deliberately reverted on a draft branch and confirmed to fail. PASS.
+The planning docs per-sub-lane Evidence Gate close ticket (release work-B.CLOSE) is the right closing instrument: it requires each fixture to be deliberately reverted on a draft branch and confirmed to fail. PASS.
 
-MINOR: the `tickets.md` release work-B.CLOSE acceptance line says "the threat-row JSON references the fixture path; this ticket closes only when all three are confirmed by the reviewer." Per `EVIDENCE-GATE.md` section 3.3: "All four artifacts recorded in the audit doc. The audit doc has been signed off by both the lane owner AND a reviewer who is not the ticket author." The release work-B.CLOSE ticket should explicitly call out the second-reviewer requirement; otherwise, the lane owner could be the sign-off reviewer.
+MINOR: the planning docs release work-B.CLOSE acceptance line says "the threat-row JSON references the fixture path; this ticket closes only when all three are confirmed by the reviewer." Per `EVIDENCE-GATE.md` section 3.3: "All four artifacts recorded in the audit doc. The audit doc has been signed off by both the lane owner AND a reviewer who is not the ticket author." The release work-B.CLOSE ticket should explicitly call out the second-reviewer requirement; otherwise, the lane owner could be the sign-off reviewer.
 
 ### 10. Forcing-function integrity (R4)
 
@@ -306,7 +306,7 @@ The Lane C plan at `lane-c-demo/PLAN.md` has 14 references to "Lane B" as a hard
 
 The CI hook is implicit: if the Lane C `crates/chio-conformance/tests/cross_org_*` fixtures are running on every PR (per `.github/workflows/ci.yml` cargo-test invocation), then a regression in Lane B that would let the demo bypass a primitive would be caught. This satisfies R4.
 
-OBSERVATION: the Lane C plan at `lane-c-demo/PLAN.md:332` says "Hard dep on Lane B's three negative conformance fixtures being [merged]". The plan does not say "and being green continuously". If a Lane B fixture is merged but later flakes, Lane C will not catch the regression unless the CI is configured to fail the build on chio-conformance test failures. Spot-check `.github/workflows/ci.yml` is out of scope for this review; recommend Wave 2 reviewer confirms the workflow does not allow `chio-conformance` failures.
+OBSERVATION: the Lane C plan at `lane-c-demo/PLAN.md:332` says "Hard dep on Lane B's three negative conformance fixtures being [merged]". The plan does not say "and being green continuously". If a Lane B fixture is merged but later flakes, Lane C will not catch the regression unless the CI is configured to fail the build on chio-conformance test failures. Spot-check `.github/workflows/ci.yml` is out of scope for this review; recommend reviewer confirms the workflow does not allow `chio-conformance` failures.
 
 ---
 
@@ -340,9 +340,9 @@ This rewords the contract honestly. The runtime gate at `batch.rs:227-235` IS th
 
 `crates/chio-mcp-remote/src/remote_mcp/session_core.rs` was cited as containing impls at lines 2682 and 2860; my grep found only one impl (at line 1838). Investigate whether the session_core.rs impl was refactored since the doc was authored, or whether the line numbers refer to call-sites of `Box<dyn ToolServerConnection>` rather than impl declarations. If the latter, the doc should disambiguate.
 
-### Patch 4: tickets.md (MINOR from finding #9)
+### Patch 4: planning docs (MINOR from finding #9)
 
-`tickets.md` release work-B.CLOSE acceptance:
+planning docs release work-B.CLOSE acceptance:
 
 Add to acceptance: "Sign-off requires the lane owner AND a reviewer who is not the ticket author, per `EVIDENCE-GATE.md` section 3.3."
 
@@ -425,7 +425,7 @@ This appendix concretizes how each Lane B sub-lane defends against (or fails to 
 | 2.7 Coverage-state pending | N/A | B0 has no threat row. |
 | 2.8 Schema-only test | N/A | B0 has no test. |
 
-OBSERVATION: B0 is mostly defended by virtue of being a refactor. The new `scripts/check-tool-server-async.sh` (`tickets.md:14`) is a static guarantee against regression. The fact that it greps for `fn invoke(` (sync form) inside files containing `impl ToolServerConnection` is a tight enough check; reviewer should verify the regex captures `pub fn` and `pub(crate) fn` variants.
+OBSERVATION: B0 is mostly defended by virtue of being a refactor. The new `scripts/check-tool-server-async.sh` (`planning docs:14`) is a static guarantee against regression. The fact that it greps for `fn invoke(` (sync form) inside files containing `impl ToolServerConnection` is a tight enough check; reviewer should verify the regex captures `pub fn` and `pub(crate) fn` variants.
 
 ### A.2 B1 (single-entry verifier)
 
@@ -513,7 +513,7 @@ Expected imports:
 - `chio_store_sqlite::SqliteReceiptStore`.
 - `rusqlite::Connection` (for direct `chio_receipts_v2` table reads, per finding #1 reservation).
 
-The new `KernelError::ReceiptNegotiationDowngrade` variant and `NegotiationDowngradeReason` enum must be exported from `chio_kernel`. The plan implies they will be (`tickets.md` release work-B2.1: "variant compiles; printed message under `Display` includes the structured fields").
+The new `KernelError::ReceiptNegotiationDowngrade` variant and `NegotiationDowngradeReason` enum must be exported from `chio_kernel`. The plan implies they will be (planning docs release work-B2.1: "variant compiles; printed message under `Display` includes the structured fields").
 
 ### B.3 anchor_batch_sync_path_rejected_under_public_witness.rs (B3)
 
@@ -523,7 +523,7 @@ Expected imports (per `anchor-batch-async-only.md:120-125`):
 - `chio_core::hashing::Hash`.
 - `chio_core::Keypair`.
 
-The new `AnchorError::SyncRouteRequiresAdvisoryPolicy` variant must be exported. The plan implies it (`tickets.md` release work-B3.1: "variant compiles; `Display` impl matches ...").
+The new `AnchorError::SyncRouteRequiresAdvisoryPolicy` variant must be exported. The plan implies it (planning docs release work-B3.1: "variant compiles; `Display` impl matches ...").
 
 All three fixtures' import lists conform to `CONFORMANCE-FIXTURE-PATTERN.md` section 2.2 allowed imports (modulo the `chio_store_sqlite` extension). PASS.
 
@@ -554,7 +554,7 @@ All three are sound; B1 is the model. Future trj-N protocol-realization work sho
 
 ## Appendix D: Cross-Reference Index
 
-For Wave 2 reviewers cross-checking this review against the source:
+For reviewers cross-checking this review against the source:
 
 | Claim | Source file | Lines |
 |---|---|---|
@@ -593,7 +593,7 @@ The composition is correct in shape: Lane A's `audits/evidence/threats/<id>.json
 
 Risk: the threat-row JSON schema requires a real `ran_at` timestamp and a real `caught` count. The Lane A floor expects `caught >= 1` per `EVIDENCE-GATE.md` section 1.2. The Lane B fixture, when run on a green kernel, asserts the typed error and PASSES. The `caught` count for the threat (e.g., "capability bypass via partial verifier") in this case would be 1 (the test caught the threat by asserting the rejection). This is consistent with Lane A's contract.
 
-But: Lane A's mutation-kill regime requires that the test ALSO catch synthetic mutants of the production code. Lane B's fixtures are negative tests; they assert rejection on an attacker input. Mutation testing flips production code; the fixture's resilience to those mutations is a separate axis. Recommend Wave 2 reviewer confirm that Lane B fixtures are included in the cargo-mutants run for `chio-kernel` and `chio-anchor`, otherwise Lane A's "65% mutation kill" claim does not benefit from Lane B's wiring.
+But: Lane A's mutation-kill regime requires that the test ALSO catch synthetic mutants of the production code. Lane B's fixtures are negative tests; they assert rejection on an attacker input. Mutation testing flips production code; the fixture's resilience to those mutations is a separate axis. Recommend reviewer confirm that Lane B fixtures are included in the cargo-mutants run for `chio-kernel` and `chio-anchor`, otherwise Lane A's "65% mutation kill" claim does not benefit from Lane B's wiring.
 
 ---
 
@@ -608,7 +608,7 @@ For completeness, the following were out of scope for R3:
 - Performance impact of the async-trait migration on the dispatch hot path. The `RISK-REGISTER.md` R1 captures this; this review takes the rollback plan at face value.
 - Wasm bundle-size impact on `chio-kernel-browser`. Captured in `ASYNC-KERNEL-MIGRATION.md` section 4.2; out of this review's scope.
 
-These are explicit hand-offs to other Wave 2 reviewers (R1, R2, R4, ...).
+These are explicit hand-offs to other reviewers (R1, R2, R4, ...).
 
 ---
 

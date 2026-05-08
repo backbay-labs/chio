@@ -64,7 +64,7 @@ OBSERVATIONs".
 
 | W4 item | Title | Status |
 |---|---|---|
-| 1 | Lane C placeholder `bilateral DSSE signing item` deps replaced with locked B4 IDs (B4.1..B4.6 plus B4.E) | CLOSED (Wave 4 patched bilateral-cosign-flow.md, release-bar.md, README.md, PLAN.md, tickets.md) |
+| 1 | Lane C placeholder `bilateral DSSE signing item` deps replaced with locked B4 IDs (B4.1..B4.6 plus B4.E) | CLOSED (Wave 4 patched bilateral-cosign-flow.md, release-bar.md, README.md, PLAN.md, planning docs) |
 
 ---
 

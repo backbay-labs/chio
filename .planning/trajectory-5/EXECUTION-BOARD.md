@@ -1,6 +1,6 @@
 # Trajectory-5 Execution Board
 
-**Status**: ticket scaffolding for the synthesis-locked plan in `debate/00-SYNTHESIS.md`. Per-lane ticket details land in `lane-{a-floor,b-wiring,c-demo}/tickets.md` (Wave 1 lane agents). Owner-classes per `OWNERS.toml`; humans TBD until kickoff.
+**Status**: ticket scaffolding for the synthesis-locked plan in `debate/00-SYNTHESIS.md`. Per-lane ticket details land in `lane-{a-floor,b-wiring,c-demo}/planning docs` (Wave 1 lane agents). Owner-classes per `OWNERS.toml`; humans TBD until kickoff.
 
 **Tagline**: release work is the **honesty trajectory**. Three coupled lanes, no separate brand from the trj4 wave plan, one ship-bar visible from outside.
 
@@ -12,7 +12,7 @@
 | **B** | `lane-b-wiring` | protocol / kernel | weeks 1-7 (B0 weeks 1-2; B1-B3 weeks 3-6; B4 weeks 5-6 DSSE signing) | `release work-B*` |
 | **C** | `lane-c-demo` | federation / examples / cli | weeks 5-8 | `release work-C*` |
 
-Total ticket count: TBD (sum of `lane-*/tickets.md` line items). Estimated 25-40 tickets across the three lanes.
+Total ticket count: TBD (sum of `lane-*/planning docs` line items). Estimated 25-40 tickets across the three lanes.
 
 ## Evidence Gate (mandatory)
 
@@ -36,10 +36,10 @@ Absorbs trj4 Wave 0 / Wave 1 / Wave 4 with real evidence requirements. Per `deba
 | release work-A4 | TLA+ rewrites: `ReceiptBeforeAllow` split (`Allow` -> `LogReceipt` + `PublishAllow`); `RevocationCutCompleteness` bounded transitive-closure unrolling; `EpochMax` 4 -> 6; apalache-temporal lane promoted from advisory to required. | formal-methods | L | release work-A3 | TRJ4-015, TRJ4-016, TRJ4-017, TRJ4-018 |
 | release work-A5 | Lean4 `negotiation_safety` re-proved against the executable model (not by `rfl` against its own definition). `formal/theorem-inventory.json` row promoted from `proposed`/`assumed` to `proven` with file path. (Renumbered from `release work-A6` per Wave 3 review; the prior `release work-A5` slot for proptest hosted-vs-portable equivalence (TRJ4-019) is deferred to trj6, see `SCOPE-LOCK.md` "Deferred to trj6 with rationale".) | formal-methods | M | release work-A4 | (synthesis Quality #3) |
 | release work-A7 | README mutation banner update: replace target-language banner with observed-kill-rate banner; per-crate breakdown table attached; evidence directory under `audits/evidence/mutation/` populated with non-placeholder per-crate run records. | substrate | S | release work-A1 | (Bar 1 evidence) |
-| release work-A* | (additional rows per `lane-a-floor/tickets.md`; lane agent owns the full enumeration) | substrate | TBD | TBD | TBD |
+| release work-A* | (additional rows per `lane-a-floor/planning docs`; lane agent owns the full enumeration) | substrate | TBD | TBD | TBD |
 
 Detail rows beyond `mutation evidence item, A7` (release work-A6 is now `release work-A5`) land
-in `lane-a-floor/tickets.md`. Each sub-lane carries an Evidence Gate
+in `lane-a-floor/planning docs`. Each sub-lane carries an Evidence Gate
 ticket with the canonical `.E` suffix per `templates/TICKET-TEMPLATE.md`
 section 1.1: `mutation evidence item`, `threat evidence item`, `release work-A3.E`, `release work-A4.E`,
 `release work-A5.E`.
@@ -56,9 +56,9 @@ Adopts Protocol Realization Engineer R1-R3 plus the architectural prerequisite. 
 | release work-B3 | **Anchor-batch async-only when public witness required**: gate `crates/chio-anchor/src/batch.rs:227-235` sync wrapper at runtime when `require_public_witness=true`. Add `scripts/check-anchor-batch-async-witness.sh` as best-effort fast-feedback documentation (NOT a soundness guarantee; the runtime gate is the load-bearing defense). Signed negative conformance test under `chio-conformance` exercises the gate. PROTOCOL.md section 982-991 enforced. | protocol | M | release work-B0 | TRJ4-140..147 + T1.3.E |
 | release work-B4 | **DSSE-conformant bilateral signing**: per R4 BLOCKER 1, the existing `crates/chio-federation/src/bilateral.rs::CoSigningBody` (lines 41-77) is signed over canonical-JSON bytes that share zero bytes with the spec §6 DSSE PAE preimage. B4 introduces Ed25519-over-DSSE-PAE-of-in-toto-Statement signing as the production §6-conformant artifact; legacy `DualSignedReceipt::verify` is either wrapped or coexists with explicit non-§6 disclaimer. Spec citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 (PAE) and §7 step 11-12 (signature verification). Signed negative conformance test asserts the DSSE envelope is the conformant artifact. | protocol | L | release work-B0, release work-B1 | R4 BLOCKER 1 promotion |
 | release work-B1.E, release work-B2.E, release work-B3.E, bilateral DSSE signing item | **Lane B Evidence Gate (per primitive)**: each primitive's audit-doc evidence block flips from EVIDENCE-PENDING to EVIDENCE-COMPLETE when the four Evidence Gate artifacts are present (enforced call site, spec MUST citation, negative conformance fixture, production-call-path exercise). PROTOCOL.md sections updated; schemas under `spec/schemas/` updated; claim registry, proof manifest, theorem inventory rows landed; the four signed negative conformance fixtures committed under `crates/chio-conformance/tests/`. The previous `release work-B-EG` aggregator is replaced by these four per-primitive Evidence Gate tickets per the canonical `.E` suffix convention (`templates/TICKET-TEMPLATE.md` §38). | protocol | M | release work-B1, release work-B2, release work-B3, release work-B4 | (Bar 2 closing artifact) |
-| release work-B* | (additional supporting rows per `lane-b-wiring/tickets.md`) | protocol | TBD | TBD | TBD |
+| release work-B* | (additional supporting rows per `lane-b-wiring/planning docs`) | protocol | TBD | TBD | TBD |
 
-Detail rows land in `lane-b-wiring/tickets.md`.
+Detail rows land in `lane-b-wiring/planning docs`.
 
 ## Lane C: One forcing demo
 
@@ -72,9 +72,9 @@ Adopts the Vision Strategist's chiodome slice and the Productization Champion's 
 | release work-C4 | **Selective-disclosure auditor view** behind `zk` Cargo feature flag. No new spec ratification. Per `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 6. | federation | M | release work-C1 | (synthesis Lane C) |
 | release work-C5 | **Wrapped at the user surface** by `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Receipts produced by the bilateral invocation are dogfooded through `chio receipt explain`. | cli | M | release work-C1 | (synthesis Lane C) |
 | release work-C6 | `examples/chiodome-bilateral/` end-to-end fixture: demo run captured, two-kernel transcripts committed, `chio receipt explain` output recorded as golden file. Honest release tag `v0.1.0-bounded-chiodome` cut under v3.18 bounded-claim discipline. | examples | L | release work-C1, release work-C2, release work-C3, release work-C4, release work-C5 | (Bar 3 closing artifact) |
-| release work-C* | (additional supporting rows per `lane-c-demo/tickets.md`) | federation/cli/examples | TBD | TBD | TBD |
+| release work-C* | (additional supporting rows per `lane-c-demo/planning docs`) | federation/cli/examples | TBD | TBD | TBD |
 
-Detail rows land in `lane-c-demo/tickets.md`.
+Detail rows land in `lane-c-demo/planning docs`.
 
 ## Cross-lane dependency table
 
