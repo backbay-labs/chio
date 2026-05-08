@@ -19,7 +19,7 @@
 # trust-boundary crate listed in `releases.toml [mutants]`. Crates
 # without a measured baseline JSON FAIL. Crates with a baseline JSON
 # whose recorded kill-rate is below the >=65% activation floor are
-# emitted as `OK ... (PARTIAL <pct>%)` rather than FAIL, so the script
+# emitted as PARTIAL with the measured rate printed, so the script
 # reflects the honest current state during Wave-1 baseline measurement.
 #
 # Bar 2 (Lane B): four signed negative conformance fixture files under
@@ -29,15 +29,50 @@
 # `examples/chiodome-bilateral/`. Missing artifacts FAIL.
 #
 # Run from the chio repo root: `bash scripts/check-trj5-ship-bar.sh`.
-# Output is one OK/FAIL line per check. Exit 0 if every Bar is MET (or
-# explicitly PARTIAL with the partial label printed), 1 otherwise.
+# Output is one OK/FAIL/PARTIAL line per check.
+#
+# Exit modes (audit T5-R2-P0-013):
+#   * Default (release-gate mode): PARTIAL is treated as a FAIL. The
+#     trajectory closes only when every bar is fully MET, so the close
+#     gate must reject any bar that is still in baseline / in-progress
+#     state. Exits 1 if any partial OR failure row is recorded.
+#   * `--diagnostic` (opt-in): PARTIAL is reported but does not
+#     contribute to the exit status. Use during Wave-1 baseline
+#     measurement and other in-progress windows where the operator
+#     wants the honest snapshot without flipping the gate red. Real
+#     FAIL rows still flip the gate red.
+#
+# The strict default is the audit's required behaviour. The diagnostic
+# flag is opt-in and clearly labelled in the summary footer.
 
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+# Default mode: PARTIAL counts as a failure (release-gate strict).
+# `--diagnostic` flips this to advisory, where PARTIAL is reported but
+# does not count toward the failure tally. Audit T5-R2-P0-013.
+diagnostic_mode=0
+for arg in "$@"; do
+  case "$arg" in
+    --diagnostic)
+      diagnostic_mode=1
+      ;;
+    -h|--help)
+      sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      printf '\nUsage: check-trj5-ship-bar.sh [--diagnostic]\n'
+      exit 0
+      ;;
+    *)
+      printf 'check-trj5-ship-bar.sh: unknown argument: %s\n' "$arg" >&2
+      exit 2
+      ;;
+  esac
+done
+
 fail=0
+partials=0
 checks=0
 
 ok() {
@@ -46,12 +81,16 @@ ok() {
 }
 
 partial() {
-  # PARTIAL is OK for this script's exit code purposes (we report the
-  # honest state rather than pretending PARTIAL is MET, but we do not
-  # FAIL the close gate on PARTIAL since Wave-1 baseline measurement
-  # is the in-progress state). Callers that want strict-MET semantics
-  # should grep for the `(PARTIAL` substring.
-  printf 'OK   %s (PARTIAL)\n' "$1"
+  # PARTIAL prints with a clear marker so it never reads as a clean
+  # MET row. In diagnostic mode the gate stays green; in default
+  # release-gate mode the gate flips red so we cannot ship while bars
+  # are still in baseline state. Audit T5-R2-P0-013.
+  if [ "$diagnostic_mode" -eq 1 ]; then
+    printf 'WARN %s (PARTIAL, diagnostic-mode-only)\n' "$1"
+  else
+    printf 'PARTIAL %s\n' "$1"
+  fi
+  partials=$((partials + 1))
   checks=$((checks + 1))
 }
 
@@ -306,10 +345,36 @@ fi
 printf '\n----- check-trj5-ship-bar summary -----\n'
 printf 'checks run: %d\n' "$checks"
 printf 'failures:   %d\n' "$fail"
-if [ "$fail" -eq 0 ]; then
-  printf '\ntrj5 ship-bar: PASS (PARTIAL rows reflect honest baseline state)\n'
-  exit 0
+printf 'partials:   %d\n' "$partials"
+if [ "$diagnostic_mode" -eq 1 ]; then
+  printf 'mode:       DIAGNOSTIC (partials count as warnings, not failures)\n'
 else
-  printf '\ntrj5 ship-bar: %d FAIL(s)\n' "$fail"
+  printf 'mode:       RELEASE-GATE (partials count as failures; --diagnostic to relax)\n'
+fi
+
+# Strict default: PARTIAL rows are treated as failures so the close gate
+# cannot pass while any bar is still in baseline / in-progress state.
+# `--diagnostic` mode is opt-in and only allows real FAIL rows to flip
+# the gate red. Audit T5-R2-P0-013.
+if [ "$fail" -ne 0 ]; then
+  printf '\ntrj5 ship-bar: FAIL (%d fail row(s), %d partial row(s))\n' "$fail" "$partials"
   exit 1
 fi
+
+if [ "$diagnostic_mode" -eq 1 ]; then
+  if [ "$partials" -gt 0 ]; then
+    printf '\ntrj5 ship-bar: PASS (diagnostic mode; %d partial row(s) reported as warnings)\n' "$partials"
+  else
+    printf '\ntrj5 ship-bar: PASS (diagnostic mode; no partial rows)\n'
+  fi
+  exit 0
+fi
+
+if [ "$partials" -ne 0 ]; then
+  printf '\ntrj5 ship-bar: FAIL (release-gate mode; %d partial row(s) block close)\n' "$partials"
+  printf '  re-run with --diagnostic for an advisory snapshot during baseline measurement\n'
+  exit 1
+fi
+
+printf '\ntrj5 ship-bar: PASS (release-gate mode; all bars MET)\n'
+exit 0
