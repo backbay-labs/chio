@@ -2491,9 +2491,17 @@ impl ChioKernel {
         // resource subscribe/list calls do not consume budget shares.
         // `remote_kernel_id` is `None` for these surfaces (they are
         // hosted-local by construction).
+        //
+        // The verifier already covers signature, crypto-floor,
+        // schema-ceiling, chain-binding, and time-window. Map any
+        // failure into `GuardDenied(reason)` to preserve the precise
+        // failure message rather than collapsing every chain
+        // violation into the lossy `InvalidSignature` variant. The
+        // pre-`B1` `check_time_bounds(capability, now)?` call below
+        // is now dead code (the verifier rejects the same condition)
+        // and has been removed.
         self.verify_capability_full_pre_admit(capability, None, now)
-            .map_err(|_| KernelError::InvalidSignature)?;
-        check_time_bounds(capability, now)?;
+            .map_err(KernelError::GuardDenied)?;
         self.check_revocation(capability)?;
         self.validate_delegation_admission(capability)?;
         check_subject_binding(capability, agent_id)?;
@@ -3721,6 +3729,12 @@ impl ChioKernel {
             // borrows non-Send transport state, hence the `?Send` flavor of
             // the trait. Removal of this bridge tracks with the trj6
             // sync-evaluator migration.
+            //
+            // The helper signature is `Result<T, KernelError>`. We flatten
+            // every arm here directly into that one Result instead of the
+            // earlier `Result<Result<_, _>, _>` shape - the outer Ok was
+            // always `Ok(...)` so the trailing `?` was a no-op. The flat
+            // form is equivalent but clearer (cursor[bot] LOW on PR #612).
             block_on_async_tool_dispatch(async {
                 match server
                     .invoke_stream(
@@ -3730,21 +3744,18 @@ impl ChioKernel {
                     )
                     .await
                 {
-                    Ok(Some(stream)) => Ok(Ok::<_, KernelError>(ToolServerOutput::Stream(stream))),
-                    Ok(None) => match server
+                    Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
+                    Ok(None) => server
                         .invoke(
                             &request.tool_name,
                             request.arguments.clone(),
                             Some(&mut bridge),
                         )
                         .await
-                    {
-                        Ok(result) => Ok(Ok::<_, KernelError>(ToolServerOutput::Value(result))),
-                        Err(error) => Ok(Err::<ToolServerOutput, KernelError>(error)),
-                    },
-                    Err(error) => Ok(Err::<ToolServerOutput, KernelError>(error)),
+                        .map(ToolServerOutput::Value),
+                    Err(error) => Err(error),
                 }
-            })?
+            })
         };
         self.record_child_receipts(child_receipts)?;
         let tool_output = match tool_output_result {
