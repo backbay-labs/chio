@@ -195,7 +195,7 @@ bar2_fixtures=(
   "single_entry_verifier_no_bypass.rs"
   "receipt_v2_fail_closed_under_negotiated_v2.rs"
   "anchor_batch_async_only_with_public_witness.rs"
-  "bilateral_dsse_pae_only_is_conformant.rs"
+  "b4_bilateral_dsse_pae_only_is_conformant.rs"
 )
 bar2_root="crates/chio-conformance/tests"
 

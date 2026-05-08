@@ -90,6 +90,12 @@ owner_globs = [
   "crates/chio-conformance/tests/single_entry_verifier_no_bypass.rs",
   "crates/chio-conformance/tests/receipt_v2_fail_closed_under_negotiated_v2.rs",
   "crates/chio-conformance/tests/anchor_batch_async_only_with_public_witness.rs",
+  "crates/chio-conformance/tests/b4_bilateral_dsse_pae_only_is_conformant.rs",
+  # B4 sub-lane: DSSE bilateral signing helpers added to chio-federation.
+  # Listed here (in addition to the federation overlap row in [overlaps])
+  # so owner-driven automation surfaces Lane B as a reviewer for the B4
+  # implementation, not just the conformance fixture above.
+  "crates/chio-federation/src/bilateral_dsse.rs",
   "scripts/check-anchor-batch-async-witness.sh",
   "spec/PROTOCOL.md",
   "spec/schemas/chio-wire/**",
