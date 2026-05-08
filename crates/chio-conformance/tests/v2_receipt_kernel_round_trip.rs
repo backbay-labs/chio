@@ -1,9 +1,3 @@
-//! W2.1 hot-path integration test: kernel mints body_hash-addressed
-//! `ChioReceiptV2` receipts when the negotiated peer profile (or the
-//! kernel-level default) accepts `ACCEPTS_RECEIPT_V2`, persists them
-//! through the production `SqliteReceiptStore` migration, and
-//! fail-closes on replay against the in-memory `ReceiptV2ReplaySet`.
-//!
 //! The deliverable for the audit's "types-only, hot path unwired"
 //! finding on T1.2: this test exercises the public mint API
 //! (`evaluate_tool_call_blocking`) that all production callers use,

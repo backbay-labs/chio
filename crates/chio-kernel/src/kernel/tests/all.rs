@@ -699,10 +699,6 @@ fn kernel_rejects_classical_capability_under_pq_required_floor() {
     let mut kernel = ChioKernel::new(config);
     kernel.set_capability_crypto_floor(KernelCryptoFloor::PqRequired);
 
-    // TRJ5-B1 migration: route through the unified pre-admit entry
-    // (signature, crypto floor, schema-ceiling, chain-binding, time)
-    // rather than the deleted signature-only shortcut. The token's
-    // time window is [100, 200), so 150 puts the clock inside it.
     let error = kernel
         .verify_capability_full_pre_admit(&token, None, 150)
         .expect_err("classical capability must fail under pq_required");

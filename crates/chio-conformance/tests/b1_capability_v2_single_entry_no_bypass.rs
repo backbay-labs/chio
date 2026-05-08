@@ -1,30 +1,3 @@
-//! TRJ5-B1 negative conformance fixture: single-entry capability verifier
-//! has no bypass.
-//!
-//! Property: every kernel surface that admits a capability MUST route
-//! through `chio_kernel_core::verify_capability_full` exactly once, and
-//! it MUST do so before any subsequent check (revocation, scope, guard)
-//! that depends on the capability being valid. The previous build
-//! carried a parallel `verify_capability_signature` shortcut on the
-//! plan-step and session/resource/prompt surfaces that enforced the
-//! signature, crypto floor, and v2 chain-binding rule but silently
-//! skipped the W1.3 negotiated schema-ceiling check. The B1 close-out
-//! deletes that shortcut and routes every kernel surface through the
-//! unified entry.
-//!
-//! The fixture below constructs a capability that the deleted shortcut
-//! would have accepted (valid signature, valid v2 chain-binding,
-//! crypto floor honoured, time window honoured) but whose presentation
-//! across a v1-only-negotiated federation peer is fail-closed under
-//! the unified entry. The token is dispatched through the production
-//! hosted hot path (`ChioKernel::evaluate_tool_call_blocking`), not
-//! through any test-only mock or direct call into chio-kernel-core.
-//! That is the Quality-Skeptic finding from the W3 review: the
-//! property has bite only if the test exercises the production
-//! dispatch surface.
-//!
-//! Revert procedure (this comment is load-bearing):
-//!
 //! If a future PR re-introduces a kernel-side shortcut named
 //! `verify_capability_full_without_budget_admit`,
 //! `verify_capability_signature`, or any other partial verifier on
@@ -58,9 +31,7 @@ use chio_kernel::{
     ChioKernel, KernelConfig, KernelError, Verdict as HostedVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
-use chio_kernel_core::{
-    verify_capability_full, FixedClock, NoopBudgetRegistry, TrustRootResolver,
-};
+use chio_kernel_core::{verify_capability_full, FixedClock, NoopBudgetRegistry, TrustRootResolver};
 
 fn now_unix_secs() -> u64 {
     std::time::SystemTime::now()
@@ -115,11 +86,6 @@ fn direct_v2_token(
     issued_at: u64,
     expires_at: u64,
 ) -> CapabilityToken {
-    // Honest direct-issue v2 chain-binding: parent_scope_hash equals the
-    // issuer's trust-root scope hash. The deleted
-    // `verify_capability_signature` shortcut would have accepted this
-    // token (signature + chain-binding both pass) -- the bypass we are
-    // closing is the missing W1.3 schema-ceiling check.
     let witness = compute_attenuation_witness(&scope, &scope).unwrap();
     let proof = AttenuationProof {
         parent_scope_hash: scope_hash(&scope).unwrap(),
@@ -241,11 +207,6 @@ fn b1_single_entry_verifier_has_no_bypass_on_hosted_dispatch() {
         now + 300,
     );
 
-    // Federation peer pinned with a v1-only negotiated profile. The
-    // peer's `max_capability_schema` is `chio.capability.v1`; a v2
-    // token presented across that peer must be rejected by the W1.3
-    // schema-ceiling check, which is step 1 of
-    // `verify_capability_full`.
     let origin_kernel_id = "kernel.v1-only.b1";
     let origin_keypair = Keypair::generate();
     let mut kernel = make_kernel(issuer.clone())
@@ -311,26 +272,6 @@ impl TrustRootResolver for SingleTrustRoot {
 }
 
 /// Positive control on the unified verifier itself.
-///
-/// The same token as the negative test, evaluated by the unified
-/// `chio_kernel_core::verify_capability_full` entry under a `t1_default`
-/// peer profile (which admits v2 schemas). This proves the token is
-/// otherwise valid -- signature, crypto floor, v2 chain-binding,
-/// time-window all pass -- and that ONLY the v1-only peer profile
-/// flips the verdict to deny in the negative test above. Without this
-/// control, the negative test could be passing for an unrelated
-/// reason (a bad witness, an expired token) rather than the W1.3
-/// schema-ceiling check we are asserting on.
-///
-/// We intentionally call `verify_capability_full` directly here,
-/// rather than the hosted dispatch surface, because the production
-/// hosted path layers an additional `validate_delegation_admission`
-/// step that rejects every v2 token in this build (it is enforced by
-/// the existing test
-/// `production_evaluate_rejects_direct_v2_without_trust_root_resolver`).
-/// That belt-and-suspenders rejection is independent of the W1.3
-/// property under test; allowing it to dominate the positive control
-/// would mask whether the fixture is meaningful.
 #[test]
 fn b1_positive_control_unified_verifier_accepts_same_token_under_v2_peer() {
     let now = now_unix_secs();
