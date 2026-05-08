@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for scripts/run-kani-manifest.sh empty-match exit policy
-# (empty-match regression in COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md).
+# Regression test for scripts/run-kani-manifest.sh empty-match exit policy.
 #
 # Asserts:
 #   1. Normal run with no matches exits 1 (CI gate cannot silently pass).
