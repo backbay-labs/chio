@@ -700,16 +700,42 @@ pub fn verify_bilateral_cosign_invocation(
             resolved_lease.expires_at_unix_ms, config.pinned_epoch.now_unix_ms
         )));
     }
-    // Optional: scope-digest match if the predicate carries one and the
-    // registry record carries one.
-    if let (Some(predicate_scope), Some(registry_scope)) =
-        (&lease_ref.scope_digest, &resolved_lease.scope_digest_hex)
-    {
-        if &predicate_scope.value != registry_scope {
+    // Scope-digest binding (codex P2 follow-up on PR #615): for a
+    // scoped capability lease the predicate's `scope_digest` and the
+    // registry record's `scope_digest_hex` must BOTH be present and
+    // agree. Treating one-sided presence as "skip validation" lets an
+    // envelope claim a specific scope digest while the trusted
+    // registry never confirms that scope (or vice versa); step 14
+    // would silently accept an unbound or differently-scoped lease.
+    // Fail-closed on any mismatch in presence or value.
+    match (&lease_ref.scope_digest, &resolved_lease.scope_digest_hex) {
+        (Some(predicate_scope), Some(registry_scope)) => {
+            if &predicate_scope.value != registry_scope {
+                return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+                    "lease scope_digest mismatch: registry={:?} predicate={:?}",
+                    registry_scope, predicate_scope.value
+                )));
+            }
+        }
+        (Some(predicate_scope), None) => {
             return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
-                "lease scope_digest mismatch: registry={:?} predicate={:?}",
-                registry_scope, predicate_scope.value
+                "predicate names scope_digest={:?} but registry record has no scope_digest_hex; \
+                 cannot confirm lease scope",
+                predicate_scope.value
             )));
+        }
+        (None, Some(registry_scope)) => {
+            return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+                "registry record carries scope_digest_hex={:?} but predicate omitted scope_digest; \
+                 cannot confirm lease scope",
+                registry_scope
+            )));
+        }
+        (None, None) => {
+            // Both sides explicitly omit scope-digest binding; the
+            // lease is unscoped on both ends and step 14 accepts it
+            // on id+issuer+expiry alone. This is the legacy
+            // unscoped-lease path.
         }
     }
 
