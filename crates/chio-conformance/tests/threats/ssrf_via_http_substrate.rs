@@ -7,6 +7,27 @@
 //! redirect ceiling, response-size ceiling, and address-class denials. This
 //! test pins the SSRF negative cases to the shared `chio-http-core` contract
 //! so adapters exercise the same fail-closed substrate API.
+//!
+//! Production call site: this test imports
+//! `chio_http_core::HttpEgressContract` directly and drives the production
+//! `enforce_url` and `enforce_attempt` functions with attack inputs that
+//! exercise four distinct deny variants of `HttpEgressError`:
+//!   - LoopbackDenied (127.0.0.1 SSRF target),
+//!   - LinkLocalDenied (169.254.169.254 instance metadata target),
+//!   - Ipv6UlaDenied (fd00::/8 internal target),
+//!   - RedirectLimitExceeded (chained redirect SSRF),
+//!   - ResponseTooLarge (oversized response body amplification).
+//!
+//! Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
+//! In `crates/chio-http-core/src/lib.rs`, locate the `enforce_url`
+//! function and flip the early-return guard for any of the deny branches
+//! (e.g. change `return Err(HttpEgressError::LoopbackDenied { ... })` to
+//! `return Ok(...)` after stubbing the validated target). Re-run
+//! `cargo test -p chio-conformance --test threats -- ssrf_via_http_substrate`
+//! and the `assert!(matches!(...))` arm covering that branch MUST fail.
+//! Each of the five `assert!(matches!(...))` lines below pins one
+//! production deny path; reverting any of them breaks the corresponding
+//! assertion.
 
 use std::collections::BTreeSet;
 
