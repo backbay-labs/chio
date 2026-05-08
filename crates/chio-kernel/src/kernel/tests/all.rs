@@ -10693,3 +10693,16 @@ fn kernel_error_report_includes_request_cancel_context() {
     assert_eq!(report.context["reason"], "operator cancelled");
     assert!(report.suggested_fix.contains("cancelled request ID"));
 }
+
+#[test]
+fn sync_bridge_current_thread_diagnostic_only_advertises_multithread_runtime() {
+    let report = KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime.report();
+
+    assert_eq!(report.code, "CHIO-KERNEL-SYNC-BRIDGE-INCOMPATIBLE");
+    assert!(report
+        .message
+        .contains("multi-thread Tokio runtime"));
+    assert!(!report.message.contains("evaluate_tool_call"));
+    assert!(report.suggested_fix.contains("multi-thread Tokio runtime"));
+    assert!(!report.suggested_fix.contains("API directly"));
+}
