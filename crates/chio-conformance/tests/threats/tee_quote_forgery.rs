@@ -92,7 +92,7 @@ fn unsigned_frame() -> Frame {
         },
         request_blob_sha256: "a".repeat(64),
         response_blob_sha256: "b".repeat(64),
-        redaction_pass_id: "trj5-a2-redactors@1.0.0".to_string(),
+        redaction_pass_id: "test-redactors@1.0.0".to_string(),
         verdict: Verdict::Allow,
         deny_reason: None,
         would_have_blocked: false,
