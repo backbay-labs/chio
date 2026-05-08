@@ -38,12 +38,55 @@
 // signatures. That fault injection demonstrates each assertion is
 // wired to the production tenant-signature deny branch.
 
+use std::path::PathBuf;
+
 use base64::Engine;
 use chio_core::crypto::Keypair;
 use chio_tee_frame::frame::{Frame, Otel, Provenance, Upstream, UpstreamSystem, Verdict};
 use chio_tee_frame::schema::{
     signing_payload, validate_signed, verify_tenant_sig, SchemaError, SCHEMA_VERSION,
 };
+
+// covered_by_tests cross-link from spec/security/chio-threat-model.v1.json
+// for the tee_quote_forgery row. The trj5/A2 batch-2 PR review (P2 by
+// codex-connector) flagged that the conformance test added below
+// exercises only the chio-tee-frame tenant-signature surface; the
+// quote validators (Nitro / TDX / SEV-SNP) and the kernel self-quote
+// gate are covered by the integration tests under chio-attest-verify
+// and chio-kernel listed below. This array preserves the file-
+// existence + named-fixture pins from the previous stub so a
+// regression in those validator paths still trips this conformance
+// test, not just the new tenant-sig attack-call-deny arms.
+const VALIDATOR_EVIDENCE_FILES: &[(&str, Option<&str>)] = &[
+    (
+        "crates/chio-attest-verify/tests/cross_backend_conformance.rs",
+        None,
+    ),
+    (
+        "crates/chio-attest-verify/tests/expect_report_data.rs",
+        None,
+    ),
+    ("crates/chio-attest-verify/tests/tdx_integration.rs", None),
+    (
+        "crates/chio-attest-verify/tests/sev_snp_integration.rs",
+        None,
+    ),
+    ("crates/chio-attest-verify/tests/nitro_unit.rs", None),
+    (
+        "crates/chio-attest-verify/tests/nitro_root_rotation.rs",
+        None,
+    ),
+    (
+        "crates/chio-kernel/tests/pq_key_load_after_self_quote.rs",
+        Some("allow_hybrid_loads_pq_only_after_verified_self_quote"),
+    ),
+];
+
+fn repo_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+}
 
 fn unsigned_frame() -> Frame {
     Frame {
@@ -166,6 +209,42 @@ fn threat_tee_quote_forgery_forged_signature_rejected() {
         matches!(err, SchemaError::TenantSigVerification(_)),
         "expected SchemaError::TenantSigVerification on forged sig, got {err:?}"
     );
+}
+
+#[test]
+fn threat_tee_quote_forgery_validator_evidence_files_remain_in_tree() {
+    // covers: tee_quote_forgery
+    //
+    // Defense-in-depth pin: the threat-model JSON's `covered_by_tests`
+    // array names the Nitro / TDX / SEV-SNP integration suites and
+    // the kernel self-quote gate fixture as the production-test
+    // surfaces for this threat. The conformance test arms above only
+    // exercise the chio-tee-frame tenant-signature surface; this
+    // test asserts the cited validator-side evidence files remain
+    // in-tree so a regression that deletes or guts them trips this
+    // gate before the threat-row evidence claims `caught: 4` again.
+    for (evidence, needle) in VALIDATOR_EVIDENCE_FILES {
+        let path = repo_path(evidence);
+        assert!(
+            path.is_file(),
+            "TEE quote-validator evidence file {} must remain in-tree \
+             (cited by spec/security/chio-threat-model.v1.json \
+             tee_quote_forgery covered_by_tests)",
+            path.display()
+        );
+        if let Some(needle) = needle {
+            let raw = match std::fs::read_to_string(&path) {
+                Ok(raw) => raw,
+                Err(err) => panic!("read {}: {err}", path.display()),
+            };
+            assert!(
+                raw.contains(needle),
+                "{} must mention named fixture {needle:?} so the \
+                 self-quote gate evidence stays pinned",
+                path.display()
+            );
+        }
+    }
 }
 
 #[test]
