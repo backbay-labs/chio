@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ delete match arm '?' in glob_matches
+@@ -852,17 +852,17 @@
+             '*' => {
+                 if matches!(chars.peek(), Some('*')) {
+                     chars.next();
+                     regex.push_str(".*");
+                 } else {
+                     regex.push_str("[^/]*");
+                 }
+             }
+-            '?' => regex.push('.'),
++             /* ~ changed by cargo-mutants ~ */
+             '.' | '+' | '(' | ')' | '{' | '}' | '[' | ']' | '^' | '$' | '|' | '\\' => {
+                 regex.push('\\');
+                 regex.push(ch);
+             }
+             _ => regex.push(ch),
+         }
+     }
+     regex.push('$');

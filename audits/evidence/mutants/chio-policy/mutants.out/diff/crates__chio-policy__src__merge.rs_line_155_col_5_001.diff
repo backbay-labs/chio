@@ -1,0 +1,39 @@
+--- crates/chio-policy/src/merge.rs
++++ replace merge_posture -> Option<PostureExtension> with None
+@@ -147,35 +147,17 @@
+         (None, None) => None,
+     }
+ }
+ 
+ fn merge_posture(
+     base: &Option<PostureExtension>,
+     child: &Option<PostureExtension>,
+ ) -> Option<PostureExtension> {
+-    match (base, child) {
+-        (_, Some(child_posture)) => {
+-            if let Some(base_posture) = base {
+-                let mut states = base_posture.states.clone();
+-                for (name, state) in &child_posture.states {
+-                    states.insert(name.clone(), state.clone());
+-                }
+-                Some(PostureExtension {
+-                    initial: child_posture.initial.clone(),
+-                    states,
+-                    transitions: child_posture.transitions.clone(),
+-                })
+-            } else {
+-                Some(child_posture.clone())
+-            }
+-        }
+-        (Some(base_posture), None) => Some(base_posture.clone()),
+-        (None, None) => None,
+-    }
++    None /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn merge_origins(
+     base: &Option<OriginsExtension>,
+     child: &Option<OriginsExtension>,
+ ) -> Option<OriginsExtension> {
+     match (base, child) {
+         (_, Some(child_origins)) => {

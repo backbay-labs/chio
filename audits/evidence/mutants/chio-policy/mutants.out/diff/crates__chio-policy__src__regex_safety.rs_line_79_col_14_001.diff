@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/regex_safety.rs
++++ replace > with == in validate_policy_regex_count
+@@ -71,17 +71,17 @@
+     Ok(compiled.is_match(haystack))
+ }
+ 
+ pub(crate) fn validate_policy_regex_count(
+     count: usize,
+     field: &str,
+     max: usize,
+ ) -> Result<(), String> {
+-    if count > max {
++    if count == /* ~ changed by cargo-mutants ~ */ max {
+         return Err(format!("{field} allows at most {max} patterns"));
+     }
+     Ok(())
+ }
+ 
+ fn policy_regex_complexity(pattern: &str) -> usize {
+     let mut score = 0usize;
+     let mut escaped = false;

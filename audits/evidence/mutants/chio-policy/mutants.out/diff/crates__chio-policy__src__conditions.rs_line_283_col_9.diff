@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ delete match arm "agent" in resolve_context_value
+@@ -275,17 +275,17 @@
+ 
+     match namespace {
+         "environment" => context
+             .environment
+             .as_ref()
+             .map(|s| serde_json::Value::String(s.clone())),
+         "user" => resolve_map_field(&context.user, subkey),
+         "deployment" => resolve_map_field(&context.deployment, subkey),
+-        "agent" => resolve_map_field(&context.agent, subkey),
++         /* ~ changed by cargo-mutants ~ */
+         "session" => resolve_map_field(&context.session, subkey),
+         "request" => resolve_map_field(&context.request, subkey),
+         "custom" => resolve_map_field(&context.custom, subkey),
+         _ => None,
+     }
+ }
+ 
+ fn resolve_map_field(

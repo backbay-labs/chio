@@ -1,0 +1,47 @@
+--- crates/chio-policy/src/merge.rs
++++ replace merge_origins -> Option<OriginsExtension> with None
+@@ -172,43 +172,17 @@
+         (None, None) => None,
+     }
+ }
+ 
+ fn merge_origins(
+     base: &Option<OriginsExtension>,
+     child: &Option<OriginsExtension>,
+ ) -> Option<OriginsExtension> {
+-    match (base, child) {
+-        (_, Some(child_origins)) => {
+-            if let Some(base_origins) = base {
+-                let mut merged_profiles = base_origins.profiles.clone();
+-                for child_profile in &child_origins.profiles {
+-                    if let Some(pos) = merged_profiles
+-                        .iter()
+-                        .position(|profile| profile.id == child_profile.id)
+-                    {
+-                        merged_profiles[pos] = child_profile.clone();
+-                    } else {
+-                        merged_profiles.push(child_profile.clone());
+-                    }
+-                }
+-                Some(OriginsExtension {
+-                    default_behavior: child_origins
+-                        .default_behavior
+-                        .or(base_origins.default_behavior),
+-                    profiles: merged_profiles,
+-                })
+-            } else {
+-                Some(child_origins.clone())
+-            }
+-        }
+-        (Some(base_origins), None) => Some(base_origins.clone()),
+-        (None, None) => None,
+-    }
++    None /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn merge_detection(
+     base: &Option<DetectionExtension>,
+     child: &Option<DetectionExtension>,
+ ) -> Option<DetectionExtension> {
+     match (base, child) {
+         (_, Some(child_detection)) => {

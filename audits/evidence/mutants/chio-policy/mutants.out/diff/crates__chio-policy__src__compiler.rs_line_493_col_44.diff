@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace / with * in jailbreak_config_from
+@@ -485,17 +485,17 @@
+     let mut detector = JailbreakDetectorConfig::default();
+ 
+     if let Some(block) = jb.block_threshold {
+         // HushSpec expresses thresholds as integer percentages (0-100 in
+         // practice; ClawdStrike used 0-255). Map that onto the `[0.0, 1.0]`
+         // jailbreak-guard space, capping at 1.0 so out-of-range values
+         // fail closed rather than produce an unreachable threshold.
+         let capped = u32::try_from(block).unwrap_or(0).min(100);
+-        config.threshold = (capped as f32) / 100.0;
++        config.threshold = (capped as f32) * /* ~ changed by cargo-mutants ~ */ 100.0;
+     }
+ 
+     // `warn_threshold` has no dedicated field on Chio's `JailbreakGuardConfig`;
+     // the guard emits advisory signals based on detector-level statistical
+     // thresholds. We accept the HushSpec value for schema compatibility but
+     // do not wire it in here -- if the warn value would exceed the configured
+     // block threshold we conservatively ignore it rather than fail closed,
+     // matching the ClawdStrike `compile_detection` semantics that clamp

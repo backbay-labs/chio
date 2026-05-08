@@ -1,0 +1,42 @@
+--- crates/chio-policy/src/merge.rs
++++ replace merge_jailbreak -> Option<JailbreakDetection> with Some(Default::default())
+@@ -358,38 +358,17 @@
+         (None, None) => None,
+     }
+ }
+ 
+ fn merge_jailbreak(
+     base: &Option<JailbreakDetection>,
+     child: &Option<JailbreakDetection>,
+ ) -> Option<JailbreakDetection> {
+-    match (base, child) {
+-        (_, Some(child_jailbreak)) => {
+-            if let Some(base_jailbreak) = base {
+-                Some(JailbreakDetection {
+-                    enabled: child_jailbreak.enabled.or(base_jailbreak.enabled),
+-                    block_threshold: child_jailbreak
+-                        .block_threshold
+-                        .or(base_jailbreak.block_threshold),
+-                    warn_threshold: child_jailbreak
+-                        .warn_threshold
+-                        .or(base_jailbreak.warn_threshold),
+-                    max_input_bytes: child_jailbreak
+-                        .max_input_bytes
+-                        .or(base_jailbreak.max_input_bytes),
+-                })
+-            } else {
+-                Some(child_jailbreak.clone())
+-            }
+-        }
+-        (Some(base_jailbreak), None) => Some(base_jailbreak.clone()),
+-        (None, None) => None,
+-    }
++    Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn merge_threat_intel(
+     base: &Option<ThreatIntelDetection>,
+     child: &Option<ThreatIntelDetection>,
+ ) -> Option<ThreatIntelDetection> {
+     match (base, child) {
+         (_, Some(child_threat_intel)) => {

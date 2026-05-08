@@ -1,0 +1,20 @@
+--- crates/chio-policy/src/regex_safety.rs
++++ replace << with >>
+@@ -1,16 +1,16 @@
+ use std::collections::HashMap;
+ use std::sync::{Mutex as StdMutex, OnceLock};
+ 
+ use regex::{Regex, RegexBuilder};
+ 
+ const MAX_POLICY_REGEX_LEN: usize = 512;
+ const MAX_POLICY_REGEX_COMPLEXITY: usize = 96;
+-const POLICY_REGEX_SIZE_LIMIT: usize = 1 << 20;
++const POLICY_REGEX_SIZE_LIMIT: usize = 1 >> /* ~ changed by cargo-mutants ~ */ 20;
+ const POLICY_REGEX_DFA_SIZE_LIMIT: usize = 1 << 20;
+ const POLICY_REGEX_CACHE_MAX_KEYS: usize = 4_096;
+ 
+ static POLICY_REGEX_CACHE: OnceLock<StdMutex<HashMap<String, Result<Regex, String>>>> =
+     OnceLock::new();
+ 
+ pub(crate) fn compile_policy_regex(pattern: &str, field: &str) -> Result<Regex, String> {
+     let trimmed = pattern.trim();

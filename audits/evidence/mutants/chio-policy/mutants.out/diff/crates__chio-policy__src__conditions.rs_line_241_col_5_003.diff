@@ -1,0 +1,34 @@
+--- crates/chio-policy/src/conditions.rs
++++ replace parse_offset_value -> Option<i32> with Some(-1)
+@@ -233,30 +233,17 @@
+             } else {
+                 None
+             }
+         }
+     }
+ }
+ 
+ fn parse_offset_value(s: &str) -> Option<i32> {
+-    if let Some((hours, minutes)) = s.split_once(':') {
+-        let hours = hours.parse::<i32>().ok()?;
+-        let minutes = minutes.parse::<i32>().ok()?;
+-        if !(0..=23).contains(&hours) || !(0..=59).contains(&minutes) {
+-            return None;
+-        }
+-        Some(hours.saturating_mul(60).saturating_add(minutes))
+-    } else {
+-        let hours = s.parse::<i32>().ok()?;
+-        if !(0..=23).contains(&hours) {
+-            return None;
+-        }
+-        Some(hours.saturating_mul(60))
+-    }
++    Some(-1) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn check_context_match(
+     expected: &HashMap<String, serde_json::Value>,
+     context: &RuntimeContext,
+ ) -> bool {
+     for (key, expected_value) in expected {
+         let actual = resolve_context_value(key, context);

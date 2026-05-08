@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ delete ! in validate_posture
+@@ -231,17 +231,17 @@
+             }
+ 
+             for (budget_key, &value) in &state.budgets {
+                 if value < 0 {
+                     errors.push(ValidationError::Custom(format!(
+                         "posture.states.{state_name}.budgets.{budget_key} must be non-negative, got {value}"
+                     )));
+                 }
+-                if !matches!(
++                if  /* ~ changed by cargo-mutants ~ */matches!(
+                     budget_key.as_str(),
+                     "file_writes"
+                         | "egress_calls"
+                         | "shell_commands"
+                         | "tool_calls"
+                         | "patches"
+                         | "custom_calls"
+                 ) {

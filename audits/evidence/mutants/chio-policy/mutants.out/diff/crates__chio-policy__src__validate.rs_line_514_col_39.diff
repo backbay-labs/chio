@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ replace == with != in validate_runtime_assurance
+@@ -506,17 +506,17 @@
+     let mut seen_trusted_verifiers = BTreeSet::new();
+     for (tier_name, tier) in &runtime_assurance.tiers {
+         if !seen_minimum_tiers.insert(tier.minimum_attestation_tier) {
+             errors.push(ValidationError::Custom(format!(
+                 "extensions.runtime_assurance.tiers duplicates minimum_attestation_tier {:?}",
+                 tier.minimum_attestation_tier
+             )));
+         }
+-        if tier.max_scope.ttl_seconds == 0 {
++        if tier.max_scope.ttl_seconds != /* ~ changed by cargo-mutants ~ */ 0 {
+             errors.push(ValidationError::Custom(format!(
+                 "extensions.runtime_assurance.tiers.{tier_name}.max_scope.ttl_seconds must be >= 1"
+             )));
+         }
+         if tier.max_scope.operations.is_empty() {
+             errors.push(ValidationError::Custom(format!(
+                 "extensions.runtime_assurance.tiers.{tier_name}.max_scope.operations is empty"
+             )));

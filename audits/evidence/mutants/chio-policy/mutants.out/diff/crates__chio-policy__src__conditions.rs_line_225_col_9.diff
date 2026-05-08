@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ delete match arm "Japan" | "JST" in parse_timezone_offset
+@@ -217,17 +217,17 @@
+         "UTC" | "utc" | "Etc/UTC" | "Etc/GMT" | "GMT" => Some(0),
+         "US/Eastern" | "EST" => Some(-5 * 60),
+         "US/Central" | "CST" => Some(-6 * 60),
+         "US/Mountain" | "MST" => Some(-7 * 60),
+         "US/Pacific" | "PST" => Some(-8 * 60),
+         "GB" => Some(0),
+         "CET" => Some(60),
+         "EET" => Some(120),
+-        "Japan" | "JST" => Some(9 * 60),
++         /* ~ changed by cargo-mutants ~ */
+         "PRC" => Some(8 * 60),
+         "IST" => Some(5 * 60 + 30),
+         _ => {
+             if let Some(rest) = tz.strip_prefix('+') {
+                 parse_offset_value(rest)
+             } else if let Some(rest) = tz.strip_prefix('-') {
+                 parse_offset_value(rest).map(|value| -value)
+             } else {
