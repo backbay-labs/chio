@@ -734,7 +734,7 @@ now mints v2 receipts at production mint time when peer negotiation selects v2.
   computed over the typed `ReceiptV2SigningBody { bodyHash, body }` wrapper.
   Either form of mismatch (wrong `bodyHash` field, signature over the wrong
   body) fails closed. This matches the T1.2 audit closure.
-- **Negotiation downgrade (post-TRJ5-B2 hardening).**
+- **Negotiation downgrade (post-release work-B2 hardening).**
   - When the peer profile advertises only v1 (no `ACCEPTS_RECEIPT_V2`) and
     is pinned fresh, the kernel mints only the v1 UUIDv7 receipt. This is
     the spec-conformant v1-only profile; advisory dispatches that name no
@@ -746,7 +746,7 @@ now mints v2 receipts at production mint time when peer negotiation selects v2.
     `KernelError::ReceiptNegotiationDowngrade` whose
     `NegotiationDowngradeReason` enumerates the failure mode (currently
     `PeerNotPinnedFresh`). The kernel MUST NOT mint a v1 receipt as a
-    silent fallback. This is a tightening introduced by TRJ5-B2: it adds a
+    silent fallback. This is a tightening introduced by release work-B2: it adds a
     new normative MUST to a section that previously contained only
     descriptive prose ("the kernel falls back"). The "stale or
     never-pinned" enumeration is part of the MUST so a future
