@@ -7,7 +7,7 @@
 (* actions so the invariant is not satisfied by a fixture-only atomic       *)
 (* update that records both facts in one transition.                        *)
 (*                                                                          *)
-(* Proof obligation (TRJ5-A4.1):                                            *)
+(* Proof obligation (release work-A4.1):                                            *)
 (*  - Spec Init implies SafetyInv.                                          *)
 (*  - Every disjunct of Next preserves SafetyInv. The cross-action          *)
 (*    obligation is on PublishAllow: the HasAllowReceipt(a, c) guard must   *)
