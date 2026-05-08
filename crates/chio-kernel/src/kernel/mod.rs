@@ -3704,6 +3704,11 @@ impl ChioKernel {
             // borrows non-Send transport state, hence the `?Send` flavor of
             // the trait. Removal of this bridge tracks with the trj6
             // sync-evaluator migration.
+            // The helper signature is `Result<T, KernelError>`. Flatten
+            // every arm here directly into that single Result instead of
+            // the earlier `Result<Result<_, _>, _>` shape - the outer Ok
+            // was always present so the trailing `?` was a no-op.
+            // (cursor[bot] LOW on PR #606.)
             block_on_async_tool_dispatch(async {
                 match server
                     .invoke_stream(
@@ -3713,21 +3718,18 @@ impl ChioKernel {
                     )
                     .await
                 {
-                    Ok(Some(stream)) => Ok(Ok::<_, KernelError>(ToolServerOutput::Stream(stream))),
-                    Ok(None) => match server
+                    Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
+                    Ok(None) => server
                         .invoke(
                             &request.tool_name,
                             request.arguments.clone(),
                             Some(&mut bridge),
                         )
                         .await
-                    {
-                        Ok(result) => Ok(Ok::<_, KernelError>(ToolServerOutput::Value(result))),
-                        Err(error) => Ok(Err::<ToolServerOutput, KernelError>(error)),
-                    },
-                    Err(error) => Ok(Err::<ToolServerOutput, KernelError>(error)),
+                        .map(ToolServerOutput::Value),
+                    Err(error) => Err(error),
                 }
-            })?
+            })
         };
         self.record_child_receipts(child_receipts)?;
         let tool_output = match tool_output_result {

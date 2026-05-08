@@ -31,28 +31,31 @@ pub use metrics::{
 /// `ToolServerConnection` trait. The passthrough surface in this crate is
 /// already documented as non-authoritative; it does not enter the Chio
 /// kernel hot path and is not subject to the kernel's runtime invariants.
+///
+/// Mirrors `chio_kernel::kernel::block_on_async_tool_dispatch`: on a
+/// multi-thread runtime use `block_in_place` so we yield the runtime;
+/// otherwise (current-thread runtime, e.g. `#[tokio::test(flavor = "current_thread")]`,
+/// or no runtime at all) drive the future with the non-tokio
+/// `futures::executor::block_on`. Building a fresh tokio runtime inside
+/// an active current-thread runtime panics with "Cannot start a runtime
+/// from within a runtime" - the exact failure cursor[bot] HIGH +
+/// codex[bot] P1 flagged on PR #606.
 #[cfg(any(test, feature = "compatibility-surface"))]
-#[allow(clippy::expect_used)]
 fn block_on_tool_server_invoke<F, T>(future: F) -> T
 where
     F: std::future::Future<Output = T>,
 {
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => match handle.runtime_flavor() {
-            tokio::runtime::RuntimeFlavor::MultiThread => {
-                tokio::task::block_in_place(|| handle.block_on(future))
-            }
-            _ => tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("build current-thread runtime for sync passthrough")
-                .block_on(future),
-        },
-        Err(_) => tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("build current-thread runtime for sync passthrough")
-            .block_on(future),
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        }
+        // Current-thread runtime active OR no runtime: drive the future
+        // with a non-tokio executor so we do not nest `block_on` (tokio
+        // refuses to start a runtime from within an active one). Tool
+        // servers that depend on tokio I/O timers should register
+        // against a multi-thread runtime; this passthrough is only used
+        // by the in-process compatibility shim.
+        _ => futures::executor::block_on(future),
     }
 }
 
