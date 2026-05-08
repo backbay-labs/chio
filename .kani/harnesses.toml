@@ -247,9 +247,9 @@ notes = "Truth table over chio_anchor::emergency_controls_allows."
 crate = "chio-anchor"
 harness = "public_ensure_anchor_operation_allowed_fail_closed"
 default_unwind = 4
-timeout_secs = 1800
-lane = "pr"
-notes = "Fail-closed semantics of chio_anchor::ensure_anchor_operation_allowed. Narrowed to unwind=4 (rather than the workspace-default 8) because the production fail-closed arm constructs a `format!()`-based AnchorError::InvalidInput payload that paths into core::str::count::do_count_chars, blowing up cbmc's path count past the per-harness wall-clock budget at unwind=8. The narrowing is sound: with --no-unwinding-checks, the unwind bound only prunes UTF-8 char-counting paths, all of which leave the variant-tag invariant under test untouched. The full String payload is exercised at runtime by crates/chio-anchor/tests/. Documented in the kani_public_harnesses.rs docstring on PR #613."
+timeout_secs = 3600
+lane = "nightly"
+notes = "NIGHTLY-ONLY: Fail-closed semantics of chio_anchor::ensure_anchor_operation_allowed. The production fail-closed arm constructs an AnchorError::InvalidInput payload via format!(), whose UTF-8 char-counting paths inflate cbmc's SSA into the millions of steps even at unwind=4 (~140s symex + minutes of SAT in local runs). PR-tier wall-clock budgets are too tight; this harness runs in the nightly lane at a 3600s budget. The fail-closed property is also pinned at PR-tier by the runtime negative tests under crates/chio-anchor/tests/ and by the truth-table harness `public_anchor_emergency_controls_allows_truth_table` which exercises the same `controls.allows()` predicate without the format-string path. TRJ6 follow-up: extract a `pub(crate) fn classify_operation_admission(...)` helper used by both the runtime fail-closed branch and a tighter Kani harness, replacing the format!-based error construction with a small enum-only variant tag - this would let the tightened harness run in the PR lane. See audit P0-017 + P0-018 for the option (a) vs (b) decision."
 
 [[harness]]
 crate = "chio-anchor"
