@@ -39,16 +39,15 @@ functions) and `trust_tier.rs`. Credential verification/validation
 logic in the 13 listed files sits OUTSIDE the mutation surface for
 this run.
 
-## Cleanup-wave fix (P0-022)
+## Surface caveat
 
-Per the comprehensive audit P0-022 finding, this baseline does not
-support a "target satisfied at crate level" claim. Two options were
-considered:
+This baseline does not support a "target satisfied at crate level"
+claim. Two options were considered:
 
 - (a) Convert `include!()`d files to proper modules so cargo-mutants
-  can scan them. Right long-term fix, deferred to trj6.
+  can scan them. Right long-term fix, deferred.
 - (b) Add a machine-readable `examine_scope` caveat to the JSON and
-  mark the README as PARTIAL. Selected for this cleanup wave.
+  mark the README as PARTIAL. Selected here.
 
 `audits/evidence/mutants/chio-credentials/2026-05-08.json` now
 includes:
@@ -61,8 +60,7 @@ includes:
 ```
 
 Aggregate documents (`audits/mutation/2026-05-08-per-crate-baseline.md`
-and `.planning/trajectory-5/baselines/BAR-1-MUTATION.md` where
-present) reflect the PARTIAL label.
+where present) reflect the PARTIAL label.
 
 ## Run details
 
@@ -76,7 +74,7 @@ present) reflect the PARTIAL label.
 
 ## Follow-up
 
-- trj6: convert `include!()` files to `mod` declarations; re-run.
+- Convert `include!()` files to `mod` declarations; re-run.
 - Until that lands, the chio-credentials row reads PARTIAL across all
   aggregate docs. The crate is NOT eligible for `target met` claims
   on this surface.

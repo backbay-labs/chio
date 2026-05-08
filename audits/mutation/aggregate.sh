@@ -44,8 +44,8 @@ for crate in "$@"; do
   # cargo-mutants 25.x default; fall back to the nested layout when the
   # direct layout is absent. This avoids reporting stale counts from a
   # legacy nested run when a newer run has overwritten the same crate
-  # directory at the top level (per Codex P2 review on PR #603).
-  # Mirrors the dual-layout probe in `scripts/mutants-fuzz-cocoverage.sh`.
+  # directory at the top level. Mirrors the dual-layout probe in
+  # `scripts/mutants-fuzz-cocoverage.sh`.
   out_dir=""
   for candidate in \
     "${EVIDENCE_DIR}/${crate}" \

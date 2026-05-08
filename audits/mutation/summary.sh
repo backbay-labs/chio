@@ -41,8 +41,7 @@ for crate in "$@"; do
   # Prefer the direct `<output>/` layout because that is the current
   # cargo-mutants 25.x default; fall back to the nested layout when the
   # direct layout is absent. The probe order matches `aggregate.sh` so
-  # both helpers select the same evidence file when both layouts coexist
-  # (per Codex+Cursor reviews on PR #603).
+  # both helpers select the same evidence file when both layouts coexist.
   out_dir=""
   for candidate in \
     "${EVIDENCE_DIR}/${crate}" \

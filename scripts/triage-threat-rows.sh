@@ -24,11 +24,11 @@ ROWS=(
   "pii_phi_exposure|chio_guards::response_sanitization::ResponseSanitizationGuard|crates/chio-guards/src/response_sanitization.rs|crates/chio-conformance/tests/threats/pii_phi_exposure.rs|IMPL-EXISTS-AND-PUBLIC"
   "play_integrity_token_replay|chio_custody_hw::attestation::play_integrity::verify_play_integrity|crates/chio-custody-hw/src/attestation/play_integrity.rs|crates/chio-conformance/tests/threats/play_integrity_token_replay.rs|IMPL-EXISTS-AND-PUBLIC"
   "pq_signature_downgrade|chio_kernel_core::capability_verify::verify_capability_full|crates/chio-kernel-core/src/capability_verify.rs|crates/chio-conformance/tests/threats/pq_signature_downgrade.rs|IMPL-EXISTS-AND-PUBLIC"
-  "resource_exhaustion_dos|chio_kernel::dispatch (Wave 1 confirms)|crates/chio-kernel/src/kernel/mod.rs|crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs|IMPL-PARTIAL"
+  "resource_exhaustion_dos|chio_kernel::dispatch|crates/chio-kernel/src/kernel/mod.rs|crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs|IMPL-PARTIAL"
   "ssrf_via_http_substrate|chio_egress_contract::HttpEgressContract|crates/chio-egress-contract/src/lib.rs|crates/chio-conformance/tests/threats/ssrf_via_http_substrate.rs|IMPL-EXISTS-AND-PUBLIC"
   "tee_quote_forgery|chio_tee_frame::schema::validate_signed|crates/chio-tee-frame/src/schema.rs|crates/chio-conformance/tests/threats/tee_quote_forgery.rs|IMPL-EXISTS-AND-PUBLIC"
-  "tool_server_escape|chio_kernel::dispatch (Wave 1 confirms)|crates/chio-kernel/src/kernel/mod.rs|crates/chio-conformance/tests/threats/tool_server_escape.rs|IMPL-PARTIAL"
-  "wasm_guard_resource_exhaustion|(deferred to trj6)|crates/chio-wasm-guards/src/lib.rs|crates/chio-conformance/tests/threats/wasm_guard_resource_exhaustion.rs|BLOCKED-BY-ARCHITECTURE"
+  "tool_server_escape|chio_kernel::dispatch|crates/chio-kernel/src/kernel/mod.rs|crates/chio-conformance/tests/threats/tool_server_escape.rs|IMPL-PARTIAL"
+  "wasm_guard_resource_exhaustion|(deferred)|crates/chio-wasm-guards/src/lib.rs|crates/chio-conformance/tests/threats/wasm_guard_resource_exhaustion.rs|BLOCKED-BY-ARCHITECTURE"
   "weights_hash_spoof|chio_weights::card::weights_hash_of|crates/chio-weights/src/card.rs|crates/chio-conformance/tests/threats/weights_hash_spoof.rs|IMPL-EXISTS-AND-PUBLIC"
 )
 
