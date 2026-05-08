@@ -1,4 +1,4 @@
-# chio-attest-verify mutation baseline (TRJ5-A1.2a/A1.8)
+# chio-attest-verify mutation baseline (mutation evidence item/A1.8)
 
 This directory holds the per-mutant cargo-mutants output for the
 `chio-attest-verify` crate; the seed measurement that retires the
@@ -10,7 +10,7 @@ This directory holds the per-mutant cargo-mutants output for the
 |---|---|
 | Crate | `chio-attest-verify` |
 | Date | 2026-05-08 |
-| Branch | `claude/trj5/a1-mutation-attest-verify` (PR continuation of `claude/trj5/a1-mutation-baseline`, PR #603) |
+| Branch | `PR branch` (PR continuation of `PR branch`, PR #603) |
 | Base SHA | `c7590b2603164a94c85d9fd3108909c8a290f289` (PR #603 tip) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 41m 4s |
@@ -51,7 +51,7 @@ chio-acp-proxy::attestation_and_telemetry_tests::
                      capability issuer is not a trusted CA"
 ```
 
-This failure exists on `main` at SHA `708c7bb33` and on the `claude/trj5/
+This failure exists on `main` at SHA `708c7bb33` and on the `claude/release work/
 a1-mutation-baseline` branch tip. It is a pre-existing test/runtime drift
 where the runtime now returns a "trusted CA" message instead of the
 "signature"/"untrusted" wording the test expects.
@@ -164,7 +164,7 @@ the kill rate to ~62% (47/(68)). To reach 80% requires closing ~24
 more, which means a more thorough sigstore_negative test suite plus
 explicit `# unreachable: <justification>` annotations on the residual
 pass-through mutants per the T0.B audit convention. This work is
-**deferred to TRJ5-A1.8 follow-up**.
+**deferred to mutation evidence item follow-up**.
 
 ## What's NOT in this PR
 
