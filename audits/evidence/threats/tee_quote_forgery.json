@@ -1,7 +1,8 @@
 {
-  "caught": 0,
-  "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
-  "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "caught": 4,
+  "needs_real_run": false,
+  "note": "trj5/A2 evidence backfill (batch 2): real conformance test at crates/chio-conformance/tests/threats/tee_quote_forgery.rs imports chio_tee_frame::schema::{validate_signed, verify_tenant_sig, signing_payload} production code, signs a Frame with a known tenant keypair, then exercises three forgery deny branches: (1) verifier-key swap (validate_signed returns SchemaError::TenantSigVerification when the verifier holds a different tenant public key, modeling tenant misbinding), (2) post-sign body tampering on request_blob_sha256 (TenantSigVerification deny), and (3) forged 64-byte tenant_sig replacement (verify_tenant_sig deny). A sanity arm verifies that a legitimately-signed frame round-trips so the guard is not over-rejecting. The header documents the revert-to-prove-it-fails recipe (replace verify_tenant_sig body in chio-tee-frame/src/schema.rs with `Ok(())`).",
+  "ran_at": "2026-05-08T00:00:00Z",
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/tee_quote_forgery.rs"
 }
