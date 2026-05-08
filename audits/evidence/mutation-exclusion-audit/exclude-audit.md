@@ -9,7 +9,7 @@ Date: 2026-05-08.
 
 This audit walks every entry in the workspace `exclude_globs` list and
 classifies it as `OK` or `FOR-REMOVAL` per the close-bar criterion in
-`tickets.md` line 66:
+the evidence checklist:
 
 > Confirm each exclusion is either (a) test/build/fuzz scaffolding,
 > (b) covered by a Kani harness, or (c) accompanied by a production-call-
@@ -169,7 +169,7 @@ four `FOR-REMOVAL-CANDIDATE` findings above, THEN the baseline run.
 This avoids publishing a number against a file set that excludes
 known decision-capable code.
 
-A follow-up audit ticket should track auditing
+A follow-up review item should track auditing
 `chio-guards/src/external/**` per-file test coverage plus the three
 other re-classified entries.
 
