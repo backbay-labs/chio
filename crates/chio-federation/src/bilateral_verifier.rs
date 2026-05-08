@@ -522,10 +522,21 @@ pub fn verify_bilateral_cosign_invocation(
             statement.statement_type, STATEMENT_TYPE_V1
         )));
     }
-    if statement.subject.is_empty() {
-        return Err(VerifierError::StatementSchemaInvalid(
-            "subject array is empty".to_string(),
-        ));
+    // P0-005 fix (audit 2026-05-08): the bilateral envelope profile
+    // binds exactly ONE subject (the receipt body). The pre-fix
+    // verifier only rejected the empty-list case, so a multi-subject
+    // envelope was accepted and `subject[0]` alone was bound. A
+    // signer could insert an arbitrary second subject digest and
+    // verifiers that walked the full subject list (the in-toto
+    // convention for subject membership) would resolve a different
+    // receipt than the producer signed. Mirror the
+    // `bilateral_dsse::verify_dsse_envelope` check at this layer so
+    // the §7 verifier path also fails closed.
+    if statement.subject.len() != 1 {
+        return Err(VerifierError::StatementSchemaInvalid(format!(
+            "statement.malformed: bilateral envelope must carry exactly 1 subject, got {}",
+            statement.subject.len()
+        )));
     }
 
     // ---- Step 4: predicateType is recognised ---------------------------
@@ -544,7 +555,13 @@ pub fn verify_bilateral_cosign_invocation(
     // ---- Step 6: bind pred ---------------------------------------------
     let pred = &statement.predicate;
 
-    // ---- Step 7: subject digest = sha256(canonical_json(resolve_receipt))
+    // ---- Step 7: subject digest = sha256(canonical_json(resolve_receipt.body()))
+    // P0-004 fix (audit 2026-05-08): the subject digest binds the
+    // receipt BODY (`ChioReceiptBody`), not the full signed wrapper.
+    // The producer-side `bilateral_dsse::build_statement` was fixed
+    // in #610 to hash the body; this verifier path must hash the
+    // same input, otherwise the §7 step-7 check rejects every
+    // freshly-signed envelope.
     let resolved_receipt = config
         .receipt_store
         .resolve(&pred.invocation_id)
@@ -555,7 +572,8 @@ pub fn verify_bilateral_cosign_invocation(
             ))
         })?;
 
-    let canonical = canonical_json_bytes(&resolved_receipt)
+    let resolved_body = resolved_receipt.body();
+    let canonical = canonical_json_bytes(&resolved_body)
         .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
     let mut hasher = Sha256::new();
     hasher.update(&canonical);
@@ -564,7 +582,7 @@ pub fn verify_bilateral_cosign_invocation(
     let subject = &statement.subject[0];
     if subject.digest.sha256 != want_hex {
         return Err(VerifierError::SubjectDigestMismatch(format!(
-            "subject digest {} != sha256(canonical_json(resolved_receipt)) {}",
+            "subject digest {} != sha256(canonical_json(resolved_receipt.body())) {}",
             subject.digest.sha256, want_hex
         )));
     }
@@ -1078,6 +1096,55 @@ mod tests {
 
         let err = verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
         assert_eq!(err.code(), "subject.digest_mismatch");
+    }
+
+    /// P0-005 (audit 2026-05-08): the §7 verifier must reject a multi-subject
+    /// envelope structurally (mirror of the
+    /// `bilateral_dsse::verify_dsse_envelope` check). Splices a second
+    /// subject digest into a freshly-signed envelope and asserts the
+    /// verifier returns `statement.schema_invalid` BEFORE any per-subject
+    /// digest comparison.
+    #[test]
+    fn multi_subject_envelope_is_rejected_at_verifier_step_3() {
+        use crate::bilateral_dsse::{StatementSubject, SubjectDigest};
+        use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+        use base64::Engine as _;
+
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (mut envelope, receipt_store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+
+        // Decode, splice a second subject, re-canonicalise, re-encode payload.
+        let (mut statement, _bytes) = envelope.decode_statement().unwrap();
+        statement.subject.push(StatementSubject {
+            name: "rcpt-injected".to_string(),
+            digest: SubjectDigest {
+                sha256: "0".repeat(64),
+            },
+        });
+        let new_statement_bytes = canonical_json_bytes(&statement).unwrap();
+        envelope.payload = BASE64_STANDARD.encode(&new_statement_bytes);
+
+        let config = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
+        assert_eq!(err.code(), "statement.schema_invalid");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("statement.malformed") || msg.contains("exactly 1 subject"),
+            "expected multi-subject diagnostic, got: {msg}"
+        );
     }
 
     #[test]
