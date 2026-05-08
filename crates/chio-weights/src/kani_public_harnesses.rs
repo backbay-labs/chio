@@ -225,10 +225,8 @@ pub fn public_weights_error_urn_is_stable() {
     // Symbolic axis: variant selector. Each value picks one of the
     // eight inhabitable variants (the enum is `#[non_exhaustive]`
     // for forward-compatibility, but the local `match` is
-    // exhaustive over today's variants). Earlier revisions bounded
-    // `pick < 7` and dropped the `ToolBanned` arm; cursor[bot]
-    // MEDIUM on PR #613 caught the false confidence so the
-    // `tool-banned` URN is now pinned alongside the others.
+    // exhaustive over today's variants). The `tool-banned` URN is
+    // pinned alongside the others to keep coverage exhaustive.
     let pick: u8 = kani::any();
     kani::assume(pick < 8);
 
