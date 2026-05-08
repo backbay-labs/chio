@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Behavioral regression test for scripts/check-trj5-ship-bar.sh strict
-# default mode and `--diagnostic` opt-in (audit T5-R2-P0-013, T5-R3-P1-006).
+# default mode and `--diagnostic` opt-in (audit T5-R2-P0-013,
+# T5-R3-P1-006, T5-R4-P0-002, T5-R4-P1-015).
 #
 # The audit's required behaviour:
 #   * Default (release-gate): a single PARTIAL row exits 1.
@@ -8,9 +9,9 @@
 #   * Real FAIL rows still exit 1 in either mode (sanity).
 #
 # This test creates a synthesized repo layout under a tempdir and copies
-# the real `check-trj5-ship-bar.sh` into it, then exercises the strict /
-# diagnostic exit modes against a fixture state that exercises Bar 1
-# (PARTIAL chio-policy row) without invoking the rest of the tooling.
+# the real `check-trj5-ship-bar.sh` into it, then exercises the strict
+# and diagnostic exit modes against a Bar 1 fixture with a high numeric
+# kill rate but explicit partial metadata.
 #
 # The script under test resolves its repo_root via `BASH_SOURCE`, so we
 # place a copy of the script in `$WORK/scripts/` and cd that copy. No
@@ -35,9 +36,8 @@ ERR="$WORK/err"
 
 # ---------------------------------------------------------------------
 # Stage 1: build a synthetic repo layout with one PARTIAL bar 1 row,
-# everything else passing. PARTIAL is induced via a chio-policy
-# baseline JSON that records `kill_rate_percent = 50` (below the 65%
-# floor; the script reports it as PARTIAL with rate printed).
+# everything else passing. The partial row has a high kill rate, but
+# explicit metadata says it is not release-complete.
 # ---------------------------------------------------------------------
 
 # Copy the script unchanged so its `BASH_SOURCE`-based repo_root pivots
@@ -49,26 +49,29 @@ chmod +x "$WORK/scripts/check-trj5-ship-bar.sh"
 GATE="$WORK/scripts/check-trj5-ship-bar.sh"
 
 # Bar 1 evidence:
-#   * Five trust-boundary crates with passing baselines (>=65%).
-#   * chio-policy with a 50% baseline -> PARTIAL row (the fixture).
+#   * Five trust-boundary crates with full target-met baselines.
+#   * chio-policy with high kill_rate_percent but target_met=false,
+#     result_label=PARTIAL, incomplete evaluated counts, interrupted
+#     run status, and hand-picked subset scope -> PARTIAL row.
 mkdir -p "$WORK/audits/evidence/mutants"
 for crate in chio-credentials chio-attest-verify chio-kernel-core chio-guards chio-anchor; do
     mkdir -p "$WORK/audits/evidence/mutants/$crate"
     if [ "$crate" = "chio-attest-verify" ]; then
         # chio-attest-verify has a 80% target; meet it cleanly.
         cat > "$WORK/audits/evidence/mutants/$crate/2026-05-08.json" <<EOF
-{"crate":"$crate","kill_rate_percent":85.0,"caught":85,"viable":100}
+{"crate":"$crate","kill_rate_percent":85.0,"caught":85,"viable":100,"target_met":true,"result_label":"FULL","run_status":"COMPLETE","evaluated":100,"total_discovered":100,"examine_scope":"full-crate"}
 EOF
     else
         cat > "$WORK/audits/evidence/mutants/$crate/2026-05-08.json" <<EOF
-{"crate":"$crate","kill_rate_percent":75.0,"caught":75,"viable":100}
+{"crate":"$crate","kill_rate_percent":75.0,"caught":75,"viable":100,"target_met":true,"result_label":"FULL","run_status":"COMPLETE","evaluated":100,"total_discovered":100,"examine_scope":"full-crate"}
 EOF
     fi
 done
-# chio-policy: PARTIAL fixture (50% < 65% floor).
+# chio-policy: R4 false-pass fixture. Numeric rate is high enough to
+# pass the old gate, but every metadata field says it is partial.
 mkdir -p "$WORK/audits/evidence/mutants/chio-policy"
 cat > "$WORK/audits/evidence/mutants/chio-policy/2026-05-08-per-crate-baseline.json" <<'EOF'
-{"crate":"chio-policy","kill_rate_percent":50.0,"caught":50,"viable":100}
+{"crate":"chio-policy","kill_rate_percent":99.9,"caught":999,"viable":1000,"target_met":false,"result_label":"PARTIAL","run_status":"PARTIAL: interrupted at 1/999 by session budget","evaluated":1,"total_discovered":999,"examine_scope":"hand-picked subset"}
 EOF
 
 # Bar 1 threats: 20 placeholder JSONs all with caught>=1 and a non-1970
@@ -164,18 +167,46 @@ fi
 echo "ok: stage 3 --diagnostic mode exits 0 with PARTIAL fixture (rc=0)"
 
 # ---------------------------------------------------------------------
-# Stage 4: sanity -- a real FAIL row exits 1 in either mode.
+# Stage 4: a high-kill JSON that omits the explicit full-scope marker
+# fails release-gate mode.
+# ---------------------------------------------------------------------
+cat > "$WORK/audits/evidence/mutants/chio-policy/2026-05-08-per-crate-baseline.json" <<'EOF'
+{"crate":"chio-policy","kill_rate_percent":99.9,"caught":999,"viable":1000,"target_met":true,"run_status":"COMPLETE","evaluated":999,"total_discovered":999,"examine_scope":"full-crate"}
+EOF
+rc=0
+bash "$GATE" >"$OUT" 2>"$ERR" || rc=$?
+if [ "$rc" -ne 1 ]; then
+    echo "FAIL: stage 4 release-gate mode: expected rc=1 with missing full-scope marker, got rc=$rc" >&2
+    echo "--- stdout ---" >&2; cat "$OUT" >&2
+    echo "--- stderr ---" >&2; cat "$ERR" >&2
+    exit 1
+fi
+if ! grep -q 'result_label missing full-scope marker' "$OUT"; then
+    echo "FAIL: stage 4 missing full-scope marker diagnostic" >&2
+    cat "$OUT" >&2
+    exit 1
+fi
+echo "ok: stage 4 release-gate mode exits 1 when result_label full-scope marker is missing (rc=1)"
+
+# Restore the original PARTIAL fixture for the final diagnostic-mode sanity
+# check so the test keeps covering target_met=false plus result_label=PARTIAL.
+cat > "$WORK/audits/evidence/mutants/chio-policy/2026-05-08-per-crate-baseline.json" <<'EOF'
+{"crate":"chio-policy","kill_rate_percent":99.9,"caught":999,"viable":1000,"target_met":false,"result_label":"PARTIAL","run_status":"PARTIAL: interrupted at 1/999 by session budget","evaluated":1,"total_discovered":999,"examine_scope":"hand-picked subset"}
+EOF
+
+# ---------------------------------------------------------------------
+# Stage 5: sanity -- a real FAIL row exits 1 in either mode.
 # Trigger by removing one Bar 2 fixture so the script records a FAIL.
 # ---------------------------------------------------------------------
 rm "$WORK/crates/chio-conformance/tests/single_entry_verifier_no_bypass.rs"
 rc=0
 bash "$GATE" --diagnostic >"$OUT" 2>"$ERR" || rc=$?
 if [ "$rc" -ne 1 ]; then
-    echo "FAIL: stage 4 --diagnostic with real FAIL: expected rc=1, got rc=$rc" >&2
+    echo "FAIL: stage 5 --diagnostic with real FAIL: expected rc=1, got rc=$rc" >&2
     echo "--- stdout ---" >&2; cat "$OUT" >&2
     exit 1
 fi
-echo "ok: stage 4 real FAIL row exits 1 even under --diagnostic (rc=1)"
+echo "ok: stage 5 real FAIL row exits 1 even under --diagnostic (rc=1)"
 
-# Stage 5 (cleanup) is implicit via `trap rm -rf $WORK`.
-echo "PASS: check-trj5-ship-bar behavioral regression test (T5-R3-P1-006)"
+# Stage 6 (cleanup) is implicit via `trap rm -rf $WORK`.
+echo "PASS: check-trj5-ship-bar behavioral regression test (T5-R3-P1-006, T5-R4-P0-002, T5-R4-P1-015)"

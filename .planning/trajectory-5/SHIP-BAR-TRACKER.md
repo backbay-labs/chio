@@ -9,8 +9,8 @@ This file is the per-bar ledger that trj5 grades against. The three bars are nor
 The tracker is consumed by `scripts/check-trj5-ship-bar.sh` (companion to `scripts/trj5-preflight.sh`; both are required for trj5 closeout). The script:
 
 - asserts each bar's per-evidence machine-readable signal is present (per-crate mutation JSON for Bar 1, four conformance fixtures for Bar 2, demo dir + pinned receipt fixture for Bar 3);
-- emits one `OK` / `FAIL` line per check and a final pass/fail summary;
-- treats Bar 1 PARTIAL state honestly (per-crate JSONs without measured kill-rate fields are FAIL; baselines that exist with a `kill_rate` field but below target are reported `OK ... (PARTIAL)`).
+- emits one `OK` / `PARTIAL` / `FAIL` line per check and a final pass/fail summary;
+- treats Bar 1 PARTIAL state honestly: a mutation JSON can print `OK` only when it carries a measured kill rate, `target_met:true`, an explicit full-scope result label, complete `evaluated == total_discovered` counts, and no partial/subset/interrupted/hand-picked scope markers. Any partial metadata prints `PARTIAL` (or `WARN` in `--diagnostic`) and fails the default release gate.
 
 `scripts/trj5-preflight.sh` covers kickoff prerequisites (planning artifacts, OWNERS population, releases.toml block, Wave-2/3/4 review trail, drift cleanup); `scripts/check-trj5-ship-bar.sh` covers the three closing bars. The pattern matches the trj4 close-bar tracker at `../trajectory-4/closeout/CLOSE-BAR-TRACKER.md`.
 

@@ -17,10 +17,10 @@
 #
 # Bar 1 (Lane A): per-crate mutation kill-rate JSONs for each
 # trust-boundary crate listed in `releases.toml [mutants]`. Crates
-# without a measured baseline JSON FAIL. Crates with a baseline JSON
-# whose recorded kill-rate is below the >=65% activation floor are
-# emitted as PARTIAL with the measured rate printed, so the script
-# reflects the honest current state during Wave-1 baseline measurement.
+# without a measured baseline JSON FAIL. A numeric kill-rate alone is
+# not enough to close the bar: the JSON must also prove target_met=true,
+# an explicit full-scope result label, complete evaluated counts, and no
+# partial/subset/interrupted/hand-picked scope markers.
 #
 # Bar 2 (Lane B): four signed negative conformance fixture files under
 # `crates/chio-conformance/tests/`. Missing files FAIL.
@@ -48,7 +48,7 @@
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$repo_root"
+cd "$repo_root" || exit 1
 
 # Default mode: PARTIAL counts as a failure (release-gate strict).
 # `--diagnostic` flips this to advisory, where PARTIAL is reported but
@@ -135,6 +135,134 @@ kill_rate_for_json() {
   printf '%s' "$rate"
 }
 
+json_metadata_for_json() {
+  local json_path="$1"
+  if [ ! -f "$json_path" ]; then
+    printf '\037\037\037\037\037\037'
+    return 0
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '
+      [
+        (.target_met | if . == null then "" else tostring end),
+        (.result_label // ""),
+        (.run_status // ""),
+        (.evaluated | if . == null then "" else tostring end),
+        (.total_discovered | if . == null then "" else tostring end),
+        (.examine_scope // .scope // .mutation_scope // ""),
+        (.test_scope // "")
+      ] | map(tostring | gsub("\u001f"; " ")) | join("\u001f")
+    ' "$json_path" 2>/dev/null || printf '\037\037\037\037\037\037'
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$json_path" <<'PY' || printf '\037\037\037\037\037\037'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+def value(*keys):
+    for key in keys:
+        if key in data and data[key] is not None:
+            return str(data[key]).replace("\x1f", " ")
+    return ""
+
+print("\x1f".join([
+    value("target_met").lower(),
+    value("result_label"),
+    value("run_status"),
+    value("evaluated"),
+    value("total_discovered"),
+    value("examine_scope", "scope", "mutation_scope"),
+    value("test_scope"),
+]))
+PY
+    return 0
+  fi
+  printf '\037\037\037\037\037\037'
+}
+
+upper() {
+  printf '%s' "$1" | tr '[:lower:]' '[:upper:]'
+}
+
+is_uint() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+bar1_metadata_reasons_for_json() {
+  local json_path="$1"
+  local metadata_line
+  metadata_line=$(json_metadata_for_json "$json_path")
+  local target_met result_label run_status evaluated total_discovered examine_scope test_scope
+  IFS=$'\037' read -r target_met result_label run_status evaluated total_discovered examine_scope test_scope <<EOF
+$metadata_line
+EOF
+
+  local reasons=()
+  if [ "$target_met" != "true" ]; then
+    reasons+=("target_met=${target_met:-missing}")
+  fi
+
+  local result_label_upper
+  result_label_upper=$(upper "$result_label")
+  case "$result_label_upper" in
+    FULL|FULL-TARGET-MET|FULL_TARGET_MET|FULL-SCOPE|FULL_SCOPE|TARGET-MET|TARGET_MET)
+      ;;
+    "")
+      reasons+=("result_label missing full-scope marker")
+      ;;
+    *PARTIAL*|*SUBSET*|*INTERRUPT*|*PENDING*|*DIAGNOSTIC*|*BELOW-TARGET*|*BELOW_TARGET*)
+      reasons+=("result_label=$result_label")
+      ;;
+    *)
+      if printf '%s' "$result_label_upper" | grep -q 'FULL' \
+         && ! printf '%s' "$result_label_upper" \
+           | grep -q -E 'PARTIAL|SUBSET|INTERRUPT|PENDING|DIAGNOSTIC|BELOW[-_]?TARGET'; then
+        :
+      else
+        reasons+=("result_label=$result_label lacks full-scope marker")
+      fi
+      ;;
+  esac
+
+  local run_status_upper
+  run_status_upper=$(upper "$run_status")
+  if printf '%s' "$run_status_upper" \
+     | grep -q -E 'PARTIAL|INTERRUPT|SUBSET|HAND[-_ ]?PICK|ABORT|CANCEL|PENDING|DIAGNOSTIC'; then
+    reasons+=("run_status=$run_status")
+  fi
+
+  if [ -z "$evaluated" ] || [ -z "$total_discovered" ]; then
+    reasons+=("evaluated/total_discovered missing")
+  elif ! is_uint "$evaluated" || ! is_uint "$total_discovered"; then
+    reasons+=("evaluated/total_discovered non-numeric")
+  elif [ "$evaluated" -lt "$total_discovered" ]; then
+    reasons+=("evaluated=$evaluated < total_discovered=$total_discovered")
+  fi
+
+  local scope_upper
+  scope_upper=$(upper "$examine_scope $test_scope")
+  if printf '%s' "$scope_upper" \
+     | grep -q -E 'HAND[-_ ]?PICK|PARTIAL[-_ ]?SUBSET|SUBSET|TOUCH(ED)?[-_ ]?LINE|NARROW|EXAMINE[-_ ]?GLOBS|EXAMINE_GLOBS|--FILE|--LINE|FILE[-_ ]?ONLY|LINE[-_ ]?ONLY|SELECTED[-_ ]?FILES'; then
+    reasons+=("scope=${examine_scope:-${test_scope:-unknown}}")
+  fi
+
+  local joined=""
+  local reason
+  for reason in "${reasons[@]}"; do
+    if [ -z "$joined" ]; then
+      joined="$reason"
+    else
+      joined="$joined; $reason"
+    fi
+  done
+  printf '%s' "$joined"
+}
+
 printf '\n[Bar 1] Lane A -- per-crate mutation kill-rate baselines\n'
 
 # Trust-boundary crate list mirrors `releases.toml [mutants]
@@ -171,7 +299,14 @@ for crate in "${bar1_crates[@]}"; do
     continue
   fi
   # Pick the most-recent baseline JSON in the per-crate directory.
-  latest_json=$(ls -1 "$json_glob"/*.json 2>/dev/null | sort | tail -1)
+  shopt -s nullglob
+  json_files=("$json_glob"/*.json)
+  shopt -u nullglob
+  if [ "${#json_files[@]}" -eq 0 ]; then
+    latest_json=""
+  else
+    latest_json=$(printf '%s\n' "${json_files[@]}" | sort | tail -1)
+  fi
   if [ -z "$latest_json" ] || [ ! -f "$latest_json" ]; then
     failure "Bar1 $crate BASELINE-GAP (no JSON under $json_glob/)"
     continue
@@ -179,6 +314,11 @@ for crate in "${bar1_crates[@]}"; do
   rate=$(kill_rate_for_json "$latest_json")
   if [ -z "$rate" ]; then
     failure "Bar1 $crate JSON exists ($latest_json) but no kill_rate field"
+    continue
+  fi
+  metadata_reasons=$(bar1_metadata_reasons_for_json "$latest_json")
+  if [ -n "$metadata_reasons" ]; then
+    partial "Bar1 $crate metadata not release-complete in $latest_json (${metadata_reasons}; measured ${rate}%)"
     continue
   fi
   # Use awk for floating-point comparison.
@@ -293,7 +433,11 @@ fi
 # Two-kernel transcripts.
 transcripts_dir="$bar3_demo_dir/transcripts"
 if [ -d "$transcripts_dir" ]; then
-  transcript_count=$(ls -1 "$transcripts_dir"/*.json 2>/dev/null | wc -l | tr -d ' ')
+  transcript_count=0
+  for transcript_file in "$transcripts_dir"/*.json; do
+    [ -f "$transcript_file" ] || continue
+    transcript_count=$((transcript_count + 1))
+  done
   if [ "$transcript_count" -gt 0 ]; then
     ok "Bar3 transcripts present ($transcript_count file(s) under $transcripts_dir/)"
   else
@@ -306,7 +450,11 @@ fi
 # `chio receipt explain` golden output.
 golden_dir="$bar3_demo_dir/golden"
 if [ -d "$golden_dir" ]; then
-  golden_count=$(ls -1 "$golden_dir"/*.txt 2>/dev/null | wc -l | tr -d ' ')
+  golden_count=0
+  for golden_file in "$golden_dir"/*.txt; do
+    [ -f "$golden_file" ] || continue
+    golden_count=$((golden_count + 1))
+  done
   if [ "$golden_count" -gt 0 ]; then
     ok "Bar3 golden file present ($golden_count file(s) under $golden_dir/)"
   else
