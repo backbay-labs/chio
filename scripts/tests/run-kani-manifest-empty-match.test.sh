@@ -84,7 +84,7 @@ assert_eq "$(run_runner "$EMPTY_MANIFEST" --lane pr --allow-empty)" 0 \
 assert_eq "$(run_runner "$EMPTY_MANIFEST" --lane pr --list)" 0 \
   "empty manifest + --list exits 0 (informational)"
 
-# Case 4: lane typo on a populated manifest. After review item the
+# Case 4: lane typo on a populated manifest. The
 # runner validates the requested lane against the closed enum
 # (`pr`, `nightly`) before considering empty-match policy, and rejects
 # unknown lanes with exit 2 (fail-loud). `--allow-empty` does NOT

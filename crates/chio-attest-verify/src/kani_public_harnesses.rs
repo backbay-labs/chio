@@ -26,8 +26,7 @@
 //!
 //! # Honesty boundary: what "model" harnesses actually prove
 //!
-//! Per model-only scope note in
-//! `.planning/trajectory-5/reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`:
+//! Model-only scope note:
 //!
 //! - The `public_expect_report_data_determinism_under_input_change`
 //!   harness exercises a real production `pub fn`
@@ -60,13 +59,13 @@
 //!   (asserts `ReportDataMismatch` on `intel-tdx-report-data-mismatch`
 //!   and `intel-tdx-upper-half-tamper` fixtures).
 //!
-//! TRJ6 follow-up: extract a per-backend dispatch-order helper
+//! Future hardening follow-up: extract a per-backend dispatch-order helper
 //! (e.g. `pub(crate) fn dispatch_order_check(report_data_matches:
 //! bool, tcb_status: QuoteTcbStatus, algorithm_tag_matches: bool)
 //! -> Result<(), AttestError>`) used by both the runtime
 //! `verify_quote` impls and the Kani harnesses, replacing
-//! `model_verify_quote`. This is option (a) per model-only scope note; it was
-//! deferred from release work because the runtime impls' error variants
+//! `model_verify_quote`. This is option (a) for future hardening; it was
+//! deferred from this release because the runtime impls' error variants
 //! (`QuoteRejected(String)`, `Malformed(String)`) carry contextual
 //! strings that interlock with the live verifier code paths and
 //! refactoring them in this PR would risk a regression in the

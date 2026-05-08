@@ -54,8 +54,7 @@
 //!
 //! # Honesty boundary: what "model" harnesses actually prove
 //!
-//! Per model-only scope note in
-//! `.planning/trajectory-5/reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`:
+//! Model-only scope note:
 //!
 //! - The first four harnesses
 //!   (`public_anchor_emergency_controls_allows_truth_table`,
@@ -86,7 +85,7 @@
 //! &WitnessState, policy: &WitnessPolicy) -> WitnessPolicyClass`)
 //! used by both the runtime `evaluate_witness_policy` and the Kani
 //! harness, replacing `model_evaluate_witness_policy`. This is option
-//! (a) per model-only scope note; it was deferred from this release because the
+//! (a) for future hardening; it was deferred from this release because the
 //! production function's `Stale` arm depends on `batch_body_hash`
 //! recomputation (canonical-JSON + SHA-256) and `WitnessPolicyError`
 //! constructors that carry hex-formatted body-hash strings. Decoupling

@@ -174,7 +174,7 @@ lane = "pr"
 
 
 # ---------------------------------------------------------------------
-# Per-crate sections landed in their own PR (audit review item)
+# Per-crate sections land with their harness source
 # ---------------------------------------------------------------------
 # To make manifest enrollment atomic with harness source, each non-core
 # crate's `[[harness]]` block now lands in the SAME PR that adds the

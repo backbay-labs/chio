@@ -1,11 +1,10 @@
 # Kani live-run evidence: chio-anchor + chio-weights (Kani harness evidence/A3.3)
 
-Audit cross-reference: P0-017 in
-`.planning/trajectory-5/reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`.
+Evidence cross-reference: Kani enrolled-harness coverage for
+`chio-anchor` and `chio-weights`.
 
 This file records the live `cargo kani` outputs for every enrolled harness in `.kani/harnesses.toml` (PR #607). Without
-this evidence the harnesses would be enrolled-but-never-run, the same
-trj4 anti-pattern P0-017 calls out.
+this evidence the harnesses would be enrolled-but-never-run.
 
 ## Scope boundary
 

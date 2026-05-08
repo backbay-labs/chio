@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-08
 **PR**: #605 (PR branch)
-**Audit refs**: review item (THIRD-ROUND-CODE-SECURITY-AUDIT-2026-05-08)
+**Scope note**: bounded source-only enrollment evidence
 **Status**: DEFERRED-PARTIAL (run-evidence not committed in this PR)
 
 ## Scope boundary
@@ -13,15 +13,15 @@ function paths only. MODEL-ONLY harnesses cover the local algebraic
 surrogate named in the manifest and do not prove the production
 cryptographic verifier implementation.
 
-## Required posture per audit review item
+## Required posture
 
-The audit states the proof surface must EITHER:
+The proof surface must EITHER:
 1. Commit a Kani run transcript for each PR-tier harness, OR
 2. Label the proof surface as partial/nightly-only in ship-bar truth.
 
 This evidence file selects option (2): the chio-attest-verify proof
-surface is labeled **MODEL-PARTIAL** for release work; transcripts are deferred
-to the trj6 follow-up that wires the multi-crate Kani CI workflow
+surface is labeled **MODEL-PARTIAL** for release evidence; transcripts are deferred
+to the follow-up that wires the multi-crate Kani CI workflow
 (PR #607) into a passing pipeline. Until then, the source-only enrollment
 is honest about its scope and the manifest pins exactly which harnesses
 the post-merge CI will iterate.
@@ -57,19 +57,19 @@ in the manifest `notes` for each entry (model-only scope note).
    to come from the merged-main CI iteration, not from a hand-run on
    one PR branch.
 3. Local cargo-kani availability (verified: `cargo kani --version`
-   reports `cargo-kani 0.67.0`) does not change the audit's
+   reports `cargo-kani 0.67.0`) does not change the
    "either-or" requirement. Picking the labeling option keeps the
    ship-bar honest while the CI hook lands.
 
 ## Ship-bar truth
 
-`scripts/check-release work-ship-bar.sh` does NOT (yet) gate on Kani run
+The release ship-bar gate does NOT (yet) gate on Kani run
 transcripts. The Bar 1 mutation kill-rate / Bar 2 negative-conformance
 fixtures / Bar 3 demo-receipt rows it does gate on are unaffected by
 this deferral. The chio-attest-verify Kani enrollment is recorded as
 **source-only PARTIAL** in the release notes (PR #618).
 
-## Next steps (trj6)
+## Next steps
 
 1. PR #607 multi-crate runner merges; CI iterates the manifest.
 2. CI-produced transcripts are committed under
@@ -86,4 +86,4 @@ this deferral. The chio-attest-verify Kani enrollment is recorded as
 This evidence file documents **why no transcripts are committed** rather
 than presenting the absence as completion. The Kani enrollment is real;
 the run-evidence is deferred. PR #605 ships harness source plus manifest
-entries; transcripts arrive from the CI iteration in trj6.
+entries; transcripts arrive from the follow-up CI iteration.
