@@ -245,11 +245,14 @@ pub fn public_model_card_require_live_fail_closed() {
 #[kani::unwind(8)]
 pub fn public_weights_error_urn_is_stable() {
     // Symbolic axis: variant selector. Each value picks one of the
-    // seven inhabitable variants (the enum is `#[non_exhaustive]`
+    // eight inhabitable variants (the enum is `#[non_exhaustive]`
     // for forward-compatibility, but the local `match` is
-    // exhaustive over today's variants).
+    // exhaustive over today's variants). Earlier revisions bounded
+    // `pick < 7` and dropped the `ToolBanned` arm; cursor[bot]
+    // MEDIUM on PR #613 caught the false confidence so the
+    // `tool-banned` URN is now pinned alongside the others.
     let pick: u8 = kani::any();
-    kani::assume(pick < 7);
+    kani::assume(pick < 8);
 
     let err: WeightsError = match pick {
         0 => WeightsError::Encoding(String::new()),
@@ -277,6 +280,9 @@ pub fn public_weights_error_urn_is_stable() {
         6 => WeightsError::ScopeNotSubset {
             scope: String::new(),
         },
+        7 => WeightsError::ToolBanned {
+            tool: String::new(),
+        },
         _ => unreachable!("pick is bounded by kani::assume above"),
     };
 
@@ -300,6 +306,7 @@ pub fn public_weights_error_urn_is_stable() {
         4 => "urn:chio:error:weights:bundle-rejected",
         5 => "urn:chio:error:weights:card-mismatch",
         6 => "urn:chio:error:weights:scope-not-subset",
+        7 => "urn:chio:error:weights:tool-banned",
         _ => unreachable!(),
     };
     assert_eq!(urn, expected);
