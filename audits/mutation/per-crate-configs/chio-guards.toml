@@ -33,7 +33,7 @@
 #
 # - The prior version excluded `text_utils.rs` and `spider_sense.rs`
 #   as "advisory/helper". The exclude-audit at
-#   `audits/evidence/TRJ5-A1.0/exclude-audit.md` flagged both as
+#   `audits/evidence/mutation exclusion audit/exclude-audit.md` flagged both as
 #   decision-capable FOR-REMOVAL-CANDIDATE files:
 #
 #     - `text_utils.rs::canonicalize` is the canonical-form input
@@ -104,7 +104,7 @@
 #   crates/chio-guards/src/external/**
 #     PARTIAL-DEFER -- remote-process bridges,
 #     integration-tested rather than mutation-tested. The
-#     exclude-audit (`audits/evidence/TRJ5-A1.0/exclude-audit.md`)
+#     exclude-audit (`audits/evidence/mutation exclusion audit/exclude-audit.md`)
 #     flagged this blanket exclusion as FOR-REMOVAL-CANDIDATE
 #     pending per-file justification. Itemizing every file in
 #     external/ is deferred to a follow-up; this config carries
@@ -126,7 +126,7 @@ examine_globs = [
     "crates/chio-guards/src/data_flow.rs",
     "crates/chio-guards/src/behavioral_sequence.rs",
     # Re-included in the 2026-05-08 cleanup wave; both are
-    # decision-capable per audits/evidence/TRJ5-A1.0/exclude-audit.md.
+    # decision-capable per audits/evidence/mutation exclusion audit/exclude-audit.md.
     "crates/chio-guards/src/text_utils.rs",
     "crates/chio-guards/src/spider_sense.rs",
 ]

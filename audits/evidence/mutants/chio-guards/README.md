@@ -25,7 +25,7 @@ the 10-file post-cleanup surface.
 |---|---|
 | Crate | `chio-guards` |
 | Date | 2026-05-08 |
-| Branch | `claude/trj5/a1-mutation-guards` |
+| Branch | `PR branch` |
 | Base SHA | `708c7bb33df43594f5e76542b05fca7a56d9689e` (main tip) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 58m 5s |
@@ -187,7 +187,7 @@ cover claiming target met on a partial run.
 
 The prior config excluded `text_utils.rs` and `spider_sense.rs` as
 "advisory/helper". Both files are decision-capable per
-`audits/evidence/TRJ5-A1.0/exclude-audit.md`:
+`audits/evidence/mutation exclusion audit/exclude-audit.md`:
 
 - `text_utils.rs::canonicalize` is the canonical-form input to
   prompt-injection and jailbreak guards. Mutations that stop
