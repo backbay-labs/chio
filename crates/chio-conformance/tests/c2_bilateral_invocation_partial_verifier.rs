@@ -53,9 +53,9 @@ fn now_ms() -> u64 {
 
 fn sample_receipt(kp_b: &Keypair) -> ChioReceipt {
     let body = ChioReceiptBody {
-        id: "rcpt-release work-c2-fixture".to_string(),
+        id: "rcpt-bilateral-c2-fixture".to_string(),
         timestamp: 1_734_000_000,
-        capability_id: "cap-release work-c2".to_string(),
+        capability_id: "cap-bilateral-c2".to_string(),
         tool_server: "srv-orgb".to_string(),
         tool_name: TOOL.to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"path":"/etc/hosts"}))

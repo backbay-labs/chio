@@ -1,6 +1,6 @@
 [package]
 name = "bilateral-invocation"
-description = "TRJ5-C2 demo: two kernel handles drive a bilateral co-signed invocation, then run the partial local verifier on the resulting DSSE signature-slice envelope"
+description = "Bilateral co-signed invocation demo with a partial local verifier over the resulting DSSE signature-slice envelope"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

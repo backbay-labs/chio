@@ -96,10 +96,10 @@ pub struct Keyid(pub String);
 impl Keyid {
     /// Compute the DSSE keyid for the given public key.
     ///
-    /// Reported by codex[bot] on PR #610 (P1) - earlier revisions hashed
-    /// `to_hex().as_bytes()` for Ed25519, which produced a different
-    /// fingerprint than any peer that hashes raw key
-    /// material. Cross-implementation envelopes were silently rejected.
+    /// Hash the raw public-key bytes. Hashing the hex string instead
+    /// would produce a different fingerprint than peers that follow
+    /// the raw-key convention, causing cross-implementation envelopes
+    /// to be rejected.
     #[must_use]
     pub fn from_public_key(public_key: &PublicKey) -> Self {
         use chio_core_types::crypto::SigningAlgorithm;
@@ -675,12 +675,12 @@ pub fn verify_dsse_envelope(
     let org_a_keyid = Keyid::from_public_key(org_a_public_key);
     let org_b_keyid = Keyid::from_public_key(org_b_public_key);
 
-    // codex[bot] P1 on PR #610: bind verified keyids to the predicate's
-    // declared `passport_key_fingerprint` for both tool servers. Without
-    // this check, a signer could produce a validly signed envelope whose
-    // predicate names different passport fingerprints, and downstream §7
-    // peer-pinning / audit steps would act on identities that were never
-    // verified.
+    // Bind verified keyids to the predicate's declared
+    // `passport_key_fingerprint` for both tool servers. Without this
+    // check, a signer could produce a validly signed envelope whose
+    // predicate names different passport fingerprints, and downstream
+    // peer-pinning and audit steps would act on identities that were
+    // never verified.
     if statement.predicate.tool_server_a.passport_key_fingerprint != org_a_keyid {
         return Err(BilateralCoSigningError::OrgASignatureInvalid);
     }
@@ -750,9 +750,9 @@ mod tests {
 
     fn sample_receipt(kp: &Keypair) -> ChioReceipt {
         let body = ChioReceiptBody {
-            id: "rcpt-release work-b4-sample".to_string(),
+            id: "rcpt-bilateral-b4-sample".to_string(),
             timestamp: 1_734_000_000,
-            capability_id: "cap-release work-b4".to_string(),
+            capability_id: "cap-bilateral-b4".to_string(),
             tool_server: "srv-orgb-files".to_string(),
             tool_name: "file_read".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"k":"v"})).unwrap(),
@@ -800,7 +800,7 @@ mod tests {
             .expect("envelope must verify under matching public keys");
         assert_eq!(
             statement.predicate_type, PREDICATE_TYPE_BILATERAL,
-            "predicate type emitted by release work hot path"
+            "predicate type emitted by bilateral hot path"
         );
         assert_eq!(statement.subject.len(), 1);
         assert_eq!(statement.subject[0].name, receipt_subject_name(&receipt.id));

@@ -49,9 +49,9 @@ fn sample_action() -> ToolCallAction {
 
 fn sample_receipt(tool_host_kp: &Keypair) -> ChioReceipt {
     let body = ChioReceiptBody {
-        id: "rcpt-release work-b4-fixture".to_string(),
+        id: "rcpt-bilateral-b4-fixture".to_string(),
         timestamp: 1_734_000_000,
-        capability_id: "cap-release work-b4".to_string(),
+        capability_id: "cap-bilateral-b4".to_string(),
         tool_server: "srv-orgb-files".to_string(),
         tool_name: "file_read".to_string(),
         action: sample_action(),

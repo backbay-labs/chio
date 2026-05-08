@@ -100,19 +100,19 @@ chio-http-session = { version = "0.1.0", path = "../chio-http-session" }
 chio-guards = { version = "0.1.0", path = "../chio-guards" }
 chio-weights = { version = "0.1.0", path = "../chio-weights" }
 base64ct = { workspace = true, features = ["alloc"] }
-# TRJ5-B4.5: negative conformance fixture
-# `b4_bilateral_dsse_signature_slice.rs` re-encodes signature bytes
-# in base64 to forge a DSSE envelope; chio-federation's DSSE envelope wire
-# format is RFC 4648 standard base64 (workspace-pinned `base64` crate).
+# Negative conformance fixture `b4_bilateral_dsse_signature_slice.rs`
+# re-encodes signature bytes in base64 to forge a DSSE envelope;
+# chio-federation's DSSE envelope wire format is RFC 4648 standard
+# base64 (workspace-pinned `base64` crate).
 base64 = { workspace = true }
 coset = { workspace = true }
 jsonwebtoken = { workspace = true }
 sha2 = { workspace = true }
-# release work-C2: c2_bilateral_invocation_partial_verifier.rs hex-encodes a
+# The partial bilateral-invocation verifier fixture hex-encodes a
 # canonical-JSON SHA-256 to populate the predicate's
-# governance_receipt_ref.digest field; the workspace-pinned `hex` crate
-# matches what `chio-federation::bilateral_dsse` already uses on the
-# producer side, so the two encodings are identical.
+# governance_receipt_ref.digest field; the workspace-pinned `hex`
+# crate matches what `chio-federation::bilateral_dsse` already uses
+# on the producer side, so the two encodings are identical.
 hex = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 # M05.P5.T3: threat-model coverage tests load curated adversarial
