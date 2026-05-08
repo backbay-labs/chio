@@ -128,7 +128,7 @@ fn make_kernel_with_slow_tool(
         keypair: Keypair::generate(),
         ca_public_keys: vec![],
         max_delegation_depth: 5,
-        policy_hash: "release work-b2-toctou-policy".to_string(),
+        policy_hash: "policy-b2-toctou".to_string(),
         allow_sampling: false,
         allow_sampling_tool_use: false,
         allow_elicitation: false,
