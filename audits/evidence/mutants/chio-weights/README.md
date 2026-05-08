@@ -135,13 +135,23 @@ under `missed_mutants`. The top 5 (chosen as one representative per
 distinct survival pattern):
 
 1. `crates/chio-weights/src/card.rs:237:16: replace < with <= in ModelCard::require_live`
-   - boundary condition: `now < self.expires_at`. Replacing with `<=`
-     allows now == expires_at to pass. No test fixture lands on the
-     boundary.
+   - boundary condition: `now < self.expires_at` (production-correct
+     polarity: `<` means a card whose `expires_at` exactly equals
+     `now` is treated as expired). Replacing `<` with `<=` would
+     accept `now == expires_at` as still live. The current strict-`<`
+     semantics deliberately reject the boundary; no test fixture
+     pins this by asserting `WeightsError::Expired` when
+     `now == expires_at`, so the mutation survives silently.
 2. `crates/chio-weights/src/card.rs:226:28: replace < with <= in ModelCard::validate`
-   - boundary condition: `not_before < expires_at`. Replacing with
-     `<=` allows zero-duration cards to validate. No test fixture has
-     `not_before == expires_at`.
+   - boundary condition: `self.expires_at < self.issued_at`
+     (production-correct polarity: `<` means a zero-duration card
+     where `expires_at == issued_at` is currently *accepted*; only
+     `expires_at` strictly before `issued_at` is rejected). Replacing
+     `<` with `<=` would start *rejecting* zero-duration cards
+     (`expires_at == issued_at`), making validation stricter than
+     today's semantics. No test fixture pins
+     `expires_at == issued_at` to the current accept-as-Ok outcome,
+     so the mutation survives silently.
 3. `crates/chio-weights/src/card.rs:123:9: replace StringSet::as_set -> &BTreeSet<String> with Box::leak(Box::new(BTreeSet::new()))`
    - pure getter with no dedicated unit test asserting the returned
      set's contents.
@@ -161,7 +171,7 @@ distinct survival pattern):
 | Category | Count | Estimated test additions to close |
 |---|---|---|
 | `StringSet` getter, no dedicated test | 11 | ~6-8 short tests in card.rs |
-| `<` -> `<=` boundary condition | 2 | 2 short tests with exact-equal timestamps |
+| `<` -> `<=` boundary condition | 2 | 2 short tests pinning today's polarity: `validate` Ok when `expires_at == issued_at`; `require_live` Err(Expired) when `now == expires_at` |
 | `anchor_projection_bytes` constant return | 3 | 1 golden-bytes round-trip test in lineage.rs |
 | `sha256_hex` constant return | 2 | 1 RFC 6234 / FIPS 180-4 vector test in lineage.rs |
 | `verify_model_card_anchor` negation delete | 1 | 1 branch-coverage test in lineage.rs |
