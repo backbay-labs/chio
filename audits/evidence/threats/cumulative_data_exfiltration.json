@@ -1,7 +1,7 @@
 {
   "caught": 1,
   "needs_real_run": false,
-  "note": "trj5/A2 evidence backfill: real conformance test at crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs seeds the SessionJournal with cumulative bytes that exceed the configured max_bytes_total ceiling, calls DataFlowGuard::evaluate (production code from chio-guards), and asserts Verdict::Deny. The header in that file documents the revert-to-prove-it-fails recipe (flip the max_bytes_total Ok(Verdict::Deny) branch in chio-guards/src/data_flow.rs).",
+  "note": "Conformance evidence: real conformance test at crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs seeds the SessionJournal with cumulative bytes that exceed the configured max_bytes_total ceiling, calls DataFlowGuard::evaluate (production code from chio-guards), and asserts Verdict::Deny. The header in that file documents the revert-to-prove-it-fails recipe (flip the max_bytes_total Ok(Verdict::Deny) branch in chio-guards/src/data_flow.rs).",
   "ran_at": "2026-05-08T00:00:00Z",
   "survivors": [],
   "test_path": "crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs"
