@@ -98,8 +98,6 @@
 
 extern crate alloc;
 
-use alloc::string::ToString;
-
 use crate::bundle::AnchorLaneKind;
 use crate::ops::{
     classify_anchor_lane, ensure_anchor_operation_allowed, AnchorEmergencyControls,
