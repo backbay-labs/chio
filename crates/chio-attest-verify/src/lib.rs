@@ -45,6 +45,16 @@ pub mod tdx;
 #[cfg(feature = "tee-quotes")]
 mod tee_signature;
 
+// Kani public-harness module (TRJ5-A3.1). Only compiled under
+// `cargo kani` (which sets `cfg(kani)` automatically), so production
+// builds and the workspace `cargo build`/`cargo test` paths never see
+// it. This module models the trust-boundary invariants for
+// `expect_report_data` and the three TEE quote backends; see the
+// module-level doc comment for bound parameters and the runtime
+// entries each harness pins.
+#[cfg(kani)]
+mod kani_public_harnesses;
+
 pub use crate::policy::{TenantPolicy, BOOTSTRAP_TENANT_ID, TENANT_POLICY_SCHEMA_VERSION};
 pub use crate::policy_loader::{TenantPolicyLoader, DEFAULT_STALENESS_HORIZON};
 pub use crate::quote::{

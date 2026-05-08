@@ -47,6 +47,13 @@ p384 = { version = "0.13", default-features = false, features = ["ecdsa"], optio
 default = []
 pq = ["dep:fips204", "chio-core-types/pq"]
 tee-quotes = ["dep:dcap-rs", "dep:sev", "dep:coset", "dep:p256", "dep:p384"]
+# `kani` is an opt-in feature toggle for the model-checked harness module
+# (`src/kani_public_harnesses.rs`). The module body itself is gated by
+# `#[cfg(kani)]` so production builds never compile it; this feature is
+# kept available for tooling that wants to opt in without invoking the
+# Kani toolchain (e.g. doc/clippy passes that include the module's
+# inline documentation comments). No production code path depends on it.
+kani = []
 
 [dev-dependencies]
 chio-adversarial-suite = { path = "../chio-adversarial-suite" }
@@ -74,3 +81,10 @@ required-features = ["pq"]
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+[lints.rust]
+# `cfg(kani)` is set automatically by the Kani toolchain (see
+# `crates/chio-attest-verify/src/kani_public_harnesses.rs`). Register
+# the cfg with check-cfg so default `cargo build` / `cargo clippy`
+# passes do not warn about an unknown cfg name.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
