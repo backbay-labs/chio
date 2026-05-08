@@ -3,6 +3,19 @@
 // Coverage strategy: present three Play Integrity tokens that fail
 // distinct gates: replayed nonce, stale exp, and audience mismatch.
 // The production verifier must reject each.
+//
+// Revert-to-prove-it-fails recipes (per branch) inside
+// `verify_play_integrity` in
+// `crates/chio-custody-hw/src/attestation/play_integrity.rs`:
+//   (a) drop the nonce comparison that returns
+//       `Err(AttestationError::PlayIntegrityNonceMismatch)`. The
+//       replayed-nonce deny-arm assertion below fails.
+//   (b) drop the `exp` claim check that returns
+//       `Err(AttestationError::PlayIntegrityInvalidToken)`. The
+//       expired-token deny-arm assertion below fails.
+//   (c) drop the audience-claim check that returns
+//       `Err(AttestationError::PlayIntegrityInvalidToken)`. The
+//       audience-mismatch deny-arm assertion below fails.
 
 use std::error::Error;
 
