@@ -14,17 +14,6 @@
 //
 // Production call site:
 // `crates/chio-custody-hw/src/capability.rs:172` (`require_audience`).
-//
-// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-// In `crates/chio-custody-hw/src/capability.rs`, replace the body of
-// `require_audience` to always return `Ok(())` (i.e. delete the
-// `if self.audience == expected` guard and the `AudienceMismatch`
-// return). Re-run
-// `cargo test -p chio-conformance --test threats -- audience_confusion`
-// and the `assert!(matches!(err, CustodyError::AudienceMismatch { .. }))`
-// assertion MUST then fail because production now returns Ok. That fault
-// injection demonstrates the assertion is wired to the production
-// `require_audience` deny branch.
 
 use chio_custody_hw::capability::{PasskeyCapability, ScopeSet};
 use chio_custody_hw::error::CustodyError;

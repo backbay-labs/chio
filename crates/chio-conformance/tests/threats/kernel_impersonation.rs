@@ -27,20 +27,6 @@
 //   `crates/chio-kernel-core/src/receipts.rs:38` (`sign_receipt`).
 //   `crates/chio-core-types/src/receipt.rs:292`
 //     (`ChioReceipt::verify_signature`).
-//
-// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-// In `crates/chio-kernel-core/src/receipts.rs`, locate the
-// `if body.kernel_key.algorithm() != backend_key.algorithm() ||
-// body.kernel_key != backend_key { ... return Err(...
-// KernelKeyMismatch); }` guard inside `sign_receipt`. Delete the
-// guard so the function proceeds to sign even when the body claims a
-// different kernel key. Re-run
-// `cargo test -p chio-conformance --test threats -- kernel_impersonation`
-// and the
-// `assert!(matches!(err, ReceiptSigningError::KernelKeyMismatch))`
-// arm MUST then fail because production now produces a receipt under
-// the attacker key. That fault injection demonstrates the assertion
-// is wired to the production mint-side deny branch.
 
 use chio_core::crypto::{Ed25519Backend, Keypair};
 use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction};

@@ -24,19 +24,6 @@
 // Production call sites:
 //   `crates/chio-tee-frame/src/schema.rs:93` (`validate_signed`).
 //   `crates/chio-tee-frame/src/schema.rs:117` (`verify_tenant_sig`).
-//
-// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-// In `crates/chio-tee-frame/src/schema.rs`, locate the body of
-// `verify_tenant_sig`. Replace the
-// `if public_key.verify(&payload, &signature) { Ok(()) } else {
-// Err(SchemaError::TenantSigVerification(...)) }` block with a bare
-// `Ok(())`. Re-run
-// `cargo test -p chio-conformance --test threats -- tee_quote_forgery`
-// and the
-// `assert!(matches!(err, SchemaError::TenantSigVerification(_)))`
-// arms MUST then fail because production now accepts forged
-// signatures. That fault injection demonstrates each assertion is
-// wired to the production tenant-signature deny branch.
 
 use std::path::PathBuf;
 
@@ -47,22 +34,6 @@ use chio_tee_frame::schema::{
     signing_payload, validate_signed, verify_tenant_sig, SchemaError, SCHEMA_VERSION,
 };
 
-// covered_by_tests cross-link from spec/security/chio-threat-model.v1.json
-// for the tee_quote_forgery row. The trj5/A2 batch-2 PR review (P2 by
-// codex-connector) flagged that the conformance test added below
-// exercises only the chio-tee-frame tenant-signature surface; the
-// quote validators (Nitro / TDX / SEV-SNP) and the kernel self-quote
-// gate are covered by the integration tests under chio-attest-verify
-// and chio-kernel listed below. This array preserves the file-
-// existence + named-fixture pins from the previous stub so a
-// regression in those validator paths still trips this conformance
-// test, not just the new tenant-sig attack-call-deny arms.
-// Each entry pins a covered_by_tests evidence file AND a named test
-// function inside that file that exercises a quote-rejection arm.
-// `Some(needle)` ensures the file does more than just exist -- a
-// regression that renames or guts the cited test trips this gate
-// before tee_quote_forgery.json can claim validator-side coverage
-// (cursor[bot] LOW + codex[bot] P2 on PR #608).
 const VALIDATOR_EVIDENCE_FILES: &[(&str, Option<&str>)] = &[
     (
         "crates/chio-attest-verify/tests/cross_backend_conformance.rs",

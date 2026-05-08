@@ -11,15 +11,6 @@
 // so the sibling-sum / unknown-parent deny branches fire) as well as
 // the chained issuer-trust, signature, and time-window checks.
 //
-// Per the trj5/A2 batch-2 PR review (P2 comment by codex-connector
-// against batch 1 / batch 2): a delegation_chain_abuse test that
-// only builds tokens with `delegation_chain: vec![]` does NOT cover
-// the production budget-split admission path
-// (`token.delegation_chain.last() ... budgets.try_admit_child(...)`)
-// and would let regressions in delegated-scope/budget lineage land
-// silently. Tests below address that by building delegated tokens
-// with a non-empty chain and calling the budget-aware verifier.
-//
 // Production call sites:
 //   `crates/chio-kernel-core/src/capability_verify.rs:148`
 //     (`verify_capability_with_floor`).
@@ -27,21 +18,6 @@
 //     (`verify_capability_with_trusted_and_floor`).
 //   `crates/chio-kernel-core/src/budget_split.rs:225`
 //     (`InMemoryBudgetRegistry::try_admit_child`).
-//
-// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-// In `crates/chio-kernel-core/src/capability_verify.rs`, locate the
-// `if let Some(parent_link) = token.delegation_chain.last() { ...
-// budgets.try_admit_child(...) ... }` block inside
-// `verify_capability_with_floor` (around line 191). Replace the
-// `?` propagation on the `try_admit_child` result with `let _ = ...;`
-// so the error is swallowed. Re-run `cargo test -p chio-conformance
-// --test threats -- delegation_chain_abuse` and the
-// `assert!(matches!(err, CapabilityError::BudgetSplitRejected(...)))`
-// arm MUST then fail because production now admits children whose
-// parent is missing from the registry. Likewise, deleting the
-// `if !trusted_issuers.contains(&token.issuer) { return
-// Err(CapabilityError::UntrustedIssuer); }` guard breaks the
-// UntrustedIssuer arm.
 
 use chio_core::capability::{
     CapabilityCryptoFloor, CapabilityToken, CapabilityTokenBody, ChioScope, DelegationLink,

@@ -15,16 +15,6 @@
 // (`WeightsError::CardMismatch`), and `LoadedWeightsUnavailable`
 // (`WeightsError::SchemaRejected`). The two failure-path arms are the
 // production deny branches that catch a spoofed weights hash.
-//
-// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-// In `crates/chio-kernel/src/weights_binding.rs`, locate the loaded-hash
-// equality check inside `evaluate_weights_binding_with_loaded_hash` and
-// flip the comparison so a mismatched recomputed digest returns Ok
-// instead of `Err(WeightsError::CardMismatch)`. Re-run
-// `cargo test -p chio-conformance --test threats -- weights_hash_spoof`
-// and the `assert!(matches!(spoofed, WeightsError::CardMismatch { .. }))`
-// arm MUST fail. That fault injection demonstrates the assertion is
-// wired to the production CardMismatch branch, not a stub.
 
 use chio_core::{loaded_weights_hash_of, LoadedWeights, LoadedWeightsUnavailable};
 use chio_kernel::weights_binding::evaluate_weights_binding_with_loaded_hash;

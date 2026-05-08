@@ -19,18 +19,6 @@
 // Production call site:
 // `crates/chio-kernel/src/execution_nonce.rs:364` (`verify_execution_nonce`).
 // `crates/chio-kernel/src/execution_nonce.rs:206` (`InMemoryExecutionNonceStore`).
-//
-// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-// In `crates/chio-kernel/src/execution_nonce.rs`, locate the
-// `match nonce_store.reserve_until(...)` block inside
-// `verify_execution_nonce` (around line 433). Replace
-// `Ok(false) => { ...; Err(ExecutionNonceError::Replayed) }` with
-// `Ok(false) => Ok(())`. Re-run
-// `cargo test -p chio-conformance --test threats -- native_channel_replay`
-// and the `assert!(matches!(err, ExecutionNonceError::Replayed))`
-// assertion MUST then fail because production now allows a replayed
-// nonce. That fault injection demonstrates the assertion is wired to
-// the production replay-prevention deny branch.
 
 use chio_core::crypto::Keypair;
 use chio_kernel::execution_nonce::{
