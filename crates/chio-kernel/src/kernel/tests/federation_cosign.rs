@@ -169,18 +169,18 @@ fn federated_request_without_pinned_peer_fails_closed() {
     );
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 
-    let err = kernel
+    // P0-001 fix (audit 2026-05-08): the named-peer-not-pinned-fresh
+    // case is now a structured pre-dispatch Deny verdict rather than
+    // a propagated `Err`. The deny receipt is signed and persisted.
+    let response = kernel
         .evaluate_tool_call_blocking(&request)
-        .expect_err("federated request with no pinned peer must fail closed");
-    match err {
-        KernelError::Internal(msg) => {
-            assert!(
-                msg.contains("not pinned") || msg.contains("stale"),
-                "unexpected error message: {msg}"
-            );
-        }
-        other => panic!("expected Internal error, got {other:?}"),
-    }
+        .expect("federated request with no pinned peer must produce a Deny response");
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.unwrap_or_default();
+    assert!(
+        reason.contains("not pinned") || reason.contains("stale") || reason.contains("downgrade"),
+        "unexpected deny reason: {reason}"
+    );
 }
 
 #[test]
@@ -209,16 +209,20 @@ fn federated_request_without_cosigner_fails_closed() {
     );
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 
-    let err = kernel
+    // P0-001 fix (audit 2026-05-08): the no-pinned-peer fail-closed
+    // gate fires BEFORE the missing-cosigner check (a federated
+    // request needs both a fresh peer AND a cosigner). The kernel
+    // returns a structured Deny pre-dispatch.
+    let response = kernel
         .evaluate_tool_call_blocking(&request)
-        .expect_err("federated request with no cosigner must fail closed");
-    match err {
-        KernelError::Internal(msg) => {
-            assert!(
-                msg.contains("federation cosigner missing"),
-                "unexpected error message: {msg}"
-            );
-        }
-        other => panic!("expected Internal error, got {other:?}"),
-    }
+        .expect("federated request with no cosigner must produce a Deny response");
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.unwrap_or_default();
+    assert!(
+        reason.contains("not pinned")
+            || reason.contains("stale")
+            || reason.contains("downgrade")
+            || reason.contains("federation cosigner missing"),
+        "unexpected deny reason: {reason}"
+    );
 }

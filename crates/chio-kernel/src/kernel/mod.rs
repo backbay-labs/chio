@@ -2891,6 +2891,36 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
+        // P0-001 fix (audit 2026-05-08): receipt-version negotiation is
+        // a TRUST-BOUNDARY admission check that must run BEFORE any
+        // dispatch path. When a named federation peer is not pinned
+        // fresh (stale or never-pinned), the kernel MUST refuse to
+        // dispatch instead of executing the tool and then refusing to
+        // mint the receipt. PROTOCOL.md section 6 (normative MUST).
+        //
+        // Running this check first also keeps subsequent deny paths
+        // working: `record_chio_receipt_with_federation` re-runs the
+        // same lookup, so any later code that falls into a normal
+        // "build deny response" helper would loop on the same failure.
+        if let Err(error) = self.kernel_receipt_version_for_remote(
+            request.federated_origin_kernel_id.as_deref(),
+            now,
+        ) {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "receipt-version negotiation failed pre-dispatch"
+            );
+            return self.build_negotiation_failclosed_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
+        }
+
         // Round-3 codex P2 fix: signature is verified first (no budget
         // mutation); the actual `admit_capability_budget` call is
         // deferred until all subsequent checks (time, revocation,
