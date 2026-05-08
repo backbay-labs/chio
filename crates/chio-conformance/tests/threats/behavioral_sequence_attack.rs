@@ -3,15 +3,6 @@
 //! Coverage strategy: record a dangerous predecessor in the session journal
 //! and assert `BehavioralSequenceGuard` denies the configured forbidden
 //! transition.
-//!
-//! Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-//! In `crates/chio-guards/src/behavioral_sequence.rs`, change the
-//! forbidden-transition `return Ok(Verdict::Deny);` (around line 74) to
-//! `return Ok(Verdict::Allow);`. The
-//! `threat_behavioral_sequence_attack_is_covered` assertion below MUST
-//! then fail. That fault injection proves the assertion is wired to the
-//! production forbidden-transition deny path rather than asserting an
-//! invariant in the test itself.
 
 use std::sync::Arc;
 

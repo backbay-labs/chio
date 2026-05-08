@@ -3,15 +3,6 @@
 //! Coverage strategy: seed the session journal with cumulative read/write
 //! totals and assert `DataFlowGuard` denies once the configured total ceiling
 //! has been reached.
-//!
-//! Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-//! In `crates/chio-guards/src/data_flow.rs`, change the third
-//! `return Ok(Verdict::Deny);` (the `max_bytes_total` branch around line 80)
-//! to `return Ok(Verdict::Allow);`. The
-//! `threat_cumulative_data_exfiltration_is_covered` assertion below MUST
-//! then fail (`Verdict::Deny != Verdict::Allow`). The fault injection
-//! proves the assertion is wired to the production byte-ceiling deny
-//! path rather than to a test-only invariant.
 
 use std::sync::Arc;
 

@@ -3,17 +3,6 @@
 // Coverage strategy: present an App Attest fixture whose key id is bound
 // to a different credential and a Play Integrity token whose verdict is
 // downgraded; the production verifiers must reject both.
-//
-// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-// In `crates/chio-custody-hw/src/attestation/app_attest.rs`, change the
-// `return Err(AttestationError::KeyIdMismatch);` at line ~96 to
-// `return Ok(<dummy verified payload>);` (or `Ok(())` after stubbing the
-// payload), AND in `crates/chio-custody-hw/src/attestation/play_integrity.rs`,
-// change the `return Err(AttestationError::PlayIntegrityDeviceRejected);`
-// at line ~136 to `Ok(())` (after stubbing the verified output). Both
-// `.err().ok_or(...)` extraction sites in this test MUST then fail
-// because the production calls return Ok. That fault injection proves
-// the assertions are wired to the production rejection paths.
 
 use std::error::Error;
 

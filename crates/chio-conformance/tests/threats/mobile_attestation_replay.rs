@@ -3,17 +3,6 @@
 // Coverage strategy: present an App Attest fixture against a stale
 // server challenge, and a Play Integrity token against a replayed nonce;
 // both production verifiers must reject the replay.
-//
-// Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-// In `crates/chio-custody-hw/src/attestation/app_attest.rs`, change the
-// `return Err(AttestationError::ChallengeMismatch);` at line ~148 (and
-// ~396) to `Ok(())` after stubbing the verified payload, AND in
-// `crates/chio-custody-hw/src/attestation/play_integrity.rs`, change
-// the `return Err(AttestationError::PlayIntegrityNonceMismatch);` at
-// line ~122 to `Ok(())` after stubbing. Both `.err().ok_or(...)`
-// extraction sites below MUST then fail because the production calls
-// return Ok. The fault injection proves the assertions ride on the
-// production replay-rejection paths.
 
 use std::error::Error;
 

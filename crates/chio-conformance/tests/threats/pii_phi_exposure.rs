@@ -3,15 +3,6 @@
 //! Coverage strategy: exercise the in-tree response sanitization guard against
 //! definite PHI/PII markers and assert both block and redact modes fail closed
 //! before raw identifiers reach downstream consumers.
-//!
-//! Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-//! In `crates/chio-guards/src/response_sanitization.rs`, swap the
-//! `SanitizationAction::Block => ScanResult::Blocked(findings),` branch
-//! (around line 216) so it returns `ScanResult::Clean` instead. The
-//! blocking-mode `match` arm below MUST then fail (`PHI payload must
-//! block, got Clean`). The fault injection proves the assertion is
-//! wired to the production scan_response classification rather than
-//! asserting a test-only constant.
 
 use chio_guards::{ResponseSanitizationGuard, SanitizationAction, ScanResult, SensitivityLevel};
 

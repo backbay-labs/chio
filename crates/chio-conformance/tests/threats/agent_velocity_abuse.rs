@@ -3,15 +3,6 @@
 //! Coverage strategy: instantiate the in-tree `AgentVelocityGuard` with a
 //! one-request per-agent ceiling and assert a repeated request for the same
 //! agent denies while a different agent has an independent bucket.
-//!
-//! Revert-to-prove-it-fails recipe (trj5/A2 evidence backfill):
-//! In `crates/chio-guards/src/agent_velocity.rs`, change the
-//! `return Ok(Verdict::Deny);` on the per-agent ceiling exceeded branch
-//! (around line 146) to `return Ok(Verdict::Allow);`. The second
-//! `request_for("agent-a", ...)` assertion below MUST then fail with
-//! `Verdict::Deny != Verdict::Allow`. The fault injection proves the
-//! test is wired to the production deny path rather than asserting an
-//! invariant in the test itself.
 
 use chio_core::capability::{CapabilityToken, CapabilityTokenBody, ChioScope};
 use chio_core::crypto::Keypair;
