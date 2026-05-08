@@ -61,13 +61,10 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
    - #603 mutation aggregate owner
    - #619, #621, #622, #623, #626 per-crate mutation evidence
    - #624 and #625 after their owners confirm the same ownership rule
-4. Threat evidence is not clean as three independent PRs. #604 merges cleanly
-   into main, but #608 conflicts after #604. #616 is not currently a safe
-   replacement for #608 because #608 has newer branch-tip fixes. The valid
-   strategy is for the threat owner to collapse/rebase #604, #608, and #616
-   into one threat-evidence line, most likely with #616 as the consolidation
-   PR. Until that happens, do not mark #608 superseded and do not advertise
-   #608 -> #616 as merge-clean.
+4. Threat evidence is now merge-clean in the Worker G chain. The refreshed
+   sequence #604 -> #608 -> #616 merges cleanly against `origin/main` in local
+   simulation. Keep the three branches ordered in that sequence; do not treat
+   the older #608 conflict note as current.
 5. Lane C is a canary only until Lane B is merged and evidence is rerun.
    Rebase #614, #615, and #617 after #610 and #612 land.
 6. #618 release packaging is last. Regenerate release notes, fixtures,
@@ -137,22 +134,18 @@ merge #623 (feb4559c19) ... OK
 merge #626 (ed3e772bfe) ... OK
 ```
 
-Threat branch current state:
+Threat branch current state after Worker G refresh:
 
 ```text
-merge #604 (ae633d478e) ... OK
-merge #608 (46cbaece80) ... CONFLICT
-  crates/chio-conformance/tests/threats/agent_velocity_abuse.rs
-  crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs
-  crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs
-  crates/chio-conformance/tests/threats/device_key_extraction.rs
-  crates/chio-conformance/tests/threats/mobile_attestation_replay.rs
-  crates/chio-conformance/tests/threats/pii_phi_exposure.rs
-  crates/chio-conformance/tests/threats/play_integrity_token_replay.rs
+refs_refreshed=2026-05-08T22:37:11Z
+merge #604 (40324814a6) ... OK
+merge #608 (28792e5db1) ... OK
+merge #616 (6c6270f9fa) ... OK
 ```
 
-The #608 conflict is owned by the threat-evidence lane, not by planning
-topology. #616 was not reached in that simulation because #608 blocks first.
+The older #608 conflict is closed for this planning topology record. Any future
+threat-chain conflict should be reopened with a fresh simulation transcript and
+the current branch-tip SHAs.
 
 ## review finding Status
 

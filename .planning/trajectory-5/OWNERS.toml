@@ -92,9 +92,9 @@ owner_globs = [
   "crates/chio-kernel/src/kernel/mod.rs",
   "crates/chio-kernel-core/**",
   "crates/chio-anchor/src/batch.rs",
-  "crates/chio-conformance/tests/single_entry_verifier_no_bypass.rs",
-  "crates/chio-conformance/tests/receipt_v2_fail_closed_under_negotiated_v2.rs",
-  "crates/chio-conformance/tests/anchor_batch_async_only_with_public_witness.rs",
+  "crates/chio-conformance/tests/b1_capability_v2_single_entry_no_bypass.rs",
+  "crates/chio-conformance/tests/b2_receipt_v2_failclosed_under_negotiated_v2.rs",
+  "crates/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs",
   "crates/chio-conformance/tests/b4_bilateral_dsse_pae_only_is_conformant.rs",
   # B4 sub-lane: DSSE bilateral signing helpers added to chio-federation.
   # Listed here (in addition to the federation overlap row in [overlaps])

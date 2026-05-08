@@ -48,7 +48,7 @@ historical pre-execution record.
 
 1. **Bar 1 -- realize the floor (Lane A)**. README mutation banner reads `>=65%` with the per-crate breakdown attached and a non-placeholder evidence directory. Machine-readable signal: `audits/evidence/mutation/banner.json` and 20 of 20 (or `n` of 20 with deferred row count) `audits/evidence/threats/*.json` files with real `caught >= 1` data.
 
-2. **Bar 2 -- wire the spec hot path (Lane B)**. The four Lane B primitives -- capability v2, receipt v2, anchor-batch async, **and DSSE-conformant bilateral signing (B4 added W3)** -- are each protected by a signed negative conformance fixture in `crates/chio-conformance/tests/`. Machine-readable signal: four files exist (`single_entry_verifier_no_bypass.rs`, `receipt_v2_fail_closed_under_negotiated_v2.rs`, `anchor_batch_async_only_with_public_witness.rs`, `bilateral_dsse_pae_only_is_conformant.rs`) and each contains a `// negative-conformance: ...` annotation.
+2. **Bar 2 -- wire the spec hot path (Lane B)**. The four Lane B primitives -- capability v2, receipt v2, anchor-batch async, **and DSSE-conformant bilateral signing (B4 added W3)** -- are each protected by a signed negative conformance fixture in `crates/chio-conformance/tests/`. Machine-readable signal: four files exist (`b1_capability_v2_single_entry_no_bypass.rs`, `b2_receipt_v2_failclosed_under_negotiated_v2.rs`, `b3_anchor_batch_sync_path_rejected_under_public_witness.rs`, `b4_bilateral_dsse_pae_only_is_conformant.rs`) and each contains a `// negative-conformance: ...` annotation.
 
 3. **Bar 3 -- one forcing demo (Lane C)**. The two-kernel cross-org bilateral cosigned invocation runs end-to-end, the receipts are inspectable with `chio receipt explain`, and the demo is captured as a fixture in `examples/chiodome-bilateral/fixtures/`. Machine-readable signal: `examples/chiodome-bilateral/` exists and `cargo run --example chiodome-bilateral` produces an `audits/evidence/c-bilateral-smoke.json` with all eight artifacts present.
 
@@ -67,7 +67,7 @@ Wave 1 (synthesis ratification + per-lane PLAN.md authoring) produced the three 
 
 1. **Owner-class human assignments** (LARGEST GATE). `OWNERS.toml` `lanes.{A,B,C}.human_assignment = "TBD"` plus per `[owner_classes.<class>]` `assigned_to`. No code work can start until handles land.
 2. **Wave-2 reviewer per-lane sign-off**. `reviews/lane-{a,b,c}-wave2.md` are the structured sign-off artifacts; the Wave 3 fix logs document the fixes but the reviewer's per-lane sign-off is a separate ledger expected by `KICKOFF-CHECKLIST.md`.
-3. **`scripts/release work-preflight.sh`**. The script does not yet exist. It will be authored as baseline scaffolding; the `KICKOFF-CHECKLIST.md` enumerates its required asserts.
+3. **`scripts/trj5-preflight.sh`**. The script does not yet exist. It will be authored as baseline scaffolding; the `KICKOFF-CHECKLIST.md` enumerates its required asserts.
 4. **`releases.toml [trajectory_5]` block**. Draft block recommended values are in `KICKOFF-CHECKLIST.md`. The block is opened by the human kickoff agent.
 5. **Bar baseline measurements**. `audits/evidence/release work-baseline/{bar1,bar2,bar3}-state.json` will record baselines so progress is observable against a fixed reference.
 6. **TRJ4-033 confirmation** (small). If TRJ4-033 has not merged by Wave 1 of release work execution, the mobile-attestation rows (threat evidence item / A2.9 / A2.13) fail closed and ramp later. Per `W3-lane-a-fixes.md` unresolved item 2.

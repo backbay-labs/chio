@@ -209,7 +209,7 @@ jobs:
           bash ./scripts/check-log-redaction.sh
           bash ./scripts/check-http-egress-contract.sh
           bash ./scripts/tests/check-http-egress-contract.test.sh
-          bash ./scripts/tests/check-release work-ship-bar.test.sh
+          bash ./scripts/tests/check-trj5-ship-bar.test.sh
 
       - name: Workspace proof report
         env:

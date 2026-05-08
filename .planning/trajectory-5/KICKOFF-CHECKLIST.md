@@ -46,9 +46,9 @@ This file is the pre-execution checklist for release work. Trj5 enters execution
 
 ### CI pre-flight
 
-- [x] `scripts/release work-preflight.sh` exists (landed 2026-05-08, executable). The script enforces 8 gates: planning artifacts present, per-lane PLAN/tickets/README present, templates and architecture present, Wave-2 reviews + Wave-3 fixes + Wave-4 closeout + Wave-2 sign-offs present, OWNERS.toml `human_assignment` populated for all three lanes, releases.toml `[trajectory_5]` block with status set, ship-bar baselines present, drift-cleanup checks (no LB-* aliases in `Depends on` rows; no live Option-A design references; pre-correction trait-name mentions confined to retraction notes; 20 threat-evidence files on disk).
-- [x] `bash scripts/release work-preflight.sh` returns exit 0 (verified 2026-05-08; 49 checks PASS, 0 failures).
-- [ ] `scripts/check-release work-ship-bar.sh` exists (consumed by the integration / ship-bar week verification). baseline scaffolding follow-up; not gating preflight.
+- [x] `scripts/trj5-preflight.sh` exists (landed 2026-05-08, executable). The script enforces 8 gates: planning artifacts present, per-lane PLAN/tickets/README present, templates and architecture present, Wave-2 reviews + Wave-3 fixes + Wave-4 closeout + Wave-2 sign-offs present, OWNERS.toml `human_assignment` populated for all three lanes, releases.toml `[trajectory_5]` block with status set, ship-bar baselines present, drift-cleanup checks (no LB-* aliases in `Depends on` rows; no live Option-A design references; pre-correction trait-name mentions confined to retraction notes; 20 threat-evidence files on disk).
+- [x] `bash scripts/trj5-preflight.sh` returns exit 0 (verified 2026-05-08; 49 checks PASS, 0 failures).
+- [x] `scripts/check-trj5-ship-bar.sh` exists and is covered by `scripts/tests/check-trj5-ship-bar.test.sh` in CI. It is consumed by the integration / ship-bar week verification and is not a kickoff prerequisite.
 
 ### releases.toml block
 
@@ -118,7 +118,7 @@ If any of the three slips, release work stays open.
 After every box above is checked, run:
 
 ```
-bash scripts/release work-preflight.sh
+bash scripts/trj5-preflight.sh
 ```
 
 If exit code is 0, release work enters execution. If exit code is non-zero, the script's stderr names which prerequisite is unmet.
@@ -131,7 +131,7 @@ execution.
 
 - [x] **Owner-class human assignments landed** (three lane.X.human_assignment + per owner-class assigned_to). All set to `release owner` per autonomous-execution mode (the automation_coordinator role is `release automation coordinator`; `release owner` is the escalation path).
 - [x] **Wave-2 reviewer per-lane sign-off** under `reviews/lane-{a,b,c}-wave2.md` (separate from Wave 3 fix logs). Three ledgers landed; each maps every BLOCKER/MAJOR to its W3 fix-log entry per `W4-closeout-matrix.md`.
-- [x] **`scripts/release work-preflight.sh` authored** and executable; returns exit 0 (49 checks PASS, 0 failures) verified 2026-05-08.
+- [x] **`scripts/trj5-preflight.sh` authored** and executable; returns exit 0 (49 checks PASS, 0 failures) verified 2026-05-08.
 - [x] **`releases.toml [trajectory_5]` block opened** with kickoff values, then corrected after R4+ to `pending_upstream_merges` until upstream PRs merge, release packaging is regenerated from merged `main`, checks are green on the integrated merge SHA, and a human pushes the tag. Baseline SHA remains `708c7bb33df43594f5e76542b05fca7a56d9689e`, baseline branch `planning branch`, started_at `2026-05-08T00:00:00Z`.
 - [x] **Bar baseline measurements captured** under `.planning/trajectory-5/baselines/` as three Markdown files (BAR-1-MUTATION.md, BAR-2-CONFORMANCE-FIXTURES.md, BAR-3-DEMO.md). Format change from JSON-under-`audits/evidence/release work-baseline/` to Markdown-under-`.planning/trajectory-5/baselines/` was Wave-5 agent's call: the baselines are human-readable narrative-plus-table documents, not machine-readable signal files. The machine-readable signal targets (e.g. `audits/evidence/mutation/banner.json`) are populated DURING release work execution, not at kickoff.
 - [x] Final sign-off by `release owner` (recorded by Wave-5 kickoff agent on behalf of `release owner`, 2026-05-08; release work enters ACTIVE state).

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# release work ship-bar checker.
+# Trajectory 5 ship-bar checker.
 #
 # Verifies the per-bar machine-readable signals enumerated in
 # `.planning/trajectory-5/SHIP-BAR-TRACKER.md`. This script is the
-# closing-bar companion to `scripts/release work-preflight.sh` (which gates
+# closing-bar companion to `scripts/trj5-preflight.sh` (which gates
 # kickoff). Together they form the release close gate:
 #
-#   - release work-preflight.sh: planning artifacts, OWNERS, releases.toml,
+#   - trj5-preflight.sh: planning artifacts, OWNERS, releases.toml,
 #     review trail, drift cleanup.
-#   - check-release work-ship-bar.sh (this file): per-bar evidence presence
+#   - check-trj5-ship-bar.sh (this file): per-bar evidence presence
 #     for the three closing bars.
 #
 # The script is deliberately presence-and-shape oriented. It is NOT a
@@ -28,10 +28,10 @@
 # Bar 3 (Lane C): demo directory + a pinned receipt fixture under
 # `examples/chiodome-bilateral/`. Missing artifacts FAIL.
 #
-# Run from the chio repo root: `bash scripts/check-release work-ship-bar.sh`.
+# Run from the chio repo root: `bash scripts/check-trj5-ship-bar.sh`.
 # Output is one OK/FAIL/PARTIAL line per check.
 #
-# Exit modes (audit review item):
+# Exit modes:
 #   * Default (release-gate mode): PARTIAL is treated as a FAIL. The
 #     trajectory closes only when every bar is fully MET, so the close
 #     gate must reject any bar that is still in baseline / in-progress
@@ -52,7 +52,7 @@ cd "$repo_root" || exit 1
 
 # Default mode: PARTIAL counts as a failure (release-gate strict).
 # `--diagnostic` flips this to advisory, where PARTIAL is reported but
-# does not count toward the failure tally. Audit review item.
+# does not count toward the failure tally.
 diagnostic_mode=0
 for arg in "$@"; do
   case "$arg" in
@@ -61,11 +61,11 @@ for arg in "$@"; do
       ;;
     -h|--help)
       sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-      printf '\nUsage: check-release work-ship-bar.sh [--diagnostic]\n'
+      printf '\nUsage: check-trj5-ship-bar.sh [--diagnostic]\n'
       exit 0
       ;;
     *)
-      printf 'check-release work-ship-bar.sh: unknown argument: %s\n' "$arg" >&2
+      printf 'check-trj5-ship-bar.sh: unknown argument: %s\n' "$arg" >&2
       exit 2
       ;;
   esac
@@ -84,7 +84,7 @@ partial() {
   # PARTIAL prints with a clear marker so it never reads as a clean
   # MET row. In diagnostic mode the gate stays green; in default
   # release-gate mode the gate flips red so we cannot ship while bars
-  # are still in baseline state. Audit review item.
+  # are still in baseline state.
   if [ "$diagnostic_mode" -eq 1 ]; then
     printf 'WARN %s (PARTIAL, diagnostic-mode-only)\n' "$1"
   else
@@ -343,7 +343,7 @@ for crate in "${bar1_crates[@]}"; do
   fi
 done
 
-# Bar 1 also requires the threats directory; release work-preflight.sh already
+# Bar 1 also requires the threats directory; trj5-preflight.sh already
 # checks count == 20. Here we additionally verify each file has
 # `caught >= 1` and a non-1970 `ran_at` (the SHIP-BAR-TRACKER.md
 # machine-readable signal).
@@ -379,9 +379,9 @@ printf '\n[Bar 2] Lane B -- four signed negative conformance fixtures\n'
 
 # Filenames mirror `SHIP-BAR-TRACKER.md` Bar 2 "Machine-readable signal" row.
 bar2_fixtures=(
-  "single_entry_verifier_no_bypass.rs"
-  "receipt_v2_fail_closed_under_negotiated_v2.rs"
-  "anchor_batch_async_only_with_public_witness.rs"
+  "b1_capability_v2_single_entry_no_bypass.rs"
+  "b2_receipt_v2_failclosed_under_negotiated_v2.rs"
+  "b3_anchor_batch_sync_path_rejected_under_public_witness.rs"
   "b4_bilateral_dsse_pae_only_is_conformant.rs"
 )
 bar2_root="crates/chio-conformance/tests"
@@ -490,7 +490,7 @@ else
   failure "Bar3 releases.toml missing"
 fi
 
-printf '\n----- check-release work-ship-bar summary -----\n'
+printf '\n----- check-trj5-ship-bar summary -----\n'
 printf 'checks run: %d\n' "$checks"
 printf 'failures:   %d\n' "$fail"
 printf 'partials:   %d\n' "$partials"
@@ -503,7 +503,7 @@ fi
 # Strict default: PARTIAL rows are treated as failures so the close gate
 # cannot pass while any bar is still in baseline / in-progress state.
 # `--diagnostic` mode is opt-in and only allows real FAIL rows to flip
-# the gate red. Audit review item.
+# the gate red.
 if [ "$fail" -ne 0 ]; then
   printf '\ntrj5 ship-bar: FAIL (%d fail row(s), %d partial row(s))\n' "$fail" "$partials"
   exit 1

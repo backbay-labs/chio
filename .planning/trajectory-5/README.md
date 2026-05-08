@@ -156,7 +156,7 @@ Before release work enters execution, the following must hold (full ledger in `K
 
 - All three lane `PLAN.md` files reviewed and Wave-2-approved under `reviews/`.
 - `OWNERS.toml` owner-classes assigned to actual humans.
-- CI pre-flight script `scripts/release work-preflight.sh` returns exit 0.
+- CI pre-flight script `scripts/trj5-preflight.sh` returns exit 0.
 - `releases.toml` `[trajectory_5]` block opened and now corrected to `trj5_release_status = "pending_upstream_merges"` until upstream merges, regeneration, green integrated checks, and human tag push.
 - Trj4 wave-plan absorption note checked into `KICKOFF-CHECKLIST.md` confirming which trj4 tickets are subsumed.
 - The three ship-bar items above are restated verbatim in `SHIP-BAR-TRACKER.md` and have machine-readable signals defined.

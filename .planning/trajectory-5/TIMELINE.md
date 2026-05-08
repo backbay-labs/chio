@@ -112,7 +112,7 @@ Lane A runs entirely off the critical path; if Lane A slips, Bar 1 slips but Bar
 
 Week 8 is the dedicated verification week. No new feature work lands in week 8. The activities are:
 
-- Run `scripts/check-release work-ship-bar.sh` against the committed evidence.
+- Run `scripts/check-trj5-ship-bar.sh` against the committed evidence.
 - Wave-2 reviewer signs off on each lane PLAN.md.
 - `releases.toml` `[trajectory_5]` block updated: `trj5_release_status` transitions from `in_progress` to either `closed` (all three bars DONE) or stays `in_progress` (any bar not DONE).
 - If all three bars DONE: cut `v0.1.0-bounded-chiodome` honest release tag.

@@ -30,8 +30,8 @@ Pre-release work, ZERO of four are protected by such a fixture.
 | Spec MUST citation | `spec/PROTOCOL.md` ~lines 408-418 (per Lane B README); CURRENTLY phrased as SHOULD; Lane B B1.4 promotes to MUST |
 | Production call site (current bypass) | `crates/chio-kernel/src/kernel/mod.rs:4005-4033` (`verify_capability_full_without_budget_admit`) and `:4035-4058` (legacy `verify_capability_signature`) |
 | Production call site (target) | All hosted callers route through `verify_capability_full`; bypass functions deleted |
-| Existing conformance fixture file | NONE TODAY (verified by `ls crates/chio-conformance/tests/` -- no `single_entry_verifier_no_bypass.rs`) |
-| Expected post-release work fixture path | `crates/chio-conformance/tests/single_entry_verifier_no_bypass.rs` |
+| Existing conformance fixture file | NONE TODAY (verified by `ls crates/chio-conformance/tests/` -- no `b1_capability_v2_single_entry_no_bypass.rs`) |
+| Expected post-release work fixture path | `crates/chio-conformance/tests/b1_capability_v2_single_entry_no_bypass.rs` |
 | Current enforcement status | UNWIRED -- bypass functions callable from kernel hot path |
 
 ### B2 -- Receipt v2 fail-closed under negotiated v2
@@ -41,8 +41,8 @@ Pre-release work, ZERO of four are protected by such a fixture.
 | Spec MUST citation | `spec/PROTOCOL.md` lines 737-741 (per W3 BLOCKER #1 fix: prose currently has neither MUST nor SHOULD; Lane B B2.4 introduces a NEW normative MUST -- a tightening, not a promotion) |
 | Production call site | `crates/chio-kernel/src/kernel/mod.rs:1574-1591` (`kernel_receipt_version_for_remote`) -- silently downgrades v2 -> v1 with a warning |
 | Production call site (target) | `kernel_receipt_version_for_remote` hard-rejects v1 when negotiation indicated v2 |
-| Existing conformance fixture file | NONE TODAY (verified by `ls crates/chio-conformance/tests/` -- a related file `verify_rejects_v2_token_when_peer_negotiated_v1_only.rs` exists but the inverse-direction fixture `receipt_v2_fail_closed_under_negotiated_v2.rs` does not) |
-| Expected post-release work fixture path | `crates/chio-conformance/tests/receipt_v2_fail_closed_under_negotiated_v2.rs` |
+| Existing conformance fixture file | NONE TODAY (verified by `ls crates/chio-conformance/tests/` -- a related file `verify_rejects_v2_token_when_peer_negotiated_v1_only.rs` exists but the B2 fixture `b2_receipt_v2_failclosed_under_negotiated_v2.rs` does not) |
+| Expected post-release work fixture path | `crates/chio-conformance/tests/b2_receipt_v2_failclosed_under_negotiated_v2.rs` |
 | Current enforcement status | PARTIALLY-ENFORCED -- warn-and-downgrade exists; fail-closed does not |
 
 (Note: synthesis line 31 originally cited `:1148-1165` which is the
@@ -59,7 +59,7 @@ references in legacy text are footnoted.)
 | Production call site (current bypass) | `crates/chio-anchor/src/batch.rs:227-235` (sync wrapper still callable when `require_public_witness=true`) |
 | Production call site (target) | sync wrapper hard-rejects `require_public_witness=true` at runtime; the runtime gate is the load-bearing defense (`scripts/check-anchor-batch-async-witness.sh` is best-effort fast-feedback, NOT the soundness guarantee per W3 BLOCKER #2 honest reframing) |
 | Existing conformance fixture file | NONE TODAY -- there are anchor-batch fixtures in `crates/chio-conformance/tests/` (`anchor_batch_forged_root_rejected.rs`, `anchor_batch_misordered_proof_rejected.rs`, `anchor_batch_stale_replay_rejected.rs`, `anchor_batch_stale_witness_fallback.rs`, `anchor_batch_witness_impersonation_rejected.rs`) but the async-only-with-public-witness fixture is not among them |
-| Expected post-release work fixture path | `crates/chio-conformance/tests/anchor_batch_async_only_with_public_witness.rs` |
+| Expected post-release work fixture path | `crates/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs` |
 | Current enforcement status | UNWIRED -- sync wrapper accepts `require_public_witness=true` today |
 
 ### B4 -- DSSE-conformant bilateral signing (NEW per R4 BLOCKER 1)
@@ -69,8 +69,8 @@ references in legacy text are footnoted.)
 | Spec MUST citation | `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (DSSE PAE encoding) + §7 step 11-12 (signature verification) |
 | Production call site (current legacy) | `crates/chio-federation/src/bilateral.rs::CoSigningBody` (lines 41-77): signs canonical-JSON bytes that share ZERO bytes with the §6 DSSE PAE preimage; `DualSignedReceipt::verify` (line 93+) is NOT a §6-conformant artifact |
 | Production call site (target) | `crates/chio-federation/src/bilateral_dsse.rs` (NEW module per B4): produces a DSSE envelope whose Ed25519 signature is computed over DSSE PAE of the canonical-JSON in-toto Statement |
-| Existing conformance fixture file | NONE TODAY (verified by `ls crates/chio-conformance/tests/` -- no `bilateral_dsse_pae_only_is_conformant.rs`; no DSSE-related fixture exists) |
-| Expected post-release work fixture path | `crates/chio-conformance/tests/bilateral_dsse_pae_only_is_conformant.rs` |
+| Existing conformance fixture file | NONE TODAY (verified by `ls crates/chio-conformance/tests/` -- no `b4_bilateral_dsse_pae_only_is_conformant.rs`; no DSSE-related fixture exists) |
+| Expected post-release work fixture path | `crates/chio-conformance/tests/b4_bilateral_dsse_pae_only_is_conformant.rs` |
 | Current enforcement status | UNWIRED -- §6-conformant DSSE signing surface does not exist; `DualSignedReceipt::verify` accepts the legacy preimage |
 
 (Pre-W3 framing: Lane C "Option A two-signature" adapter was proposed
@@ -103,7 +103,7 @@ close ticket lands four artifacts:
    MUST (B1, B3) or introduces NEW normative MUST (B2 tightening) or
    reads MUST against the DSSE PAE encoding (B4).
 3. **Artifact C (signed negative conformance fixture)**: file exists at
-   `crates/chio-conformance/tests/<expected_name>.rs`; exercises the
+   `crates/chio-conformance/tests/<b1-b4 fixture>.rs`; exercises the
    production call path; contains `// negative-conformance: removing
    X reintroduces Y` annotation; FAILS when the enforcement is
    removed (proven by inverting the patch under review).
@@ -124,7 +124,7 @@ For each of B1.E, B2.E, B3.E, B4.E the close-ticket Acceptance:
 4. CI runs the conformance fixture and it PASSes.
 5. Reverse-test PR (or local mutation) inverts the production
    enforcement; the fixture FAILs.
-6. `scripts/check-release work-ship-bar.sh` Bar-2 block PASSes:
+6. `scripts/check-trj5-ship-bar.sh` Bar-2 block PASSes:
    - 4 of 4 expected files exist;
    - each contains `// negative-conformance:` annotation;
    - the production call sites match the cited line ranges.

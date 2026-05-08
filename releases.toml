@@ -170,8 +170,8 @@ trj5_execution_board_path = ".planning/trajectory-5/EXECUTION-BOARD.md"
 trj5_scope_lock_path = ".planning/trajectory-5/SCOPE-LOCK.md"
 trj5_timeline_path = ".planning/trajectory-5/TIMELINE.md"
 trj5_baselines_dir = ".planning/trajectory-5/baselines/"
-trj5_preflight_script = "scripts/release work-preflight.sh"
-trj5_ship_bar_script = "scripts/check-release work-ship-bar.sh"
+trj5_preflight_script = "scripts/trj5-preflight.sh"
+trj5_ship_bar_script = "scripts/check-trj5-ship-bar.sh"
 trj5_execution_mode = "autonomous"
 trj5_human_escalation = "release owner"
 trj5_automation_coordinator = "release automation coordinator"
@@ -223,4 +223,4 @@ trj5_final_summary_path = "pending; will be .planning/trajectory-5/TRAJECTORY-5-
 # Note: pending fields are filled only after upstream merges, release-package
 # regeneration from merged main, each ship bar reading DONE in
 # `.planning/trajectory-5/SHIP-BAR-TRACKER.md`, and
-# `scripts/check-release work-ship-bar.sh` exiting 0 against committed evidence.
+# `scripts/check-trj5-ship-bar.sh` exiting 0 against committed evidence.

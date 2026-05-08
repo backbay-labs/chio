@@ -174,7 +174,7 @@ The release work closeout wave runs:
    green for 7 consecutive nights pre-tag.
 6. `tools/diff-stable.py` (or Rust binary) (release work-C6.4) verifies the
    fixture tarball is diff-stable across runs.
-7. `scripts/check-release work-ship-bar.sh` Bar-3 block PASSes against
+7. `scripts/check-trj5-ship-bar.sh` Bar-3 block PASSes against
    committed evidence.
 
 When all of the above are green, the Bar 3 row in `SHIP-BAR-TRACKER.md`

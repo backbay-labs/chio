@@ -15,7 +15,7 @@
 #           no live Option A design references; ToolServer mentions
 #           confined to retraction notes)
 #
-# Run from the chio repo root: `bash scripts/release work-preflight.sh`.
+# Run from the chio repo root: `bash scripts/trj5-preflight.sh`.
 # Output is one OK/FAIL line per check. Exit 0 if all PASS, 1 otherwise.
 
 set -uo pipefail
@@ -116,12 +116,12 @@ check_file ".planning/trajectory-5/OWNERS.toml"
 check_file ".planning/trajectory-5/READINESS.md"
 
 # ---------------------------------------------------------------------------
-# Gate 2: per-lane PLAN.md / planning docs / README.md
+# Gate 2: per-lane PLAN.md / tickets.md / README.md
 # ---------------------------------------------------------------------------
 printf '\n[Gate 2] per-lane planning files\n'
 for lane in lane-a-floor lane-b-wiring lane-c-demo; do
   check_file ".planning/trajectory-5/$lane/PLAN.md"
-  check_file ".planning/trajectory-5/$lane/planning docs"
+  check_file ".planning/trajectory-5/$lane/tickets.md"
   check_file ".planning/trajectory-5/$lane/README.md"
 done
 
@@ -318,7 +318,7 @@ fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-printf '\n----- release work-preflight summary -----\n'
+printf '\n----- trj5-preflight summary -----\n'
 printf 'checks run: %d\n' "$checks"
 printf 'failures:   %d\n' "$fail"
 if [ "$fail" -eq 0 ]; then
