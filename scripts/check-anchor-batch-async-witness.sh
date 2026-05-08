@@ -64,7 +64,7 @@
 # `crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`.
 # This lint is a fast-feedback companion: it fails loudly on detected
 # violations, but a clean exit does NOT prove the absence of a bypass.
-# Audit T5-R2-P1-018 required the script's advisory nature be labelled
+# Audit review item required the script's advisory nature be labelled
 # in its output; the [ADVISORY-LINT] prefix below makes every line
 # unambiguous about the contract.
 
@@ -73,7 +73,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 # `--advisory` is accepted purely to document caller intent; the
-# script's behaviour does not change. Audit T5-R2-P1-018.
+# script's behaviour does not change. Audit review item.
 advisory_caller=0
 for arg in "$@"; do
   case "$arg" in
