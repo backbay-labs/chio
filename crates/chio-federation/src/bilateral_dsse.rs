@@ -131,15 +131,36 @@ pub const DEFAULT_COSIGN_MODE: &str = "bilateral_required";
 pub struct Keyid(pub String);
 
 impl Keyid {
-    /// Compute the §6 keyid for the given public key. Uses the raw
-    /// 32-byte Ed25519 encoding when the key is Ed25519; for non-Ed25519
-    /// keys, the underlying hex encoding (with algorithm prefix) is hashed
-    /// directly so the keyid remains a domain-separable hex string. The
-    /// trj5 hot path emits Ed25519 only.
+    /// Compute the §6 keyid for the given public key.
+    ///
+    /// Per CHIODOS §6, the keyid (and the matching `passport_key_fingerprint`
+    /// in the predicate) is the SHA-256 of the raw passport public-key bytes,
+    /// hex-lowercase. For Ed25519 (the trj5 hot-path algorithm), this is the
+    /// 32-byte verifying-key encoding, NOT the 64-character ASCII-hex
+    /// rendering. Non-Ed25519 callers fall back to hashing the algorithm-
+    /// prefixed hex form so the keyid remains a domain-separable hex string;
+    /// trj5 production paths only emit Ed25519, so this branch is only
+    /// reached by future P-256/P-384 work.
+    ///
+    /// Reported by codex[bot] on PR #610 (P1) - earlier revisions hashed
+    /// `to_hex().as_bytes()` for Ed25519, which produced a different
+    /// fingerprint than any spec-conformant peer that hashes raw key
+    /// material. Cross-implementation envelopes were silently rejected.
     #[must_use]
     pub fn from_public_key(public_key: &PublicKey) -> Self {
+        use chio_core_types::crypto::SigningAlgorithm;
         let mut hasher = Sha256::new();
-        hasher.update(public_key.to_hex().as_bytes());
+        match public_key.algorithm() {
+            SigningAlgorithm::Ed25519 => {
+                hasher.update(public_key.as_bytes());
+            }
+            _ => {
+                // Non-Ed25519: hash the algorithm-prefixed hex string so
+                // distinct algorithm-tagged keys still produce distinct
+                // fingerprints. trj5 does not exercise this branch.
+                hasher.update(public_key.to_hex().as_bytes());
+            }
+        }
         Self(hex::encode(hasher.finalize()))
     }
 
@@ -558,6 +579,29 @@ pub fn verify_dsse_envelope(
     // keyid == server_a fingerprint".
     let org_a_keyid = Keyid::from_public_key(org_a_public_key);
     let org_b_keyid = Keyid::from_public_key(org_b_public_key);
+
+    // codex[bot] P1 on PR #610: bind verified keyids to the predicate's
+    // declared `passport_key_fingerprint` for both tool servers. Without
+    // this check, a signer could produce a validly signed envelope whose
+    // predicate names different passport fingerprints, and downstream §7
+    // peer-pinning / audit steps would act on identities that were never
+    // verified.
+    if statement.predicate.tool_server_a.passport_key_fingerprint != org_a_keyid {
+        return Err(BilateralCoSigningError::OrgASignatureInvalid);
+    }
+    if statement.predicate.tool_server_b.passport_key_fingerprint != org_b_keyid {
+        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+
+    // cursor[bot] LOW on PR #610: when org_a == org_b the same keyid
+    // resolves both lookups; the second signature could carry arbitrary
+    // garbage and never be inspected. Reject identical-key cosigning so
+    // the §6 envelope can't be forged by a single key holder. (This is
+    // a load-bearing distinct-org invariant; bilateral co-signing is
+    // meaningless when one party signs both halves.)
+    if org_a_keyid == org_b_keyid {
+        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+    }
 
     let sig_a = find_signature_by_keyid(&envelope.signatures, &org_a_keyid)
         .ok_or(BilateralCoSigningError::OrgASignatureInvalid)?;
