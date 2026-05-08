@@ -406,7 +406,7 @@ The portable verifier entrypoint
 `chio_kernel_core::verify_capability_with_floor_and_trust_root(token,
 trusted_issuers, clock, crypto_floor, trust_root_scope_hash)` enforces
 the rule in isolation. Production kernels MUST route every inbound
-capability admission through the Wave 1.5 composite entrypoint
+capability admission through the composite entrypoint
 `chio_kernel_core::verify_capability_full(token, trusted_issuers,
 clock, crypto_floor, peer, trust_root, budgets)`, which chains the W1.3
 schema-ceiling check, the W1.1 chain-binding check, and the W1.2
@@ -418,7 +418,7 @@ verification. The earlier partial entry points
 `verify_capability_with_floor_and_resolver`) remain available for
 isolated unit tests and bounded research adapters; they MUST NOT be
 the sole verifier on a production hot path because each one leaves
-at least one Wave 1 defense un-wired and the resulting bypass is
+at least one required defense un-wired and the resulting bypass is
 silent. Kernel implementations MAY split the call into two phases --
 a pre-admit pass with `NoopBudgetRegistry` followed by an authoritative
 admit against the persistent registry once every other check has
@@ -753,8 +753,7 @@ without relying on one global clock.
 
 #### Receipt v2 body_hash addressing (W2.1)
 
-Wave 2.1 closes the audit's "types-only, hot path unwired" finding on T1.2 by
-wiring the producer side. The verifier-side check landed in Wave 1; the kernel
+This section records producer-side wiring for T1.2. The verifier-side check is already present; the kernel
 now mints v2 receipts at production mint time when peer negotiation selects v2.
 
 - **Mint path.** `ChioKernel::record_chio_receipt_with_federation` is the
