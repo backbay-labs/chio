@@ -54,7 +54,7 @@
 //!
 //! # Honesty boundary: what "model" harnesses actually prove
 //!
-//! Per audit P0-018 in
+//! Per model-only scope note in
 //! `.planning/trajectory-5/reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`:
 //!
 //! - The first four harnesses
@@ -81,12 +81,12 @@
 //!     - The negative conformance regression tests under
 //!       `crates/chio-conformance/tests/`.
 //!
-//! TRJ6 follow-up: extract a decision-algebra helper
+//! Future hardening follow-up: extract a decision-algebra helper
 //! (e.g. `pub(crate) fn classify_witness_policy_outcome(state:
 //! &WitnessState, policy: &WitnessPolicy) -> WitnessPolicyClass`)
 //! used by both the runtime `evaluate_witness_policy` and the Kani
 //! harness, replacing `model_evaluate_witness_policy`. This is option
-//! (a) per audit P0-018; it was deferred from release work because the
+//! (a) per model-only scope note; it was deferred from this release because the
 //! production function's `Stale` arm depends on `batch_body_hash`
 //! recomputation (canonical-JSON + SHA-256) and `WitnessPolicyError`
 //! constructors that carry hex-formatted body-hash strings. Decoupling
@@ -231,7 +231,7 @@ pub fn public_anchor_emergency_controls_allows_truth_table() {
 ///     `crates/chio-anchor/tests/` that exercise the
 ///     `format!()`-based error path.
 ///
-/// TRJ6 follow-up (option (a) per audit P0-017/P0-018): extract a
+/// Future hardening follow-up (option (a) per model-scope notes): extract a
 /// `pub(crate) fn classify_operation_admission(controls:
 /// AnchorEmergencyControls, operation: AnchorOperationKind) ->
 /// Result<(), AnchorOperationAdmissionError>` where the error type

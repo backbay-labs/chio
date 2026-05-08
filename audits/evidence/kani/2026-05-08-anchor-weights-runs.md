@@ -176,7 +176,7 @@ predicate at PR-tier without traversing the `format!()` path, and the
 runtime negative tests under `crates/chio-anchor/tests/` exercise the
 full error path including the `String` payload.
 
-**TRJ6 follow-up** (option (a) per audit P0-017/P0-018): extract a
+**Future hardening follow-up** (option (a) per model-scope notes): extract a
 `pub(crate) fn classify_operation_admission(controls:
 AnchorEmergencyControls, operation: AnchorOperationKind) -> Result<(),
 AnchorOperationAdmissionError>` whose error type is a small enum carrying
