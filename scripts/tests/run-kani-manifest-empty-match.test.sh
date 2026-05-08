@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regression test for scripts/run-kani-manifest.sh empty-match exit policy
-# (audit P0-016 in COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md).
+# (empty-match regression in COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md).
 #
 # Asserts:
 #   1. Normal run with no matches exits 1 (CI gate cannot silently pass).
@@ -26,7 +26,7 @@ trap 'rm -rf "$work"' EXIT
 
 # Synthetic empty manifest: schema is valid but the harness array is
 # empty. Equivalent to the "lane typo / bad exclude / manifest bug"
-# scenarios the audit P0-016 calls out.
+# scenarios the empty-match regression calls out.
 EMPTY_MANIFEST="$work/empty.toml"
 cat > "$EMPTY_MANIFEST" <<'EOF'
 schema = "chio.kani.multi-crate.v1"
