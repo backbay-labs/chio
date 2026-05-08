@@ -3,7 +3,7 @@
 ## TRJ6 schema completion (deferred from P0-007, audit 2026-05-08)
 
 The bilateral verifier in `bilateral_verifier.rs` is currently labeled
-a **partial local verifier**, not the full 17-step §7 conformance
+a **partial local verifier**, not the full full §7 conformance
 verifier the earlier PR title implied. Per the 2026-05-08 audit
 direction, partial labels are acceptable when honest; this note
 records the explicit work deferred to the TRJ6 milestone.
@@ -37,7 +37,7 @@ records the explicit work deferred to the TRJ6 milestone.
 ### Why this is deferred
 
 The P0-007 audit finding said: "If complete schema is too large for
-one fix, downgrade the verifier label from '17-step verifier' to
+one fix, downgrade the verifier label from 'full verifier' to
 'partial local verifier' in module docs and PR title; record explicit
 'TRJ6 schema completion' deferral." The `chio-federation` crate
 already builds with the partial verifier in production (callers do

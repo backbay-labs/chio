@@ -5,7 +5,7 @@
 //!
 //! ## P0-007 honesty downgrade (audit 2026-05-08)
 //!
-//! This module previously self-described as a "17-step verifier" and
+//! This module previously self-described as a "full verifier" and
 //! implied full §7 conformance. Per the 2026-05-08 audit, the
 //! implementation does not yet cover the full predicate schema:
 //!
