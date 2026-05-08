@@ -4,5 +4,8 @@
   "note": "Conformance evidence: real conformance test at crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs records a dangerous predecessor (shell_exec) on the SessionJournal, then dispatches a forbidden successor (write_file) under a SequencePolicy that lists the (shell_exec, write_file) transition as forbidden, calls BehavioralSequenceGuard::evaluate (production code from chio-guards), and asserts Verdict::Deny. Header documents the revert-to-prove-it-fails recipe (flip the forbidden-transition deny branch in chio-guards/src/behavioral_sequence.rs).",
   "ran_at": "2026-05-08T00:00:00Z",
   "survivors": [],
-  "test_path": "crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs"
+  "test_path": "crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats behavioral_sequence_attack"
 }

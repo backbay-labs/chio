@@ -4,5 +4,8 @@
   "note": "release work/A2 evidence backfill (batch 2): the conformance test at crates/chio-conformance/tests/threats/tee_quote_forgery.rs exercises THREE production deny arms by calling chio_tee_frame::schema::{validate_signed, verify_tenant_sig} directly: (1) verifier-key swap, (2) tampered body, (3) forged 64-byte tenant_sig. Each asserts SchemaError::TenantSigVerification. A separate sanity arm round-trips a legitimately-signed frame, and a defense-in-depth file-pin arm asserts the seven validator-side covered_by_tests files cited in spec/security/chio-threat-model.v1.json remain in-tree (Nitro / TDX / SEV-SNP integration suites, cross-backend conformance, expect_report_data, nitro_root_rotation, pq_key_load_after_self_quote with the named self-quote fixture). The validator-evidence pin is NOT a fourth attack-deny call; it is a guard against silent deletion of the named integration tests, so the deny-vector caught count on this branch is 3, not 4. A fourth real deny vector (cross-tee misbinding, calling chio-attest-verify) lands on #616 (batch 3) where the count rises to 4. Revert-to-prove-it-fails recipes: (a) replace verify_tenant_sig body in chio-tee-frame/src/schema.rs with `Ok(())` -- arms 1, 2, 3 fail; (b) delete or rename one of the seven cited validator integration tests -- the in-tree pin arm fails.",
   "ran_at": "2026-05-08T00:00:00Z",
   "survivors": [],
-  "test_path": "crates/chio-conformance/tests/threats/tee_quote_forgery.rs"
+  "test_path": "crates/chio-conformance/tests/threats/tee_quote_forgery.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats tee_quote_forgery"
 }

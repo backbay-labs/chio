@@ -4,5 +4,8 @@
   "note": "Conformance evidence: real conformance test at crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs seeds the SessionJournal with cumulative bytes that exceed the configured max_bytes_total ceiling, calls DataFlowGuard::evaluate (production code from chio-guards), and asserts Verdict::Deny. The header in that file documents the revert-to-prove-it-fails recipe (flip the max_bytes_total Ok(Verdict::Deny) branch in chio-guards/src/data_flow.rs).",
   "ran_at": "2026-05-08T00:00:00Z",
   "survivors": [],
-  "test_path": "crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs"
+  "test_path": "crates/chio-conformance/tests/threats/cumulative_data_exfiltration.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats cumulative_data_exfiltration"
 }

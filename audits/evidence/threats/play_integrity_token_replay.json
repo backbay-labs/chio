@@ -4,5 +4,8 @@
   "note": "Conformance evidence: real conformance test at crates/chio-conformance/tests/threats/play_integrity_token_replay.rs exercises three distinct Play Integrity rejection branches against verify_play_integrity (production code in chio-custody-hw): (1) replayed nonce -> AttestationError::PlayIntegrityNonceMismatch, (2) expired token (exp=1) -> AttestationError::PlayIntegrityInvalidToken, (3) audience mismatch -> AttestationError::PlayIntegrityInvalidToken. Header documents the revert-to-prove-it-fails recipe per branch.",
   "ran_at": "2026-05-08T00:00:00Z",
   "survivors": [],
-  "test_path": "crates/chio-conformance/tests/threats/play_integrity_token_replay.rs"
+  "test_path": "crates/chio-conformance/tests/threats/play_integrity_token_replay.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats play_integrity_token_replay"
 }
