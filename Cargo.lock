@@ -2781,6 +2781,7 @@ name = "chio-conformance"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "base64ct",
  "chio-a2a-adapter",
  "chio-a2a-edge",
@@ -2807,6 +2808,7 @@ dependencies = [
  "chio-openapi-mcp-bridge",
  "chio-siem",
  "chio-store-sqlite",
+ "chio-tee-frame",
  "chio-wasm-guards",
  "chio-weights",
  "chrono",
