@@ -74,6 +74,30 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
    ship-bar status, and `releases.toml` from merged `main`; only then evaluate
    whether a tag is allowed.
 
+## Fix Wave 2 Lane B Sequencing
+
+Refresh time: 2026-05-08T22:39:33Z
+
+Worker A's Lane B slice is now explicitly stacked after #620 in this order:
+
+| Step | PR | Head used for simulation | Role | Sequencing note |
+|---:|---|---|---|---|
+| 1 | #620 | `7e3d4f5cd1` | planning and ship-bar coordination | Planning branch only; this document update itself is not included in the self-referential SHA. |
+| 2 | #606 | `92a78bd958` | async trait foundation | Base for the protocol stack. |
+| 3 | #612 | `bb0684500d` | single-entry verifier | Merge parent includes #606 and carries the narrowed current-thread runtime diagnostic. |
+| 4 | #611 | `dc36020870` | receipt v2 fail-closed | Merge parent includes #612 and preserves receipt admission snapshots. |
+| 5 | #609 | `c05ced924d` | anchor batch async-only | Merge parent includes #611; CI anchor lint is a separate step so it can coexist with #620 ship-bar wiring. |
+
+The required local integration order for this slice is therefore:
+
+```text
+#620 -> #606 -> #612 -> #611 -> #609
+```
+
+Do not merge #609 before #612. Its protocol text assumes the #612
+`verify_capability_full` production-admission wording and its branch head now
+records that ancestry explicitly.
+
 ## Local Merge Simulation
 
 Command shape:
@@ -91,6 +115,16 @@ refs_refreshed=2026-05-08T21:35:24Z
 ```
 
 Owned branch sequence:
+
+```text
+merge #620 (7e3d4f5cd1) ... OK
+merge #606 (92a78bd958) ... OK
+merge #612 (bb0684500d) ... OK
+merge #611 (dc36020870) ... OK
+merge #609 (c05ced924d) ... OK
+```
+
+Earlier evidence-branch simulation, retained for context:
 
 ```text
 merge #620 (cbe1736e5a) ... OK
@@ -124,7 +158,9 @@ topology. #616 was not reached in that simulation because #608 blocks first.
 
 | Finding | Status after this update |
 |---|---|
-| P0-001 | Closed for planning truth. The false advertised train is removed and replaced by a simulated graph plus explicit conflict list. |
+| R4-P0-001 | Closed for this Lane B slice. The false advertised train is replaced with the explicit #620 -> #606 -> #612 -> #611 -> #609 order above. Full-graph status still depends on other owners' lanes. |
+| R5-P0-001 | Fixed-pending-review for this Lane B slice after local ordered simulation. Other R5 full-graph edges remain outside this slice. |
+| R4-P1-008 | Fixed-pending-review for this slice. The #606 current-thread runtime diagnostic was propagated through #612's branch head. |
 | P0-008 | Closed for planning truth. The plan now separates Lane B enforcement, Lane A evidence, Lane C canary, and release packaging. |
 | P1-011 | Closed for owned branches. `.planning/trajectory-5/**` is centralized in #620 for the target PR set. |
 | P1-013 | Partial. Titles can be cleaned, but AI/trajectory branch names still require PR recreation or branch rename outside this planning-file cleanup. |
