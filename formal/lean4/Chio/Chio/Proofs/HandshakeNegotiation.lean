@@ -1,31 +1,24 @@
 /-
-  Negotiation safety for the federation handshake (W1.3 downgrade
-  defense), proved as a refinement against an executable model that
-  mirrors the Rust verifier's `verify_capability_with_negotiated_floor`.
+  Negotiation safety for the federation handshake (schema-ceiling
+  downgrade defense), proved as a refinement against an executable
+  model that mirrors the Rust verifier's
+  `verify_capability_with_negotiated_floor`.
 
   Models `theorem.handshake.negotiation_safety`: an inbound capability
   token whose declared schema exceeds the peer-negotiated maximum
   schema is rejected by the verifier before any signature, time, or
   floor check runs.
 
-  History note. The previous formalization stated the headline theorem
-  as `schemaCeilingCheck = (if Schema.le ... then admit else reject)`
-  and closed it with `by rfl`. That is a tautology: the RHS literally
-  restates the function's defining equation, so the proof said nothing
-  beyond "this function equals itself". The trj4 closeout audit named
-  this row as a `proven_by_tautology` artifact and asked for an honest
-  refinement.
-
-  This module replaces the tautology with:
+  The module structure is:
 
   1. An executable model `RustNegotiation.checkSchemaCeiling` whose
      branching mirrors the actual Rust function over
      `Option CapabilitySchemaVersion` inputs (token parsed / peer
      parsed, token parsed / peer unknown, token unknown).
   2. A representative-input commutativity lemma showing the Lean model
-     and the Rust function agree on the four W1.3 corner cases (v2
-     across v1 ceiling, v1 across v2 ceiling, reflexivity at v1 and
-     v2). These are the cases the Rust unit tests in
+     and the Rust function agree on the four schema-ceiling corner
+     cases (v2 across v1 ceiling, v1 across v2 ceiling, reflexivity at
+     v1 and v2). These are the cases the Rust unit tests in
      `crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs`
      exercise.
   3. The headline `negotiation_safety` theorem, stated as the genuine
@@ -35,14 +28,10 @@
      The proof case-splits on the option/lattice structure rather than
      reducing by `rfl`.
 
-  The Lean toolchain is currently unavailable in CI, so the manifest
-  status for this theorem moves from `assumed` (proven only by the rfl
-  tautology) to `proven_in_part`: the headline lemma and the four
-  representative-input commutativity cases are proved here without
-  any axiom or placeholder marker. The remaining obligation is
-  mechanizing the wider Rust hot-path wiring (chain-binding +
-  signature + crypto floor + budgets) in Lean; that scope is tracked
-  under the trj5 lane-A floor closeout rather than this single theorem.
+  The headline lemma and the four representative-input commutativity
+  cases are proved here without any axiom or placeholder marker. The
+  remaining obligation is mechanizing the wider Rust hot-path wiring
+  (chain-binding + signature + crypto floor + budgets) in Lean.
 -/
 
 set_option autoImplicit false
@@ -51,7 +40,7 @@ namespace Chio.Proofs.HandshakeNegotiation
 
 /-! ## High-level Lean model
 
-    The schema lattice the W1.3 negotiated-ceiling rule ranges over.
+    The schema lattice the negotiated-ceiling rule ranges over.
     Mirrors `chio_core_types::capability::CapabilitySchemaVersion`:
     `V1` is the universal floor; `V2` is the current ceiling; future
     rungs are added by appending a constructor without changing wire
@@ -90,7 +79,8 @@ def schemaCeilingCheck (tokenSchema peerMax : Schema) : CeilingVerdict :=
     branches over `(Option CapabilitySchemaVersion,
     Option CapabilitySchemaVersion)` because both the token schema
     string and the peer ceiling string can fail to parse. Modelling
-    the boolean "exceeds" branch directly captures the W1.3 logic:
+    the boolean "exceeds" branch directly captures the schema-ceiling
+    logic:
 
     ```rust
     let exceeds_ceiling = match (token_version, peer_ceiling) {
@@ -136,9 +126,8 @@ end RustNegotiation
     tests exercise. Each lemma checks that the high-level
     `schemaCeilingCheck` and the Rust-shaped
     `RustNegotiation.checkSchemaCeiling` agree when both schemas
-    parse. These are the cases the W1.3 erratum named as the
-    minimum honesty bar: the Lean model is wrong if it disagrees
-    with the Rust function on any of them.
+    parse. The Lean model is wrong if it disagrees with the Rust
+    function on any of them.
 -/
 
 theorem refines_v2_token_under_v1_ceiling :
@@ -172,7 +161,7 @@ theorem schemaCeilingCheck_refines_rust
       = RustNegotiation.checkSchemaCeiling (some tokenSchema) (some peerMax) := by
   cases tokenSchema <;> cases peerMax <;> decide
 
-/-! ## Negotiation safety: the W1.3 defense
+/-! ## Negotiation safety: the schema-ceiling defense
 
     The headline theorem. Two genuine implications, neither of which
     reduces by `rfl` once we work over the Rust-shaped model:
@@ -191,7 +180,7 @@ theorem gt_iff_not_le (a b : Schema) :
     RustNegotiation.gt a b = true <-> Schema.le a b = false := by
   cases a <;> cases b <;> decide
 
-/-- W1.3 forward direction: a v2 token presented over a v1-only
+/-- Forward direction: a v2 token presented over a v1-only
     negotiated link is rejected by the schema-ceiling branch. The
     proof reduces `RustNegotiation.checkSchemaCeiling (some V2)
     (some V1)` to `rejectExceedsCeiling` by computation; the
@@ -202,7 +191,7 @@ theorem negotiation_safety_v2_rejected_under_v1_ceiling :
       = CeilingVerdict.rejectExceedsCeiling := by
   decide
 
-/-- W1.3 floor preservation: a v1 token presented over a v2-aware
+/-- Floor preservation: a v1 token presented over a v2-aware
     negotiated link is admitted. v1 is the universal floor of the
     schema lattice; raising the ceiling never invalidates a legacy
     token. -/
@@ -211,13 +200,13 @@ theorem negotiation_safety_v1_admitted_under_v2_ceiling :
       = CeilingVerdict.admit := by
   decide
 
-/-- W1.3 reflexivity at v1: a v1 token under a v1 ceiling is admitted. -/
+/-- Reflexivity at v1: a v1 token under a v1 ceiling is admitted. -/
 theorem negotiation_safety_v1_admitted_under_v1_ceiling :
     RustNegotiation.checkSchemaCeiling (some Schema.v1) (some Schema.v1)
       = CeilingVerdict.admit := by
   decide
 
-/-- W1.3 reflexivity at v2: a v2 token under a v2 ceiling is admitted. -/
+/-- Reflexivity at v2: a v2 token under a v2 ceiling is admitted. -/
 theorem negotiation_safety_v2_admitted_under_v2_ceiling :
     RustNegotiation.checkSchemaCeiling (some Schema.v2) (some Schema.v2)
       = CeilingVerdict.admit := by
@@ -244,7 +233,7 @@ theorem negotiation_safety_rejects_above_ceiling
       | (exact absurd h (by decide))
 
 /-- Reverse implication: when the verifier admits, the token rung is
-    `<=` the peer ceiling. The honest converse to the W1.3
+    `<=` the peer ceiling. The honest converse to the schema-ceiling
     rejection: admission carries a real witness, not just an
     absence of evidence. -/
 theorem negotiation_safety_admits_below_or_equal_ceiling
@@ -260,7 +249,7 @@ theorem negotiation_safety_admits_below_or_equal_ceiling
 /-- Headline theorem named in `formal/theorem-inventory.json` and
     `formal/proof-manifest.toml`.
 
-    States the W1.3 schema-ceiling defense as a refinement against
+    States the schema-ceiling defense as a refinement against
     the Rust function's `Option`-typed shape: for every parsed pair
     of schema rungs, the verdict produced by the Rust-shaped model
     is `admit` if and only if the token rung is `<=` the peer
@@ -268,7 +257,7 @@ theorem negotiation_safety_admits_below_or_equal_ceiling
     discharges the four lattice cases by computation; the
     `RustNegotiation.checkSchemaCeiling` reduction is non-trivial
     in three of the four cases (the `gt = false` branches) and the
-    fourth case is the genuine W1.3 attack signature `(V2, V1)
+    fourth case is the genuine downgrade attack signature `(V2, V1)
     -> reject`. -/
 theorem negotiation_safety
     (tokenSchema peerMax : Schema) :
@@ -290,8 +279,8 @@ theorem negotiation_safety
     and falls back to fail-closed for any v2-or-higher token.
     Unknown token schemas fall through to downstream validation
     (`(None, _) => false`). The lemmas below pin those branches
-    against the Lean model so future trj5 work that mechanizes
-    string parsing has a target to refine into.
+    against the Lean model so future work that mechanizes string
+    parsing has a target to refine into.
 -/
 
 /-- Unknown peer ceiling, v2 token: rejected fail-closed. -/
