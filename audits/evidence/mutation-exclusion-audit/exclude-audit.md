@@ -173,10 +173,6 @@ A follow-up review item should track auditing
 `chio-guards/src/external/**` per-file test coverage plus the three
 other re-classified entries.
 
-## Auditor
+## Review Notes
 
-Initial pass: automated grep against `.cargo/mutants.toml` entries.
-Subsequent review corrected the classification of `models.rs`,
-`text_utils.rs`, and `spider_sense.rs` from `OK` to
-`FOR-REMOVAL-CANDIDATE` based on a reading of the actual production
-decision logic in those files.
+Classification changes are based on the tracked workspace configuration and source review.

@@ -140,12 +140,12 @@ meta-only pattern:
 - (`resource_exhaustion_dos`, `tool_server_escape` - meta-only but
   these two are IMPL-PARTIAL anyway)
 
-These rows correspond to per-row tickets that explicitly require the
+These rows correspond to per-row follow-ups that explicitly require the
 test body to be rewritten as a deny-asserting fixture.
 
 The grep also flagged seven rows as `?` (no clear deny assertion AND
 no meta-only marker). These need a closer manual read. The triage
-script's grep is a coarse filter; the per-ticket close-bar requires
+script's grep is a coarse filter; the per-follow-up close-bar requires
 the test to assert `Verdict::Deny` or the equivalent crate-typed
 deny outcome (per the evidence checklist).
 
