@@ -736,9 +736,9 @@ mod tests {
 
     fn sample_receipt(kp: &Keypair) -> ChioReceipt {
         let body = ChioReceiptBody {
-            id: "rcpt-trj5-b4-sample".to_string(),
+            id: "rcpt-release work-b4-sample".to_string(),
             timestamp: 1_734_000_000,
-            capability_id: "cap-trj5-b4".to_string(),
+            capability_id: "cap-release work-b4".to_string(),
             tool_server: "srv-orgb-files".to_string(),
             tool_name: "file_read".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"k":"v"})).unwrap(),
@@ -786,7 +786,7 @@ mod tests {
             .expect("envelope must verify under matching public keys");
         assert_eq!(
             statement.predicate_type, PREDICATE_TYPE_BILATERAL,
-            "predicate type emitted by trj5 hot path"
+            "predicate type emitted by release work hot path"
         );
         assert_eq!(statement.subject.len(), 1);
     }

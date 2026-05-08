@@ -917,9 +917,9 @@ mod tests {
 
     fn sample_receipt(kp_b: &Keypair) -> ChioReceipt {
         let body = ChioReceiptBody {
-            id: "rcpt-trj5-c2-sample".to_string(),
+            id: "rcpt-release work-c2-sample".to_string(),
             timestamp: 1_734_000_000,
-            capability_id: "cap-trj5-c2".to_string(),
+            capability_id: "cap-release work-c2".to_string(),
             tool_server: "srv-orgb-files".to_string(),
             tool_name: "file_read".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"k":"v"})).unwrap(),
