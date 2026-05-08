@@ -45,13 +45,6 @@ pub mod tdx;
 #[cfg(feature = "tee-quotes")]
 mod tee_signature;
 
-// Kani public-harness module (TRJ5-A3.1). Only compiled under
-// `cargo kani` (which sets `cfg(kani)` automatically), so production
-// builds and the workspace `cargo build`/`cargo test` paths never see
-// it. This module models the trust-boundary invariants for
-// `expect_report_data` and the three TEE quote backends; see the
-// module-level doc comment for bound parameters and the runtime
-// entries each harness pins.
 #[cfg(kani)]
 mod kani_public_harnesses;
 
@@ -83,16 +76,6 @@ pub struct ExpectedIdentity {
 impl ExpectedIdentity {
     /// Doc-hidden constructor retained for tests and legacy operator
     /// configuration.
-    ///
-    /// Production call sites MUST construct identities through
-    /// [`TenantPolicyResolver::expected_for_tenant`] so that every accepted
-    /// identity flows from a Sigstore-signed per-tenant policy file rather
-    /// than an inline regex spliced into calling code. This constructor is
-    /// kept available because the `chio-attest-verify` integration tests
-    /// and the bedrock-adapter principal tests still need to construct
-    /// fixed-shape identities for unit-style coverage; the migration audit
-    /// at `docs/security/expected-identity-migration.md` lists every
-    /// remaining caller.
     ///
     /// The function is `#[doc(hidden)]` so it does not appear in public
     /// rustdoc, and the workspace-wide grep gate

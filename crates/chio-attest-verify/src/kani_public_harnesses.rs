@@ -1,5 +1,3 @@
-//! Public-entry Kani harnesses for `chio-attest-verify` (TRJ5-A3.1).
-//!
 //! # Scope
 //!
 //! This module models the trust-boundary invariants of the four
@@ -13,36 +11,7 @@
 //! - `<TdxDcapVerifier as QuoteVerifier>::verify_quote` (impl at
 //!   `src/tdx.rs:159`).
 //!
-//! `expect_report_data` is exercised directly: it is a pure function
-//! and Kani can enumerate its determinism and one-bit-tampering
-//! arms. The trait-impl `verify_quote` paths transit cryptographic
-//! parsing (CBOR / DER / X.509 chain validation, ECDSA P-384, SHA-256)
-//! that is intractable for symbolic execution under Kani's default
-//! unwind budget. Per the project convention established by
-//! `crates/chio-kernel-core/src/kani_public_harnesses.rs` (see the
-//! `verify_receipt_roundtrip` block, which captures the same
-//! "every sound digital signature scheme has the same observable
-//! algebra" reduction), the trait-impl invariants here are modelled at
-//! the smallest algebraic level that preserves the fail-closed
-//! property the production path is required to satisfy. The
-//! corresponding runtime tests (`tests/v318_migration.rs`,
-//! `tests/migration.rs`, the per-backend unit tests in
-//! `nitro.rs` / `sev_snp.rs` / `tdx.rs`) pin the concrete impl
-//! behaviour against fixed fixtures; together with the algebraic
-//! harnesses here they discharge the same trust-boundary invariant the
-//! `kani-harness-design.md` Section (1) table assigns to TRJ5-A3.1.
-//!
 //! # Bound parameters
-//!
-//! - All symbolic byte-arrays are size-bounded to <= 64 bytes (the
-//!   width of the `report_data` slot itself); larger surfaces are
-//!   covered by the runtime tests cited above.
-//! - The `report_data` slot is fully symbolic over its 64 bytes.
-//! - Per-harness `#[kani::unwind(8)]` matches the workspace default
-//!   established by `crates/chio-kernel-core/src/kani_public_harnesses.rs`.
-//! - Local wall-clock budget per harness: 30 minutes (per
-//!   `.planning/trajectory-5/lane-a-floor/kani-harness-design.md`
-//!   Section (1) "Bound parameters").
 //!
 //! # Anti-pattern guard
 //!
@@ -56,12 +25,6 @@
 //! helper.
 //!
 //! # Cross-references
-//!
-//! - Design doc: `.planning/trajectory-5/lane-a-floor/kani-harness-design.md`.
-//! - Reference pattern: `crates/chio-kernel-core/src/kani_public_harnesses.rs`.
-//! - Manifest registration (TRJ5-A3.4):
-//!   `formal/rust-verification/kani-public-harnesses.toml` (multi-crate
-//!   schema landed by TRJ5-A3.5a).
 
 extern crate alloc;
 
@@ -113,10 +76,6 @@ pub fn public_expect_report_data_determinism_under_input_change() {
 
     let kernel_pk = public_key(kernel_seed);
 
-    // (1) Determinism. Re-running with identical inputs MUST produce
-    // identical 64-byte outputs. This is the load-bearing property
-    // the TEE backends rely on when they byte-compare the observed
-    // `report_data` against the expected slot.
     let first = expect_report_data(&kernel_pk, &receipt_root);
     let second = expect_report_data(&kernel_pk, &receipt_root);
     assert_eq!(first, second);
@@ -286,9 +245,6 @@ pub fn public_nitro_verify_quote_rejects_report_data_mismatch() {
     if !tcb_acceptable {
         assert!(matches!(result, Err(AttestError::QuoteRejected(_))));
     } else if !report_data_matches {
-        // (2) TCB acceptable + matching algorithm tag + report-data
-        // mismatch: the backend MUST reject with
-        // `ReportDataMismatch` (load-bearing arm for this harness).
         assert!(matches!(result, Err(AttestError::ReportDataMismatch)));
     } else {
         // (3) Both axes satisfied: the model accepts. The runtime
