@@ -7,6 +7,15 @@ This file records the live `cargo kani` outputs for every enrolled harness in `.
 this evidence the harnesses would be enrolled-but-never-run, the same
 trj4 anti-pattern P0-017 calls out.
 
+## Scope boundary
+
+These are bounded harness results, not an implementation-complete proof
+of `chio-anchor` or `chio-weights`. Each successful row proves only the
+named harness under the listed Kani unwind and lane constraints.
+MODEL-ONLY harnesses prove their local surrogate algebra, not the full
+production implementation. The nightly-lane row remains unproven at
+PR-tier until its dedicated lane completes.
+
 **Environment**
 
 | Field          | Value                                |
