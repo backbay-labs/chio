@@ -68,8 +68,8 @@
       "count": 2,
       "files": ["card.rs"],
       "lines": [226, 237],
-      "summary": "ModelCard::require_live and ModelCard::validate use `<` for strictly-less-than comparisons (now < expires_at, ts < now). Replacing with `<=` allows exactly-equal timestamps to pass that were previously rejected. The test suite does not have a fixture that lands exactly on the boundary (now == expires_at, ts == now), so the mutation is silent.",
-      "follow_up": "Add card.rs unit tests with timestamps exactly equal to the boundary (now == expires_at and ts == now). Each should assert WeightsError::Expired or schema rejection. Estimated 2 short test functions; closes 2 of 20 missed mutants."
+      "summary": "ModelCard::validate at card.rs:226 rejects only when `expires_at < issued_at` (so exactly-equal `expires_at == issued_at` is currently accepted as a zero-duration card); ModelCard::require_live at card.rs:237 accepts only when `now < expires_at` (so exactly-equal `now == expires_at` is currently rejected as Expired). Replacing `<` with `<=` flips each boundary: line 226 would start rejecting equal timestamps, line 237 would start accepting them. The test suite has no fixture landing exactly on either boundary, so the mutations are silent.",
+      "follow_up": "Add two card.rs unit tests pinning the current accept/reject semantics: (a) ModelCard::validate with expires_at == issued_at MUST currently return Ok(()) (zero-duration card is permitted), so a test asserting Ok(()) catches the `< -> <=` mutation at line 226; (b) ModelCard::require_live with now == expires_at MUST currently return WeightsError::Expired, so a test asserting Expired catches the `< -> <=` mutation at line 237. The polarity matters: pinning these to today's behavior (not the desired strict semantics) is what kills the mutants. Estimated 2 short test functions; closes 2 of 20 missed mutants."
     },
     "anchor_projection_bytes_constant_returns": {
       "count": 3,

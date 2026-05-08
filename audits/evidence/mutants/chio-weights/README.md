@@ -105,14 +105,14 @@ sample.
 = 43/63 = **68.25%** (excluding 3 unviable per cargo-mutants 25.x
 convention).
 
-**Target satisfaction**: per
-`.planning/trajectory-5/lane-a-floor/mutation-budget.md`, the
-non-`chio-attest-verify` per-crate target is `>= 65%`. chio-weights
-is not enumerated in that table (the table covers the canonical six
-trust-boundary crates per `releases.toml [trust_boundary_crates]`),
+**Target satisfaction**: the non-`chio-attest-verify` per-crate
+target is `>= 65%` (the `releases.toml [trust_boundary_crates]`
+canonical surface keeps the >=80% target only for
+`chio-attest-verify`; every other trust-boundary crate uses the
+>=65% bucket). chio-weights is not enumerated in the canonical six
 but the >=65% bucket applies because the crate is a model-card
-trust-boundary surface. **Observed 68.25% on a FULL 66/66 run; target
-met.**
+trust-boundary surface. **Observed 68.25% on a FULL 66/66 run;
+target met.**
 
 ### Per-file breakdown
 
