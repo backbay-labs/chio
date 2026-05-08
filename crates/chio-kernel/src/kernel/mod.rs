@@ -195,8 +195,10 @@ impl LocalReceiptArtifact {
 ///      production-supported path.
 ///   2. Current-thread runtime active: refuse fail-closed with
 ///      [`KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`].
-///      Callers are expected to either move the host to a multi-thread
-///      runtime or call the async `evaluate_tool_call` directly.
+///      Callers are expected to move the host to a multi-thread runtime.
+///      The public async `evaluate_tool_call` entrypoint is still backed by
+///      the blocking evaluator on this branch, so it is not advertised as a
+///      current-thread escape hatch.
 ///   3. No runtime active: drive the future with a non-tokio executor.
 ///      No surrounding runtime exists to deadlock; tool-server impls
 ///      that need Tokio I/O will simply fail when they try to spawn
@@ -454,13 +456,13 @@ pub enum KernelError {
     /// `futures::executor::block_on` parks the caller's thread, and
     /// Tokio I/O timers / reactor wakers cannot progress on the same
     /// parked thread. Returning a typed error rather than deadlocking
-    /// lets callers either (a) move the dispatch onto a multi-thread
-    /// runtime, or (b) call the async `evaluate_tool_call` path
-    /// directly.
+    /// lets callers move the dispatch onto a multi-thread runtime.
+    /// The public async `evaluate_tool_call` path is still backed by the
+    /// blocking evaluator on this branch, so it is not a current-thread
+    /// escape hatch.
     #[error(
         "sync tool-dispatch bridge cannot drive an async tool server on a current-thread \
-         Tokio runtime; switch the host to a multi-thread runtime or call the async \
-         `evaluate_tool_call` API directly"
+         Tokio runtime; switch the host to a multi-thread Tokio runtime"
     )]
     SyncBridgeIncompatibleWithCurrentThreadRuntime,
 }
@@ -731,7 +733,7 @@ impl KernelError {
             Self::SyncBridgeIncompatibleWithCurrentThreadRuntime => self.report_with_context(
                 "CHIO-KERNEL-SYNC-BRIDGE-INCOMPATIBLE",
                 serde_json::json!({}),
-                "Either move the host process to a multi-thread Tokio runtime (so block_in_place can drive the async tool dispatch) or call the async `evaluate_tool_call` API directly from your async caller.",
+                "Move the host process to a multi-thread Tokio runtime so block_in_place can drive async tool dispatch. The public async evaluate_tool_call path is still backed by the blocking evaluator on this branch and is not a current-thread runtime workaround.",
             ),
         }
     }
