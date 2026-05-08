@@ -209,16 +209,11 @@ jobs:
           bash ./scripts/check-log-redaction.sh
           bash ./scripts/check-http-egress-contract.sh
           bash ./scripts/tests/check-http-egress-contract.test.sh
-          # release work-B3.3: best-effort lint for sync anchor-batch wrapper
-          # callers under require_public_witness=true. The runtime gate
-          # at crates/chio-anchor/src/batch.rs is the load-bearing
-          # enforcement; this lint catches obvious literal-struct-init
-          # cases. Per the script header it is advisory at first
-          # (not gating until B3.3 has lived in main for at least one
-          # wave) - use `|| true` so a heuristic false positive cannot
-          # block CI while still surfacing the warning text in the job
-          # log. cursor[bot] LOW + codex[bot] P2 on PR #609.
-          bash ./scripts/check-anchor-batch-async-witness.sh || true
+          # TRJ5-B3.3: lint for sync anchor-batch wrapper callers under
+          # require_public_witness=true. Runtime enforcement remains the
+          # load-bearing gate at crates/chio-anchor/src/batch.rs; this
+          # companion CI check blocks on obvious source-level violations.
+          bash ./scripts/check-anchor-batch-async-witness.sh
 
       - name: Workspace proof report
         env:
