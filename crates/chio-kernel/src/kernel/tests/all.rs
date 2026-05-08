@@ -8767,12 +8767,11 @@ fn hosted_named_remote_without_fresh_peer_fails_before_dispatch() {
         })
         .expect("missing peer must produce a structured Deny response");
 
-    // P0-001 fix (audit 2026-05-08): the kernel returns a signed Deny
-    // ToolCallResponse for the named-peer-not-pinned-fresh case
-    // BEFORE dispatch, instead of propagating an Err out of
-    // `evaluate_tool_call_blocking`. The Err propagation form was
-    // unsafe: callers could miss it and the receipt-store invariant
-    // would not be satisfied.
+    // The kernel returns a signed Deny ToolCallResponse for the
+    // named-peer-not-pinned-fresh case BEFORE dispatch, instead of
+    // propagating an Err out of `evaluate_tool_call_blocking`. The Err
+    // propagation form was unsafe: callers could miss it and the
+    // receipt-store invariant would not be satisfied.
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.unwrap_or_default();
     assert!(

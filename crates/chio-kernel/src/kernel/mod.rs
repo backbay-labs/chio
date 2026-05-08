@@ -2863,17 +2863,17 @@ impl ChioKernel {
 
         let now = current_unix_timestamp();
 
-        // P0-001 fix (audit 2026-05-08, refined round-3): receipt-version
-        // negotiation is a TRUST-BOUNDARY admission check that must run
-        // BEFORE any dispatch path AND before the emergency-stop deny
-        // helper. The emergency-stop helper uses
-        // `record_chio_receipt_with_federation`, which itself re-runs
-        // the freshness lookup and fails with
+        // Receipt-version negotiation is a TRUST-BOUNDARY admission check
+        // that must run BEFORE any dispatch path AND before the
+        // emergency-stop deny helper. The emergency-stop helper uses
+        // `record_chio_receipt_with_federation`, which itself runs a
+        // freshness lookup and fails with
         // `ReceiptNegotiationDowngrade` for a stale named peer; that
         // propagation would replace the structured emergency-stop Deny
         // with a generic Err. Running the negotiation gate first keeps
         // the local fail-closed deny path (which records via
         // `record_chio_receipt`, no federation lookup) reachable.
+        // PROTOCOL.md section 6 normative MUST.
         if let Err(error) = self.kernel_receipt_version_for_remote(
             request.federated_origin_kernel_id.as_deref(),
             now,
@@ -3401,15 +3401,14 @@ impl ChioKernel {
 
         let now = current_unix_timestamp();
 
-        // P0-001 fix (round-3 follow-up): the pre-dispatch receipt-
-        // version admission gate must run on the nested-flow path too,
-        // and BEFORE emergency-stop deny because `build_deny_response`
-        // ultimately routes through `record_chio_receipt_with_federation`
-        // which itself re-runs the freshness lookup. Without the gate
-        // here, a tool dispatched via the nested-flow bridge with a
-        // stale or never-pinned federated peer would execute first and
-        // only then fail at receipt minting -- the exact fail-open
-        // window the gate is meant to close.
+        // The pre-dispatch receipt-version admission gate must run on the
+        // nested-flow path too, and BEFORE emergency-stop deny because
+        // `build_deny_response` ultimately routes through
+        // `record_chio_receipt_with_federation` which itself runs a
+        // freshness lookup. Without the gate here, a tool dispatched via
+        // the nested-flow bridge with a stale or never-pinned federated
+        // peer would execute first and only then fail at receipt minting,
+        // which is the exact fail-open window the gate is meant to close.
         if let Err(error) = self.kernel_receipt_version_for_remote(
             request.federated_origin_kernel_id.as_deref(),
             now,
@@ -4127,7 +4126,7 @@ impl ChioKernel {
     /// scope, and guard checks have all passed. Otherwise a token that
     /// is signed but expired/revoked/scope-mismatched still consumed the
     /// parent's share when the request was about to be denied, starving
-    /// later valid siblings (PR #593 round-3 codex P2).
+    /// later valid siblings.
     fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;

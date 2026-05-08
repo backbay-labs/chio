@@ -169,9 +169,9 @@ fn federated_request_without_pinned_peer_fails_closed() {
     );
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 
-    // P0-001 fix (audit 2026-05-08): the named-peer-not-pinned-fresh
-    // case is now a structured pre-dispatch Deny verdict rather than
-    // a propagated `Err`. The deny receipt is signed and persisted.
+    // The named-peer-not-pinned-fresh case is a structured pre-dispatch
+    // Deny verdict rather than a propagated `Err`. The deny receipt is
+    // signed and persisted.
     let response = kernel
         .evaluate_tool_call_blocking(&request)
         .expect("federated request with no pinned peer must produce a Deny response");
@@ -185,13 +185,9 @@ fn federated_request_without_pinned_peer_fails_closed() {
 
 #[test]
 fn federated_request_without_pinned_peer_fails_closed_pre_dispatch() {
-    // Renamed from `federated_request_without_cosigner_fails_closed`
-    // (cursor[bot] medium-severity follow-up on PR #611): the
-    // original name implied this test exercised the
-    // "fresh peer + missing cosigner" path, but with no pinned peer
-    // the new pre-dispatch negotiation gate fires first. Renamed to
-    // honestly describe what it covers; the missing-cosigner-with-
-    // fresh-peer scenario is now exercised by the test below.
+    // With no pinned peer, the pre-dispatch negotiation gate fires first.
+    // The missing-cosigner-with-fresh-peer scenario is exercised by the
+    // sibling test below.
     let origin_kernel_id = "kernel.org-a";
     let mut kernel = ChioKernel::new(make_config());
     kernel.set_federation_local_kernel_id("kernel.org-b");
@@ -231,14 +227,10 @@ fn federated_request_without_pinned_peer_fails_closed_pre_dispatch() {
 
 #[test]
 fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_dispatch() {
-    // cursor[bot] medium-severity follow-up on PR #611: restore
-    // coverage for the "fresh peer pinned but no
-    // BilateralCoSigningProtocol installed" branch, which the
-    // original `federated_request_without_cosigner_fails_closed`
-    // never actually reached because no peer was pinned. Pin Org A,
-    // but deliberately do NOT install a cosigner; the pre-dispatch
-    // gate must pass and the post-dispatch federation hop must
-    // surface the missing-cosigner failure.
+    // Covers the "fresh peer pinned but no BilateralCoSigningProtocol
+    // installed" branch. Pin Org A, but deliberately do NOT install a
+    // cosigner; the pre-dispatch gate must pass and the post-dispatch
+    // federation hop must surface the missing-cosigner failure.
     let origin_kp = Keypair::generate();
     let origin_kernel_id = "kernel.org-a";
     let tool_host_kernel_id = "kernel.org-b";

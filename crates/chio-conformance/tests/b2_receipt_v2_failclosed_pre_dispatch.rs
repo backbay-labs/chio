@@ -4,12 +4,12 @@
 //! rather than executing the tool and refusing to mint the receipt
 //! after the fact.
 //!
-//! P0-001 (audit 2026-05-08): The receipt-version check previously
-//! lived only inside `record_chio_receipt_with_federation`, which is
-//! called AFTER `dispatch_tool_call_with_cost_sync`. A state-changing
-//! tool could execute and then the kernel would refuse to mint the
-//! receipt -- not fail-closed at the trust boundary. The fix moves
-//! the named-peer freshness check into pre-dispatch admission inside
+//! Background: the receipt-version check previously lived only inside
+//! `record_chio_receipt_with_federation`, which is called AFTER
+//! `dispatch_tool_call_with_cost_sync`. A state-changing tool could
+//! execute and then the kernel would refuse to mint the receipt -- not
+//! fail-closed at the trust boundary. The named-peer freshness check
+//! now runs in pre-dispatch admission inside
 //! `evaluate_tool_call_sync_with_session_context`.
 //!
 //! This fixture asserts that when negotiated v2 + stale-pin peer, the

@@ -800,13 +800,13 @@ impl ChioKernel {
         )
     }
 
-    /// P0-001 fix (audit 2026-05-08): build a Deny response for the
-    /// pre-dispatch receipt-version negotiation gate. By definition
-    /// the named federation peer is NOT pinned fresh on this path,
-    /// so we cannot run the federation cosign hook nor mint a v2
-    /// receipt -- both would attempt the same peer-freshness lookup
-    /// that just failed. The v1 deny receipt is signed by the local
-    /// kernel and persisted as evidence of the closed admission.
+    /// Build a Deny response for the pre-dispatch receipt-version
+    /// negotiation gate. By definition the named federation peer is
+    /// NOT pinned fresh on this path, so we cannot run the federation
+    /// cosign hook nor mint a v2 receipt -- both would attempt the same
+    /// peer-freshness lookup that just failed. The v1 deny receipt is
+    /// signed by the local kernel and persisted as evidence of the
+    /// closed admission.
     ///
     /// The receipt is always v1: the very condition that triggered
     /// this deny path is a stale or never-pinned peer, which means
