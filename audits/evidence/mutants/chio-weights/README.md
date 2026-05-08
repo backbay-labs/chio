@@ -212,9 +212,34 @@ authoritative re-baseline after #613 merges.
 - `README.md`: this file.
 - `mutants.out/`: per-mutant output captured by cargo-mutants
   (`caught.txt`, `missed.txt`, `timeout.txt`, `unviable.txt`,
-  `mutants.json`, `outcomes.json`, `lock.json`, and per-mutant
-  `diff/` patches). The per-mutant `log/` directory and `debug.log`
-  produced by cargo-mutants are NOT committed (they are large and
-  redundant with the per-mutant diffs and outcomes.json); this
-  matches the chio-attest-verify (PR #619), chio-anchor (PR #622),
-  and chio-policy (PR #623) reference layouts.
+  `mutants.json`, and per-mutant `diff/` patches). The per-mutant
+  `log/` directory, `debug.log`, `outcomes.json`, and `lock.json`
+  produced by cargo-mutants are NOT committed; they contain large
+  transcripts, operator identity, hostnames, argv paths, and
+  workspace-absolute paths. This matches the chio-attest-verify
+  (PR #619), chio-anchor (PR #622), and chio-policy (PR #623)
+  reference layouts.
+
+## Reproducibility
+
+`mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
+omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
+operator identity, hostnames, workspace-absolute paths, argv paths, and
+per-mutant console transcripts in those files. The committed evidence is
+the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
+`unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
+
+To regenerate the omitted files locally, rerun:
+
+```sh
+cargo mutants \
+  --config audits/mutation/per-crate-configs/chio-weights.toml \
+  -p chio-weights \
+  --in-place \
+  --baseline=skip \
+  --output audits/evidence/mutants/chio-weights
+```
+
+Then compare the regenerated counts against
+`audits/evidence/mutants/chio-weights/2026-05-08.json`; do not commit
+the regenerated `lock.json`, `outcomes.json`, `log/`, or `debug.log`.
