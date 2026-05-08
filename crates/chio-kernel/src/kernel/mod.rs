@@ -4064,7 +4064,7 @@ impl ChioKernel {
     /// scope, and guard checks have all passed. Otherwise a token that
     /// is signed but expired/revoked/scope-mismatched still consumed the
     /// parent's share when the request was about to be denied, starving
-    /// later valid siblings (PR #593 round-3 codex P2).
+    /// later valid siblings.
     fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
