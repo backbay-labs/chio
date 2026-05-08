@@ -14,29 +14,30 @@
 //! tool had already produced its side effect; the kernel would
 //! nonetheless drop the receipt.
 //!
-//! The fix (commit 2badb7a6) treats the post-dispatch lookup as
-//! instrumentation only: on freshness drift, it logs the drift and
-//! falls back to V1Legacy persistence on the already-built
-//! admission-time receipt rather than failing closed.
+//! The fix carries an admission-time peer/version/key snapshot through
+//! receipt persistence and federation cosign. Post-dispatch persistence
+//! must not re-resolve freshness and must still mint v2 evidence for
+//! the already-admitted side effect.
 //!
 //! This fixture builds a peer whose freshness window is set to expire
 //! WHILE the tool runs, sleeps the tool body across the window, and
 //! asserts:
 //!   1. the response is Allow (the receipt minted),
 //!   2. the side-effecting tool was invoked exactly once,
-//!   3. the receipt id is well-formed (the v1 receipt landed in the
-//!      ChioReceiptStore), and
-//!   4. no error escaped from `record_chio_receipt_with_federation`.
+//!   3. the dual-signed receipt landed using the admission-time peer key,
+//!   4. v2 persistence still landed, and
+//!   5. no error escaped from `record_chio_receipt_with_federation`.
 //!
 //! Why this passes Artifact D (production call path exercise): the
 //! fixture imports `chio_kernel::ChioKernel` and drives
 //! `evaluate_tool_call_blocking` end-to-end.  The tool server is a
 //! mock adapter around `std::thread::sleep`; the unit under test (the
-//! freshness-drift fallback inside
+//! admission-time federation snapshot inside
 //! `record_chio_receipt_with_federation`) is production code.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, deprecated)]
 
+use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -50,6 +51,7 @@ use chio_kernel::{
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use chio_store_sqlite::SqliteReceiptStore;
+use rusqlite::Connection;
 
 const SRV: &str = "srv-b2-toctou";
 const TOOL: &str = "echo-slow";
@@ -107,6 +109,14 @@ fn unique_db_path(prefix: &str) -> std::path::PathBuf {
         "{prefix}-{}-{nonce}-{counter}.sqlite3",
         std::process::id()
     ))
+}
+
+fn count_v2_receipts(path: &Path) -> i64 {
+    let conn = Connection::open(path).expect("open receipt store for verification");
+    conn.query_row("SELECT COUNT(*) FROM chio_receipts_v2", [], |row| {
+        row.get(0)
+    })
+    .expect("count v2 receipts")
 }
 
 fn make_kernel_with_slow_tool(
@@ -212,12 +222,11 @@ fn admission_time_freshness_carried_through_persistence() {
     // peer's freshness window lapses, and persistence runs. Without
     // admission-time-carried freshness, the post-dispatch resolver
     // would return `ReceiptNegotiationDowngrade` and the receipt for
-    // the already-executed tool would be lost. With the
-    // admission-time decision honored, persistence degrades the v2
-    // alias to v1 on drift and the receipt is minted.
+    // the already-executed tool would be lost. With the admission-time
+    // decision honored, persistence uses the admitted version/key
+    // snapshot and still mints v2 evidence.
     let path = unique_db_path("b2-toctou-fresh-then-stale");
-    let (mut kernel, counter) =
-        make_kernel_with_slow_tool(&path, Duration::from_millis(2_000));
+    let (mut kernel, counter) = make_kernel_with_slow_tool(&path, Duration::from_millis(2_000));
     let remote_kernel_id = "kernel.org-toctou";
     let remote_kp = Keypair::generate();
     let tool_host_public_key = kernel.public_key();
@@ -278,6 +287,16 @@ fn admission_time_freshness_carried_through_persistence() {
     assert!(
         !response.receipt.id.is_empty(),
         "minted receipt must carry a stable id"
+    );
+    assert!(
+        kernel.dual_signed_receipt(&response.receipt.id).is_some(),
+        "federated receipts must use the admission-time peer snapshot for cosign"
+    );
+
+    drop(kernel);
+    assert!(
+        count_v2_receipts(&path) >= 1,
+        "admission-time v2 negotiation must still persist v2 evidence"
     );
 
     let _ = std::fs::remove_file(&path);

@@ -49,6 +49,9 @@ pub const EMERGENCY_STOP_DENY_REASON: &str = "kernel emergency stop active";
 thread_local! {
     static RECEIPT_TENANT_ID_SCOPE: std::cell::RefCell<Option<String>> =
         const { std::cell::RefCell::new(None) };
+    static RECEIPT_FEDERATION_ADMISSION_SCOPE:
+        std::cell::RefCell<Option<ReceiptFederationAdmission>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Guard returned by [`scope_receipt_tenant_id`]. Restores the previously
@@ -81,6 +84,42 @@ pub(crate) fn scope_receipt_tenant_id(tenant_id: Option<String>) -> ScopedReceip
 /// body picks up the tag without rewiring every builder signature.
 pub(crate) fn current_scoped_receipt_tenant_id() -> Option<String> {
     RECEIPT_TENANT_ID_SCOPE.with(|slot| slot.borrow().clone())
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ReceiptFederationAdmission {
+    pub remote_kernel_id: Option<String>,
+    pub receipt_version: KernelReceiptVersion,
+    pub peer: Option<chio_federation::FederationPeer>,
+}
+
+/// Guard returned by [`scope_receipt_federation_admission`]. Restores the
+/// previously active admission snapshot when dropped.
+pub(crate) struct ScopedReceiptFederationAdmission {
+    previous: Option<ReceiptFederationAdmission>,
+}
+
+impl Drop for ScopedReceiptFederationAdmission {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| {
+            *slot.borrow_mut() = previous;
+        });
+    }
+}
+
+/// Install the receipt-version and peer-key decision made at admission time.
+/// Persistence and federation cosigning must use this snapshot rather than
+/// re-resolving freshness after the tool has already produced side effects.
+pub(crate) fn scope_receipt_federation_admission(
+    admission: Option<ReceiptFederationAdmission>,
+) -> ScopedReceiptFederationAdmission {
+    let previous = RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.replace(admission));
+    ScopedReceiptFederationAdmission { previous }
+}
+
+pub(crate) fn current_scoped_receipt_federation_admission() -> Option<ReceiptFederationAdmission> {
+    RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.borrow().clone())
 }
 
 /// Extract tenant_id from a session's authenticated auth context.
@@ -1577,26 +1616,23 @@ impl ChioKernel {
         self.kernel_receipt_v2_default.load(Ordering::SeqCst)
     }
 
-    /// The resolution order is:
-    /// 1. If a federated peer is named on the request and a matching
-    ///    peer is pinned fresh, the peer's negotiated
-    ///    `accepts_receipt_v2` feature flag wins.
-    /// 2. If a federated peer is named but no matching peer is pinned
-    ///    fresh (stale or never-pinned), the kernel **fails closed**
-    ///    with [`KernelError::ReceiptNegotiationDowngrade`]. PROTOCOL.md
-    ///    section 6 (normative MUST) requires the kernel to reject the
-    ///    dispatch rather than silently downgrade a v2-expected request
-    ///    to v1.
-    /// 3. Otherwise (no remote named), the kernel-level default
-    ///    ([`Self::receipt_v2_default`]) supplies the answer.
-    pub fn kernel_receipt_version_for_remote(
+    /// Resolve and snapshot the receipt-version decision at the admission
+    /// boundary. The returned snapshot must be carried through receipt
+    /// persistence and federation cosigning; persistence must not re-resolve
+    /// peer freshness after the tool has already executed.
+    pub(crate) fn kernel_receipt_admission_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
         now: u64,
-    ) -> Result<KernelReceiptVersion, KernelError> {
+    ) -> Result<ReceiptFederationAdmission, KernelError> {
         if let Some(remote) = remote_kernel_id {
             if let Some(peer) = self.federation_peer(remote, now) {
-                return Ok(KernelReceiptVersion::from_capabilities(&peer.capabilities));
+                let receipt_version = KernelReceiptVersion::from_capabilities(&peer.capabilities);
+                return Ok(ReceiptFederationAdmission {
+                    remote_kernel_id: Some(remote.to_string()),
+                    receipt_version,
+                    peer: Some(peer),
+                });
             }
             // PROTOCOL.md section 6 (normative MUST): when a federation
             // peer is named but is not pinned fresh, the kernel MUST
@@ -1622,11 +1658,37 @@ impl ChioKernel {
                 },
             });
         }
-        if self.receipt_v2_default() {
-            Ok(KernelReceiptVersion::V2BodyHash)
+        let receipt_version = if self.receipt_v2_default() {
+            KernelReceiptVersion::V2BodyHash
         } else {
-            Ok(KernelReceiptVersion::V1Legacy)
-        }
+            KernelReceiptVersion::V1Legacy
+        };
+        Ok(ReceiptFederationAdmission {
+            remote_kernel_id: None,
+            receipt_version,
+            peer: None,
+        })
+    }
+
+    /// The resolution order is:
+    /// 1. If a federated peer is named on the request and a matching
+    ///    peer is pinned fresh, the peer's negotiated
+    ///    `accepts_receipt_v2` feature flag wins.
+    /// 2. If a federated peer is named but no matching peer is pinned
+    ///    fresh (stale or never-pinned), the kernel **fails closed**
+    ///    with [`KernelError::ReceiptNegotiationDowngrade`]. PROTOCOL.md
+    ///    section 6 (normative MUST) requires the kernel to reject the
+    ///    dispatch rather than silently downgrade a v2-expected request
+    ///    to v1.
+    /// 3. Otherwise (no remote named), the kernel-level default
+    ///    ([`Self::receipt_v2_default`]) supplies the answer.
+    pub fn kernel_receipt_version_for_remote(
+        &self,
+        remote_kernel_id: Option<&str>,
+        now: u64,
+    ) -> Result<KernelReceiptVersion, KernelError> {
+        self.kernel_receipt_admission_for_remote(remote_kernel_id, now)
+            .map(|admission| admission.receipt_version)
     }
 
     pub fn contains_chio_receipt_v2_body_hash(&self, body_hash: &str) -> bool {
@@ -2103,20 +2165,23 @@ impl ChioKernel {
     /// Phase 20.3 post-sign hook. Invoked immediately after
     /// [`Self::build_and_sign_receipt`] so the local (tool-host)
     /// signature has already landed in the `ChioReceipt`. When
-    /// `federated_origin_kernel_id` is set and the peer is pinned fresh,
-    /// this dispatches the receipt to the cosigner, assembles a
-    /// [`chio_federation::DualSignedReceipt`], and stashes it for
-    /// retrieval via [`Self::dual_signed_receipt`].
+    /// `federated_origin_kernel_id` is set and the admission-time peer
+    /// snapshot is available, this dispatches the receipt to the
+    /// cosigner, assembles a [`chio_federation::DualSignedReceipt`],
+    /// and stashes it for retrieval via [`Self::dual_signed_receipt`].
     ///
-    /// Fail-closed: any error from the peer lookup or the cosigner is
+    /// Fail-closed: any error from peer resolution or the cosigner is
     /// surfaced as a [`KernelError::Internal`] so operators see the
     /// federation drift rather than silently shipping a receipt without
-    /// the remote signature. Non-federated requests (`None` origin) are
-    /// a no-op.
+    /// the remote signature. Production evaluate paths pass the
+    /// admission-time snapshot; legacy direct record callers still get a
+    /// fresh-peer fallback. Non-federated requests (`None` origin) are a
+    /// no-op.
     pub(crate) fn apply_federation_cosign(
         &self,
         request: &crate::runtime::ToolCallRequest,
         receipt: &chio_core::receipt::ChioReceipt,
+        admitted_peer: Option<&chio_federation::FederationPeer>,
     ) -> Result<(), KernelError> {
         let Some(origin_kernel_id) = request.federated_origin_kernel_id.as_ref() else {
             return Ok(());
@@ -2127,34 +2192,16 @@ impl ChioKernel {
                 request_id = request.request_id,
             )));
         };
-        let now = current_unix_timestamp();
-        let Some(peer) = self.federation_peer(origin_kernel_id, now) else {
-            // Admission-time freshness is the authoritative decision
-            // for this request. The companion code in
-            // `record_chio_receipt_with_federation` degrades the
-            // post-dispatch version resolver from fail-closed to a
-            // logged warning + V1Legacy on drift. This hook performs a
-            // SECOND post-dispatch freshness probe that would otherwise
-            // reintroduce the same TOCTOU: a peer fresh at admission
-            // could expire while the tool ran, the bare receipt is
-            // recorded but the DualSignedReceipt assembly fails, the
-            // receipt for the already-executed side-effecting tool is
-            // then dropped by the propagating `?` in the persistence
-            // path.
-            //
-            // Degrade to a logged warning here, mirroring the
-            // version-resolver fallback. The bare `ChioReceipt` is
-            // still recorded by the caller; the optional
-            // `DualSignedReceipt` is simply unavailable for this id
-            // when the peer drifted stale mid-dispatch. Operators see
-            // the drift in logs and can rotate or re-pin.
-            tracing::warn!(
-                request_id = %request.request_id,
-                origin_kernel_id = %redacted!(origin_kernel_id),
-                "federation peer pin drifted stale between admission and persistence; \
-                 skipping dual-signed receipt assembly to honor admission-time decision"
-            );
-            return Ok(());
+        let peer = match admitted_peer {
+            Some(peer) if peer.kernel_id == *origin_kernel_id => peer.clone(),
+            _ => {
+                let now = current_unix_timestamp();
+                self.federation_peer(origin_kernel_id, now).ok_or_else(|| {
+                    KernelError::Internal(format!(
+                        "federation peer {origin_kernel_id} is not pinned fresh and no admission-time peer snapshot is in scope"
+                    ))
+                })?
+            }
         };
 
         let local_kernel_id = self.federation_local_kernel_id();
@@ -2888,33 +2935,31 @@ impl ChioKernel {
 
         // Receipt-version negotiation is a TRUST-BOUNDARY admission check
         // that must run BEFORE any dispatch path AND before the
-        // emergency-stop deny helper. The emergency-stop helper uses
-        // `record_chio_receipt_with_federation`, which itself runs a
-        // freshness lookup and fails with
-        // `ReceiptNegotiationDowngrade` for a stale named peer; that
-        // propagation would replace the structured emergency-stop Deny
-        // with a generic Err. Running the negotiation gate first keeps
-        // the local fail-closed deny path (which records via
-        // `record_chio_receipt`, no federation lookup) reachable.
+        // emergency-stop deny helper. The admission snapshot is scoped for
+        // every receipt builder below so persistence and federation cosign
+        // use the peer/version/key material admitted before side effects.
         // PROTOCOL.md section 6 normative MUST.
-        if let Err(error) = self.kernel_receipt_version_for_remote(
-            request.federated_origin_kernel_id.as_deref(),
-            now,
-        ) {
-            let msg = error.to_string();
-            warn!(
-                request_id = %request.request_id,
-                reason = %redacted!(&msg),
-                "receipt-version negotiation failed pre-dispatch"
-            );
-            return self.build_negotiation_failclosed_deny_response_with_metadata(
-                request,
-                &msg,
-                now,
-                None,
-                extra_metadata.clone(),
-            );
-        }
+        let receipt_admission = match self
+            .kernel_receipt_admission_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+        {
+            Ok(admission) => admission,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt-version negotiation failed pre-dispatch"
+                );
+                return self.build_negotiation_failclosed_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
+            }
+        };
+        let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
 
         // Phase 1.4 emergency kill switch: every evaluate path checks the flag
         // BEFORE capability validation, guard evaluation, or budget mutation so
@@ -3425,31 +3470,26 @@ impl ChioKernel {
         let now = current_unix_timestamp();
 
         // The pre-dispatch receipt-version admission gate must run on the
-        // nested-flow path too, and BEFORE emergency-stop deny because
-        // `build_deny_response` ultimately routes through
-        // `record_chio_receipt_with_federation` which itself runs a
-        // freshness lookup. Without the gate here, a tool dispatched via
-        // the nested-flow bridge with a stale or never-pinned federated
-        // peer would execute first and only then fail at receipt minting,
-        // which is the exact fail-open window the gate is meant to close.
-        if let Err(error) = self.kernel_receipt_version_for_remote(
-            request.federated_origin_kernel_id.as_deref(),
-            now,
-        ) {
-            let msg = error.to_string();
-            warn!(
-                request_id = %request.request_id,
-                reason = %redacted!(&msg),
-                "receipt-version negotiation failed pre-dispatch (nested flow)"
-            );
-            return self.build_negotiation_failclosed_deny_response_with_metadata(
-                request,
-                &msg,
-                now,
-                None,
-                None,
-            );
-        }
+        // nested-flow path too. The admission snapshot is scoped for the
+        // receipt builders below so a peer that expires during nested tool
+        // execution does not change the already-admitted version or key.
+        let receipt_admission = match self
+            .kernel_receipt_admission_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+        {
+            Ok(admission) => admission,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt-version negotiation failed pre-dispatch (nested flow)"
+                );
+                return self.build_negotiation_failclosed_deny_response_with_metadata(
+                    request, &msg, now, None, None,
+                );
+            }
+        };
+        let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
 
         // Phase 1.4 emergency kill switch: the nested-flow path also deny-fast
         // so sampling/elicitation-bearing tool calls cannot slip past while
