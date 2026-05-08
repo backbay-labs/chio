@@ -23,7 +23,7 @@ rerun-after-merge follow-up (see "Open follow-ups" below).
 |---|---|
 | Crate | `chio-anchor` |
 | Date | 2026-05-08 |
-| Branch | `claude/trj5/a1-mutation-anchor` |
+| Branch | `PR branch` |
 | Base SHA | `7bc9fd076` |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 60m 31s (capped; partial) |
