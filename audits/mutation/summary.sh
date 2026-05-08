@@ -34,13 +34,19 @@ DATE="$(date -u +%Y-%m-%d)"
 
 for crate in "$@"; do
   # cargo-mutants 25.x writes outputs in one of two layouts (see
-  # `scripts/mutants-fuzz-cocoverage.sh` for the same probe pattern):
-  #   * `<output>/mutants.out/...` when `--in-place` is used.
-  #   * `<output>/...` directly otherwise.
+  # `scripts/mutants-fuzz-cocoverage.sh` and `audits/mutation/aggregate.sh`
+  # for the same probe pattern):
+  #   * Newer/default: `<output>/outcomes.json` directly (no mutants.out/).
+  #   * Older/in-place: `<output>/mutants.out/outcomes.json`.
+  # Prefer the direct `<output>/` layout because that is the current
+  # cargo-mutants 25.x default; fall back to the nested layout when the
+  # direct layout is absent. The probe order matches `aggregate.sh` so
+  # both helpers select the same evidence file when both layouts coexist
+  # (per Codex+Cursor reviews on PR #603).
   out_dir=""
   for candidate in \
-    "${EVIDENCE_DIR}/${crate}/mutants.out" \
-    "${EVIDENCE_DIR}/${crate}"; do
+    "${EVIDENCE_DIR}/${crate}" \
+    "${EVIDENCE_DIR}/${crate}/mutants.out"; do
     if [ -f "${candidate}/caught.txt" ] || [ -f "${candidate}/outcomes.json" ]; then
       out_dir="${candidate}"
       break
