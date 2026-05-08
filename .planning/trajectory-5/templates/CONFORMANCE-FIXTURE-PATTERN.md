@@ -4,7 +4,7 @@
 parallel JSON-evidence pattern documented in
 `.planning/trajectory-5/templates/EVIDENCE-GATE.md` section 1.3.
 
-**Purpose**: every primitive that closes under the trj5 Evidence Gate
+**Purpose**: every primitive that closes under the release work Evidence Gate
 (Artifact C, Artifact D) ships a negative conformance test that exercises
 production code and fails when the enforcement is reverted. This document
 defines the file layout, naming, dependency rules, CI hook, and skeleton.
@@ -22,7 +22,7 @@ types, or against mocked verifiers. See
 
 Path: `crates/chio-conformance/tests/<lane>_<primitive>_<negative_case>.rs`
 
-The lane prefix uses the trj5 sub-lane id (e.g. `b1`, `b2`, `b3`):
+The lane prefix uses the release work sub-lane id (e.g. `b1`, `b2`, `b3`):
 
 | Sub-lane | Primitive | Example file |
 |---|---|---|
@@ -118,7 +118,7 @@ removed, the test fails. The proof is one of:
 
 ### 3.2 Header comment format
 
-Every TRJ5 conformance test MUST begin with:
+Every release work conformance test MUST begin with:
 
 ```rust
 //! Trj5 negative conformance for <primitive>.
@@ -191,7 +191,7 @@ Example: `receipt_v1_under_v2_negotiation_is_rejected`.
 ## 5. Cargo.toml Dev-Dependencies
 
 The `crates/chio-conformance/Cargo.toml` `[dev-dependencies]` section is the
-ONLY place a TRJ5 conformance test pulls in helpers. Additions for trj5:
+ONLY place a release work conformance test pulls in helpers. Additions for release work:
 
 ```toml
 [dev-dependencies]
@@ -216,19 +216,19 @@ is the thing being mocked; the verifier remains real.
 
 ## 6. CI Hook
 
-### 6.1 Workflows that gate trj5 conformance
+### 6.1 Workflows that gate release work conformance
 
-| Workflow | Gate | New for trj5? |
+| Workflow | Gate | New for release work? |
 |---|---|---|
 | `.github/workflows/ci.yml` | `cargo test -p chio-conformance` runs every PR | existing |
 | `.github/workflows/conformance-matrix.yml` | matrix of OS/feature flags | existing |
 | `.github/workflows/threat-model-coverage.yml` | runs `scripts/check-threat-coverage.sh` | existing |
-| `.github/workflows/close-bar-tracker.yml` | runs `scripts/check-trj5-evidence-gate.sh` | extended (Wave 1) |
+| `.github/workflows/close-bar-tracker.yml` | runs `scripts/check-release work-evidence-gate.sh` | extended (Wave 1) |
 | `.github/workflows/spec-drift.yml` | spec MUST citations resolve | extended (Wave 1) |
 
 ### 6.2 New scripts (Wave 1 deliverables)
 
-- `scripts/check-trj5-evidence-gate.sh` (TBD-from-W1): walks
+- `scripts/check-release work-evidence-gate.sh` (TBD-from-W1): walks
   `.planning/trajectory-5/audits/*.md` and validates the four-artifact rule.
 - `scripts/check-conformance-imports.sh` (TBD-from-W1): enforces the
   production-call-path rule (section 2 above).
@@ -254,7 +254,7 @@ workflow.
 //!   -> Kernel::select_receipt_version (B2 hardens this).
 //!
 //! Reverts-to-fail proof: see `git log --grep "B2 revert proof"` in
-//!   the trj5 audit doc; local repro via `git revert <commit> && cargo test`.
+//!   the release work audit doc; local repro via `git revert <commit> && cargo test`.
 //!
 //! Threat: an adversarial peer advertises `accepts_receipt_v2: true` during
 //!   negotiation, then triggers a kernel build path that previously
@@ -363,7 +363,7 @@ assert!(error.to_string().contains("rejected"));
 ```
 
 Production code can change the error string at any time. Tests that match
-on string content rot. TRJ5 conformance tests MUST match on typed error
+on string content rot. release work conformance tests MUST match on typed error
 variants (`KernelError::Foo { ... }`) not stringly-typed substrings. The
 header comment may quote the substring as documentation; the assertion
 matches the variant.
@@ -461,7 +461,7 @@ demo's "spec §6 conformance" claim is contradicted.
   `crates/chio-conformance/tests/anchor_batch_forged_root_rejected.rs`
   (W2.3 commit `7ee1ddbcc`). It imports `chio_anchor::{build_anchor_batch,
   verify_anchor_batch, ...}`, mutates the body, and asserts a typed
-  `expect_err` on `AnchorBatch::sign`. This pattern is the model for trj5
+  `expect_err` on `AnchorBatch::sign`. This pattern is the model for release work
   Lane B fixtures.
 - The trj4 anti-pattern is `crates/chio-conformance/tests/protocol_primitives_t1.rs`
   combined with the placeholder evidence files in `audits/evidence/threats/`:

@@ -30,7 +30,7 @@ chio mcp serve --policy examples/chiodome-bilateral/policies/refund-policy.yaml 
 The bounded claim narrows accordingly: this composition validates
 `chio mcp serve` plus the `mcp-remote` stdio bridge, NOT direct
 HTTP MCP wrapping by `chio mcp serve` itself. Direct HTTP-upstream
-wrapping is out of scope for trj5; v0.2 may add it.
+wrapping is out of scope for release work; v0.2 may add it.
 
 The KB MCP stack is the productization layup the Productization
 Champion called out in `debate/05-productization-sdk-champion.md`
@@ -196,7 +196,7 @@ what makes this real: with the warn-and-downgrade in place, a v2
 negotiation could silently produce a v1 body and the bilateral
 envelope's subject digest fails section 7 step 7.
 
-Receipts are persisted via a custom sink wired in TRJ5-C3.3:
+Receipts are persisted via a custom sink wired in release work-C3.3:
 
 ```rust
 // examples/chiodome-bilateral/src/receipt_sink.rs

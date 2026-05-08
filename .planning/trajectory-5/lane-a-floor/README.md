@@ -8,7 +8,7 @@
 
 Lane A is the assurance-floor lane. It absorbs the trj4 carry-forwards under
 TRJ4-010..014, TRJ4-015..018, and TRJ4-040..047, and re-frames them with
-**real-evidence** acceptance criteria. The trj5 synthesis is explicit:
+**real-evidence** acceptance criteria. The release work synthesis is explicit:
 
 > "Mutation kill 31% -> >=65% trust-boundary, >=80% on `chio-attest-verify`.
 >  README banner reflects observed kill, not target."
@@ -62,7 +62,7 @@ tickets live in `tickets.md`. Sub-lane-specific deep dives live in
 - **Lane A internal**: A2 takes a soft dependency on A1's mutation
   infrastructure (the per-row gate at
   `scripts/check-threat-coverage-mutants.sh` runs cargo-mutants under the
-  hood). A4 sub-tickets TRJ5-A4.3/A4.4 depend on TRJ5-A4.1/A4.2 landing.
+  hood). A4 sub-tickets release work-A4.3/A4.4 depend on release work-A4.1/A4.2 landing.
 
 ## Week-by-week timeline
 
@@ -79,11 +79,11 @@ add 4-6 weeks.
 | 5 | A2 backfill 6 weak rows (native_channel_replay etc.); A3 chio-attest-verify Kani | First six `audits/evidence/threats/*.json` files carry real `caught >= 1` runs; `crates/chio-attest-verify/src/kani_public_harnesses.rs` lands with >= 4 `#[kani::proof]` functions. |
 | 6 | A2 backfill 7 more rows; A3 chio-anchor Kani; A5 Lean refinement | Twelve threat-evidence files real; `chio-anchor` Kani harness merged; Lean4 `negotiation_safety` re-stated to take an executable-model term. |
 | 7 | A2 backfill final rows; A3 chio-weights Kani | Twenty threat-evidence files real; all three Kani harnesses passing nightly. |
-| 8 | A1 banner update; A4/A5 closeout; Evidence Gate sweep | README mutation banner re-rendered to **observed** kill, not target; trj5 ship-bar 1 closed. |
+| 8 | A1 banner update; A4/A5 closeout; Evidence Gate sweep | README mutation banner re-rendered to **observed** kill, not target; release work ship-bar 1 closed. |
 
 ## Acceptance (visible from outside the project)
 
-The following must all be true on the trj5 closeout commit:
+The following must all be true on the release work closeout commit:
 
 - `bash scripts/check-threat-coverage-mutants.sh` (default mode, no
   `--dry-run`) returns exit 0 with no `bootstrap_placeholder`,
@@ -119,22 +119,22 @@ Every Lane A close-bar artifact gates on one or more
 
 | Workflow | Touch type | Owning ticket |
 |---|---|---|
-| `mutants.yml` | modify (un-flake; per-crate runs) | TRJ5-A1.1, TRJ5-A1.3..A1.8 |
-| `mutants-banner.yml` | modify (banner script reads observed kill rate) | TRJ5-A1.10 |
-| `mutants-fuzz-cocoverage.yml` | confirm-no-touch (Wave 1 verifies this workflow does not need Lane A changes) | TRJ5-A1.0 (audit) |
-| `nightly.yml` | modify (multi-crate Kani lane; lines 102-128) | TRJ5-A3.5b |
-| `ci.yml` | modify (`kani-public-pr` job lines 478-590) | TRJ5-A3.5b |
-| `apalache-safety.yml` | modify (add new invariants to cfg) | TRJ5-A4.1, TRJ5-A4.2 |
-| `apalache-temporal.yml` | gate-promotion (advisory -> required) | TRJ5-A4.4 |
-| `lean.yml` | create (new workflow for Lean toolchain CI) | TRJ5-A5.1 |
-| `close-bar-tracker.yml` | confirm-no-touch (existing workflow runs `scripts/check-trj5-evidence-gate.sh` once Wave 1 lands the script; Lane A close-bar promotion does not edit the workflow itself) | (n/a) |
+| `mutants.yml` | modify (un-flake; per-crate runs) | mutation evidence item, mutation evidence item |
+| `mutants-banner.yml` | modify (banner script reads observed kill rate) | mutation evidence item |
+| `mutants-fuzz-cocoverage.yml` | confirm-no-touch (Wave 1 verifies this workflow does not need Lane A changes) | mutation exclusion audit (audit) |
+| `nightly.yml` | modify (multi-crate Kani lane; lines 102-128) | Kani multi-crate manifestb |
+| `ci.yml` | modify (`kani-public-pr` job lines 478-590) | Kani multi-crate manifestb |
+| `apalache-safety.yml` | modify (add new invariants to cfg) | release work-A4.1, release work-A4.2 |
+| `apalache-temporal.yml` | gate-promotion (advisory -> required) | release work-A4.4 |
+| `lean.yml` | create (new workflow for Lean toolchain CI) | release work-A5.1 |
+| `close-bar-tracker.yml` | confirm-no-touch (existing workflow runs `scripts/check-release work-evidence-gate.sh` once Wave 1 lands the script; Lane A close-bar promotion does not edit the workflow itself) | (n/a) |
 
 Each Lane A ticket that changes CI names the workflow file diff
 in its acceptance section.
 
 ## Anti-patterns this lane explicitly refuses
 
-The trj5 Quality Skeptic identified the failure modes that re-fired the trj4
+The release work Quality Skeptic identified the failure modes that re-fired the trj4
 erratum (`.planning/trajectory-5/debate/04-quality-verification-skeptic.md`,
 lines 25-31, 35-37, 50-52). Lane A acceptance forbids each:
 
@@ -147,7 +147,7 @@ lines 25-31, 35-37, 50-52). Lane A acceptance forbids each:
 - A Lean theorem proven by `rfl` against the same definition that defines
   the function under test.
 - An `apalache-temporal.yml` job marked `continue-on-error: true` after
-  TRJ5-A4.4 lands.
+  release work-A4.4 lands.
 
 ## Authoritative threat count (Wave 3 reconciliation)
 

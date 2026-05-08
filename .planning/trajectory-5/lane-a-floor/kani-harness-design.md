@@ -70,17 +70,17 @@ outside those traits. Harnesses target the publicly constructible impls.
   byte-by-byte equality against the output of `expect_report_data`.
 - Per-harness `#[kani::unwind(8)]` matches the existing `chio-kernel-core`
   default. Local wall-clock budget per harness: 30 minutes (see
-  TRJ5-A3.0 below).
+  Kani harness evidence below).
 
 ### CI integration
 
 - The Kani lane lives in `.github/workflows/nightly.yml` (single-crate
   shell loop hardcoded to `cargo kani -p chio-kernel-core`, lines
   62-129) and `.github/workflows/ci.yml` (PR-tier `kani-public-pr` job).
-  TRJ5-A3.5 is the workflow rewrite (see Section "CI workflow path"
+  Kani multi-crate manifest is the workflow rewrite (see Section "CI workflow path"
   below).
 - Two consecutive green nightly runs captured to
-  `audits/evidence/TRJ5-A3/nightly-runs.md`.
+  `audits/evidence/release work-A3/nightly-runs.md`.
 
 ## (2) `chio-anchor`
 
@@ -129,14 +129,14 @@ Public verification entries verified by
   escalation policy."
 - Mitigation: harness uses `#[kani::unwind(4)]` to bound the
   sibling-loop unwinding. Documented in the harness module header.
-- TRJ5-A3.5 owns the workflow rewrite (Section "CI workflow path").
+- Kani multi-crate manifest owns the workflow rewrite (Section "CI workflow path").
 
 ### Lane B coordination note (R2 MAJOR Section 8.3)
 
 The Kani harness depends on the shape of `verify_anchor_batch` and
 `batch_body_hash` in `crates/chio-anchor/src/`. Lane B owns
 `crates/chio-anchor/src/batch.rs` and may revise the signature during
-TRJ5-B3. If Lane B changes those signatures, this harness is updated in
+release work-B3. If Lane B changes those signatures, this harness is updated in
 the same PR or one wave behind, never more than one wave behind. The
 Lane B Wave-end checklist explicitly checks this surface.
 
@@ -176,9 +176,9 @@ Public verify-shaped entries verified by
 
 ### CI integration
 
-- TRJ5-A3.5 owns the workflow rewrite (Section "CI workflow path").
+- Kani multi-crate manifest owns the workflow rewrite (Section "CI workflow path").
 - Two consecutive green runs captured to
-  `audits/evidence/TRJ5-A3/nightly-runs.md`.
+  `audits/evidence/release work-A3/nightly-runs.md`.
 
 ## CI workflow path (rewritten per R2 BLOCKER 3.3)
 
@@ -197,10 +197,10 @@ hardcodes `cargo kani -p chio-kernel-core`:
 
 There is **no** matrix today. The earlier draft of this document
 sketched a `strategy.matrix.crate` change; that sketch was not
-applicable to the actual workflow. TRJ5-A3.5 instead owns the following
+applicable to the actual workflow. Kani multi-crate manifest instead owns the following
 concrete rewrite:
 
-### Schema change (TRJ5-A3.5a)
+### Schema change (Kani multi-crate manifesta)
 
 Extend `formal/rust-verification/kani-public-harnesses.toml` from
 single-crate to multi-crate. Two acceptable shapes; pick (B) by default
@@ -218,7 +218,7 @@ file's top-level from `crate = "chio-kernel-core"` to a `crates =
 `{ crate = "<name>", harness = "<fn>" }`. The Python helper in
 `nightly.yml` is updated to emit `(crate, harness)` pairs.
 
-### Workflow change (TRJ5-A3.5b)
+### Workflow change (Kani multi-crate manifestb)
 
 Concretely, `nightly.yml` lines 102-128 change from:
 
@@ -247,29 +247,29 @@ for pair in "${PAIRS[@]}"; do
 done
 ```
 
-The same shape applies to the `ci.yml` `kani-public-pr` job. TRJ5-A3.5b
+The same shape applies to the `ci.yml` `kani-public-pr` job. Kani multi-crate manifestb
 captures the diff in the close PR.
 
-### Promotion-of-advisory-to-required (TRJ5-A3.6, addresses R2 MINOR 10.3)
+### Promotion-of-advisory-to-required (Kani harness evidence, addresses R2 MINOR 10.3)
 
 The new multi-crate Kani lane starts as advisory. After two consecutive
-green nightly runs, TRJ5-A3.6 promotes it to required by removing
+green nightly runs, Kani harness evidence promotes it to required by removing
 `continue-on-error` (where present) and adding the job to GitHub
 branch-protection required-checks. Without this promotion a regression
 in `chio-attest-verify` Kani would not block a PR, contradicting the
 synthesis ship-bar 1 banner-vs-reality discipline.
 
-## TRJ5-A3.0 - Kani feasibility spike (addresses R2 MAJOR 3.2)
+## Kani harness evidence - Kani feasibility spike (addresses R2 MAJOR 3.2)
 
-Before TRJ5-A3.1 / A3.2 / A3.3 start, run each proposed Kani invariant
+Before Kani harness evidence / A3.2 / A3.3 start, run each proposed Kani invariant
 locally with the proposed bounds:
 
 - Run each `#[kani::proof]` body on a workstation against
   `cargo kani --default-unwind 8 --no-unwinding-checks`.
 - Capture per-harness wall-clock, peak memory, and exit status to
-  `audits/evidence/TRJ5-A3.0/local-bound-validation.md`.
+  `audits/evidence/Kani harness evidence/local-bound-validation.md`.
 - If any harness exceeds 30 minutes locally, escalate (open R-new in
-  the Risk Register) before TRJ5-A3.1 starts. SHA-256 verification under
+  the Risk Register) before Kani harness evidence starts. SHA-256 verification under
   symbolic input is the canonical Kani-times-out scenario; per-crate
   bound-validation is non-optional.
 
@@ -290,11 +290,11 @@ Per Lane A's close bar (PLAN.md and tickets.md):
 
 ## Theorem-inventory linkage (corrected per R2 MINOR 3.4)
 
-TRJ5-A3.4 updates the multi-crate
+Kani harness evidence updates the multi-crate
 `formal/rust-verification/kani-public-harnesses.toml` (existence
 verified) to register the three new harness modules. The earlier draft
 referenced `formal/proof-manifest.toml`; that file may exist in
-parallel. TRJ5-A3.4 acceptance names both files explicitly: any harness
+parallel. Kani harness evidence acceptance names both files explicitly: any harness
 group added to `kani-public-harnesses.toml` is mirrored in
 `formal/proof-manifest.toml` if and only if that file references the
 crate; otherwise the kani-public-harnesses entry is the source of

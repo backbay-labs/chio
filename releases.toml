@@ -130,7 +130,7 @@ trj3_1_release_binaries_run_url = "https://github.com/bb-connor/arc/actions/runs
 trj3_1_reproducible_build_run_url = "https://github.com/bb-connor/arc/actions/runs/25355058217"
 trj3_1_slsa_trigger = "workflow_run after Release Binaries succeeds"
 # trj4 release tag retracted. The prior v3.20.0-trj4 closeout claim is reopened
-# pending the wave-based closeout in /Users/connor/.claude/plans/typed-coalescing-hejlsberg.md.
+# pending the wave-based closeout in local trajectory-4 closeout plan.
 # See trj4_erratum_path below for the retraction record.
 trj4_release_status = "reopened"
 trj4_erratum_path = ".planning/trajectory-4/TRAJECTORY-4-CLOSEOUT-ERRATUM.md"
@@ -147,14 +147,18 @@ trj4_slsa_trigger = "workflow_run after Release Binaries succeeds"
 trj4_final_summary_path = ".planning/trajectory-4/TRAJECTORY-4-FINAL.md"
 
 [trajectory_5]
-# trj5 ("the honesty trajectory") opens 2026-05-08 with three coupled lanes,
+# release work ("the honesty trajectory") opens 2026-05-08 with three coupled lanes,
 # autonomous-execution mode, three externally-verifiable ship bars.
+# R4+ release truth: the worker branches are still open. Keep the release in
+# pending_upstream_merges until all upstream PRs merge, release packaging is
+# regenerated from merged main, checks are green on the integrated merge SHA,
+# and a human pushes the tag.
 # See .planning/trajectory-5/READINESS.md and KICKOFF-CHECKLIST.md.
-trj5_release_status = "in_progress"
+trj5_release_status = "pending_upstream_merges"
 trj5_started_at = "2026-05-08T00:00:00Z"
 trj5_kickoff_date = "2026-05-08"
 trj5_baseline_sha = "708c7bb33df43594f5e76542b05fca7a56d9689e"
-trj5_baseline_branch = "claude/charming-feistel-8595da"
+trj5_baseline_branch = "planning branch"
 trj5_planning_artifacts = ".planning/trajectory-5/"
 trj5_synthesis_path = ".planning/trajectory-5/debate/00-SYNTHESIS.md"
 trj5_ship_bar_tracker_path = ".planning/trajectory-5/SHIP-BAR-TRACKER.md"
@@ -166,11 +170,11 @@ trj5_execution_board_path = ".planning/trajectory-5/EXECUTION-BOARD.md"
 trj5_scope_lock_path = ".planning/trajectory-5/SCOPE-LOCK.md"
 trj5_timeline_path = ".planning/trajectory-5/TIMELINE.md"
 trj5_baselines_dir = ".planning/trajectory-5/baselines/"
-trj5_preflight_script = "scripts/trj5-preflight.sh"
-trj5_ship_bar_script = "scripts/check-trj5-ship-bar.sh"
+trj5_preflight_script = "scripts/release work-preflight.sh"
+trj5_ship_bar_script = "scripts/check-release work-ship-bar.sh"
 trj5_execution_mode = "autonomous"
-trj5_human_escalation = "@bb-connor"
-trj5_agent_orchestrator = "claude-trj5-orchestrator"
+trj5_human_escalation = "release owner"
+trj5_agent_orchestrator = "claude-release work-orchestrator"
 trj5_lanes = ["A-floor", "B-wiring", "C-demo"]
 trj5_ship_bars = ["bar-1-mutation", "bar-2-conformance-fixtures", "bar-3-bilateral-demo"]
 trj5_lane_b_primitives = ["B0-async-trait", "B1-single-entry-verifier", "B2-receipt-v2-failclosed", "B3-anchor-batch-async", "B4-dsse-bilateral-signing"]
@@ -194,7 +198,7 @@ trj5_blocker_count_closed = 13
 trj5_major_count_closed = 29
 trj5_major_count_deferred_to_trj6 = 1
 trj5_minor_observation_count_addressed = "informational; see W4-closeout-matrix.md sample MINOR coverage"
-# Bar 1 -- mutation banner. Baseline: 31% (pre-trj5, measured 2026-04-29).
+# Bar 1 -- mutation banner. Baseline: 31% (pre-release work, measured 2026-04-29).
 trj5_bar1_mutation_baseline_pct = 31
 trj5_bar1_mutation_baseline_date = "2026-04-29"
 trj5_bar1_mutation_target_pct_workspace = 65
@@ -206,9 +210,9 @@ trj5_bar2_baseline = "0 of 4 primitives protected"
 trj5_bar2_target = "4 of 4 primitives protected by signed negative conformance fixture"
 # Bar 3 -- bilateral demo end-to-end.
 trj5_bar3_baseline = "examples/chiodome-bilateral/ does not exist; demo runs zero times"
-trj5_bar3_target = "demo runs end-to-end on fresh checkout; chio receipt explain golden output matches; v0.1.0-bounded-chiodome tag cut"
+trj5_bar3_target = "demo fixtures regenerated from merged main; receipt explain works on pinned receipt; KB MCP default transcripts are not kernel-signed receipts; human tag only after green integrated checks"
 v0_1_0_bounded_chiodome_release_tag = "pending"
-# Provenance artifacts (mirroring the trj4 block; populated post-trj5 closeout).
+# Provenance artifacts (mirroring the trj4 block; populated post-release work closeout).
 trj5_release_tag = "pending"
 trj5_release_sha = "pending"
 trj5_release_binaries_run_url = "pending"
@@ -216,6 +220,7 @@ trj5_reproducible_build_run_url = "pending"
 trj5_sbom_run_url = "pending"
 trj5_slsa_trigger = "pending"
 trj5_final_summary_path = "pending; will be .planning/trajectory-5/TRAJECTORY-5-FINAL.md after closeout"
-# Note: pending fields are filled by the closeout wave once each ship bar
-# reads DONE in `.planning/trajectory-5/SHIP-BAR-TRACKER.md` and
-# `scripts/check-trj5-ship-bar.sh` exits 0 against committed evidence.
+# Note: pending fields are filled only after upstream merges, release-package
+# regeneration from merged main, each ship bar reading DONE in
+# `.planning/trajectory-5/SHIP-BAR-TRACKER.md`, and
+# `scripts/check-release work-ship-bar.sh` exiting 0 against committed evidence.

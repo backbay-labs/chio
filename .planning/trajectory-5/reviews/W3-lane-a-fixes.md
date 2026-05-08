@@ -27,7 +27,7 @@ should know about.
   Pre-Wave-1 estimate: 1 deferral
   (`wasm_guard_resource_exhaustion`); 4 rows pending Wave 1
   confirmation; 14-15 rows IMPL-EXISTS-AND-PUBLIC.
-- **Tickets table**: each TRJ5-A2.<n> ticket gains an "Artifact A
+- **Tickets table**: each release work-A2.<n> ticket gains an "Artifact A
   (public symbol)" column citing the literal `pub fn` the test
   invokes.
 
@@ -49,7 +49,7 @@ should know about.
     `bundle::verify`, `card::verify_signature` with
     `weights_hash_of`, `anchor_projection_bytes`,
     `verify_model_card_anchor`, `verify_model_card_bundle`.
-- **TRJ5-A3.1 / A3.2 / A3.3** ticket text updated to match. Each ticket
+- **Kani harness evidence / A3.2 / A3.3** ticket text updated to match. Each ticket
   now cites the file:line of the production entry.
 
 ### R2 BLOCKER 3.3 -- Kani CI integration is hand-wavy
@@ -61,10 +61,10 @@ should know about.
   not match the actual workflow shape). Replaced with concrete diff
   shape against `.github/workflows/nightly.yml` lines 102-128 and
   `.github/workflows/ci.yml` `kani-public-pr` job lines 478-590. The
-  workflow rewrite is split into TRJ5-A3.5a (multi-crate manifest
+  workflow rewrite is split into Kani multi-crate manifesta (multi-crate manifest
   schema in `formal/rust-verification/kani-public-harnesses.toml`) and
-  TRJ5-A3.5b (per-workflow shell-loop change emitting
-  `(crate, harness)` pairs). Added TRJ5-A3.6 to promote the new
+  Kani multi-crate manifestb (per-workflow shell-loop change emitting
+  `(crate, harness)` pairs). Added Kani harness evidence to promote the new
   multi-crate Kani lane from advisory to required after two
   consecutive green nightly runs (R2 MINOR 10.3).
 
@@ -86,7 +86,7 @@ should know about.
 - **Files**: `.planning/trajectory-5/lane-a-floor/tickets.md`,
   `.planning/trajectory-5/lane-a-floor/threat-evidence-backfill.md`.
 - **Change**: Lane A tickets file now opens with an "Artifact A" rule
-  requiring each TRJ5-A2.<n> ticket to name a literal `pub fn` import
+  requiring each release work-A2.<n> ticket to name a literal `pub fn` import
   path. Each per-ticket row now has a dedicated "Artifact A (public
   symbol)" column. The Acceptance text rules out tests that import a
   test-local copy of a production type (Mock-not-runtime anti-pattern
@@ -99,12 +99,12 @@ should know about.
 ### R2 MAJOR 1.1 -- Mutation uplift target backed by no sample run
 
 - **File**: `.planning/trajectory-5/lane-a-floor/tickets.md`.
-- **Change**: TRJ5-A1.2 split into TRJ5-A1.2a (run baseline) and
-  TRJ5-A1.2b (publish per-crate numbers). Tightened R2 escalation
+- **Change**: mutation evidence item split into mutation evidence item (run baseline) and
+  mutation evidence item (publish per-crate numbers). Tightened R2 escalation
   criterion: if `chio-attest-verify` baseline is below 50%, escalate to
   Wave 2 IMMEDIATELY (not after two waves of test-surface expansion).
 
-### R2 MAJOR 2.4 -- Backfillable in trj5 vs blocked on architecture
+### R2 MAJOR 2.4 -- Backfillable in release work vs blocked on architecture
 
 - **Files**:
   `.planning/trajectory-5/lane-a-floor/threat-evidence-backfill.md`,
@@ -118,7 +118,7 @@ should know about.
 ### R2 MAJOR 2.6 -- Bootstrap-bypass clause not retired
 
 - **File**: `.planning/trajectory-5/lane-a-floor/tickets.md`.
-- **Change**: TRJ5-A2.22 scope changed from doc-update to script-
+- **Change**: threat evidence item scope changed from doc-update to script-
   deletion. Acceptance: delete the `needs_real_run` clause from
   `scripts/check-threat-coverage-mutants.sh` after Lane A closes; the
   bypass code does not exist post-Lane A.
@@ -128,8 +128,8 @@ should know about.
 - **Files**:
   `.planning/trajectory-5/lane-a-floor/kani-harness-design.md`,
   `.planning/trajectory-5/lane-a-floor/tickets.md`.
-- **Change**: added TRJ5-A3.0 (Kani feasibility spike). Each invariant
-  is run locally before TRJ5-A3.1 starts; if any harness exceeds 30
+- **Change**: added Kani harness evidence (Kani feasibility spike). Each invariant
+  is run locally before Kani harness evidence starts; if any harness exceeds 30
   minutes locally, escalate. Per-harness bound parameters and
   `#[kani::unwind(N)]` values explicit per crate.
 
@@ -137,7 +137,7 @@ should know about.
 
 - **File**: `.planning/trajectory-5/lane-a-floor/tla-rewrites.md`,
   `.planning/trajectory-5/lane-a-floor/tickets.md`.
-- **Change**: TRJ5-A4.2 includes feasibility-spike sub-task (20-line
+- **Change**: release work-A4.2 includes feasibility-spike sub-task (20-line
   TLA fragment run against Apalache 0.50.x standalone). Fallback
   documented: hand-written `Reachable_step1`/`step2`/`step3` chain.
 
@@ -145,7 +145,7 @@ should know about.
 
 - **File**: `.planning/trajectory-5/lane-a-floor/lean4-fix.md`,
   `.planning/trajectory-5/lane-a-floor/tickets.md`.
-- **Change**: TRJ5-A5.3 expanded from one theorem to three:
+- **Change**: release work-A5.3 expanded from one theorem to three:
   `negotiation_safety_admit_implies_le`,
   `negotiation_safety_reject_implies_not_le_or_other_failure`, and
   `negotiation_safety_schema_first` (the ordering theorem the
@@ -158,9 +158,9 @@ should know about.
 - **Files**:
   `.planning/trajectory-5/lane-a-floor/mutation-budget.md`,
   `.planning/trajectory-5/lane-a-floor/tickets.md`.
-- **Change**: added TRJ5-A1.0 (`.cargo/mutants.toml` exclusion-list
+- **Change**: added mutation exclusion audit (`.cargo/mutants.toml` exclusion-list
   audit). Each exclusion is marked `OK` or `FOR-REMOVAL`; output to
-  `audits/evidence/TRJ5-A1.0/exclude-audit.md`.
+  `audits/evidence/mutation exclusion audit/exclude-audit.md`.
 
 ### R2 MAJOR 9 / Section 10.2 -- CI workflow inventory + Wave 1 critical path
 
@@ -178,76 +178,76 @@ should know about.
 
 ### R2 MINOR 1.4 -- mutants.yml workflow status check
 
-- **File**: `tickets.md` TRJ5-A1.1 acceptance.
+- **File**: `tickets.md` mutation evidence item acceptance.
 - **Change**: verify `status_at_capture` of last 7 nightly runs;
   un-flake before per-crate measurement starts.
 
 ### R2 MINOR 2.7 -- Mobile rows scheduling
 
-- **File**: `tickets.md` TRJ5-A2.7 / A2.9 / A2.13 acceptance.
+- **File**: `tickets.md` threat evidence item / A2.9 / A2.13 acceptance.
 - **Change**: each fails closed if TRJ4-033 is not in its `closed`
   bucket; Wave 1 confirms.
 
 ### R2 MINOR 3.4 -- Theorem-inventory cross-reference filename
 
-- **File**: `kani-harness-design.md`, `tickets.md` TRJ5-A3.4.
-- **Change**: TRJ5-A3.4 references the actual file
+- **File**: `kani-harness-design.md`, `tickets.md` Kani harness evidence.
+- **Change**: Kani harness evidence references the actual file
   `formal/rust-verification/kani-public-harnesses.toml`; mirror in
   `formal/proof-manifest.toml` only if that file references the
   relevant crate.
 
 ### R2 MINOR 4.3 -- DEPTH_MAX bump wall-clock evidence
 
-- **File**: `tla-rewrites.md`, `tickets.md` TRJ5-A4.3.
+- **File**: `tla-rewrites.md`, `tickets.md` release work-A4.3.
 - **Change**: record apalache wall-clock BEFORE and AFTER the bump in
-  `audits/evidence/TRJ5-A4.3/length-budget.md`. If post-bump >25
+  `audits/evidence/release work-A4.3/length-budget.md`. If post-bump >25
   minutes, fallback to DEPTH_MAX=5 or extend timeout.
 
 ### R2 MINOR 4.4 -- Branch-protection screenshot
 
-- **File**: `tla-rewrites.md`, `tickets.md` TRJ5-A4.4.
+- **File**: `tla-rewrites.md`, `tickets.md` release work-A4.4.
 - **Change**: capture
-  `audits/evidence/TRJ5-A4.4/branch-protection.png` (screenshot of
+  `audits/evidence/release work-A4.4/branch-protection.png` (screenshot of
   GitHub branch-protection settings showing `apalache-temporal` in
   the required list).
 
 ### R2 MINOR 4.5 -- Tautology-shortcut audit
 
-- **File**: `tla-rewrites.md`, `tickets.md` TRJ5-A4.5.
-- **Change**: TRJ5-A4.5 reviews `theorem-inventory.json` AND the
+- **File**: `tla-rewrites.md`, `tickets.md` release work-A4.5.
+- **Change**: release work-A4.5 reviews `theorem-inventory.json` AND the
   `PublishAllow` definition for evidence of unfolding shortcuts.
 
 ### R2 MINOR 5.3 -- Lean toolchain CI re-scope
 
-- **File**: `lean4-fix.md`, `tickets.md` TRJ5-A5.1.
+- **File**: `lean4-fix.md`, `tickets.md` release work-A5.1.
 - **Change**: re-scoped from M to L; pin Lean toolchain version in
   `formal/lean4/lean-toolchain` (or equivalent); document elaboration
   time + CI cache strategy.
 
 ### R2 MINOR 6.5 -- A4.1 counterexample-on-revert
 
-- **File**: `tickets.md` TRJ5-A4.1 acceptance.
+- **File**: `tickets.md` release work-A4.1 acceptance.
 - **Change**: remove ReceiptBeforeAllow invariant from cfg and confirm
   apalache produces counterexample trace; capture to
-  `audits/evidence/TRJ5-A4.1/counterexample-on-revert.tla`.
+  `audits/evidence/release work-A4.1/counterexample-on-revert.tla`.
 
 ### R2 MINOR 7.2 -- rfl-tautology against new model
 
-- **File**: `lean4-fix.md`, `tickets.md` TRJ5-A5.3 acceptance.
+- **File**: `lean4-fix.md`, `tickets.md` release work-A5.3 acceptance.
 - **Change**: proof body MUST include at least one of `cases`,
   `induction`, `split_ifs`, or `intro`-with-non-rfl. One-line `by ...`
   proofs that elaborate without case analysis fail the close bar.
 
 ### R2 MINOR 8.3 -- Cross-lane overlap on chio-anchor
 
-- **File**: `tickets.md` TRJ5-A3.2 acceptance, also
+- **File**: `tickets.md` Kani harness evidence acceptance, also
   `kani-harness-design.md` "Lane B coordination note".
 - **Change**: explicit Lane B coordination -- the harness is updated
   within the same PR or one wave behind, never more than one wave.
 
 ### R2 MINOR 10.3 -- Kani lane advisory-to-required promotion
 
-- **File**: `tickets.md` TRJ5-A3.6.
+- **File**: `tickets.md` Kani harness evidence.
 - **Change**: new ticket promoting the new multi-crate Kani lane to
   required after two consecutive green runs.
 
@@ -259,9 +259,9 @@ should know about.
 
 - **Files patched** (all in `.planning/trajectory-5/`):
   - `SHIP-BAR-TRACKER.md` (Bar 1 row -- 21 -> 20 with footnote).
-  - `EXECUTION-BOARD.md` (TRJ5-A2 description -- 21 -> 20 with
+  - `EXECUTION-BOARD.md` (release work-A2 description -- 21 -> 20 with
     footnote; TRJ4-040..049 absorption count adjusted).
-  - `SCOPE-LOCK.md` (TRJ5-A2 row -- 21 -> 20 with footnote).
+  - `SCOPE-LOCK.md` (release work-A2 row -- 21 -> 20 with footnote).
   - `README.md` (Bar 1 paragraph -- 21 -> 20 with footnote).
   - `KICKOFF-CHECKLIST.md` (TRJ4-040..049 line -- adds 20-files
     note).
@@ -287,28 +287,28 @@ should know about.
   - `SCOPE-LOCK.md` (TRJ4-019 row removed from Lane A; new "Deferred
     to trj6 with rationale" subsection added with the full deferral
     rationale).
-  - `EXECUTION-BOARD.md` (TRJ5-A5 description rewritten to be Lean
-    work, formerly TRJ5-A6; TRJ4-019 absorption-summary row reads
+  - `EXECUTION-BOARD.md` (release work-A5 description rewritten to be Lean
+    work, formerly release work-A6; TRJ4-019 absorption-summary row reads
     "deferred to trj6").
   - `KICKOFF-CHECKLIST.md` (TRJ4-019 checkbox flipped to deferred;
     note records the slot reuse).
   - `TIMELINE.md` (Gantt updated; old `A5 = chio-equivalence-tests`
     and `A6 = Lean` flipped to `A5 = Lean`).
   - `lane-a-floor/README.md`,
-    `lane-a-floor/tickets.md` (TRJ5-A5 sub-lane is Lean; "On the
+    `lane-a-floor/tickets.md` (release work-A5 sub-lane is Lean; "On the
     dropped TRJ4-019" section added to tickets.md).
 
 ### R1 MAJOR section 2.1 -- Evidence-Gate ticket-ID suffix convention drift
 
-- **Decision**: adopt `TRJ5-A<n>.E` as the canonical Evidence Gate
+- **Decision**: adopt `release work-A<n>.E` as the canonical Evidence Gate
   ticket suffix per `templates/TICKET-TEMPLATE.md` section 1.1.
 - **File patched**:
   - `lane-a-floor/tickets.md` (header section "Ticket-ID
     convention" added explicitly stating the `.E` suffix; one `.E`
-    ticket per sub-lane added: `TRJ5-A1.E`, `TRJ5-A2.E`,
-    `TRJ5-A3.E`, `TRJ5-A4.E`, `TRJ5-A5.E`).
-  - `SHIP-BAR-TRACKER.md` Bar 1 cell trj5-tickets now references
-    `each sub-lane closes under its TRJ5-A<n>.E Evidence Gate
+    ticket per sub-lane added: `mutation evidence item`, `threat evidence item`,
+    `release work-A3.E`, `release work-A4.E`, `release work-A5.E`).
+  - `SHIP-BAR-TRACKER.md` Bar 1 cell release work-tickets now references
+    `each sub-lane closes under its release work-A<n>.E Evidence Gate
     ticket`.
   - `EXECUTION-BOARD.md` "Detail rows beyond..." paragraph now
     names the five `.E` tickets.
@@ -332,8 +332,8 @@ rationale".
 ### `wasm_guard_resource_exhaustion` (threat row 19) -> trj6
 
 Per Risk Register R3, this row depends on `wasm-guard SDK v4` which is
-out of scope for trj5. Pre-Wave-1 estimate is `BLOCKED-BY-ARCHITECTURE`.
-The trj5 banner reads "<n> of 20 covered, 1 deferred to trj6"; if Wave
+out of scope for release work. Pre-Wave-1 estimate is `BLOCKED-BY-ARCHITECTURE`.
+The release work banner reads "<n> of 20 covered, 1 deferred to trj6"; if Wave
 1 confirms additional rows in `IMPL-PARTIAL`/`BLOCKED-BY-ARCHITECTURE`,
 the deferral count grows and R3 escalation fires (>2 threshold).
 
@@ -352,7 +352,7 @@ Register R3 captures the contingency.
 1. **Wave 1 triage of 20 threat rows** must be the first work-item.
    Without the per-row triage tags landing in
    `audits/evidence/threats/<id>.json`, the runtime gate cannot
-   distinguish trj5-provable rows from architecture-blocked rows. The
+   distinguish release work-provable rows from architecture-blocked rows. The
    Wave 1 reviewer signs off on the triage in
    `reviews/lane-a-wave2.md`.
 
@@ -365,13 +365,13 @@ Register R3 captures the contingency.
    operator (R2 MAJOR 4.2). The fallback (hand-written
    `Reachable_step1`/`step2`/`step3`) is documented but the code is not
    yet written. If Wave 1 finds Apalache 0.50.x cannot encode the
-   recursive operator, TRJ5-A4.2 escalates.
+   recursive operator, release work-A4.2 escalates.
 
 4. **Kani local wall-clock budget validation** (R2 MAJOR 3.2). Each of
    the 12 proposed harnesses (4 per crate) must run locally under 30
    minutes. The validation file
-   `audits/evidence/TRJ5-A3.0/local-bound-validation.md` does not yet
-   exist. If any harness exceeds the budget, TRJ5-A3.0 escalates.
+   `audits/evidence/Kani harness evidence/local-bound-validation.md` does not yet
+   exist. If any harness exceeds the budget, Kani harness evidence escalates.
 
 5. **Lean toolchain pin** for CI (R2 MINOR 5.3). The
    `formal/lean4/lean-toolchain` pin file does not yet exist. Without
@@ -387,20 +387,20 @@ Register R3 captures the contingency.
 
 7. **`.cargo/mutants.toml` exclusion-list audit output** (R2
    OBSERVATION 1.2). The audit file
-   `audits/evidence/TRJ5-A1.0/exclude-audit.md` does not yet exist.
+   `audits/evidence/mutation exclusion audit/exclude-audit.md` does not yet exist.
    Without the audit, the >=65% target is held against a pre-existing
    exclusion list whose justification has not been re-checked in the
-   trj5 frame.
+   release work frame.
 
 8. **Cross-lane coordination on chio-anchor** (R2 MINOR 8.3). Lane B
-   may modify `crates/chio-anchor/src/batch.rs` during TRJ5-B3 in ways
+   may modify `crates/chio-anchor/src/batch.rs` during release work-B3 in ways
    that change the shape of `verify_anchor_batch`. The Lane A Kani
    harness depends on this shape. The coordination note is in place;
    Wave 4 verifies the Lane B reviewer accepts the constraint.
 
 9. **OWNERS.toml `crates/chio-equivalence-tests/**` path entry**.
    With TRJ4-019 deferred to trj6, the path entry under `lane.A.paths`
-   is technically dormant during trj5 but still claimed. Wave 4 may
+   is technically dormant during release work but still claimed. Wave 4 may
    choose to remove the path or leave it; the choice does not affect
    any close bar.
 

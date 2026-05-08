@@ -65,7 +65,7 @@ Chio claims (per `README.md`, `spec/PROTOCOL.md`, `docs/release/CHIO_WEB3_PARTNE
 
 **No HIPAA-aligned auditor, no SOC2 Type 2 reviewer, no AI-lab eval-pack consumer signs off on a "verifier" with these numbers.** `compliance/hitrust/` exists; the mutation evidence to back a HITRUST claim does not. The slogan that distinguishes Chio from a regular policy-engine SDK is the proof artifact - and the proof artifact is where the gap is widest.
 
-## 3. The trj5 quality lane - what to ship
+## 3. The release work quality lane - what to ship
 
 I propose six concrete deliverables. Each is measurable, each has an existing failing/empty artifact today, each can be backed by a numerical close-bar.
 
@@ -101,7 +101,7 @@ Wrong frame. A guard SDK, a kernel decomposition, a chiodome vision, a productiz
 
 ### (b) "Trj4 wave 0/4 already cover this"
 
-Two problems. (1) Wave 0 (E0.4 mutants gate) and Wave 4 (test quality) are one wave each of a 16-wave plan. By the 8-of-30 close-bar DONE rate, Wave 4 will land alongside Waves 5-7 (anchor witness, federation hybrid, T1.5 SRE) - and those are themselves load-bearing for assurance claims. Treating mutation kill as one wave inside a closeout is exactly what produced the trj4 erratum: structural framing got prioritized, runtime wiring got deferred. (2) Scope. Wave 4's E0.4 ticket is "land the per-row cargo-mutants evidence gate" - a CI plumbing task. It does not by itself drive any of the 21 `caught:0` placeholders to `caught >= 1`, does not deliver Kani harnesses on attest-verify/anchor/weights, does not rewrite the four TLA+ properties, does not raise per-crate kill rates. The wave plan should be **subsumed** into trj5-quality, not deferred under a trj5 product lane.
+Two problems. (1) Wave 0 (E0.4 mutants gate) and Wave 4 (test quality) are one wave each of a 16-wave plan. By the 8-of-30 close-bar DONE rate, Wave 4 will land alongside Waves 5-7 (anchor witness, federation hybrid, T1.5 SRE) - and those are themselves load-bearing for assurance claims. Treating mutation kill as one wave inside a closeout is exactly what produced the trj4 erratum: structural framing got prioritized, runtime wiring got deferred. (2) Scope. Wave 4's E0.4 ticket is "land the per-row cargo-mutants evidence gate" - a CI plumbing task. It does not by itself drive any of the 21 `caught:0` placeholders to `caught >= 1`, does not deliver Kani harnesses on attest-verify/anchor/weights, does not rewrite the four TLA+ properties, does not raise per-crate kill rates. The wave plan should be **subsumed** into release work-quality, not deferred under a release work product lane.
 
 ### (c) "Bronze conformance tier is enough for v1"
 
@@ -109,7 +109,7 @@ Two problems. (1) Wave 0 (E0.4 mutants gate) and Wave 4 (test quality) are one w
 
 ## 5. Concession - what is genuinely nice-to-have
 
-Not every assurance row is ship-blocking for trj5:
+Not every assurance row is ship-blocking for release work:
 
 - **Lean toolchain proven in CI** is nice-to-have; four-line `rfl` theorems against the model do not change the credibility math. Aeneas-equivalence refinement is correctly out of scope for one trajectory.
 - **Apalache liveness at PROCS=6, CAPS=16** (nightly) is nice-to-have if the PR-tier safety lane goes green at PROCS=4, CAPS=8.

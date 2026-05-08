@@ -72,31 +72,31 @@ Each lane's Evidence Gate demands the trio: **enforced call site** in production
 
 ## 4. Scope cap (concession)
 
-**Out of scope for trj5:**
+**Out of scope for release work:**
 
 - **Chiodos pheromone, chiodos selective disclosure, chiodos ladder.** `spec/CHIODOS_PHEROMONE.md`, `spec/CHIODOS_SELECTIVE_DISCLOSURE.md`, `spec/CHIODOS_LADDER.md`, `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` are research drafts. They do not yet have one wired caller; trying to realize them is premature.
 - **OID4VP / public identity network artifacts.** PROTOCOL.md section 10.1.x is a large surface that is mostly already at the "informational unless explicitly imported" boundary. No realization gap; leave it.
 - **Underwriting / credit / facility / market discipline (PROTOCOL.md sections 9 partial).** Already shipped as bounded; no spec MUST that is unwired on the kernel hot path. Leave alone.
 - **Third-party caveats with discharge** (audits/T1.1 line 19 explicitly punts these). Stay punted.
-- **Hardware attestation buffet** (Apple Secure Enclave kernel-key, TPM 2.0, Azure MAA hot-binding). Already conceded by Position 01 to the customer-driven slice; trj5 protocol realization explicitly excludes.
+- **Hardware attestation buffet** (Apple Secure Enclave kernel-key, TPM 2.0, Azure MAA hot-binding). Already conceded by Position 01 to the customer-driven slice; release work protocol realization explicitly excludes.
 - **`chio-cli` decomposition** (Position 03's main ask). Necessary, not load-bearing for protocol realization. Defer to trj6.
 
-The cap is sharp: trj5 protocol realization is **the seven W*.x primitives that already have types and one or two callers**. Nothing else. If a primitive is at "design-only" or "one prototype caller", it is out.
+The cap is sharp: release work protocol realization is **the seven W*.x primitives that already have types and one or two callers**. Nothing else. If a primitive is at "design-only" or "one prototype caller", it is out.
 
 ---
 
 ## 5. Composition with the trj4 wave plan
 
-The trj4 wave plan (`/Users/connor/.claude/plans/typed-coalescing-hejlsberg.md`) is wave-by-wave closeout of the 30 P0/P1 issues. Lanes R1-R5 above are NOT a separate trajectory; they are **the natural continuation of W1.5-W2.4** that just landed. Specifically:
+The trj4 wave plan (`local trajectory-4 closeout plan`) is wave-by-wave closeout of the 30 P0/P1 issues. Lanes R1-R5 above are NOT a separate trajectory; they are **the natural continuation of W1.5-W2.4** that just landed. Specifically:
 
 - W1.5 (commit `05fd0c56e`) wired chain-binding + negotiation + sibling-sum across 5 surfaces. Lane R1 promotes that wire to the only production entry.
 - W2.1 wired receipt v2 production mint. Lane R2 makes it mandatory.
 - W2.3 (commit `7ee1ddbcc`) wired AnchorWitnessClient. Lane R3 closes the sync-vs-async producer gap.
 - W2.4 (commit `75813d234`) wired metrics. Composes with R1-R5: every realized primitive emits a metric.
 
-**Recommendation:** absorb Lanes R1-R5 into Wave 3-7 of the existing trj4 wave plan. Do not start a separate trj5 with new branding. The trj4 erratum lost a credibility round; restoring credibility means **finishing the same plan with the same naming**, not pivoting to "trj5 protocol realization" as if it were new work. The spec v3.1.0 freeze (Lane R6) is the trj4 closeout deliverable that justifies removing the `reopened` status from `releases.toml`.
+**Recommendation:** absorb Lanes R1-R5 into Wave 3-7 of the existing trj4 wave plan. Do not start a separate release work with new branding. The trj4 erratum lost a credibility round; restoring credibility means **finishing the same plan with the same naming**, not pivoting to "release work protocol realization" as if it were new work. The spec v3.1.0 freeze (Lane R6) is the trj4 closeout deliverable that justifies removing the `reopened` status from `releases.toml`.
 
-If the council insists on a separate trj5, the structure stays identical -- but I would note that the Substrate Hardening Hawk's correct point in Position 01 section 7 is exactly this: "the trj4 erratum was a near-miss credibility incident." A second pivot would be the second over-claim. Lanes R1-R5 belong inside the wave plan.
+If the council insists on a separate release work, the structure stays identical -- but I would note that the Substrate Hardening Hawk's correct point in Position 01 section 7 is exactly this: "the trj4 erratum was a near-miss credibility incident." A second pivot would be the second over-claim. Lanes R1-R5 belong inside the wave plan.
 
 ---
 

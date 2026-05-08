@@ -85,7 +85,7 @@ The Quality Skeptic (4) is the most damning: even the artifacts that
 provenance-cite "Validation" in `TRAJECTORY-4-FINAL.md` are placeholders when
 inspected.
 
-## What trj5 should be
+## What release work should be
 
 **Trajectory 5 is the honesty trajectory.** Three coupled lanes, no separate
 brand from the trj4 wave plan, one ship-bar that is visible from outside.
@@ -116,7 +116,7 @@ prerequisite from the Decomposition advocate.
   collapse the dispatch sync-helper hop in
   `chio-kernel/src/kernel/mod.rs:6402`. This is the smallest decomposition
   cut that unblocks hot-path wiring; everything else (chio-cli trust-control
-  extraction, gravity-well surgery) stays out of trj5.
+  extraction, gravity-well surgery) stays out of release work.
 - **Single-entry verifier**: `verify_capability_full` becomes the only
   production path. Delete `verify_capability_full_without_budget_admit`;
   legacy `verify_capability_signature` callers migrate. PROTOCOL.md §408-418
@@ -177,7 +177,7 @@ Trj5 closes when **all three** are observably true:
    with `chio receipt explain`, and the demo run is captured as a fixture
    in `examples/`.
 
-If any of the three slips, trj5 stays open. No closeout erratum is needed
+If any of the three slips, release work stays open. No closeout erratum is needed
 because the bar is the kind a third party can verify.
 
 ## Why this shape

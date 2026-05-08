@@ -1,12 +1,12 @@
 # Trajectory 5 Evidence Gate
 
-**Status**: normative. This document is the contract every closing TRJ5-X.y
+**Status**: normative. This document is the contract every closing release work-X.y
 ticket cites. It is not guidance. It is rules.
 
 **Origin**: `.planning/trajectory-4/TRAJECTORY-4-CLOSEOUT-ERRATUM.md` (2026-05-05).
 The erratum recorded that approximately 30 P0/P1 issues were filed against
 artifacts the prior closeout had marked Closed or Validation. Trj4 used a
-weaker close bar; trj5 uses this one.
+weaker close bar; release work uses this one.
 
 **Audience**: Lane A (floor: mutation kill, threat-coverage real runs, Kani,
 TLA+, Lean), Lane B (hot-path wiring of negotiation/receipt-v2/anchor-batch),
@@ -17,7 +17,7 @@ this document.
 
 ## 1. The Four-Artifact Rule
 
-A TRJ5-X.y ticket flips from `EVIDENCE-PENDING` to `EVIDENCE-COMPLETE` only when
+A release work-X.y ticket flips from `EVIDENCE-PENDING` to `EVIDENCE-COMPLETE` only when
 ALL FOUR of the following are committed in the same merged PR (or in a chain of
 PRs whose final PR carries the audit-doc signoff). Any one missing keeps the
 ticket open. There is no "three of four". There is no provisional close.
@@ -71,7 +71,7 @@ Either path satisfies Artifact B as long as the post-edit cited lines contain
 `MUST`. The ticket scope MUST include the spec edit; promotion or tightening
 cannot be deferred.
 
-The `scripts/check-trj5-evidence-gate.sh` script (Wave 1 deliverable) reads
+The `scripts/check-release work-evidence-gate.sh` script (Wave 1 deliverable) reads
 the audit-doc-cited spec lines from the merged-branch HEAD of `spec/PROTOCOL.md`
 (NOT from the synthesis-time snapshot), so a tightening that lands the spec
 edit in the same PR will pass the gate.
@@ -125,7 +125,7 @@ This is the single most-violated rule in the trj4 erratum's findings.
 ## 2. Anti-Pattern Catalog
 
 Each entry is a concrete failure mode the trj4 erratum or the Quality Skeptic
-identified. If a TRJ5 reviewer detects any of these in a closing PR, the
+identified. If a release work reviewer detects any of these in a closing PR, the
 ticket goes back to `EVIDENCE-PENDING`.
 
 ### 2.1 `caught: 0` placeholder
@@ -157,7 +157,7 @@ function it claims to implement still contains `unimplemented!()`,
 `todo!()`, or returns `Err(KernelError::Unsupported(_))` on the path that
 actually matters. CI does not catch this because nothing exercises the path.
 
-Detection rule: every TRJ5 close MUST run
+Detection rule: every release work close MUST run
 `grep -rn 'unimplemented!\|todo!\|"not yet implemented"' <touched_files>` and
 verify the production hot-path function does not contain any of these on the
 governed path.
@@ -168,7 +168,7 @@ Pattern: the conformance test imports a struct named like the production type,
 but it is in fact a near-copy declared in the test file or in a `tests/common/`
 helper. The test passes; production is unaffected.
 
-Detection rule: every TRJ5 conformance test MUST satisfy `cargo expand` in
+Detection rule: every release work conformance test MUST satisfy `cargo expand` in
 the test crate showing only `chio_kernel`, `chio_anchor`, `chio_federation`,
 `chio_kernel_core`, `chio_core_types`, `chio_core` (and equivalents) as the
 imports of the function under test. If a test-local helper redefines a
@@ -222,7 +222,7 @@ Pattern: a README or release note advertises a metric (mutation kill 65%,
 job either does not run, runs in warn-only mode, or runs against a
 placeholder fixture.
 
-Detection rule: every TRJ5 banner MUST reference the workflow run URL of the
+Detection rule: every release work banner MUST reference the workflow run URL of the
 job that produced the banner number, plus the artifact path that contains
 the raw output. `chio-attest-verify` mutation kill 80%? Cite the run, cite the
 artifact, cite the survivors.
@@ -256,7 +256,7 @@ function whose name starts with `verify_`, `dispatch_`, `mint_`, `sign_`,
 
 ## 3. Close-Bar Tracker Integration
 
-Every TRJ5-X.y ticket carries one of three states. Transitions are
+Every release work-X.y ticket carries one of three states. Transitions are
 machine-checkable.
 
 ### 3.1 OPEN
@@ -285,11 +285,11 @@ ticket as `bucket: PROVEN_WIRED`, `wired_runtime_path: y`,
 
 ### 3.4 Audit-doc evidence section format
 
-Every TRJ5 audit doc MUST contain a section named `## Evidence` with a
+Every release work audit doc MUST contain a section named `## Evidence` with a
 sub-section per ticket of the form:
 
 ```
-### TRJ5-X.y: <title>
+### release work-X.y: <title>
 
 - Enforced call site: crates/<crate>/src/<file>:<line>
 - Spec MUST: spec/PROTOCOL.md section <N.M.K> lines <a>-<b>
@@ -309,8 +309,8 @@ that lands at the start of the wave. It is NOT acceptable on the close PR.
 
 The `.github/workflows/close-bar-tracker.yml` workflow (existing, see
 `.github/workflows/`) is extended by Wave 1 to run
-`scripts/check-trj5-evidence-gate.sh` (a Wave 1 deliverable, TBD-from-W1).
-The script reads the audit doc, parses each `### TRJ5-X.y` block, and
+`scripts/check-release work-evidence-gate.sh` (a Wave 1 deliverable, TBD-from-W1).
+The script reads the audit doc, parses each `### release work-X.y` block, and
 fails CI if:
 
 - Any cited path does not exist.
@@ -335,7 +335,7 @@ flag.
 
 ## 5. The One-Line Summary
 
-A TRJ5 ticket closes when an external auditor can read the audit doc and,
+A release work ticket closes when an external auditor can read the audit doc and,
 without running CI, point to a path:line where production enforces the rule
 and a test path that fails when that line is reverted. Anything less is the
 trj4 pattern.

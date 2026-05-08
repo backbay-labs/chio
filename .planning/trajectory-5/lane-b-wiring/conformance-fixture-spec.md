@@ -6,7 +6,7 @@ The trj4 erratum's failure mode (synthesis lines 9-13) was fixtures that passed 
 
 ## Where fixtures live
 
-`crates/chio-conformance/tests/<name>.rs`. One fixture file per primitive. The trj5 ship-bar item 2 (synthesis lines 152-155) names this directory explicitly:
+`crates/chio-conformance/tests/<name>.rs`. One fixture file per primitive. The release work ship-bar item 2 (synthesis lines 152-155) names this directory explicitly:
 
 > "The three Lane B primitives ... are each protected by a signed negative conformance fixture in `crates/chio-conformance/tests/` that exercises the production call site and fails when the enforcement is removed."
 
@@ -81,7 +81,7 @@ PR description format (REQUIRED for every Lane B ticket that introduces a fixtur
 ```markdown
 ## Reverse-test
 
-Branch: `trj5-b<n>.<m>-revert-test` (draft, not for merge)
+Branch: `release work-b<n>.<m>-revert-test` (draft, not for merge)
 
 Reverted commits:
 - <SHA> (the wiring change)

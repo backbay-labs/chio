@@ -17,19 +17,19 @@ This document is the fix-log for Wave 3 Lane B remediation, addressing R3 (Lane 
 **Files patched**:
 - `lane-b-wiring/receipt-v2-failclosed.md`: added explicit "Spec-language framing (R3 BLOCKER #1 fix)" paragraph; clarified Case E covers both "stale" and "never-pinned"; updated "Why this design satisfies the Evidence Gate" to explicitly call out tightening vs promotion.
 - `lane-b-wiring/PLAN.md`: rewrote B2 "Spec citation" to call out the descriptive-prose-with-no-modal-verb starting state and frame the change as introducing a NEW normative MUST. Updated acceptance criterion 4 to say "tightening, not promotion".
-- `lane-b-wiring/tickets.md`: rewrote TRJ5-B2.4 ticket title and description to say "introduces NEW normative MUST" with explicit tightening framing.
+- `lane-b-wiring/tickets.md`: rewrote release work-B2.4 ticket title and description to say "introduces NEW normative MUST" with explicit tightening framing.
 - `templates/EVIDENCE-GATE.md`: §1.2 (Artifact B) extended to explicitly recognize TWO valid paths (promotion AND tightening); the script reads from merged-branch HEAD so a same-PR spec edit satisfies the gate.
 
 ### R3 BLOCKER #2: B3 lint script soundness contract
 
 **Severity**: BLOCKER. **Status**: FIXED (Option A: honest reframing, NOT AST upgrade).
 
-**Summary of fix**: The 50-line-window grep heuristic CANNOT guarantee zero false-negatives. Per R3 finding #5, chose Option A (honest reframing): the runtime gate at `batch.rs:227-235` is the load-bearing defense; the lint is best-effort fast-feedback documentation. Both false-positives AND false-negatives are now tolerated. AST upgrade is OUT OF SCOPE for trj5 (deferred to trj6).
+**Summary of fix**: The 50-line-window grep heuristic CANNOT guarantee zero false-negatives. Per R3 finding #5, chose Option A (honest reframing): the runtime gate at `batch.rs:227-235` is the load-bearing defense; the lint is best-effort fast-feedback documentation. Both false-positives AND false-negatives are now tolerated. AST upgrade is OUT OF SCOPE for release work (deferred to trj6).
 
 **Files patched**:
 - `lane-b-wiring/anchor-batch-async-only.md`: rewrote "The script's contract" section to explicitly enumerate the false-negative scenarios (cross-function policy construction, JSON-deserialized policies, builder-pattern construction, cross-crate calls) and reframe the lint as fast-feedback only. Updated "Why this design satisfies the Evidence Gate" footer.
 - `lane-b-wiring/PLAN.md`: B3 acceptance criterion 2 reframed honestly.
-- `lane-b-wiring/tickets.md`: TRJ5-B3.3 effort reduced from M to S (since the lint is no longer claiming soundness, scope is smaller); ticket text records the reframed contract.
+- `lane-b-wiring/tickets.md`: release work-B3.3 effort reduced from M to S (since the lint is no longer claiming soundness, scope is smaller); ticket text records the reframed contract.
 
 ### R3 BLOCKER #3: B0 impl count audit (47 sites in 31 files, not 31 impls)
 
@@ -39,16 +39,16 @@ This document is the fix-log for Wave 3 Lane B remediation, addressing R3 (Lane 
 
 **Files patched**:
 - `lane-b-wiring/async-trait-migration.md`: "Blast-radius numbers" section updated to reconcile 31 (files) vs 47 (sites); added enumeration of files with multiple impls.
-- `lane-b-wiring/tickets.md`: TRJ5-B0.1 ticket updated to require BOTH file-count and site-count verification.
+- `lane-b-wiring/tickets.md`: release work-B0.1 ticket updated to require BOTH file-count and site-count verification.
 - `architecture/ASYNC-KERNEL-MIGRATION.md`: §1.3 inventory table shows both site-count (47) and file-count (31), plus the corrected `&mut self` count (24 method definitions, 36 occurrences). §5 diff size table notes the impl-site count.
 
 ### R3 MAJORs addressed
 
-- **#3 (single-entry-verifier error mapping)**: TRJ5-B1.2 ticket extended to require typed deny reasons (`InvalidSignature`, `AttenuationViolation`, `SchemaExceedsNegotiatedCeiling`) at all four hosted call sites, not just generic `KernelError::InvalidSignature`.
+- **#3 (single-entry-verifier error mapping)**: release work-B1.2 ticket extended to require typed deny reasons (`InvalidSignature`, `AttenuationViolation`, `SchemaExceedsNegotiatedCeiling`) at all four hosted call sites, not just generic `KernelError::InvalidSignature`.
 - **#1 reservation (B2 helper functions)**: `lane-b-wiring/receipt-v2-failclosed.md` updated to specify that `count_v1_receipts` and `count_v2_receipts` MUST read from the real SQLite tables directly, not via a kernel-side `test_only_*` accessor (avoiding the `EVIDENCE-GATE.md` §8.3 anti-pattern).
 - **#4 last paragraph (B2 stale vs never-pinned)**: spec edit now explicitly enumerates both "stale" and "never-pinned" cases so a future implementation cannot misread "not pinned fresh" as "stale only".
 - **#7 spec MUST citations (B3 promotion of arrow notation)**: PLAN.md retains B3.4 spec edit; Wave-1 audit-doc owner is responsible for noting the arrow notation is being upgraded to RFC 2119 MUST language.
-- **#9 second-reviewer requirement**: TRJ5-B1.E, B2.E, B3.E, B4.E close tickets all now explicitly require "lane owner AND a non-author reviewer" sign-off per `EVIDENCE-GATE.md` §3.3.
+- **#9 second-reviewer requirement**: release work-B1.E, B2.E, B3.E, B4.E close tickets all now explicitly require "lane owner AND a non-author reviewer" sign-off per `EVIDENCE-GATE.md` §3.3.
 
 ### R3 MINORs and OBSERVATIONs
 
@@ -92,7 +92,7 @@ This document is the fix-log for Wave 3 Lane B remediation, addressing R3 (Lane 
 
 ```
 $ grep -rn "1148-1165" .planning/trajectory-5/ | grep -v /reviews/ | grep -v /debate/ | grep -v /lane-c-demo/
-[All 7 remaining matches are explanatory context — footnotes that explicitly say "synthesis line 31 cited :1148-1165 which is the resolver helper, not the runtime downgrade".]
+[All 7 remaining matches are explanatory context  -  footnotes that explicitly say "synthesis line 31 cited :1148-1165 which is the resolver helper, not the runtime downgrade".]
 
 $ grep -rn "ToolServer\b" .planning/trajectory-5/ | grep -v ToolServerConnection | grep -v ToolServerOutput | grep -v ToolServerEvent | grep -v ToolServerStreamResult | grep -v /reviews/ | grep -v /debate/ | grep -v /lane-c-demo/
 [Remaining matches are struct names (`EchoToolServer`, `SharedUpstreamToolServer`), method names (`register_tool_server`, `tool_server_escape`), or one synthesis-verbatim quote in lane-b-wiring/README.md that is now footnoted.]
@@ -110,11 +110,11 @@ See "B4 sub-lane" section below.
 
 **Severity**: MAJOR. **Status**: FIXED.
 
-**Summary of fix**: Picked the canonical `.E` suffix per sub-lane (matching `templates/TICKET-TEMPLATE.md` §38). Retired `TRJ5-B-EG` (master shorthand) and `TRJ5-B.CLOSE` (Lane B shorthand). Each Lane B sub-lane now carries one `.E` ticket: `TRJ5-B1.E`, `TRJ5-B2.E`, `TRJ5-B3.E`, `TRJ5-B4.E`.
+**Summary of fix**: Picked the canonical `.E` suffix per sub-lane (matching `templates/TICKET-TEMPLATE.md` §38). Retired `release work-B-EG` (master shorthand) and `release work-B.CLOSE` (Lane B shorthand). Each Lane B sub-lane now carries one `.E` ticket: `release work-B1.E`, `release work-B2.E`, `release work-B3.E`, `bilateral DSSE signing item`.
 
 **Files patched**:
 - `lane-b-wiring/tickets.md`: header convention paragraph added; per-primitive `.E` close tickets replace the single `B.CLOSE` aggregator.
-- `EXECUTION-BOARD.md`: Lane B table entry uses `TRJ5-B1.E` ... `TRJ5-B4.E`; cross-lane dependency table; status conventions footer.
+- `EXECUTION-BOARD.md`: Lane B table entry uses `release work-B1.E` ... `bilateral DSSE signing item`; cross-lane dependency table; status conventions footer.
 
 ---
 
@@ -130,23 +130,23 @@ See "B4 sub-lane" section below.
 - **Dependencies**: B0 (hard, async-trait migration); B1 (soft, single-entry verifier discipline reuse).
 
 **Files added**:
-- `lane-b-wiring/dsse-bilateral-signing.md` (NEW, ~250 lines): scope, current state of `CoSigningBody`, target wire format (PAE encoding), migration strategy (cohabitation chosen for trj5; one-version-transition deferred to trj6), relationship to `DualSignedReceipt`, conformance fixture design (with code skeleton), why R4 BLOCKER 1 was a BLOCKER, out of scope for B4.
+- `lane-b-wiring/dsse-bilateral-signing.md` (NEW, ~250 lines): scope, current state of `CoSigningBody`, target wire format (PAE encoding), migration strategy (cohabitation chosen for release work; one-version-transition deferred to trj6), relationship to `DualSignedReceipt`, conformance fixture design (with code skeleton), why R4 BLOCKER 1 was a BLOCKER, out of scope for B4.
 
 **Files updated for B4**:
 - `lane-b-wiring/README.md`: sub-lane summary table; week-by-week timeline; ship-bar item count (3 -> 4).
 - `lane-b-wiring/PLAN.md`: new "Sub-lane B4: DSSE-conformant bilateral signing" section.
-- `lane-b-wiring/tickets.md`: new TRJ5-B4.1..B4.6 sub-lane (6 tickets); new TRJ5-B4.E close ticket; ticket count summary updated 23 -> 32.
+- `lane-b-wiring/tickets.md`: new bilateral DSSE signing item sub-lane (6 tickets); new bilateral DSSE signing item close ticket; ticket count summary updated 23 -> 32.
 - `lane-b-wiring/conformance-fixture-spec.md`: §8a (B4 negative-conformance fixture pattern); fixture inventory table extended.
 - `templates/CONFORMANCE-FIXTURE-PATTERN.md`: §1.1 lane-table extended; §8a (B4 negative-conformance pattern subsection).
-- `architecture/SPEC-TO-RUNTIME-MAP.md`: §8 (Cross-Org Bilateral Cosign) extended with two new rows for §6 PAE encoding and §7 signature verification, both citing TRJ5-B4.E.
+- `architecture/SPEC-TO-RUNTIME-MAP.md`: §8 (Cross-Org Bilateral Cosign) extended with two new rows for §6 PAE encoding and §7 signature verification, both citing bilateral DSSE signing item
 - `architecture/RISK-REGISTER.md`: new R7 (DSSE complexity); summary table extended.
-- `EXECUTION-BOARD.md`: Lane B table extended with TRJ5-B4 row; cross-lane dependency table extended (B0->B4 hard, B1->B4 soft, B4->C2 hard).
+- `EXECUTION-BOARD.md`: Lane B table extended with release work-B4 row; cross-lane dependency table extended (B0->B4 hard, B1->B4 soft, B4->C2 hard).
 - `SHIP-BAR-TRACKER.md`: Bar 2 expanded to four primitives; evidence-required (4) row added; machine-readable signal lists four files including `bilateral_dsse_pae_only_is_conformant.rs`.
 - `SCOPE-LOCK.md`: Lane B in-scope row added for B4 (per Lane A agent's auto-update).
 - `README.md`: ship-bar Bar 2 expanded; trj4 absorption table extended; lane-table updated to weeks 1-7.
 - `TIMELINE.md`: master timeline ASCII updated; per-lane Lane B; critical path.
 
-**B4 ticket IDs**: TRJ5-B4.1 (wire-format design), B4.2 (`bilateral_dsse.rs` module), B4.3 (federation hot-path emission), B4.4 (legacy disclaimer doc-comment), B4.5 (negative conformance fixture), B4.6 (spec citation MUST verification). Plus TRJ5-B4.E (Evidence Gate close ticket).
+**B4 ticket IDs**: bilateral DSSE signing item (wire-format design), B4.2 (`bilateral_dsse.rs` module), B4.3 (federation hot-path emission), B4.4 (legacy disclaimer doc-comment), B4.5 (negative conformance fixture), B4.6 (spec citation MUST verification). Plus bilateral DSSE signing item (Evidence Gate close ticket).
 
 ---
 
@@ -167,8 +167,8 @@ All 7 remaining `1148-1165` matches are explanatory footnotes that explicitly de
 
 ```
 $ grep -rn "ToolServer\b" .planning/trajectory-5/ 2>/dev/null | grep -v ToolServerConnection | grep -v ToolServerOutput | grep -v ToolServerEvent | grep -v ToolServerStreamResult | grep -v /reviews/ | grep -v /debate/ | grep -v /lane-c-demo/
-lane-a-floor/threat-evidence-backfill.md:102:     ... TRJ5-B0 ToolServer async migration ...  [Lane A doc, NOT my scope]
-lane-a-floor/tickets.md:136:                       ... TRJ5-B0 ToolServer migration ...  [Lane A doc, NOT my scope]
+lane-a-floor/threat-evidence-backfill.md:102:     ... release work-B0 ToolServer async migration ...  [Lane A doc, NOT my scope]
+lane-a-floor/tickets.md:136:                       ... release work-B0 ToolServer migration ...  [Lane A doc, NOT my scope]
 lane-b-wiring/conformance-fixture-spec.md:50: kernel.register_tool_server(Box::new(EchoToolServer::new()));  [method name + struct name, NOT trait]
 lane-b-wiring/async-trait-migration.md:36:  the SharedUpstreamToolServer at line 2682 + 2860.  [struct name, NOT trait]
 lane-b-wiring/async-trait-migration.md:65:  (the `EchoToolServer` at lines 58-77)  [struct name, NOT trait]
@@ -183,7 +183,7 @@ All remaining bare `ToolServer` matches in master/template/architecture/lane-b a
 
 ## Anything left for Wave 4 final-pass
 
-1. **Lane A `tool_server_escape` references**: `lane-a-floor/threat-evidence-backfill.md:102` and `lane-a-floor/tickets.md:136` reference "TRJ5-B0 ToolServer async migration". These are out of my scope (Lane A fix agent's domain). They are informational context about whether the threat row defers; the trait-name correction is cosmetic but consistent.
+1. **Lane A `tool_server_escape` references**: `lane-a-floor/threat-evidence-backfill.md:102` and `lane-a-floor/tickets.md:136` reference "release work-B0 ToolServer async migration". These are out of my scope (Lane A fix agent's domain). They are informational context about whether the threat row defers; the trait-name correction is cosmetic but consistent.
 
 2. **Synthesis source text**: `debate/00-SYNTHESIS.md` lines 31, 38, 95, 105 still cite `:1148-1165` and `ToolServer`. Per the task instruction, "the synthesis itself can carry a SUPERSEDED footnote rather than be rewritten." I did not add a footnote to the synthesis itself; instead, the Lane B docs and master docs all contain explicit correction-footnotes. If Wave 4 wants a SUPERSEDED stub at the synthesis, it can be added to a new file `debate/00a-errata.md` (not attempted in Wave 3 to avoid synthesis-mutation risk).
 
@@ -191,9 +191,9 @@ All remaining bare `ToolServer` matches in master/template/architecture/lane-b a
    - Lane C C2 (capability lease + budget bond) and C1 (bilateral demo) MUST consume B4's `bilateral_dsse.rs` PAE-conformant signing surface, NOT the legacy `DualSignedReceipt`-only surface.
    - Lane C release notes MUST carry the explicit non-§6 disclaimer for `DualSignedReceipt::verify` (per B4.4).
    - The "Option A two-signature" framing in `lane-c-demo/bilateral-cosign-flow.md` is now superseded by the B4 design; Lane C agent should rewrite that doc to consume B4 rather than implement the two-signature framing.
-   - Lane C's prior `LB-AT` alias (now `TRJ5-B0.5`) and `LB-CAP`/`LB-RV2`/`LB-AB` aliases need to be replaced with literal ticket IDs (R1 finding 2.2). This is the Lane C agent's responsibility.
+   - Lane C's prior `LB-AT` alias (now `release work-B0.5`) and `LB-CAP`/`LB-RV2`/`LB-AB` aliases need to be replaced with literal ticket IDs (R1 finding 2.2). This is the Lane C agent's responsibility.
 
-4. **`OWNERS.toml` overlap rows**: R1 finding 3.4 / 3.5 calls for adding `coordination_owner` to overlap rows. The overlap on `crates/chio-federation/` between B and C is now deeper because B4 lives in `chio-federation`. Wave 4 should add `coordination_owner = "@bb-connor"` (the manifest's `single_owner`).
+4. **`OWNERS.toml` overlap rows**: R1 finding 3.4 / 3.5 calls for adding `coordination_owner` to overlap rows. The overlap on `crates/chio-federation/` between B and C is now deeper because B4 lives in `chio-federation`. Wave 4 should add `coordination_owner = "release owner"` (the manifest's `single_owner`).
 
 5. **`releases.toml` block**: R1 finding noted the block needs a `[trajectory_5]` row. Out of my Wave 3 scope.
 

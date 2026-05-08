@@ -11,7 +11,7 @@
 This ledger is the structured per-lane sign-off artifact required by
 `KICKOFF-CHECKLIST.md` "Wave-2 reviewer sign-off ledger" row. The
 original Wave-2 reviewer for Lane B (R3) was an autonomous agent; per
-the trj5 autonomous-execution context (see `OWNERS.toml` top-of-file
+the release work autonomous-execution context (see `OWNERS.toml` top-of-file
 note), the sign-off is recorded by the Wave-4 final-pass agent against
 the closeout matrix evidence.
 
@@ -52,7 +52,7 @@ and OBSERVATIONs".
 | Finding | Severity | Title | Closed by | Status |
 |---|---|---|---|---|
 | R1-BLOCKER-4.3 | BLOCKER | Master / template / architecture / Lane C docs cite pre-correction line range `mod.rs:1148-1165` and trait name `ToolServer` | `W3-lane-b-fixes.md` § "R1 BLOCKER on line-range and trait-name drift" (full file inventory in W3 fix log) | CLOSED |
-| R1-MAJOR-2.1 | MAJOR | Three different Evidence-Gate ticket suffix conventions (`TRJ5-B-EG`, `TRJ5-B.CLOSE`, `TRJ5-B<n>.E`) | `W3-lane-b-fixes.md` § "R1 MAJOR on Evidence-Gate ticket suffix convention" | CLOSED |
+| R1-MAJOR-2.1 | MAJOR | Three different Evidence-Gate ticket suffix conventions (`release work-B-EG`, `release work-B.CLOSE`, `release work-B<n>.E`) | `W3-lane-b-fixes.md` § "R1 MAJOR on Evidence-Gate ticket suffix convention" | CLOSED |
 | R1-MAJOR-7.3 | MAJOR | Lane B / Lane C tickets lack trj4 back-references | Lane B `tickets.md` carries `trj4_absorbed` columns at sub-lane summary; OWNERS.toml `trj4_absorbed = [...]` lane-B row | CLOSED |
 | R4-BLOCKER-1 | BLOCKER (R4 origin; affects Lane B) | DSSE Option-A two-signature insufficient -- promote DSSE-conformant signing to a Lane B fourth primitive (B4) | `W3-lane-b-fixes.md` § "B4 sub-lane (NEW per R4 BLOCKER 1)" -- adds B4.1..B4.6 plus B4.E close ticket | CLOSED |
 
@@ -105,7 +105,7 @@ Wave 1 with eyes open:
    week 3 (B1) / weeks 4-5 (B2/B3) / weeks 5-6 (B4) per the week-by-week
    timeline.
 
-2. **B4 spec edit dependency**. TRJ5-B4.6 ticket assumes
+2. **B4 spec edit dependency**. bilateral DSSE signing item ticket assumes
    `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 and
    §7 step 11-12 already contain `MUST`. If Wave 1 spec audit shows
    they do not, B4.6 scope expands to include the spec edit. (W3 Lane
@@ -115,13 +115,13 @@ Wave 1 with eyes open:
    bond) and Lane C C1 (bilateral demo) MUST consume B4's
    `bilateral_dsse.rs` PAE-conformant signing surface. Lane C
    docs already swept; OWNERS.toml `crates/chio-federation/` overlap
-   row carries `coordination_owner = "@bb-connor"` and `path_overlaps`
+   row carries `coordination_owner = "release owner"` and `path_overlaps`
    list including `bilateral_dsse.rs`. Merge order is mediated by the
    coordination owner.
 
 4. **Lane A ↔ B0 coordination on `chio-anchor`**. R2-MINOR-8.3 noted
    that Lane B may modify `crates/chio-anchor/src/batch.rs` during
-   TRJ5-B3 in ways that change the shape of `verify_anchor_batch`. The
+   release work-B3 in ways that change the shape of `verify_anchor_batch`. The
    Lane A Kani harness depends on this shape. The coordination note is
    in place in `lane-a-floor/kani-harness-design.md`.
 
@@ -143,10 +143,10 @@ Wave 1 with eyes open:
    close ticket (B1.E, B2.E, B3.E, B4.E) requires lane owner AND a
    non-author reviewer sign-off per `EVIDENCE-GATE.md` §3.3. In
    autonomous-execution mode, the "non-author reviewer" is a separate
-   agent run; the human escalation path is `@bb-connor`.
+   agent run; the human escalation path is `release owner`.
 
 8. **Cohabitation transition for B4**. `lane-b-wiring/dsse-bilateral-signing.md`
-   chooses cohabitation for trj5 (legacy `CoSigningBody` retained as
+   chooses cohabitation for release work (legacy `CoSigningBody` retained as
    fixture-only signer; production hot path emits DSSE PAE envelope by
    default). One-version-transition deferred to trj6.
 
@@ -154,12 +154,12 @@ Wave 1 with eyes open:
 
 ## Final approval line
 
-**LANE B WAVE-2 SIGN-OFF**: APPROVED for trj5 kickoff execution.
+**LANE B WAVE-2 SIGN-OFF**: APPROVED for release work kickoff execution.
 **Recorded**: 2026-05-08 by Wave-4 final-pass agent.
 **Authority**: `reviews/W4-closeout-matrix.md` (3 R3 BLOCKERs + 6 R3
 MAJORs + R1-BLOCKER-4.3 + R4-BLOCKER-1 all CLOSED; B4 sub-lane added).
 **Pre-execution gates**: 8 informational items above; none gate
 kickoff. All routed through autonomous waves under
-`human_assignment = "@bb-connor"`.
+`human_assignment = "release owner"`.
 
 End of Lane B Wave-2 sign-off ledger.

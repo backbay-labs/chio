@@ -194,7 +194,7 @@ Recommended release posture: keep #618 blocked until foundational PRs are merged
 ### T5-AUDIT-P0-022 - Chio-credentials mutation baseline omits included verification logic
 
 - PR: #603
-- Files: `audits/evidence/mutants/chio-credentials/2026-05-08.json`, `audits/evidence/TRJ5-A1.0/exclude-audit.md`
+- Files: `audits/evidence/mutants/chio-credentials/2026-05-08.json`, `audits/evidence/mutation exclusion audit/exclude-audit.md`
 - Evidence: the JSON records a crate-level kill rate while the audit notes cargo-mutants did not cover 13 `include!`d files containing credential verification logic.
 - Impact: aggregate tooling treats 74.1% as a crate baseline despite major decision code outside the mutation surface.
 - Fix: convert included files to modules or explicitly mark the result as partial with machine-readable `examine_scope` caveats.
@@ -234,7 +234,7 @@ Recommended release posture: keep #618 blocked until foundational PRs are merged
 
 - PR: #620
 - Files: `.planning/trajectory-5/OWNERS.toml`, `.planning/trajectory-5/SHIP-BAR-TRACKER.md`
-- Evidence: Lane C ownership covers `examples/bounded-chiodome/**`, while the actual demo path is `examples/chiodome-bilateral/**`. The ship-bar tracker says it is consumed by `scripts/check-trj5-ship-bar.sh`, but that script is not added.
+- Evidence: Lane C ownership covers `examples/bounded-chiodome/**`, while the actual demo path is `examples/chiodome-bilateral/**`. The ship-bar tracker says it is consumed by `scripts/check-release work-ship-bar.sh`, but that script is not added.
 - Impact: owner routing misses the main demo artifact and the advertised close gate is a paper gate.
 - Fix: add the correct demo path to OWNERS and either add the ship-bar checker or point the tracker at the implemented preflight gate.
 
@@ -297,7 +297,7 @@ Recommended release posture: keep #618 blocked until foundational PRs are merged
 ### T5-AUDIT-P1-009 - AI/process metadata is committed in code or production-adjacent comments
 
 - PRs: #601, #603, #608, #609, #610, #612, #613, #614, #617, #620, #621, #622
-- Evidence: examples include `codex[bot] P1 on PR #610`, `cursor[bot] LOW on PR #612`, `TRJ5-A3.3`, `W1.3`, `trj4 closeout audit`, `R4 BLOCKER`, revert-procedure chatter, and "Claude" executor context in code, tests, scripts, and OWNERS comments.
+- Evidence: examples include `codex[bot] P1 on PR #610`, `cursor[bot] LOW on PR #612`, `Kani harness evidence`, `W1.3`, `trj4 closeout audit`, `R4 BLOCKER`, revert-procedure chatter, and "Claude" executor context in code, tests, scripts, and OWNERS comments.
 - Impact: these comments age poorly and match the user's rubric for AI slop or planning metadata leakage.
 - Fix: move provenance to PR bodies or planning logs. Keep committed code and test comments focused on durable behavior and protocol rationale.
 

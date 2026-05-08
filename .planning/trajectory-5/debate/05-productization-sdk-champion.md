@@ -2,7 +2,7 @@
 
 **Author role:** Productization, SDK, and Dogfood Champion
 **Date:** 2026-05-07
-**Thesis:** Chio has accreted 94 production crates, 290+ planning phases, three flagship "internet-of-agents" example networks, and a v3.18 bounded-ship qualification — and zero external users on record. Trj5 should be the productization trajectory: finish the v4.0 WASM Guard Runtime, ship the v4.1 Rust guest SDK in source, polish the three supported paths (MCP migration, web backend, native tool server) to "ten minutes from `brew install` to first signed receipt", make `chio receipt explain` a real debugging story, and dogfood Chio against the local Chio knowledge-base MCP stack that already lives at `ops/knowledge-base/`. Hardening without users is theater. The trj4 erratum is itself the strongest evidence: the bug we keep finding ("structural framing landed, runtime wiring did not") is the bug a single real integrator would surface in a week.
+**Thesis:** Chio has accreted 94 production crates, 290+ planning phases, three flagship "internet-of-agents" example networks, and a v3.18 bounded-ship qualification  -  and zero external users on record. Trj5 should be the productization trajectory: finish the v4.0 WASM Guard Runtime, ship the v4.1 Rust guest SDK in source, polish the three supported paths (MCP migration, web backend, native tool server) to "ten minutes from `brew install` to first signed receipt", make `chio receipt explain` a real debugging story, and dogfood Chio against the local Chio knowledge-base MCP stack that already lives at `ops/knowledge-base/`. Hardening without users is theater. The trj4 erratum is itself the strongest evidence: the bug we keep finding ("structural framing landed, runtime wiring did not") is the bug a single real integrator would surface in a week.
 
 ---
 
@@ -35,7 +35,7 @@
 
 ### 1.5 The one place we already dogfood
 
-The most under-celebrated artifact in the repo is `ops/knowledge-base/`. Commits `f35189be7`, `6de68c9d6`, `1ea076a94` shipped a Postgres + pgvector + Neo4j + Graphiti + Chio-KB-MCP gateway on `:8111/mcp/`, with `make kb-eval` enforcing an A-grade dogfood report (`DOGFOOD-REVIEW.md`: 22/22 fixtures, p@5 0.99, recall@10 1.00, p95 1295 ms). We have a real MCP server we run for ourselves. We do not put Chio in front of it. That is the trj5 layup.
+The most under-celebrated artifact in the repo is `ops/knowledge-base/`. Commits `f35189be7`, `6de68c9d6`, `1ea076a94` shipped a Postgres + pgvector + Neo4j + Graphiti + Chio-KB-MCP gateway on `:8111/mcp/`, with `make kb-eval` enforcing an A-grade dogfood report (`DOGFOOD-REVIEW.md`: 22/22 fixtures, p@5 0.99, recall@10 1.00, p95 1295 ms). We have a real MCP server we run for ourselves. We do not put Chio in front of it. That is the release work layup.
 
 ---
 
@@ -49,9 +49,9 @@ The most under-celebrated artifact in the repo is `ops/knowledge-base/`. Commits
 
 The subcommand exists. It is not narratively integrated. `MIGRATING-FROM-MCP.md` step 5 lists `chio receipt list` and `chio receipt verify` but never `chio receipt explain`. When a user hits "DENY: forbidden_path" and wants to know which guard, which rule, which lineage hop fired, the docs send them to `http://127.0.0.1:8940/?token=demo-token` (a JSON viewer). A real debugging story is "verdict shows you the policy rule and the receipt id; `chio receipt explain <id>` prints the parent chain, the guard pipeline, the matched grant index, and the suggested policy edit." T1.6 (`audits/T1.6-chio-explain.md`) is reopened in trj4. This is a productization audit, not a hardening audit.
 
-### Gap 3: WASM guard guest SDK ergonomics — promote v4.0 + v4.1 to primary
+### Gap 3: WASM guard guest SDK ergonomics  -  promote v4.0 + v4.1 to primary
 
-Phase 347 shipped the WASM guard scaffold. Phases 373-376 (v4.0) harden the host, manifest, request enrichment, startup wiring. Phases 382-385 (v4.1) ship the Rust guest SDK and the `chio guard {new,build,test,bench,pack,install}` lifecycle. `crates/chio-guard-sdk/src/lib.rs:26-37` already shows a five-line guard. `examples/guards/tool-gate/src/lib.rs` is a 12-line working WASM guard. This is the asset that turns Chio from a wrapped MCP gateway into a "policy-as-code in any language" platform. v4.0 is named "parallel" in `PROJECT.md` line 29; trj5 should promote it to primary.
+Phase 347 shipped the WASM guard scaffold. Phases 373-376 (v4.0) harden the host, manifest, request enrichment, startup wiring. Phases 382-385 (v4.1) ship the Rust guest SDK and the `chio guard {new,build,test,bench,pack,install}` lifecycle. `crates/chio-guard-sdk/src/lib.rs:26-37` already shows a five-line guard. `examples/guards/tool-gate/src/lib.rs` is a 12-line working WASM guard. This is the asset that turns Chio from a wrapped MCP gateway into a "policy-as-code in any language" platform. v4.0 is named "parallel" in `PROJECT.md` line 29; release work should promote it to primary.
 
 ### Gap 4: The "first ten minutes" loop is not measured
 
@@ -59,7 +59,7 @@ There is no `make first-receipt`, no `chio doctor`, no scripted "from cold insta
 
 ### Gap 5: Native tool authoring still drops you off the cliff
 
-`docs/start-here/NATIVE_ADOPTION_GUIDE.md` is honest: lines 73-78 list "what this does not solve yet" — resource-template authoring, completion helpers, and transport bootstrapping are still lower-level. `examples/hello-tool/README.md` confirms this: "If you need resource templates, advanced completion, or transport bootstrapping, drop down to the lower-level traits." That cliff is the migration off-ramp. v4.x phases 386-389 introduce WIT and multi-language guest SDKs but they bypass the resource/prompt ergonomics gap. Trj5 should commit to closing it.
+`docs/start-here/NATIVE_ADOPTION_GUIDE.md` is honest: lines 73-78 list "what this does not solve yet"  -  resource-template authoring, completion helpers, and transport bootstrapping are still lower-level. `examples/hello-tool/README.md` confirms this: "If you need resource templates, advanced completion, or transport bootstrapping, drop down to the lower-level traits." That cliff is the migration off-ramp. v4.x phases 386-389 introduce WIT and multi-language guest SDKs but they bypass the resource/prompt ergonomics gap. Trj5 should commit to closing it.
 
 ### Gap 6: HushSpec policy authoring has one example file and no editor support
 
@@ -73,7 +73,7 @@ The `:8940` dashboard, `chio receipt query`, and `explain` exist. SIEM export (`
 
 ## 3. Why this matters more than another hardening trajectory
 
-The trj4 erratum says it cleanly: "structural framing landed but runtime wiring did not." That is the canonical failure mode of a project with no users. It is also what the next hardening trajectory will produce again. A user — any user — running `chio mcp serve` against a real MCP server in anger surfaces three classes of bugs that no formal lane catches:
+The trj4 erratum says it cleanly: "structural framing landed but runtime wiring did not." That is the canonical failure mode of a project with no users. It is also what the next hardening trajectory will produce again. A user  -  any user  -  running `chio mcp serve` against a real MCP server in anger surfaces three classes of bugs that no formal lane catches:
 
 - **Hot-path wiring bugs.** The trj4 hot-path-wire commits (`05fd0c56e`, `708c7bb33`) are exactly the bugs an integrator would have surfaced; they were instead found by a 10-agent post-merge audit.
 - **Ergonomic dead-ends.** Whether `chio receipt explain` is a real debugging tool or just a JSON dumper.
@@ -91,11 +91,11 @@ The erratum is a call to honesty, not silence. v3.18 already shipped the bounded
 
 ### 4b. "WASM guard v4.0 is already a parallel track"
 
-Parallel is the problem. `PROJECT.md` line 29 names v4.0 a "parallel milestone" while v3.x ship-readiness consumes the primary lane. The result is the v4.0 phases 373-376 are landed locally, the v4.1 SDK crates exist, the example guards compile, and zero external authors have shipped a `.chioguard` archive. Promoting v4.0 + v4.1 to the primary trj5 lane (with v4.2 WIT migration as the follow-on) gives the WASM guard story the productization push it has been quietly waiting for. The "policy-as-code in any language" pitch is the asymmetric product surface — every other gateway is yaml-only.
+Parallel is the problem. `PROJECT.md` line 29 names v4.0 a "parallel milestone" while v3.x ship-readiness consumes the primary lane. The result is the v4.0 phases 373-376 are landed locally, the v4.1 SDK crates exist, the example guards compile, and zero external authors have shipped a `.chioguard` archive. Promoting v4.0 + v4.1 to the primary release work lane (with v4.2 WIT migration as the follow-on) gives the WASM guard story the productization push it has been quietly waiting for. The "policy-as-code in any language" pitch is the asymmetric product surface  -  every other gateway is yaml-only.
 
 ### 4c. "Decomposition first"
 
-Real users force decomposition cuts naturally. `crates/chio-kernel/src/kernel/mod.rs` is 6,757 LOC because there is no second consumer of the kernel forcing the API to be smaller. A second consumer — `chio-kb-mcp-egress` putting Chio in front of the local KB MCP, or a real customer integration — is the smallest possible second consumer that exposes the seams. Decomposition without a second consumer is refactoring-as-rearranging-deck-chairs; with one, it has a forcing function.
+Real users force decomposition cuts naturally. `crates/chio-kernel/src/kernel/mod.rs` is 6,757 LOC because there is no second consumer of the kernel forcing the API to be smaller. A second consumer  -  `chio-kb-mcp-egress` putting Chio in front of the local KB MCP, or a real customer integration  -  is the smallest possible second consumer that exposes the seams. Decomposition without a second consumer is refactoring-as-rearranging-deck-chairs; with one, it has a forcing function.
 
 ---
 
@@ -112,13 +112,13 @@ That floor is a Wave 0-4 subset of the trj4 wave plan, not a parallel programme.
 
 ---
 
-## 6. The trj5 productization slate (concrete deliverables)
+## 6. The release work productization slate (concrete deliverables)
 
 1. `chio mcp serve-http --policy` wrapping the local KB MCP gateway at `:8111/mcp/`, with a daily receipt log committed to `ops/knowledge-base/receipts/`.
 2. v4.0 + v4.1 promoted to primary: WASM guard runtime hardening completion, `chio guard new/build/test/bench/pack/install` lifecycle, three published example guards in `examples/guards/`.
 3. `chio receipt explain` as a documented debugging story with a guided walkthrough in `docs/guides/EXPLAIN_A_DENIAL.md`.
 4. A measured "first ten minutes" smoke (`scripts/first-receipt.sh`) gated in CI.
 5. One published binary release (`v0.1.0-bounded`) with verified Homebrew formula, so the `MIGRATING-FROM-MCP.md` install commands actually work.
-6. One real external integrator picked up via the bounded-claim release, with their bug reports as the trj5 closing audit evidence.
+6. One real external integrator picked up via the bounded-claim release, with their bug reports as the release work closing audit evidence.
 
 Hardening without users is theater. The 94 crates exist. Let one person actually use them.

@@ -2,7 +2,7 @@
 
 Gantt-style ASCII timeline for the three-lane shape from `debate/00-SYNTHESIS.md`.
 
-**Tagline**: trj5 is the **honesty trajectory**. Three coupled lanes, no separate brand from the trj4 wave plan, one ship-bar visible from outside.
+**Tagline**: release work is the **honesty trajectory**. Three coupled lanes, no separate brand from the trj4 wave plan, one ship-bar visible from outside.
 
 **Estimated duration**: 8 weeks. Lane A is parallelizable across its full duration; Lane B has a 2-week architectural prerequisite (B0) gating its four primitives (B1/B2/B3/B4); Lane C unlocks progressively as Lane B primitives land (C1/C2 scaffolding can begin in week 5 alongside B4; full demo waits on B4 by week 6).
 
@@ -29,7 +29,7 @@ Bars                                                              [B1]
 Legend:
   [==X==]   active work on ticket X
   [.....]   waiting on dependency
-  Bn.E      per-primitive Evidence Gate ticket (TRJ5-Bn.E)
+  Bn.E      per-primitive Evidence Gate ticket (release work-Bn.E)
   Bx        Bar verification at integration week
 ```
 
@@ -48,10 +48,10 @@ W1  W2  W3  W4  W5  W6  W7  W8
                             [A7]    README banner update
 ```
 
-Note: The earlier draft listed `TRJ5-A5` as `chio-equivalence-tests`
+Note: The earlier draft listed `release work-A5` as `chio-equivalence-tests`
 (TRJ4-019). Per Wave 3 review, TRJ4-019 is **deferred to trj6** and
-the Lean4 `negotiation_safety` re-proof (originally `TRJ5-A6`) is
-renumbered to `TRJ5-A5`. Lane A has 5 work sub-lanes plus the banner
+the Lean4 `negotiation_safety` re-proof (originally `release work-A6`) is
+renumbered to `release work-A5`. Lane A has 5 work sub-lanes plus the banner
 update (A1, A2, A3, A4, A5, A7); see `lane-a-floor/tickets.md` for
 the per-sub-lane Evidence Gate `.E` ticket.
 
@@ -72,7 +72,7 @@ W1  W2  W3  W4  W5  W6  W7  W8
                     [==EG/primitive==]  per-primitive Evidence Gate close
 ```
 
-Lane B has a hard internal critical path: B0 -> {B1, B2, B3, B4}. B0 is the smallest decomposition cut (`async_trait` on `ToolServerConnection`; sync-helper hop collapse) needed to wire the primitives. B1/B2/B3 run in parallel under B0. B4 (DSSE bilateral signing) starts in week 5 (depends on B0 hard, B1 soft) and lands by end of week 6. Per-primitive Evidence Gate tickets (`TRJ5-B1.E`, `TRJ5-B2.E`, `TRJ5-B3.E`, `TRJ5-B4.E`) close inline with each fixture landing.
+Lane B has a hard internal critical path: B0 -> {B1, B2, B3, B4}. B0 is the smallest decomposition cut (`async_trait` on `ToolServerConnection`; sync-helper hop collapse) needed to wire the primitives. B1/B2/B3 run in parallel under B0. B4 (DSSE bilateral signing) starts in week 5 (depends on B0 hard, B1 soft) and lands by end of week 6. Per-primitive Evidence Gate tickets (`release work-B1.E`, `release work-B2.E`, `release work-B3.E`, `bilateral DSSE signing item`) close inline with each fixture landing.
 
 Lane B closes when Bar 2 verification passes at week 8 (each `.E` ticket lands inline; integration week verifies the bar against committed evidence).
 
@@ -92,27 +92,27 @@ Lane C closes when Bar 3 verification passes at week 8.
 
 ## Critical path
 
-The single critical path through trj5:
+The single critical path through release work:
 
 ```
-W1   TRJ5-B0 starts (architectural prerequisite)
-W2   TRJ5-B0 lands -> TRJ5-B1, TRJ5-B2, TRJ5-B3 start
-W4   TRJ5-B1, TRJ5-B2, TRJ5-B3 land; TRJ5-B4 starts (DSSE bilateral signing)
-W5   TRJ5-C1 starts (bilateral cosigned invocation skeleton); TRJ5-B4 progresses
-W6   TRJ5-B4 lands; per-primitive `.E` Evidence Gate tickets close; TRJ5-C2..C5 land
-W7   TRJ5-C6 lands (examples/ fixture + golden file + tag)
+W1   release work-B0 starts (architectural prerequisite)
+W2   release work-B0 lands -> release work-B1, release work-B2, release work-B3 start
+W4   release work-B1, release work-B2, release work-B3 land; release work-B4 starts (DSSE bilateral signing)
+W5   release work-C1 starts (bilateral cosigned invocation skeleton); release work-B4 progresses
+W6   release work-B4 lands; per-primitive `.E` Evidence Gate tickets close; release work-C2..C5 land
+W7   release work-C6 lands (examples/ fixture + golden file + tag)
 W8   integration / ship-bar week: Bar 1, Bar 2, Bar 3 verification
 ```
 
-If TRJ5-B0 slips by N weeks, the whole critical path slips by N weeks because Lane C unlock is downstream of B1/B2/B3 which are downstream of B0.
+If release work-B0 slips by N weeks, the whole critical path slips by N weeks because Lane C unlock is downstream of B1/B2/B3 which are downstream of B0.
 
-Lane A runs entirely off the critical path; if Lane A slips, Bar 1 slips but Bar 2 and Bar 3 are unaffected (and trj5 stays open per the close-gate rule).
+Lane A runs entirely off the critical path; if Lane A slips, Bar 1 slips but Bar 2 and Bar 3 are unaffected (and release work stays open per the close-gate rule).
 
 ## Integration / ship-bar week (week 8)
 
 Week 8 is the dedicated verification week. No new feature work lands in week 8. The activities are:
 
-- Run `scripts/check-trj5-ship-bar.sh` against the committed evidence.
+- Run `scripts/check-release work-ship-bar.sh` against the committed evidence.
 - Wave-2 reviewer signs off on each lane PLAN.md.
 - `releases.toml` `[trajectory_5]` block updated: `trj5_release_status` transitions from `in_progress` to either `closed` (all three bars DONE) or stays `in_progress` (any bar not DONE).
 - If all three bars DONE: cut `v0.1.0-bounded-chiodome` honest release tag.
@@ -120,10 +120,10 @@ Week 8 is the dedicated verification week. No new feature work lands in week 8. 
 
 ## Slippage policy
 
-Per the synthesis: **if any of the three slips, trj5 stays open**. No closeout erratum is needed because the bar is the kind a third party can verify.
+Per the synthesis: **if any of the three slips, release work stays open**. No closeout erratum is needed because the bar is the kind a third party can verify.
 
 Lane A slip: Bar 1 stays NONE/PARTIAL. Trj5 stays open. Continuation work tracked under `lane-a-floor/wave-summary-WK<n>.md` per week.
 
-Lane B slip: Bar 2 stays NONE/PARTIAL. Lane C unlock delayed. Trj5 stays open. The architectural prerequisite (TRJ5-B0) is the highest-risk slip point because it gates everything downstream.
+Lane B slip: Bar 2 stays NONE/PARTIAL. Lane C unlock delayed. Trj5 stays open. The architectural prerequisite (release work-B0) is the highest-risk slip point because it gates everything downstream.
 
 Lane C slip: Bar 3 stays NONE/PARTIAL. Trj5 stays open. The synthesis observes: "If Lane C breaks, Lanes A and B are not real either." A Lane C slip therefore reopens the question of whether the substrate composes end-to-end, and the wave-2 reviewer must record what specifically failed to compose.

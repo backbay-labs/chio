@@ -1,8 +1,8 @@
 # Trajectory 5 closeout
 
-Status: execution complete; 26 PRs open; integrator action required.
+Status: release blocked; 26 PRs open; integrator action required.
 
-This document is the integration-coordination map for trj5. The numbers
+This document is the integration-coordination map for release work. The numbers
 below are taken from the actual PR titles, the post-cleanup-wave state
 of `baselines/BAR-1-MUTATION.md`, and the midpoint security audit at
 `reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`. Where a bar
@@ -11,7 +11,7 @@ merge order; this document gives them the map.
 
 ## What landed
 
-This trajectory shipped three coupled lanes.
+This trajectory prepared three coupled lanes on open PR branches.
 
 ### Lane A (the floor)
 
@@ -25,21 +25,21 @@ This trajectory shipped three coupled lanes.
   `tool_server_escape`) are honestly marked partial because the
   deferred sub-vectors (hybrid-artifact downgrade, kernel sandbox
   escape) are scoped to a future trajectory.
-- Real Kani harnesses for chio-attest-verify (PR #605), chio-anchor
-  and chio-weights (PR #613). Three TEE harnesses (Nitro, SEV-SNP,
-  TDX) are explicitly labeled MODEL-ONLY; runtime regression is
-  covered by separate negative tests.
+- Kani harnesses for chio-attest-verify (PR #605), chio-anchor and
+  chio-weights (PR #613). This is PARTIAL release evidence:
+  chio-attest-verify is DEFERRED-PARTIAL/MODEL-PARTIAL, and the three
+  TEE harnesses (Nitro, SEV-SNP, TDX) are explicitly MODEL-ONLY.
 - Multi-crate Kani CI manifest at `.kani/harnesses.toml` (PR #607)
   with empty-match-exit-1 enforcement (cleanup-wave fix to
   `scripts/run-kani-manifest.sh`) and a parity check between the
   legacy chio-kernel-core manifest and the new shared one.
-- TLA+ rewrites (PR #602): `ReceiptBeforeAllow` split into
+- Bounded TLA+ rewrites (PR #602): `ReceiptBeforeAllow` split into
   `Allow = LogReceipt + PublishAllow`; `RevocationCutCompleteness`
-  with bounded transitive-closure unrolling. Both production specs
-  verify at length=6; deliberately-broken variants fail at length=4.
+  with bounded transitive-closure unrolling. This is PARTIAL release
+  evidence, not implementation-complete production proof.
 - Lean4 `negotiation_safety` (PR #601) re-proved against an executable
-  model that mirrors the Rust verifier; replaces a `by rfl`
-  tautology.
+  model that mirrors the Rust verifier; replaces a `by rfl` tautology.
+  This remains bounded formal evidence.
 
 ### Lane B (the wiring)
 
@@ -96,10 +96,10 @@ hashing (cleanup-wave fix to audit P0-013).
 
 `chio receipt --inspect-bilateral` (renamed from `--explain-bilateral`
 after the audit caught the over-claim of cryptographic verification
-in P0-008) renders the artifacts. The `bbs-stub` cargo feature
-(renamed from `zk` per audit P0-009) provides a structured
-selective-disclosure projection that is explicitly labeled NOT
-zero-knowledge; real BBS+ is deferred. KB MCP integration (PR #614)
+in P0-008) renders the artifacts. The `chio-federation` `bbs-stub`
+cargo feature (renamed from `zk` per audit P0-009) provides a
+structured selective-disclosure placeholder that is explicitly labeled
+NOT zero-knowledge; real BBS+ is deferred. KB MCP integration (PR #614)
 uses an `mcp-remote` stdio bridge against `:8111/mcp/`; the wrap path
 produces mediation transcripts (not kernel-signed receipts) so C3 is
 honestly labeled PARTIAL in the release.
@@ -133,11 +133,11 @@ Bar 1 closes only after the hosted-nightly authoritative run lands;
 this trajectory delivered the measurement infrastructure, the floor
 exists, and the gaps are honestly tagged.
 
-### Bar 2 -- four Lane B primitives protected by signed negative conformance: MET
+### Bar 2 -- four Lane B primitives protected by signed negative conformance: PARTIAL
 
-Four signed negative conformance fixtures live under
-`crates/chio-conformance/tests/`, each exercising the production call
-path:
+Four signed negative conformance fixtures are expected from open PR
+branches under `crates/chio-conformance/tests/`, each exercising the
+production call path:
 
 - `b1_capability_v2_single_entry_no_bypass`
 - `b2_receipt_v2_failclosed_pre_dispatch` (cleanup-wave revision of
@@ -146,13 +146,17 @@ path:
 - `b4_bilateral_dsse_pae_only_is_conformant`
 
 Each fixture contains a `// negative-conformance: ...` annotation per
-the Bar 2 machine-readable signal in `SHIP-BAR-TRACKER.md`.
+the Bar 2 machine-readable signal in `SHIP-BAR-TRACKER.md`. Bar 2
+remains PARTIAL until those PRs merge, dependent branches rebase,
+fixtures are regenerated from merged `main`, and checks are green on
+the integrated merge SHA.
 
-### Bar 3 -- chiodome bilateral demo end-to-end: MET for runner; PARTIAL for KB-MCP
+### Bar 3 -- chiodome bilateral demo end-to-end: PARTIAL
 
-The demo runner + receipt rendering are MET: `cargo run --example
-chiodome-bilateral` produces all eight `audits/evidence/c-bilateral-smoke.json`
-artifacts on a fresh checkout.
+The demo runner and receipt rendering are branch-local evidence. They
+do not make the release bar DONE until #614/#615/#617/#618 merge,
+fixtures are regenerated from merged `main`, and checks are green on
+the integrated merge SHA.
 
 C3 (KB-MCP-mediated receipts) is PARTIAL: the wrap path produces
 mediation transcripts, not kernel-signed receipts. The release-bar
@@ -211,7 +215,8 @@ The remaining items are integrator-only:
   obsolete)
 - Authoritative full-crate mutation runs on CI hosted-nightly
   `mutants.yml` without budget caps
-- Real BBS+/BLS implementation behind a properly-named `zk` feature
+- Real BBS+/BLS implementation replacing the `chio-federation`
+  `bbs-stub` placeholder
 - Predicate schema completion for the bilateral verifier
   (`tool_args_hash`, `statement.malformed` mapping, etc.)
 - Distributed `ReceiptStore` and live `RevocationOracle` integrations
@@ -233,31 +238,31 @@ The remaining items are integrator-only:
 
 | PR | Lane | Branch | Title |
 |---|---|---|---|
-| #601 | A | claude/trj5/a5-lean-negotiation-safety | Re-prove negotiation_safety against an executable Rust model |
-| #602 | A | claude/trj5/a4-tla-rewrites | TLA+ rewrites: receipt-before-allow split and revocation-cut completeness |
-| #603 | A | claude/trj5/a1-mutation-baseline | Per-crate mutation baseline and .cargo/mutants.toml exclusion audit |
-| #604 | A | claude/trj5/a2-threat-evidence-batch1 | Threat-evidence backfill batch 1 (7 rows) |
-| #605 | A | claude/trj5/a3-kani-attest-verify | Add Kani harnesses for chio-attest-verify |
-| #606 | B | claude/trj5/b0-async-trait-migration | BREAKING: async-trait migration of ToolServerConnection |
-| #607 | A | claude/trj5/a3.5-kani-ci-multi-crate | feat(trj5/A3.5): Kani CI multi-crate manifest + workflow |
-| #608 | A | claude/trj5/a2-threat-evidence-batch2 | feat(trj5/A2): backfill threat evidence (batch 2, 7 rows) |
-| #609 | B | claude/trj5/b3-anchor-batch-async-only | feat(trj5/B3): anchor-batch async-only when require_public_witness=true |
-| #610 | B | claude/trj5/b4-dsse-bilateral-signing | feat(trj5/B4): DSSE-conformant bilateral signing per CHIODOS §6 |
-| #611 | B | claude/trj5/b2-receipt-v2-failclosed | feat(trj5/B2): receipt v2 fail-closed under negotiated v2 |
-| #612 | B | claude/trj5/b1-single-entry-verifier | feat(trj5/b1): single-entry capability verifier |
-| #613 | A | claude/trj5/a3-kani-anchor-weights | feat(trj5/a3): kani harnesses for chio-anchor and chio-weights |
-| #614 | C | claude/trj5/c1-c3-demo-scaffolding-kb-mcp | feat(trj5/C1+C3): chiodome bilateral demo scaffolding + KB MCP integration |
-| #615 | C | claude/trj5/c2-bilateral-cosign-flow | feat(trj5/C2): bilateral cosigned invocation flow + §7 17-step verifier |
-| #616 | A | claude/trj5/a2-threat-evidence-batch3 | feat(trj5/A2): backfill threat evidence (batch 3, 6 rows; complete 20/20) |
-| #617 | C | claude/trj5/c4-c5-receipt-explain-and-zk | feat(trj5/C4+C5): receipt-explain bilateral + selective-disclosure zk feature |
-| #618 | C | claude/trj5/c6-release-packaging | feat(trj5/C6): v0.1.0-bounded-chiodome release packaging |
-| #619 | A | claude/trj5/a1-mutation-attest-verify | feat(trj5/A1): mutation baseline for chio-attest-verify (44.1% measured; target >=80%) |
-| #620 | (planning) | claude/charming-feistel-8595da | Trajectory 5 planning artifacts (lanes A/B/C, ship-bar, kickoff prereqs) |
-| #621 | A | claude/trj5/a1-mutation-guards | Mutation baseline for chio-guards (78.2% measured; target >=65%) |
-| #622 | A | claude/trj5/a1-mutation-anchor | Mutation baseline for chio-anchor (69.4% measured; target >=65%) |
-| #623 | A | claude/trj5/a1-mutation-policy | Mutation baseline for chio-policy (80.2% measured; target >=65%; PARTIAL 314/418) |
-| #624 | A | claude/trj5/a1-mutation-weights | Mutation baseline for chio-weights (68.3% measured; target >=65%) |
-| #625 | A | claude/trj5/a1-attest-verify-gap-closure | chio-attest-verify: close mutation gap with sigstore negative tests |
-| #626 | A | claude/trj5/a1-mutation-kernel-core | Mutation baseline for chio-kernel-core (73.6% measured; PARTIAL 62/343; target >=65%) |
+| #601 | A | PR branch | Re-prove negotiation_safety against an executable Rust model |
+| #602 | A | PR branch | TLA+ rewrites: receipt-before-allow split and revocation-cut completeness |
+| #603 | A | PR branch | Per-crate mutation baseline and .cargo/mutants.toml exclusion audit |
+| #604 | A | PR branch | Threat-evidence backfill batch 1 (7 rows) |
+| #605 | A | PR branch | Add Kani harnesses for chio-attest-verify |
+| #606 | B | PR branch | BREAKING: async-trait migration of ToolServerConnection |
+| #607 | A | PR branch | feat(release work/A3.5): Kani CI multi-crate manifest + workflow |
+| #608 | A | PR branch | feat(release work/A2): backfill threat evidence (batch 2, 7 rows) |
+| #609 | B | PR branch | feat(release work/B3): anchor-batch async-only when require_public_witness=true |
+| #610 | B | PR branch | feat(release work/B4): DSSE-conformant bilateral signing per CHIODOS §6 |
+| #611 | B | PR branch | feat(release work/B2): receipt v2 fail-closed under negotiated v2 |
+| #612 | B | PR branch | feat(release work/b1): single-entry capability verifier |
+| #613 | A | PR branch | feat(release work/a3): kani harnesses for chio-anchor and chio-weights |
+| #614 | C | PR branch | feat(release work/C1+C3): chiodome bilateral demo scaffolding + KB MCP integration |
+| #615 | C | PR branch | feat(release work/C2): bilateral cosigned invocation flow + partial §7 verifier subset |
+| #616 | A | PR branch | feat(release work/A2): backfill threat evidence (batch 3, 6 rows; complete 20/20) |
+| #617 | C | PR branch | feat(release work/C4+C5): receipt-explain bilateral + `chio-federation` `bbs-stub` placeholder |
+| #618 | C | PR branch | feat(release work/C6): v0.1.0-bounded-chiodome release packaging |
+| #619 | A | PR branch | feat(release work/A1): mutation baseline for chio-attest-verify (44.1% measured; target >=80%) |
+| #620 | (planning) | planning branch | Trajectory 5 planning artifacts (lanes A/B/C, ship-bar, kickoff prereqs) |
+| #621 | A | PR branch | Mutation baseline for chio-guards (78.2% measured; target >=65%) |
+| #622 | A | PR branch | Mutation baseline for chio-anchor (69.4% measured; target >=65%) |
+| #623 | A | PR branch | Mutation baseline for chio-policy (80.2% measured; target >=65%; PARTIAL 314/418) |
+| #624 | A | PR branch | Mutation baseline for chio-weights (68.3% measured; target >=65%) |
+| #625 | A | PR branch | chio-attest-verify: close mutation gap with sigstore negative tests |
+| #626 | A | PR branch | Mutation baseline for chio-kernel-core (73.6% measured; PARTIAL 62/343; target >=65%) |
 
 End of trajectory 5 closeout.

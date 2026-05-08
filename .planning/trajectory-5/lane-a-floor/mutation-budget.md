@@ -27,7 +27,7 @@ This document is the per-crate mutation-kill budget for sub-lane A1.
 The aggregate 31% banner is the only published number today. Per the
 Quality Skeptic
 (`.planning/trajectory-5/debate/04-quality-verification-skeptic.md` line
-13): "no published per-crate numbers, just a 31% aggregate". TRJ5-A1.2
+13): "no published per-crate numbers, just a 31% aggregate". mutation evidence item
 publishes the first per-crate split.
 
 ## Mutation-runner command pattern
@@ -61,7 +61,7 @@ For each crate, a "good" run produces:
 - A summary section under `[per_crate_kill_rate_percent]` in
   `releases.toml`.
 
-## Exclusion-list audit (TRJ5-A1.0; R2 OBSERVATION 1.2 / MAJOR 7.4)
+## Exclusion-list audit (mutation exclusion audit; R2 OBSERVATION 1.2 / MAJOR 7.4)
 
 The `.cargo/mutants.toml` `exclude_globs` list (lines 164-203) excludes
 tests, benches, build scripts, fuzz harnesses, and Kani harness files,
@@ -73,10 +73,10 @@ This is defensible for the listed exclusions, but if the "31%
 aggregate" was computed against an exclusion list that hides
 mutation-killable lines, the kill-rate bump from 31% to 65% may be
 artificially compressed. R2 Section 1.2 / 7.4 asks for a re-audit of
-the exclusion list under the trj5 frame.
+the exclusion list under the release work frame.
 
-TRJ5-A1.0 is the audit ticket. Output:
-`audits/evidence/TRJ5-A1.0/exclude-audit.md` with each exclusion line
+mutation exclusion audit is the audit ticket. Output:
+`audits/evidence/mutation exclusion audit/exclude-audit.md` with each exclusion line
 marked one of:
 
 - `OK -- test/build/fuzz scaffolding`.
@@ -109,12 +109,12 @@ the mutation runner consumes as an exclusion.
 | `chio-anchor` | medium | up to 15% of residuals annotated |
 
 These are estimates from spot-reading the source; the actual annotation
-density is empirical and is captured by TRJ5-A1.3..A1.8 close bars.
+density is empirical and is captured by mutation evidence item close bars.
 
 ## Banner regeneration
 
 `.github/workflows/mutants-banner.yml` regenerates the README banner.
-TRJ5-A1.10 changes the banner script to read the **lowest observed**
+mutation evidence item changes the banner script to read the **lowest observed**
 per-crate kill rate, not a target. Target banner shape after Lane A
 closes:
 
@@ -131,7 +131,7 @@ The exact line is generated; the format above is the target shape.
 
 Per T0.B audit acceptance line 16 ("Two consecutive green hosted
 nightlies, both `status_at_capture: success`"), the close bar requires
-two consecutive nightly runs without flake. TRJ5-A1.9 captures both run
+two consecutive nightly runs without flake. mutation evidence item captures both run
 URLs to `audits/evidence/mutants/two-night-history.md`.
 
 ## Anti-patterns rejected by this budget

@@ -11,7 +11,7 @@
 This ledger is the structured per-lane sign-off artifact required by
 `KICKOFF-CHECKLIST.md` "Wave-2 reviewer sign-off ledger" row. The
 original Wave-2 reviewer for Lane C (R4) was an autonomous agent; per
-the trj5 autonomous-execution context (see `OWNERS.toml` top-of-file
+the release work autonomous-execution context (see `OWNERS.toml` top-of-file
 note), the sign-off is recorded by the Wave-4 final-pass agent against
 the closeout matrix evidence.
 
@@ -23,7 +23,7 @@ the closeout matrix evidence.
 
 | Finding | Severity | Title | Closed by W3 fix-log section | Status |
 |---|---|---|---|---|
-| R4-BLOCKER-1 | BLOCKER | DSSE/Ed25519 signing scheme -- "Option A" two-signature design does not satisfy spec §6 | `W3-lane-c-fixes.md` § "R4 BLOCKER 1 (DSSE signing scheme - Option A insufficient) - REWORKED" + `W3-lane-b-fixes.md` § "B4 sub-lane (NEW per R4 BLOCKER 1)". Option A dropped entirely; promoted to Lane B sub-lane B4 (TRJ5-B4.1..B4.6 + B4.E). Lane C consumes B4 envelope, ships `predicate_from_kernel_state` helper, §7 verifier, `CapabilityVerifier` trait. | CLOSED |
+| R4-BLOCKER-1 | BLOCKER | DSSE/Ed25519 signing scheme -- "Option A" two-signature design does not satisfy spec §6 | `W3-lane-c-fixes.md` § "R4 BLOCKER 1 (DSSE signing scheme - Option A insufficient) - REWORKED" + `W3-lane-b-fixes.md` § "B4 sub-lane (NEW per R4 BLOCKER 1)". Option A dropped entirely; promoted to Lane B sub-lane B4 (bilateral DSSE signing item + B4.E). Lane C consumes B4 envelope, ships `predicate_from_kernel_state` helper, §7 verifier, `CapabilityVerifier` trait. | CLOSED |
 | R4-BLOCKER-2 | BLOCKER | KB MCP transport mismatch (`chio mcp serve` wraps stdio; KB MCP serves HTTP) | `W3-lane-c-fixes.md` § "R4 BLOCKER 2 (KB MCP HTTP/stdio bridge) - RESOLVED". Demo uses `mcp-remote` (Node.js stdio<->HTTP bridge per `ops/knowledge-base/README.md:136-151`) as wrapped command. Pre-requisites section + HushSpec policy YAML rewrite. | CLOSED |
 
 ### R4 MAJORs (8 of 8 CLOSED)
@@ -32,20 +32,20 @@ the closeout matrix evidence.
 |---|---|---|---|
 | R4-MAJOR-3 | Cross-lane dep aliases (`LB-CAP`, `LB-RV2`, `LB-AB`, `LB-AT`) not anchored to Lane B IDs | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 3". Aliases replaced with literal Lane B ticket IDs in `Depends on` rows; alias->ID map preserved in documentation table. | CLOSED |
 | R4-MAJOR-4 | release-bar.md AND-overclaims §6 conformance | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 4". Release notes cite Lane B B4 directly; new items 13/14 in "What this release DOES NOT CLAIM". | CLOSED |
-| R4-MAJOR-5a | chiodos-ladder primitive missing in code | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 5a". TRJ5-C1.3 effort bumped M->L; primitive lives in `examples/chiodome-bilateral/src/ladder.rs`; production primitive deferred to trj6. | CLOSED |
+| R4-MAJOR-5a | chiodos-ladder primitive missing in code | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 5a". release work-C1.3 effort bumped M->L; primitive lives in `examples/chiodome-bilateral/src/ladder.rs`; production primitive deferred to trj6. | CLOSED |
 | R4-MAJOR-5b | Policy YAML format mismatch | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 5b". Policy YAML rewritten in HushSpec shape; amount cap moved to ladder intersection per option (a). | CLOSED |
 | R4-MAJOR-6 | BBS+ deps absent; R6 mitigation soft | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 6". Explicit deferral path: C5 ships only if W2 dep-tree validation succeeds; otherwise five-artifact bundle. | CLOSED |
-| R4-MAJOR-7 | End-to-end composition gaps (anchor inclusion proof; two-keypair signing) | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 7". New TRJ5-C2.5 ticket (anchor inclusion proof); §7 verifier ticket TRJ5-C2.4 depends on B1.6/B2.5/B3.5/B4.5; two-keypair signing protocol section. | CLOSED |
-| R4-MAJOR-8 | 17-step verifier cross-crate calls (steps 7, 14) unresolved | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 8". Architecture cut option B (trait objects for `ReceiptStore` and `CapabilityVerifier`); TRJ5-C2.1 introduces `CapabilityVerifier` trait in `chio-federation`. | CLOSED |
-| R4-MAJOR-10 | Forcing-function CI hook missing | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 10". TRJ5-C6.3 "Continuous chiodome demo workflow" added (nightly + Lane B path push, failures open issues, 7 consecutive nights green pre-tag). | CLOSED |
+| R4-MAJOR-7 | End-to-end composition gaps (anchor inclusion proof; two-keypair signing) | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 7". New release work-C2.5 ticket (anchor inclusion proof); §7 verifier ticket release work-C2.4 depends on B1.6/B2.5/B3.5/B4.5; two-keypair signing protocol section. | CLOSED |
+| R4-MAJOR-8 | 17-step verifier cross-crate calls (steps 7, 14) unresolved | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 8". Architecture cut option B (trait objects for `ReceiptStore` and `CapabilityVerifier`); release work-C2.1 introduces `CapabilityVerifier` trait in `chio-federation`. | CLOSED |
+| R4-MAJOR-10 | Forcing-function CI hook missing | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 10". release work-C6.3 "Continuous chiodome demo workflow" added (nightly + Lane B path push, failures open issues, 7 consecutive nights green pre-tag). | CLOSED |
 
 ### R4 MINORs / OBSERVATIONs (informational; not gating)
 
-R4-MINOR-9 (`chio receipt explain` underestimated): TRJ5-C4.1 bumped
+R4-MINOR-9 (`chio receipt explain` underestimated): release work-C4.1 bumped
 M->L; explain output's "policy verdict disagreement" surfaced as
 top-level diagnostic. R4-MINOR-11 (demo fixture reproducibility): new
-TRJ5-C6.4 "Diff-stable fixture tarball" with `tools/diff-stable.py`.
-R4-MINOR-12 (mock-receipt detection): TRJ5-C6.2 mtime check.
+release work-C6.4 "Diff-stable fixture tarball" with `tools/diff-stable.py`.
+R4-MINOR-12 (mock-receipt detection): release work-C6.2 mtime check.
 R4-OBSERVATION-14 (ticket count 30->24 within R1 §11.7 22-26 range).
 All addressed in `W3-lane-c-fixes.md` § "R4 MINORs" + § "R4
 OBSERVATIONs".
@@ -64,7 +64,7 @@ OBSERVATIONs".
 
 | W4 item | Title | Status |
 |---|---|---|
-| 1 | Lane C placeholder `TRJ5-B4.x` deps replaced with locked B4 IDs (B4.1..B4.6 plus B4.E) | CLOSED (Wave 4 patched bilateral-cosign-flow.md, release-bar.md, README.md, PLAN.md, tickets.md) |
+| 1 | Lane C placeholder `bilateral DSSE signing item` deps replaced with locked B4 IDs (B4.1..B4.6 plus B4.E) | CLOSED (Wave 4 patched bilateral-cosign-flow.md, release-bar.md, README.md, PLAN.md, tickets.md) |
 
 ---
 
@@ -86,7 +86,7 @@ All R4 BLOCKERs (2) and MAJORs (8) are CLOSED per `W4-closeout-matrix.md`
 R4 row block. The cross-lane R1 BLOCKERs/MAJORs affecting Lane C
 (R1-BLOCKER-1.4, R1-BLOCKER-2.2, R1-BLOCKER-5.3, R1-MAJOR-6.2,
 R1-MAJOR-1.3) are CLOSED. R4-BLOCKER-1 (DSSE Option A insufficient)
-restructured the trj5 plan: Option A is dropped; DSSE-conformant
+restructured the release work plan: Option A is dropped; DSSE-conformant
 bilateral signing lives in Lane B as sub-lane B4; Lane C consumes B4.
 
 Verdict: **APPROVED for kickoff execution**. Lane C is cleared to begin
@@ -110,11 +110,11 @@ Wave 3 (when Lane C scaffolding starts) with eyes open:
    Lane C scaffolding (C1.1 example skeleton, C1.2 chiodos-ladder
    stub, C1.4 ticketing) starts W3 in parallel with Lane B B0->B1.
 
-2. **`mcp-remote` bridge in CI**. TRJ5-C3.2 wraps the command
+2. **`mcp-remote` bridge in CI**. release work-C3.2 wraps the command
    `chio mcp serve --policy ... -- npx -y mcp-remote
    http://localhost:8111/mcp/`. Air-gapped CI runners must pre-warm
    the npm cache; pre-requisite "Node.js / npx available in the smoke
-   container" recorded in TRJ5-C3.2 ticket.
+   container" recorded in release work-C3.2 ticket.
 
 3. **Spec line-range citations to fill in**. Several Lane C tickets
    cite `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6/§7 line ranges
@@ -123,17 +123,17 @@ Wave 3 (when Lane C scaffolding starts) with eyes open:
    W4 closeout matrix records all Lane C placeholders swept to
    locked B4 IDs but spec line ranges may still need confirmation.
 
-4. **Anchor inclusion proof emission** (TRJ5-C2.5; R4 Step gap 7a). New
+4. **Anchor inclusion proof emission** (release work-C2.5; R4 Step gap 7a). New
    ticket per R4-MAJOR-7. Effort M; depends on B1.6/B2.5/B3.5/B4.5
    landing.
 
 5. **Two-keypair signing protocol** (Step gap 7c; in
    `bilateral-cosign-flow.md`). Each kernel signs its own PAE; existing
    `CoSigningRequest`/`Response` cadence is generalised by B4. Lane C
-   ticket `TRJ5-C1.x` consumes the B4 protocol; the Lane C agent must
+   ticket `release work-C1.x` consumes the B4 protocol; the Lane C agent must
    not re-implement the cadence.
 
-6. **CapabilityVerifier trait in `chio-federation`** (TRJ5-C2.1; R4
+6. **CapabilityVerifier trait in `chio-federation`** (release work-C2.1; R4
    MAJOR 8 architecture cut option B). The verifier in `chio-federation`
    does not pull in `chio-kernel` directly. The trait lives next to
    `bilateral_dsse.rs`; Lane B ↔ Lane C path overlap is mediated by
@@ -144,12 +144,12 @@ Wave 3 (when Lane C scaffolding starts) with eyes open:
    five-artifact bundle. `release-bar.md` item 14 enumerates the
    deferral.
 
-8. **Continuous chiodome demo workflow** (TRJ5-C6.3;
+8. **Continuous chiodome demo workflow** (release work-C6.3;
    `.github/workflows/chiodome-demo-continuous.yml`). Nightly + Lane B
    path-push triggers; failures open issues; 7 consecutive nights green
    pre-tag.
 
-9. **Diff-stable fixture rule** (TRJ5-C6.4). The smoke step 5 calls
+9. **Diff-stable fixture rule** (release work-C6.4). The smoke step 5 calls
    `tools/diff-stable.py` (or Rust binary); the rule is "diff-stable
    across runs", not "byte-identical".
 
@@ -162,13 +162,13 @@ Wave 3 (when Lane C scaffolding starts) with eyes open:
 
 ## Final approval line
 
-**LANE C WAVE-2 SIGN-OFF**: APPROVED for trj5 kickoff execution.
+**LANE C WAVE-2 SIGN-OFF**: APPROVED for release work kickoff execution.
 **Recorded**: 2026-05-08 by Wave-4 final-pass agent.
 **Authority**: `reviews/W4-closeout-matrix.md` (2 R4 BLOCKERs + 8 R4
 MAJORs + 5 R1-Lane-C-affecting BLOCKERs/MAJORs all CLOSED; Option A
 dropped; Lane C consumes Lane B B4).
 **Pre-execution gates**: 10 informational items above; none gate
 kickoff. All routed through autonomous waves under
-`human_assignment = "@bb-connor"`.
+`human_assignment = "release owner"`.
 
 End of Lane C Wave-2 sign-off ledger.

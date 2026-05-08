@@ -2,7 +2,7 @@
 
 **Author role:** Vision Strategist (Chiodome / Economic Substrate)
 **Date:** 2026-05-07
-**Trajectory:** trj5 scoping debate
+**Trajectory:** release work scoping debate
 **Disposition:** Pick the moat. Demo it. Ship one bilateral cosigned invocation, end-to-end, with bounded labels.
 
 ---
@@ -15,7 +15,7 @@ mobile attestation) are necessary but **fungible**: they are commodity floor
 that every protocol-substrate project converges to within 18 months.
 
 The Chiodome bet, recorded in user memory at
-`/Users/connor/.claude/projects/-Users-connor-Medica-backbay-standalone-arc/memory/project_chiodome_vision.md`,
+`local project vision note`,
 is that "agent swarm congregates as digital fiscal nation states... combines
 the chio (ARC) protocol layer for secure attested agent capabilities... with
 the swarm architecture from standalone/swarm-team-six... applied to finance
@@ -44,12 +44,12 @@ make, because no other project ships:
 
 The primitives exist. The vision exists. What does not exist is a
 **single demoable slice** that takes those primitives, connects them
-end-to-end, and lets a third party watch it run. trj5 should ship that
+end-to-end, and lets a third party watch it run. release work should ship that
 slice.
 
 ---
 
-## 2. The ONE Demo Slice for trj5
+## 2. The ONE Demo Slice for release work
 
 **Name:** Chiodome v0.1 Cross-Kernel Refund -- two kernels, one cosigned
 invocation, one bonded settlement, one selective-disclosure auditor view.
@@ -105,7 +105,7 @@ hardening pass."
 
 ## 3. Why This Matters (Strategic Positioning)
 
-Every other lane on the trj5 menu is fungible. Five years from now:
+Every other lane on the release work menu is fungible. Five years from now:
 - HTTP egress hardening will be table stakes (every protocol does it).
 - WASM guard plugins will be table stakes (Envoy already has them).
 - Decomposed kernels will be table stakes (every middleware does it).
@@ -164,7 +164,7 @@ The user memory itself frames Chiodome as "post-launch idea (months
 after chio ships, if adoption)." That is true for the **full**
 Chiodome -- agent swarms as digital fiscal nation states, the
 swarm-team-six fusion, the DAO replacement. We are not shipping that
-in trj5. We are shipping the **smallest demo that proves the
+in release work. We are shipping the **smallest demo that proves the
 primitives compose**. Strategic positioning math: a recorded
 cross-vendor walk-through that no competitor can replicate is the
 single best artefact for buyer conversations, partnership outreach,
@@ -186,20 +186,20 @@ on those dimensions. The pairing rebuts the false dichotomy.
 
 ## 5. Concessions
 
-**Drop now (too speculative for trj5):**
+**Drop now (too speculative for release work):**
 
 - `CHIODOS_PHEROMONE` v0.2 cross-trust gossip surfaces. The wire
   format is frozen, but the substrate behaviour (sqrt-N cap as
   cost-shifter, observation-cost commitments for destructive classes)
   needs adversarial economic modelling that
   `docs/research/CHIODOS_SCARCITY_ECONOMICS.md` flags as still being
-  reframed. Pheromone deposits are **out of scope** for the trj5 demo;
+  reframed. Pheromone deposits are **out of scope** for the release work demo;
   they appear as an optional second-wave step in the three-vendor
   fixture (section 9) and remain there. Ship without them.
 - The full three-vendor `CHIODOS_3VENDOR_FIXTURE.md` walk-through.
   Three vendors, three workflows, full BBS+ disclosure -- this is
   research-illustrative (the fixture itself says "Status: Research /
-  illustrative"). The trj5 demo runs **two** kernels, **one**
+  illustrative"). The release work demo runs **two** kernels, **one**
   invocation, **one** disclosure predicate. Concede the federation-of-
   three for trj6.
 - `CHIODOS_LADDER` amendment lifecycle (section 8). The handshake-
@@ -237,7 +237,7 @@ on those dimensions. The pairing rebuts the false dichotomy.
 Drop the seven-lane menu. Pick the slice with the highest
 strategic-positioning-per-engineering-week ratio. The primitives are
 already written. The spec is already drafted. The fixture document
-already names every gap. trj5 closes those gaps in **one** integrated
+already names every gap. release work closes those gaps in **one** integrated
 demo, with bounded-claim labels respecting the user's roadmap-framing
 memory, and produces an artefact no other agent-protocol project on
 earth can replicate.

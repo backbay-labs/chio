@@ -139,7 +139,7 @@ in `Cargo.toml`). Using it is the lowest-risk path: it desugars to
 `.await`, and is well-understood by Rust review.
 
 The alternative ("native async-fn-in-trait" in stable Rust) is rejected for
-trj5 because the dyn-compatibility story is not yet stable for our MSRV. We
+release work because the dyn-compatibility story is not yet stable for our MSRV. We
 revisit in trj6.
 
 ---
@@ -198,7 +198,7 @@ Each implementer is its own ticket so the catch-up is parallelizable.
 
 ### Step 5: Lane B unblock (no ticket; gating-only)
 
-- TRJ5-B1, B2, B3 may now proceed; their wiring no longer has to thread
+- release work-B1, B2, B3 may now proceed; their wiring no longer has to thread
   through the sync helper.
 
 ---
@@ -238,7 +238,7 @@ C++ side is sync. The shim must adapt. Two options:
 - **Option B**: expose an async-callback FFI that takes a continuation. More
   invasive on the C++ side.
 
-For trj5, Option A is the default. Option B is trj6.
+For release work, Option A is the default. Option B is trj6.
 
 ---
 
@@ -257,7 +257,7 @@ enumeration):
 | New CI script + workflow integration | 2 | ~80 | high |
 | **Total** | **~30-55 files (47 impl sites in 31 files)** | **~1,500-2,000 LOC net diff** | medium |
 
-Note: per R3 BLOCKER on impl count, the 31 number is FILES with at least one impl. The actual impl-site count is 47 because several files contain multiple impls (notably `chio-kernel/src/kernel/tests/all.rs` with 8 impls and `chio-mcp-edge/src/runtime/runtime_tests.rs` with 5). The TRJ5-B0.3 and B0.4 ticket descriptions (in `lane-b-wiring/tickets.md`) count files; the impl-site count is the more accurate diff-sizing measure. Concretely: `chio-kernel/src/kernel/tests/all.rs` (8 impls), `chio-mcp-edge/src/runtime/runtime_tests.rs` (5), `chio-acp-edge/src/lib.rs` (2), `chio-a2a-edge/src/lib.rs` (3), `chio-openai/src/lib.rs` (2), `chio-openapi-mcp-bridge/src/lib.rs` (2). The `chio-mcp-remote/src/remote_mcp/session_core.rs` impl was previously cited at lines 2682 and 2860; the current head shows only 1838 (line numbers shift; resolved by audit at B0.1 PR-time).
+Note: per R3 BLOCKER on impl count, the 31 number is FILES with at least one impl. The actual impl-site count is 47 because several files contain multiple impls (notably `chio-kernel/src/kernel/tests/all.rs` with 8 impls and `chio-mcp-edge/src/runtime/runtime_tests.rs` with 5). The release work-B0.3 and B0.4 ticket descriptions (in `lane-b-wiring/tickets.md`) count files; the impl-site count is the more accurate diff-sizing measure. Concretely: `chio-kernel/src/kernel/tests/all.rs` (8 impls), `chio-mcp-edge/src/runtime/runtime_tests.rs` (5), `chio-acp-edge/src/lib.rs` (2), `chio-a2a-edge/src/lib.rs` (3), `chio-openai/src/lib.rs` (2), `chio-openapi-mcp-bridge/src/lib.rs` (2). The `chio-mcp-remote/src/remote_mcp/session_core.rs` impl was previously cited at lines 2682 and 2860; the current head shows only 1838 (line numbers shift; resolved by audit at B0.1 PR-time).
 
 This is meaningfully smaller than the trust-control extraction (~18K LOC)
 or the gravity-well surgery on `chio-core` (~80K LOC). Trj5 sticks to this
@@ -316,7 +316,7 @@ rollback proceeds as follows:
 - `too_many_arguments` burndown beyond what the async migration touches.
   **Out**: trj6.
 
-If Wave 1 review wants to expand any of these into trj5, that is a
+If Wave 1 review wants to expand any of these into release work, that is a
 synthesis-level change requiring the synthesis doc to be re-opened. Do not
 expand silently.
 

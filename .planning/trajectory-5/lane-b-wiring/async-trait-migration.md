@@ -111,11 +111,11 @@ Conclusion: **no feature flag transition required**. The migration is workspace-
 
 B0 PR strategy is one **stacked review** with logical commits in this order:
 
-1. (TRJ5-B0.2) Trait change in `crates/chio-kernel/src/runtime.rs`. CI is RED at this point - all 31 impls fail to compile. This commit ships in the same PR.
-2. (TRJ5-B0.3) Production impls converted. CI for production builds becomes green; tests are red because test-impls have not been converted.
-3. (TRJ5-B0.4) Test impls converted. CI fully green.
-4. (TRJ5-B0.5) Inline `dispatch_tool_call_with_cost_sync` into `dispatch_tool_call_with_cost`; delete the sync helper.
-5. (TRJ5-B0.6) Add the new `scripts/check-tool-server-async.sh`; CI gate update.
+1. (release work-B0.2) Trait change in `crates/chio-kernel/src/runtime.rs`. CI is RED at this point - all 31 impls fail to compile. This commit ships in the same PR.
+2. (release work-B0.3) Production impls converted. CI for production builds becomes green; tests are red because test-impls have not been converted.
+3. (release work-B0.4) Test impls converted. CI fully green.
+4. (release work-B0.5) Inline `dispatch_tool_call_with_cost_sync` into `dispatch_tool_call_with_cost`; delete the sync helper.
+5. (release work-B0.6) Add the new `scripts/check-tool-server-async.sh`; CI gate update.
 
 Reviewers see the layered diff but final CI is one green run. No mid-PR red CI lands on `main`; the merge is an atomic squash that goes from sync trait to async trait in one move.
 

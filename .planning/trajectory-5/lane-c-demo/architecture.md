@@ -20,16 +20,16 @@ function unless explicitly marked NEW.
                   |   chio-mcp-adapter
                   +-----------+-----------+
                               |
-                              | dispatch_tool_call_with_cost (async)  <-- TRJ5-B0.x
+                              | dispatch_tool_call_with_cost (async)  <-- release work-B0.x
                               v
                   +-----------+-----------+
                   |    Kernel A           |
                   |    chio-kernel        |
                   | (verify_capability_full
-                  |  on the hot path)     |  <-- TRJ5-B1.x
+                  |  on the hot path)     |  <-- release work-B1.x
                   +-----------+-----------+
                               |
-                              | issue local v2 receipt (artifact #1)  <-- TRJ5-B2.x
+                              | issue local v2 receipt (artifact #1)  <-- release work-B2.x
                               | route across federation peer
                               v
                   +-----------+-----------+
@@ -44,11 +44,11 @@ function unless explicitly marked NEW.
                   |    Kernel B           |
                   |    chio-kernel        |
                   | (verify_capability_full|
-                  |  on the hot path)     |  <-- TRJ5-B1.x
+                  |  on the hot path)     |  <-- release work-B1.x
                   +-----------+-----------+
                               |
                               | execute refund tool (KB MCP-backed)
-                              | issue local v2 receipt (artifact #2)  <-- TRJ5-B2.x
+                              | issue local v2 receipt (artifact #2)  <-- release work-B2.x
                               v
                   +-----------+-----------+
                   | DualSignedReceipt      |
@@ -82,7 +82,7 @@ function unless explicitly marked NEW.
                   | build_anchor_inclusion_|
                   |   proof lib.rs:178     |
                   | (ASYNC ONLY when       |
-                  |  public-witness req.)  |  <-- TRJ5-B3.x
+                  |  public-witness req.)  |  <-- release work-B3.x
                   +-----------+-----------+
                               |
                               | settle batch
@@ -165,11 +165,11 @@ drive the demo orchestrator and ship the §7 verifier.
 Each kernel emits a v2 receipt for its side of the call. Per
 `crates/chio-kernel/src/kernel/mod.rs:1574-1591`
 (`kernel_receipt_version_for_remote`) the legacy path warns and
-downgrades to v1; Lane B `TRJ5-B2.x` replaces this with a hard
+downgrades to v1; Lane B `release work-B2.x` replaces this with a hard
 reject when negotiation is v2. Lane C asserts the demo runs in
 v2-only mode.
 
-Receipts are persisted via the receipt sink wired in TRJ5-C3.3 to
+Receipts are persisted via the receipt sink wired in release work-C3.3 to
 `examples/chiodome-bilateral/fixtures/receipts/<id>.json`.
 
 ### Predicate body and DualSignedReceipt (artifact #3)
@@ -192,7 +192,7 @@ rebaked.
 ### DSSE Statement (artifact #4)
 
 The `bilateral_dsse.rs` module (introduced by Lane B B4; extended
-by Lane C TRJ5-C2.x with the verifier and predicate helper) wraps
+by Lane C release work-C2.x with the verifier and predicate helper) wraps
 the cross-org cosign in the in-toto Statement / DSSE envelope
 shape from `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6.
 
@@ -273,7 +273,7 @@ in a specific, observable way:
    is still callable, the kernel may admit a stale lease and the
    adversarial fixture passes (which is the failure mode).
 
-2. **Receipt v2 fail-closed** (Lane B `TRJ5-B2.x`: hard-reject
+2. **Receipt v2 fail-closed** (Lane B `release work-B2.x`: hard-reject
    downgrade at `chio-kernel/src/kernel/mod.rs:1574-1591`,
    `kernel_receipt_version_for_remote`). Demo exercise: both
    kernels negotiate `chio.capability.v2`; the adversarial fixture

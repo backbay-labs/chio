@@ -16,7 +16,7 @@ Convert the `ToolServerConnection` trait at `crates/chio-kernel/src/runtime.rs:2
 
 ### Spec citation
 
-This sub-lane has no normative spec MUST of its own. It is the architectural prerequisite that lets B1, B2, B3 wire the spec MUSTs they DO own. The synthesis (line 95-99) names it: "smallest decomposition cut that unblocks hot-path wiring; everything else stays out of trj5."
+This sub-lane has no normative spec MUST of its own. It is the architectural prerequisite that lets B1, B2, B3 wire the spec MUSTs they DO own. The synthesis (line 95-99) names it: "smallest decomposition cut that unblocks hot-path wiring; everything else stays out of release work."
 
 ### Affected call sites
 
@@ -75,7 +75,7 @@ This SHOULD becomes MUST. The spec edit changes "Production kernels SHOULD prefe
 1. `verify_capability_full` is the only production-callable verifier from `crates/chio-kernel/src/kernel/mod.rs`. The two helpers are removed.
 2. All four hosted call sites pass the actual `BudgetRegistry` (the kernel's `budget_registry` field), not `NoopBudgetRegistry`. This closes the Round-3 codex P2 gap noted in `mod.rs:4080-4087` ("the actual `admit_capability_budget` call is deferred until all subsequent checks have passed").
 3. PROTOCOL.md line 408 changes SHOULD -> MUST as quoted above.
-4. A new gate script `scripts/check-verify-capability-full.sh` greps every file under `crates/chio-kernel/src/` and `crates/chio-cli/src/` for the partial-entry symbols (`verify_capability_with_floor`, `verify_capability_with_negotiated_floor`, `verify_capability_with_floor_and_trust_root`, `verify_capability_with_floor_and_resolver`, `verify_capability_signature`, `verify_capability_full_without_budget_admit`) and exits 1 if any production caller (i.e. anything not under `tests/` and not behind `#[cfg(test)]`) is found. The script is wired into `scripts/check-trj5-lane-b.sh` and the workspace CI.
+4. A new gate script `scripts/check-verify-capability-full.sh` greps every file under `crates/chio-kernel/src/` and `crates/chio-cli/src/` for the partial-entry symbols (`verify_capability_with_floor`, `verify_capability_with_negotiated_floor`, `verify_capability_with_floor_and_trust_root`, `verify_capability_with_floor_and_resolver`, `verify_capability_signature`, `verify_capability_full_without_budget_admit`) and exits 1 if any production caller (i.e. anything not under `tests/` and not behind `#[cfg(test)]`) is found. The script is wired into `scripts/check-release work-lane-b.sh` and the workspace CI.
 
 ### Evidence required
 
@@ -177,7 +177,7 @@ B4 introduces a new module `crates/chio-federation/src/bilateral_dsse.rs` exposi
 - `pae_bytes(payload_type, payload) -> Vec<u8>`: pure encoding helper (DSSE PAE).
 - An in-toto Statement structure carrying the §5 predicate body.
 
-The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` is **NOT** changed in trj5; it coexists with explicit non-§6 disclaimer (Lane C release notes record this). Lane C's bilateral demo consumes B4's DSSE envelope as the §6-conformant artifact.
+The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` is **NOT** changed in release work; it coexists with explicit non-§6 disclaimer (Lane C release notes record this). Lane C's bilateral demo consumes B4's DSSE envelope as the §6-conformant artifact.
 
 ### Spec citation
 

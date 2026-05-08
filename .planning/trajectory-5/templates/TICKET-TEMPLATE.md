@@ -1,8 +1,8 @@
 # Trajectory 5 Ticket Template
 
-**Status**: normative shape for every TRJ5-X.y ticket. Lane A, B, and C
+**Status**: normative shape for every release work-X.y ticket. Lane A, B, and C
 ticket files MUST emit tickets in this exact form so the close-bar tracker
-and `scripts/check-trj5-evidence-gate.sh` can parse them.
+and `scripts/check-release work-evidence-gate.sh` can parse them.
 
 **Origin**: shaped after `.planning/trajectory-4/EXECUTION-BOARD.md` lines
 56-87 with the trj4 erratum's failure modes addressed by the Evidence Gate
@@ -15,14 +15,14 @@ fields below.
 Every ticket emits the following block. No field is optional.
 
 ```
-| Ticket | TRJ5-X.y |
+| Ticket | release work-X.y |
 |---|---|
 | Title | <short imperative title> |
 | Lane | A | B | C |
 | Sub-lane | A1 | A2 | A3 | B1 | B2 | B3 | B4 | C1 | C2 | C3 | C4 |
 | Files | <comma-separated list of paths the ticket touches> |
 | Effort | XS | S | M | L | XL |
-| Depends on | TRJ5-..., TRJ5-..., or - |
+| Depends on | release work-..., release work-..., or - |
 | Owner-class | substrate-eng | protocol-eng | federation-eng | sre-eng | refactor-eng | demo-eng |
 | Status | OPEN | EVIDENCE-PENDING | EVIDENCE-COMPLETE |
 | Acceptance | see Evidence Gate (`.planning/trajectory-5/templates/EVIDENCE-GATE.md`) |
@@ -30,12 +30,12 @@ Every ticket emits the following block. No field is optional.
 
 ### 1.1 ID convention
 
-`TRJ5-<X>.<y>` where:
+`release work-<X>.<y>` where:
 
 - `X` is the sub-lane id (`A1`, `A2`, ..., `B1`, ..., `C1`, ...).
 - `y` is a zero-padded sequence within the sub-lane (`01`, `02`, ...).
 
-Evidence Gate tickets use the `.E` suffix: `TRJ5-B1.E`, `TRJ5-B2.E`, etc.
+Evidence Gate tickets use the `.E` suffix: `release work-B1.E`, `release work-B2.E`, etc.
 There is one `.E` ticket per sub-lane.
 
 ### 1.2 Effort scale
@@ -71,12 +71,12 @@ it. Lane A, B, C variants below.
    - Imports the production module directly (no mock, no test-local copy).
    - Fails when the call site is reverted (proof: <CI URL or revert procedure>).
 4. **Audit-doc evidence**: `.planning/trajectory-5/audits/<audit>.md`
-   `### TRJ5-X.y` block records all four artifacts.
+   `### release work-X.y` block records all four artifacts.
 5. **Banner update** (if applicable): the README/CLAIMS banner reflects the
    new state. Banner-vs-reality drift is a close-blocker.
 
 This ticket closes only when all five rows are checked AND
-`scripts/check-trj5-evidence-gate.sh` returns 0 in CI.
+`scripts/check-release work-evidence-gate.sh` returns 0 in CI.
 
 See: `.planning/trajectory-5/templates/EVIDENCE-GATE.md` section 1.
 ```
@@ -115,7 +115,7 @@ schema update, and the audit-doc signoff.
 ```
 ## Acceptance (Evidence Gate ticket)
 
-1. All TRJ5-X.y tickets in sub-lane X are EVIDENCE-COMPLETE.
+1. All release work-X.y tickets in sub-lane X are EVIDENCE-COMPLETE.
 2. spec/PROTOCOL.md amended (SHOULD -> MUST where required by sub-lane).
 3. Relevant JSON schemas under spec/schemas/ updated.
 4. Claim registry (`spec/registries/claim-registry.v1.json`) carries the
@@ -136,14 +136,14 @@ schema update, and the audit-doc signoff.
 ## 3. Worked Example (Lane B1)
 
 ```
-| Ticket | TRJ5-B1.03 |
+| Ticket | release work-B1.03 |
 |---|---|
 | Title | Make `verify_capability_full` the only production capability verifier |
 | Lane | B |
 | Sub-lane | B1 |
 | Files | crates/chio-kernel/src/kernel/mod.rs, crates/chio-kernel-core/src/capability_verify.rs, scripts/check-verify-capability-full.sh |
 | Effort | M |
-| Depends on | TRJ5-A0.01 (async-trait migration prerequisite) |
+| Depends on | release work-A0.01 (async-trait migration prerequisite) |
 | Owner-class | protocol-eng |
 | Status | OPEN |
 
@@ -162,11 +162,11 @@ schema update, and the audit-doc signoff.
      called from production code.
    - Fails when `scripts/check-verify-capability-full.sh` is removed.
 4. **Audit-doc evidence**: `.planning/trajectory-5/audits/lane-b-protocol.md`
-   `### TRJ5-B1.03` block records all four artifacts.
+   `### release work-B1.03` block records all four artifacts.
 5. **Banner update**: not applicable (no public banner for this primitive).
 
 This ticket closes only when all five rows are checked AND
-`scripts/check-trj5-evidence-gate.sh` returns 0 in CI.
+`scripts/check-release work-evidence-gate.sh` returns 0 in CI.
 
 See: `.planning/trajectory-5/templates/EVIDENCE-GATE.md` section 1.
 ```

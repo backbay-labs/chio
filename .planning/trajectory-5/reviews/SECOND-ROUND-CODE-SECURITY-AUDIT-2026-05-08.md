@@ -28,7 +28,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 
 ## Validated P0 Findings
 
-### T5-R2-P0-001 - The 26-PR set is not a clean merge train
+### review item - The 26-PR set is not a clean merge train
 
 - PRs: #601 through #626
 - Evidence: GitHub reports all 26 as `mergeable=MERGEABLE`, but all 26 as `mergeStateStatus=UNSTABLE`. All 26 have failing checks. Pairwise merge simulation found 53 conflicting pairs out of 325. Ordered virtual merge succeeds through #610 and fails at #611 on `crates/chio-kernel/src/kernel/mod.rs`.
@@ -37,7 +37,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: "all MERGEABLE" is only text-conflict status against current `main`; it is not a safe merge or ship signal.
 - Required fix: run a sequenced merge train. Merge foundational PRs first, rebase dependents, resolve all Medium/P1 actionable threads, and rerun checks.
 
-### T5-R2-P0-002 - #612 reintroduces the current-thread Tokio deadlock that #606 fixed
+### review item - #612 reintroduces the current-thread Tokio deadlock that #606 fixed
 
 - PRs: #606, #612
 - Files: `crates/chio-kernel/src/kernel/mod.rs`, `crates/chio-a2a-edge/src/lib.rs`, `crates/chio-acp-edge/src/lib.rs`
@@ -46,7 +46,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: async tool-server futures that await Tokio timers or I/O can hang after #612 lands, even though #606 closed the issue.
 - Required fix: merge #606 first, rebase #612, and remove stale B0 async bridge copies from #612. Current-thread Tokio must fail closed or use the async API directly.
 
-### T5-R2-P0-003 - #611 still has a post-dispatch receipt freshness TOCTOU
+### review item - #611 still has a post-dispatch receipt freshness TOCTOU
 
 - PR: #611
 - Files: `crates/chio-kernel/src/kernel/mod.rs`, `crates/chio-kernel/src/kernel/responses.rs`
@@ -54,7 +54,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: a peer can be fresh at admission, expire while a long-running tool executes, then fail receipt persistence after side effects already happened. That can produce a state-changing tool call with no persisted receipt.
 - Required fix: carry the admission-time negotiated version/freshness decision into receipt persistence, or make the post-dispatch path unable to fail the same request for freshness drift.
 
-### T5-R2-P0-004 - DSSE subject binding is fixed in #610 but stale in #614/#615/#617
+### review item - DSSE subject binding is fixed in #610 but stale in #614/#615/#617
 
 - PRs: #610, #614, #615, #617
 - File: `crates/chio-federation/src/bilateral_dsse.rs`
@@ -62,7 +62,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: dependent branches can undo the DSSE body-binding fix and break verifier/store interop.
 - Required fix: land #610 first. Rebase #614/#615/#617 and keep the body digest contract in all dependent branches and fixtures.
 
-### T5-R2-P0-005 - #615 accepts extra DSSE subjects while validating only `subject[0]`
+### review item - #615 accepts extra DSSE subjects while validating only `subject[0]`
 
 - PR: #615
 - File: `crates/chio-federation/src/bilateral_verifier.rs`
@@ -70,7 +70,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: downstream consumers can treat a multi-subject Statement as fully verified when only the first subject was checked.
 - Required fix: require `statement.subject.len() == 1` for the bilateral profile and add a negative two-subject test.
 
-### T5-R2-P0-006 - #615 workspace example is not buildable
+### review item - #615 workspace example is not buildable
 
 - PR: #615
 - Files: `examples/bilateral-invocation/src/main.rs`, `crates/chio-federation/src/bilateral_verifier.rs`, root `Cargo.toml`
@@ -78,7 +78,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: the PR cannot honestly ship the bilateral invocation example or claim C2 as build-clean.
 - Required fix: add the missing config field and run `cargo check -p bilateral-invocation`.
 
-### T5-R2-P0-007 - #615 still overclaims a partial verifier as a full 17-step verifier
+### review item - #615 still overclaims a partial verifier as a full 17-step verifier
 
 - PR: #615
 - Files: `crates/chio-federation/src/bilateral_verifier.rs`, `examples/bilateral-invocation/Cargo.toml`, `examples/bilateral-invocation/src/main.rs`, conformance test names
@@ -86,7 +86,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: release/demo truth overstates verifier conformance and can hide missing predicate-schema coverage.
 - Required fix: either complete the schema/verifier or rename all public/example/test surfaces to partial local verifier.
 
-### T5-R2-P0-008 - Mutation aggregate truth is multiply owned and non-atomic
+### review item - Mutation aggregate truth is multiply owned and non-atomic
 
 - PRs: #603, #619, #621, #622, #623, #624, #626
 - Files: `audits/mutation/2026-05-08-per-crate-baseline.md`, `audits/mutation/aggregate.sh`, `audits/mutation/summary.sh`, `.planning/trajectory-5/baselines/BAR-1-MUTATION.md`, `audits/evidence/mutants/.gitignore`
@@ -94,7 +94,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: whichever PR lands last can overwrite release truth with stale, partial, or externally coordinated numbers.
 - Required fix: remove aggregate truth from worker PRs, or make one post-merge integrator PR regenerate the aggregate from merged evidence.
 
-### T5-R2-P0-009 - Partial mutation runs can still be marked `target_met`
+### review item - Partial mutation runs can still be marked `target_met`
 
 - PRs: #623, #626
 - Files: `audits/evidence/mutants/chio-policy/2026-05-08.json`, `audits/mutation/2026-05-08-per-crate-baseline.md`
@@ -102,7 +102,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: machine-readable evidence can claim release target success while human docs say the target is not retired.
 - Required fix: set `target_met=false` or remove it for interrupted/partial/subset runs. Full target success requires complete execution or a documented sampling contract approved before the run.
 
-### T5-R2-P0-010 - `summary.sh` preserves stale release-truth keys across regeneration
+### review item - `summary.sh` preserves stale release-truth keys across regeneration
 
 - PR: #626
 - File: `audits/mutation/summary.sh`
@@ -110,7 +110,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: regenerated summaries can carry stale partial/full/target status from earlier runs.
 - Required fix: whitelist durable annotations only. Recompute or delete all run-shape and release-truth fields on every regeneration.
 
-### T5-R2-P0-011 - Kani source and manifest do not land atomically
+### review item - Kani source and manifest do not land atomically
 
 - PRs: #605, #607, #613
 - Files: `.kani/harnesses.toml`, `.github/workflows/ci.yml`, `crates/chio-attest-verify/src/*`, `crates/chio-anchor/src/kani_public_harnesses.rs`, `crates/chio-weights/src/kani_public_harnesses.rs`
@@ -118,7 +118,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: merge order can leave CI manifest entries without source, or source without enrollment. Proof state is not atomic.
 - Required fix: consolidate manifest plus source in one PR per proof set, or stack/rebase so no intermediate main state is broken.
 
-### T5-R2-P0-012 - #618 release packaging is stale and must not be release-last yet
+### review item - #618 release packaging is stale and must not be release-last yet
 
 - PR: #618
 - Files: `releases.toml`, `releases/v0.1.0-bounded-chiodome/RELEASE-NOTES.md`
@@ -127,31 +127,31 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: #618 can publish a tag-ready package before upstream code, fixtures, mutation evidence, and release wording are integrated.
 - Required fix: keep #618 last. Regenerate release notes, `releases.toml`, fixtures, and ship-bar docs from merged `main` after all non-release PRs land.
 
-### T5-R2-P0-013 - #620 ship-bar gate passes with PARTIAL evidence
+### review item - #620 ship-bar gate passes with PARTIAL evidence
 
 - PR: #620
-- File: `scripts/check-trj5-ship-bar.sh`
+- File: `scripts/check-release work-ship-bar.sh`
 - Evidence: `partial()` prints `OK`, increments checks, and does not increment failures. Final exit is 0 when only partial rows exist. The tracker says Trajectory 5 closes only when all bars are DONE.
 - Impact: the close gate can report PASS with incomplete mutation, demo, or release-tag evidence.
 - Required fix: make PARTIAL nonzero by default. If diagnostic behavior is needed, require an explicit non-release flag.
 
 ## Validated P1 Findings
 
-### T5-R2-P1-001 - GitHub checks are failing across every PR
+### review item - GitHub checks are failing across every PR
 
 - PRs: #601 through #626
 - Evidence: common failing checks include `Build, lint, test`, `Coverage`, `cargo-deny`, `cargo-vet`, `formal-tla`, `kani-public-pr`, `MSRV`, `JVM build`, `freeze-guard`, replay/proptest/schema/vector gates, and more.
 - Impact: no PR in the set is checks-clean.
 - Required fix: treat this as a release blocker until each PR is either green or explicitly classified as blocked by a known global policy failure.
 
-### T5-R2-P1-002 - Unresolved review state contradicts the executor claim
+### review item - Unresolved review state contradicts the executor claim
 
 - PRs: #603, #606, #611, #613, #614, plus other Codex threads
 - Evidence: unresolved Cursor Medium comments remain on #603, #606, #611, #613, and #614. The review graph has 109 non-outdated unresolved threads.
 - Impact: "no unaddressed Cursor High/Medium comments" is false for Medium comments.
 - Required fix: resolve or explicitly defer each actionable Medium/P1 thread in the PR, not in chat.
 
-### T5-R2-P1-003 - `cargo-mutants` lock files leak local workstation identity
+### review item - `cargo-mutants` lock files leak local workstation identity
 
 - PRs: #621, #623, #626
 - Files: `audits/evidence/mutants/*/mutants.out/lock.json`
@@ -159,7 +159,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: unnecessary local identity leakage in audit artifacts.
 - Required fix: remove or redact tracked lock files. Update ignore rules for future direct and nested cargo-mutants layouts.
 
-### T5-R2-P1-004 - `aggregate.sh` and `summary.sh` do not robustly reproduce evidence
+### review item - `aggregate.sh` and `summary.sh` do not robustly reproduce evidence
 
 - PRs: #603, #626
 - Files: `audits/mutation/aggregate.sh`, `audits/mutation/summary.sh`
@@ -167,7 +167,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: fresh checkout reproduction can silently produce zero-mutant rows, unknown metadata, wrong scope, or a pipeline failure.
 - Required fix: parse `outcomes.json` directly or require text files. Make missing optional metadata nonfatal and keep redacted committed metadata as the source of truth.
 
-### T5-R2-P1-005 - `aggregate.sh` loses partial/subset caveats
+### review item - `aggregate.sh` loses partial/subset caveats
 
 - PR: #626
 - File: `audits/mutation/aggregate.sh`
@@ -175,7 +175,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: hand-picked subset results can render as ordinary crate percentages.
 - Required fix: aggregate from summary JSON and propagate partial/subset labels into every table row.
 
-### T5-R2-P1-006 - #625 adds tests but no mutation evidence rerun
+### review item - #625 adds tests but no mutation evidence rerun
 
 - PR: #625
 - Files: `crates/chio-attest-verify/src/sigstore.rs`, `crates/chio-attest-verify/tests/tenant_policy_resolver.rs`
@@ -183,14 +183,14 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: this is a test-addition PR, not an evidence closure PR.
 - Required fix: rerun cargo-mutants and commit evidence, or downgrade the claim to "tests added, mutation evidence pending".
 
-### T5-R2-P1-007 - `chio-attest-verify` full-crate mutation target is still not closed
+### review item - `chio-attest-verify` full-crate mutation target is still not closed
 
 - PRs: #619, #625
 - Evidence: #619 records 44.1 percent full-crate mutation for `chio-attest-verify`. #625 reports targeted touched-line closure, not a full crate rerun or aggregate JSON update.
 - Impact: touched-line closure cannot replace the load-bearing full-crate Bar 1 target.
 - Required fix: rerun full `chio-attest-verify` mutation after #625 and update aggregate evidence.
 
-### T5-R2-P1-008 - TLA negative specs are not CI-gated
+### review item - TLA negative specs are not CI-gated
 
 - PR: #602
 - Files: `formal/apalache/_negative_tests/README.md`, `.github/workflows/apalache-safety.yml`
@@ -198,7 +198,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: non-tautology evidence is manual and can regress silently.
 - Required fix: add an expected-failure CI wrapper that passes only when broken specs produce the expected counterexample.
 
-### T5-R2-P1-009 - Threat evidence still relies on prose or weak counts
+### review item - Threat evidence still relies on prose or weak counts
 
 - PRs: #604, #608, #616
 - Files: `audits/evidence/threats/*.json`, `crates/chio-conformance/tests/threats/*.rs`, `scripts/check-threat-coverage-mutants.sh`
@@ -206,7 +206,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: threat coverage can be overstated or not mechanically checked.
 - Required fix: add concrete revert recipes, direct negative verifier calls, and tests for the updated partial semantics.
 
-### T5-R2-P1-010 - #608 TEE quote evidence is too weak
+### review item - #608 TEE quote evidence is too weak
 
 - PR: #608
 - File: `crates/chio-conformance/tests/threats/tee_quote_forgery.rs`
@@ -214,7 +214,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: evidence can pass without proving the intended verifier behavior.
 - Required fix: replace needle/file pinning with direct negative verifier calls for each claimed deny arm.
 
-### T5-R2-P1-011 - #614 KB MCP full-mode receipt assertion checks the wrong store
+### review item - #614 KB MCP full-mode receipt assertion checks the wrong store
 
 - PR: #614
 - File: `examples/chiodome-bilateral/scripts/run-with-kb-mcp.sh`
@@ -222,7 +222,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: a full-mode receipt assertion can fail or pass against the wrong artifact location.
 - Required fix: query the SQLite receipt DB with `chio receipt list --receipt-db`.
 
-### T5-R2-P1-012 - #614/#617 stale keyid tests remain in dependent branches
+### review item - #614/#617 stale keyid tests remain in dependent branches
 
 - PRs: #614, #617
 - File: `crates/chio-federation/src/bilateral_dsse.rs`
@@ -230,7 +230,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: dependent branches are not self-verifying and can fail or invite reverting the runtime invariant.
 - Required fix: update tests to assert raw public-key byte hashing.
 
-### T5-R2-P1-013 - #606 standalone verdict-matrix crate misses `async-trait`
+### review item - #606 standalone verdict-matrix crate misses `async-trait`
 
 - PR: #606
 - Files: `crates/chio-conformance/verdict_matrix/src/driver.rs`, `crates/chio-conformance/verdict_matrix/Cargo.toml`
@@ -238,7 +238,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: standalone verdict-matrix builds can fail even if parent workspace dependencies mask it elsewhere.
 - Required fix: add `async-trait` to the nested crate manifest.
 
-### T5-R2-P1-014 - #613 Kani feature does not imply required `web3`
+### review item - #613 Kani feature does not imply required `web3`
 
 - PR: #613
 - File: `crates/chio-anchor/Cargo.toml`
@@ -246,7 +246,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: cargo-kani can find zero harnesses unless `web3` is separately enabled.
 - Required fix: make `kani = ["web3"]` or enforce the required feature set in the Kani runner.
 
-### T5-R2-P1-015 - #615 positive verifier tests opt into legacy `DefaultRoutine`
+### review item - #615 positive verifier tests opt into legacy `DefaultRoutine`
 
 - PR: #615
 - File: `crates/chio-conformance/tests/c2_bilateral_invocation_verifier_17_step.rs`
@@ -254,7 +254,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: main positive tests do not prove the fail-closed default posture.
 - Required fix: make positive tests use `Reject` unless the test is specifically exercising legacy behavior.
 
-### T5-R2-P1-016 - #612 non-tool/planning paths skip budget admission
+### review item - #612 non-tool/planning paths skip budget admission
 
 - PR: #612
 - File: `crates/chio-kernel/src/kernel/mod.rs`
@@ -263,21 +263,21 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: if the B1 claim is "single-entry verifier for all capability-backed surfaces", this gap weakens sibling-sum budget enforcement.
 - Required fix: either admit budget on live delegated non-tool surfaces or narrow the B1 claim and tests.
 
-### T5-R2-P1-017 - AI/process/planning metadata remains in code and scripts
+### review item - AI/process/planning metadata remains in code and scripts
 
 - PRs: many, including #601, #602, #603, #606, #607, #609, #611, #615, #617, #620, #625
-- Evidence examples: comments mention `TRJ5`, PR numbers, Codex/Cursor review provenance, audit tickets, wave metadata, and "Kills: mutant ..." planning notes in runtime-adjacent code, CI scripts, and tests.
+- Evidence examples: comments mention `release work`, PR numbers, Codex/Cursor review provenance, audit tickets, wave metadata, and "Kills: mutant ..." planning notes in runtime-adjacent code, CI scripts, and tests.
 - Impact: this violates the user's explicit rule that AI slop comments and planning/ticket metadata are P1. It also makes source history read like a review transcript instead of product code.
 - Required fix: keep protocol rationale, remove bot/PR/ticket/provenance comments from code, scripts, configs, and production-adjacent tests.
 
-### T5-R2-P1-018 - #607/#609 gates can be advisory while looking like release gates
+### review item - #607/#609 gates can be advisory while looking like release gates
 
 - PRs: #607, #609
 - Evidence: #607 can filter invalid Kani lane values rather than failing hard. #609 has an anchor async witness checker pattern that can be advisory via `|| true` or exit 0.
 - Impact: a gate can go green while missing intended enforcement.
 - Required fix: validate lane enum values, fail on invalid manifest entries, and do not count advisory scripts as release gates.
 
-### T5-R2-P1-019 - #624 still has unresolved boundary-polarity review state
+### review item - #624 still has unresolved boundary-polarity review state
 
 - PR: #624
 - File: `audits/evidence/mutants/chio-weights/README.md`
@@ -285,7 +285,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 - Impact: the human-readable evidence still misleads even if the machine JSON was corrected.
 - Required fix: update README to match current `ModelCard::validate` semantics.
 
-### T5-R2-P1-020 - #618 release provenance SHA is stale
+### review item - #618 release provenance SHA is stale
 
 - PR: #618
 - File: `releases.toml`

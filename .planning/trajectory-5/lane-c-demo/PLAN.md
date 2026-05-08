@@ -57,11 +57,11 @@ existing crate's API surface.
 
 ### Lane A/B dependencies
 
-- Depends on `verify_capability_full` (Lane B `TRJ5-B1.x`). C1 builds
+- Depends on `verify_capability_full` (Lane B `release work-B1.x`). C1 builds
   against the current verifier signature; if Lane B's surgery lands
   first the example just compiles.
 - Depends on Lane B's `ToolServerConnection` -> `async_trait`
-  migration (`TRJ5-B0.5`) so the refund tool can register normally
+  migration (`release work-B0.5`) so the refund tool can register normally
   on both kernels without manual sync-wrapping at the example layer.
 
 ### Week range
@@ -82,7 +82,7 @@ land. W3 start, full close W4-W5.
 two-signature design was rejected. The DSSE-conformant signing
 primitive (envelope, PAE, signing surface) is now Lane B sub-lane
 B4 (`lane-b-wiring/dsse-bilateral-signing.md`,
-`TRJ5-B4.1..TRJ5-B4.6` plus `TRJ5-B4.E` Evidence Gate close).
+`bilateral DSSE signing item-B4.6` plus `bilateral DSSE signing item` Evidence Gate close).
 Lane C C2 simplifies from "ship a
 two-signature adapter" to "consume B4 and ship the §7 verifier".
 
@@ -133,15 +133,15 @@ two-signature adapter" to "consume B4 and ship the §7 verifier".
 
 ### Lane A/B dependencies
 
-- Hard dep on Lane B `TRJ5-B4.5` (DSSE-conformant signing surface;
+- Hard dep on Lane B `bilateral DSSE signing item` (DSSE-conformant signing surface;
   the gating B4 negative conformance fixture, analogous to the
   B1.6/B2.5/B3.5 gating pattern).
-- Hard dep on Lane B `TRJ5-B1.6` (lease-expiry enforcement; the §7
+- Hard dep on Lane B `release work-B1.6` (lease-expiry enforcement; the §7
   verifier step 14 only fails closed if the capability path
   enforces).
-- Hard dep on Lane B `TRJ5-B2.5` (receipt v2 fail-closed; §7 step 7
+- Hard dep on Lane B `release work-B2.5` (receipt v2 fail-closed; §7 step 7
   subject digest depends on a real v2 body).
-- Hard dep on Lane B `TRJ5-B3.5` (anchor-batch async-only; §7 step 16).
+- Hard dep on Lane B `release work-B3.5` (anchor-batch async-only; §7 step 16).
 
 ### Week range
 
@@ -340,7 +340,7 @@ W4.
 - Tag is signed; CI smoke is required; tarball is reproducible from
   `./smoke.sh && tar -czf ...`.
 - `RELEASE_AUDIT.md` row references the tag and the demo path.
-- The four trj5 ship-bar conditions
+- The four release work ship-bar conditions
   (`00-SYNTHESIS.md` lines 148-158) are observably true for Lane C:
   - Demo runs end-to-end
   - Receipts are inspectable with `chio receipt explain`
@@ -384,7 +384,7 @@ W4.
 
 Lane C scaffolding (C1.1, C1.2, C1.4) starts in W3 alongside
 in-progress Lane B work (R1 §6.2). Continuous CI workflow
-`chiodome-demo-continuous.yml` (TRJ5-C6.3, R4 Finding 10) runs the
+`chiodome-demo-continuous.yml` (release work-C6.3, R4 Finding 10) runs the
 smoke nightly on `main` and on every push to Lane B paths so
 partial-enforcement bugs surface continuously, not at the worst
 possible time. Lane C will not tag at C6 if Lane B's four negative

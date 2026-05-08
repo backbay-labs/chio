@@ -2,13 +2,30 @@
 
 **Author**: Wave 4 final-pass agent. **Date**: 2026-05-08.
 **Baseline SHA**: `708c7bb33df43594f5e76542b05fca7a56d9689e`.
-**Status**: EXECUTION COMPLETE; 26 PRs open; awaiting integrator merge sequence per `CLOSEOUT.md`.
+**Status**: RELEASE BLOCKED; 26 PRs open; awaiting upstream
+merges, release-package regeneration, green checks on the integrated
+merge SHA, and a human tag push per `CLOSEOUT.md`.
 
 This document was the pre-execution readiness summary. The trajectory
-has now executed to completion. The integration-coordination map,
-ship-bar reconciliation, audit closure status, and recommended merge
-sequence live in `CLOSEOUT.md`. The text below is preserved as the
-historical pre-execution record.
+worker branches have now been prepared, but the release is not complete.
+The integration-coordination map, ship-bar reconciliation, audit closure
+status, and recommended merge sequence live in `CLOSEOUT.md`. The text
+below is preserved as the historical pre-execution record.
+
+## R4+ release truth
+
+- Bar 1 is PARTIAL until full hosted-nightly mutation evidence is
+  regenerated from merged `main`.
+- Bar 2 is PARTIAL until the four conformance fixtures are regenerated
+  and validated from merged `main`.
+- Bar 3 is PARTIAL until the demo fixtures are regenerated from merged
+  `main`; C3 default KB MCP mode emits mediation transcripts, not
+  kernel-signed Chio receipts.
+- Kani, TLA+, Lean, C2, and C5 are bounded or placeholder evidence.
+  They are not production-proof-complete release evidence.
+- `v0.1.0-bounded-chiodome` is not pushed by this branch. A human tag
+  push is allowed only after upstream merges, regeneration, and green
+  checks on the integrated merge SHA.
 
 ---
 
@@ -26,7 +43,7 @@ historical pre-execution record.
 | B | `lane-b-wiring` | protocol-rust + kernel-rust + spec-rust | 7 weeks (was 6; B4 added) | 32 | Bar 2 |
 | C | `lane-c-demo` | federation-rust + cli-rust + examples + spec-rust | 4 weeks (W3-W8 with W3 scaffolding) | 24 | Bar 3 |
 
-**Total**: 113 tickets across three coupled lanes. All ticket IDs follow the `TRJ5-X<sub>.<seq>` shape; per-sublane Evidence Gate close tickets use the `.E` suffix per `templates/TICKET-TEMPLATE.md` §38.
+**Total**: 113 tickets across three coupled lanes. All ticket IDs follow the `release work-X<sub>.<seq>` shape; per-sublane Evidence Gate close tickets use the `.E` suffix per `templates/TICKET-TEMPLATE.md` §38.
 
 ## The three ship bars
 
@@ -38,7 +55,7 @@ historical pre-execution record.
 
 ## Wave 1 -> 2 -> 3 -> 4 narrative
 
-Wave 1 (synthesis ratification + per-lane PLAN.md authoring) produced the three coupled lanes, six debate position papers, and the per-lane ticket enumeration. Wave 2 (review) generated four review documents (R1 cross-lane, R2 lane-A depth, R3 lane-B compliance, R4 lane-C feasibility) totaling 13 BLOCKER + 30 MAJOR + 19 MINOR + 13 OBSERVATION findings. Wave 3 (per-lane fix agents) addressed every BLOCKER and almost every MAJOR; the central restructure was R4 BLOCKER 1 promoting the Lane C "Option A" two-signature DSSE adapter to a fourth Lane B sub-lane (B4 DSSE-conformant bilateral signing). Wave 4 (this document's authoring pass) reconciled residual cross-lane coordination items, swept Lane C placeholder `TRJ5-B4.x` deps to the locked B4 IDs, added a SUPERSEDED-NOTE to the synthesis, populated `OWNERS.toml` `[overlaps]` rows with `coordination_owner` fields, and produced the closeout matrix (`reviews/W4-closeout-matrix.md`).
+Wave 1 (synthesis ratification + per-lane PLAN.md authoring) produced the three coupled lanes, six debate position papers, and the per-lane ticket enumeration. Wave 2 (review) generated four review documents (R1 cross-lane, R2 lane-A depth, R3 lane-B compliance, R4 lane-C feasibility) totaling 13 BLOCKER + 30 MAJOR + 19 MINOR + 13 OBSERVATION findings. Wave 3 (per-lane fix agents) addressed every BLOCKER and almost every MAJOR; the central restructure was R4 BLOCKER 1 promoting the Lane C "Option A" two-signature DSSE adapter to a fourth Lane B sub-lane (B4 DSSE-conformant bilateral signing). Wave 4 (this document's authoring pass) reconciled residual cross-lane coordination items, swept Lane C placeholder `bilateral DSSE signing item` deps to the locked B4 IDs, added a SUPERSEDED-NOTE to the synthesis, populated `OWNERS.toml` `[overlaps]` rows with `coordination_owner` fields, and produced the closeout matrix (`reviews/W4-closeout-matrix.md`).
 
 ## Findings statistics
 
@@ -51,18 +68,18 @@ Wave 1 (synthesis ratification + per-lane PLAN.md authoring) produced the three 
 
 1. **Owner-class human assignments** (LARGEST GATE). `OWNERS.toml` `lanes.{A,B,C}.human_assignment = "TBD"` plus per `[owner_classes.<class>]` `assigned_to`. No code work can start until handles land.
 2. **Wave-2 reviewer per-lane sign-off**. `reviews/lane-{a,b,c}-wave2.md` are the structured sign-off artifacts; the Wave 3 fix logs document the fixes but the reviewer's per-lane sign-off is a separate ledger expected by `KICKOFF-CHECKLIST.md`.
-3. **`scripts/trj5-preflight.sh`**. The script does not yet exist. It will be authored as Wave 5 scaffolding; the `KICKOFF-CHECKLIST.md` enumerates its required asserts.
+3. **`scripts/release work-preflight.sh`**. The script does not yet exist. It will be authored as Wave 5 scaffolding; the `KICKOFF-CHECKLIST.md` enumerates its required asserts.
 4. **`releases.toml [trajectory_5]` block**. Draft block recommended values are in `KICKOFF-CHECKLIST.md`. The block is opened by the human kickoff agent.
-5. **Bar baseline measurements**. `audits/evidence/trj5-baseline/{bar1,bar2,bar3}-state.json` will record baselines so progress is observable against a fixed reference.
-6. **TRJ4-033 confirmation** (small). If TRJ4-033 has not merged by Wave 1 of trj5 execution, the mobile-attestation rows (TRJ5-A2.7 / A2.9 / A2.13) fail closed and ramp later. Per `W3-lane-a-fixes.md` unresolved item 2.
+5. **Bar baseline measurements**. `audits/evidence/release work-baseline/{bar1,bar2,bar3}-state.json` will record baselines so progress is observable against a fixed reference.
+6. **TRJ4-033 confirmation** (small). If TRJ4-033 has not merged by Wave 1 of release work execution, the mobile-attestation rows (threat evidence item / A2.9 / A2.13) fail closed and ramp later. Per `W3-lane-a-fixes.md` unresolved item 2.
 
 None of items 1-6 is a Wave-2 BLOCKER -- all Wave 2 BLOCKERs are CLOSED per the closeout matrix. Items 1-6 are pre-execution scaffolding.
 
 ## Recommended kickoff date
 
-**READY-WITH-ASSIGNMENTS**: trj5 is ready to enter execution as soon as owner-class assignments land and the four scaffolding items above (preflight script, releases.toml block, baseline measurements, Wave-2 reviewer ledger) are completed. No new content review or planning work is required. Wave 4 closure leaves zero open BLOCKERs and zero open MAJORs requiring further design.
+**READY-WITH-ASSIGNMENTS**: release work is ready to enter execution as soon as owner-class assignments land and the four scaffolding items above (preflight script, releases.toml block, baseline measurements, Wave-2 reviewer ledger) are completed. No new content review or planning work is required. Wave 4 closure leaves zero open BLOCKERs and zero open MAJORs requiring further design.
 
-If owner-class assignments are decided synchronously with the kickoff conversation, trj5 can enter execution within one business day of those assignments.
+If owner-class assignments are decided synchronously with the kickoff conversation, release work can enter execution within one business day of those assignments.
 
 ## Pointers to all key docs
 

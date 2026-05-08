@@ -3,17 +3,17 @@
 **Bar**: 1 (Lane A: realize the floor).
 **Baseline captured**: 2026-05-08.
 **Baseline SHA**: `708c7bb33df43594f5e76542b05fca7a56d9689e`.
-**Baseline branch**: `claude/charming-feistel-8595da`.
+**Baseline branch**: `planning branch`.
 **Authoritative source**: `README.md` workspace mutation banner + `audits/evidence/threats/*.json` files.
 
-This file records the CURRENT (pre-trj5) state of Bar 1 so the post-trj5
+This file records the CURRENT (pre-release work) state of Bar 1 so the post-release work
 delta is measurable against a fixed reference. The Bar 1 close criteria
 are normative in `.planning/trajectory-5/debate/00-SYNTHESIS.md` Lane A
 and `SHIP-BAR-TRACKER.md` Bar 1 row.
 
 ---
 
-## Mutation banner (current, pre-trj5)
+## Mutation banner (current, pre-release work)
 
 From `README.md` line 17 (verbatim, captured 2026-05-08):
 
@@ -26,26 +26,26 @@ From `README.md` line 17 (verbatim, captured 2026-05-08):
 | Banner measurement date | 2026-04-29 |
 | Sample size | n=375 viable mutants |
 | Crate scope | 6 trust-boundary crates (banner does not enumerate them) |
-| Per-crate breakdown | BASELINE-GAP -- the banner does not publish per-crate numbers; per-crate breakdown is a TRJ5-A1.2b deliverable |
+| Per-crate breakdown | BASELINE-GAP -- the banner does not publish per-crate numbers; per-crate breakdown is a mutation evidence item deliverable |
 
-Per-crate breakdown gap: pre-trj5 there is no committed per-crate
+Per-crate breakdown gap: pre-release work there is no committed per-crate
 mutation kill table. The synthesis target (Bar 1 close) requires a
-per-crate breakdown. TRJ5-A1.2a (run baseline) and TRJ5-A1.2b (publish
+per-crate breakdown. mutation evidence item (run baseline) and mutation evidence item (publish
 per-crate numbers) are the W3-fix-log split that lands per-crate
 numbers in Wave 1 of Lane A.
 
-## Mutation evidence directory (current, pre-trj5)
+## Mutation evidence directory (current, pre-release work)
 
 `ls audits/evidence/mutation/ -- not present`. The directory does NOT
-exist at baseline. TRJ5-A1.2b creates it and writes
+exist at baseline. mutation evidence item creates it and writes
 `audits/evidence/mutation/<crate>/<run-id>.json` per trust-boundary
 crate. The summary file `audits/evidence/mutation/banner.json` is the
 machine-readable signal for Bar 1 (per `SHIP-BAR-TRACKER.md`
 "Machine-readable signal" row).
 
-BASELINE-GAP: pre-trj5, no `audits/evidence/mutation/banner.json` exists.
+BASELINE-GAP: pre-release work, no `audits/evidence/mutation/banner.json` exists.
 
-## Threat-evidence directory (current, pre-trj5)
+## Threat-evidence directory (current, pre-release work)
 
 ```
 $ ls audits/evidence/threats/
@@ -65,7 +65,7 @@ Count: 20 files. Authoritative threat-row count is 20 (one row per
 section 4.2 -- threat-count drift (21 vs 20)". All Lane A docs use 20
 with footnote.
 
-Each file (verified pre-trj5 by spot-check of
+Each file (verified pre-release work by spot-check of
 `audits/evidence/threats/agent_velocity_abuse.json`) is a placeholder:
 
 ```json
@@ -92,7 +92,7 @@ The 20/0/0 PASS banner is a placeholder per `SHIP-BAR-TRACKER.md`
 Bar 1 "Current state" cell. `scripts/check-threat-coverage.sh` PASSes
 today only because of the placeholder bootstrap.
 
-## Target state (post-trj5)
+## Target state (post-release work)
 
 | Field | Target |
 |---|---|
@@ -104,10 +104,10 @@ today only because of the placeholder bootstrap.
 | `needs_real_run` | `false` for all non-deferred files |
 | `triage_status` field | Present on every file per W3 Lane A fix |
 
-## Measurement command pattern (post-trj5)
+## Measurement command pattern (post-release work)
 
 The canonical `cargo mutants` invocation Lane A uses (from
-`lane-a-floor/mutation-budget.md` and `tickets.md` TRJ5-A1.2a):
+`lane-a-floor/mutation-budget.md` and `tickets.md` mutation evidence item):
 
 ```
 cargo mutants -p <crate> --no-shuffle --jobs <N> \
@@ -115,7 +115,7 @@ cargo mutants -p <crate> --no-shuffle --jobs <N> \
 ```
 
 Per-crate runs aggregate into the workspace banner. The
-`scripts/banner.sh` helper (TRJ5-A1.10 ticket) updates
+`scripts/banner.sh` helper (mutation evidence item ticket) updates
 `README.md` line 17 from observed run output.
 
 Trust-boundary crates (per `OWNERS.toml` `lanes.A.owner_globs`):
@@ -124,11 +124,11 @@ Trust-boundary crates (per `OWNERS.toml` `lanes.A.owner_globs`):
 - `chio-weights`
 - `chio-equivalence-tests` (path retained but TRJ4-019 deferred to trj6)
 - `chio-kernel-core` (capability_verify)
-- One additional crate to be confirmed during TRJ5-A1.0 exclusion-list audit
+- One additional crate to be confirmed during mutation exclusion audit exclusion-list audit
 
-## Re-measurement protocol (trj5 close)
+## Re-measurement protocol (release close)
 
-The trj5 closeout wave runs:
+The release work closeout wave runs:
 
 1. Run `cargo mutants` per trust-boundary crate; emit JSON evidence
    under `audits/evidence/mutation/<crate>/<run-id>.json`.

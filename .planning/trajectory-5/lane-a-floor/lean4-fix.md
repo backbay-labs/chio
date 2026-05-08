@@ -148,7 +148,7 @@ def verify_capability_with_negotiated_floor_model
 ### Target re-stated theorems (R2 MAJOR 5.2: at least three)
 
 The original draft stated only one direction (admit -> Schema.le),
-which is not enough to discharge the docstring's full claim. TRJ5-A5.3
+which is not enough to discharge the docstring's full claim. release work-A5.3
 proves three theorems, the third being the ordering theorem the
 docstring genuinely requires:
 
@@ -278,7 +278,7 @@ This proof set:
   for the Rust function signature; no edits expected, only
   cross-reference.
 - `.github/workflows/lean.yml` (new) or whichever existing lane
-  TRJ5-A5.1 chooses: enables Lean toolchain in CI so the proof is
+  release work-A5.1 chooses: enables Lean toolchain in CI so the proof is
   type-checked.
 
 ## What the executable model must refine
@@ -340,11 +340,11 @@ Per Lane A's close bar:
   proof that elaborates without case analysis fails the close bar
   (R2 MINOR 7.2). The three theorems above each satisfy this.
 - The `assumed` row in `theorem-inventory.json` cannot remain after
-  TRJ5-A5.4 lands.
+  release work-A5.4 lands.
 
 ## Lean toolchain in CI (re-scoped per R2 MINOR 5.3)
 
-TRJ5-A5.1 wires the Lean toolchain into CI. The current state
+release work-A5.1 wires the Lean toolchain into CI. The current state
 (`HandshakeNegotiation.lean` lines 10-12): "The Lean toolchain is
 currently unavailable in CI, so the manifest status for this theorem is
 `assumed`. The Rust shell is exercised by
@@ -354,7 +354,7 @@ The Rust shell test continues to exercise the property at runtime; A5
 adds Lean type-checking on top. Both layers are kept.
 
 **Re-scope from M to L** (R2 MINOR 5.3): Lean 4 toolchain bringup in CI
-is non-trivial. TRJ5-A5.1 owns:
+is non-trivial. release work-A5.1 owns:
 
 - Pin a specific Lean 4 toolchain version in
   `formal/lean4/lean-toolchain` (or equivalent). Without a pin every
@@ -367,7 +367,7 @@ is non-trivial. TRJ5-A5.1 owns:
 - Add `.github/workflows/lean.yml` (or extend an existing workflow)
   with `lake build` and a one-liner manifest check.
 
-## TRJ5-A5.3 acceptance (additions per R2 MAJOR 5.2 and R2 MINOR 7.2)
+## release work-A5.3 acceptance (additions per R2 MAJOR 5.2 and R2 MINOR 7.2)
 
 After merge, the close bar requires:
 
@@ -381,4 +381,4 @@ After merge, the close bar requires:
   least theorem 2 and theorem 3 (theorem 1 is also expected to fail
   but theorem 1 alone is too weak to be load-bearing). Capture the
   failing elaboration to
-  `audits/evidence/TRJ5-A5.3/elaboration-fails-on-revert.txt`.
+  `audits/evidence/release work-A5.3/elaboration-fails-on-revert.txt`.

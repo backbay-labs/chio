@@ -2,18 +2,18 @@
 
 **Reviewer**: Wave 2 cross-lane reviewer
 **Date**: 2026-05-07
-**Scope**: master trj5 docs + per-lane PLAN.md / tickets.md / templates / architecture
+**Scope**: master release work docs + per-lane PLAN.md / tickets.md / templates / architecture
 **Mode**: review only. No planning files were modified by this reviewer; Wave 3 fix agents own the patches.
 
 ## Executive summary
 
 - The synthesis contract is broadly honored at the lane PLAN.md tier. The two largest defects sit upstream of the lane plans: master docs still cite the pre-correction line ranges and trait names that the Lane B agent corrected (`mod.rs:1148-1165` instead of `:1574-1591`; `ToolServer` instead of `ToolServerConnection`).
-- Lane C silently dropped `TRJ4-019` (proptest hosted-vs-portable equivalence) by reusing the `TRJ5-A5` slot for Lean4 work; the equivalence sub-lane is missing from `lane-a-floor/tickets.md` entirely. This is a SCOPE-LOCK violation: the trj4 wave item was promised to be absorbed and is not.
+- Lane C silently dropped `TRJ4-019` (proptest hosted-vs-portable equivalence) by reusing the `release work-A5` slot for Lean4 work; the equivalence sub-lane is missing from `lane-a-floor/tickets.md` entirely. This is a SCOPE-LOCK violation: the trj4 wave item was promised to be absorbed and is not.
 - The Lane C Option-A "two-signature" decision over DSSE PAE is documented only in the Lane C deep-dive; it does not surface in master ship-bar, scope-lock, spec-to-runtime map, or risk register. This violates the Evidence Gate "Spec MUST citation" rule (Artifact B) for Lane C unless it is escalated and absorbed into the master plan.
-- Ticket-ID conventions diverge across three docs (`TRJ5-B-EG` vs `TRJ5-B.CLOSE` vs `TRJ5-B1.E`/`TRJ5-B2.E`/`TRJ5-B3.E`). The TICKET-TEMPLATE specifies the `.E` suffix and zero-padded `.y` (e.g. `TRJ5-B1.03`); no lane file follows that convention. Lane C uses non-template aliases (`LB-CAP`, `LB-RV2`, `LB-AB`, `LB-AT`) for cross-lane dependency expression instead of literal ticket IDs.
+- Ticket-ID conventions diverge across three docs (`release work-B-EG` vs `release work-B.CLOSE` vs `release work-B1.E`/`release work-B2.E`/`release work-B3.E`). The TICKET-TEMPLATE specifies the `.E` suffix and zero-padded `.y` (e.g. `release work-B1.03`); no lane file follows that convention. Lane C uses non-template aliases (`LB-CAP`, `LB-RV2`, `LB-AB`, `LB-AT`) for cross-lane dependency expression instead of literal ticket IDs.
 - The Evidence Gate four-artifact rule is well-internalized in Lane B. Lane A loosely complies (per-sublane "close-bar artifact" rows). Lane C tickets contain zero references to the Evidence Gate and zero TRJ4 back-references; this is a structural compliance gap.
 
-Verdict: **APPROVED-WITH-FIXES**. The shape of the trj5 plan is correct and matches the synthesis. The defects below are mechanical and are fixable in Wave 3 without re-opening the synthesis. Bar 2 cannot pass external audit until the line-range and trait-name drift is corrected.
+Verdict: **APPROVED-WITH-FIXES**. The shape of the release work plan is correct and matches the synthesis. The defects below are mechanical and are fixable in Wave 3 without re-opening the synthesis. Bar 2 cannot pass external audit until the line-range and trait-name drift is corrected.
 
 ---
 
@@ -38,8 +38,8 @@ MAJOR. `lane-c-demo/tickets.md:296-359` (sub-lane C5) introduces a new workspace
 Whether this is a "no new normative draft" depends on whether the BBS+ ciphersuite text in `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` is fully drafted today. R6 in `architecture/RISK-REGISTER.md:228-263` already flags the cargo-dep weight risk and proposes dropping C4 if CI hits a 5-minute or MSRV-bump threshold. R6 does not flag the spec-text question.
 
 **Proposed fix** (Wave 3):
-- `lane-c-demo/tickets.md:296-359` MUST cite the exact `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` line ranges that already define the projections, ciphersuite, and envelope. If those line ranges contain `TBD` markers or are draft-shaped, C5 should note "section X.Y MUST land before TRJ5-C5.2 closes" and the spec-stabilization work belongs in Lane C as an explicit ticket OR the section is moved to trj6.
-- `architecture/RISK-REGISTER.md:228-263` (R6) should add an "is the spec text load-bearing for trj5?" question to the escalation criteria. If the spec text is in flux, R6 fires and C4/C5 are bounded-claim only.
+- `lane-c-demo/tickets.md:296-359` MUST cite the exact `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` line ranges that already define the projections, ciphersuite, and envelope. If those line ranges contain `TBD` markers or are draft-shaped, C5 should note "section X.Y MUST land before release work-C5.2 closes" and the spec-stabilization work belongs in Lane C as an explicit ticket OR the section is moved to trj6.
+- `architecture/RISK-REGISTER.md:228-263` (R6) should add an "is the spec text load-bearing for release work?" question to the escalation criteria. If the spec text is in flux, R6 fires and C4/C5 are bounded-claim only.
 
 ### 1.4 Lane C: bilateral DSSE adapter (Option A)
 
@@ -52,12 +52,12 @@ The decision is not a contract drift in itself; it is a sensible bounded-claim c
 - `SCOPE-LOCK.md:35-42` has no Lane C row that notes "DSSE PAE adapter co-existing with `CoSigningBody` signature".
 - `architecture/RISK-REGISTER.md` carries no R7 for "if Option B becomes necessary, Lane C scope expands materially".
 
-This violates the Evidence Gate Artifact B rule (`templates/EVIDENCE-GATE.md:44-58`): every Lane C primitive ticket must cite a spec MUST. The TRJ5-C2.3, TRJ5-C2.4 tickets cite `spec section 6 lines 338-343` (`tickets.md:108-110`) but do not surface that the existing `DualSignedReceipt` is signed over a different preimage. A reviewer skimming SHIP-BAR-TRACKER will not see this. The risk is "Bar 3 closes with the DSSE adapter green and the `DualSignedReceipt` co-existing, but a future verifier audit asks 'which signature is canonical?' and the answer requires reading a Lane C deep-dive".
+This violates the Evidence Gate Artifact B rule (`templates/EVIDENCE-GATE.md:44-58`): every Lane C primitive ticket must cite a spec MUST. The release work-C2.3, release work-C2.4 tickets cite `spec section 6 lines 338-343` (`tickets.md:108-110`) but do not surface that the existing `DualSignedReceipt` is signed over a different preimage. A reviewer skimming SHIP-BAR-TRACKER will not see this. The risk is "Bar 3 closes with the DSSE adapter green and the `DualSignedReceipt` co-existing, but a future verifier audit asks 'which signature is canonical?' and the answer requires reading a Lane C deep-dive".
 
 **Proposed fix** (Wave 3):
 - `architecture/SPEC-TO-RUNTIME-MAP.md` add a row under section 8 (Cross-Org Bilateral Cosign): "Option A: two co-existing Ed25519 signatures (existing `CoSigningBody` preimage + new DSSE PAE preimage). Cross-reference `lane-c-demo/bilateral-cosign-flow.md:77-110`."
 - `SHIP-BAR-TRACKER.md` Bar 3 "Evidence required" row: add an item "(9) Both signatures verify independently; the DSSE envelope adapter does not replace `DualSignedReceipt::verify`."
-- `SCOPE-LOCK.md` Lane C in-scope table: add a sub-row for "DSSE PAE adapter co-existing with `CoSigningBody`-scoped Ed25519. Option B (replace signing surface) is OUT-OF-SCOPE for trj5; deferred to trj6 contingent on spec-WG resolution."
+- `SCOPE-LOCK.md` Lane C in-scope table: add a sub-row for "DSSE PAE adapter co-existing with `CoSigningBody`-scoped Ed25519. Option B (replace signing surface) is OUT-OF-SCOPE for release work; deferred to trj6 contingent on spec-WG resolution."
 - `architecture/RISK-REGISTER.md` add R7: "If during Lane C implementation the Option-A two-signature design is rejected by spec WG (e.g. they require Option B for downstream consumers), Lane C scope expands and Bar 3 may slip. Mitigation: cap Lane C2 effort at L; if Option B becomes necessary, escalate to Wave 2 review for a synthesis amendment."
 
 ---
@@ -70,18 +70,18 @@ MAJOR. The same closing artifact carries three names across the planning set:
 
 | Doc | Lane B closer | Lane C closer |
 |---|---|---|
-| `EXECUTION-BOARD.md:54` | `TRJ5-B-EG` | `TRJ5-C6` (no `.E` suffix; treated as a regular ticket) |
-| `lane-b-wiring/tickets.md:51` | `TRJ5-B.CLOSE` | n/a |
-| `architecture/SPEC-TO-RUNTIME-MAP.md` | `TRJ5-B1.E`, `TRJ5-B2.E`, `TRJ5-B3.E` (one per primitive) | `TRJ5-C1.E`, `TRJ5-C2.E`, `TRJ5-C3.E`, `TRJ5-C4.E` |
+| `EXECUTION-BOARD.md:54` | `release work-B-EG` | `release work-C6` (no `.E` suffix; treated as a regular ticket) |
+| `lane-b-wiring/tickets.md:51` | `release work-B.CLOSE` | n/a |
+| `architecture/SPEC-TO-RUNTIME-MAP.md` | `release work-B1.E`, `release work-B2.E`, `release work-B3.E` (one per primitive) | `release work-C1.E`, `release work-C2.E`, `release work-C3.E`, `release work-C4.E` |
 | `templates/TICKET-TEMPLATE.md:38` | "Evidence Gate tickets use the `.E` suffix" | one `.E` ticket per sub-lane |
-| `templates/EVIDENCE-GATE.md:264` | "(`### TRJ5-X.y`)" pattern | same |
+| `templates/EVIDENCE-GATE.md:264` | "(`### release work-X.y`)" pattern | same |
 
-`scripts/check-trj5-evidence-gate.sh` (a Wave 1 deliverable per `templates/EVIDENCE-GATE.md:283`) will parse the audit doc; it cannot find evidence under `TRJ5-B-EG` or `TRJ5-B.CLOSE` if the convention is `TRJ5-B1.E` / `TRJ5-B2.E` / `TRJ5-B3.E`. The script either fails universally, or it parses the wrong shape, or the convention silently drifts during execution.
+`scripts/check-release work-evidence-gate.sh` (a Wave 1 deliverable per `templates/EVIDENCE-GATE.md:283`) will parse the audit doc; it cannot find evidence under `release work-B-EG` or `release work-B.CLOSE` if the convention is `release work-B1.E` / `release work-B2.E` / `release work-B3.E`. The script either fails universally, or it parses the wrong shape, or the convention silently drifts during execution.
 
 **Proposed fix** (Wave 3):
-- Pick ONE convention. Recommended: per the TICKET-TEMPLATE, `TRJ5-X.E` per sub-lane (so `TRJ5-B1.E`, `TRJ5-B2.E`, `TRJ5-B3.E`, `TRJ5-C1.E`, ... `TRJ5-C6.E`). Drop `TRJ5-B-EG` and `TRJ5-B.CLOSE`.
-- `EXECUTION-BOARD.md:54` rewrite the row as "`TRJ5-B1.E`, `TRJ5-B2.E`, `TRJ5-B3.E` Evidence Gate per primitive" (three separate rows or one aggregator row clearly named).
-- `lane-b-wiring/tickets.md:47-51` rename `TRJ5-B.CLOSE` to `TRJ5-B-EG` or split into three `.E` tickets.
+- Pick ONE convention. Recommended: per the TICKET-TEMPLATE, `release work-X.E` per sub-lane (so `release work-B1.E`, `release work-B2.E`, `release work-B3.E`, `release work-C1.E`, ... `release work-C6.E`). Drop `release work-B-EG` and `release work-B.CLOSE`.
+- `EXECUTION-BOARD.md:54` rewrite the row as "`release work-B1.E`, `release work-B2.E`, `release work-B3.E` Evidence Gate per primitive" (three separate rows or one aggregator row clearly named).
+- `lane-b-wiring/tickets.md:47-51` rename `release work-B.CLOSE` to `release work-B-EG` or split into three `.E` tickets.
 - `templates/TICKET-TEMPLATE.md:38` is the contract; the lane files conform to it.
 
 ### 2.2 Lane C uses non-template aliases for cross-lane dependencies
@@ -95,16 +95,16 @@ MAJOR. `lane-c-demo/tickets.md:9-13` introduces:
 - `LB-AT`  = Lane B `ToolServer` -> `async_trait` migration
 ```
 
-These are **not** ticket IDs. They are aliases. The actual ticket IDs are `TRJ5-B1.6` (negative conformance fixture for B1), `TRJ5-B2.5`, `TRJ5-B3.5`, `TRJ5-B0.5` (collapse hop). `EXECUTION-BOARD.md:65,67-70` cross-lane dependency table uses literal `TRJ5-B1`, `TRJ5-B2`, `TRJ5-B3` (sub-lane level, not ticket level). `architecture/SPEC-TO-RUNTIME-MAP.md` uses `TRJ5-B1.E`/`TRJ5-B2.E`/`TRJ5-B3.E` (sub-lane Evidence Gate level).
+These are **not** ticket IDs. They are aliases. The actual ticket IDs are `release work-B1.6` (negative conformance fixture for B1), `release work-B2.5`, `release work-B3.5`, `release work-B0.5` (collapse hop). `EXECUTION-BOARD.md:65,67-70` cross-lane dependency table uses literal `release work-B1`, `release work-B2`, `release work-B3` (sub-lane level, not ticket level). `architecture/SPEC-TO-RUNTIME-MAP.md` uses `release work-B1.E`/`release work-B2.E`/`release work-B3.E` (sub-lane Evidence Gate level).
 
 This means Lane C's "depends on `LB-CAP`" cannot be machine-checked against either the master board or the Lane B tickets. A Wave-3 Evidence-Gate script cannot resolve "LB-CAP" to a ticket.
 
 **Proposed fix** (Wave 3):
 - `lane-c-demo/tickets.md:9-13` replace aliases with literal ticket IDs:
-  - `LB-CAP` -> `TRJ5-B1.6` (the B1 negative conformance fixture is the gating artifact for "single-entry verifier landed").
-  - `LB-RV2` -> `TRJ5-B2.5`.
-  - `LB-AB`  -> `TRJ5-B3.5`.
-  - `LB-AT`  -> `TRJ5-B0.5` (the dispatch hop collapse is the gating artifact).
+  - `LB-CAP` -> `release work-B1.6` (the B1 negative conformance fixture is the gating artifact for "single-entry verifier landed").
+  - `LB-RV2` -> `release work-B2.5`.
+  - `LB-AB`  -> `release work-B3.5`.
+  - `LB-AT`  -> `release work-B0.5` (the dispatch hop collapse is the gating artifact).
 - Every C ticket's "Depends on" row uses the literal IDs.
 
 ### 2.3 Lane A swaps sub-lane numbers
@@ -113,50 +113,50 @@ MAJOR. Master `EXECUTION-BOARD.md:33-39` lists:
 
 | ID | Title |
 |---|---|
-| TRJ5-A1 | mutation kill |
-| TRJ5-A2 | threat coverage 21 rows |
-| TRJ5-A3 | Kani harnesses (3 crates) |
-| TRJ5-A4 | TLA+ rewrites |
-| TRJ5-A5 | proptest hosted-vs-portable equivalence (TRJ4-019) |
-| TRJ5-A6 | Lean4 negotiation_safety |
-| TRJ5-A7 | README banner |
+| release work-A1 | mutation kill |
+| release work-A2 | threat coverage 21 rows |
+| release work-A3 | Kani harnesses (3 crates) |
+| release work-A4 | TLA+ rewrites |
+| release work-A5 | proptest hosted-vs-portable equivalence (TRJ4-019) |
+| release work-A6 | Lean4 negotiation_safety |
+| release work-A7 | README banner |
 
 `lane-a-floor/tickets.md:14-158` renumbers:
 
 | ID | Title |
 |---|---|
-| TRJ5-A1.1..10 | mutation kill |
-| TRJ5-A2.1..22 | threat coverage 20 rows |
-| TRJ5-A3.1..5 | Kani harnesses |
-| TRJ5-A4.1..5 | TLA+ rewrites |
-| TRJ5-A5.1..4 | **Lean4 negotiation_safety** (NOT equivalence-tests) |
+| mutation evidence item | mutation kill |
+| threat evidence item | threat coverage 20 rows |
+| Kani harness evidence..5 | Kani harnesses |
+| release work-A4.1..5 | TLA+ rewrites |
+| release work-A5.1..4 | **Lean4 negotiation_safety** (NOT equivalence-tests) |
 | (no A6) | (the Lean slot was promoted to A5; TRJ4-019 equivalence-tests has nowhere) |
-| (no A7) | (the README banner is folded into TRJ5-A1.10) |
+| (no A7) | (the README banner is folded into mutation evidence item) |
 
 The `chio-equivalence-tests` proptest hosted-vs-portable equivalence work (TRJ4-019, the synthesis line 38, `EXECUTION-BOARD.md:37`) is **completely missing** from Lane A. `lane-a-floor/README.md:38-44` "Sub-lane summary" table does not list it. Searching `lane-a-floor/*.md` for `TRJ4-019` or `equivalence` returns zero matches.
 
 This is a synthesis-contract violation. The synthesis (00-SYNTHESIS.md line 88) explicitly names equivalence-tests as part of Lane A's floor.
 
 **Proposed fix** (Wave 3):
-- `lane-a-floor/tickets.md` add a new sub-lane `TRJ5-A5` (renumber the Lean4 work to `TRJ5-A6` to match `EXECUTION-BOARD.md`), with tickets covering: chio-equivalence-tests configuration, 10k cases per PR, 1M nightly, zero divergence assertion, evidence committed.
+- `lane-a-floor/tickets.md` add a new sub-lane `release work-A5` (renumber the Lean4 work to `release work-A6` to match `EXECUTION-BOARD.md`), with tickets covering: chio-equivalence-tests configuration, 10k cases per PR, 1M nightly, zero divergence assertion, evidence committed.
 - `lane-a-floor/README.md:38-44` add the row.
 - The Lane A timeline (`README.md:64-79`) accommodates the equivalence work in week 6-8 alongside Kani.
 - Alternatively if the agent intended to renumber, every master doc must follow: `EXECUTION-BOARD.md:33-39`, `OWNERS.toml:45`, `KICKOFF-CHECKLIST.md:65`. (The renumbering option is fragile; recommended is to honor the master numbering.)
 
-### 2.4 TRJ5-A0 referenced but not enumerated
+### 2.4 release work-A0 referenced but not enumerated
 
-MINOR. `lane-a-floor/tickets.md:19` shows `TRJ5-A1.1` depends on "preflight" and notes "Carry-forward of TRJ4-010". `architecture/ASYNC-KERNEL-MIGRATION.md:151` mentions `TRJ5-A0.00` and `TRJ5-A0.01..0.0N` (the implementer enumeration ticket). No master doc enumerates an A0 sub-lane. EXECUTION-BOARD.md:33 has a "TRJ5-A0 (preflight)" reference under TRJ5-A1's depends-on.
+MINOR. `lane-a-floor/tickets.md:19` shows `mutation evidence item` depends on "preflight" and notes "Carry-forward of TRJ4-010". `architecture/ASYNC-KERNEL-MIGRATION.md:151` mentions `release work-A0.00` and `release work-A0.01..0.0N` (the implementer enumeration ticket). No master doc enumerates an A0 sub-lane. EXECUTION-BOARD.md:33 has a "release work-A0 (preflight)" reference under release work-A1's depends-on.
 
 **Proposed fix** (Wave 3):
-- Either enumerate TRJ5-A0 as a Wave-0 preflight sub-lane row in `lane-a-floor/tickets.md` and `EXECUTION-BOARD.md`, OR drop the references and inline-document the preflight as part of TRJ5-A1.1.
-- Note: ASYNC-KERNEL-MIGRATION.md:151,160-188 misuses `A0.00`, `A0.01` etc. for Lane B work; those should be `B0.0`, `B0.1`, etc. (Lane B0 sub-lane). Confirm by reading `lane-b-wiring/tickets.md:5-15` which uses `TRJ5-B0.1..6`.
+- Either enumerate release work-A0 as a Wave-0 preflight sub-lane row in `lane-a-floor/tickets.md` and `EXECUTION-BOARD.md`, OR drop the references and inline-document the preflight as part of mutation evidence item
+- Note: ASYNC-KERNEL-MIGRATION.md:151,160-188 misuses `A0.00`, `A0.01` etc. for Lane B work; those should be `B0.0`, `B0.1`, etc. (Lane B0 sub-lane). Confirm by reading `lane-b-wiring/tickets.md:5-15` which uses `release work-B0.1..6`.
 
 ### 2.5 TICKET-TEMPLATE zero-pad convention not honored
 
-MINOR. `templates/TICKET-TEMPLATE.md:36` states: "`y` is a zero-padded sequence within the sub-lane (`01`, `02`, ...)". Lane B / Lane C tickets use single-digit (`TRJ5-B1.6`, `TRJ5-C2.7`). Lane A also uses single-digit (`TRJ5-A2.22`).
+MINOR. `templates/TICKET-TEMPLATE.md:36` states: "`y` is a zero-padded sequence within the sub-lane (`01`, `02`, ...)". Lane B / Lane C tickets use single-digit (`release work-B1.6`, `release work-C2.7`). Lane A also uses single-digit (`threat evidence item`).
 
 **Proposed fix** (Wave 3):
-- Either honor the zero-pad convention (`TRJ5-A2.22` -> `TRJ5-A2.22`, but `TRJ5-B0.1` -> `TRJ5-B0.01`, `TRJ5-B1.6` -> `TRJ5-B1.06`), OR amend `TICKET-TEMPLATE.md:36` to say "`.y` is an integer sequence; zero-padding optional but consistent within a sub-lane".
+- Either honor the zero-pad convention (`threat evidence item` -> `threat evidence item`, but `release work-B0.1` -> `release work-B0.01`, `release work-B1.6` -> `release work-B1.06`), OR amend `TICKET-TEMPLATE.md:36` to say "`.y` is an integer sequence; zero-padding optional but consistent within a sub-lane".
 
 ---
 
@@ -168,10 +168,10 @@ See findings 2.2 above. BLOCKER for evidence-gate tooling.
 
 ### 3.2 W1 master finding: B2 fine-grained gate on Bar 3
 
-OBSERVATION. The README `Trj4 wave-plan absorption` table (line 105-114) maps trj4 receipt v2 to TRJ5-B2 and bilateral demo to TRJ5-C1; the cross-lane dependency table (`EXECUTION-BOARD.md:84`) explicitly states "Bilateral receipts must mint as v2 under negotiated v2; the warn-and-downgrade path would silently weaken the demo." This propagates correctly to:
+OBSERVATION. The README `Trj4 wave-plan absorption` table (line 105-114) maps trj4 receipt v2 to release work-B2 and bilateral demo to release work-C1; the cross-lane dependency table (`EXECUTION-BOARD.md:84`) explicitly states "Bilateral receipts must mint as v2 under negotiated v2; the warn-and-downgrade path would silently weaken the demo." This propagates correctly to:
 
 - `lane-c-demo/README.md:42-47` ("Receipt v2 fail-closed under negotiated v2... Demo proves v2 negotiated => v2 emitted").
-- `lane-c-demo/tickets.md:206-209` (TRJ5-C3.3 "Receipt persistence ... Depends on: LB-RV2 (so v2 actually emits when negotiated)").
+- `lane-c-demo/tickets.md:206-209` (release work-C3.3 "Receipt persistence ... Depends on: LB-RV2 (so v2 actually emits when negotiated)").
 
 The propagation is healthy; the only loose end is the alias-vs-ID issue in 2.2.
 
@@ -183,20 +183,20 @@ OBSERVATION. The plans are correctly independent: Lane A does not block Lane B/C
 
 MAJOR. `OWNERS.toml:103` records that `crates/chio-anchor/` is in the `[overlaps]` table for lanes A, B, and C. Concretely:
 
-- Lane A `TRJ5-A1.7` (`tickets.md:25`) drives mutation kill on `chio-anchor`.
-- Lane A `TRJ5-A3.2` (`tickets.md:97`) writes `crates/chio-anchor/src/kani_public_harnesses.rs`.
-- Lane B `TRJ5-B3.2` (`tickets.md:42`) gates `crates/chio-anchor/src/batch.rs:227-235`.
-- Lane C `TRJ5-C3` consumes `crates/chio-anchor::Web3CheckpointStatement`.
+- Lane A `mutation evidence item` (`tickets.md:25`) drives mutation kill on `chio-anchor`.
+- Lane A `Kani harness evidence` (`tickets.md:97`) writes `crates/chio-anchor/src/kani_public_harnesses.rs`.
+- Lane B `release work-B3.2` (`tickets.md:42`) gates `crates/chio-anchor/src/batch.rs:227-235`.
+- Lane C `release work-C3` consumes `crates/chio-anchor::Web3CheckpointStatement`.
 
 If Lane A and Lane B both touch `chio-anchor` in the same wave, merge conflicts are inevitable. `OWNERS.toml:103` lists `["A", "B", "C"]` overlap but does not name a coordination owner. The Kickoff checklist line 38 demands "Path-overlap conflicts in `[overlaps]` have a coordination owner named". Today none is named.
 
 **Proposed fix** (Wave 3):
-- `OWNERS.toml:99-110` add an `[overlaps_owner]` table or expand `[overlaps]` to record `coordination_owner = "@bb-connor"` (the `single_owner` per the manifest).
+- `OWNERS.toml:99-110` add an `[overlaps_owner]` table or expand `[overlaps]` to record `coordination_owner = "release owner"` (the `single_owner` per the manifest).
 - `KICKOFF-CHECKLIST.md:38` make this an explicit gating checkbox: "[ ] `OWNERS.toml` `[overlaps]` rows that span multiple lanes carry a `coordination_owner` field."
 
 ### 3.5 `crates/chio-conformance/tests/` overlap
 
-MINOR. `OWNERS.toml:104` lists overlap on `crates/chio-conformance/tests/` between A and B. Lane A's threat-coverage (TRJ5-A2) does not strictly write under `chio-conformance/tests/`; it writes under `audits/evidence/threats/` and `tests/threats/`. Lane B writes three files under `chio-conformance/tests/`. The overlap is real for the test home conventions but not for code conflicts. Still, the `[overlaps]` row exists; coordination owner must be named.
+MINOR. `OWNERS.toml:104` lists overlap on `crates/chio-conformance/tests/` between A and B. Lane A's threat-coverage (release work-A2) does not strictly write under `chio-conformance/tests/`; it writes under `audits/evidence/threats/` and `tests/threats/`. Lane B writes three files under `chio-conformance/tests/`. The overlap is real for the test home conventions but not for code conflicts. Still, the `[overlaps]` row exists; coordination owner must be named.
 
 **Proposed fix** (Wave 3): same as 3.4, plus consider tightening the overlap row to `["B"]` if `tests/threats/` is a separate path.
 
@@ -221,7 +221,7 @@ The master docs and lane plans disagree numerically. A reviewer reading SHIP-BAR
   - `EXECUTION-BOARD.md:34` change "21" -> "20".
   - `KICKOFF-CHECKLIST.md:75` and the trj4-absorption note in `KICKOFF-CHECKLIST.md:66` is fine (TRJ4-040..049 is the trj4-side ticket count, not the file count).
   - `architecture/RISK-REGISTER.md:107,128,137` change "21" -> "20".
-- If a 21st row is intentional (e.g. a future row pinned to add at trj5 close), the synthesis must be re-opened (it is normative). The Lane A agent already documented this; the master docs need to follow.
+- If a 21st row is intentional (e.g. a future row pinned to add at release close), the synthesis must be re-opened (it is normative). The Lane A agent already documented this; the master docs need to follow.
 
 ### 4.3 Bar 2 line-range and trait-name drift
 
@@ -246,7 +246,7 @@ The correction lives in `lane-b-wiring/receipt-v2-failclosed.md:36`, `lane-b-wir
 | `lane-c-demo/README.md` | `mod.rs:1148-1165` | 43 |
 | `lane-c-demo/architecture.md` | `mod.rs:1148-1165` | 155, 259 |
 | `lane-c-demo/release-bar.md` | `mod.rs:1148-1165` | 183 |
-| `lane-c-demo/tickets.md` | `\`ToolServer\`` (LB-AT alias and TRJ5-C1.4 scope text) | 13, 64 |
+| `lane-c-demo/tickets.md` | `\`ToolServer\`` (LB-AT alias and release work-C1.4 scope text) | 13, 64 |
 | `lane-c-demo/PLAN.md` | `\`ToolServer\`` | 63, 367 |
 
 Bar 2's machine-readable signal (`SHIP-BAR-TRACKER.md:44`) names three test files; the test home is correct (`crates/chio-conformance/tests/`), but the underlying call-site reference inside the conformance test header comments will diverge from production unless this is fixed pre-execution.
@@ -274,23 +274,23 @@ MINOR. `lane-c-demo/README.md:155-176` says "Lane C closes when..." with six con
 
 OBSERVATION. `lane-a-floor/tickets.md:8-12` opens with: "Every ticket closes under the Lane A Evidence Gate trio (PLAN.md `Evidence Gate close bar`): enforced call site + spec/audit citation + signed evidence artifact." Each sub-lane carries a `close-bar artifact` row and an `anti-pattern guard`. The four-artifact rule (`templates/EVIDENCE-GATE.md:18-101`) asks for: enforced call site, spec MUST OR audit JSON, signed negative test, production-call-path exercise. Lane A maps to the Lane A variant in section 1.3 (audit JSON instead of spec MUST). The shape is consistent.
 
-However, individual Lane A tickets do not carry the literal `Acceptance` sub-section the TICKET-TEMPLATE Section 2.2 prescribes. The lane-level "close-bar artifact" is sufficient for sub-lane gating but does not pass the `scripts/check-trj5-evidence-gate.sh` per-ticket parser unless the parser is laxer than what `templates/TICKET-TEMPLATE.md:84-107` demands.
+However, individual Lane A tickets do not carry the literal `Acceptance` sub-section the TICKET-TEMPLATE Section 2.2 prescribes. The lane-level "close-bar artifact" is sufficient for sub-lane gating but does not pass the `scripts/check-release work-evidence-gate.sh` per-ticket parser unless the parser is laxer than what `templates/TICKET-TEMPLATE.md:84-107` demands.
 
 ### 5.2 Lane B: best compliance, but ticket-level structure still informal
 
-OBSERVATION. `lane-b-wiring/tickets.md:9` "Acceptance includes the Evidence Gate close bar from `README.md`" plus per-ticket "Acceptance:" inline. Each TRJ5-B1.x..B3.x ticket has an Acceptance line. The Acceptance lines do not follow the numbered five-row TICKET-TEMPLATE Section 2.1 format; they are prose. The intent is clear; the parser-friendliness is poor.
+OBSERVATION. `lane-b-wiring/tickets.md:9` "Acceptance includes the Evidence Gate close bar from `README.md`" plus per-ticket "Acceptance:" inline. Each release work-B1.x..B3.x ticket has an Acceptance line. The Acceptance lines do not follow the numbered five-row TICKET-TEMPLATE Section 2.1 format; they are prose. The intent is clear; the parser-friendliness is poor.
 
-**Proposed fix** (Wave 3, optional but recommended for `scripts/check-trj5-evidence-gate.sh` to function):
+**Proposed fix** (Wave 3, optional but recommended for `scripts/check-release work-evidence-gate.sh` to function):
 - Each Lane B ticket's Acceptance becomes the five-row block from `TICKET-TEMPLATE.md:65-82`.
 
 ### 5.3 Lane C: zero Evidence Gate references
 
-MAJOR. `grep -c "Evidence Gate" lane-c-demo/tickets.md` returns 0. `grep -c "TRJ4" lane-c-demo/tickets.md` returns 0. The Evidence Gate is not invoked; the trj4 absorption is not back-referenced. This is a structural compliance gap — every Lane C ticket should at minimum cite its spec MUST line range and its negative-conformance test path (per `templates/CONFORMANCE-FIXTURE-PATTERN.md:38-51`). Some tickets cite spec sections (e.g. TRJ5-C2.4 cites "spec section 7" implicitly via the verifier), but the Acceptance shape is not the four-artifact rule.
+MAJOR. `grep -c "Evidence Gate" lane-c-demo/tickets.md` returns 0. `grep -c "TRJ4" lane-c-demo/tickets.md` returns 0. The Evidence Gate is not invoked; the trj4 absorption is not back-referenced. This is a structural compliance gap  -  every Lane C ticket should at minimum cite its spec MUST line range and its negative-conformance test path (per `templates/CONFORMANCE-FIXTURE-PATTERN.md:38-51`). Some tickets cite spec sections (e.g. release work-C2.4 cites "spec section 7" implicitly via the verifier), but the Acceptance shape is not the four-artifact rule.
 
 **Proposed fix** (Wave 3):
 - `lane-c-demo/tickets.md` introductory block: add the same paragraph Lane B uses ("Every C ticket closes under the Evidence Gate trio: enforced call site + spec MUST citation + signed negative conformance test that fails when wiring is removed.").
-- Each TRJ5-C* ticket's Acceptance row gains an explicit spec-MUST citation field and a negative-conformance test path field.
-- The C2 sub-lane already has TRJ5-C2.5 "Negative conformance fixture set"; the trj4-erratum failure mode is to land the structural code without the fixture pairing. The Acceptance row should make this explicit per ticket.
+- Each release work-C* ticket's Acceptance row gains an explicit spec-MUST citation field and a negative-conformance test path field.
+- The C2 sub-lane already has release work-C2.5 "Negative conformance fixture set"; the trj4-erratum failure mode is to land the structural code without the fixture pairing. The Acceptance row should make this explicit per ticket.
 
 ### 5.4 Sample audit of 5 tickets
 
@@ -298,16 +298,16 @@ Per the review prompt, sampling per lane:
 
 | Ticket | Has Evidence-Gate-shaped acceptance? | Negative-conformance test cited? | Spec MUST cited? | Production-call-path exercise cited? |
 |---|---|---|---|---|
-| TRJ5-A1.3 (mutation kill chio-policy) | yes, prose | n/a Lane A | n/a Lane A | yes (mutation run) |
-| TRJ5-A2.10 (native_channel_replay) | yes, prose | yes (test rewrite + deny assertion) | n/a (audit JSON) | yes |
-| TRJ5-A4.4 (apalache-temporal required) | yes, prose | n/a (TLA+ proof) | n/a | yes (workflow run) |
-| TRJ5-B1.6 (b1 negative conformance fixture) | yes, prose; should be 5-row | yes (fixture path named) | yes (PROTOCOL.md 408-418) | yes (header-comment "fails when reverted") |
-| TRJ5-B2.5 (b2 negative conformance fixture) | yes, prose | yes (fixture path named) | yes (PROTOCOL.md 714-741) | yes |
-| TRJ5-B3.5 (b3 negative conformance fixture) | yes, prose | yes (fixture path named) | yes (PROTOCOL.md 982-991) | yes |
-| TRJ5-C1.2 (two-kernel handshake) | no | no | no | no |
-| TRJ5-C2.4 (17-step verifier) | yes, prose | yes (TRJ5-C2.5 covers it) | implicit ("spec section 7") | yes |
-| TRJ5-C5.4 (disclosure envelope) | yes, prose | partial (round-trip test) | yes (spec section 8) | yes |
-| TRJ5-C6.5 (tag and ship) | yes, prose | n/a (operational) | n/a | n/a |
+| mutation evidence item (mutation kill chio-policy) | yes, prose | n/a Lane A | n/a Lane A | yes (mutation run) |
+| threat evidence item (native_channel_replay) | yes, prose | yes (test rewrite + deny assertion) | n/a (audit JSON) | yes |
+| release work-A4.4 (apalache-temporal required) | yes, prose | n/a (TLA+ proof) | n/a | yes (workflow run) |
+| release work-B1.6 (b1 negative conformance fixture) | yes, prose; should be 5-row | yes (fixture path named) | yes (PROTOCOL.md 408-418) | yes (header-comment "fails when reverted") |
+| release work-B2.5 (b2 negative conformance fixture) | yes, prose | yes (fixture path named) | yes (PROTOCOL.md 714-741) | yes |
+| release work-B3.5 (b3 negative conformance fixture) | yes, prose | yes (fixture path named) | yes (PROTOCOL.md 982-991) | yes |
+| release work-C1.2 (two-kernel handshake) | no | no | no | no |
+| release work-C2.4 (17-step verifier) | yes, prose | yes (release work-C2.5 covers it) | implicit ("spec section 7") | yes |
+| release work-C5.4 (disclosure envelope) | yes, prose | partial (round-trip test) | yes (spec section 8) | yes |
+| release work-C6.5 (tag and ship) | yes, prose | n/a (operational) | n/a | n/a |
 
 Lane C C1.x, C3.x, C4.x tickets are weakest; they are scaffolding-shaped and rely on aggregate close in C2.5 and C6.x.
 
@@ -327,14 +327,14 @@ The synthesis intent (Lane C as continuous forcing function for Lane B partial-e
 
 **Proposed fix** (Wave 3):
 - Either:
-  - (A) `TIMELINE.md` Lane C's C1 (architecture and scenario scaffolding) starts in W3 (week 3) so the smoke harness exists when Lane B B1.6/B2.5/B3.5 negative conformance fixtures land. Tickets TRJ5-C1.1 (scaffold), TRJ5-C1.2 (handshake), TRJ5-C1.4 (refund tool) could start W3 in parallel with Lane B B1/B2/B3.
+  - (A) `TIMELINE.md` Lane C's C1 (architecture and scenario scaffolding) starts in W3 (week 3) so the smoke harness exists when Lane B B1.6/B2.5/B3.5 negative conformance fixtures land. Tickets release work-C1.1 (scaffold), release work-C1.2 (handshake), release work-C1.4 (refund tool) could start W3 in parallel with Lane B B1/B2/B3.
   - (B) `architecture/RISK-REGISTER.md:163-164` rewrites the mitigation to acknowledge Lane C does not run continuously and substitutes a different mitigation (e.g., "Lane B Evidence Gate review will hand-test against Lane C scenario scripts written in advance").
 - Recommended: Option (A). It costs Lane C one engineer-week of W3 slack. Lane B's partial-enforcement findings would surface a week earlier.
 - `lane-c-demo/README.md:131-134` already says "Lane C ships AFTER the three Lane B negative conformance fixtures exist" -- that contradicts R4 too. Clarify: scaffolding (C1.1, C1.2, C1.4) starts W3; full demo (C2-C6) waits for Lane B close.
 
 ### 6.3 Lane B "weeks 1-6" rather than "1-8"
 
-OBSERVATION. Master docs (`README.md:60`, `EXECUTION-BOARD.md:13`) say Lane B duration is 6 weeks. `TIMELINE.md:60-65` shows Lane B B-EG landing at end of W6, and `TIMELINE.md:91-94` shows Bar 2 verification at W8. Lane B PLAN's `tickets.md:46-51` "TRJ5-B.CLOSE" is scheduled implicitly at W6. The two-week gap (W7-W8) is integration / ship-bar verification week, not new Lane B work. Healthy.
+OBSERVATION. Master docs (`README.md:60`, `EXECUTION-BOARD.md:13`) say Lane B duration is 6 weeks. `TIMELINE.md:60-65` shows Lane B B-EG landing at end of W6, and `TIMELINE.md:91-94` shows Bar 2 verification at W8. Lane B PLAN's `tickets.md:46-51` "release work-B.CLOSE" is scheduled implicitly at W6. The two-week gap (W7-W8) is integration / ship-bar verification week, not new Lane B work. Healthy.
 
 ### 6.4 Critical path realism
 
@@ -346,7 +346,7 @@ OBSERVATION. The critical path `B0 -> {B1,B2,B3} -> C1 -> C2..C5 -> C6` totals ~
 
 ### 7.1 Master mapping is comprehensive
 
-OBSERVATION. `README.md:99-114` table maps trj4 IDs to trj5 lanes. `KICKOFF-CHECKLIST.md:62-69` enumerates each row as a checkbox. `OWNERS.toml:45,71,96` lists `trj4_absorbed = [...]`. The aggregation is consistent across master docs.
+OBSERVATION. `README.md:99-114` table maps trj4 IDs to release work lanes. `KICKOFF-CHECKLIST.md:62-69` enumerates each row as a checkbox. `OWNERS.toml:45,71,96` lists `trj4_absorbed = [...]`. The aggregation is consistent across master docs.
 
 ### 7.2 Lane A absorption note short
 
@@ -360,7 +360,7 @@ If trj4 IDs TRJ4-048 and TRJ4-049 reference threat rows that do not exist on dis
 
 ### 7.3 Lane B back-references missing
 
-MAJOR. `lane-b-wiring/tickets.md` has 0 occurrences of `TRJ4`. The master `KICKOFF-CHECKLIST.md:67-69` says trj4 IDs "absorbed by **TRJ5-B1**", "**TRJ5-B2**", "**TRJ5-B3**" but the lane tickets do not record per-trj4-ID absorption. If a trj4 close-bar audit asks "which trj5 ticket closed TRJ4-103?", the answer is "TRJ5-B1.x for some x" but the specific x is not annotated.
+MAJOR. `lane-b-wiring/tickets.md` has 0 occurrences of `TRJ4`. The master `KICKOFF-CHECKLIST.md:67-69` says trj4 IDs "absorbed by **release work-B1**", "**release work-B2**", "**release work-B3**" but the lane tickets do not record per-trj4-ID absorption. If a trj4 close-bar audit asks "which release work ticket closed TRJ4-103?", the answer is "release work-B1.x for some x" but the specific x is not annotated.
 
 **Proposed fix** (Wave 3):
 - `lane-b-wiring/tickets.md` add a "trj4-absorbed" column to each table row, mirroring `lane-a-floor/tickets.md:155-158` style.
@@ -368,9 +368,9 @@ MAJOR. `lane-b-wiring/tickets.md` has 0 occurrences of `TRJ4`. The master `KICKO
 
 ### 7.4 TRJ4 wave 0/1/4 explicit absorption
 
-OBSERVATION. The synthesis says "Absorbs trj4 Wave 0 / Wave 1 / Wave 4" (00-SYNTHESIS.md:75). Master docs map waves to lanes. Wave 0 (preflight scripts, mutants infrastructure) ties to TRJ5-A1.1 and `scripts/trj5-preflight.sh`. Wave 1 (substrate hardening) ties to A1-A4. Wave 4 (formal methods) ties to A3-A5/A6. Wave 6 (mobile attestation) is explicitly OUT-OF-SCOPE per `SCOPE-LOCK.md:88-94`. Coverage is reasonable.
+OBSERVATION. The synthesis says "Absorbs trj4 Wave 0 / Wave 1 / Wave 4" (00-SYNTHESIS.md:75). Master docs map waves to lanes. Wave 0 (preflight scripts, mutants infrastructure) ties to mutation evidence item and `scripts/release work-preflight.sh`. Wave 1 (substrate hardening) ties to A1-A4. Wave 4 (formal methods) ties to A3-A5/A6. Wave 6 (mobile attestation) is explicitly OUT-OF-SCOPE per `SCOPE-LOCK.md:88-94`. Coverage is reasonable.
 
-If the trj4 wave plan has additional waves not absorbed (e.g. Wave 2, Wave 3, Wave 5, Wave 7+), those are presumably on-track in the trj4 wave plan and not pulled into trj5. Confirm in Wave 3 by listing trj4 wave numbers and their resolution status.
+If the trj4 wave plan has additional waves not absorbed (e.g. Wave 2, Wave 3, Wave 5, Wave 7+), those are presumably on-track in the trj4 wave plan and not pulled into release work. Confirm in Wave 3 by listing trj4 wave numbers and their resolution status.
 
 ---
 
@@ -386,7 +386,7 @@ The conformance fixtures named in `SHIP-BAR-TRACKER.md:44` (`single_entry_verifi
 //! Enforced call site: crates/<crate>/src/<file>:<line>
 ```
 
-If the master docs cite `:1148-1165` and the actual production hot path is at `:1574-1591`, a future reviewer running `scripts/check-trj5-evidence-gate.sh` will see the test header citing `:1574-1591` and the spec evidence row citing `:1148-1165`, and the gate script will fail (or worse, pass on stale data because the cited line range now exists in some unrelated function).
+If the master docs cite `:1148-1165` and the actual production hot path is at `:1574-1591`, a future reviewer running `scripts/check-release work-evidence-gate.sh` will see the test header citing `:1574-1591` and the spec evidence row citing `:1148-1165`, and the gate script will fail (or worse, pass on stale data because the cited line range now exists in some unrelated function).
 
 ### 8.2 Recommended fix sequencing
 
@@ -412,7 +412,7 @@ See section 1.4 (BLOCKER). The Option-A two-signature surface decision lives in 
 
 OPEN QUESTION. The synthesis (line 122) says Lane C uses existing `crates/chio-federation/src/bilateral.rs`. If the DSSE PAE adapter is purely additive (a new module `bilateral_dsse.rs` next to `bilateral.rs`, no changes to `DualSignedReceipt::verify`), then Lane C ownership is correct. If the adapter requires Lane B kernel changes (e.g., the kernel emits both signatures during dispatch, making the dispatch path care about DSSE), then it belongs partly in Lane B.
 
-`lane-c-demo/bilateral-cosign-flow.md:202-235` shows `build_envelope_from_dual_signed` taking `&Keypair` arguments — the kernel does not need to know about DSSE. Verification (`verify_envelope`, `bilateral-cosign-flow.md:237-272`) takes `&PeerPinSet` and a receipt store. These are demo-side; no kernel hot-path mutation is required.
+`lane-c-demo/bilateral-cosign-flow.md:202-235` shows `build_envelope_from_dual_signed` taking `&Keypair` arguments  -  the kernel does not need to know about DSSE. Verification (`verify_envelope`, `bilateral-cosign-flow.md:237-272`) takes `&PeerPinSet` and a receipt store. These are demo-side; no kernel hot-path mutation is required.
 
 **Conclusion**: Lane C can own the DSSE PAE adapter without crossing into Lane B. The propagation fix is purely doc-level (master docs need to acknowledge the two-signature design), not a scope shift.
 
@@ -428,7 +428,7 @@ If Lane C does not run during Lane B development, the "If Lane C breaks, Lanes A
 
 - `lane-c-demo/README.md:131-134`: rewrite the "Lane C ships AFTER" sentence as "Lane C scaffolding (C1.1, C1.2, C1.4) lands in week 3 alongside Lane B; full demo runs in weeks 5-7 once Lane B B1.6 / B2.5 / B3.5 negative conformance fixtures land. Lane C smoke runs continuously from week 3 onward against the in-progress Lane B work; partial-enforcement findings have at least 2 weeks to surface and be fixed."
 - `architecture/RISK-REGISTER.md:163-164`: reinforce the mitigation with a concrete artifact ("a CI workflow `chio-demo-smoke-preview.yml` runs Lane C scenarios in advisory mode starting W3").
-- `EXECUTION-BOARD.md` cross-lane dependency table: change `TRJ5-C1` -> `TRJ5-B1, TRJ5-B2, TRJ5-B3` to `TRJ5-C1.1, C1.2, C1.4` -> none (W3 start) and `TRJ5-C1.3, C2.x, C3.x, ...` -> `TRJ5-B1.6, B2.5, B3.5`. The R4 risk's mitigation effect now matches the dep graph.
+- `EXECUTION-BOARD.md` cross-lane dependency table: change `release work-C1` -> `release work-B1, release work-B2, release work-B3` to `release work-C1.1, C1.2, C1.4` -> none (W3 start) and `release work-C1.3, C2.x, C3.x, ...` -> `release work-B1.6, B2.5, B3.5`. The R4 risk's mitigation effect now matches the dep graph.
 
 ---
 
@@ -448,11 +448,11 @@ OBSERVATION. The checklist has many checkboxes but no overall "n/m" tally. Trj5 
 
 ### 11.4 README banner reproducibility
 
-OBSERVATION. `lane-a-floor/tickets.md:28` (TRJ5-A1.10) says "Verify the banner update is reproducible: re-running the workflow on the same data produces an identical line." This is a strong anti-drift guard; commend the agent for it. Master docs do not have an equivalent reproducibility check for the Bar 1 signal; consider adding one.
+OBSERVATION. `lane-a-floor/tickets.md:28` (mutation evidence item) says "Verify the banner update is reproducible: re-running the workflow on the same data produces an identical line." This is a strong anti-drift guard; commend the agent for it. Master docs do not have an equivalent reproducibility check for the Bar 1 signal; consider adding one.
 
 ### 11.5 TICKET-TEMPLATE worked example uses old line ranges
 
-MINOR. `templates/TICKET-TEMPLATE.md:140-171` worked example `TRJ5-B1.03` cites `crates/chio-kernel/src/kernel/mod.rs:<line-after-patch>` (correct, generic) but the surrounding text references "lines 408-418 (post-amend)" which is healthy. No drift.
+MINOR. `templates/TICKET-TEMPLATE.md:140-171` worked example `release work-B1.03` cites `crates/chio-kernel/src/kernel/mod.rs:<line-after-patch>` (correct, generic) but the surrounding text references "lines 408-418 (post-amend)" which is healthy. No drift.
 
 ### 11.6 EVIDENCE-GATE.md anti-pattern 2.4 cites old line range
 
@@ -464,22 +464,22 @@ MINOR. `templates/CONFORMANCE-FIXTURE-PATTERN.md:140-150` shows a diff at `@@ -1
 
 ---
 
-## Open questions for the trj5 owner
+## Open questions for the release work owner
 
 1. **Synthesis-source correction policy.** The synthesis text on lines 31, 38, 95, 105 cites `:1148-1165` and `ToolServer`. These are wrong as of the Lane B agent's verification. Do you want the synthesis edited (which means re-opening the contract), or footnoted via an errata file? Recommendation: footnote.
-2. **TRJ5-A5 / equivalence-tests.** Lane A swapped TRJ5-A5 (equivalence) for TRJ5-A6 (Lean) and dropped TRJ4-019. Do you want the equivalence work re-instated in trj5 or moved to trj6? If trj6, SCOPE-LOCK and master docs must reflect it.
+2. **release work-A5 / equivalence-tests.** Lane A swapped release work-A5 (equivalence) for release work-A6 (Lean) and dropped TRJ4-019. Do you want the equivalence work re-instated in release work or moved to trj6? If trj6, SCOPE-LOCK and master docs must reflect it.
 3. **Threat-evidence file count (20 vs 21).** The actual file count is 20. Master docs say 21. Update master to 20, or commit to creating a 21st row (and which threat does it cover)?
 4. **Continuous Lane C run.** R4 mitigation says continuous; timeline says deferred. Do you want to ship Lane C C1 scaffolding starting W3 (recommended) or to weaken R4's mitigation?
 5. **Ticket-ID convention.** TICKET-TEMPLATE says `.E` per sub-lane; EXECUTION-BOARD says `B-EG`; lane-b/tickets says `B.CLOSE`. Pick one. Recommended: TICKET-TEMPLATE wins.
 6. **Evidence Gate compliance for Lane C.** Lane C tickets do not currently invoke the Evidence Gate. Wave 3 will add the framing. Confirm acceptable.
 7. **DSSE Option-A surfacing.** The two-signature decision needs to live in master docs (SPEC-TO-RUNTIME-MAP, SHIP-BAR-TRACKER, SCOPE-LOCK, RISK-REGISTER R7). Approve the propagation?
-8. **OWNERS.toml overlap coordination.** No `coordination_owner` named for `chio-anchor` overlap. Default to `@bb-connor` (single_owner) for trj5?
+8. **OWNERS.toml overlap coordination.** No `coordination_owner` named for `chio-anchor` overlap. Default to `release owner` (single_owner) for release work?
 
 ---
 
 ## Verdict
 
-**APPROVED-WITH-FIXES.** The trj5 plan shape matches the synthesis. The defects are mechanical and addressable in Wave 3 without re-opening the synthesis (subject to question 1's answer).
+**APPROVED-WITH-FIXES.** The release work plan shape matches the synthesis. The defects are mechanical and addressable in Wave 3 without re-opening the synthesis (subject to question 1's answer).
 
 Required Wave 3 fixes (must land before kickoff):
 
@@ -487,7 +487,7 @@ Required Wave 3 fixes (must land before kickoff):
 2. (BLOCKER, on Lane C internal compliance) Lane C tickets gain Evidence Gate framing and explicit spec-MUST citations (section 5.3).
 3. (BLOCKER, on Lane C internal compliance) Lane C cross-lane deps switch from aliases to literal ticket IDs (section 2.2).
 4. (MAJOR) DSSE Option-A propagation to master docs (section 1.4, section 9).
-5. (MAJOR) TRJ5-A5 equivalence-tests sub-lane re-instated OR explicit deferral to trj6 with synthesis-update note (section 2.3).
+5. (MAJOR) release work-A5 equivalence-tests sub-lane re-instated OR explicit deferral to trj6 with synthesis-update note (section 2.3).
 6. (MAJOR) Threat-evidence file count master/Lane A reconciliation (section 4.2).
 7. (MAJOR) Ticket-ID Evidence-Gate suffix unified (section 2.1).
 8. (MAJOR) R4 / continuous Lane C operationalized (section 6.2, section 10).
@@ -524,8 +524,8 @@ Trj5 stays open until all BLOCKER fixes land. MAJOR fixes should land before wee
 | `architecture/RISK-REGISTER.md` | lines 107, 128, 137: threat-count; lines 163-164: R4 mitigation; new R7 for DSSE Option-B |
 | `architecture/ASYNC-KERNEL-MIGRATION.md` | (already correct on `ToolServerConnection`; no changes) |
 | `lane-a-floor/README.md` | line 10: TRJ4-040..049; lines 38-44: add equivalence sub-lane; lines 124-134: assumption propagated to master |
-| `lane-a-floor/tickets.md` | new sub-lane TRJ5-A5 (equivalence) inserted; renumber Lean to A6 |
-| `lane-b-wiring/tickets.md` | back-reference trj4 IDs; rename `TRJ5-B.CLOSE` -> `TRJ5-B-EG`; format Acceptance as 5-row |
+| `lane-a-floor/tickets.md` | new sub-lane release work-A5 (equivalence) inserted; renumber Lean to A6 |
+| `lane-b-wiring/tickets.md` | back-reference trj4 IDs; rename `release work-B.CLOSE` -> `release work-B-EG`; format Acceptance as 5-row |
 | `lane-c-demo/README.md` | line 43: line-range correction; section "Lane C ships AFTER" rewritten for continuous run |
 | `lane-c-demo/architecture.md` | lines 155, 259: line-range correction |
 | `lane-c-demo/release-bar.md` | line 183: line-range correction |
@@ -545,8 +545,8 @@ The single most-load-bearing patch. Applied across master docs, architecture doc
 Sample patch for `EXECUTION-BOARD.md:52`:
 
 ```diff
--| TRJ5-B2 | **Receipt v2 fail-closed under negotiated v2**: replace warn-and-downgrade at `chio-kernel/src/kernel/mod.rs:1148-1165` with a hard reject when negotiation indicated `chio.capability.v2`. PROTOCOL.md section 6 lines 714-741 changes "falls back" -> "fails closed". Signed negative conformance test asserts the hard-reject path. | protocol | M | TRJ5-B0 | TRJ4-120..131 + T1.2.E |
-+| TRJ5-B2 | **Receipt v2 fail-closed under negotiated v2**: replace warn-and-downgrade in `kernel_receipt_version_for_remote` at `chio-kernel/src/kernel/mod.rs:1574-1591` with a hard reject when negotiation indicated `chio.capability.v2`. PROTOCOL.md section 6 lines 714-741 changes "falls back" -> "fails closed". Signed negative conformance test asserts the hard-reject path. (Note: synthesis line 31 cited `:1148-1165` which is the resolver helper; the runtime downgrade is at `:1574-1591`.) | protocol | M | TRJ5-B0 | TRJ4-120..131 + T1.2.E |
+-| release work-B2 | **Receipt v2 fail-closed under negotiated v2**: replace warn-and-downgrade at `chio-kernel/src/kernel/mod.rs:1148-1165` with a hard reject when negotiation indicated `chio.capability.v2`. PROTOCOL.md section 6 lines 714-741 changes "falls back" -> "fails closed". Signed negative conformance test asserts the hard-reject path. | protocol | M | release work-B0 | TRJ4-120..131 + T1.2.E |
++| release work-B2 | **Receipt v2 fail-closed under negotiated v2**: replace warn-and-downgrade in `kernel_receipt_version_for_remote` at `chio-kernel/src/kernel/mod.rs:1574-1591` with a hard reject when negotiation indicated `chio.capability.v2`. PROTOCOL.md section 6 lines 714-741 changes "falls back" -> "fails closed". Signed negative conformance test asserts the hard-reject path. (Note: synthesis line 31 cited `:1148-1165` which is the resolver helper; the runtime downgrade is at `:1574-1591`.) | protocol | M | release work-B0 | TRJ4-120..131 + T1.2.E |
 ```
 
 Same shape for: `SHIP-BAR-TRACKER.md:23,25,40,42`, `SCOPE-LOCK.md:28`, `README.md:75`, `architecture/SPEC-TO-RUNTIME-MAP.md:38`, `templates/EVIDENCE-GATE.md:170`, `templates/CONFORMANCE-FIXTURE-PATTERN.md:144,246`, `lane-c-demo/README.md:43`, `lane-c-demo/architecture.md:155,259`, `lane-c-demo/release-bar.md:183`.
@@ -570,13 +570,13 @@ For `templates/CONFORMANCE-FIXTURE-PATTERN.md:140-150` worked example diff:
 Sample patch for `EXECUTION-BOARD.md:50,80`:
 
 ```diff
--| TRJ5-B0 | **Architectural prerequisite**: convert `ToolServer` trait to `async_trait`; collapse the dispatch sync-helper hop in `chio-kernel/src/kernel/mod.rs:6402`. Smallest decomposition cut that unblocks hot-path wiring; chio-cli trust-control extraction and gravity-well surgery stay out of trj5. | kernel | L | none | (decomposition advocate prerequisite) |
-+| TRJ5-B0 | **Architectural prerequisite**: convert `ToolServerConnection` trait at `crates/chio-kernel/src/runtime.rs:254` to `async_trait`; collapse the dispatch sync-helper hop in `chio-kernel/src/kernel/mod.rs:6402-6442`. Smallest decomposition cut that unblocks hot-path wiring; chio-cli trust-control extraction and gravity-well surgery stay out of trj5. | kernel | L | none | (decomposition advocate prerequisite) |
+-| release work-B0 | **Architectural prerequisite**: convert `ToolServer` trait to `async_trait`; collapse the dispatch sync-helper hop in `chio-kernel/src/kernel/mod.rs:6402`. Smallest decomposition cut that unblocks hot-path wiring; chio-cli trust-control extraction and gravity-well surgery stay out of release work. | kernel | L | none | (decomposition advocate prerequisite) |
++| release work-B0 | **Architectural prerequisite**: convert `ToolServerConnection` trait at `crates/chio-kernel/src/runtime.rs:254` to `async_trait`; collapse the dispatch sync-helper hop in `chio-kernel/src/kernel/mod.rs:6402-6442`. Smallest decomposition cut that unblocks hot-path wiring; chio-cli trust-control extraction and gravity-well surgery stay out of release work. | kernel | L | none | (decomposition advocate prerequisite) |
 ```
 
 ```diff
--| TRJ5-B0 | TRJ5-B1 | hard | Single-entry verifier needs `async_trait` `ToolServer` to wire without sync-hop bouncing. |
-+| TRJ5-B0 | TRJ5-B1 | hard | Single-entry verifier needs `async_trait` on `ToolServerConnection` to wire without sync-hop bouncing. |
+-| release work-B0 | release work-B1 | hard | Single-entry verifier needs `async_trait` `ToolServer` to wire without sync-hop bouncing. |
++| release work-B0 | release work-B1 | hard | Single-entry verifier needs `async_trait` on `ToolServerConnection` to wire without sync-hop bouncing. |
 ```
 
 Same shape for: `SCOPE-LOCK.md:26,54`, `README.md:108`, `TIMELINE.md:67`, `lane-c-demo/PLAN.md:63,367`, `lane-c-demo/tickets.md:13,64` (the LB-AT alias gloss and the C1.4 scope text).
@@ -588,10 +588,10 @@ New row in `architecture/SPEC-TO-RUNTIME-MAP.md` section 8:
 ```diff
  | Spec citation | MUST text (short) | Production call site | Status | Trj5 ticket |
  |---|---|---|---|---|
- | `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6 (TBD-from-W1: lines) | "DualSignedReceipt MUST carry both signers' attestations" | `crates/chio-federation/src/bilateral.rs::CoSigningBody`, `DualSignedReceipt` | enforced (existing primitive) | TRJ5-C1.E asserts the demo exercises this |
- | same | "cross-org dispatch MUST not allow single-signer fast path" | TBD-from-W1 | structural-only | TRJ5-C1.E |
-+| `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6 lines 338-343 | "DSSE envelope signed over PAE bytes of canonical Statement" | `crates/chio-federation/src/bilateral_dsse.rs` (new module per `lane-c-demo/bilateral-cosign-flow.md:202`) | not-yet-enforced; Option-A two-signature design | TRJ5-C2.3, TRJ5-C2.4 |
-+| same | "two-signature surface: existing CoSigningBody Ed25519 + new DSSE PAE Ed25519" | both signatures share `Keypair`; existing `DualSignedReceipt::verify` unchanged | bounded by Option-A choice | TRJ5-C2.7 |
+ | `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6 (TBD-from-W1: lines) | "DualSignedReceipt MUST carry both signers' attestations" | `crates/chio-federation/src/bilateral.rs::CoSigningBody`, `DualSignedReceipt` | enforced (existing primitive) | release work-C1.E asserts the demo exercises this |
+ | same | "cross-org dispatch MUST not allow single-signer fast path" | TBD-from-W1 | structural-only | release work-C1.E |
++| `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6 lines 338-343 | "DSSE envelope signed over PAE bytes of canonical Statement" | `crates/chio-federation/src/bilateral_dsse.rs` (new module per `lane-c-demo/bilateral-cosign-flow.md:202`) | not-yet-enforced; Option-A two-signature design | release work-C2.3, release work-C2.4 |
++| same | "two-signature surface: existing CoSigningBody Ed25519 + new DSSE PAE Ed25519" | both signatures share `Keypair`; existing `DualSignedReceipt::verify` unchanged | bounded by Option-A choice | release work-C2.7 |
 ```
 
 New row in `SHIP-BAR-TRACKER.md:59` Bar 3 evidence:
@@ -604,8 +604,8 @@ New row in `SHIP-BAR-TRACKER.md:59` Bar 3 evidence:
 New row in `SCOPE-LOCK.md:36-42` Lane C in-scope sub-row:
 
 ```diff
- | Two-kernel cross-org bilateral cosigned invocation using existing `crates/chio-federation/src/bilateral.rs`. | federation | TRJ5-C1 |
-+| DSSE PAE adapter co-existing with `CoSigningBody`-scoped Ed25519 (Option A). Adds new module `crates/chio-federation/src/bilateral_dsse.rs`; does not replace existing signing surface. | federation | TRJ5-C2.1, TRJ5-C2.3, TRJ5-C2.4, TRJ5-C2.7 |
+ | Two-kernel cross-org bilateral cosigned invocation using existing `crates/chio-federation/src/bilateral.rs`. | federation | release work-C1 |
++| DSSE PAE adapter co-existing with `CoSigningBody`-scoped Ed25519 (Option A). Adds new module `crates/chio-federation/src/bilateral_dsse.rs`; does not replace existing signing surface. | federation | release work-C2.1, release work-C2.3, release work-C2.4, release work-C2.7 |
 ```
 
 New R7 in `architecture/RISK-REGISTER.md`:
@@ -636,27 +636,27 @@ migrating every existing fixture and verifier.
   fixtures rebake; production verifiers do not.
 
 **Escalation criteria**:
-- WG signal that Option B is required before trj5 close.
+- WG signal that Option B is required before release close.
 - A downstream consumer (chio-tower, chio-cpp-kernel-ffi) cannot
   interoperate with Option A.
 
 If escalated, Wave 2 reopens the synthesis to either include Option B
-in trj5 (effort ~M-L) or to bound-claim Lane C as Option-A only and
+in release work (effort ~M-L) or to bound-claim Lane C as Option-A only and
 document Option B as trj6.
 ```
 
 ### A.4 Lane A equivalence-tests sub-lane re-instate
 
-New `lane-a-floor/tickets.md` sub-lane `TRJ5-A5` (after renaming current A5 -> A6):
+New `lane-a-floor/tickets.md` sub-lane `release work-A5` (after renaming current A5 -> A6):
 
 ```
 ## Sub-lane A5 - chio-equivalence-tests proptest hosted-vs-portable
 
 | Ticket | Title | Lane | Effort | Depends-on |
 |---|---|---|---|---|
-| TRJ5-A5.1 | Configure `chio-equivalence-tests` proptest harness for 10k cases per PR + 1M cases nightly. Files touched: `crates/chio-equivalence-tests/proptest-regressions.txt`, `crates/chio-equivalence-tests/Cargo.toml`. | A | M | - |
-| TRJ5-A5.2 | Capture two consecutive nightly green runs with zero divergence between hosted and portable kernels. Files touched: `audits/evidence/equivalence/<date>.json`. | A | S | TRJ5-A5.1 |
-| TRJ5-A5.3 | Add `audits/evidence/equivalence/banner.json` summarizing run-to-run divergence count. Banner cites the two run URLs from A5.2. | A | S | TRJ5-A5.2 |
+| release work-A5.1 | Configure `chio-equivalence-tests` proptest harness for 10k cases per PR + 1M cases nightly. Files touched: `crates/chio-equivalence-tests/proptest-regressions.txt`, `crates/chio-equivalence-tests/Cargo.toml`. | A | M | - |
+| release work-A5.2 | Capture two consecutive nightly green runs with zero divergence between hosted and portable kernels. Files touched: `audits/evidence/equivalence/<date>.json`. | A | S | release work-A5.1 |
+| release work-A5.3 | Add `audits/evidence/equivalence/banner.json` summarizing run-to-run divergence count. Banner cites the two run URLs from A5.2. | A | S | release work-A5.2 |
 
 **A5 close-bar artifact**: two green nightly proptest runs; equivalence
 banner JSON; release-audit row.
@@ -667,7 +667,7 @@ not asserted. The banner is recomputed from the nightly artifact.
 **Trj4 absorbed**: TRJ4-019.
 ```
 
-The current Lane A `TRJ5-A5` (Lean) becomes `TRJ5-A6`; `tickets.md:131-145` ticket IDs renumber A5.1..A5.4 -> A6.1..A6.4.
+The current Lane A `release work-A5` (Lean) becomes `release work-A6`; `tickets.md:131-145` ticket IDs renumber A5.1..A5.4 -> A6.1..A6.4.
 
 ### A.5 Lane C ticket-format Evidence Gate framing
 
@@ -676,15 +676,15 @@ Sample patch for `lane-c-demo/tickets.md:1-15` introductory block:
 ```diff
  # Lane C - Tickets
 
- Concrete tickets `TRJ5-C1.x..C6.x`. Each entry has title, scope, files
+ Concrete tickets `release work-C1.x..C6.x`. Each entry has title, scope, files
  touched, effort (S/M/L), depends-on (cross-lane deps explicit),
  acceptance.
 
-+Every ticket closes under the trj5 Evidence Gate trio (per
++Every ticket closes under the release work Evidence Gate trio (per
 +`templates/EVIDENCE-GATE.md`): enforced call site + spec MUST citation +
 +signed negative conformance test that fails when wiring is removed.
-+Cross-lane dependencies cite literal Lane B ticket IDs (`TRJ5-B0.5`,
-+`TRJ5-B1.6`, `TRJ5-B2.5`, `TRJ5-B3.5`), not aliases.
++Cross-lane dependencies cite literal Lane B ticket IDs (`release work-B0.5`,
++`release work-B1.6`, `release work-B2.5`, `release work-B3.5`), not aliases.
 +
  Effort: S = under 1 day; M = 1-3 days; L = 3-6 days.
 
@@ -693,13 +693,13 @@ Sample patch for `lane-c-demo/tickets.md:1-15` introductory block:
 -- `LB-RV2` = Lane B receipt-v2 hot-path fail-closed
 -- `LB-AB`  = Lane B anchor-batch async-only when public witness required
 -- `LB-AT`  = Lane B `ToolServer` -> `async_trait` migration
-+- `TRJ5-B0.5` = Lane B0 dispatch-hop collapse (gating artifact for `async_trait` migration)
-+- `TRJ5-B1.6` = Lane B1 negative conformance fixture (gating artifact for single-entry verifier)
-+- `TRJ5-B2.5` = Lane B2 negative conformance fixture (gating artifact for receipt v2 fail-closed)
-+- `TRJ5-B3.5` = Lane B3 negative conformance fixture (gating artifact for anchor-batch async-only)
++- `release work-B0.5` = Lane B0 dispatch-hop collapse (gating artifact for `async_trait` migration)
++- `release work-B1.6` = Lane B1 negative conformance fixture (gating artifact for single-entry verifier)
++- `release work-B2.5` = Lane B2 negative conformance fixture (gating artifact for receipt v2 fail-closed)
++- `release work-B3.5` = Lane B3 negative conformance fixture (gating artifact for anchor-batch async-only)
 ```
 
-Per-C-ticket dep changes: TRJ5-C1.2 `LB-AT` -> `TRJ5-B0.5`; TRJ5-C1.4 `LB-AT` -> `TRJ5-B0.5`; TRJ5-C2.4 `LB-CAP` -> `TRJ5-B1.6`; TRJ5-C3.3 `LB-RV2` -> `TRJ5-B2.5`; TRJ5-C4.2 `LB-AB` -> `TRJ5-B3.5`.
+Per-C-ticket dep changes: release work-C1.2 `LB-AT` -> `release work-B0.5`; release work-C1.4 `LB-AT` -> `release work-B0.5`; release work-C2.4 `LB-CAP` -> `release work-B1.6`; release work-C3.3 `LB-RV2` -> `release work-B2.5`; release work-C4.2 `LB-AB` -> `release work-B3.5`.
 
 ### A.6 OWNERS.toml coordination owner
 
@@ -714,15 +714,15 @@ Per-C-ticket dep changes: TRJ5-C1.2 `LB-AT` -> `TRJ5-B0.5`; TRJ5-C1.4 `LB-AT` ->
 -"audits/evidence/" = ["A"]
 -"formal/" = ["A"]
 -".planning/trajectory-5/" = ["A", "B", "C"]
-+"crates/chio-kernel/src/kernel/mod.rs" = { lanes = ["B"], coordination_owner = "@bb-connor" }
-+"crates/chio-anchor/" = { lanes = ["A", "B", "C"], coordination_owner = "@bb-connor" }
-+"crates/chio-conformance/tests/" = { lanes = ["A", "B"], coordination_owner = "@bb-connor" }
-+"crates/chio-federation/" = { lanes = ["B", "C"], coordination_owner = "@bb-connor" }
-+"spec/PROTOCOL.md" = { lanes = ["B"], coordination_owner = "@bb-connor" }
-+"spec/registries/" = { lanes = ["A", "B"], coordination_owner = "@bb-connor" }
-+"audits/evidence/" = { lanes = ["A"], coordination_owner = "@bb-connor" }
-+"formal/" = { lanes = ["A"], coordination_owner = "@bb-connor" }
-+".planning/trajectory-5/" = { lanes = ["A", "B", "C"], coordination_owner = "@bb-connor" }
++"crates/chio-kernel/src/kernel/mod.rs" = { lanes = ["B"], coordination_owner = "release owner" }
++"crates/chio-anchor/" = { lanes = ["A", "B", "C"], coordination_owner = "release owner" }
++"crates/chio-conformance/tests/" = { lanes = ["A", "B"], coordination_owner = "release owner" }
++"crates/chio-federation/" = { lanes = ["B", "C"], coordination_owner = "release owner" }
++"spec/PROTOCOL.md" = { lanes = ["B"], coordination_owner = "release owner" }
++"spec/registries/" = { lanes = ["A", "B"], coordination_owner = "release owner" }
++"audits/evidence/" = { lanes = ["A"], coordination_owner = "release owner" }
++"formal/" = { lanes = ["A"], coordination_owner = "release owner" }
++".planning/trajectory-5/" = { lanes = ["A", "B", "C"], coordination_owner = "release owner" }
 ```
 
 (If TOML inline-table mode is undesirable, alternative is `[overlaps_owner]` table keyed by the same path.)
@@ -731,11 +731,11 @@ Per-C-ticket dep changes: TRJ5-C1.2 `LB-AT` -> `TRJ5-B0.5`; TRJ5-C1.4 `LB-AT` ->
 
 ## Appendix B: Validation script suggestions for Wave 3
 
-Wave 3 fix agents should add the following gates to `scripts/trj5-preflight.sh` so future drift is caught at PR time:
+Wave 3 fix agents should add the following gates to `scripts/release work-preflight.sh` so future drift is caught at PR time:
 
 1. **No old line range**: `grep -rn "1148-1165" .planning/trajectory-5/ && exit 1` (after corrections land).
 2. **No bare `ToolServer\b`** outside debate/ archives: `grep -rn "ToolServer\b" .planning/trajectory-5/ | grep -v "ToolServerConnection\|ToolServerOutput\|debate/"` returns zero.
-3. **Ticket-ID convention**: `grep -hoE "TRJ5-[ABC]\.[A-Z]+" .planning/trajectory-5/lane-*-*/tickets.md` returns zero (no `TRJ5-B.CLOSE`-style tags).
+3. **Ticket-ID convention**: `grep -hoE "release work-[ABC]\.[A-Z]+" .planning/trajectory-5/lane-*-*/tickets.md` returns zero (no `release work-B.CLOSE`-style tags).
 4. **Threat-evidence count**: `audits/evidence/threats/*.json` count matches the master-doc number.
 5. **Cross-lane dep aliases**: `grep -E "LB-CAP|LB-RV2|LB-AB|LB-AT" .planning/trajectory-5/lane-c-demo/tickets.md` returns zero (after correction).
 6. **Spec MUST citation per Lane B/C ticket**: each ticket's Acceptance carries `Spec MUST:` or `Audit JSON:`.
@@ -758,7 +758,7 @@ Wave 3 fix agents should add the following gates to `scripts/trj5-preflight.sh` 
 | 6.2 / 10 R4 vs timeline | MAJOR | 3 files | ~20 lines |
 | 3.4 OWNERS.toml overlap coordinator | MAJOR | 1 file | ~10 lines |
 | 7.3 Lane B/C trj4 back-references | MAJOR | 2 files | ~30 lines |
-| 2.4 TRJ5-A0 unenumerated | MINOR | 2 files | ~5 lines |
+| 2.4 release work-A0 unenumerated | MINOR | 2 files | ~5 lines |
 | 2.5 Zero-pad convention | MINOR | 1 file (template) | ~3 lines |
 | 5.2 Lane B Acceptance prose | MINOR | 1 file | ~50 lines (refactor) |
 | 4.4 Lane C "close" bar-mapping | MINOR | 1 file | ~3 lines |

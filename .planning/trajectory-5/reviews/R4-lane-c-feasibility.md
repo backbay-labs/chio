@@ -13,9 +13,9 @@ fixtures with the trj4 pattern repeating).
 
 ## Executive summary
 
-Lane C is the most strategically attractive lane in trj5: a genuine
+Lane C is the most strategically attractive lane in release work: a genuine
 forcing function that detects partial Lane B enforcement is the only
-mechanism trj5 has against the trj4 closeout pattern. The Vision
+mechanism release work has against the trj4 closeout pattern. The Vision
 Strategist's slice (`debate/06-vision-strategist-chiodome.md` §2) is
 real, the spec corpus is real, the bilateral primitive
 (`crates/chio-federation/src/bilateral.rs` lines 41-100) is real, the
@@ -37,7 +37,7 @@ narrowing the bounded claim instead of inflating Option A, (b)
 finding #2 is resolved by narrowing the KB MCP wrapping pattern to
 match what `chio mcp serve` actually does, and (c) Lane B's three
 primitives are credibly green by week 0 of Lane C. If Lane B slips by
-even one week, Lane C cannot close in trj5 without dropping C5
+even one week, Lane C cannot close in release work without dropping C5
 (selective disclosure) entirely.
 
 **Verdict: CONDITIONAL PASS with mandatory revisions before W3.**
@@ -225,7 +225,7 @@ Realistic timeline if we promote to B4:
   17-step verifier.
 - C2 effort drops from L+L+M = ~10 days to L+M = ~7 days.
 
-Net: trj5 ship date slips by ~1 week (from synthesis 8-week max to
+Net: release work ship date slips by ~1 week (from synthesis 8-week max to
 ~9 weeks). That is acceptable.
 
 If we adopt option 2 (narrow the claim instead):
@@ -236,7 +236,7 @@ If we adopt option 2 (narrow the claim instead):
   must say so explicitly.
 
 **Recommended: option 1. Option 2 is acceptable as a fallback if Lane B
-review concludes B4 is too much for the trj5 budget.**
+review concludes B4 is too much for the release work budget.**
 
 ---
 
@@ -245,7 +245,7 @@ review concludes B4 is too much for the trj5 budget.**
 **Direct contradiction between the plan and the runtime CLI shape.**
 
 `kb-mcp-integration.md` line 18-30 says `chio mcp serve --policy` will
-"wrap the local KB MCP gateway at `:8111/mcp/`". `tickets.md` TRJ5-C3.2
+"wrap the local KB MCP gateway at `:8111/mcp/`". `tickets.md` release work-C3.2
 says:
 
 > `chio mcp serve --policy
@@ -319,7 +319,7 @@ canonicalizes this pattern. The bounded-claim text in
 > Direct HTTP MCP wrapping is not yet supported and is out of
 > scope for v0.1.0-bounded-chiodome.
 
-Without this fix, TRJ5-C3.2 acceptance ("`tools/list` over the wrapped
+Without this fix, release work-C3.2 acceptance ("`tools/list` over the wrapped
 edge returns at least the KB tools") is impossible to satisfy on the
 day Lane C tags.
 
@@ -329,7 +329,7 @@ day Lane C tags.
 the "simplest configuration" paragraph with the mcp-remote-bridge
 shape.
 
-`tickets.md` TRJ5-C3.2: change the wrapped command to
+`tickets.md` release work-C3.2: change the wrapped command to
 `-- npx -y mcp-remote http://localhost:8111/mcp/` and add a
 prerequisite bullet "Node.js / npx available in the smoke container".
 
@@ -349,15 +349,15 @@ prerequisite bullet "Node.js / npx available in the smoke container".
 These are descriptive labels, not ticket IDs from
 `.planning/trajectory-5/lane-b-wiring/`. Sampled five Lane C tickets:
 
-- **TRJ5-C1.2** depends on `TRJ5-C1.1, LB-AT`
-- **TRJ5-C1.4** depends on `LB-AT`
-- **TRJ5-C2.4** depends on `TRJ5-C2.3, LB-CAP`
-- **TRJ5-C3.3** depends on `LB-RV2`
-- **TRJ5-C4.2** depends on `TRJ5-C4.1, LB-AB`
+- **release work-C1.2** depends on `release work-C1.1, LB-AT`
+- **release work-C1.4** depends on `LB-AT`
+- **release work-C2.4** depends on `release work-C2.3, LB-CAP`
+- **release work-C3.3** depends on `LB-RV2`
+- **release work-C4.2** depends on `release work-C4.1, LB-AB`
 
 I verified `.planning/trajectory-5/lane-b-wiring/` does exist, but the
 plan does NOT reference its ticket IDs. The Lane B ticket IDs
-(presumably TRJ5-B1.x..B4.x) are not cited anywhere in Lane C. So when
+(presumably release work-B1.x..B4.x) are not cited anywhere in Lane C. So when
 Lane B reorganizes (e.g., merges two B1 tickets), Lane C has nothing to
 update.
 
@@ -365,7 +365,7 @@ Two fixes:
 - Cite Lane B ticket IDs verbatim in `depends-on` fields. Lane B's
   `tickets.md` should be the source of truth.
 - Add a cross-reference table at the top of Lane C `tickets.md` that
-  maps `LB-CAP` -> `TRJ5-B1.x` (specific) for the version of Lane B
+  maps `LB-CAP` -> `release work-B1.x` (specific) for the version of Lane B
   current as of W1 close.
 
 **Patch:** Add a section at top of `tickets.md` after the alias list:
@@ -375,10 +375,10 @@ Two fixes:
 
 | Alias | Maps to (Lane B ticket) |
 |---|---|
-| LB-CAP | TRJ5-B1.[N] |
-| LB-RV2 | TRJ5-B2.[N] |
-| LB-AB  | TRJ5-B3.[N] |
-| LB-AT  | TRJ5-B0.[N] |
+| LB-CAP | release work-B1.[N] |
+| LB-RV2 | release work-B2.[N] |
+| LB-AB  | release work-B3.[N] |
+| LB-AT  | release work-B0.[N] |
 
 (Updated when Lane B `tickets.md` revises.)
 ```
@@ -503,8 +503,8 @@ does not exist in code today, even a minimal implementation closer to
   to "Yes - new minimal ladder primitive in `examples/chiodome-bilateral`
   or a new tiny crate `chio-chiodos-ladder-min`").
 
-- `tickets.md` TRJ5-C1.3: split into TRJ5-C1.3a (manifest types and
-  schema) and TRJ5-C1.3b (intersection emit + signing).
+- `tickets.md` release work-C1.3: split into release work-C1.3a (manifest types and
+  schema) and release work-C1.3b (intersection emit + signing).
 
 - Consider whether Lane C should depend on a Lane B item "B5: chiodos
   ladder minimal Rust primitive" or whether the demo accepts an
@@ -562,7 +562,7 @@ reason).
 
 **Patch:**
 
-- `tickets.md` TRJ5-C3.1 acceptance ("`chio check --policy <yaml>`
+- `tickets.md` release work-C3.1 acceptance ("`chio check --policy <yaml>`
   returns success") MUST be the first thing executed by the smoke;
   if it fails, the entire policy block needs to be re-cast in HushSpec
   shape.
@@ -629,7 +629,7 @@ $ grep -n "bbs\|anoncreds\|bls12_381" Cargo.toml Cargo.lock
 - `zk` feature off by default.
 - CI runs the zk-feature build in a dedicated workflow job.
 - "If the dep weight forces a MSRV bump, accept it as a documented
-  constraint of trj5 OR drop C4 from the demo."
+  constraint of release work OR drop C4 from the demo."
 
 The R6 mitigation as written is soft; it does not commit to a
 specific Cargo dep choice. The W1 Lane C agent has not validated
@@ -652,7 +652,7 @@ B. **Drop C5 from v0.1.0-bounded-chiodome.** Ship the demo as five
    explaining that the BBS+ feature gate is deferred. Pick it back up
    in v0.2.0-bounded-chiodome.
 
-Given trj5 already bound the timeline and given the demo's primary
+Given release work already bound the timeline and given the demo's primary
 strategic value is the bilateral cosign envelope (not the BBS+
 proof), option B is safer. The BBS+ feature is the only sub-lane
 where Lane B does not provide forcing-function enforcement
@@ -664,7 +664,7 @@ change the demo's "Lane B canary" behavior.
 Update `RISK-REGISTER.md` R6 mitigation to add:
 
 > - If the chosen BBS+ crate cannot ship `bbs-2023` cryptosuite
->   parameters within the trj5 window, drop C4 from the v0.1.0
+>   parameters within the release work window, drop C4 from the v0.1.0
 >   tag and ship a v0.2.0-bounded-chiodome later. Bounded-claim
 >   text already calls out the auditor view as optional; release
 >   the demo without it rather than ship a research-grade
@@ -731,12 +731,12 @@ or wire up the full anchor batch sub-system. The W1 plan
 `LocalDevnetDeployment` (no live RPC)" but says nothing about how the
 binding is produced.
 
-This is captured in TRJ5-C4.2 (anchor inclusion in explain output) at
+This is captured in release work-C4.2 (anchor inclusion in explain output) at
 effort M, but not as a separate "produce anchor inclusion proof in
-the orchestrator" ticket. **Add TRJ5-C2.8** (or equivalent):
+the orchestrator" ticket. **Add release work-C2.8** (or equivalent):
 
 ```
-### TRJ5-C2.8 - Anchor inclusion proof emission
+### release work-C2.8 - Anchor inclusion proof emission
 
 - Scope: Construct the kernel checkpoint, signed web3 identity
   binding, and call build_anchor_inclusion_proof to emit
@@ -745,12 +745,12 @@ the orchestrator" ticket. **Add TRJ5-C2.8** (or equivalent):
 - Files: examples/chiodome-bilateral/src/anchor.rs;
   examples/chiodome-bilateral/fixtures/anchor-inclusion.json.
 - Effort: M
-- Depends on: TRJ5-C2.7, LB-AB
+- Depends on: release work-C2.7, LB-AB
 - Acceptance: anchor-inclusion.json validates under
   validate_anchor_inclusion_proof and verify_anchor_inclusion_proof.
 ```
 
-**Step gap 7b:** `chio receipt explain` extension (TRJ5-C4.1) is rated
+**Step gap 7b:** `chio receipt explain` extension (release work-C4.1) is rated
 M. Reading
 `crates/chio-cli/src/cli/trust_commands.rs:2629-2715`,
 `explain_receipt_value` only handles `ChioReceiptV2` and legacy
@@ -843,7 +843,7 @@ Recommended: option B. Cleanest and matches the existing pattern
 
 The Productization paper called `chio receipt explain` "fundamental"
 (`debate/05-productization-sdk-champion.md` Gap 2 line 50). The Lane C
-tickets address it (TRJ5-C4.1 .. C4.4) but the effort allocation is
+tickets address it (release work-C4.1 .. C4.4) but the effort allocation is
 S/M/M/S = ~6 days for what the productization paper considers a
 debugging-story-grade feature.
 
@@ -860,15 +860,15 @@ For bilateral chain explanation:
 - A useful "explain" walks the graph
 
 This is closer to a small CLI tree-renderer. M effort is plausible but
-tight. Add (or clarify in TRJ5-C4.1):
+tight. Add (or clarify in release work-C4.1):
 
 - Acceptance: explain output for a bilateral chain shows EVERY
   intermediary receipt by short ID, with parent->child arrows.
 - Acceptance: explain output's "policy verdict disagreement" is
   surfaced as a top-level diagnostic when present.
 
-**Patch:** Bump TRJ5-C4.1 effort from M to L. Re-allocate budget from
-TRJ5-C4.4 (S - the doc page) by combining with TRJ5-C4.3 (snapshot
+**Patch:** Bump release work-C4.1 effort from M to L. Re-allocate budget from
+release work-C4.4 (S - the doc page) by combining with release work-C4.3 (snapshot
 test) at the end.
 
 ---
@@ -880,7 +880,7 @@ The R4 mitigation in `RISK-REGISTER.md` lines 168-174 says:
 > Lane C tickets are scheduled to START before Lane B closes, so demo
 > smoke-tests run continuously against in-progress Lane B work.
 
-`tickets.md` TRJ5-C6.2 adds `chio-demo-smoke` as a CI required check
+`tickets.md` release work-C6.2 adds `chio-demo-smoke` as a CI required check
 on PRs:
 
 > Add a CI workflow that runs `examples/chiodome-bilateral/smoke.sh`
@@ -891,10 +891,10 @@ The synthesis frames Lane C as a "forcing function for Lanes A and B";
 the forcing function is most effective when it runs continuously,
 not just at PR boundaries.
 
-**Patch:** Add TRJ5-C6.6:
+**Patch:** Add release work-C6.6:
 
 ```
-### TRJ5-C6.6 - Continuous chiodome demo workflow
+### release work-C6.6 - Continuous chiodome demo workflow
 
 - Scope: Add `.github/workflows/chiodome-demo-continuous.yml` that
   runs the smoke nightly on `main` AND on every push to any Lane B
@@ -903,7 +903,7 @@ not just at PR boundaries.
   `crates/chio-conformance/**`).
 - Files: .github/workflows/chiodome-demo-continuous.yml
 - Effort: S
-- Depends on: TRJ5-C6.2
+- Depends on: release work-C6.2
 - Acceptance: workflow runs nightly; failures open an issue with
   the matching commit SHA; green for 7 consecutive nights before
   the v0.1.0-bounded-chiodome tag goes out.
@@ -918,7 +918,7 @@ before tag).
 
 ### Finding 11 [MINOR]: Demo fixture as evidence - reproducibility unclear
 
-`tickets.md` TRJ5-C6.3 says:
+`tickets.md` release work-C6.3 says:
 
 > Two consecutive `./smoke.sh && build-tarball.sh` runs produce
 > byte-identical tarballs (or document the fields that vary -
@@ -958,7 +958,7 @@ This is the right rule but it has no automated enforcement. A
 contributor who writes `#[serde_json]!({"receipt_id": "rcpt-fake",
 ...})` in a fixture file would pass CI silently.
 
-**Patch:** Add to TRJ5-C6.2 acceptance: the `chio-demo-smoke` CI
+**Patch:** Add to release work-C6.2 acceptance: the `chio-demo-smoke` CI
 workflow MUST run a check that every fixture under
 `examples/chiodome-bilateral/fixtures/` was produced by the smoke run
 in the same workflow run (e.g. via mtime check, or by deleting all
@@ -1058,7 +1058,7 @@ no-patch-needed).**
 ## Open Questions
 
 1. **Lane B's Wave 1 review will determine whether B4 (DSSE signing)
-   fits in trj5.** If it doesn't, Lane C must adopt Finding 1
+   fits in release work.** If it doesn't, Lane C must adopt Finding 1
    option 2 (narrow the bounded claim). The Lane C plan needs an
    explicit branch on this.
 
@@ -1082,7 +1082,7 @@ no-patch-needed).**
    The Wave 2 reviewer for Lane B should be looped in.
 
 6. **What is the W3C BBS+ Recommendation timeline?** If
-   Recommendation lands during trj5, the bounded-claim language
+   Recommendation lands during release work, the bounded-claim language
    updates; if it doesn't, item 6 of `selective-disclosure.md`
    stays put.
 
@@ -1101,7 +1101,7 @@ from being REAL as currently scoped:
    disclaim §6 conformance for the legacy `DualSignedReceipt`. The
    "Option A: ship two co-existing signatures" framing as written is
    structural-framing-without-wiring (EVIDENCE-GATE.md §2.4) and
-   would let trj5 ship a "spec-conformant" tag whose primary
+   would let release work ship a "spec-conformant" tag whose primary
    artifact (`DualSignedReceipt`) is not spec-conformant.
 
 2. The KB MCP transport mismatch (Finding 2) makes the
@@ -1117,13 +1117,13 @@ If the W1 author addresses Findings 1-2 by W3 of Lane C with the
 recommended patches (option 1 promotion to B4, mcp-remote bridge,
 HushSpec-shaped policy YAML, explicit chiodos-ladder example-local
 implementation), the demo is shippable in 4 weeks (with possible
-1-week trj5 ship-date slip from B4 promotion).
+1-week release work ship-date slip from B4 promotion).
 
 If Finding 6 (BBS+ deps) cannot be resolved by W2 of Lane C, drop
 C5 entirely and ship five-artifact v0.1.0-bounded-chiodome instead
 of six. This is consistent with R6 escalation criteria.
 
-If Lane B slips by more than 1 week, Lane C cannot close in trj5
+If Lane B slips by more than 1 week, Lane C cannot close in release work
 window without dropping at least one sub-lane. Recommend the
 fallback be C5 (auditor view) since it is the only sub-lane where
 Lane B does not provide forcing-function enforcement.
@@ -1135,7 +1135,7 @@ bilateral cosign claim in `release-bar.md`.
 
 The forcing-function CI hook (Finding 10) is non-negotiable. If
 Lane B regresses without continuous chiodome smoke catching it,
-trj5 closes with the trj4 pattern repeating. Add the workflow
+release work closes with the trj4 pattern repeating. Add the workflow
 unconditionally.
 
 **Re-review at end of W1.** After W1 author addresses the BLOCKERs

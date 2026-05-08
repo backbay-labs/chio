@@ -79,11 +79,11 @@ That is not a process failure. That is an architecture failure. Trj4 PR #597 ("w
 
 Every trj4 wave that "stalled at structural framing" did so for the same reason: to wire a new responsibility into the kernel hot path you have to (a) take `&mut Kernel`, which conflicts with the async-spawn world that downstream callers assume, (b) thread the dependency through a tool-server trait that is sync-only so the async wrapper is a lie, and (c) extend a function that is already on the `too_many_arguments` exemption list. The path of least resistance is "land the type, defer the wire" -- and that is exactly the trj4 closeout failure pattern.
 
-If trj5 takes any focus other than decomposition, it inherits the same surface. The W2.x continuation effort, the AnchorWitnessClient integration, the chain-binding/negotiation/sibling-sum work -- they will each accrete one more `&mut self` setter, one more positional arg, one more crate without integration tests. Trj4 was nominally "closed" with 95% of its 126 brainstorm ideas not actually wired. That is the steady-state failure mode unless we change the substrate.
+If release work takes any focus other than decomposition, it inherits the same surface. The W2.x continuation effort, the AnchorWitnessClient integration, the chain-binding/negotiation/sibling-sum work -- they will each accrete one more `&mut self` setter, one more positional arg, one more crate without integration tests. Trj4 was nominally "closed" with 95% of its 126 brainstorm ideas not actually wired. That is the steady-state failure mode unless we change the substrate.
 
 ---
 
-## 3. The Decomposition Lane (proposed trj5 structure)
+## 3. The Decomposition Lane (proposed release work structure)
 
 **Wave 0 -- Inventory and pin (1 phase).** Freeze the close-bar: every "decomposed" surface ships with (a) integration tests or it does not count, (b) zero new `too_many_arguments` exemptions, (c) zero new dual-version dependencies in Cargo.lock.
 
@@ -106,19 +106,19 @@ If trj5 takes any focus other than decomposition, it inherits the same surface. 
 
 **(a) "This is just refactoring, no new value."** False. The concurrency model fix unlocks user-facing demos that are currently impossible: a single Chio kernel handling concurrent A2A and MCP sessions in one process (today blocked by `&mut self`). The duplicate-deps cleanup cuts cold-build time measurably (rough estimate: 90s+ on the secondary `reqwest 0.12` tree). The integration-test floor is what makes the next trajectory's "wire X into the hot path" actually verifiable instead of "structural framing only."
 
-**(b) "Trj4 closeout first."** Trj4 closeout IS decomposition for the surfaces it touches. The wave plan at `/Users/connor/.claude/plans/typed-coalescing-hejlsberg.md` is already closing-by-decomposing for 16 hot-path call sites. Trj5-as-decomposition formalizes the substrate so the *next* trj4-shaped effort doesn't repeat the failure. Decomposition first is also a *prevention* lane: every wave-NN-summary doc that lands in trj4 closeout will land faster against a kernel that doesn't require `&mut self` plumbing.
+**(b) "Trj4 closeout first."** Trj4 closeout IS decomposition for the surfaces it touches. The wave plan at `local trajectory-4 closeout plan` is already closing-by-decomposing for 16 hot-path call sites. Trj5-as-decomposition formalizes the substrate so the *next* trj4-shaped effort doesn't repeat the failure. Decomposition first is also a *prevention* lane: every wave-NN-summary doc that lands in trj4 closeout will land faster against a kernel that doesn't require `&mut self` plumbing.
 
 **(c) "Boring, do shippable user features."** Name three. (i) Concurrent multi-session hosted runtime is blocked by sync `&mut self`. (ii) Comptroller-capable second-customer demo needs `chio-trust-control` to be a library, not a 18K-LOC CLI annex. (iii) The bounded Chio operational profile (the v3.18 ship boundary) requires the integration-test floor to be enforceable as a CI gate; right now 21% of crates are exempt by absence.
 
 ---
 
-## 5. Smallest viable decomposition slice (if trj5 is mostly trj4 closeout)
+## 5. Smallest viable decomposition slice (if release work is mostly trj4 closeout)
 
-If the consensus is that trj4 closeout consumes most of trj5, accept it -- but carve out exactly one decomposition phase that cannot wait:
+If the consensus is that trj4 closeout consumes most of release work, accept it -- but carve out exactly one decomposition phase that cannot wait:
 
 **Minimum slice: Wave 1.1 + Wave 4 priority crates.** Convert `ToolServer` to async-trait, and add a *single* integration test to each of `chio-cross-protocol`, `chio-mcp-remote`, `chio-egress-contract`. That removes the async-wrapper-lie at the kernel hot path AND establishes that the 2026-04-13 zero-tests count cannot increase. Everything else can defer to trj6.
 
-Without even this slice, trj5 will conclude with a longer Cargo.lock, more `&mut self` setters, more zero-test crates, and another erratum.
+Without even this slice, release work will conclude with a longer Cargo.lock, more `&mut self` setters, more zero-test crates, and another erratum.
 
 ---
 

@@ -2,7 +2,7 @@
 
 This document is the deep dive for sub-lane B1. It captures the current call graph, the target call graph, the migration sequence, the deletion plan, and the negative conformance test that proves only one production entry exists.
 
-## Current call graph (as of trj5 kickoff)
+## Current call graph (as of release work kickoff)
 
 `chio_kernel_core` exposes five capability-verifier entry points (`crates/chio-kernel-core/src/capability_verify.rs`):
 
@@ -52,8 +52,8 @@ The `chio_kernel_core` crate retains all five public entry points (`verify_capab
 
 ## Migration sequence
 
-1. **TRJ5-B1.1**: add `ChioKernel::verify_capability_full_hosted`. Place at the same `impl` block where the deleted helpers live (current `mod.rs:4005-4058`). The new method's body uses the kernel's actual `budget_registry` (held under a `Mutex`/`RwLock` already; signature and lifetime details determined at PR time).
-2. **TRJ5-B1.2**: migrate the four call sites in lockstep. The migrations:
+1. **release work-B1.1**: add `ChioKernel::verify_capability_full_hosted`. Place at the same `impl` block where the deleted helpers live (current `mod.rs:4005-4058`). The new method's body uses the kernel's actual `budget_registry` (held under a `Mutex`/`RwLock` already; signature and lifetime details determined at PR time).
+2. **release work-B1.2**: migrate the four call sites in lockstep. The migrations:
    - `mod.rs:2452`: replace
      ```
      self.verify_capability_signature(capability)
@@ -67,10 +67,10 @@ The `chio_kernel_core` crate retains all five public entry points (`verify_capab
    - `mod.rs:2706`: same pattern. Note that this is a per-step verdict path; the wrapper return value is mapped to the StepVerdict shape with the structured reason.
    - `mod.rs:2898-2911`: replace `verify_capability_full_without_budget_admit` with the new wrapper. The acceptance criterion is that the **actual** kernel registry is mutated, not a noop. The Round-3 codex P2 ordering note at `mod.rs:4080-4087` ("admit deferred until after time/revocation/subject/scope/guards") is preserved by structuring the wrapper to expose two phases: a verify-only phase (signature + chain-binding + ceiling + time) and an admit phase (budget). The wrapper is split into `verify_capability_full_hosted_pre_admit` and `verify_capability_full_hosted_admit`. Implementation detail in B1.1 PR.
    - `mod.rs:3403-3416`: same as 2898-2911.
-3. **TRJ5-B1.3**: delete the two helper bodies (`mod.rs:4005-4058`).
-4. **TRJ5-B1.4**: spec edit (PROTOCOL.md line 408 SHOULD -> MUST).
-5. **TRJ5-B1.5**: gate script `scripts/check-verify-capability-full.sh`.
-6. **TRJ5-B1.6**: negative conformance fixture.
+3. **release work-B1.3**: delete the two helper bodies (`mod.rs:4005-4058`).
+4. **release work-B1.4**: spec edit (PROTOCOL.md line 408 SHOULD -> MUST).
+5. **release work-B1.5**: gate script `scripts/check-verify-capability-full.sh`.
+6. **release work-B1.6**: negative conformance fixture.
 
 ## Deletion plan
 

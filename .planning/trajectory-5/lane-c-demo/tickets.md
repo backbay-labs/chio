@@ -1,15 +1,15 @@
 # Lane C - Tickets
 
-Concrete tickets `TRJ5-C1.x..C6.x`. Each entry has title, scope, files
+Concrete tickets `release work-C1.x..C6.x`. Each entry has title, scope, files
 touched, effort (S/M/L), depends-on (cross-lane deps explicit),
 acceptance.
 
-Every ticket closes under the trj5 Evidence Gate trio (per
+Every ticket closes under the release work Evidence Gate trio (per
 `.planning/trajectory-5/templates/EVIDENCE-GATE.md`): enforced call
 site + spec MUST citation + signed negative conformance test that
 fails when wiring is removed. Cross-lane dependencies cite literal
-Lane B ticket IDs (`TRJ5-B0.5`, `TRJ5-B1.6`, `TRJ5-B2.5`,
-`TRJ5-B3.5`, `TRJ5-B4.5`), not aliases.
+Lane B ticket IDs (`release work-B0.5`, `release work-B1.6`, `release work-B2.5`,
+`release work-B3.5`, `bilateral DSSE signing item`), not aliases.
 
 Acceptance for Lane C tickets follows the Lane B/C variant of the
 TICKET-TEMPLATE (`templates/TICKET-TEMPLATE.md` §2.1): enforced call
@@ -22,16 +22,16 @@ Cross-lane dependencies (literal Lane B ticket IDs as of W3):
 
 | Was alias | Maps to (Lane B ticket) | What it provides |
 |---|---|---|
-| `LB-CAP` | `TRJ5-B1.6` | Single-entry capability verifier negative conformance fixture (gating artifact) |
-| `LB-RV2` | `TRJ5-B2.5` | Receipt-v2 fail-closed negative conformance fixture (gating artifact) |
-| `LB-AB`  | `TRJ5-B3.5` | Anchor-batch async-only negative conformance fixture (gating artifact) |
-| `LB-AT`  | `TRJ5-B0.5` | Dispatch-hop collapse (gating artifact for `async_trait` migration) |
+| `LB-CAP` | `release work-B1.6` | Single-entry capability verifier negative conformance fixture (gating artifact) |
+| `LB-RV2` | `release work-B2.5` | Receipt-v2 fail-closed negative conformance fixture (gating artifact) |
+| `LB-AB`  | `release work-B3.5` | Anchor-batch async-only negative conformance fixture (gating artifact) |
+| `LB-AT`  | `release work-B0.5` | Dispatch-hop collapse (gating artifact for `async_trait` migration) |
 
 Plus the new sub-lane added by R4 Finding 1:
 
 | Lane B ticket | What it provides |
 |---|---|
-| `TRJ5-B4.5` | DSSE-conformant bilateral signing primitive (envelope, PAE, signing surface in `crates/chio-federation/src/bilateral_dsse.rs`). Lane C consumes this; the §7 verifier extends the same module. The full B4 sub-lane is `TRJ5-B4.1..TRJ5-B4.6` plus `TRJ5-B4.E` Evidence Gate close; B4.5 is the gating negative conformance fixture (parallel to B1.6/B2.5/B3.5). |
+| `bilateral DSSE signing item` | DSSE-conformant bilateral signing primitive (envelope, PAE, signing surface in `crates/chio-federation/src/bilateral_dsse.rs`). Lane C consumes this; the §7 verifier extends the same module. The full B4 sub-lane is `bilateral DSSE signing item-B4.6` plus `bilateral DSSE signing item` Evidence Gate close; B4.5 is the gating negative conformance fixture (parallel to B1.6/B2.5/B3.5). |
 
 If Lane B's tickets renumber during execution, the cross-reference
 table above is the source of truth. Lane C tickets cite the literal
@@ -41,12 +41,12 @@ IDs current at W3 close.
 
 ## C1 - Architecture and scenario
 
-### TRJ5-C1.1 - Scaffold `examples/chiodome-bilateral/`
+### release work-C1.1 - Scaffold `examples/chiodome-bilateral/`
 
 - **Scope:** New Rust example crate with `Cargo.toml`, `src/main.rs`,
   `README.md`, `smoke.sh`, `policies/`, `fixtures/.gitkeep`. Set up
   the example-local chiodos-ladder primitive skeleton (per R4
-  Finding 5a; full implementation in TRJ5-C1.3).
+  Finding 5a; full implementation in release work-C1.3).
 - **Files:** `examples/chiodome-bilateral/{Cargo.toml,src/main.rs,
   README.md,smoke.sh,policies/.gitkeep,fixtures/.gitkeep}`.
 - **Effort:** S
@@ -62,10 +62,10 @@ IDs current at W3 close.
    and C3.x.
 3. **Negative conformance test**: not applicable (scaffolding).
 4. **Audit-doc evidence**: `.planning/trajectory-5/audits/lane-c-demo.md`
-   `### TRJ5-C1.1` records the example crate path and stub-run output.
+   `### release work-C1.1` records the example crate path and stub-run output.
 5. **Banner update**: not applicable.
 
-### TRJ5-C1.2 - Two-kernel handshake harness
+### release work-C1.2 - Two-kernel handshake harness
 
 - **Scope:** Construct two `chio-kernel` instances in-process, run
   the federation handshake from
@@ -74,7 +74,7 @@ IDs current at W3 close.
 - **Files:** `examples/chiodome-bilateral/src/handshake.rs`;
   `examples/chiodome-bilateral/fixtures/handshake/{org-a.json,org-b.json}`.
 - **Effort:** M
-- **Depends on:** TRJ5-C1.1, TRJ5-B0.5 (so the kernels can register
+- **Depends on:** release work-C1.1, release work-B0.5 (so the kernels can register
   their refund tools without ad-hoc sync wrappers).
 - **Owner-class:** demo-eng
 
@@ -98,7 +98,7 @@ IDs current at W3 close.
 4. **Audit-doc evidence**: handshake fixtures captured by smoke run.
 5. **Banner update**: not applicable.
 
-### TRJ5-C1.3 - Example-local chiodos-ladder primitive + intersection
+### release work-C1.3 - Example-local chiodos-ladder primitive + intersection
 
 - **Scope:** Implement a minimal example-local `chio.chiodos-ladder.v1`
   manifest type in `examples/chiodome-bilateral/src/ladder.rs` per
@@ -116,7 +116,7 @@ IDs current at W3 close.
 - **Files:** `examples/chiodome-bilateral/src/ladder.rs`;
   `examples/chiodome-bilateral/fixtures/ladder-intersection.json`.
 - **Effort:** L
-- **Depends on:** TRJ5-C1.2
+- **Depends on:** release work-C1.2
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -143,7 +143,7 @@ IDs current at W3 close.
    example-local minimal implementation; production ladder primitive
    deferred to trj6".
 
-### TRJ5-C1.4 - Refund tool registration on both kernels
+### release work-C1.4 - Refund tool registration on both kernels
 
 - **Scope:** A `refund.execute` tool implementation registered on
   both kernels via the standard `ToolServerConnection` path. Sync
@@ -151,7 +151,7 @@ IDs current at W3 close.
   "customer_id": ... }`.
 - **Files:** `examples/chiodome-bilateral/src/refund_tool.rs`.
 - **Effort:** M
-- **Depends on:** TRJ5-C1.1, TRJ5-B0.5
+- **Depends on:** release work-C1.1, release work-B0.5
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -166,7 +166,7 @@ IDs current at W3 close.
    refund tool is governed).
    - Citation: `spec/PROTOCOL.md` §5.4 lines 408-418 (post-B1.4
      amend).
-3. **Negative conformance test**: covered by TRJ5-B1.6.
+3. **Negative conformance test**: covered by release work-B1.6.
 4. **Audit-doc evidence**: tool registration confirmed by
    `tools/list` log captured during smoke run.
 5. **Banner update**: not applicable.
@@ -175,7 +175,7 @@ IDs current at W3 close.
 
 ## C2 - Bilateral cosigned invocation flow (consumes Lane B B4)
 
-### TRJ5-C2.1 - Capability verifier trait + receipt-store wiring
+### release work-C2.1 - Capability verifier trait + receipt-store wiring
 
 - **Scope:** Add `CapabilityVerifier` trait in `chio-federation`
   (per the architecture cut in `bilateral-cosign-flow.md` "Architecture
@@ -189,8 +189,8 @@ IDs current at W3 close.
   (extends Lane B B4's module);
   `crates/chio-federation/src/lib.rs` (re-export trait).
 - **Effort:** M
-- **Depends on:** TRJ5-B4.2 (B4.2 introduces the bilateral_dsse.rs
-  module; Lane C extends it), TRJ5-B4.5 (gating B4 negative
+- **Depends on:** bilateral DSSE signing item (B4.2 introduces the bilateral_dsse.rs
+  module; Lane C extends it), bilateral DSSE signing item (gating B4 negative
   conformance fixture)
 - **Owner-class:** federation-eng
 
@@ -202,16 +202,16 @@ IDs current at W3 close.
      `crates/chio-federation/src/bilateral_dsse.rs` (trait def);
      `examples/chiodome-bilateral/src/orchestrate.rs` (impl wires
      `chio_kernel::Kernel::verify_capability_full_hosted`).
-2. **Spec MUST**: covered by §7 step 14 (TRJ5-C2.4); this ticket
+2. **Spec MUST**: covered by §7 step 14 (release work-C2.4); this ticket
    provides the architectural seam.
-3. **Negative conformance test**: covered by TRJ5-C2.5 (one of the
+3. **Negative conformance test**: covered by release work-C2.5 (one of the
    16 negative-fixture cases asserts `capability.lease_expired_or_unknown`
    when the trait's impl rejects).
 4. **Audit-doc evidence**: trait visible in
    `cargo doc -p chio-federation` output.
 5. **Banner update**: not applicable.
 
-### TRJ5-C2.2 - Predicate body schema validation + helper
+### release work-C2.2 - Predicate body schema validation + helper
 
 - **Scope:** Lane C extends Lane B B4's module with
   `predicate_from_kernel_state`, the helper that constructs
@@ -222,7 +222,7 @@ IDs current at W3 close.
 - **Files:** `crates/chio-federation/src/bilateral_dsse.rs`
   (extends B4's module).
 - **Effort:** M
-- **Depends on:** TRJ5-C2.1, TRJ5-B4.2 (B4.2 introduces the bilateral_dsse.rs module that this ticket extends), TRJ5-B4.5 (gating B4 negative conformance fixture)
+- **Depends on:** release work-C2.1, bilateral DSSE signing item (B4.2 introduces the bilateral_dsse.rs module that this ticket extends), bilateral DSSE signing item (gating B4 negative conformance fixture)
 - **Owner-class:** federation-eng
 
 #### Acceptance
@@ -242,7 +242,7 @@ IDs current at W3 close.
    schema constant matches spec verbatim.
 5. **Banner update**: not applicable.
 
-### TRJ5-C2.3 - Capability lease binding via `chio-credit`
+### release work-C2.3 - Capability lease binding via `chio-credit`
 
 - **Scope:** Mint a `CreditBondArtifact`
   (`crates/chio-credit/src/lib.rs:766`) inside the demo flow; bind
@@ -252,7 +252,7 @@ IDs current at W3 close.
 - **Files:** `examples/chiodome-bilateral/src/credit.rs`;
   `examples/chiodome-bilateral/fixtures/credit-bond.json`.
 - **Effort:** M
-- **Depends on:** TRJ5-C2.2, TRJ5-B1.6
+- **Depends on:** release work-C2.2, release work-B1.6
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -271,13 +271,13 @@ IDs current at W3 close.
    - Imports the demo's bond mint plus `chio-federation::verify_envelope`.
    - Asserts §7 step 14 returns
      `capability.lease_expired_or_unknown` for an expired bond.
-   - Depends on Lane B `TRJ5-B1.6` so the kernel-side verifier
+   - Depends on Lane B `release work-B1.6` so the kernel-side verifier
      fails closed.
 4. **Audit-doc evidence**: `credit-bond.json` fixture; negative test
    pass.
 5. **Banner update**: not applicable.
 
-### TRJ5-C2.4 - 17-step verifier + spec-7.1 negative fixture set
+### release work-C2.4 - 17-step verifier + spec-7.1 negative fixture set
 
 - **Scope:** Implement spec section 7 verification algorithm steps
   1-17 in order, returning the spec section 7.1 error code on
@@ -288,8 +288,8 @@ IDs current at W3 close.
   `crates/chio-federation/tests/bilateral_dsse_negative.rs`;
   `crates/chio-federation/tests/fixtures/bilateral_dsse/<code>.json`.
 - **Effort:** L
-- **Depends on:** TRJ5-C2.1, TRJ5-C2.2, TRJ5-B1.6, TRJ5-B2.5,
-  TRJ5-B3.5, TRJ5-B4.5
+- **Depends on:** release work-C2.1, release work-C2.2, release work-B1.6, release work-B2.5,
+  release work-B3.5, bilateral DSSE signing item
 - **Owner-class:** federation-eng
 
 #### Acceptance
@@ -314,18 +314,18 @@ IDs current at W3 close.
    recorded in audit doc.
 5. **Banner update**: not applicable.
 
-### TRJ5-C2.5 - Anchor inclusion proof emission
+### release work-C2.5 - Anchor inclusion proof emission
 
 - **Scope:** Construct the `KernelCheckpoint`,
   `SignedWeb3IdentityBinding`, and call
   `crates/chio-anchor/src/lib.rs:178`
   `build_anchor_inclusion_proof` to emit artifact #5. Use
   `LocalDevnetDeployment` for the chain anchor field. (R4 Step gap
-  7a: this was previously hand-waved into TRJ5-C4.2.)
+  7a: this was previously hand-waved into release work-C4.2.)
 - **Files:** `examples/chiodome-bilateral/src/anchor.rs`;
   `examples/chiodome-bilateral/fixtures/anchor-inclusion.json`.
 - **Effort:** M
-- **Depends on:** TRJ5-C2.4, TRJ5-B3.5
+- **Depends on:** release work-C2.4, release work-B3.5
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -344,7 +344,7 @@ IDs current at W3 close.
    `validate_anchor_inclusion_proof` and `verify_anchor_inclusion_proof`.
 5. **Banner update**: not applicable.
 
-### TRJ5-C2.6 - Wire the cosign flow into the orchestrator
+### release work-C2.6 - Wire the cosign flow into the orchestrator
 
 - **Scope:** Connect the refund tool call to the cosign emission:
   Org A invokes, Org B executes, both kernels sign the PAE
@@ -355,7 +355,7 @@ IDs current at W3 close.
 - **Files:** `examples/chiodome-bilateral/src/orchestrate.rs`;
   `examples/chiodome-bilateral/fixtures/bilateral-cosign-invocation.json`.
 - **Effort:** L
-- **Depends on:** TRJ5-C2.4, TRJ5-C2.3, TRJ5-C2.5, TRJ5-C1.4
+- **Depends on:** release work-C2.4, release work-C2.3, release work-C2.5, release work-C1.4
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -364,8 +364,8 @@ IDs current at W3 close.
    federation hot path; envelope emission is kernel-driven (B4).
    - Enforced call site:
      `examples/chiodome-bilateral/src/orchestrate.rs`
-2. **Spec MUST**: covered by TRJ5-C2.4 (the verifier) plus
-   TRJ5-B4.3 (the production hot-path emission) and TRJ5-B4.5 (the
+2. **Spec MUST**: covered by release work-C2.4 (the verifier) plus
+   bilateral DSSE signing item (the production hot-path emission) and bilateral DSSE signing item (the
    gating negative conformance fixture for the signing surface).
 3. **Negative conformance test**:
    `crates/chio-conformance/tests/c_bilateral_orchestrate_unsigned_fails.rs`
@@ -379,7 +379,7 @@ IDs current at W3 close.
 
 ## C3 - KB MCP integration via `chio mcp serve` + `mcp-remote` bridge
 
-### TRJ5-C3.1 - HushSpec policy YAML for refund flow
+### release work-C3.1 - HushSpec policy YAML for refund flow
 
 - **Scope:** Author
   `examples/chiodome-bilateral/policies/refund-policy.yaml` in
@@ -387,10 +387,10 @@ IDs current at W3 close.
   `examples/policies/canonical-hushspec.yaml` family). The amount
   cap is NOT a HushSpec primitive (per R4 Finding 5b); it lives in
   the example-local chiodos-ladder intersection logic and is
-  enforced upstream of the kernel by TRJ5-C1.3.
+  enforced upstream of the kernel by release work-C1.3.
 - **Files:** `examples/chiodome-bilateral/policies/refund-policy.yaml`.
 - **Effort:** S
-- **Depends on:** TRJ5-C1.3
+- **Depends on:** release work-C1.3
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -403,11 +403,11 @@ IDs current at W3 close.
 2. **Spec MUST**: "MCP tool dispatch MUST be policy-gated".
    - Citation: `spec/PROTOCOL.md` (HushSpec section; lines to be
      filled in by audit-doc owner).
-3. **Negative conformance test**: covered by TRJ5-C3.4 (deny scenario).
+3. **Negative conformance test**: covered by release work-C3.4 (deny scenario).
 4. **Audit-doc evidence**: `chio check` exit code recorded.
 5. **Banner update**: not applicable.
 
-### TRJ5-C3.2 - `chio mcp serve` over `mcp-remote` stdio bridge
+### release work-C3.2 - `chio mcp serve` over `mcp-remote` stdio bridge
 
 - **Scope:** Validate `chio mcp serve --policy
   examples/chiodome-bilateral/policies/refund-policy.yaml --
@@ -419,7 +419,7 @@ IDs current at W3 close.
 - **Files:** `examples/chiodome-bilateral/smoke.sh`
   (extends with the serve invocation).
 - **Effort:** M
-- **Depends on:** TRJ5-C3.1; pre-existing `mcp-remote` shim
+- **Depends on:** release work-C3.1; pre-existing `mcp-remote` shim
   documented at `ops/knowledge-base/README.md:136-151`.
 - **Owner-class:** demo-eng
 
@@ -442,16 +442,16 @@ IDs current at W3 close.
    notes the demo uses `mcp-remote` as stdio bridge, not direct
    HTTP wrapping.
 
-### TRJ5-C3.3 - Receipt persistence sink
+### release work-C3.3 - Receipt persistence sink
 
 - **Scope:** Wire the kernel's receipt sink to write each tool
   call's receipt as canonical JSON to
   `examples/chiodome-bilateral/fixtures/receipts/<id>.json`. Lane
-  B `TRJ5-B2.5` is what makes v2 actually emit when negotiated; this
+  B `release work-B2.5` is what makes v2 actually emit when negotiated; this
   ticket's smoke fails red if v1 leaks through.
 - **Files:** `examples/chiodome-bilateral/src/receipt_sink.rs`.
 - **Effort:** S
-- **Depends on:** TRJ5-B2.5
+- **Depends on:** release work-B2.5
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -464,17 +464,17 @@ IDs current at W3 close.
    selects `chio.capability.v2`".
    - Citation: `spec/PROTOCOL.md` §6 lines 714-741 (post-B2.4
      amend).
-3. **Negative conformance test**: covered by TRJ5-B2.5.
+3. **Negative conformance test**: covered by release work-B2.5.
 4. **Audit-doc evidence**: per-call receipt fixtures with
    `signature_ok = true`.
 5. **Banner update**: not applicable.
 
-### TRJ5-C3.4 - Cross-org refund call + adversarial deny fixture
+### release work-C3.4 - Cross-org refund call + adversarial deny fixture
 
 - **Scope:** Org A's kernel invokes the proxied refund through Org
   A's `chio mcp serve` instance; Org B's kernel handles the proxied
   call through its own `chio mcp serve`. The bilateral cosign flow
-  from TRJ5-C2.6 wraps the result. Includes the adversarial
+  from release work-C2.6 wraps the result. Includes the adversarial
   over-cap fixture: `amount_minor = 100000` is rejected by Org B's
   ladder intersection; the bilateral envelope's
   `policy_evaluation_summary.server_b_verdict.verdict = deny`;
@@ -482,7 +482,7 @@ IDs current at W3 close.
 - **Files:** `examples/chiodome-bilateral/src/orchestrate.rs`;
   `examples/chiodome-bilateral/fixtures/policy-deny.json`.
 - **Effort:** L
-- **Depends on:** TRJ5-C2.6, TRJ5-C3.2, TRJ5-C3.3
+- **Depends on:** release work-C2.6, release work-C3.2, release work-C3.3
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -495,8 +495,8 @@ IDs current at W3 close.
    either side returns a deny verdict".
    - Citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7
      step 13.
-3. **Negative conformance test**: covered by TRJ5-C2.4 cases for
-   verdict disagreement; smoke regression covered by TRJ5-C6.2.
+3. **Negative conformance test**: covered by release work-C2.4 cases for
+   verdict disagreement; smoke regression covered by release work-C6.2.
 4. **Audit-doc evidence**: six-artifact smoke output for happy and
    deny scenarios.
 5. **Banner update**: not applicable.
@@ -505,7 +505,7 @@ IDs current at W3 close.
 
 ## C4 - Receipt explain
 
-### TRJ5-C4.1 - Extend `chio receipt explain` for bilateral chains
+### release work-C4.1 - Extend `chio receipt explain` for bilateral chains
 
 - **Scope:** Update
   `crates/chio-cli/src/cli/trust_commands.rs:2629`
@@ -529,7 +529,7 @@ IDs current at W3 close.
 - **Files:** `crates/chio-cli/src/cli/trust_commands.rs`;
   `examples/chiodome-bilateral/src/anchor.rs` (data exposure).
 - **Effort:** L
-- **Depends on:** TRJ5-C2.6, TRJ5-C2.5, TRJ5-B3.5
+- **Depends on:** release work-C2.6, release work-C2.5, release work-B3.5
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -548,9 +548,9 @@ IDs current at W3 close.
    `policy.verdict_disagreement` surfacing.
 4. **Audit-doc evidence**: snapshot JSON committed; T1.6 audit row
    references this work.
-5. **Banner update**: doc page (TRJ5-C4.2) cites the new behavior.
+5. **Banner update**: doc page (release work-C4.2) cites the new behavior.
 
-### TRJ5-C4.2 - `EXPLAIN_A_DENIAL.md` doc + T1.6 close
+### release work-C4.2 - `EXPLAIN_A_DENIAL.md` doc + T1.6 close
 
 - **Scope:** Author or update `docs/guides/EXPLAIN_A_DENIAL.md` to
   walk a denied refund through `chio receipt explain`. Cite the
@@ -560,7 +560,7 @@ IDs current at W3 close.
 - **Files:** `docs/guides/EXPLAIN_A_DENIAL.md`;
   `audits/T1.6-chio-explain.md`.
 - **Effort:** S
-- **Depends on:** TRJ5-C4.1
+- **Depends on:** release work-C4.1
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -571,7 +571,7 @@ IDs current at W3 close.
 2. **Spec MUST**: not applicable (doc).
 3. **Negative conformance test**: not applicable.
 4. **Audit-doc evidence**: T1.6 row carries `caught >= 1` once
-   the snapshot tests in TRJ5-C4.1 land green.
+   the snapshot tests in release work-C4.1 land green.
 5. **Banner update**: README references the EXPLAIN guide.
 
 ---
@@ -580,13 +580,13 @@ IDs current at W3 close.
 
 **Scope guard (R4 Finding 6):** if BBS+ Cargo dependencies
 (`bbs-2023` cryptosuite, `bls12_381`, AnonCreds v2 RangeStatement)
-cannot be assembled within the trj5 window or force a chio MSRV
+cannot be assembled within the release work window or force a chio MSRV
 bump that does not pass review, C5 is DROPPED from
 `v0.1.0-bounded-chiodome` and shipped as `v0.2.0-bounded-chiodome`.
-This decision is owned by the Lane C lead with sign-off by the trj5
+This decision is owned by the Lane C lead with sign-off by the release work
 owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 
-### TRJ5-C5.1 - `chio-zk-receipts` skeleton + dep-tree validation
+### release work-C5.1 - `chio-zk-receipts` skeleton + dep-tree validation
 
 - **Scope:** New workspace member `crates/chio-zk-receipts/` with
   Cargo feature `zk` default-off. Sibling to
@@ -616,7 +616,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 5. **Banner update**: bounded-claim text acknowledges
    "cryptosuite at W3C CR-stage, not Recommendation-stage".
 
-### TRJ5-C5.2 - Workflow + step projections (`chio.bbs-projection.*.v1`)
+### release work-C5.2 - Workflow + step projections (`chio.bbs-projection.*.v1`)
 
 - **Scope:** Implement spec section 6.1 alphabetical projection of
   `WorkflowReceiptBody` and section 6.2 step-record projection.
@@ -625,7 +625,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   per spec §5.2. (Merges W1's C5.2 and C5.3.)
 - **Files:** `crates/chio-zk-receipts/src/projection.rs`.
 - **Effort:** L
-- **Depends on:** TRJ5-C5.1
+- **Depends on:** release work-C5.1
 - **Owner-class:** federation-eng
 
 #### Acceptance
@@ -645,7 +645,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 4. **Audit-doc evidence**: projection-replay test green.
 5. **Banner update**: not applicable.
 
-### TRJ5-C5.3 - Disclosure envelope + auditor view fixture
+### release work-C5.3 - Disclosure envelope + auditor view fixture
 
 - **Scope:** Implement spec §8 envelope schema
   `chio.selective-disclosure-proof.v1` with JSON Schema validation,
@@ -660,7 +660,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   `examples/chiodome-bilateral/src/auditor.rs`;
   `examples/chiodome-bilateral/fixtures/auditor-view/{proof.json,predicate-failed.json}`.
 - **Effort:** L
-- **Depends on:** TRJ5-C5.2, TRJ5-C3.4
+- **Depends on:** release work-C5.2, release work-C3.4
 - **Owner-class:** federation-eng + demo-eng
 
 #### Acceptance
@@ -686,7 +686,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 
 ## C6 - Release packaging
 
-### TRJ5-C6.1 - `RELEASE_NOTES.md` + `RELEASE_AUDIT.md` row
+### release work-C6.1 - `RELEASE_NOTES.md` + `RELEASE_AUDIT.md` row
 
 - **Scope:** Copy `release-bar.md` text into `RELEASE_NOTES.md`,
   format for GitHub release body. Append a row to
@@ -696,7 +696,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   (Merges W1's C6.1 and C6.4.)
 - **Files:** `RELEASE_NOTES.md`; `RELEASE_AUDIT.md`.
 - **Effort:** S
-- **Depends on:** TRJ5-C2.6, TRJ5-C3.4, TRJ5-C4.2
+- **Depends on:** release work-C2.6, release work-C3.4, release work-C4.2
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -709,7 +709,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
    bounded-claim language preserved verbatim.
 5. **Banner update**: README references the release tag.
 
-### TRJ5-C6.2 - `chio-demo-smoke` PR-gating CI workflow
+### release work-C6.2 - `chio-demo-smoke` PR-gating CI workflow
 
 - **Scope:** Add `.github/workflows/chio-demo-smoke.yml` that runs
   `examples/chiodome-bilateral/smoke.sh` on every PR; gate on green.
@@ -720,7 +720,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   delete-fixtures-then-regenerate pattern).
 - **Files:** `.github/workflows/chio-demo-smoke.yml`.
 - **Effort:** S
-- **Depends on:** TRJ5-C3.4
+- **Depends on:** release work-C3.4
 - **Owner-class:** sre-eng
 
 #### Acceptance
@@ -736,7 +736,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 4. **Audit-doc evidence**: workflow run URL captured.
 5. **Banner update**: README references the demo path and CI gate.
 
-### TRJ5-C6.3 - Continuous chiodome demo workflow (forcing function)
+### release work-C6.3 - Continuous chiodome demo workflow (forcing function)
 
 - **Scope:** Add `.github/workflows/chiodome-demo-continuous.yml`
   that runs the smoke nightly on `main` AND on every push to any
@@ -749,7 +749,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   worst possible time, the day before tag.)
 - **Files:** `.github/workflows/chiodome-demo-continuous.yml`.
 - **Effort:** S
-- **Depends on:** TRJ5-C6.2
+- **Depends on:** release work-C6.2
 - **Owner-class:** sre-eng
 
 #### Acceptance
@@ -765,7 +765,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
    the v0.1.0-bounded-chiodome tag goes out.
 5. **Banner update**: README references the continuous gate.
 
-### TRJ5-C6.4 - Diff-stable fixture tarball
+### release work-C6.4 - Diff-stable fixture tarball
 
 - **Scope:** Build a tarball
   `chiodome-bilateral-fixtures-v0.1.0.tar.gz` from the demo's
@@ -778,7 +778,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 - **Files:** `examples/chiodome-bilateral/scripts/build-tarball.sh`;
   `examples/chiodome-bilateral/tools/diff-stable.py`.
 - **Effort:** S
-- **Depends on:** TRJ5-C6.2
+- **Depends on:** release work-C6.2
 - **Owner-class:** sre-eng
 
 #### Acceptance
@@ -794,7 +794,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 4. **Audit-doc evidence**: two consecutive run hashes recorded.
 5. **Banner update**: not applicable.
 
-### TRJ5-C6.5 - Tag and ship
+### release work-C6.5 - Tag and ship
 
 - **Scope:** Sign-tag `v0.1.0-bounded-chiodome` after CI green and
   Lane B fixtures green. Publish release with notes and tarball.
@@ -803,8 +803,8 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   continuous workflow has been green for 7 consecutive nights.
 - **Files:** none in tree (operational).
 - **Effort:** S
-- **Depends on:** TRJ5-C6.1..4 + TRJ5-B1.6, TRJ5-B2.5, TRJ5-B3.5,
-  TRJ5-B4.5 + Lane A's mutation banner reading the real number.
+- **Depends on:** release work-C6.1..4 + release work-B1.6, release work-B2.5, release work-B3.5,
+  bilateral DSSE signing item + Lane A's mutation banner reading the real number.
 - **Owner-class:** demo-eng
 
 #### Acceptance
@@ -821,17 +821,17 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 
 ## Ticket count
 
-- C1: 4 (TRJ5-C1.1 .. C1.4)
-- C2: 6 (TRJ5-C2.1 .. C2.6) - merged W1's C2.4+C2.5 into one L
+- C1: 4 (release work-C1.1 .. C1.4)
+- C2: 6 (release work-C2.1 .. C2.6) - merged W1's C2.4+C2.5 into one L
   ticket; absorbed C2.6 into C2.3; added C2.5 anchor inclusion per
   R4 Step gap 7a
-- C3: 4 (TRJ5-C3.1 .. C3.4) - merged W1's C3.4+C3.5 into one L
+- C3: 4 (release work-C3.1 .. C3.4) - merged W1's C3.4+C3.5 into one L
   ticket
-- C4: 2 (TRJ5-C4.1, C4.2) - merged W1's C4.3 snapshot test into
+- C4: 2 (release work-C4.1, C4.2) - merged W1's C4.3 snapshot test into
   C4.1 acceptance; merged W1's C4.4 doc with T1.6 close
-- C5: 3 (TRJ5-C5.1 .. C5.3) - merged W1's C5.2+C5.3 (projections)
+- C5: 3 (release work-C5.1 .. C5.3) - merged W1's C5.2+C5.3 (projections)
   and C5.4+C5.5 (envelope + fixtures)
-- C6: 5 (TRJ5-C6.1 .. C6.5) - merged W1's C6.1+C6.4 (notes + audit
+- C6: 5 (release work-C6.1 .. C6.5) - merged W1's C6.1+C6.4 (notes + audit
   row); added C6.3 continuous workflow; added C6.4 diff-stable
 
 **Total: 24 tickets** (within the 22-26 final target after R1 §11.7

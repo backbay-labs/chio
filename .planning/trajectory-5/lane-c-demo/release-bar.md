@@ -6,7 +6,7 @@ discipline (matching the tone of the existing
 `README.md` mutation banner, which says "31%" not "65% target").
 
 The text below is intentionally cut-and-paste-ready: the C6 release
-ticket (TRJ5-C6.1) takes this content into `RELEASE_NOTES.md` with
+ticket (release work-C6.1) takes this content into `RELEASE_NOTES.md` with
 formatting only; no claims should change between this file and the
 shipped notes.
 
@@ -74,7 +74,7 @@ example artifacts shipped with the tag.
    `chio.bilateral-cosign-invocation.v1`, per spec section 3 lines
    97-103 mandate). Lane B sub-lane B4
    (`lane-b-wiring/dsse-bilateral-signing.md`, tickets
-   `TRJ5-B4.1..TRJ5-B4.6` plus `TRJ5-B4.E` Evidence Gate close)
+   `bilateral DSSE signing item-B4.6` plus `bilateral DSSE signing item` Evidence Gate close)
    replaced the
    `crates/chio-federation/src/bilateral.rs` signing surface so the
    production hot path emits spec §6 PAE Ed25519 signatures.
@@ -192,7 +192,7 @@ In the language this release uses:
     Per RISK-REGISTER.md R6 and `selective-disclosure.md` "Fallback
     if BBS+ deps cannot resolve", if the BBS+ dependency tree
     (`bbs-2023` cryptosuite, BLS12-381, AnonCreds v2 RangeStatement)
-    cannot be assembled within the trj5 window or forces a chio
+    cannot be assembled within the release work window or forces a chio
     MSRV bump, this release ships as a five-artifact bundle (no
     auditor view) and the auditor predicate is deferred to a
     `v0.2.0-bounded-chiodome` release. If you read this in the
@@ -205,18 +205,18 @@ conformance fixtures are committed and green:
 
 1. `crates/chio-conformance/tests/capability_v2_negative.rs` -
    the single-entry `verify_capability_full` enforcement on the
-   kernel hot path. (Lane B `TRJ5-B1.x`.)
+   kernel hot path. (Lane B `release work-B1.x`.)
 2. `crates/chio-conformance/tests/receipt_v2_negative.rs` -
    the receipt v2 fail-closed enforcement at
    `chio-kernel/src/kernel/mod.rs:1574-1591`
-   (`kernel_receipt_version_for_remote`). (Lane B `TRJ5-B2.x`.)
+   (`kernel_receipt_version_for_remote`). (Lane B `release work-B2.x`.)
 3. `crates/chio-conformance/tests/anchor_witness_negative.rs` -
    the anchor-batch async-only enforcement at
-   `crates/chio-anchor/src/batch.rs:208-258`. (Lane B `TRJ5-B3.x`.)
+   `crates/chio-anchor/src/batch.rs:208-258`. (Lane B `release work-B3.x`.)
 4. `crates/chio-conformance/tests/b4_bilateral_dsse_pae_only_is_conformant.rs`
    - the DSSE-conformant signing-surface enforcement, where a
    legacy `CoSigningBody`-shaped signature is rejected by the
-   production verifier. (Lane B `TRJ5-B4.5`.)
+   production verifier. (Lane B `bilateral DSSE signing item`.)
 
 Each negative test references the demo's fixtures by exact path so
 that removing any of the four Lane B enforcements turns
@@ -281,7 +281,7 @@ slips. The tag is unblocked when all four exist and pass.
 ## Acknowledgements
 
 The Lane C scoping debate and the bounded-claim discipline are the
-direct work of the trj5 position-paper authors; the synthesis is at
+direct work of the release work position-paper authors; the synthesis is at
 `.planning/trajectory-5/debate/00-SYNTHESIS.md`. The Vision
 Strategist's chiodome slice
 (`.planning/trajectory-5/debate/06-vision-strategist-chiodome.md`

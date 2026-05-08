@@ -220,7 +220,7 @@ deliberately conservative.
 >    likely; verifiers MUST treat the fixture as illustrative.
 > 9. **The auditor view may be DEFERRED to v0.2.** Per
 >    RISK-REGISTER R6, if the BBS+ Cargo dep tree cannot be
->    assembled within the trj5 window, this release ships as a
+>    assembled within the release work window, this release ships as a
 >    five-artifact bundle (no auditor view) and the auditor
 >    predicate moves to `v0.2.0-bounded-chiodome`.
 
@@ -266,7 +266,7 @@ Lane C where Lane B does NOT provide forcing-function enforcement
 (see "What this contributes to Lane C's forcing function" below);
 dropping it does not change the demo's "Lane B canary" behavior.
 
-The decision-owner is the Lane C lead. Sign-off by the trj5 owner.
+The decision-owner is the Lane C lead. Sign-off by the release work owner.
 Trigger conditions are itemized in `architecture/RISK-REGISTER.md` R6.
 
 ## What we don't ship under the zk feature

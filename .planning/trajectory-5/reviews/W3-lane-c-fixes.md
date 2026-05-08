@@ -1,6 +1,6 @@
 # W3 Lane C Fixes - Fix Log
 
-**Wave 3 fix agent for Lane C (trj5).**
+**Wave 3 fix agent for Lane C (release work).**
 **Date:** 2026-05-07
 **Scope:** Address every R4 (Lane C feasibility) and R1
 (cross-lane) finding affecting Lane C. Rework the demo to depend on
@@ -33,7 +33,7 @@ Out of scope (parallel agents own these):
 **Resolution:** Lane C dropped the "Option A two-signature bolt-on"
 entirely. The DSSE-conformant signing primitive is now Lane B
 sub-lane B4 (`lane-b-wiring/dsse-bilateral-signing.md`, tickets
-`TRJ5-B4.1..TRJ5-B4.x`, owned by parallel Lane B fix agent).
+`bilateral DSSE signing item-B4.x`, owned by parallel Lane B fix agent).
 
 Patches:
 - `bilateral-cosign-flow.md`: replaced "Two co-existing signing
@@ -53,8 +53,8 @@ Patches:
 - `release-bar.md`: dropped the weasel "AND a DSSE envelope"
   language; release notes now claim spec §6 conformance directly
   via Lane B B4.
-- `tickets.md`: TRJ5-C2.1..C2.6 now consume B4 (`Depends on:
-  TRJ5-B4.x`) and the C2 sub-lane simplifies from "ship Option-A
+- `tickets.md`: release work-C2.1..C2.6 now consume B4 (`Depends on:
+  bilateral DSSE signing item`) and the C2 sub-lane simplifies from "ship Option-A
   adapter" to "consume B4, ship §7 verifier".
 
 ### R4 BLOCKER 2 (KB MCP HTTP/stdio bridge) - RESOLVED
@@ -71,7 +71,7 @@ Patches:
   with a HushSpec-shaped one matching
   `examples/policies/canonical-hushspec.yaml` (R4 Finding 5b option
   a: amount cap is ladder-driven, not policy-YAML-driven).
-- `tickets.md`: TRJ5-C3.2 wraps the new command:
+- `tickets.md`: release work-C3.2 wraps the new command:
   `chio mcp serve --policy ... -- npx -y mcp-remote
   http://localhost:8111/mcp/`. Pre-requisite bullet "Node.js / npx
   available in the smoke container" added.
@@ -81,8 +81,8 @@ Patches:
 
 - **Finding 3 (cross-lane dep aliases not anchored to Lane B IDs):**
   resolved by replacing every alias use in `Depends on` rows with
-  literal Lane B ticket IDs (`TRJ5-B0.5`, `TRJ5-B1.6`, `TRJ5-B2.5`,
-  `TRJ5-B3.5`, `TRJ5-B4.x`). The alias->ID map is preserved in
+  literal Lane B ticket IDs (`release work-B0.5`, `release work-B1.6`, `release work-B2.5`,
+  `release work-B3.5`, `bilateral DSSE signing item`). The alias->ID map is preserved in
   `tickets.md` as a documentation table for traceability but no
   ticket dep cites the alias.
 
@@ -93,7 +93,7 @@ Patches:
   (selective disclosure deferral path).
 
 - **Finding 5a (chiodos-ladder primitive missing in code):**
-  resolved. TRJ5-C1.3 effort bumped from M to L; explicit
+  resolved. release work-C1.3 effort bumped from M to L; explicit
   acknowledgment that this is NEW Rust code; primitive lives in
   `examples/chiodome-bilateral/src/ladder.rs`. Bounded-claim text
   in `release-bar.md` and `architecture.md` notes "the
@@ -102,7 +102,7 @@ Patches:
 
 - **Finding 5b (policy YAML format mismatch):** resolved. Policy
   YAML rewritten in HushSpec shape; amount cap moved to ladder
-  intersection per option (a). TRJ5-C3.1 acceptance now exercises
+  intersection per option (a). release work-C3.1 acceptance now exercises
   `chio check --policy <yaml>` against the real chio-policy crate.
 
 - **Finding 6 (BBS+ deps absent; R6 mitigation soft):** resolved by
@@ -111,43 +111,43 @@ Patches:
   release ships as a five-artifact bundle. `selective-disclosure.md`
   has a new "Fallback if BBS+ deps cannot resolve (R6 escalation)"
   section. `release-bar.md` item 14 of "What this release DOES NOT
-  CLAIM" enumerates the deferral. TRJ5-C5.1 acceptance includes
+  CLAIM" enumerates the deferral. release work-C5.1 acceptance includes
   explicit MSRV-resolution check.
 
 - **Finding 7 (end-to-end composition gaps):** resolved. New
-  TRJ5-C2.5 ticket "Anchor inclusion proof emission" (R4 Step gap
-  7a). The §7 verifier ticket TRJ5-C2.4 explicitly depends on
-  TRJ5-B1.6/B2.5/B3.5/B4.x. Two-keypair signing protocol section
+  release work-C2.5 ticket "Anchor inclusion proof emission" (R4 Step gap
+  7a). The §7 verifier ticket release work-C2.4 explicitly depends on
+  release work-B1.6/B2.5/B3.5/B4.x. Two-keypair signing protocol section
   added to `bilateral-cosign-flow.md` (Step gap 7c).
 
 - **Finding 8 (17-step verifier cross-crate calls):** resolved.
   `bilateral-cosign-flow.md` now has an "Architecture cut for
   cross-crate calls" section choosing option B (trait objects for
-  `ReceiptStore` and `CapabilityVerifier`). TRJ5-C2.1 introduces
-  the `CapabilityVerifier` trait in `chio-federation`. TRJ5-C4.1
+  `ReceiptStore` and `CapabilityVerifier`). release work-C2.1 introduces
+  the `CapabilityVerifier` trait in `chio-federation`. release work-C4.1
   effort bumped from M to L per Finding 9.
 
 - **Finding 10 (forcing-function CI hook missing):** resolved by
-  adding TRJ5-C6.3 "Continuous chiodome demo workflow" with the
+  adding release work-C6.3 "Continuous chiodome demo workflow" with the
   spec from R4 Finding 10 verbatim (nightly + Lane B path push,
   failures open issues, 7 consecutive nights green pre-tag).
 
 ### R4 MINORs
 
 - **Finding 9 (`chio receipt explain` underestimated):** resolved.
-  TRJ5-C4.1 bumped from M to L; acceptance now requires the
+  release work-C4.1 bumped from M to L; acceptance now requires the
   explain output's "policy verdict disagreement" to be surfaced as
   a top-level diagnostic and the bilateral chain to render with
-  parent->child arrows. TRJ5-C4.4 doc page merged with TRJ5-C4.3
-  snapshot test acceptance into a single TRJ5-C4.2.
+  parent->child arrows. release work-C4.4 doc page merged with release work-C4.3
+  snapshot test acceptance into a single release work-C4.2.
 
 - **Finding 11 (demo fixture reproducibility):** resolved. New
-  TRJ5-C6.4 "Diff-stable fixture tarball" includes the
+  release work-C6.4 "Diff-stable fixture tarball" includes the
   `tools/diff-stable.py` (or Rust binary) per R4 Finding 11; smoke
   step 5 calls it; the rule is "diff-stable across runs", not
   "byte-identical".
 
-- **Finding 12 (mock-receipt detection):** resolved. TRJ5-C6.2
+- **Finding 12 (mock-receipt detection):** resolved. release work-C6.2
   acceptance requires the workflow to verify every fixture under
   `examples/chiodome-bilateral/fixtures/` was produced by the
   smoke run in the same workflow run (mtime check).
@@ -169,9 +169,9 @@ Patches:
 ### R1 BLOCKER (Lane C zero Evidence Gate references) - RESOLVED
 
 Patches to `tickets.md`:
-- New introductory paragraph: "Every ticket closes under the trj5
+- New introductory paragraph: "Every ticket closes under the release work
   Evidence Gate trio".
-- Every TRJ5-C* ticket Acceptance is now a five-row block matching
+- Every release work-C* ticket Acceptance is now a five-row block matching
   TICKET-TEMPLATE §2.1 (production wiring + spec MUST citation +
   negative conformance test path + audit-doc evidence reference +
   banner update).
@@ -184,7 +184,7 @@ documentation table, never in `Depends on` rows.
 
 ### R1 MAJOR (continuous Lane C run) - RESOLVED
 
-See R4 Finding 10 above. TRJ5-C6.3 added; W3 scaffolding start
+See R4 Finding 10 above. release work-C6.3 added; W3 scaffolding start
 (R1 §6.2) reflected in the README.md timeline and PLAN.md week
 range fields.
 
@@ -193,7 +193,7 @@ range fields.
 Lane-C-internal occurrences fixed:
 - `architecture.md`: `mod.rs:1148-1165` -> `mod.rs:1574-1591`
   (`kernel_receipt_version_for_remote`); `LB-CAP/LB-RV2/LB-AB/LB-AT`
-  arrows replaced with `TRJ5-B1.x/B2.x/B3.x/B0.x`.
+  arrows replaced with `release work-B1.x/B2.x/B3.x/B0.x`.
 - `release-bar.md`: same line-range fix; reference rewritten with
   function name.
 - `README.md`: same line-range fix; trait name corrections;
@@ -224,7 +224,7 @@ accept the legacy preimage, so a third party would see a
 
 **The W3 rework promotes the DSSE-conformant signing primitive to
 Lane B sub-lane B4** (`lane-b-wiring/dsse-bilateral-signing.md`,
-tickets `TRJ5-B4.1..TRJ5-B4.x`). After B4 lands:
+tickets `bilateral DSSE signing item-B4.x`). After B4 lands:
 
 - The kernel cross-org dispatch hot path emits the §6 DSSE envelope
   by default.
@@ -244,7 +244,7 @@ Lane C consumes B4-produced envelopes and ships:
   does not pull in `chio-kernel` directly (architecture cut option B).
 - 16 negative conformance fixtures (one per §7.1 error code).
 
-The trj5 ship date may slip ~1 week (synthesis 8-week max -> ~9
+The release work ship date may slip ~1 week (synthesis 8-week max -> ~9
 weeks) due to B4. Acceptable per R4.
 
 ## KB MCP HTTP/stdio bridge resolution
@@ -264,15 +264,15 @@ wrapping.
 24 tickets total (down from W1's 30, within R1 §11.7's recommended
 22-26 range):
 
-- C1: 4 (TRJ5-C1.1 .. C1.4)
-- C2: 6 (TRJ5-C2.1 .. C2.6) - consumes B4; 16-case negative
+- C1: 4 (release work-C1.1 .. C1.4)
+- C2: 6 (release work-C2.1 .. C2.6) - consumes B4; 16-case negative
   fixture set merged into C2.4; new C2.5 anchor inclusion
-- C3: 4 (TRJ5-C3.1 .. C3.4) - merged W1's C3.4+C3.5
-- C4: 2 (TRJ5-C4.1, C4.2) - bumped C4.1 to L per R4 Finding 9;
+- C3: 4 (release work-C3.1 .. C3.4) - merged W1's C3.4+C3.5
+- C4: 2 (release work-C4.1, C4.2) - bumped C4.1 to L per R4 Finding 9;
   merged C4.3 snapshot into C4.1 acceptance; merged C4.4 doc with
   T1.6 close
-- C5: 3 (TRJ5-C5.1 .. C5.3) - deferable per R6
-- C6: 5 (TRJ5-C6.1 .. C6.5) - new C6.3 continuous workflow;
+- C5: 3 (release work-C5.1 .. C5.3) - deferable per R6
+- C6: 5 (release work-C6.1 .. C6.5) - new C6.3 continuous workflow;
   new C6.4 diff-stable; merged W1's C6.1+C6.4
 
 ## Bounded-claim audit results
@@ -305,9 +305,9 @@ Wave 4 final-pass should reconcile the following items where
 parallel agents may have made coordinating changes:
 
 1. **Lane B B4 ticket numbers.** This fix log uses placeholder
-   `TRJ5-B4.x` throughout; the parallel Lane B fix agent will fix
+   `bilateral DSSE signing item` throughout; the parallel Lane B fix agent will fix
    specific IDs (B4.1, B4.2, ...). Wave 4 sweeps Lane C docs and
-   replaces `TRJ5-B4.x` with the specific Lane B ticket IDs that
+   replaces `bilateral DSSE signing item` with the specific Lane B ticket IDs that
    are appropriate for each dependency.
 
 2. **Spec line-range citations.** Several Lane C tickets cite
@@ -345,7 +345,7 @@ parallel agents may have made coordinating changes:
    The exact filename should match Lane B's ticketing decision;
    Wave 4 reconciles.
 
-7. **Continuous CI workflow filename.** TRJ5-C6.3 names the file
+7. **Continuous CI workflow filename.** release work-C6.3 names the file
    `.github/workflows/chiodome-demo-continuous.yml`. If Lane B's
    fix agent reused the same name in a different ticket, Wave 4
    reconciles.

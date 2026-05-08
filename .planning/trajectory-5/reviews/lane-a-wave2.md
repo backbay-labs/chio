@@ -10,7 +10,7 @@
 
 This ledger is the structured per-lane sign-off artifact required by
 `KICKOFF-CHECKLIST.md` "Wave-2 reviewer sign-off ledger" row. The original
-Wave-2 reviewer for Lane A (R2) was an autonomous agent; per the trj5
+Wave-2 reviewer for Lane A (R2) was an autonomous agent; per the release work
 autonomous-execution context (see OWNERS.toml top-of-file note), the
 sign-off is recorded by the Wave-4 final-pass agent against the closeout
 matrix evidence.
@@ -41,14 +41,14 @@ Either way, zero BLOCKERs remain OPEN-FOR-OWNER.
 | Finding | Title | Closed by W3 fix-log section | Status |
 |---|---|---|---|
 | R2-MAJOR-1.1 | Mutation uplift target backed by no sample run | `W3-lane-a-fixes.md` § "R2 MAJOR 1.1 -- Mutation uplift target backed by no sample run" | CLOSED |
-| R2-MAJOR-2.4 | Backfillable in trj5 vs blocked on architecture (need triage) | `W3-lane-a-fixes.md` § "R2 MAJOR 2.4 -- Backfillable in trj5 vs blocked on architecture" | CLOSED |
+| R2-MAJOR-2.4 | Backfillable in release work vs blocked on architecture (need triage) | `W3-lane-a-fixes.md` § "R2 MAJOR 2.4 -- Backfillable in release work vs blocked on architecture" | CLOSED |
 | R2-MAJOR-2.6 | Bootstrap-bypass clause not retired | `W3-lane-a-fixes.md` § "R2 MAJOR 2.6 -- Bootstrap-bypass clause not retired" | CLOSED |
 | R2-MAJOR-3.2 | Kani bound-parameter feasibility unverified | `W3-lane-a-fixes.md` § "R2 MAJOR 3.2 -- Kani bound-parameter feasibility" | CLOSED |
 | R2-MAJOR-4.2 | Apalache bounded transitive-closure feasibility | `W3-lane-a-fixes.md` § "R2 MAJOR 4.2 -- Apalache bounded transitive-closure feasibility" | CLOSED |
 | R2-MAJOR-5.2 | Lean refinement claim too weak | `W3-lane-a-fixes.md` § "R2 MAJOR 5.2 -- Lean refinement claim too weak" | CLOSED |
 | R2-MAJOR-7.4 | Mutation kill measured on test code (exclusion-list audit) | `W3-lane-a-fixes.md` § "R2 MAJOR 7.4 -- Mutation kill measured on test code" | CLOSED |
 | R2-MAJOR-9 / 10.2 | Risk register threat row + CI workflow inventory | `W3-lane-a-fixes.md` § "R2 MAJOR 9 / Section 10.2 -- CI workflow inventory + Wave 1 critical path" | CLOSED |
-| R1-MAJOR-2.3 (TRJ4-019) | TRJ4-019 dropped: Lane A renumbered TRJ5-A5 from equivalence-tests to Lean4 | `W3-lane-a-fixes.md` § "R1 MAJOR section 2.3 -- TRJ4-019 dropped" | DEFERRED-TO-TRJ6 |
+| R1-MAJOR-2.3 (TRJ4-019) | TRJ4-019 dropped: Lane A renumbered release work-A5 from equivalence-tests to Lean4 | `W3-lane-a-fixes.md` § "R1 MAJOR section 2.3 -- TRJ4-019 dropped" | DEFERRED-TO-TRJ6 |
 
 ### R2 MINORs (10 CLOSED; informational; not gating)
 
@@ -105,7 +105,7 @@ Wave 1 with eyes open:
 1. **Wave 1 triage of 20 threat rows** (W3-lane-a-fixes.md unresolved
    item 1). Without per-row triage tags landing in
    `audits/evidence/threats/<id>.json`, the runtime gate cannot
-   distinguish trj5-provable rows from architecture-blocked rows. The
+   distinguish release work-provable rows from architecture-blocked rows. The
    triage is the first work-item of Wave 1 Lane A.
 
 2. **TRJ4-033 closure status** (W3 unresolved item 2; R2-MINOR-2.7).
@@ -120,8 +120,8 @@ Wave 1 with eyes open:
 4. **Kani local wall-clock budget validation** (W3 unresolved item 4;
    R2-MAJOR-3.2). Each of the 12 proposed harnesses (4 per crate) must
    run locally under 30 minutes. The validation file
-   `audits/evidence/TRJ5-A3.0/local-bound-validation.md` does not yet
-   exist; TRJ5-A3.0 is the first Lane A Kani ticket.
+   `audits/evidence/Kani harness evidence/local-bound-validation.md` does not yet
+   exist; Kani harness evidence is the first Lane A Kani ticket.
 
 5. **Lean toolchain pin** (W3 unresolved item 5; R2-MINOR-5.3). The
    `formal/lean4/lean-toolchain` pin file does not yet exist; without
@@ -135,30 +135,30 @@ Wave 1 with eyes open:
 
 7. **`.cargo/mutants.toml` exclusion-list audit** (W3 unresolved item 7;
    R2-OBSERVATION-1.2). The audit file
-   `audits/evidence/TRJ5-A1.0/exclude-audit.md` does not yet exist.
+   `audits/evidence/mutation exclusion audit/exclude-audit.md` does not yet exist.
 
 8. **Cross-lane coordination on chio-anchor** (W3 unresolved item 8;
    R2-MINOR-8.3). The Lane A Kani harness depends on the shape of
-   `verify_anchor_batch`, which Lane B may modify during TRJ5-B3. The
+   `verify_anchor_batch`, which Lane B may modify during release work-B3. The
    coordination note is in place; OWNERS.toml `[overlaps]` table carries
-   `coordination_owner = "@bb-connor"` for `crates/chio-anchor/`.
+   `coordination_owner = "release owner"` for `crates/chio-anchor/`.
 
 9. **OWNERS.toml `crates/chio-equivalence-tests/**` path entry** (W3
    unresolved item 9). With TRJ4-019 deferred to trj6, the path entry
-   is dormant during trj5 but still claimed; the choice does not affect
+   is dormant during release work but still claimed; the choice does not affect
    any close bar.
 
 ---
 
 ## Final approval line
 
-**LANE A WAVE-2 SIGN-OFF**: APPROVED for trj5 kickoff execution.
+**LANE A WAVE-2 SIGN-OFF**: APPROVED for release work kickoff execution.
 **Recorded**: 2026-05-08 by Wave-4 final-pass agent.
 **Authority**: `reviews/W4-closeout-matrix.md` (5 R2 BLOCKERs + 8 R2
 MAJORs + 3 R1-Lane-A-affecting MAJORs all CLOSED; 1 MAJOR DEFERRED to
 trj6 with rationale).
 **Pre-execution gates**: 9 informational items above; none gate
 kickoff. All routed through autonomous waves under
-`human_assignment = "@bb-connor"`.
+`human_assignment = "release owner"`.
 
 End of Lane A Wave-2 sign-off ledger.

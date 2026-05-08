@@ -2,9 +2,9 @@
 
 **Status**: planning. Wave 1 producing lane PLAN.md drafts. Wave 2 review and OWNERS.toml owner-class assignment pending. Kickoff gated on `KICKOFF-CHECKLIST.md`.
 
-**Tagline**: trj5 is the **honesty trajectory**. It absorbs trj4 wave plan items and adds one forcing demo. There is no separate brand and no scope-widening.
+**Tagline**: release work is the **honesty trajectory**. It absorbs trj4 wave plan items and adds one forcing demo. There is no separate brand and no scope-widening.
 
-## What trj5 is
+## What release work is
 
 Trj5 is three coupled lanes that close one ship-bar visible from outside the project. The shape comes from the six-position synthesis at `debate/00-SYNTHESIS.md`, which observed that trj4's "structural framing without runtime wiring" pattern (per `../trajectory-4/TRAJECTORY-4-CLOSEOUT-ERRATUM.md`) is the steady-state symptom of a substrate shipping faster than it is being proven.
 
@@ -14,7 +14,7 @@ Trj5 closes that gap by:
 2. **Wiring the spec hot path** -- single-entry verifier, receipt v2 fail-closed, anchor-batch async-only when public witness required, and DSSE-conformant bilateral signing (Lane B; B4 added W3 per R4 BLOCKER 1).
 3. **Forcing one demo** -- two-kernel cross-org bilateral cosigned invocation with capability lease + budget bond, anchored, dogfooded through `chio receipt explain` (Lane C).
 
-If any of the three lanes fails to close, trj5 stays open. The bar is the kind a third party can verify.
+If any of the three lanes fails to close, release work stays open. The bar is the kind a third party can verify.
 
 ## Doc layout
 
@@ -30,11 +30,11 @@ If any of the three lanes fails to close, trj5 stays open. The bar is the kind a
 | `debate/00-SYNTHESIS.md` | The contract. Six debate papers reconciled. The three ship-bar items live here in normative form. |
 | `debate/01..06` | Independent debate position papers. |
 | `lane-a-floor/PLAN.md` | Lane A plan. Substrate hardening realization. Owned by Wave 1 Lane A agent. |
-| `lane-a-floor/tickets.md` | Lane A ticket list (TRJ5-A1..A?). |
+| `lane-a-floor/tickets.md` | Lane A ticket list (mutation evidence item?). |
 | `lane-b-wiring/PLAN.md` | Lane B plan. Spec hot-path wiring + architectural prerequisite. Owned by Wave 1 Lane B agent. |
-| `lane-b-wiring/tickets.md` | Lane B ticket list (TRJ5-B0..B?). |
+| `lane-b-wiring/tickets.md` | Lane B ticket list (release work-B0..B?). |
 | `lane-c-demo/PLAN.md` | Lane C plan. Bilateral demo + bounded chiodome v0.1.0. Owned by Wave 1 Lane C agent. |
-| `lane-c-demo/tickets.md` | Lane C ticket list (TRJ5-C1..C?). |
+| `lane-c-demo/tickets.md` | Lane C ticket list (release work-C1..C?). |
 | `templates/EVIDENCE-GATE.md` | Evidence Gate template (PROTOCOL.md + schemas + claim/proof/theorem registries + signed negative conformance). Reused from trj4. |
 | `reviews/` | Wave-2 reviewer output (lands when Wave 2 runs). |
 
@@ -50,7 +50,7 @@ For implementers picking up a ticket: open the relevant `lane-{a-floor,b-wiring,
 
 Planning. Wave 0 (debate) complete. Wave 1 (this set of artifacts plus per-lane PLAN.md drafts) in flight. Wave 2 (review) not started. Kickoff gated on `KICKOFF-CHECKLIST.md` items.
 
-`releases.toml` `[trajectory_5]` will open with `trj5_release_status = "in_progress"` once Wave 2 signs off and lane owner-classes are assigned to humans.
+`releases.toml` `[trajectory_5]` is `pending_upstream_merges` after R4+ release-truth reconciliation. It cannot be tagged until upstream PRs merge, release packaging is regenerated from merged `main`, checks are green on the integrated merge SHA, and a human pushes the tag.
 
 ## Lanes
 
@@ -76,9 +76,9 @@ Trj5 closes when **all three** are observably true. This block is the anchoring 
    - **anchor-batch async** -- `crates/chio-anchor/src/batch.rs:208-258` sync path is gated when `require_public_witness=true`. The runtime gate at `batch.rs:227-235` is the load-bearing defense; `scripts/check-anchor-batch-async-witness.sh` is best-effort fast-feedback documentation.
    - **DSSE-conformant bilateral signing (B4)** -- new sub-lane added per R4 BLOCKER 1. `crates/chio-federation/src/bilateral.rs::CoSigningBody` (lines 41-77) signs canonical-JSON bytes that share zero bytes with the §6 DSSE PAE preimage. B4 wires DSSE PAE-over-in-toto-Statement Ed25519 signing as the production §6-conformant artifact; the legacy `DualSignedReceipt` either gets wrapped or coexists with explicit non-conformance discipline.
 
-3. **Bar 3 (Lane C)**. The two-kernel cross-org bilateral cosigned invocation runs end-to-end, the receipts are inspectable with `chio receipt explain`, and the demo run is captured as a fixture under `examples/`. Uses existing `crates/chio-federation/src/bilateral.rs` (`CoSigningBody`, `DualSignedReceipt`), `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA`, `crates/chio-anchor::Web3CheckpointStatement` (no new live Web3 deployment), selective-disclosure auditor view behind `zk` Cargo feature flag, wrapped at `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Honest release tag `v0.1.0-bounded-chiodome` under v3.18 bounded-claim discipline.
+3. **Bar 3 (Lane C)**. The bounded bilateral demo runs end-to-end after the Lane C PRs merge, the receipt is inspectable with `chio receipt explain`, and the demo run is captured as pinned `receipt.json`, `envelope.json`, and `checkpoint.json` fixtures under `examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/`. Uses existing Chio receipt/checkpoint substrates, the `chio-federation` `bbs-stub` placeholder for C5 (PARTIAL, not real BBS+), and a KB MCP wrapper whose default mode emits mediation transcripts rather than kernel-signed Chio receipts. The `v0.1.0-bounded-chiodome` tag is human-pushed only after upstream merges, regeneration, and green integrated checks.
 
-If any of the three slips, trj5 stays open. No closeout erratum is needed because the bar is the kind a third party can verify.
+If any of the three slips, release work stays open. No closeout erratum is needed because the bar is the kind a third party can verify.
 
 ## Out of scope (explicit)
 
@@ -96,26 +96,26 @@ Lifted verbatim from `debate/00-SYNTHESIS.md`. See `SCOPE-LOCK.md` for the elabo
 
 Trj5 is **not a separate brand from the trj4 wave plan**. It absorbs trj4 wave items and adds Lane C. The mapping is normative; see `KICKOFF-CHECKLIST.md` for the per-ticket absorption note.
 
-| trj4 wave-plan item | trj5 lane |
+| trj4 wave-plan item | release work lane |
 |---|---|
-| TRJ4-010, TRJ4-011 (mutation-kill 65% / 80%) | Lane A (TRJ5-A1) |
-| TRJ4-012, TRJ4-013, TRJ4-014 (Kani `chio-attest-verify`, `chio-anchor`, `chio-weights`) | Lane A (TRJ5-A3) |
-| TRJ4-015, TRJ4-016, TRJ4-017, TRJ4-018 (TLA+ rewrites; apalache-temporal promotion) | Lane A (TRJ5-A4) |
-| TRJ4-019 (proptest hosted-vs-portable equivalence) | Lane A (TRJ5-A5) |
-| TRJ4-040..049 (threat coverage closure; 20 evidence rows on disk) | Lane A (TRJ5-A2) |
-| TRJ4-100..104 + T1.0.E (capability negotiation hot path) | Lane B (TRJ5-B1) |
-| TRJ4-120..131 + T1.2.E (receipt v2 fail-closed under negotiated v2) | Lane B (TRJ5-B2) |
-| TRJ4-140..147 + T1.3.E (anchor-batch async-only when witness required) | Lane B (TRJ5-B3) |
-| Architectural prerequisite (`async_trait` on `ToolServerConnection` at `crates/chio-kernel/src/runtime.rs:254-306`; collapse dispatch sync hop) | Lane B (TRJ5-B0) |
-| DSSE-conformant bilateral signing (Ed25519 over DSSE PAE of in-toto Statement per `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6) | Lane B (TRJ5-B4, new sub-lane per R4 BLOCKER 1) |
-| `chio-federation::bilateral` two-kernel demo | Lane C (TRJ5-C1) |
-| `chio-credit` CREDIT_BOND_ARTIFACT_SCHEMA capability-lease + budget-bond | Lane C (TRJ5-C2) |
-| `chio-anchor::Web3CheckpointStatement` (no live deployment) | Lane C (TRJ5-C3) |
-| selective-disclosure auditor view behind `zk` Cargo feature | Lane C (TRJ5-C4) |
-| `chio mcp serve --policy` over local KB MCP stack | Lane C (TRJ5-C5) |
-| `v0.1.0-bounded-chiodome` honest release tag | Lane C (TRJ5-C6) |
+| TRJ4-010, TRJ4-011 (mutation-kill 65% / 80%) | Lane A (release work-A1) |
+| TRJ4-012, TRJ4-013, TRJ4-014 (Kani `chio-attest-verify`, `chio-anchor`, `chio-weights`) | Lane A (release work-A3) |
+| TRJ4-015, TRJ4-016, TRJ4-017, TRJ4-018 (TLA+ rewrites; apalache-temporal promotion) | Lane A (release work-A4) |
+| TRJ4-019 (proptest hosted-vs-portable equivalence) | Lane A (release work-A5) |
+| TRJ4-040..049 (threat coverage closure; 20 evidence rows on disk) | Lane A (release work-A2) |
+| TRJ4-100..104 + T1.0.E (capability negotiation hot path) | Lane B (release work-B1) |
+| TRJ4-120..131 + T1.2.E (receipt v2 fail-closed under negotiated v2) | Lane B (release work-B2) |
+| TRJ4-140..147 + T1.3.E (anchor-batch async-only when witness required) | Lane B (release work-B3) |
+| Architectural prerequisite (`async_trait` on `ToolServerConnection` at `crates/chio-kernel/src/runtime.rs:254-306`; collapse dispatch sync hop) | Lane B (release work-B0) |
+| DSSE-conformant bilateral signing (Ed25519 over DSSE PAE of in-toto Statement per `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6) | Lane B (release work-B4, new sub-lane per R4 BLOCKER 1) |
+| `chio-federation::bilateral` two-kernel demo | Lane C (release work-C1) |
+| `chio-credit` CREDIT_BOND_ARTIFACT_SCHEMA capability-lease + budget-bond | Lane C (release work-C2) |
+| `chio-anchor::Web3CheckpointStatement` (no live deployment) | Lane C (release work-C3) |
+| selective-disclosure placeholder behind `chio-federation` `bbs-stub` Cargo feature | Lane C (release work-C4) |
+| `chio mcp serve --policy` over local KB MCP stack | Lane C (release work-C5) |
+| `v0.1.0-bounded-chiodome` honest release tag | Lane C (release work-C6) |
 
-The trj4 wave plan close-bar tracker at `../trajectory-4/closeout/CLOSE-BAR-TRACKER.md` continues to grade the Lane A and Lane B work; trj5 does not duplicate that ledger. Trj5's closing signal is the three observable bars above plus the lane PLAN.md close.
+The trj4 wave plan close-bar tracker at `../trajectory-4/closeout/CLOSE-BAR-TRACKER.md` continues to grade the Lane A and Lane B work; release work does not duplicate that ledger. Trj5's closing signal is the three observable bars above plus the lane PLAN.md close.
 
 ## Why this shape
 
@@ -131,12 +131,12 @@ The honest framing for project memory and `RELEASE_AUDIT.md`: Chio's differentia
 
 ## Kickoff prerequisites
 
-Before trj5 enters execution, the following must hold (full ledger in `KICKOFF-CHECKLIST.md`):
+Before release work enters execution, the following must hold (full ledger in `KICKOFF-CHECKLIST.md`):
 
 - All three lane `PLAN.md` files reviewed and Wave-2-approved under `reviews/`.
 - `OWNERS.toml` owner-classes assigned to actual humans.
-- CI pre-flight script `scripts/trj5-preflight.sh` returns exit 0.
-- `releases.toml` `[trajectory_5]` block opened with `trj5_release_status = "in_progress"`.
+- CI pre-flight script `scripts/release work-preflight.sh` returns exit 0.
+- `releases.toml` `[trajectory_5]` block opened and now corrected to `trj5_release_status = "pending_upstream_merges"` until upstream merges, regeneration, green integrated checks, and human tag push.
 - Trj4 wave-plan absorption note checked into `KICKOFF-CHECKLIST.md` confirming which trj4 tickets are subsumed.
 - The three ship-bar items above are restated verbatim in `SHIP-BAR-TRACKER.md` and have machine-readable signals defined.
 

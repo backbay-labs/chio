@@ -63,15 +63,15 @@ Two Ed25519 signatures are computed over the PAE bytes (one per kernel). The DSS
 
 The preimage that the signatures cover (`PAE = ...`) shares ZERO bytes with the legacy `canonical_json_bytes(CoSigningBody)`. This is the R4 finding.
 
-## Migration strategy: cohabitation (chosen for trj5)
+## Migration strategy: cohabitation (chosen for release work)
 
 Two design options were considered:
 
-### Option 1: One-version transition (REJECTED for trj5)
+### Option 1: One-version transition (REJECTED for release work)
 
-Replace `DualSignedReceipt::verify` with the DSSE-shaped verifier; remove the legacy preimage. **Rejected** because it is a public-API breaking change for any external consumer of `DualSignedReceipt` (federation transport, existing fixtures, the Lane C demo's existing infrastructure). The breaking change is too large a blast radius for trj5.
+Replace `DualSignedReceipt::verify` with the DSSE-shaped verifier; remove the legacy preimage. **Rejected** because it is a public-API breaking change for any external consumer of `DualSignedReceipt` (federation transport, existing fixtures, the Lane C demo's existing infrastructure). The breaking change is too large a blast radius for release work.
 
-### Option 2: Cohabitation (CHOSEN for trj5)
+### Option 2: Cohabitation (CHOSEN for release work)
 
 The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` stays. The new module `bilateral_dsse.rs` exposes the §6-conformant envelope ALONGSIDE. The federation hot path produces BOTH artifacts when a §6 envelope is requested. **Verifiers seeking §6 conformance MUST verify the DSSE envelope; they MUST NOT rely on `DualSignedReceipt::verify` for §6 semantics.** Lane C release notes record this disclaimer explicitly.
 
@@ -85,7 +85,7 @@ The R4 finding rejected the prior "Option A two-signature" framing because it AL
 - The negative conformance fixture rejects attempts to claim §6 conformance via the legacy preimage.
 - The Evidence Gate close bar requires the production federation hot path to call `sign_dsse_envelope` (not `DualSignedReceipt::sign`) when the dispatch is §6-claiming.
 
-The cohabitation is bounded by the Lane C release notes' explicit non-§6 disclaimer of `DualSignedReceipt`. Trj6 may collapse the two surfaces; trj5 ships both with the §6-conformant one as load-bearing.
+The cohabitation is bounded by the Lane C release notes' explicit non-§6 disclaimer of `DualSignedReceipt`. Trj6 may collapse the two surfaces; release work ships both with the §6-conformant one as load-bearing.
 
 ## Relationship to `DualSignedReceipt`
 
@@ -215,4 +215,4 @@ The fix is to make §6 conformance load-bearing by promoting DSSE-conformant sig
 - Replacing `DualSignedReceipt::verify` at `bilateral.rs:108`. **Out**: trj6.
 - Migrating every existing federation fixture from `DualSignedReceipt` to `DsseEnvelope`. **Out**: trj6 (the legacy preimage is still produced; existing fixtures continue to verify it).
 - Hardware-enclave key custody for the passport keypair. **Out**: trj6 (the synthesis explicitly defers hardware attestation).
-- `keyid` derivation per §7 step 8 beyond a fingerprint hash of the public key. **Bounded** for trj5: the simple hash is acceptable; full keyid resolution per spec text is trj6.
+- `keyid` derivation per §7 step 8 beyond a fingerprint hash of the public key. **Bounded** for release work: the simple hash is acceptable; full keyid resolution per spec text is trj6.

@@ -61,7 +61,7 @@ field (R2 Section 9 patch) and re-checked at Lane A close.
   `BLOCKED-BY-ARCHITECTURE`.
 - `BLOCKED-BY-ARCHITECTURE`: the property cannot be enforced today
   without a non-trivial architectural change. The row is deferred to
-  trj6 with a Risk Register R3 entry. The trj5 banner reads
+  trj6 with a Risk Register R3 entry. The release work banner reads
   `<n> of 20 covered, <m> deferred to trj6`, not `20 of 20`. R3's
   escalation criterion fires when the count of `IMPL-PARTIAL +
   BLOCKED-BY-ARCHITECTURE` exceeds 2 (tightened from >4 per R2 Section
@@ -99,8 +99,8 @@ or downgrades the row to `IMPL-PARTIAL` / `BLOCKED-BY-ARCHITECTURE`.
 | 15 | `resource_exhaustion_dos` | IMPL-EXISTS-PRIVATE (Wave 1 confirms) | Rate-limit/budget admit path is in `chio-kernel`. Wave 1 names the specific public entry (candidate: a budget-checked dispatch wrapper). **If the budget admit path is not a `pub fn` reachable from a conformance test, downgrade to `IMPL-PARTIAL`.** | `crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs` | Real `caught >= 1`; deny-asserting body. |
 | 16 | `ssrf_via_http_substrate` | IMPL-EXISTS-AND-PUBLIC | `chio_link::HttpEgressContract` (verified to exist via `grep -rln HttpEgressContract crates/chio-link/`); the contract trait's `validate` step is the production decision. Wave 1 confirms the `pub` impl crate. | `crates/chio-conformance/tests/threats/ssrf_via_http_substrate.rs` | Real `caught >= 1`; existing real test body retained. |
 | 17 | `tee_quote_forgery` | IMPL-EXISTS-AND-PUBLIC | `chio_tee_frame::schema::validate_signed` at `crates/chio-tee-frame/src/schema.rs:93` (`pub fn` verified) and `chio_tee_frame::schema::verify_tenant_sig` at `crates/chio-tee-frame/src/schema.rs:117` (`pub fn` verified). | `crates/chio-conformance/tests/threats/tee_quote_forgery.rs` | Real `caught >= 1`; rewritten deny-asserting body that feeds a forged quote (signature mismatch) and asserts both `validate_signed` and `verify_tenant_sig` reject. |
-| 18 | `tool_server_escape` | IMPL-PARTIAL (Wave 1 verifies) | Sandbox/scope enforcement in tool-server dispatch; the production `pub` decision is the kernel `dispatch` entry. Wave 1 names the specific `pub fn` in `chio-kernel/src/kernel/mod.rs`. **If dispatch sandbox enforcement is still partial after TRJ5-B0 `ToolServerConnection` async migration, this row defers; ssrf_via_http_substrate (#16) is the closest companion that DOES land.** | `crates/chio-conformance/tests/threats/tool_server_escape.rs` | Real `caught >= 1` IF row tags `IMPL-EXISTS-AND-PUBLIC` after Wave 1 triage; otherwise defer to trj6. |
-| 19 | `wasm_guard_resource_exhaustion` | BLOCKED-BY-ARCHITECTURE | Per Risk Register R3 line 117: depends on `wasm-guard SDK v4` which is out of scope for trj5. The existing `chio-wasm-guards/tests/escape/` fuel-exhaustion pins are real but pin only the harness, not a production-call-path. | `crates/chio-conformance/tests/threats/wasm_guard_resource_exhaustion.rs` | **DEFER to trj6.** Banner reads "<n> of 20 covered, 1 deferred to trj6 (wasm_guard_resource_exhaustion)". Risk Register R3 row updated. |
+| 18 | `tool_server_escape` | IMPL-PARTIAL (Wave 1 verifies) | Sandbox/scope enforcement in tool-server dispatch; the production `pub` decision is the kernel `dispatch` entry. Wave 1 names the specific `pub fn` in `chio-kernel/src/kernel/mod.rs`. **If dispatch sandbox enforcement is still partial after release work-B0 `ToolServerConnection` async migration, this row defers; ssrf_via_http_substrate (#16) is the closest companion that DOES land.** | `crates/chio-conformance/tests/threats/tool_server_escape.rs` | Real `caught >= 1` IF row tags `IMPL-EXISTS-AND-PUBLIC` after Wave 1 triage; otherwise defer to trj6. |
+| 19 | `wasm_guard_resource_exhaustion` | BLOCKED-BY-ARCHITECTURE | Per Risk Register R3 line 117: depends on `wasm-guard SDK v4` which is out of scope for release work. The existing `chio-wasm-guards/tests/escape/` fuel-exhaustion pins are real but pin only the harness, not a production-call-path. | `crates/chio-conformance/tests/threats/wasm_guard_resource_exhaustion.rs` | **DEFER to trj6.** Banner reads "<n> of 20 covered, 1 deferred to trj6 (wasm_guard_resource_exhaustion)". Risk Register R3 row updated. |
 | 20 | `weights_hash_spoof` | IMPL-EXISTS-AND-PUBLIC | `chio_weights::card::weights_hash_of` at `crates/chio-weights/src/card.rs:274` (`pub fn` verified) and `chio_weights::lineage::verify_model_card_anchor` at `crates/chio-weights/src/lineage.rs:217` (`pub fn` verified). Quality Skeptic line 37: "real failure-path test (`Err(WeightsError::CardMismatch)`)". | `crates/chio-conformance/tests/threats/weights_hash_spoof.rs` | Real `caught >= 1`; existing real test body retained. |
 
 ### Triage tally (R2 MAJOR 2.4)
@@ -115,21 +115,21 @@ table above:
 - `BLOCKED-BY-ARCHITECTURE`: 1 (row 19).
 
 If Wave 1 confirms 1 BLOCKED-BY-ARCHITECTURE and >= 2 IMPL-PARTIAL, R3
-escalation fires (>2 sum). Wave 2 review reconsiders the trj5 banner.
+escalation fires (>2 sum). Wave 2 review reconsiders the release work banner.
 
 ## Sweep / closeout
 
-- TRJ5-A2.21 runs the gate end-to-end: `bash
+- threat evidence item runs the gate end-to-end: `bash
   scripts/check-threat-coverage-mutants.sh` under `CI=true`. Captures
   exit-0 transcript (or, if rows defer to trj6, the exit-0 transcript
   reflects "<n> of 20 covered, <m> deferred").
-- TRJ5-A2.22 deletes the `needs_real_run` clause from
+- threat evidence item deletes the `needs_real_run` clause from
   `scripts/check-threat-coverage-mutants.sh` (R2 MAJOR 2.6) so the
   bootstrap-bypass code does not exist after Lane A closes; updates
   `docs/security/threat-coverage.md`: removes the "9 of the 20 covered
   rows currently pass the gate on file-exists +
   no-`unimplemented!()` alone" footnote (line 7); adds a "0 weak
-  coverage rows" assertion grounded in TRJ5-A2.21 transcript.
+  coverage rows" assertion grounded in threat evidence item transcript.
 
 ## Anti-patterns explicitly forbidden
 
@@ -155,5 +155,5 @@ lines 25-31, 35-37):
 The Lane A close bar promotes the runtime backstop in
 `scripts/check-threat-coverage-mutants.sh` from advisory (today, with the
 `needs_real_run: true` bootstrap-bypass) to required (no bypass). After
-TRJ5-A2.22 lands, the bypass clause is **deleted from the script**
+threat evidence item lands, the bypass clause is **deleted from the script**
 (R2 MAJOR 2.6), not just bypassed at runtime.

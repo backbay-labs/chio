@@ -1,9 +1,9 @@
 # Trj5 Risk Register
 
-**Status**: living catalog of the six trj5 risks identified at synthesis time.
+**Status**: living catalog of the six release work risks identified at synthesis time.
 Each row is owned by a lane; each row has an escalation criterion that
 flips it into a Wave 2 review item. Wave 1 Creator emits this document;
-Wave 2 reviewers update it; the trj5 closeout doc retires it.
+Wave 2 reviewers update it; the release work closeout doc retires it.
 
 **Origin**: `.planning/trajectory-5/debate/00-SYNTHESIS.md` "Where the agents
 disagreed" plus the residual concessions in
@@ -87,7 +87,7 @@ just more example tests, to reach 65%.
   test-surface expansion. (50% means we are not just slow; we are
   measuring the wrong thing.)
 - `chio-attest-verify` plateaus below 70% (the 80% target then becomes
-  unreachable in trj5 timeline).
+  unreachable in release work timeline).
 
 If a crate cannot be raised, document the residual risk in the per-crate
 audit-doc evidence section AND in `RELEASE_AUDIT.md` so the bounded claim
@@ -100,7 +100,7 @@ matches reality. Do not silently lower the banner target.
 | Field | Value |
 |---|---|
 | Probability | medium (30%) |
-| Impact | high - forces a row out of trj5 into trj6 |
+| Impact | high - forces a row out of release work into trj6 |
 | Owner-class | substrate-eng |
 | Lane | A2 (threat coverage) |
 
@@ -120,7 +120,7 @@ Concrete candidates (Wave 1 confirms via per-row triage):
 - `wasm_guard_resource_exhaustion` (depends on guard SDK v4)
   -- pre-Wave-1 estimate: `BLOCKED-BY-ARCHITECTURE`.
 - `tool_server_escape` (sandbox enforcement may be partial post
-  TRJ5-B0 `ToolServerConnection` migration) -- pre-Wave-1 estimate: `IMPL-PARTIAL`.
+  release work-B0 `ToolServerConnection` migration) -- pre-Wave-1 estimate: `IMPL-PARTIAL`.
 - `passkey_credential_theft`, `resource_exhaustion_dos` (Wave 1
   identifies the production `pub fn`; if absent, downgrade)
   -- pre-Wave-1 estimate: `IMPL-EXISTS-PRIVATE` pending confirmation.
@@ -135,12 +135,12 @@ Concrete candidates (Wave 1 confirms via per-row triage):
   `BLOCKED-BY-ARCHITECTURE`}. The tag is recorded as a top-level
   `triage_status` field in `audits/evidence/threats/<id>.json`. The
   runtime gate script checks this field is set.
-- Rows tagged `BLOCKED-BY-ARCHITECTURE` are removed from the trj5
+- Rows tagged `BLOCKED-BY-ARCHITECTURE` are removed from the release work
   ship-bar and the README banner reads "<n> of 20 covered, <m>
   deferred to trj6", not "20 of 20". Banner-vs-reality drift is the
   trj4 failure mode.
 - The deferred rows ship as trj6 tickets at the start of trj6, not as
-  trj5 carry-forward erratum rows.
+  release work carry-forward erratum rows.
 
 **Escalation criteria** (tightened per R2 MAJOR Section 2.4):
 - More than **2** of 20 rows tag as `IMPL-PARTIAL` +
@@ -148,9 +148,9 @@ Concrete candidates (Wave 1 confirms via per-row triage):
   threshold; the projected pre-Wave-1 deferral count is 1
   (`wasm_guard_resource_exhaustion`); a count of 3 would mean
   multiple primitives are still partial-enforcement, which makes the
-  trj5 banner claim too soft to count as a closeout.)
+  release work banner claim too soft to count as a closeout.)
 
-If >2 rows defer, Wave 2 review reconsiders the trj5 ship bar. The
+If >2 rows defer, Wave 2 review reconsiders the release work ship bar. The
 synthesis stipulated "all 20 contain real `caught >= 1`" (read with
 the on-disk count); meaningful deferral changes the bar.
 
@@ -175,12 +175,12 @@ enforcement is contradicted by the demo run.
 This is GOOD: it is exactly why the demo exists. But it is also a risk:
 during Wave 4-5 Lane B may close on its own conformance fixtures, then
 Wave 6-7 Lane C run reveals enforcement is partial. At that point the
-trj5 ship bar is in jeopardy.
+release work ship bar is in jeopardy.
 
 **Mitigation**:
 - Lane C tickets are scheduled to START before Lane B closes, so demo
   smoke-tests run continuously against in-progress Lane B work.
-- Lane C TRJ5-C*.E Evidence Gate tickets explicitly assert that the
+- Lane C release work-C*.E Evidence Gate tickets explicitly assert that the
   demo run exercises each Lane B primitive (`receipt v2 body_hash
   present`, `anchor batch witness verified`, `dual-signed receipt has
   both signatures`). The assertions are wired into
@@ -211,7 +211,7 @@ accordingly.
 | Lane | A3 (formal proofs) |
 
 **Description**: the trj4 erratum identified that `negotiation_safety` was
-"proven by `rfl`" - tautology, not refinement. The trj5 synthesis
+"proven by `rfl`" - tautology, not refinement. The release work synthesis
 requires the theorem to be re-proved against an executable model. The
 problem: an executable model that the theorem refines may not exist as
 machine-readable code today. Building one is a real piece of work; if
@@ -227,7 +227,7 @@ multiple rows may have similar `rfl`-shaped proofs.
 - For each `rfl`-shaped ID, decide whether: (a) build executable model
   (M-L effort each), (b) accept that the theorem is informational only
   and downgrade its status to `informational`, or (c) defer to trj6.
-- The trj5 floor commits to ONLY the `negotiation_safety` re-proof as
+- The release work floor commits to ONLY the `negotiation_safety` re-proof as
   load-bearing. Other `rfl` proofs are downgraded informationally; their
   re-proof is trj6.
 
@@ -265,7 +265,7 @@ slow CI.
   (TBD-from-W1: `.github/workflows/conformance-zk.yml`), not as part of
   the main `ci.yml` matrix.
 - If the dep weight forces a MSRV bump, accept it as a documented
-  constraint of trj5 OR drop C4 from the demo and ship the bilateral
+  constraint of release work OR drop C4 from the demo and ship the bilateral
   cosign demo without the auditor-view slice.
 - Bounded claim: "selective disclosure available behind `zk` feature; not
   on by default."
@@ -308,7 +308,7 @@ Lane C "Option A") does NOT satisfy §6 strictly.
 - Lane B4.1 ticket lands the wire-format design BEFORE any production code: documents the canonical JSON encoding, the DSSE PAE bytes, the in-toto Statement structure, and the relationship to legacy `DualSignedReceipt`.
 - Lane B4.2 lands the new module `crates/chio-federation/src/bilateral_dsse.rs` with thin functions: `encode_dsse_envelope`, `verify_dsse_envelope`, `pae_bytes`, each independently testable.
 - Lane B4.5 negative conformance fixture rejects (a) attempts to claim §6 conformance via the legacy preimage; (b) tampered PAE bytes; (c) DSSE envelope with mismatched payload-type.
-- The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` is NOT changed during trj5; it remains usable for backward compatibility with non-§6 callers, with explicit non-conformance disclaimer in Lane C release notes.
+- The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` is NOT changed during release work; it remains usable for backward compatibility with non-§6 callers, with explicit non-conformance disclaimer in Lane C release notes.
 
 **Escalation criteria**:
 - DSSE PAE encoding implementation reveals a hidden ambiguity in the spec text (§6 lines 338-353) requiring a spec-WG resolution.
@@ -316,7 +316,7 @@ Lane C "Option A") does NOT satisfy §6 strictly.
 - B4 effort exceeds L (estimated 3-6 days; if Wave 1 audit shows >L effort, consider Option 2 from R4 review: narrow the bounded claim instead of promoting to B4).
 
 If escalated, fall back to R4's Option 2: keep `DualSignedReceipt`
-unchanged in trj5, narrow Lane C release notes to disclaim §6 conformance
+unchanged in release work, narrow Lane C release notes to disclaim §6 conformance
 for the legacy preimage, and defer the `bilateral_dsse.rs` module to
 trj6.
 
@@ -341,7 +341,7 @@ to surface trj4-pattern partial enforcement that the conformance fixtures
 alone would not catch. Wave 2 should focus its review on whether Lane C
 fixtures are wired to assert the Lane B primitives at every dispatch step
 of the demo, and whether the demo runs continuously (not just at the end
-of trj5) so Lane B partial-enforcement findings have time to be fixed.
+of release work) so Lane B partial-enforcement findings have time to be fixed.
 
 R1 is the second priority because it gates everything downstream; if Wave
 2 detects any signal that the migration is creeping past 3,000 LOC, the

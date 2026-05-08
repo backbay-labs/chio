@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# trj5 kickoff preflight gate.
+# release work kickoff preflight gate.
 #
 # Returns exit 0 only if every kickoff prerequisite enumerated in
 # `.planning/trajectory-5/KICKOFF-CHECKLIST.md` is satisfied:
@@ -15,7 +15,7 @@
 #           no live Option A design references; ToolServer mentions
 #           confined to retraction notes)
 #
-# Run from the chio repo root: `bash scripts/trj5-preflight.sh`.
+# Run from the chio repo root: `bash scripts/release work-preflight.sh`.
 # Output is one OK/FAIL line per check. Exit 0 if all PASS, 1 otherwise.
 
 set -uo pipefail
@@ -318,7 +318,7 @@ fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-printf '\n----- trj5-preflight summary -----\n'
+printf '\n----- release work-preflight summary -----\n'
 printf 'checks run: %d\n' "$checks"
 printf 'failures:   %d\n' "$fail"
 if [ "$fail" -eq 0 ]; then

@@ -13,7 +13,7 @@ This directory holds the per-wave closeout artifacts for trajectory 5 execution.
 - `wave-05-summary.md` -- W5 summary. Records Lane C C2 starting against B4 envelopes, C3 KB-MCP wiring start.
 - `wave-06-summary.md` -- W6 summary. Records B4 close (B4.5/B4.6/B4.E), Lane B `.E` Evidence Gate tickets close.
 - `wave-07-summary.md` -- W7 summary. Records Lane C C2.E close, C4/C5 work, A2 / A3 / A5 closing.
-- `wave-08-summary.md` -- W8 summary (integration / ship-bar verification week). Records all three Bars verified; trj5 close ceremony.
+- `wave-08-summary.md` -- W8 summary (integration / ship-bar verification week). Records all three Bars verified; release close ceremony.
 
 The wave numbering above is the canonical execution-week numbering per `TIMELINE.md`. If a wave slips, the corresponding `wave-NN-summary.md` records the slip and the recovery plan.
 

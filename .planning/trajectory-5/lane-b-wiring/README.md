@@ -6,9 +6,9 @@
 
 Lane B closes the spec-vs-runtime gap. The trj4 closeout erratum diagnosed the failure mode: "structural framing landed (types, schemas, registry entries, doc generators) but runtime wiring did not (kernel/verifier hot paths, separate-file negative conformance tests, real proof artifacts behind theorem-inventory rows)." Lane B finishes the wiring for three normative MUSTs that are still partial on the kernel hot path, plus the smallest architectural cut that unblocks them.
 
-The trj5 synthesis is explicit (`.planning/trajectory-5/debate/00-SYNTHESIS.md` lines 90-113):
+The release work synthesis is explicit (`.planning/trajectory-5/debate/00-SYNTHESIS.md` lines 90-113):
 
-> "Architectural prerequisite: convert `ToolServer` trait to `async_trait`, collapse the dispatch sync-helper hop in `chio-kernel/src/kernel/mod.rs:6402`. This is the smallest decomposition cut that unblocks hot-path wiring; everything else (chio-cli trust-control extraction, gravity-well surgery) stays out of trj5."
+> "Architectural prerequisite: convert `ToolServer` trait to `async_trait`, collapse the dispatch sync-helper hop in `chio-kernel/src/kernel/mod.rs:6402`. This is the smallest decomposition cut that unblocks hot-path wiring; everything else (chio-cli trust-control extraction, gravity-well surgery) stays out of release work."
 
 (Synthesis-quote correction: the trait's actual name in the codebase is `ToolServerConnection`, defined at `crates/chio-kernel/src/runtime.rs:254-306`. The dispatch hop spans `mod.rs:6402-6442`. The synthesis text is left verbatim above; the corrected references propagate through PLAN.md, tickets.md, and `async-trait-migration.md`.)
 >
@@ -44,7 +44,7 @@ pub(crate) async fn dispatch_tool_call_with_cost(
 }
 ```
 
-The async wrapper exists for caller ergonomics, then immediately delegates to `dispatch_tool_call_with_cost_sync` because the `ToolServerConnection` trait at `crates/chio-kernel/src/runtime.rs:254-306` is sync-only. Until that trait migrates to `async_trait`, every Lane B wiring change is forced to take `&Kernel` through a sync helper, conflicting with the `Arc<Kernel>` shape the public-witness lane in B3 needs (the `AnchorWitnessClient::verify_inclusion` path is `async`). B0 is the smallest decomposition that unblocks B1-B3; anything broader (chio-cli trust-control, gravity-well surgery) stays out of trj5 per synthesis lines 136-138.
+The async wrapper exists for caller ergonomics, then immediately delegates to `dispatch_tool_call_with_cost_sync` because the `ToolServerConnection` trait at `crates/chio-kernel/src/runtime.rs:254-306` is sync-only. Until that trait migrates to `async_trait`, every Lane B wiring change is forced to take `&Kernel` through a sync helper, conflicting with the `Arc<Kernel>` shape the public-witness lane in B3 needs (the `AnchorWitnessClient::verify_inclusion` path is `async`). B0 is the smallest decomposition that unblocks B1-B3; anything broader (chio-cli trust-control, gravity-well surgery) stays out of release work per synthesis lines 136-138.
 
 ## Week-by-week timeline (7 weeks; B4 added per R4 BLOCKER 1)
 
@@ -65,7 +65,7 @@ Per synthesis lines 134-144:
 - `chio-cli` trust-control extraction (~18K LOC). Defer to trj6.
 - Gravity-well surgery on `chio-core` / `chio-kernel` mod.rs (6,757 LOC).
 - The remaining `&mut self` setter -> builder-finalize migration on `ChioKernel`. B0 only collapses the async-wrapper lie. Setter migration is a trj6 ask.
-- Hybrid PQ wiring (R4 in `02-protocol-realization-engineer.md`). Synthesis explicitly chose only three primitives; PQ is not in the trj5 ship bar.
+- Hybrid PQ wiring (R4 in `02-protocol-realization-engineer.md`). Synthesis explicitly chose only three primitives; PQ is not in the release work ship bar.
 - Metered-billing post-execution gate (R5 in `02-...`). Same reason.
 - Reqwest 0.12/0.13 unification (synthesis line 140).
 
@@ -73,7 +73,7 @@ Per synthesis lines 134-144:
 
 1. **`chio-kernel-mobile` is unaffected**. The crate at `crates/chio-kernel-mobile/Cargo.toml:30` depends on `chio-kernel-core`, NOT `chio-kernel`. The async-trait migration touches `crates/chio-kernel/src/runtime.rs::ToolServerConnection`, which `chio-kernel-mobile` does not import (verified by `grep -r "ToolServerConnection" crates/chio-kernel-mobile/`). Mobile builds remain on `chio-kernel-core`'s pure-compute entry points.
 2. **`async-trait` crate is acceptable**. The workspace already depends on it transitively (the `chio-anchor` async path uses an `async fn` in trait via direct `async fn` in trait support on stable Rust 1.75+). The B0 ticket pins to native `async fn in trait` to avoid the `async-trait` macro dependency where the trait is not object-safe-required; falls back to `#[async_trait]` for trait-object call sites (the `Box<dyn ToolServerConnection>` registrations at e.g. `crates/chio-mcp-remote/src/remote_mcp/session_core.rs:2682`).
-3. **Trj4 wave plan independence**. The trj4 wave plan continues in parallel; Lane B does not block on it. The W1.5 hot-path wire (commit `05fd0c56e`) and W2.3 anchor-witness wire (commit `7ee1ddbcc`) are the prerequisite landings; both already merged before trj5 kickoff.
+3. **Trj4 wave plan independence**. The trj4 wave plan continues in parallel; Lane B does not block on it. The W1.5 hot-path wire (commit `05fd0c56e`) and W2.3 anchor-witness wire (commit `7ee1ddbcc`) are the prerequisite landings; both already merged before release work kickoff.
 
 ## Evidence Gate close bar (every Lane B ticket)
 

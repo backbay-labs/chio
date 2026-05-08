@@ -12,7 +12,7 @@ Wave 2 review (`reviews/R4-lane-c-feasibility.md` Finding 1)
 rejected that design as structural-framing-without-wiring and
 escalated the DSSE-conformant signing primitive to Lane B as
 sub-lane B4 (`lane-b-wiring/dsse-bilateral-signing.md`, tickets
-`TRJ5-B4.1..TRJ5-B4.6` plus `TRJ5-B4.E` Evidence Gate close).
+`bilateral DSSE signing item-B4.6` plus `bilateral DSSE signing item` Evidence Gate close).
 After B4 lands:
 
 - The kernel hot path emits the spec §6 DSSE envelope by default
@@ -98,14 +98,14 @@ Wave 2 review (R4 Finding 1) rejected the original "Option A:
 two co-existing signatures" design. The reasoning, in brief: the
 existing `CoSigningBody`-scoped signature is not in any sense the
 spec section 6 PAE-over-Statement signature; shipping both alongside
-each other would let trj5 tag a "spec-§6 conformant" release whose
+each other would let release work tag a "spec-§6 conformant" release whose
 primary federation artifact (`DualSignedReceipt`) is signed under a
 non-§6 preimage. That is the structural-framing-without-wiring
 anti-pattern (`templates/EVIDENCE-GATE.md` §2.4) verbatim.
 
 **The resolution is structural, not adapter-level.** Lane B's
 fourth primitive sub-lane B4 (`lane-b-wiring/dsse-bilateral-signing.md`,
-tickets `TRJ5-B4.1..TRJ5-B4.6` plus `TRJ5-B4.E` Evidence Gate close)
+tickets `bilateral DSSE signing item-B4.6` plus `bilateral DSSE signing item` Evidence Gate close)
 replaces the `DualSignedReceipt`
 signing surface so the production cross-org dispatch path emits
 DSSE-conformant Ed25519-over-PAE signatures by default. After B4
@@ -121,13 +121,13 @@ lands:
   envelope and walks the spec section 7 17-step verifier; it does
   not introduce its own parallel signing surface.
 
-Lane C therefore depends on `TRJ5-B4.5` (the gating B4 negative
+Lane C therefore depends on `bilateral DSSE signing item` (the gating B4 negative
 conformance fixture, analogous to the B1.6/B2.5/B3.5 gating pattern)
 for the production signing hot path; the C2 sub-lane simplifies from
 "build an Option-A adapter that bolts a second signature on" to
 "consume B4 envelopes and run the §7 verifier".
 
-If Lane B reports during W2/W3 that B4 cannot fit the trj5 budget,
+If Lane B reports during W2/W3 that B4 cannot fit the release work budget,
 the fallback (R4 Finding 1 option 2) is to ship Lane C with explicit
 bounded-claim language disclaiming spec-§6 conformance for the
 legacy `DualSignedReceipt` and asserting §6 conformance only of a
@@ -283,16 +283,16 @@ existing crates:
 | 4 | predicateType in {chio fallback, in-toto canonical} | Lane B B4 |
 | 5 | predicate body validates against spec §5 schema | Lane B B4 (schema bundled as `&str`) |
 | 6 | parse predicate | Lane B B4 |
-| 7 | subject digest equals canonical-JSON SHA-256 of resolved receipt body | Lane C verifier; receipt resolution via the existing `ReceiptStore` trait (`chio-kernel::receipt_store::ReceiptStore`); depends on `TRJ5-B2.x` so the receipt body is actually v2 when negotiated v2 |
+| 7 | subject digest equals canonical-JSON SHA-256 of resolved receipt body | Lane C verifier; receipt resolution via the existing `ReceiptStore` trait (`chio-kernel::receipt_store::ReceiptStore`); depends on `release work-B2.x` so the receipt body is actually v2 when negotiated v2 |
 | 8 | both kernel_ids in `peer_pin_set` and fingerprints match | Lane C verifier; pin set comes from `FederationPeer` table |
 | 9 | both passports non-revoked at pinned_epoch | uses `crates/chio-revocation` (existing) |
 | 10 | recompute PAE | Lane B B4 (PAE function reused) |
 | 11 | server_a Ed25519 over PAE | Lane B B4 |
 | 12 | server_b Ed25519 over PAE | Lane B B4 |
 | 13 | verdicts agree; joint_disposition consistent | Lane C verifier |
-| 14 | capability lease resolves; not expired | Lane C verifier via `CapabilityVerifier` trait whose impl in `chio-kernel` calls `verify_capability_full` (depends on `TRJ5-B1.x`) |
+| 14 | capability lease resolves; not expired | Lane C verifier via `CapabilityVerifier` trait whose impl in `chio-kernel` calls `verify_capability_full` (depends on `release work-B1.x`) |
 | 15 | governance_receipt_ref present iff receipt-backed | Lane C verifier; ladder lookup |
-| 16 | consistency_anchor reconcilable | uses `chio-anchor`; depends on `TRJ5-B3.x` so async path is the only reachable one when public-witness required |
+| 16 | consistency_anchor reconcilable | uses `chio-anchor`; depends on `release work-B3.x` so async path is the only reachable one when public-witness required |
 | 17 | return | Lane C verifier |
 
 ## Wire format precisely
@@ -365,9 +365,9 @@ though the predicate's `expires_at_unix_ms` validates here. In other
 words: the spec's verifier checks the lease against pinned_epoch.now,
 but the kernel that minted the receipt could have admitted the call
 under the legacy verifier and the demo's adversarial fixture wouldn't
-catch that. Lane B `TRJ5-B1.x` (single-entry verifier) closes that
-hole. Lane B `TRJ5-B2.x` closes the receipt-v2 downgrade hole that
-otherwise breaks step 7 (subject digest). Lane B `TRJ5-B4.5` closes
+catch that. Lane B `release work-B1.x` (single-entry verifier) closes that
+hole. Lane B `release work-B2.x` closes the receipt-v2 downgrade hole that
+otherwise breaks step 7 (subject digest). Lane B `bilateral DSSE signing item` closes
 the signing-surface hole that otherwise leaves §6 unenforced.
 
 ## Architecture cut for cross-crate calls

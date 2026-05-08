@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Behavioral regression test for scripts/check-trj5-ship-bar.sh strict
-# default mode and `--diagnostic` opt-in (audit T5-R2-P0-013,
-# T5-R3-P1-006, T5-R4-P0-002, T5-R4-P1-015).
+# Behavioral regression test for scripts/check-release work-ship-bar.sh strict
+# default mode and `--diagnostic` opt-in (audit review item,
+# review item, review item, review item).
 #
 # The audit's required behaviour:
 #   * Default (release-gate): a single PARTIAL row exits 1.
@@ -9,7 +9,7 @@
 #   * Real FAIL rows still exit 1 in either mode (sanity).
 #
 # This test creates a synthesized repo layout under a tempdir and copies
-# the real `check-trj5-ship-bar.sh` into it, then exercises the strict
+# the real `check-release work-ship-bar.sh` into it, then exercises the strict
 # and diagnostic exit modes against a Bar 1 fixture with a high numeric
 # kill rate but explicit partial metadata.
 #
@@ -21,7 +21,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-REAL_GATE="$REAL_REPO_ROOT/scripts/check-trj5-ship-bar.sh"
+REAL_GATE="$REAL_REPO_ROOT/scripts/check-release work-ship-bar.sh"
 
 if [ ! -f "$REAL_GATE" ]; then
     echo "FAIL: cannot locate $REAL_GATE" >&2
@@ -43,10 +43,10 @@ ERR="$WORK/err"
 # Copy the script unchanged so its `BASH_SOURCE`-based repo_root pivots
 # to $WORK.
 mkdir -p "$WORK/scripts"
-cp "$REAL_GATE" "$WORK/scripts/check-trj5-ship-bar.sh"
-chmod +x "$WORK/scripts/check-trj5-ship-bar.sh"
+cp "$REAL_GATE" "$WORK/scripts/check-release work-ship-bar.sh"
+chmod +x "$WORK/scripts/check-release work-ship-bar.sh"
 
-GATE="$WORK/scripts/check-trj5-ship-bar.sh"
+GATE="$WORK/scripts/check-release work-ship-bar.sh"
 
 # Bar 1 evidence:
 #   * Five trust-boundary crates with full target-met baselines.
@@ -209,4 +209,4 @@ fi
 echo "ok: stage 5 real FAIL row exits 1 even under --diagnostic (rc=1)"
 
 # Stage 6 (cleanup) is implicit via `trap rm -rf $WORK`.
-echo "PASS: check-trj5-ship-bar behavioral regression test (T5-R3-P1-006, T5-R4-P0-002, T5-R4-P1-015)"
+echo "PASS: check-release work-ship-bar behavioral regression test (review item, review item, review item)"

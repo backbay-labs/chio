@@ -187,7 +187,7 @@ $ grep -rn "impl ToolServerConnection for\|impl .* ToolServerConnection for" cra
 47
 ```
 
-The 31 number counts FILES with at least one impl. The 47 number counts impl SITES. Several files contain multiple impls (e.g. `chio-kernel/src/kernel/tests/all.rs` has six impls visible in the grep output). The plan's TRJ5-B0.3 says "Update 11 production `ToolServerConnection` impls" and TRJ5-B0.4 says "Update ~20 test-path impls". These 11+20 = 31 numbers match the file count, not the impl count.
+The 31 number counts FILES with at least one impl. The 47 number counts impl SITES. Several files contain multiple impls (e.g. `chio-kernel/src/kernel/tests/all.rs` has six impls visible in the grep output). The plan's release work-B0.3 says "Update 11 production `ToolServerConnection` impls" and release work-B0.4 says "Update ~20 test-path impls". These 11+20 = 31 numbers match the file count, not the impl count.
 
 The impact for diff sizing is small (each impl is mechanical: add `#[async_trait]`, change `fn` to `async fn`, add `.await` if any inner call became async). But the doc's blast-radius estimate is undercounted by ~16 impls. The PR description should accurately count impl sites, not files; otherwise the "diff size estimate" in `ASYNC-KERNEL-MIGRATION.md` section 5 is off by a similar percentage.
 
@@ -201,7 +201,7 @@ Specific list of files with multiple impls:
 - `crates/chio-openapi-mcp-bridge/src/lib.rs` (329, 423) - 2 impls.
 - `crates/chio-mcp-remote/src/remote_mcp/session_core.rs` (1838) - 1 impl (the doc said 2682 + 2860; my grep shows only 1838; investigate the discrepancy).
 
-**Action**: TRJ5-B0.1 is "Audit `ToolServerConnection` callers". Update the audit to count impl sites, not files, and resolve the `session_core.rs` line-number discrepancy. Update the diff-size estimate accordingly.
+**Action**: release work-B0.1 is "Audit `ToolServerConnection` callers". Update the audit to count impl sites, not files, and resolve the `session_core.rs` line-number discrepancy. Update the diff-size estimate accordingly.
 
 Re the `&mut self` setter count: synthesis line 38 cites "36 `&mut self` setters" and `async-trait-migration.md` section 5 repeats it. My count:
 
@@ -260,21 +260,21 @@ The spec drift workflow (`spec-drift.yml`, mentioned in `CONFORMANCE-FIXTURE-PAT
 
 `SPEC-TO-RUNTIME-MAP.md` has rows for capability negotiation (section 1), receipt v2 (section 2), attenuation witnesses (section 3), anchor-batch (section 4), sibling-sum (section 5), hybrid PQ (section 6), metered billing (section 7), plus Lane C rows (sections 8-11). The first three Lane B in scope, the last three deferred per synthesis. Verified the deferral logic against `00-SYNTHESIS.md:134-144` "Out of scope (explicit)". Rows match.
 
-The DEFERRED-trj6 question: section 6 (hybrid PQ wire format) cites `PROTOCOL.md` 4.1 lines 173-177, 4.4 lines 233-238, and 5 lines 277-285. Spot-check at line 281: "MUST dispatch from the signature prefix". This is one of the six existing MUSTs and the runtime is partially wired (`KernelTrustExchange` was lifted to a `SigningBackend`, per `02-protocol-realization-engineer.md:27`). The DEFERRED-trj6 designation is correct because the spec is already MUST and the runtime is partially compliant; the question is whether the partial compliance is bad enough to warrant trj5 scope.
+The DEFERRED-trj6 question: section 6 (hybrid PQ wire format) cites `PROTOCOL.md` 4.1 lines 173-177, 4.4 lines 233-238, and 5 lines 277-285. Spot-check at line 281: "MUST dispatch from the signature prefix". This is one of the six existing MUSTs and the runtime is partially wired (`KernelTrustExchange` was lifted to a `SigningBackend`, per `02-protocol-realization-engineer.md:27`). The DEFERRED-trj6 designation is correct because the spec is already MUST and the runtime is partially compliant; the question is whether the partial compliance is bad enough to warrant release work scope.
 
 `SPEC-TO-RUNTIME-MAP.md` line 77 says "kernel hot path still single-keypair", which would be a bypass of the existing MUST. Recommend the trj6 carry-over ticket explicitly note that this is an unwired existing MUST (not a new MUST waiting on a spec edit), so trj6 is closing an erratum-class gap, not introducing new functionality.
 
 Section 5 (sibling-sum budget) is partially covered by B1.E because B1's fixture observes `try_admit_share` mutations; this is correctly captured in the map row.
 
-OBSERVATION: section 5 row 2 references "TRJ4-118 sub-agent budget propagation" as deferred-trj6. If TRJ4-118 has shipped or is in flight in trj4 wave plan, the row should cite that explicitly so trj5 reviewers don't double-count work. This is a maintenance issue for the audit-doc owner; not a Lane B blocker.
+OBSERVATION: section 5 row 2 references "TRJ4-118 sub-agent budget propagation" as deferred-trj6. If TRJ4-118 has shipped or is in flight in trj4 wave plan, the row should cite that explicitly so release work reviewers don't double-count work. This is a maintenance issue for the audit-doc owner; not a Lane B blocker.
 
 ### 9. Evidence Gate state machine
 
 **Verdict**: PASS.
 
-`EVIDENCE-GATE.md` section 3 defines OPEN -> EVIDENCE-PENDING -> EVIDENCE-COMPLETE. The transitions are machine-checkable per section 3.5 (CI gate via `scripts/check-trj5-evidence-gate.sh`).
+`EVIDENCE-GATE.md` section 3 defines OPEN -> EVIDENCE-PENDING -> EVIDENCE-COMPLETE. The transitions are machine-checkable per section 3.5 (CI gate via `scripts/check-release work-evidence-gate.sh`).
 
-The "pretend close" defense at section 3.5 is strong: the script reads each `### TRJ5-X.y` audit-doc block, parses paths, validates spec MUST citations, validates conformance test paths, validates audit-evidence JSON. If any cited path does not exist OR the spec line range lacks MUST OR the JSON has `caught: 0` / `ran_at: 1970-*`, the script exits non-zero. There is no `--force` flag.
+The "pretend close" defense at section 3.5 is strong: the script reads each `### release work-X.y` audit-doc block, parses paths, validates spec MUST citations, validates conformance test paths, validates audit-evidence JSON. If any cited path does not exist OR the spec line range lacks MUST OR the JSON has `caught: 0` / `ran_at: 1970-*`, the script exits non-zero. There is no `--force` flag.
 
 The audit-doc evidence section format (section 3.4) requires:
 
@@ -288,9 +288,9 @@ This satisfies the four-artifact rule. PASS.
 
 OBSERVATION: section 3.2 says "A ticket can sit in `EVIDENCE-PENDING` for at most one wave." Lane B has six weeks and four sub-lanes; if B1 lands its fixture in week 4 and the audit-doc update slips to week 5, the ticket is in EVIDENCE-PENDING for one week, which is fine per the rule. If the slip extends to two weeks, the rule says escalate or downgrade to trj6. The Lane B PLAN.md correctly schedules audit-doc updates inline with each fixture landing, so this risk is low. Not a blocker.
 
-The `tickets.md` per-sub-lane Evidence Gate close ticket (TRJ5-B.CLOSE) is the right closing instrument: it requires each fixture to be deliberately reverted on a draft branch and confirmed to fail. PASS.
+The `tickets.md` per-sub-lane Evidence Gate close ticket (release work-B.CLOSE) is the right closing instrument: it requires each fixture to be deliberately reverted on a draft branch and confirmed to fail. PASS.
 
-MINOR: the `tickets.md` TRJ5-B.CLOSE acceptance line says "the threat-row JSON references the fixture path; this ticket closes only when all three are confirmed by the reviewer." Per `EVIDENCE-GATE.md` section 3.3: "All four artifacts recorded in the audit doc. The audit doc has been signed off by both the lane owner AND a reviewer who is not the ticket author." The TRJ5-B.CLOSE ticket should explicitly call out the second-reviewer requirement; otherwise, the lane owner could be the sign-off reviewer.
+MINOR: the `tickets.md` release work-B.CLOSE acceptance line says "the threat-row JSON references the fixture path; this ticket closes only when all three are confirmed by the reviewer." Per `EVIDENCE-GATE.md` section 3.3: "All four artifacts recorded in the audit doc. The audit doc has been signed off by both the lane owner AND a reviewer who is not the ticket author." The release work-B.CLOSE ticket should explicitly call out the second-reviewer requirement; otherwise, the lane owner could be the sign-off reviewer.
 
 ### 10. Forcing-function integrity (R4)
 
@@ -299,7 +299,7 @@ MINOR: the `tickets.md` TRJ5-B.CLOSE acceptance line says "the threat-row JSON r
 `RISK-REGISTER.md` R4 (lines 142-184) names the risk: "Lane C demo reveals a Lane B primitive isn't actually enforced". The mitigation:
 
 - Lane C tickets START before Lane B closes (`PLAN.md` Sub-lane C scheduling with hard-deps on Lane B fixtures, per `lane-c-demo/PLAN.md:60-227`).
-- Lane C TRJ5-C*.E Evidence Gate tickets explicitly assert that the demo run exercises each Lane B primitive.
+- Lane C release work-C*.E Evidence Gate tickets explicitly assert that the demo run exercises each Lane B primitive.
 - Demo output receipts are committed as fixtures under `examples/<demo>/fixtures/`.
 
 The Lane C plan at `lane-c-demo/PLAN.md` has 14 references to "Lane B" as a hard or soft dependency. C3 explicitly will not start if Lane B's receipt-v2 hot-path enforcement is not landed (line 360). C6 will not tag if Lane B's three negative conformance fixtures are not green (line 361). This is the continuous-validation hook.
@@ -342,7 +342,7 @@ This rewords the contract honestly. The runtime gate at `batch.rs:227-235` IS th
 
 ### Patch 4: tickets.md (MINOR from finding #9)
 
-`tickets.md` TRJ5-B.CLOSE acceptance:
+`tickets.md` release work-B.CLOSE acceptance:
 
 Add to acceptance: "Sign-off requires the lane owner AND a reviewer who is not the ticket author, per `EVIDENCE-GATE.md` section 3.3."
 
@@ -362,7 +362,7 @@ Change from "PROTOCOL.md lines 737-741 are rewritten as quoted in 'Spec citation
 
 ## Open questions
 
-### Q1 (BLOCKER): is the B2 fail-closed rule in scope for trj5?
+### Q1 (BLOCKER): is the B2 fail-closed rule in scope for release work?
 
 Finding #4 raised the question: B2 introduces a new MUST that did not exist in the spec. The synthesis at `00-SYNTHESIS.md:104-106` framed it as a tightening; the receipt-v2-failclosed.md doc treats it the same way. Provided the spec edit accurately frames the change, this is fine. But: is the "always fail-closed when the named peer is not pinned fresh" rule the right MUST? The alternative is a softer MUST: "fail-closed only if the kernel-level `receipt_v2_default()` is true". The latter is less invasive, less likely to break existing federation deployments, and still closes the original audit gap. The Lane B plan picks the harder rule. Recommend the synthesis owner ratify this choice explicitly.
 
@@ -370,7 +370,7 @@ Finding #4 raised the question: B2 introduces a new MUST that did not exist in t
 
 The B1 fixture observes `BudgetRegistry::try_admit_share` mutations. The kernel's `budget_registry` field at `mod.rs:4099-4101` is held under a `Mutex` that mutates in-process state. Whether `try_admit_share` also writes to the persistent store (SQLite) is unclear from the design. If it does NOT, the B1 fixture is observing an in-process side effect, which is fine for the fail-when-reverted test but does not fully prove the production budget-admit semantics under failure recovery. Recommend B1.6 PR description clarify whether the registry is in-memory-only or persistent, and what the failure model is.
 
-### Q3 (MINOR): are the chiodos_pheromone, chiodos_ladder primitives definitely out of trj5?
+### Q3 (MINOR): are the chiodos_pheromone, chiodos_ladder primitives definitely out of release work?
 
 `SPEC-TO-RUNTIME-MAP.md` section 13 says yes (research drafts). The Productization Champion (debate position 5) and Vision Strategist (debate position 6) had pushed back on this in the synthesis discussion. Recommend the audit-doc owner confirm with synthesis authors that no chiodos primitive has migrated from "research draft" to "ready to wire" since 2026-05-07, otherwise a row may be missing.
 
@@ -386,7 +386,7 @@ The B1 fixture observes `BudgetRegistry::try_admit_share` mutations. The kernel'
 
 ## Verdict
 
-**APPROVE-WITH-CHANGES**. Lane B's design is consistent with the trj5 synthesis, internally coherent, and correctly diagnoses the trj4 erratum's failure modes. The conformance fixtures are designed to exercise the production hot path, observe production-path side effects (B1 budget registry, B2 receipt store rows, B3 typed error variant), and fail when the wiring is reverted. This is the Artifact-D contract.
+**APPROVE-WITH-CHANGES**. Lane B's design is consistent with the release work synthesis, internally coherent, and correctly diagnoses the trj4 erratum's failure modes. The conformance fixtures are designed to exercise the production hot path, observe production-path side effects (B1 budget registry, B2 receipt store rows, B3 typed error variant), and fail when the wiring is reverted. This is the Artifact-D contract.
 
 The three findings that block close-PR readiness:
 
@@ -431,13 +431,13 @@ OBSERVATION: B0 is mostly defended by virtue of being a refactor. The new `scrip
 
 | Anti-pattern | Defense | Notes |
 |---|---|---|
-| 2.1 caught:0 placeholder | DEFENDED | TRJ5-B.CLOSE updates the threat-row JSON with `caught: 1` from a real run. |
+| 2.1 caught:0 placeholder | DEFENDED | release work-B.CLOSE updates the threat-row JSON with `caught: 1` from a real run. |
 | 2.2 File-exists-without-no-unimplemented | DEFENDED | B1.3 deletes the partial-entry helpers; nothing left to be unimplemented. |
 | 2.3 Mock-not-runtime | DEFENDED | The fixture imports `chio_kernel::ChioKernel` and uses the real `BudgetRegistry`. The `CountingBudgetRegistry` wrapper (single-entry-verifier.md:94) delegates to the real registry; it does not replace it. |
 | 2.4 Structural-framing-without-wiring | DEFENDED | The fixture's "critical assertion" (single-entry-verifier.md:98) counts `try_admit_share` calls. If the wiring is structural-only and the noop is substituted, count is zero, fixture fails. |
 | 2.5 Tautological proof | N/A | B1 has no formal proof. |
 | 2.6 Banner-vs-reality drift | partial | If the README mutation banner is updated to claim "verify_capability_full is the only production verifier", the lint script (`scripts/check-verify-capability-full.sh`) is the artifact-cite. |
-| 2.7 Coverage-state pending | DEFENDED | TRJ5-B.CLOSE updates threat-row JSON. |
+| 2.7 Coverage-state pending | DEFENDED | release work-B.CLOSE updates threat-row JSON. |
 | 2.8 Schema-only test | DEFENDED | The fixture exercises `evaluate_tool_call_blocking` (the production verb), not a JSON-schema validator. |
 
 The B1 fixture is the strongest in Lane B precisely because it observes a side effect that distinguishes the partial path from the full path. Its design is the model for future protocol-realization work.
@@ -446,7 +446,7 @@ The B1 fixture is the strongest in Lane B precisely because it observes a side e
 
 | Anti-pattern | Defense | Notes |
 |---|---|---|
-| 2.1 caught:0 placeholder | DEFENDED | TRJ5-B.CLOSE updates threat-row JSON. |
+| 2.1 caught:0 placeholder | DEFENDED | release work-B.CLOSE updates threat-row JSON. |
 | 2.2 File-exists-without-no-unimplemented | DEFENDED | B2.2 replaces a real `tracing::warn!` block with a real fail-closed return; nothing is `unimplemented!()` on the new path. |
 | 2.3 Mock-not-runtime | DEFENDED | Fixture imports `chio_kernel::ChioKernel` and uses real `SqliteReceiptStore`. |
 | 2.4 Structural-framing-without-wiring | DEFENDED | The fixture's sub-test 2 explicitly asserts `count_v1_receipts == 0 AND count_v2_receipts == 0` after the dispatch fails. A reverted kernel would have `count_v1_receipts == 1`. The side-effect observation directly distinguishes the two states. |
@@ -513,7 +513,7 @@ Expected imports:
 - `chio_store_sqlite::SqliteReceiptStore`.
 - `rusqlite::Connection` (for direct `chio_receipts_v2` table reads, per finding #1 reservation).
 
-The new `KernelError::ReceiptNegotiationDowngrade` variant and `NegotiationDowngradeReason` enum must be exported from `chio_kernel`. The plan implies they will be (`tickets.md` TRJ5-B2.1: "variant compiles; printed message under `Display` includes the structured fields").
+The new `KernelError::ReceiptNegotiationDowngrade` variant and `NegotiationDowngradeReason` enum must be exported from `chio_kernel`. The plan implies they will be (`tickets.md` release work-B2.1: "variant compiles; printed message under `Display` includes the structured fields").
 
 ### B.3 anchor_batch_sync_path_rejected_under_public_witness.rs (B3)
 
@@ -523,7 +523,7 @@ Expected imports (per `anchor-batch-async-only.md:120-125`):
 - `chio_core::hashing::Hash`.
 - `chio_core::Keypair`.
 
-The new `AnchorError::SyncRouteRequiresAdvisoryPolicy` variant must be exported. The plan implies it (`tickets.md` TRJ5-B3.1: "variant compiles; `Display` impl matches ...").
+The new `AnchorError::SyncRouteRequiresAdvisoryPolicy` variant must be exported. The plan implies it (`tickets.md` release work-B3.1: "variant compiles; `Display` impl matches ...").
 
 All three fixtures' import lists conform to `CONFORMANCE-FIXTURE-PATTERN.md` section 2.2 allowed imports (modulo the `chio_store_sqlite` extension). PASS.
 
@@ -589,7 +589,7 @@ Each claim above was independently verified by Read or Bash grep against the cit
 
 > "the threat rows for 'capability bypass via partial verifier', 'receipt downgrade', and 'anchor-batch sync routing under public witness' are populated by Lane B's fixture `caught: 1` runs (Lane A owns that the JSON is non-placeholder; Lane B owns that the fixture is real)."
 
-The composition is correct in shape: Lane A's `audits/evidence/threats/<id>.json` rows are updated by Lane B fixture runs. The TRJ5-B.CLOSE ticket explicitly does this update.
+The composition is correct in shape: Lane A's `audits/evidence/threats/<id>.json` rows are updated by Lane B fixture runs. The release work-B.CLOSE ticket explicitly does this update.
 
 Risk: the threat-row JSON schema requires a real `ran_at` timestamp and a real `caught` count. The Lane A floor expects `caught >= 1` per `EVIDENCE-GATE.md` section 1.2. The Lane B fixture, when run on a green kernel, asserts the typed error and PASSES. The `caught` count for the threat (e.g., "capability bypass via partial verifier") in this case would be 1 (the test caught the threat by asserting the rejection). This is consistent with Lane A's contract.
 
@@ -618,6 +618,6 @@ These are explicit hand-offs to other Wave 2 reviewers (R1, R2, R4, ...).
 - Patches: 6 specific edits with file:line references.
 - Open questions: 5 (Q1 BLOCKER, Q2 MAJOR, Q3 MINOR, Q4-Q5 OBSERVATION).
 - Verdict: APPROVE-WITH-CHANGES.
-- Sign-off path: B0 + B1 may begin; B2 + B3 require pre-flight patches; TRJ5-B.CLOSE requires non-author sign-off per `EVIDENCE-GATE.md` 3.3.
+- Sign-off path: B0 + B1 may begin; B2 + B3 require pre-flight patches; release work-B.CLOSE requires non-author sign-off per `EVIDENCE-GATE.md` 3.3.
 
-This document is itself a Wave 2 deliverable per `KICKOFF-CHECKLIST.md` (TBD-from-W1) and is parsable by `scripts/check-trj5-evidence-gate.sh` once that script lands. The headings and finding-numbered sections are stable identifiers for downstream tickets.
+This document is itself a Wave 2 deliverable per `KICKOFF-CHECKLIST.md` (TBD-from-W1) and is parsable by `scripts/check-release work-evidence-gate.sh` once that script lands. The headings and finding-numbered sections are stable identifiers for downstream tickets.

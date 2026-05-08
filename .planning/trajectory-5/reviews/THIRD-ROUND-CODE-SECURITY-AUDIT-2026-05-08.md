@@ -51,7 +51,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - #618 `releases.toml` now sets `trj5_release_status = "pending_upstream_merges"` and `trj5_release_sha = "pending_upstream_merges"`.
 - #618 release notes now include a stale-packaging prerequisite block and list open PRs #601 through #626.
 - #614 full-mode KB MCP assertion now queries the SQLite receipt DB with `chio --receipt-db ... receipt list`, not `${CHIO_RECEIPT_DIR}` globs.
-- #620 `check-trj5-ship-bar.sh` is strict by default: PARTIAL rows count as release-gate failures unless `--diagnostic` is passed.
+- #620 `check-release work-ship-bar.sh` is strict by default: PARTIAL rows count as release-gate failures unless `--diagnostic` is passed.
 
 ### Lane A Evidence
 
@@ -62,7 +62,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 
 ## Validated P0 Findings
 
-### T5-R3-P0-001 - The GitHub graph is still not release-clean
+### review item - The GitHub graph is still not release-clean
 
 - PRs: #601 through #626
 - Evidence:
@@ -76,7 +76,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: the PR set cannot be treated as a clean merge train or release train.
 - Required fix: sequence and rebase the train. Do not report "MERGEABLE" without also reporting `UNSTABLE`, failed checks, unresolved threads, and pairwise conflicts.
 
-### T5-R3-P0-002 - #619 still commits PII-bearing cargo-mutants artifacts
+### review item - #619 still commits PII-bearing cargo-mutants artifacts
 
 - PR: #619
 - Files:
@@ -88,7 +88,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: R2 claimed PII artifacts were removed, but #619 still leaks workstation identity and local absolute paths.
 - Required fix: remove or sanitize committed `lock.json` and `outcomes.json` artifacts from #619. Do not rely only on `.gitignore` for future runs.
 
-### T5-R3-P0-003 - Mutation aggregate ownership is still not consolidated
+### review item - Mutation aggregate ownership is still not consolidated
 
 - PRs: #603, #619, #621, #622, #623, #624, #626
 - Files:
@@ -108,7 +108,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: merge order can still overwrite release truth or aggregate rows with stale coordinated state.
 - Required fix: make worker PRs own only their crate evidence. Keep aggregate docs/scripts in #603 or a final integrator PR generated from merged main.
 
-### T5-R3-P0-004 - #618 planning docs contradict the corrected release package
+### review item - #618 planning docs contradict the corrected release package
 
 - PR: #618
 - Files:
@@ -122,7 +122,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 
 ## Validated P1 Findings
 
-### T5-R3-P1-001 - Four Cursor Medium threads remain unresolved
+### review item - Four Cursor Medium threads remain unresolved
 
 - PRs: #603, #607, #613
 - Evidence examples:
@@ -133,7 +133,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: the cleanup claim that Cursor Medium threads were addressed is incomplete.
 - Required fix: resolve or explicitly defer these in the PRs with concrete rationale.
 
-### T5-R3-P1-002 - #615 unit tests still route a positive verifier test through `DefaultRoutine`
+### review item - #615 unit tests still route a positive verifier test through `DefaultRoutine`
 
 - PR: #615
 - File: `crates/chio-federation/src/bilateral_verifier.rs`
@@ -144,7 +144,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: part of the positive verifier test suite still does not prove the strict fail-closed default.
 - Required fix: register the tool action class and run positive unit tests under `Reject`. Keep `DefaultRoutine` only in an explicitly named legacy fallback test.
 
-### T5-R3-P1-003 - #625 file evidence is honest, but PR metadata still overclaims
+### review item - #625 file evidence is honest, but PR metadata still overclaims
 
 - PR: #625
 - Evidence:
@@ -154,7 +154,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: readers can still infer closure from GitHub metadata before seeing the caveats.
 - Required fix: rename the PR and first summary line to "add gap-closure tests; full mutation rerun pending".
 
-### T5-R3-P1-004 - #614 README still documents the old KB receipt assertion target
+### review item - #614 README still documents the old KB receipt assertion target
 
 - PR: #614
 - File: `examples/chiodome-bilateral/README.md`
@@ -162,7 +162,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: operator docs are stale even though the script was fixed.
 - Required fix: update README to describe the SQLite receipt DB assertion.
 
-### T5-R3-P1-005 - #617 has a stale selective-disclosure filename comment
+### review item - #617 has a stale selective-disclosure filename comment
 
 - PR: #617
 - File: `crates/chio-conformance/Cargo.toml`
@@ -170,15 +170,15 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: minor but direct residue from the zk to bbs-stub rename.
 - Required fix: update the comment.
 
-### T5-R3-P1-006 - #620 strict ship-bar mode lacks a dedicated behavioral regression test
+### review item - #620 strict ship-bar mode lacks a dedicated behavioral regression test
 
 - PR: #620
-- File: `scripts/check-trj5-ship-bar.sh`
-- Evidence: source inspection shows strict default behavior, and `bash -n` passes, but no dedicated `scripts/tests/*trj5*` test exists for release mode versus `--diagnostic`.
+- File: `scripts/check-release work-ship-bar.sh`
+- Evidence: source inspection shows strict default behavior, and `bash -n` passes, but no dedicated `scripts/tests/*release work*` test exists for release mode versus `--diagnostic`.
 - Impact: the exact paper-gate bug can regress without a focused shell test.
 - Required fix: add a synthetic test that creates partial evidence, asserts default exit 1, then asserts `--diagnostic` exit 0.
 
-### T5-R3-P1-007 - #613 Kani manifest still lacks required feature annotation
+### review item - #613 Kani manifest still lacks required feature annotation
 
 - PR: #613
 - File: `.kani/harnesses.toml`
@@ -186,7 +186,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: cargo-kani can still run a configuration that does not match the intended crate body.
 - Required fix: add required feature metadata to chio-anchor manifest entries and verify the Kani runner consumes it.
 
-### T5-R3-P1-008 - #605/#613 Kani evidence is still incomplete
+### review item - #605/#613 Kani evidence is still incomplete
 
 - PRs: #605, #613
 - Evidence:
@@ -195,7 +195,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: atomicity improved, but proof evidence remains partial.
 - Required fix: either commit run evidence for PR-tier harnesses or label the proof surface as partial/nightly-only in ship-bar truth.
 
-### T5-R3-P1-009 - TLA negative tests remain local-only and leak absolute paths
+### review item - TLA negative tests remain local-only and leak absolute paths
 
 - PR: #602
 - Files:
@@ -207,7 +207,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: non-tautology evidence is manual and logs leak local machine paths.
 - Required fix: add expected-failure CI or downgrade the gate; scrub absolute paths from committed logs.
 
-### T5-R3-P1-010 - Threat evidence remains partial and partial rows are not mutation-gated
+### review item - Threat evidence remains partial and partial rows are not mutation-gated
 
 - PR: #616
 - Files:
@@ -220,7 +220,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: honest but still partial. It should not be presented as full threat closure.
 - Required fix: keep ship-bar and release language partial until trj6 deferred vectors are implemented or separately gated.
 
-### T5-R3-P1-011 - Runtime/user-facing output still contains audit provenance
+### review item - Runtime/user-facing output still contains audit provenance
 
 - PR: #617
 - File: `crates/chio-cli/src/cli/trust_commands.rs`
@@ -228,13 +228,13 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - Impact: user-facing CLI output encodes audit-ticket provenance instead of product rationale.
 - Required fix: keep the warning content, remove audit IDs and date/provenance.
 
-### T5-R3-P1-012 - Product code and scripts still contain AI/process metadata
+### review item - Product code and scripts still contain AI/process metadata
 
 - PRs: #603, #606, #610, #611, #612, #617 and others
 - Evidence examples:
   - `codex[bot]`, `cursor[bot]`, `Round-3 codex`, `PR #...`, `P0-004 fix`, and `audit 2026-05-08` appear in product code comments, scripts, and config.
   - `scripts/triage-threat-rows.sh` prints an "R3 escalation criterion" message.
-  - `scripts/check-tool-server-async.sh` prints `trj5/B0 gate violation`.
+  - `scripts/check-tool-server-async.sh` prints `release work/B0 gate violation`.
 - Impact: this violates the stated P1 rule against AI slop and planning/ticket metadata.
 - Required fix: replace provenance comments with stable product rationale and remove audit/PR/ticket strings from runtime/user-facing output.
 
@@ -243,7 +243,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - #615 no longer has the old public example/package "Section 7 17-step verifier" overclaim in the refreshed ref. The remaining 17-step hits are historical/self-critical notes or research/spec wording, plus stale #618 planning docs.
 - #618 `releases.toml` and release notes are materially improved. The remaining #618 issue is stale adjacent planning docs, not the main release notes block.
 - #620 source implements strict default behavior. The remaining issue is missing behavioral test coverage.
-- Base-checkout targeted tests that reported `bilateral-invocation` and `check-trj5-ship-bar.sh` absent were run against `main`, not the PR refs. They are not evidence that #615 or #620 lack those files.
+- Base-checkout targeted tests that reported `bilateral-invocation` and `check-release work-ship-bar.sh` absent were run against `main`, not the PR refs. They are not evidence that #615 or #620 lack those files.
 
 ## Required Next Actions
 
