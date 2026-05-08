@@ -62,6 +62,7 @@ struct CountingToolServer {
     counter: Arc<InvocationCounter>,
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for CountingToolServer {
     fn server_id(&self) -> &str {
         &self.server_id
@@ -71,7 +72,7 @@ impl ToolServerConnection for CountingToolServer {
         vec![TOOL.to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,

@@ -72,6 +72,7 @@ impl EchoToolServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for EchoToolServer {
     fn server_id(&self) -> &str {
         &self.server_id
@@ -81,7 +82,7 @@ impl ToolServerConnection for EchoToolServer {
         vec![TOOL.to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,

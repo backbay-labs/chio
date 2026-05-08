@@ -74,6 +74,7 @@ struct SlowToolServer {
     sleep_duration: Duration,
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for SlowToolServer {
     fn server_id(&self) -> &str {
         &self.server_id
@@ -83,7 +84,7 @@ impl ToolServerConnection for SlowToolServer {
         vec![TOOL.to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
