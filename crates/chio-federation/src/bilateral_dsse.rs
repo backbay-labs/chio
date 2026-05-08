@@ -452,14 +452,26 @@ pub fn build_predicate_full(
 }
 
 /// Build the in-toto Statement carrying the bilateral predicate.
+///
+/// P0-004 fix (audit 2026-05-08): the subject digest binds the
+/// receipt BODY (`ChioReceiptBody`), not the full signed wrapper.
+/// An earlier revision hashed the full `ChioReceipt` (including the
+/// envelope's `signature` field), which made the verifier's "resolve
+/// the receipt from a store and re-derive the subject" path produce a
+/// different digest than the producer signed -- cross-impl resolution
+/// silently broke. Hashing the body fixes the binding so verifiers
+/// can re-derive the subject from any source that exposes the body
+/// (the receipt store's signed wrapper, an audit log, or a peer's
+/// re-emission).
 pub fn build_statement(
     receipt: &ChioReceipt,
     predicate: BilateralPredicate,
 ) -> Result<DsseStatement, BilateralCoSigningError> {
-    let receipt_canonical = canonical_json_bytes(receipt)
+    let body = receipt.body();
+    let body_canonical = canonical_json_bytes(&body)
         .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
     let mut hasher = Sha256::new();
-    hasher.update(&receipt_canonical);
+    hasher.update(&body_canonical);
     let digest_hex = hex::encode(hasher.finalize());
     Ok(DsseStatement {
         statement_type: STATEMENT_TYPE_V1.to_string(),
@@ -629,6 +641,21 @@ pub fn verify_dsse_envelope(
         )));
     }
 
+    // P0-005 fix (audit 2026-05-08): the bilateral envelope profile
+    // binds exactly ONE subject (the receipt body). The pre-fix
+    // verifier only rejected the empty-list case, so a multi-subject
+    // envelope was accepted and only `subject[0]` was bound. A
+    // signer could insert an arbitrary second subject digest and
+    // verifiers that walked the full subject list (which is the
+    // spec-conformant behavior for in-toto subject membership) would
+    // resolve a different receipt than the producer signed.
+    if statement.subject.len() != 1 {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "statement.malformed: bilateral envelope must carry exactly 1 subject, got {}",
+            statement.subject.len()
+        )));
+    }
+
     let pae_bytes = pae(&envelope.payload_type, &statement_bytes);
 
     let org_a_keyid = Keyid::from_public_key(org_a_public_key);
@@ -789,7 +816,7 @@ mod tests {
     #[test]
     fn keyid_is_sha256_of_raw_ed25519_public_key_bytes() {
         // P0-003 fix (audit 2026-05-08): the spec's keyid contract is
-        // SHA-256 of raw key material (Ed25519 = 32 verifying-key
+        // SHA-256 of RAW key material (Ed25519 = 32 verifying-key
         // bytes). An earlier revision hashed `to_hex().as_bytes()`
         // which silently broke cross-implementation interop. This
         // test pins the raw-bytes invariant.
@@ -798,6 +825,7 @@ mod tests {
         let keyid = Keyid::from_public_key(&pk);
         let want = sha256_hex(pk.as_bytes());
         assert_eq!(keyid.0, want);
+        // Belt-and-suspenders: hashing the hex form must NOT match.
         let hex_form = sha256_hex(pk.to_hex().as_bytes());
         assert_ne!(
             keyid.0, hex_form,

@@ -367,9 +367,15 @@ fn pae_helper_matches_spec_format() {
 /// Spec §7 step 7 substrate: the `subject[0].digest.sha256` field equals
 /// the SHA-256 of the canonical-JSON of the underlying receipt body. A
 /// verifier resolving the receipt via the predicate's
-/// `receipt_canonical_json` and re-hashing must reproduce this digest.
+/// P0-004 fix (audit 2026-05-08): the subject digest binds the
+/// receipt BODY (canonical JSON of `ChioReceiptBody`), not the full
+/// signed `ChioReceipt` wrapper. Resolving the receipt from a store
+/// (which exposes the body for re-verification) and re-hashing the
+/// body must reproduce this digest. Hashing the full wrapper would
+/// fold in the signature bytes, which the verifier cannot reproduce
+/// from a body-only re-emission.
 #[test]
-fn statement_subject_digest_matches_canonical_receipt_hash() {
+fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     let kp_a = Keypair::generate();
     let kp_b = Keypair::generate();
     let receipt = sample_receipt(&kp_b);
@@ -386,13 +392,79 @@ fn statement_subject_digest_matches_canonical_receipt_hash() {
     .unwrap();
     let (statement, _) = envelope.decode_statement().unwrap();
 
-    let canonical = canonical_json_bytes(&receipt).unwrap();
-    let want = chio_core::crypto::sha256_hex(&canonical);
+    let body = receipt.body();
+    let canonical_body = canonical_json_bytes(&body).unwrap();
+    let want = chio_core::crypto::sha256_hex(&canonical_body);
     assert_eq!(
         statement.subject[0].digest.sha256, want,
-        "subject[0].digest.sha256 MUST equal sha256(canonical_json(receipt)) \
-         (spec §7 step 7 substrate)"
+        "subject[0].digest.sha256 MUST equal sha256(canonical_json(receipt.body())) \
+         per P0-004 fix; cross-impl resolution from a body-only receipt store relies \
+         on this binding."
     );
+
+    // Belt-and-suspenders: hashing the full signed wrapper must NOT
+    // match. If it did, P0-004 would have regressed silently.
+    let canonical_full = canonical_json_bytes(&receipt).unwrap();
+    let full_digest = chio_core::crypto::sha256_hex(&canonical_full);
+    assert_ne!(
+        statement.subject[0].digest.sha256, full_digest,
+        "subject digest MUST hash body, not full wrapper; got matching wrapper hash"
+    );
+}
+
+/// P0-005 fix (audit 2026-05-08): the bilateral envelope profile
+/// pins exactly ONE subject. The pre-fix verifier rejected the
+/// empty-list case but accepted multi-subject envelopes and bound
+/// only `subject[0]`. A signer could insert a second arbitrary
+/// subject and any verifier walking the full subject list (the
+/// in-toto convention for membership) would resolve a different
+/// receipt than the producer signed.
+#[test]
+fn dsse_envelope_with_two_subjects_is_rejected() {
+    use chio_federation::bilateral_dsse::{DsseStatement, StatementSubject, SubjectDigest};
+
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let receipt = sample_receipt(&kp_b);
+
+    let mut envelope = sign_dsse_envelope(
+        &receipt,
+        &kp_a,
+        &kp_b,
+        ORG_A_KERNEL_ID,
+        ORG_B_KERNEL_ID,
+        "file_read",
+        1_734_000_000_000,
+    )
+    .unwrap();
+
+    // Decode, splice in a second subject, re-canonicalise, re-encode.
+    let (mut statement, _bytes) = envelope.decode_statement().unwrap();
+    statement.subject.push(StatementSubject {
+        name: "rcpt-injected".to_string(),
+        digest: SubjectDigest {
+            sha256: "0".repeat(64),
+        },
+    });
+    let new_statement_bytes =
+        chio_core::canonical::canonical_json_bytes(&statement).unwrap();
+    envelope.payload = BASE64_STANDARD.encode(&new_statement_bytes);
+
+    // Note: signatures no longer verify over the new payload, but we
+    // still expect the multi-subject check to fire BEFORE PAE
+    // verification so the diagnostic is structural rather than
+    // signature-cryptographic.
+    let outcome = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key());
+    let err = outcome.expect_err("multi-subject envelope must be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("statement.malformed") || msg.contains("exactly 1 subject"),
+        "expected multi-subject rejection diagnostic, got: {msg}"
+    );
+
+    // Suppress dead-code lint for DsseStatement field access in tests
+    // that share this file.
+    let _ = DsseStatement::canonical_bytes;
 }
 
 // ---------------------------------------------------------------------------
