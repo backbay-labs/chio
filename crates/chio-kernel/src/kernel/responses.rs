@@ -1334,25 +1334,6 @@ impl ChioKernel {
             })
     }
 
-    pub(crate) fn build_and_sign_receipt_with_v2(
-        &self,
-        params: ReceiptParams<'_>,
-        version: KernelReceiptVersion,
-    ) -> Result<(ChioReceipt, Option<chio_core::receipt::ChioReceiptV2>), KernelError> {
-        let v1 = self.build_and_sign_receipt(params)?;
-        if !version.mints_v2() {
-            return Ok((v1, None));
-        }
-        let v2 = self.mint_chio_receipt_v2_from_v1(&v1).map_err(|error| {
-            KernelError::ReceiptSigningFailed(format!(
-                "v2 receipt mint failed (v1 alias={}): {error}",
-                v1.id
-            ))
-        })?;
-        self.record_chio_receipt_v2(&v2, Some(v1.id.as_str()))?;
-        Ok((v1, Some(v2)))
-    }
-
     pub fn mint_chio_receipt_v2_from_v1_for_test(
         &self,
         v1: &ChioReceipt,
@@ -1454,27 +1435,46 @@ impl ChioKernel {
         request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
-        let now = current_unix_timestamp();
-        // `Err(KernelError::ReceiptNegotiationDowngrade)` when a named
-        // federation peer is not pinned fresh; this `?` surfaces the
-        // typed error to the dispatch path so the caller produces a
-        // structured Deny rather than minting a v1 receipt under a
-        // v2-negotiated dispatch. PROTOCOL.md section 6 normative MUST
-        // (post-B2).
+        // Persistence-time receipt-version resolution.
         //
-        // Resolver runs BEFORE `apply_federation_cosign`. Both helpers
-        // perform a peer-freshness lookup against the same registry,
-        // but only this resolver returns the typed
-        // `ReceiptNegotiationDowngrade` error - `apply_federation_cosign`
-        // returns `KernelError::Internal` for the same condition. By
-        // resolving first, callers see the structured downgrade error
-        // (and ultimately a fail-closed Deny receipt) instead of a
-        // generic Internal that drops the typed denial diagnostics.
-        // (codex[bot] P2 on PR #611.)
-        let version = self.kernel_receipt_version_for_remote(
+        // Admission-time negotiation runs in `evaluate_tool_call` (and the
+        // sibling pre-dispatch entry points) before any tool side effect.
+        // If admission succeeded, the request was admitted under a
+        // negotiated receipt version that was fresh at admission. By the
+        // time the tool finishes and we reach this persistence path, the
+        // peer's `rotation_due` may have crossed the wall clock. We must
+        // not let that drift turn a successfully executed tool into an
+        // unrecorded side effect: the admission-time decision is the
+        // authoritative one for this request.
+        //
+        // Concretely: if the post-dispatch lookup still returns a fresh
+        // version, prefer that (it can only ever match or downgrade the
+        // admission decision because freshness is monotone within a
+        // request). If the post-dispatch lookup fails with
+        // `ReceiptNegotiationDowngrade`, fall back to the v1-only
+        // version. The receipt itself was already built and signed; the
+        // only thing the post-dispatch version controls is whether we
+        // additionally mint and persist a v2 alias.
+        //
+        // Records the freshness drift for instrumentation so an operator
+        // who sees a v2-mint skip on a v2-negotiated dispatch can attribute
+        // it to peer rotation rather than missing v2 wiring.
+        let now = current_unix_timestamp();
+        let version = match self.kernel_receipt_version_for_remote(
             request.federated_origin_kernel_id.as_deref(),
             now,
-        )?;
+        ) {
+            Ok(version) => version,
+            Err(error @ KernelError::ReceiptNegotiationDowngrade { .. }) => {
+                tracing::warn!(
+                    request_id = %request.request_id,
+                    reason = %error,
+                    "receipt-version freshness drift between admission and persistence; persisting v1-only on the admission-time receipt"
+                );
+                KernelReceiptVersion::V1Legacy
+            }
+            Err(other) => return Err(other),
+        };
         self.apply_federation_cosign(request, receipt)?;
         if version.mints_v2() {
             let v2 = self
