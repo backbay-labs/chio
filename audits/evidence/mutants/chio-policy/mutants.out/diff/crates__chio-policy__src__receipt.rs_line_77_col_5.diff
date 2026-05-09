@@ -1,0 +1,61 @@
+--- crates/chio-policy/src/receipt.rs
++++ replace evaluate_audited -> DecisionReceipt with Default::default()
+@@ -69,57 +69,17 @@
+ }
+ 
+ /// Wrap `evaluate()` with timing and policy hashing.
+ pub fn evaluate_audited(
+     spec: &HushSpec,
+     action: &EvaluationAction,
+     config: &AuditConfig,
+ ) -> DecisionReceipt {
+-    let start = if config.enabled {
+-        Some(Instant::now())
+-    } else {
+-        None
+-    };
+-
+-    let result = evaluate(spec, action);
+-
+-    let duration_us = start.map(|s| s.elapsed().as_micros() as u64).unwrap_or(0);
+-
+-    let policy = if config.enabled {
+-        build_policy_summary(spec)
+-    } else {
+-        PolicySummary {
+-            name: spec.name.clone(),
+-            version: spec.hushspec.clone(),
+-            content_hash: String::new(),
+-        }
+-    };
+-
+-    let action_summary = ActionSummary {
+-        action_type: action.action_type.clone(),
+-        target: action.target.clone(),
+-        content_redacted: config.redact_content && action.content.is_some(),
+-    };
+-
+-    let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+-
+-    DecisionReceipt {
+-        receipt_id: Uuid::new_v4().to_string(),
+-        timestamp,
+-        hushspec_version: HUSHSPEC_VERSION.to_string(),
+-        action: action_summary,
+-        decision: result.decision,
+-        matched_rule: result.matched_rule,
+-        reason: result.reason,
+-        policy,
+-        origin_profile: result.origin_profile,
+-        posture: result.posture,
+-        evaluation_duration_us: duration_us,
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn build_policy_summary(spec: &HushSpec) -> PolicySummary {
+     let content_hash = compute_policy_hash(spec);
+     PolicySummary {
+         name: spec.name.clone(),
+         version: spec.hushspec.clone(),
+         content_hash,

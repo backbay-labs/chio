@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ delete ! in validate_posture
+@@ -258,17 +258,17 @@
+                     "posture.transitions[{index}].from '{}' does not reference a defined state",
+                     transition.from
+                 )));
+             }
+             if transition.to == "*" {
+                 errors.push(ValidationError::Custom(format!(
+                     "posture.transitions[{index}].to cannot be '*'"
+                 )));
+-            } else if !posture.states.contains_key(&transition.to) {
++            } else if  /* ~ changed by cargo-mutants ~ */posture.states.contains_key(&transition.to) {
+                 errors.push(ValidationError::Custom(format!(
+                     "posture.transitions[{index}].to '{}' does not reference a defined state",
+                     transition.to
+                 )));
+             }
+ 
+             if transition.on != TransitionTrigger::Timeout {
+                 if let Some(after) = &transition.after {

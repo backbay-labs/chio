@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace == with != in parse_domain
+@@ -449,17 +449,17 @@
+         .unwrap_or(authority)
+         .trim_matches('.');
+     let normalized = normalize_domain(host);
+ 
+     if normalized == "localhost"
+         || (!normalized.is_empty()
+             && normalized.contains('.')
+             && normalized.chars().all(|character| {
+-                character.is_ascii_alphanumeric() || character == '-' || character == '.'
++                character.is_ascii_alphanumeric() || character == '-' || character != /* ~ changed by cargo-mutants ~ */ '.'
+             }))
+     {
+         Some(normalized)
+     } else {
+         None
+     }
+ }
+ 

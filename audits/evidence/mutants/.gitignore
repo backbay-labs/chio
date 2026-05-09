@@ -1,12 +1,11 @@
-# cargo-mutants writes per-mutant log files under mutants.out/log/ in
-# the nested layout and log/ or logs/ in the direct --output layout.
-# They are useful for local debugging but are large and include
-# workspace-absolute paths.
+# cargo-mutants writes per-mutant logs under mutants.out/log/ in the
+# nested layout and logs/ in the direct --output layout. They are useful
+# for local debugging but are large and include workspace-absolute paths.
 **/mutants.out/log/
 **/log/
 **/logs/
 
-# debug.log carries per-mutant trace detail and local timing data.
+# debug.log carries the same per-mutant trace detail.
 **/mutants.out/debug.log
 **/debug.log
 
@@ -16,6 +15,6 @@
 
 # outcomes.json embeds argv paths and per-mutant console transcripts.
 # The committed evidence is the dated JSON summary plus caught/missed/
-# timeout/unviable text files, mutants.json, and per-mutant diffs.
+# timeout/unviable text files and evaluated mutant diffs.
 **/mutants.out/outcomes.json
 **/outcomes.json

@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/detection.rs
++++ replace <impl Detector for RegexInjectionDetector>::name -> &str with ""
+@@ -151,17 +151,17 @@
+ impl Default for RegexInjectionDetector {
+     fn default() -> Self {
+         Self::new()
+     }
+ }
+ 
+ impl Detector for RegexInjectionDetector {
+     fn name(&self) -> &str {
+-        "regex_injection"
++        "" /* ~ changed by cargo-mutants ~ */
+     }
+     fn category(&self) -> DetectionCategory {
+         DetectionCategory::PromptInjection
+     }
+     fn detect(&self, input: &str) -> DetectionResult {
+         run_patterns(
+             &self.patterns,
+             self.name(),

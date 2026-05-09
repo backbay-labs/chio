@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/card.rs
++++ replace StringSet::contains -> bool with false
+@@ -92,17 +92,17 @@
+     #[must_use]
+     pub fn intersects(&self, other: &StringSet) -> bool {
+         self.0.intersection(&other.0).next().is_some()
+     }
+ 
+     /// True if `self` contains the given item.
+     #[must_use]
+     pub fn contains(&self, item: &str) -> bool {
+-        self.0.contains(item)
++        false /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Iterate the items in canonical (lexicographic) order.
+     pub fn iter(&self) -> impl Iterator<Item = &str> {
+         self.0.iter().map(String::as_str)
+     }
+ 
+     /// Number of distinct items.

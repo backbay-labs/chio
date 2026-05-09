@@ -1,0 +1,26 @@
+--- crates/chio-policy/src/validate.rs
++++ replace is_valid_duration -> bool with false
+@@ -595,22 +595,17 @@
+ 
+ fn validate_regex_count(count: usize, path: &str, errors: &mut Vec<ValidationError>) {
+     if let Err(error) = validate_policy_regex_count(count, path, MAX_POLICY_DENYLIST_PATTERNS) {
+         errors.push(ValidationError::Custom(error));
+     }
+ }
+ 
+ fn is_valid_duration(value: &str) -> bool {
+-    matches!(
+-        value.as_bytes(),
+-        [b'0'..=b'9', .., b's' | b'm' | b'h' | b'd']
+-    ) && value[..value.len() - 1]
+-        .bytes()
+-        .all(|byte| byte.is_ascii_digit())
++    false /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ #[allow(clippy::expect_used, clippy::unwrap_used)]
+ mod tests {
+     use super::*;
+     use crate::models::{
+         Extensions, PatchIntegrityRule, SecretPattern, SecretPatternsRule, Severity,

@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/lineage.rs
++++ replace ModelCardLineageAnchor::is_signed -> bool with true
+@@ -101,17 +101,17 @@
+ }
+ 
+ impl ModelCardLineageAnchor {
+     /// Return `true` only when the artifact carries a locally verified
+     /// signature. No verifier is wired in yet, so every current state is
+     /// treated as unsigned for fail-closed consumers.
+     #[must_use]
+     pub fn is_signed(&self) -> bool {
+-        false
++        true /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// Compute the SHA-256 digest of the canonical lineage projection for a
+ /// model card and a verified attestation. The projection is a
+ /// deterministically-keyed JSON object so two implementations producing
+ /// the same inputs produce byte-identical bytes.
+ ///

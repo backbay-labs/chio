@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ replace > with == in evaluate_condition_depth
+@@ -65,17 +65,17 @@
+ }
+ 
+ /// Missing context fields cause the condition to evaluate to false (fail-closed).
+ pub fn evaluate_condition(condition: &Condition, context: &RuntimeContext) -> bool {
+     evaluate_condition_depth(condition, context, 0)
+ }
+ 
+ fn evaluate_condition_depth(condition: &Condition, context: &RuntimeContext, depth: usize) -> bool {
+-    if depth > MAX_NESTING_DEPTH {
++    if depth == /* ~ changed by cargo-mutants ~ */ MAX_NESTING_DEPTH {
+         return false;
+     }
+ 
+     if let Some(tw) = &condition.time_window {
+         if !check_time_window(tw, context) {
+             return false;
+         }
+     }

@@ -1,0 +1,24 @@
+--- crates/chio-policy/src/compiler.rs
++++ delete match arm '.' | '+' | '(' | ')' | '{' | '}' | '[' | ']' | '^' | '$' | '|' | '\\' in glob_matches
+@@ -853,20 +853,17 @@
+                 if matches!(chars.peek(), Some('*')) {
+                     chars.next();
+                     regex.push_str(".*");
+                 } else {
+                     regex.push_str("[^/]*");
+                 }
+             }
+             '?' => regex.push('.'),
+-            '.' | '+' | '(' | ')' | '{' | '}' | '[' | ']' | '^' | '$' | '|' | '\\' => {
+-                regex.push('\\');
+-                regex.push(ch);
+-            }
++             /* ~ changed by cargo-mutants ~ */
+             _ => regex.push(ch),
+         }
+     }
+     regex.push('$');
+     crate::regex_safety::compile_generated_policy_regex(&regex, "compiler glob pattern")
+         .map(|compiled| compiled.is_match(target))
+         .map_err(|error| CompileError::Invalid(format!("invalid policy glob pattern: {error}")))
+ }

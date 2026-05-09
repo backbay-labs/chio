@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/passport_verify.rs
++++ replace payload_bytes_hex::serialize -> Result<S::Ok, S::Error> with Ok(Default::default())
+@@ -201,17 +201,17 @@
+ /// follows the same convention.
+ mod payload_bytes_hex {
+     use alloc::string::String;
+     use alloc::vec::Vec;
+ 
+     use serde::{Deserialize, Deserializer, Serialize, Serializer};
+ 
+     pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+-        encode_hex(bytes).serialize(serializer)
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+         let hex_str = String::deserialize(deserializer)?;
+         decode_hex(&hex_str).map_err(serde::de::Error::custom)
+     }
+ 
+     fn encode_hex(bytes: &[u8]) -> String {

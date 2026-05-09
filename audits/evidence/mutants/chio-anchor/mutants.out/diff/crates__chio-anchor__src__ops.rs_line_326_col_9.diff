@@ -1,0 +1,23 @@
+--- crates/chio-anchor/src/ops.rs
++++ replace AnchorRuntimeReport::lane_has_active_conflict -> bool with false
+@@ -318,19 +318,17 @@
+                         (None, _) => true,
+                     }
+             })
+             .collect()
+     }
+ 
+     #[must_use]
+     pub fn lane_has_active_conflict(&self, lane: AnchorLaneKind, chain_id: Option<&str>) -> bool {
+-        self.lane_incidents(lane, chain_id)
+-            .into_iter()
+-            .any(anchor_incident_is_conflict)
++        false /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[must_use]
+ pub fn anchor_incident_is_conflict(incident: &AnchorIncidentAlert) -> bool {
+     if incident.severity != AnchorAlertSeverity::Critical {
+         return false;
+     }

@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/automation.rs
++++ replace > with < in assess_anchor_automation_execution
+@@ -145,17 +145,17 @@
+     }
+     if execution.observed_state_fingerprint != job.state_fingerprint {
+         return Err(AnchorError::Verification(
+             "anchor automation state fingerprint drifted from the scheduled publication"
+                 .to_string(),
+         ));
+     }
+     let delay = execution.executed_at.saturating_sub(execution.fired_at);
+-    if delay > job.replay_window_secs
++    if delay < /* ~ changed by cargo-mutants ~ */ job.replay_window_secs
+         && execution.outcome != AnchorAutomationExecutionOutcome::DelayedButSafe
+     {
+         return Err(AnchorError::Verification(format!(
+             "anchor automation delay {} exceeds replay window {} without explicit delayed-safe outcome",
+             delay, job.replay_window_secs
+         )));
+     }
+     if execution.duplicate_suppressed

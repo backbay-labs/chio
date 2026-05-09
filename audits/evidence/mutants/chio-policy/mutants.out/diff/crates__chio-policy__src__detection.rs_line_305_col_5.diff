@@ -1,0 +1,54 @@
+--- crates/chio-policy/src/detection.rs
++++ replace run_patterns -> DetectionResult with Default::default()
+@@ -297,50 +297,17 @@
+ 
+ fn run_patterns(
+     patterns: &[DetectionPattern],
+     detector_name: &str,
+     category: DetectionCategory,
+     input: &str,
+     label: &str,
+ ) -> DetectionResult {
+-    let mut matched_patterns = Vec::new();
+-    let mut total_weight = 0.0;
+-
+-    for pattern in patterns {
+-        if let Some(m) = pattern.regex.find(input) {
+-            total_weight += pattern.weight;
+-            matched_patterns.push(MatchedPattern {
+-                name: pattern.name.clone(),
+-                weight: pattern.weight,
+-                matched_text: Some(m.as_str().to_string()),
+-            });
+-        }
+-    }
+-
+-    let score = total_weight.min(1.0);
+-
+-    let explanation = if matched_patterns.is_empty() {
+-        None
+-    } else {
+-        let names: Vec<&str> = matched_patterns.iter().map(|p| p.name.as_str()).collect();
+-        Some(format!(
+-            "matched {} {label} pattern(s): {}",
+-            matched_patterns.len(),
+-            names.join(", ")
+-        ))
+-    };
+-
+-    DetectionResult {
+-        detector_name: detector_name.to_string(),
+-        category,
+-        score,
+-        matched_patterns,
+-        explanation,
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ // ---------------------------------------------------------------------------
+ // Detection pipeline configuration
+ // ---------------------------------------------------------------------------
+ 
+ #[derive(Clone, Debug)]
+ pub struct DetectionConfig {

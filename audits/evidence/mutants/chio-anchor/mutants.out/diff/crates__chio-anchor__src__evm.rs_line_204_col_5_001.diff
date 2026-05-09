@@ -1,0 +1,42 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace publish_root -> Result<String, AnchorError> with Ok(String::new())
+@@ -196,38 +196,17 @@
+         call_data: format!("0x{}", hex::encode(call.abi_encode())),
+     })
+ }
+ 
+ pub async fn publish_root(
+     publication: &PreparedEvmRootPublication,
+     egress_contract: &HttpEgressContract,
+ ) -> Result<String, AnchorError> {
+-    let gas_limit = estimate_publication_gas(publication, egress_contract)
+-        .await?
+-        .saturating_mul(12)
+-        .saturating_div(10)
+-        .saturating_add(50_000);
+-    let result = rpc_call(
+-        &publication.rpc_url,
+-        egress_contract,
+-        "eth_sendTransaction",
+-        json!([{
+-            "from": publication.publisher_address,
+-            "to": publication.contract_address,
+-            "data": publication.call_data,
+-            "gas": format!("0x{gas_limit:x}"),
+-        }]),
+-    )
+-    .await?;
+-
+-    result
+-        .as_str()
+-        .map(ToString::to_string)
+-        .ok_or_else(|| AnchorError::Rpc("eth_sendTransaction did not return a tx hash".to_string()))
++    Ok(String::new()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ async fn estimate_publication_gas(
+     publication: &PreparedEvmRootPublication,
+     egress_contract: &HttpEgressContract,
+ ) -> Result<u64, AnchorError> {
+     let result = rpc_call(
+         &publication.rpc_url,

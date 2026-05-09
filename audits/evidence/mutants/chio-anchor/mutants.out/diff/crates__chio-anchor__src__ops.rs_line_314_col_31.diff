@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/ops.rs
++++ replace == with != in AnchorRuntimeReport::lane_incidents
+@@ -306,17 +306,17 @@
+     pub fn lane_incidents<'a>(
+         &'a self,
+         lane: AnchorLaneKind,
+         chain_id: Option<&str>,
+     ) -> Vec<&'a AnchorIncidentAlert> {
+         self.incidents
+             .iter()
+             .filter(|incident| {
+-                incident.lane == lane
++                incident.lane != /* ~ changed by cargo-mutants ~ */ lane
+                     && match (chain_id, incident.chain_id.as_deref()) {
+                         (Some(expected), Some(actual)) => expected == actual,
+                         (Some(_), None) => true,
+                         (None, _) => true,
+                     }
+             })
+             .collect()
+     }

@@ -1,0 +1,25 @@
+--- crates/chio-policy/src/detection.rs
++++ replace DetectorRegistry::with_defaults -> Self with Default::default()
+@@ -52,21 +52,17 @@
+         }
+     }
+ 
+     pub fn register(&mut self, detector: Box<dyn Detector>) {
+         self.detectors.push(detector);
+     }
+ 
+     pub fn with_defaults() -> Self {
+-        let mut registry = Self::new();
+-        registry.register(Box::new(RegexInjectionDetector::new()));
+-        registry.register(Box::new(RegexJailbreakDetector::new()));
+-        registry.register(Box::new(RegexExfiltrationDetector::new()));
+-        registry
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     pub fn detect_all(&self, input: &str) -> Vec<DetectionResult> {
+         self.detectors.iter().map(|d| d.detect(input)).collect()
+     }
+ }
+ 
+ impl Default for DetectorRegistry {

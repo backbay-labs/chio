@@ -1,0 +1,34 @@
+--- crates/chio-policy/src/detection.rs
++++ replace check_thresholds -> Option<Decision> with Some(Default::default())
+@@ -415,30 +415,17 @@
+     EvaluationWithDetection {
+         evaluation: final_eval,
+         detections,
+         detection_decision,
+     }
+ }
+ 
+ fn check_thresholds(detections: &[DetectionResult], config: &DetectionConfig) -> Option<Decision> {
+-    let should_deny = detections.iter().any(|result| {
+-        let threshold = match result.category {
+-            DetectionCategory::PromptInjection => config.prompt_injection_threshold,
+-            DetectionCategory::Jailbreak => config.jailbreak_threshold,
+-            DetectionCategory::DataExfiltration => config.exfiltration_threshold,
+-        };
+-        result.score >= threshold
+-    });
+-
+-    if should_deny {
+-        Some(Decision::Deny)
+-    } else {
+-        None
+-    }
++    Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use crate::models::{DefaultAction, HushSpec, Rules, ToolAccessRule};
+ 
+     struct StubDetector;

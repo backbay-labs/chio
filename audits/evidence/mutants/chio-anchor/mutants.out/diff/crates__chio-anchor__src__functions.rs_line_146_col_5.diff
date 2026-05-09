@@ -1,0 +1,123 @@
+--- crates/chio-anchor/src/functions.rs
++++ replace prepare_functions_batch_verification -> Result<PreparedFunctionsVerificationRequest, AnchorError> with Ok(Default::default())
+@@ -138,119 +138,17 @@
+ pub fn prepare_functions_batch_verification(
+     target: ChainlinkFunctionsTarget,
+     purpose: FunctionsVerificationPurpose,
+     receipts: &[ChioReceipt],
+     max_notional_value_usd_cents: u64,
+     policy: FunctionsVerificationPolicy,
+     note: Option<String>,
+ ) -> Result<PreparedFunctionsVerificationRequest, AnchorError> {
+-    if receipts.is_empty() {
+-        return Err(AnchorError::InvalidInput(
+-            "functions verification requires at least one receipt".to_string(),
+-        ));
+-    }
+-    if receipts.len() > policy.max_batch_receipts {
+-        return Err(AnchorError::InvalidInput(format!(
+-            "functions verification batch {} exceeds maximum {}",
+-            receipts.len(),
+-            policy.max_batch_receipts
+-        )));
+-    }
+-    if policy.allow_direct_fund_release {
+-        return Err(AnchorError::InvalidInput(
+-            "Functions fallback must not be configured as a direct fund-release gate".to_string(),
+-        ));
+-    }
+-    if target.callback_gas_limit == 0 || target.callback_gas_limit > policy.max_callback_gas_limit {
+-        return Err(AnchorError::InvalidInput(format!(
+-            "callback gas limit {} exceeds bounded maximum {}",
+-            target.callback_gas_limit, policy.max_callback_gas_limit
+-        )));
+-    }
+-    if max_notional_value_usd_cents > policy.max_notional_value_usd_cents {
+-        return Err(AnchorError::InvalidInput(format!(
+-            "Functions fallback notional value {} exceeds bounded maximum {}",
+-            max_notional_value_usd_cents, policy.max_notional_value_usd_cents
+-        )));
+-    }
+-
+-    let mut items = Vec::with_capacity(receipts.len());
+-    let mut leaf_hashes = Vec::with_capacity(receipts.len());
+-    let mut request_size_bytes = 0usize;
+-    for receipt in receipts {
+-        let verified = receipt
+-            .verify_signature()
+-            .map_err(|error| AnchorError::Verification(error.to_string()))?;
+-        if !verified {
+-            return Err(AnchorError::Verification(format!(
+-                "receipt {} signature verification failed before Functions submission",
+-                receipt.id
+-            )));
+-        }
+-
+-        let body_bytes = canonical_json_bytes(&receipt.body())
+-            .map_err(|error| AnchorError::Serialization(error.to_string()))?;
+-        let body_hex = hex::encode(&body_bytes);
+-        request_size_bytes = request_size_bytes
+-            .checked_add(body_bytes.len())
+-            .ok_or_else(|| {
+-                AnchorError::Serialization("functions request size overflowed".to_string())
+-            })?;
+-
+-        let receipt_body_sha256 = sha256(&body_bytes);
+-        let receipt_leaf_hash = chio_core::merkle::leaf_hash(&body_bytes);
+-        leaf_hashes.push(receipt_leaf_hash);
+-        items.push(FunctionsBatchItem {
+-            receipt_id: receipt.id.clone(),
+-            receipt_body_hex: body_hex,
+-            receipt_body_sha256,
+-            receipt_leaf_hash,
+-            signature_hex: receipt.signature.to_hex(),
+-            public_key_hex: receipt.kernel_key.to_hex(),
+-        });
+-    }
+-
+-    let payload_json = serde_json::to_vec(&items)
+-        .map_err(|error| AnchorError::Serialization(error.to_string()))?;
+-    if payload_json.len() > policy.max_request_size_bytes
+-        || request_size_bytes > policy.max_request_size_bytes
+-    {
+-        return Err(AnchorError::InvalidInput(format!(
+-            "functions request size {} exceeds maximum {}",
+-            payload_json.len().max(request_size_bytes),
+-            policy.max_request_size_bytes
+-        )));
+-    }
+-
+-    let tree = MerkleTree::from_hashes(leaf_hashes)
+-        .map_err(|error| AnchorError::Verification(error.to_string()))?;
+-    let receipt_batch_root = tree.root();
+-    let source_code_sha256 = sha256(CHIO_FUNCTIONS_ED25519_SOURCE.as_bytes());
+-    let request_payload_sha256 = sha256(&payload_json);
+-    let request_id = format!(
+-        "chio.functions.{}.{}",
+-        target.chain_id.replace(':', "-"),
+-        &receipt_batch_root.to_hex()[..16]
+-    );
+-
+-    Ok(PreparedFunctionsVerificationRequest {
+-        request_id,
+-        target,
+-        purpose,
+-        receipt_count: items.len(),
+-        request_size_bytes: payload_json.len(),
+-        source_code_sha256,
+-        receipt_batch_root,
+-        batch_items: items,
+-        request_payload_sha256,
+-        max_notional_value_usd_cents,
+-        policy,
+-        note,
+-    })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn assess_functions_verification(
+     request: &PreparedFunctionsVerificationRequest,
+     response: &FunctionsVerificationResponse,
+ ) -> Result<FunctionsFallbackAssessment, AnchorError> {
+     if request.request_id != response.request_id {
+         return Err(AnchorError::Verification(format!(

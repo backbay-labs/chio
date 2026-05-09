@@ -1,0 +1,30 @@
+--- crates/chio-policy/src/merge.rs
++++ replace merge -> HushSpec with Default::default()
+@@ -7,26 +7,17 @@
+ use crate::models::{
+     ChioExtension, DetectionExtension, Extensions, HushSpec, JailbreakDetection, MergeStrategy,
+     OriginsExtension, PostureExtension, PromptInjectionDetection, ReputationExtension,
+     ReputationScoringConfig, ReputationWeights, Rules, ThreatIntelDetection,
+ };
+ 
+ #[must_use = "merged spec is returned, not applied in place"]
+ pub fn merge(base: &HushSpec, child: &HushSpec) -> HushSpec {
+-    let strategy = child.merge_strategy.unwrap_or_default();
+-    match strategy {
+-        MergeStrategy::Replace => {
+-            let mut result = child.clone();
+-            result.extends = None;
+-            result
+-        }
+-        MergeStrategy::Merge => merge_with_strategy(base, child, false),
+-        MergeStrategy::DeepMerge => merge_with_strategy(base, child, true),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn merge_with_strategy(base: &HushSpec, child: &HushSpec, deep: bool) -> HushSpec {
+     HushSpec {
+         hushspec: child.hushspec.clone(),
+         name: child.name.clone().or_else(|| base.name.clone()),
+         description: child
+             .description

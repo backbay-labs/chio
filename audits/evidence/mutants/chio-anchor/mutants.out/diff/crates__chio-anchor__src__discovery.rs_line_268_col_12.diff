@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/discovery.rs
++++ delete ! in validate_binding_covers_targets
+@@ -260,17 +260,17 @@
+     Ok(report)
+ }
+ 
+ fn validate_binding_covers_targets(
+     config: &AnchorServiceConfig,
+     binding: &SignedWeb3IdentityBinding,
+ ) -> Result<(), AnchorError> {
+     for target in &config.evm_targets {
+-        if !binding
++        if  /* ~ changed by cargo-mutants ~ */binding
+             .certificate
+             .chain_scope
+             .iter()
+             .any(|chain| chain == &target.chain_id)
+         {
+             return Err(AnchorError::InvalidBinding(format!(
+                 "binding certificate does not cover {}",
+                 target.chain_id

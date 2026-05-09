@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/bundle.rs
++++ replace == with != in verify_checkpoint_publication_records
+@@ -156,17 +156,17 @@
+             binding
+                 .validate()
+                 .map_err(|error| AnchorError::Verification(error.to_string()))?;
+             continue;
+         }
+ 
+         let has_successor_witness = transparency.witnesses.iter().any(|witness| {
+             witness.log_id == publication.log_id
+-                && witness.checkpoint_seq == publication.checkpoint_seq
++                && witness.checkpoint_seq != /* ~ changed by cargo-mutants ~ */ publication.checkpoint_seq
+         });
+         if !has_successor_witness {
+             return Err(AnchorError::Verification(format!(
+                 "checkpoint publication {} requires a trust-anchor binding or successor witness",
+                 publication.checkpoint_seq
+             )));
+         }
+     }

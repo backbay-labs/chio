@@ -1,0 +1,28 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace bundle_rekor_metadata -> (u64, SystemTime) with (0, Default::default())
+@@ -497,24 +497,17 @@
+ }
+ 
+ fn bundle_leaf_certificate_der(bundle: &Bundle) -> Result<Vec<u8>, AttestError> {
+     use sigstore_protobuf_specs_compat::leaf_der;
+     leaf_der(bundle).ok_or_else(|| AttestError::Malformed("bundle has no leaf certificate".into()))
+ }
+ 
+ fn bundle_rekor_metadata(bundle: &Bundle) -> (u64, SystemTime) {
+-    use sigstore_protobuf_specs_compat::rekor_metadata;
+-    let (index, integrated) = rekor_metadata(bundle).unwrap_or((0, 0));
+-    let signed_at = if integrated > 0 {
+-        UNIX_EPOCH + Duration::from_secs(integrated as u64)
+-    } else {
+-        SystemTime::now()
+-    };
+-    (index, signed_at)
++    (0, Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn bundle_rekor_inclusion_verified(_bundle: &Bundle) -> bool {
+     // `sigstore-rs` 0.13 checks that the Rekor transparency entry is
+     // consistent with the signing materials, but its verifier still leaves
+     // Merkle inclusion and SET verification unimplemented. Bundled proof
+     // fields are therefore evidence to be verified later, not a Chio-verified
+     // inclusion result. Keep this fail-closed for callers that require Rekor

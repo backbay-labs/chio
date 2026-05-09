@@ -1,0 +1,33 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace pattern_exact -> bool with true
+@@ -269,29 +269,17 @@
+         }
+     }
+ 
+     pattern == "*" || pattern == candidate
+ }
+ 
+ #[cfg(kani)]
+ fn pattern_exact(pattern: &str, candidate: &str) -> bool {
+-    #[cfg(kani)]
+-    {
+-        let pattern = pattern.as_bytes();
+-        let candidate = candidate.as_bytes();
+-        if pattern.len() != candidate.len() {
+-            return false;
+-        }
+-        if pattern.len() == 1 {
+-            return pattern[0] == candidate[0];
+-        }
+-    }
+-
+-    pattern == candidate
++    true /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn path_has_prefix(candidate: &str, prefix: &str) -> bool {
+     let Some(candidate) = normalize_path(candidate) else {
+         return false;
+     };
+     let Some(prefix) = normalize_path(prefix) else {
+         return false;

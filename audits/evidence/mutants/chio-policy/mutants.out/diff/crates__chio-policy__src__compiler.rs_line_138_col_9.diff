@@ -1,0 +1,22 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace PipelineBuilder::add with ()
+@@ -130,18 +130,17 @@
+     fn new() -> Self {
+         Self {
+             pipeline: GuardPipeline::new(),
+             names: Vec::new(),
+         }
+     }
+ 
+     fn add<G: chio_kernel::Guard + 'static>(&mut self, guard: G) {
+-        self.names.push(guard.name().to_string());
+-        self.pipeline.add(Box::new(guard));
++        () /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     fn finish(self) -> (GuardPipeline, Vec<String>) {
+         (self.pipeline, self.names)
+     }
+ }
+ 
+ // ---------------------------------------------------------------------------

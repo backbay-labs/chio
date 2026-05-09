@@ -1,0 +1,31 @@
+# Per-run override config for chio-attest-verify mutation baseline.
+# Same as workspace .cargo/mutants.toml EXCEPT the additional_cargo_test_args
+# is scoped to the chio-attest-verify package only, to avoid a pre-existing
+# unrelated test failure in chio-acp-proxy
+# (assertion failed: verdict.reason.contains("signature")...) which would
+# otherwise cause every mutant to register as caught regardless of its own
+# effect on chio-attest-verify behavior.
+#
+# This is a methodology fix, not a test fix. The chio-acp-proxy failure is
+# pre-existing on main (commit 708c7bb33) and is out of scope for the
+# A1 mutation baseline. The CI hosted-nightly remains the authoritative
+# workspace-scope measurement.
+
+additional_cargo_test_args = ["--package", "chio-attest-verify"]
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/chio-attest-verify/src/lib.rs",
+    "crates/chio-attest-verify/src/sigstore.rs",
+]
+
+exclude_globs = [
+    "**/tests.rs",
+    "**/test_*.rs",
+    "**/*_test.rs",
+    "**/tests/**",
+    "**/benches/**",
+    "**/build.rs",
+    "**/fuzz.rs",
+]

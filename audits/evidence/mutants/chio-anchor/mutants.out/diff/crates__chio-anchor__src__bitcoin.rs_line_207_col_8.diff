@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/bitcoin.rs
++++ delete ! in verify_bitcoin_anchor_for_proof
+@@ -199,17 +199,17 @@
+             inspection.digest_algorithm
+         )));
+     }
+     if inspection.start_digest != expected_document_digest.to_hex_prefixed() {
+         return Err(AnchorError::Verification(
+             "OTS proof does not commit to the expected Chio super-root digest".to_string(),
+         ));
+     }
+-    if !inspection
++    if  /* ~ changed by cargo-mutants ~ */inspection
+         .bitcoin_attestation_heights
+         .contains(&bitcoin_anchor.bitcoin_block_height)
+     {
+         return Err(AnchorError::Verification(format!(
+             "OTS proof does not attest to Bitcoin block height {}",
+             bitcoin_anchor.bitcoin_block_height
+         )));
+     }

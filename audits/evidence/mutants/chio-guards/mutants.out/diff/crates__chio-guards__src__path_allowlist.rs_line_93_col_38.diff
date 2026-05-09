@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_allowlist.rs
++++ replace != with == in PathAllowlistGuard::matches_allowlist
+@@ -85,17 +85,17 @@
+     fn matches_allowlist(&self, patterns: &[Pattern], path: &str) -> bool {
+         let lexical_path = normalize_path_for_policy(path);
+         let resolved_path = normalize_path_for_policy_with_fs(path);
+         let lexical_abs_path = normalize_path_for_policy_lexical_absolute(path);
+ 
+         let resolved_differs_from_lexical_target = lexical_abs_path
+             .as_deref()
+             .map(|abs| abs != resolved_path.as_str())
+-            .unwrap_or(resolved_path != lexical_path);
++            .unwrap_or(resolved_path == /* ~ changed by cargo-mutants ~ */ lexical_path);
+ 
+         if resolved_differs_from_lexical_target {
+             // When resolution changes the target (e.g. symlink traversal), require the
+             // resolved path to match to prevent lexical-path allowlist bypasses.
+             return Self::matches_any(patterns, &resolved_path);
+         }
+ 
+         Self::matches_any(patterns, &lexical_path)

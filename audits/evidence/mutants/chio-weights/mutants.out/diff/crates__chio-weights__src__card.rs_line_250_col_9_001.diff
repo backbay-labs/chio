@@ -1,0 +1,22 @@
+--- crates/chio-weights/src/card.rs
++++ replace ModelCard::to_canonical_json -> Result<Vec<u8>, WeightsError> with Ok(vec![1])
+@@ -242,18 +242,17 @@
+                 now,
+             })
+         }
+     }
+ 
+     /// Encode to canonical JSON bytes (RFC 8785 / JCS). Deterministic across
+     /// any compliant implementation.
+     pub fn to_canonical_json(&self) -> Result<Vec<u8>, WeightsError> {
+-        chio_core_types::canonical::canonical_json_bytes(self)
+-            .map_err(|err| WeightsError::Encoding(format!("canonical-json encode: {err}")))
++        Ok(vec![1]) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Decode from canonical JSON bytes. Round-trip with
+     /// [`Self::to_canonical_json`]. Validates after deserialisation.
+     pub fn from_canonical_json(bytes: &[u8]) -> Result<Self, WeightsError> {
+         let card: Self = serde_json::from_slice(bytes)
+             .map_err(|err| WeightsError::Encoding(format!("canonical-json decode: {err}")))?;
+         card.validate()?;

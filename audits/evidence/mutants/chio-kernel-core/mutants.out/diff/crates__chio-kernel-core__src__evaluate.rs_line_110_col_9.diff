@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/evaluate.rs
++++ replace EvaluationVerdict::normalized -> Result<NormalizedEvaluationVerdict, NormalizationError> with Ok(Default::default())
+@@ -102,17 +102,17 @@
+         self.verdict == Verdict::Deny
+     }
+ 
+     /// Project this evaluation result into the proof-facing normalized AST.
+     pub fn normalized(
+         &self,
+         request: &PortableToolCallRequest,
+     ) -> Result<NormalizedEvaluationVerdict, NormalizationError> {
+-        NormalizedEvaluationVerdict::try_from_evaluation(request, self)
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// Errors the portable core can raise.
+ ///
+ /// These are portable-kernel equivalents of the legacy
+ /// `chio_kernel::KernelError` variants that can be produced without any
+ /// I/O. The caller in `chio-kernel` maps them back onto its richer

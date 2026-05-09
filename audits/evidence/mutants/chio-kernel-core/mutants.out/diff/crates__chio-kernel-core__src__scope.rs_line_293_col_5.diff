@@ -1,0 +1,37 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace path_has_prefix -> bool with true
+@@ -285,33 +285,17 @@
+             return pattern[0] == candidate[0];
+         }
+     }
+ 
+     pattern == candidate
+ }
+ 
+ fn path_has_prefix(candidate: &str, prefix: &str) -> bool {
+-    let Some(candidate) = normalize_path(candidate) else {
+-        return false;
+-    };
+-    let Some(prefix) = normalize_path(prefix) else {
+-        return false;
+-    };
+-    if candidate.is_absolute != prefix.is_absolute {
+-        return false;
+-    }
+-    if prefix.segments.len() > candidate.segments.len() {
+-        return false;
+-    }
+-    prefix
+-        .segments
+-        .iter()
+-        .zip(candidate.segments.iter())
+-        .all(|(expected, actual)| expected == actual)
++    true /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[derive(Debug, PartialEq, Eq)]
+ struct NormalizedPath {
+     is_absolute: bool,
+     segments: Vec<String>,
+ }
+ 

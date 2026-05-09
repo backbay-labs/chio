@@ -1,0 +1,19 @@
+--- crates/chio-kernel-core/src/evaluate.rs
++++ replace deny -> EvaluationVerdict with Default::default()
+@@ -509,15 +509,10 @@
+     }
+ }
+ 
+ fn deny(
+     error: KernelCoreError,
+     matched_grant_index: Option<usize>,
+     verified: Option<VerifiedCapability>,
+ ) -> EvaluationVerdict {
+-    EvaluationVerdict {
+-        verdict: Verdict::Deny,
+-        reason: Some(error.deny_reason()),
+-        matched_grant_index,
+-        verified,
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }

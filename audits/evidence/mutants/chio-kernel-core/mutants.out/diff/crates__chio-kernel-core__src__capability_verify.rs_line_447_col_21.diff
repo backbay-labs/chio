@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/capability_verify.rs
++++ replace == with != in verify_capability_full
+@@ -439,17 +439,17 @@
+     // unchanged (no attenuation_proof field exists in their schema). Run
+     // chain-binding before the legacy signature/floor/issuer/budget pass so
+     // a witness mismatch fails closed before any budget mutation.
+     //
+     // V2 tokens require chain binding. If a peer explicitly disables
+     // `delegation_v2_chain_binding`, treat that peer as v1-only for this
+     // verifier and reject the v2 token rather than skipping the binding
+     // check.
+-    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
++    if token.schema != /* ~ changed by cargo-mutants ~ */ CHIO_CAPABILITY_V2_SCHEMA {
+         let chain_binding_enabled = peer
+             .features
+             .get(chio_core_types::capability::capability_features::DELEGATION_V2_CHAIN_BINDING)
+             .copied()
+             .unwrap_or(true);
+         if !chain_binding_enabled {
+             return Err(CapabilityError::AttenuationViolation(
+                 "v2 chain-binding: peer disabled delegation_v2_chain_binding; v2 tokens are rejected".to_string(),

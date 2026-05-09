@@ -1,0 +1,24 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace is_audience_key -> bool with false
+@@ -573,20 +573,17 @@
+                 collect_audience_values(value, out);
+             }
+         }
+         _ => {}
+     }
+ }
+ 
+ fn is_audience_key(key: &str) -> bool {
+-    matches!(
+-        key.to_ascii_lowercase().as_str(),
+-        "recipient" | "recipients" | "audience" | "to" | "channel" | "channels"
+-    )
++    false /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Walk a JSON value collecting string leaves; returns false if any
+ /// non-string, non-array leaf is observed (including `null`). The
+ /// strict policy applies everywhere a relevant key is present. A bare
+ /// `audience: null` and a mixed array like `["security", null]` both
+ /// poison the constraint, matching the hosted kernel's
+ /// `request_matching::collect_string_values_strict`.
