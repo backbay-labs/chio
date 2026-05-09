@@ -1,0 +1,27 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace map_webpki_error -> AttestError with Default::default()
+@@ -368,23 +368,17 @@
+             None,
+         )
+         .map_err(map_webpki_error)?;
+ 
+     Ok(())
+ }
+ 
+ fn map_webpki_error(err: webpki::Error) -> AttestError {
+-    match err {
+-        webpki::Error::CertNotValidYet { .. } | webpki::Error::CertExpired { .. } => {
+-            AttestError::CertificateExpired
+-        }
+-        webpki::Error::UnknownIssuer => AttestError::TrustRoot,
+-        _ => AttestError::Malformed(format!("certificate chain validation: {err:?}")),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn match_identity(cert: &Certificate, expected: &ExpectedIdentity) -> Result<String, AttestError> {
+     // 1) OIDC issuer extension MUST exactly equal the expected issuer.
+     // The OIDC issuer is a public well-known URL (e.g. https://token.actions.githubusercontent.com),
+     // not secret material. Plain `!=` is acceptable; constant-time equality is unnecessary because
+     // there is no secret on either side of the comparison whose timing leak would matter.
+     let issuer = read_oidc_issuer_extension(cert)?;

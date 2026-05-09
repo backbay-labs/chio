@@ -1,0 +1,34 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace parse_certificate_to_der -> Result<Vec<u8>, AttestError> with Ok(vec![])
+@@ -314,30 +314,17 @@
+     }
+ }
+ 
+ /// Accept either a PEM-armored or raw-DER certificate input. The cosign
+ /// CLI emits PEM by default; some pipelines double-base64-encode. We
+ /// strip one base64 layer if the bytes do not begin with the PEM header.
+ fn parse_certificate_to_der(input: &[u8]) -> Result<Vec<u8>, AttestError> {
+     // Fast path: input is already PEM-armored.
+-    if let Ok(parsed) = pem::parse(input) {
+-        if parsed.tag() == "CERTIFICATE" {
+-            return Ok(parsed.into_contents());
+-        }
+-    }
+-
+-    // Fallback: raw DER (starts with the SEQUENCE tag 0x30).
+-    if input.first() == Some(&0x30) {
+-        return Ok(input.to_vec());
+-    }
+-
+-    Err(AttestError::Malformed(
+-        "certificate is neither PEM nor DER".into(),
+-    ))
++    Ok(vec![]) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn validate_against_fulcio(
+     leaf_der: &[u8],
+     fulcio_root_ders: &[Vec<u8>],
+ ) -> Result<(), AttestError> {
+     let trust_anchors: Vec<TrustAnchor<'_>> = fulcio_root_ders
+         .iter()

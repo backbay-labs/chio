@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_allowlist.rs
++++ delete ! in PathAllowlistGuard::is_patch_allowed
+@@ -160,17 +160,17 @@
+     pub fn is_file_write_allowed(&self, path: &str) -> bool {
+         if !self.enabled {
+             return true;
+         }
+         self.matches_allowlist(&self.file_write_allow, path)
+     }
+ 
+     pub fn is_patch_allowed(&self, path: &str) -> bool {
+-        if !self.enabled {
++        if  /* ~ changed by cargo-mutants ~ */self.enabled {
+             return true;
+         }
+         self.matches_allowlist(&self.patch_allow, path)
+     }
+ }
+ 
+ impl Default for PathAllowlistGuard {
+     fn default() -> Self {

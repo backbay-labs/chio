@@ -1,0 +1,29 @@
+--- crates/chio-guards/src/pipeline.rs
++++ replace GuardPipeline::default_pipeline -> Self with Default::default()
+@@ -31,25 +31,17 @@
+ 
+     pub fn is_empty(&self) -> bool {
+         self.guards.is_empty()
+     }
+ 
+     /// Create a default pipeline with all implemented guards using their
+     /// default configurations.
+     pub fn default_pipeline() -> Self {
+-        let mut pipeline = Self::new();
+-        pipeline.add(Box::new(crate::ForbiddenPathGuard::new()));
+-        pipeline.add(Box::new(crate::ShellCommandGuard::new()));
+-        pipeline.add(Box::new(crate::EgressAllowlistGuard::new()));
+-        pipeline.add(Box::new(crate::PathAllowlistGuard::new()));
+-        pipeline.add(Box::new(crate::McpToolGuard::new()));
+-        pipeline.add(Box::new(crate::SecretLeakGuard::new()));
+-        pipeline.add(Box::new(crate::PatchIntegrityGuard::new()));
+-        pipeline
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ impl Default for GuardPipeline {
+     fn default() -> Self {
+         Self::new()
+     }
+ }

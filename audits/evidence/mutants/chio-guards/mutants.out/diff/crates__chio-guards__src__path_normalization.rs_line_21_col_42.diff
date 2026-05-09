@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_normalization.rs
++++ replace == with != in normalize_path_for_policy
+@@ -13,17 +13,17 @@
+ /// - Remove `.` segments
+ /// - Resolve `..` segments lexically (without filesystem access)
+ pub fn normalize_path_for_policy(path: &str) -> String {
+     let path = path.replace('\\', "/");
+     let is_absolute = path.starts_with('/');
+ 
+     let mut segments: Vec<&str> = Vec::new();
+     for segment in path.split('/') {
+-        if segment.is_empty() || segment == "." {
++        if segment.is_empty() || segment != /* ~ changed by cargo-mutants ~ */ "." {
+             continue;
+         }
+ 
+         if segment == ".." {
+             if let Some(last) = segments.last().copied() {
+                 if last != ".." {
+                     segments.pop();
+                     continue;

@@ -1,0 +1,45 @@
+--- crates/chio-attest-verify/src/lib.rs
++++ replace <impl TenantPolicyResolver for StaticTenantPolicyMap>::expected_for_tenant -> Result<ExpectedIdentity, AttestError> with Ok(Default::default())
+@@ -174,41 +174,17 @@
+     #[must_use]
+     pub fn is_empty(&self) -> bool {
+         self.entries.is_empty()
+     }
+ }
+ 
+ impl TenantPolicyResolver for StaticTenantPolicyMap {
+     fn expected_for_tenant(&self, tenant_id: &str) -> Result<ExpectedIdentity, AttestError> {
+-        let policy = self
+-            .entries
+-            .iter()
+-            .find(|p| p.tenant_id == tenant_id)
+-            .ok_or_else(|| AttestError::Malformed(format!("unknown tenant_id {tenant_id:?}")))?;
+-        if policy.identity_regexps.is_empty() {
+-            return Err(AttestError::Malformed(
+-                "policy has no identity_regexps".to_owned(),
+-            ));
+-        }
+-        let regex = if policy.identity_regexps.len() == 1 {
+-            policy.identity_regexps[0].clone()
+-        } else {
+-            policy
+-                .identity_regexps
+-                .iter()
+-                .map(|pattern| format!("(?:{pattern})"))
+-                .collect::<Vec<_>>()
+-                .join("|")
+-        };
+-        let issuer = policy
+-            .oidc_issuers
+-            .first()
+-            .ok_or_else(|| AttestError::Malformed("policy has no oidc_issuers".to_owned()))?;
+-        Ok(ExpectedIdentity::doc_hidden_inline(regex, issuer.clone()))
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// Result of a successful verification. Carries enough metadata for
+ /// receipts and audit logs without re-parsing the cert chain.
+ #[derive(Debug, Clone)]
+ pub struct VerifiedAttestation {
+     /// SHA-256 of the artifact bytes that the signature was computed over.
