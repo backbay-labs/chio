@@ -665,8 +665,8 @@ pub fn verify_bilateral_cosign_invocation(
             "predicate is missing policy_evaluation_summary (required for §7 step 13)".to_string(),
         )
     })?;
-    validate_verdict_string(&summary.server_a_verdict.verdict)?;
-    validate_verdict_string(&summary.server_b_verdict.verdict)?;
+    validate_policy_verdict(&summary.server_a_verdict, "server_a_verdict")?;
+    validate_policy_verdict(&summary.server_b_verdict, "server_b_verdict")?;
     if summary.server_a_verdict.verdict != summary.server_b_verdict.verdict {
         return Err(VerifierError::PolicyVerdictDisagreement(format!(
             "server_a={} server_b={}",
@@ -951,6 +951,29 @@ fn validate_verdict_string(verdict: &str) -> Result<(), VerifierError> {
             "unsupported verdict {other:?}; expected allow or deny"
         ))),
     }
+}
+
+fn validate_policy_verdict(
+    verdict: &crate::bilateral_dsse::PolicyVerdict,
+    field: &str,
+) -> Result<(), VerifierError> {
+    validate_verdict_string(&verdict.verdict)?;
+    validate_non_empty_policy_field(&verdict.policy_id, field, "policy_id")?;
+    validate_non_empty_policy_field(&verdict.policy_version, field, "policy_version")?;
+    Ok(())
+}
+
+fn validate_non_empty_policy_field(
+    value: &str,
+    parent: &str,
+    field: &str,
+) -> Result<(), VerifierError> {
+    if value.is_empty() {
+        return Err(VerifierError::PolicyVerdictDisagreement(format!(
+            "{parent}.{field} must be non-empty"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_hash_record(
@@ -1599,6 +1622,45 @@ mod tests {
         let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
         assert_eq!(err.code(), "policy.verdict_disagreement");
         assert!(err.to_string().contains("unsupported verdict"));
+    }
+
+    #[test]
+    fn policy_provenance_fields_must_be_non_empty() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let mut ext = happy_path_extensions(now_ms);
+        if let Some(summary) = ext.policy_evaluation_summary.as_mut() {
+            summary.server_a_verdict.policy_id.clear();
+        }
+        let envelope = sign_dsse_envelope_full(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            ext,
+        )
+        .unwrap();
+
+        let (_unused, store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let cfg = config(
+            &peers,
+            &store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
+        assert_eq!(err.code(), "policy.verdict_disagreement");
+        assert!(err.to_string().contains("policy_id must be non-empty"));
     }
 
     #[test]
