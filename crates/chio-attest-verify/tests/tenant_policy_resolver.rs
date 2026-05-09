@@ -132,3 +132,34 @@ fn empty_map_is_empty() {
     assert_eq!(map.len(), 0);
     assert!(map.expected_for_tenant("anyone").is_err());
 }
+
+#[test]
+fn populated_map_reports_len_and_is_not_empty() {
+    // Kills:
+    // - replace StaticTenantPolicyMap::is_empty -> bool with true
+    //   (lib.rs:176): a populated map's is_empty() MUST be false.
+    // - replace StaticTenantPolicyMap::len -> usize with 0 (lib.rs:170):
+    //   a populated map's len() MUST equal the number of inserted
+    //   policies, not zero.
+    let single = StaticTenantPolicyMap::from_verified(vec![acme_policy()]).unwrap();
+    assert_eq!(
+        single.len(),
+        1,
+        "single-entry map must report len 1; mutant `len -> 0` would fail"
+    );
+    assert!(
+        !single.is_empty(),
+        "single-entry map must NOT be empty; mutant `is_empty -> true` would fail"
+    );
+
+    let pair = StaticTenantPolicyMap::from_verified(vec![acme_policy(), beta_policy()]).unwrap();
+    assert_eq!(
+        pair.len(),
+        2,
+        "two-entry map must report len 2; mutant `len -> 0` would fail"
+    );
+    assert!(
+        !pair.is_empty(),
+        "two-entry map must NOT be empty; mutant `is_empty -> true` would fail"
+    );
+}

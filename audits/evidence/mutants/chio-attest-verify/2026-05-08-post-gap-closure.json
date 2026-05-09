@@ -1,0 +1,31 @@
+{
+  "crate": "chio-attest-verify",
+  "ran_at": null,
+  "tool": "cargo-mutants",
+  "tool_version": "25.3.1",
+  "test_scope": "package-only (--test-package chio-attest-verify)",
+  "examine_scope": "full-crate (crates/chio-attest-verify/src/**)",
+  "result_label": "PENDING-RERUN",
+  "result_label_reason": "This branch added 29 sigstore negative tests targeting surviving mutants from the prior baseline (44.12% kill rate), and a focused local rerun on the post-gap-closure tree showed ~97.9% on touched lines. That focused number is NOT a crate-level baseline: it skipped mutants in untouched files. The full-crate rerun requirement requires a fresh full-crate cargo-mutants run before this branch can claim a crate-level kill-rate uplift.",
+  "target_kill_rate": 0.80,
+  "target_met": null,
+  "run_status": "PENDING: full crate-level cargo-mutants rerun has not been committed yet on this branch; the 97.9% claim is on a focused-line subset only and cannot retire the crate target.",
+  "downgrade_note": "Per the full-crate rerun requirement, the integrator must commit `audits/evidence/mutants/chio-attest-verify/2026-05-08-post-gap-closure.json` populated from a fresh `cargo mutants -p chio-attest-verify` run on this branch before BAR-1-MUTATION can record an updated kill-rate row for chio-attest-verify. Until then the aggregate continues to use the prior baseline (44.12% on 68/86 viable mutants).",
+  "evidence_pending": {
+    "command": "cargo mutants -p chio-attest-verify --output audits/evidence/mutants/chio-attest-verify",
+    "expected_directory": "audits/evidence/mutants/chio-attest-verify/mutants.out/",
+    "expected_artifacts": [
+      "caught.txt",
+      "missed.txt",
+      "timeout.txt",
+      "unviable.txt",
+      "mutants.json"
+    ],
+    "expected_summary_regenerate": "bash audits/mutation/summary.sh chio-attest-verify"
+  },
+  "tests_added_this_pr": {
+    "count": 29,
+    "scope": "sigstore negative-path tests in crates/chio-attest-verify/src/sigstore.rs and crates/chio-attest-verify/tests/tenant_policy_resolver.rs",
+    "rationale": "Targets surviving mutants from the prior baseline (e.g. <impl AttestVerifier for SigstoreVerifier>::verify_bytes comparator flips at line 163, certificate_validity arithmetic at lines 480-481, sigstore_protobuf_specs_compat::rekor_metadata at line 579, match_identity match-arm deletes at lines 412-414)."
+  }
+}
