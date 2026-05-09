@@ -62,8 +62,12 @@ fn threat_audience_confusion_require_audience_rejects_mismatch() {
     );
 
     // Sanity: the matched audience is accepted.
-    cap.require_audience("urn:chio:audience:kernel")
-        .expect("matched audience MUST verify");
+    if let Err(err) = cap.require_audience("urn:chio:audience:kernel") {
+        panic!(
+            "matched audience MUST verify (otherwise the deny guard \
+             is over-rejecting); got {err:?}"
+        );
+    }
 }
 
 #[test]

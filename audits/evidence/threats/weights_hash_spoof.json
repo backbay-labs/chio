@@ -1,7 +1,7 @@
 {
   "caught": 2,
   "needs_real_run": false,
-  "note": "release work/A2 evidence backfill (batch 2): real conformance test at crates/chio-conformance/tests/threats/weights_hash_spoof.rs imports chio_kernel::weights_binding::evaluate_weights_binding_with_loaded_hash and asserts two production deny branches: (1) WeightsError::CardMismatch when the recomputed loaded-weight digest does not match the model card's declared weights_hash, and (2) WeightsError::SchemaRejected when LoadedWeightsUnavailable is presented. The header in that file documents the revert-to-prove-it-fails recipe (flip the equality check inside evaluate_weights_binding_with_loaded_hash in chio-kernel/src/weights_binding.rs).",
+  "note": "Threat-evidence backfill: real conformance test at crates/chio-conformance/tests/threats/weights_hash_spoof.rs imports chio_kernel::weights_binding::evaluate_weights_binding_with_loaded_hash and asserts two production deny branches: (1) WeightsError::CardMismatch when the recomputed loaded-weight digest does not match the model card's declared weights_hash, and (2) WeightsError::SchemaRejected when LoadedWeightsUnavailable is presented. The header in that file documents the revert-to-prove-it-fails recipe (flip the equality check inside evaluate_weights_binding_with_loaded_hash in chio-kernel/src/weights_binding.rs).",
   "ran_at": "2026-05-08T00:00:00Z",
   "survivors": [],
   "test_path": "crates/chio-conformance/tests/threats/weights_hash_spoof.rs",

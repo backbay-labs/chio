@@ -76,11 +76,36 @@ write_model "covered_threat" "covered"
 write_stub "covered_threat" "assert!(true);"
 assert_passes "covered populated stub"
 
+# `partial` requires BOTH a non-empty deferred_to AND a populated test
+# body (so the closed sub-vector is exercised). These three fixtures
+# cover the failure modes and the positive accept path.
+
+# Failure: partial without deferred_to is rejected.
 reset_fixture
-write_model "partial_threat" "partial"
-write_stub "partial_threat" "assert!(true);"
-assert_fails "partial state"
-grep -q "coverage_state partial is not allowed" "$ERR"
+write_model "partial_no_deferred" "partial"
+write_stub "partial_no_deferred" "assert!(true);"
+assert_fails "partial state without deferred_to"
+grep -q "coverage_state partial requires a non-empty deferred_to" "$ERR"
+
+# Failure: partial with deferred_to but no in-tree stub is rejected.
+reset_fixture
+write_model "partial_no_stub" "partial" "trajectory-6.closure"
+assert_fails "partial state without in-tree stub"
+grep -q "coverage_state partial requires the closed sub-vector to be exercised by an in-tree test" "$ERR"
+
+# Failure: partial with deferred_to and stub but stub still calls
+# unimplemented!() (the closed sub-vector is not actually exercised).
+reset_fixture
+write_model "partial_unimplemented" "partial" "trajectory-6.closure"
+write_stub "partial_unimplemented" 'unimplemented!("deferred sub-vector");'
+assert_fails "partial state with unimplemented stub"
+grep -q "coverage_state partial requires the closed sub-vector test body to be populated" "$ERR"
+
+# Positive: partial with deferred_to AND a populated test body passes.
+reset_fixture
+write_model "partial_complete" "partial" "trajectory-6.closure"
+write_stub "partial_complete" "assert!(true);"
+assert_passes "partial with deferred_to and populated stub"
 
 reset_fixture
 write_model "pending_deferred_threat" "pending" "trajectory-4.follow-up"

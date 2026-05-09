@@ -12,21 +12,32 @@
 #      OR
 #
 #   2. carries `coverage_state: pending` plus a non-empty
-#      `deferred_to` reference in the threat-model JSON.
+#      `deferred_to` reference in the threat-model JSON, OR
 #
-# Fails closed: `partial` is never accepted, `weak_coverage` is
-# never accepted (the row must either be raised to `covered` with
-# real mutation-testing evidence under
-# `audits/evidence/threats/<id>.json` or downgraded to `pending`
-# with a `deferred_to` reference), and `pending` without
-# `deferred_to` exits non-zero with a clear hint. Auto-promoted
-# pending corpus seeds (D14) are excluded from coverage by
-# construction since they live in the corpus, not the threat list.
+#   3. carries `coverage_state: partial` plus a non-empty
+#      `deferred_to` reference AND a populated test body at
+#      `crates/chio-conformance/tests/threats/<id>.rs`. A partial
+#      row is honest reporting that one sub-vector of the threat is
+#      closed by a real test today while another sub-vector is
+#      deferred. The companion evidence file
+#      `audits/evidence/threats/<id>.json` is expected to record
+#      `status: "partial"`, `closure_scope: "<scope>"`, and
+#      `deferred_follow_up: "<rationale>"`.
+#
+# Fails closed: `weak_coverage` is never accepted (the row must
+# either be raised to `covered` with real mutation-testing
+# evidence under `audits/evidence/threats/<id>.json` or downgraded
+# to `pending` with a `deferred_to` reference), `pending` without
+# `deferred_to` exits non-zero with a clear hint, and `partial`
+# without both a `deferred_to` reference and an in-tree test body
+# also exits non-zero. Auto-promoted pending corpus seeds (D14)
+# are excluded from coverage by construction since they live in
+# the corpus, not the threat list.
 #
 # This script handles the file-existence check only. The companion
 # `check-threat-coverage-mutants.sh` enforces the per-row mutation-
 # testing evidence requirement and is the gate that catches the
-# `assert!(true)` failure mode flagged by the trajectory-4 audit.
+# `assert!(true)` failure mode flagged by the prior closeout review.
 
 set -euo pipefail
 
@@ -92,8 +103,26 @@ while IFS=$'\t' read -r id state deferred_to; do
             continue
             ;;
         partial)
-            partial+=("$id")
-            uncovered+=("$id (coverage_state partial is not allowed after M05.P4)")
+            # Partial is the honest signal that one sub-vector of the
+            # threat is closed by a real test today and the other is
+            # deferred. Accept it iff a deferred_to reference is
+            # populated AND the test body exists (so the closed
+            # sub-vector is actually exercised). Otherwise treat it as
+            # uncovered with a clear remediation hint.
+            stub_partial="$STUBS_DIR/$id.rs"
+            if [[ -z "${deferred_to:-}" ]]; then
+                uncovered+=("$id (coverage_state partial requires a non-empty deferred_to in $THREAT_MODEL naming the future-milestone work that closes the deferred sub-vector)")
+                continue
+            fi
+            if [[ ! -f "$stub_partial" ]]; then
+                uncovered+=("$id (coverage_state partial requires the closed sub-vector to be exercised by an in-tree test at $stub_partial)")
+                continue
+            fi
+            if sed 's://.*::' "$stub_partial" | grep -q 'unimplemented!'; then
+                uncovered+=("$id (coverage_state partial requires the closed sub-vector test body to be populated; $stub_partial still calls unimplemented!())")
+                continue
+            fi
+            partial+=("$id -> $deferred_to")
             continue
             ;;
         weak_coverage)

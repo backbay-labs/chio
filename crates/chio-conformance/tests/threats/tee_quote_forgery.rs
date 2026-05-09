@@ -7,7 +7,7 @@
 // `chio_tee_frame::schema::{validate_signed, verify_tenant_sig}`
 // functions directly. Build a `chio_tee_frame::Frame` and sign its
 // canonical-JSON payload with a known tenant keypair. Then exercise
-// three forgery deny branches:
+// four forgery / misbinding deny branches:
 //
 //   1. Verifier-key swap. Present the genuinely-signed frame to a
 //      verifier holding a different tenant public key. The
@@ -20,6 +20,17 @@
 //   3. Forged signature. Replace `tenant_sig` with random 64-byte
 //      data. `verify_tenant_sig` MUST reject with
 //      `SchemaError::TenantSigVerification`.
+//   4. Cross-TEE misbinding (rebinding attack). Take a frame
+//      genuinely signed for one tee_id and swap the tee_id to a
+//      different TEE while keeping the original signature. The
+//      attacker is replaying a valid quote against the wrong TEE
+//      principal; canonical-JSON includes tee_id, so the signature
+//      no longer verifies under the genuine public key and
+//      `validate_signed` MUST reject with
+//      `SchemaError::TenantSigVerification`. This is a distinct
+//      production deny path from #2 (request_blob_sha256) because
+//      it pins the threat-row's "or misbinding" sub-vector
+//      separately from generic body tampering.
 //
 // Production call sites:
 //   `crates/chio-tee-frame/src/schema.rs:93` (`validate_signed`).
@@ -191,6 +202,47 @@ fn threat_tee_quote_forgery_forged_signature_rejected() {
     assert!(
         matches!(err, SchemaError::TenantSigVerification(_)),
         "expected SchemaError::TenantSigVerification on forged sig, got {err:?}"
+    );
+}
+
+#[test]
+fn threat_tee_quote_forgery_cross_tee_misbinding_rejected() {
+    // covers: tee_quote_forgery (misbinding sub-vector)
+    //
+    // Attacker scenario: a quote genuinely signed for tee-prod-1 is
+    // replayed against a session that claims tee-prod-2. The
+    // attacker swaps the `tee_id` field after signing while keeping
+    // the original `tenant_sig`. Because canonical-JSON includes
+    // tee_id, the signing payload no longer matches the signature
+    // under the genuine tenant public key; `validate_signed` MUST
+    // reject. This pins the threat-row's "or misbinding" half of
+    // its name as a distinct deny path from #2 (request_blob_sha256
+    // tampering, which is a generic body-tamper case rather than a
+    // cross-TEE binding violation).
+    //
+    // Revert-to-prove-it-fails recipe: replace the signature
+    // verification in `chio_tee_frame::schema::verify_tenant_sig`
+    // with `Ok(())` (or short-circuit before
+    // `public_key.verify(&payload, &signature)` returns false), and
+    // this assertion will flip from a pass to a panic because the
+    // misbound frame would be admitted.
+    let (mut frame, public_key) = signed_frame();
+    assert_eq!(
+        frame.tee_id, "tee-prod-1",
+        "test fixture invariant: signed_frame() must build a tee-prod-1 frame so the misbinding swap produces a distinct canonical-JSON payload"
+    );
+    frame.tee_id = "tee-prod-2".to_string();
+
+    let err = match validate_signed(&frame, &public_key) {
+        Ok(()) => panic!(
+            "validate_signed MUST reject when tee_id has been rebound \
+             after signing (cross-TEE misbinding); got Ok"
+        ),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(err, SchemaError::TenantSigVerification(_)),
+        "expected SchemaError::TenantSigVerification on tee_id rebinding, got {err:?}"
     );
 }
 
