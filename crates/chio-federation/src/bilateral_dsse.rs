@@ -768,6 +768,10 @@ fn validate_signature_slice_predicate(
             pred.schema, PREDICATE_BODY_SCHEMA
         )));
     }
+    require_non_empty_schema_string("invocation_id", &pred.invocation_id)?;
+    require_non_empty_schema_string("tool_name", &pred.tool_name)?;
+    require_non_empty_schema_string("tool_server_a.kernel_id", &pred.tool_server_a.kernel_id)?;
+    require_non_empty_schema_string("tool_server_b.kernel_id", &pred.tool_server_b.kernel_id)?;
     if pred.tool_server_a.alg != "ed25519" {
         return Err(BilateralCoSigningError::OrgASignatureInvalid);
     }
@@ -801,6 +805,18 @@ fn validate_signature_slice_predicate(
         return Err(BilateralCoSigningError::CanonicalJson(format!(
             "predicate.schema_invalid: cross_org_visibility {:?} is unsupported",
             pred.cross_org_visibility
+        )));
+    }
+    Ok(())
+}
+
+fn require_non_empty_schema_string(
+    field: &str,
+    value: &str,
+) -> Result<(), BilateralCoSigningError> {
+    if value.is_empty() {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: {field} must be non-empty"
         )));
     }
     Ok(())
@@ -968,6 +984,69 @@ mod tests {
             keyid.0, hex_form,
             "Ed25519 keyid must hash raw bytes, not hex string"
         );
+    }
+
+    #[test]
+    fn signer_rejects_empty_schema_required_identifiers() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+
+        let mut empty_receipt_id = sample_receipt(&kp_b);
+        empty_receipt_id.id.clear();
+        let err = sign_dsse_envelope(
+            &empty_receipt_id,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+        )
+        .expect_err("empty receipt id must not sign");
+        assert!(err.to_string().contains("invocation_id must be non-empty"));
+
+        let mut empty_tool = sample_receipt(&kp_b);
+        empty_tool.tool_name.clear();
+        let err = sign_dsse_envelope(
+            &empty_tool,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "",
+            1_734_000_000_000,
+        )
+        .expect_err("empty tool name must not sign");
+        assert!(err.to_string().contains("tool_name must be non-empty"));
+
+        let receipt = sample_receipt(&kp_b);
+        let err = sign_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+        )
+        .expect_err("empty org-a kernel id must not sign");
+        assert!(err
+            .to_string()
+            .contains("tool_server_a.kernel_id must be non-empty"));
+
+        let err = sign_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "",
+            "file_read",
+            1_734_000_000_000,
+        )
+        .expect_err("empty org-b kernel id must not sign");
+        assert!(err
+            .to_string()
+            .contains("tool_server_b.kernel_id must be non-empty"));
     }
 
     #[test]
