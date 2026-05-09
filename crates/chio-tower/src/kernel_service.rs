@@ -380,7 +380,7 @@ mod tests {
 
     struct EchoServer;
 
-    #[async_trait::async_trait(?Send)]
+    #[async_trait::async_trait]
     impl ToolServerConnection for EchoServer {
         fn server_id(&self) -> &str {
             "srv-a"

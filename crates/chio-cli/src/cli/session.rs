@@ -308,7 +308,7 @@ struct StubToolServer {
     id: String,
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl chio_kernel::ToolServerConnection for StubToolServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -338,7 +338,7 @@ struct StubSqlResultToolServer {
 }
 
 #[cfg(test)]
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl chio_kernel::ToolServerConnection for StubSqlResultToolServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -369,7 +369,7 @@ struct StubStreamingToolServer {
 }
 
 #[cfg(test)]
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl chio_kernel::ToolServerConnection for StubStreamingToolServer {
     fn server_id(&self) -> &str {
         &self.id
