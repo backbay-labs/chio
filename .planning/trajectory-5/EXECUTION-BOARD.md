@@ -1,13 +1,14 @@
 # Trajectory 5 Execution Board
 
-This board is planning metadata. It is not an executable release gate.
+This board is planning metadata. It is not an executable release gate, release
+readiness record, or tag authorization.
 
 ## Corrected Work Order
 
 | Order | Lane | Work | Exit condition |
 |---:|---|---|---|
 | 1 | B | Source integration for B0/B1/B2/B3/B4. | Source branches merge cleanly and production-call-path conformance fixtures exist; B4 needs full DSSE PAE conformance, not only the interim signature-slice regression. |
-| 2 | A | Assurance addendum. | Mutation, threat, Kani, TLA+, and Lean rows are rerun or explicitly partial against the integrated source state. |
+| 2 | A | Assurance addendum. | Mutation, threat, Kani, TLA+, and Lean rows are regenerated or explicitly partial against the merged Lane B source state. |
 | 3 | C | Canary demo. | `examples/chiodome-bilateral/` canary runs after Lane B and writes pinned fixtures. |
 | 4 | #618 | Package regeneration. | Release notes, fixtures, and any `[v0_1_0_bounded_chiodome]` root metadata are regenerated from merged `main` by the package owner. |
 
@@ -35,21 +36,26 @@ This board is planning metadata. It is not an executable release gate.
 
 | Item | Summary | Depends on |
 |---|---|---|
-| C1-C5 | Canary composition pieces: bilateral invocation, lease/bond, anchor, selective-disclosure placeholder, KB MCP wrap. | Lane B integrated |
-| C6 | Pinned canary fixtures and explain golden output. | C1-C5, merged `main` regeneration |
+| C1-C4 | Canary composition pieces: bilateral invocation, lease/bond, anchor, KB MCP wrap, and receipt explain. | Lane B integrated |
+| C5 | Selective-disclosure research boundary. | Future work outside current closure; not a canary or release row. |
+| C6 | Pinned canary fixtures and explain golden output. | C1-C4, merged `main` regeneration |
 
 ## Executable Gate Boundary
 
 `tickets.md` files are not gate inputs. The executable assurance checker reads
 only evidence artifacts, source fixtures, scripts, and release-status keys.
 
-The current checker is:
+The current compatibility-named checker is:
 
 ```bash
 bash scripts/check-bounded-ship-bar.sh
 ```
 
 Use `--diagnostic` for an advisory snapshot while claims are partial.
+
+C5 may still appear in legacy checker output until Worker A changes gate
+behavior. That output is compatibility metadata only and does not make C5 a
+current closure row.
 
 ## R6 Closure
 

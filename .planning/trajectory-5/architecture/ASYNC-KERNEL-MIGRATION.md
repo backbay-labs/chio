@@ -1,11 +1,17 @@
 # Trj5 B0 - Async Kernel Migration (architectural prerequisite)
 
-**Status**: cross-lane prerequisite. This is the SMALLEST decomposition cut
+**Status**: cross-lane containment prerequisite. This is the SMALLEST
+decomposition cut
 the synthesis sanctioned. It is owned cross-lane because Lane B (protocol
 realization) cannot wire new primitives without it; Lane C (forcing demo)
 cannot run two kernels in one process without it.
 
-**Concession (explicit)**: this is NOT trust-control extraction; NOT
+**Concession (explicit)**: this is not durable async kernel architecture
+closure. It is containment/integration work that removes the immediate sync-hop
+blocker for Lane B. Full sync-evaluator migration, cancellation/finalization
+proofs after admission/budget/tool dispatch, and durable async architecture are
+future work outside Trajectory 5 closure. This is NOT trust-control extraction;
+NOT
 `chio-core` gravity-well surgery; NOT reqwest 0.12/0.13 unification; NOT
 `serde_yaml`/`serde_yml` retirement; NOT the 36 `&mut self` -> builder
 conversion in full. Those are deferred to trj6. This document carves out
@@ -305,6 +311,10 @@ rollback proceeds as follows:
 
 ## 7. Out-of-Scope (explicit, do not let this expand)
 
+- Full sync-evaluator migration and durable async kernel architecture closure.
+  **Out**: future trajectory.
+- Cancellation/finalization safety proofs after admission, budget, and tool
+  dispatch. **Out**: future trajectory unless owned by runtime branch work.
 - `&mut self` setter -> builder conversion. **Out**: trj6.
 - `chio-cli/src/trust_control/` extraction (~18K LOC). **Out**: trj6.
 - `kernel/mod.rs` 6,757-LOC split into `assembly.rs`, `dispatch.rs`,

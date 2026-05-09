@@ -1,6 +1,6 @@
-# Trajectory 5 integration map
+# Trajectory 5 Closure Contract and Integration Map
 
-Status: R7 planning-boundary corrected; release integration still blocked.
+Status: RW5 planning-boundary corrected; release integration still blocked.
 
 This document is a historical integration map for release work. It is not a
 release ledger and it is not proof that #620 contains the source/evidence
@@ -14,10 +14,26 @@ records, baseline files, and the midpoint security audit at
 honestly partial or absent from #620, this document says so. The integrator
 decides merge order; this document gives them the map.
 
-R6 correction: read the rows below as assurance evidence, not as product
-release claims. The current order is Lane B integration first, Lane A
-assurance addendum second, Lane C canary after Lane B, and #618 packaging last
-from merged `main`.
+RW5 correction: read the rows below as assurance and sequencing evidence, not
+as product release claims. The current order is Lane B integration first, Lane A
+evidence regenerated from the merged Lane B code second, Lane C canary after
+Lane B, and #618 packaging last from merged `main`.
+
+## Closure Contract
+
+Trajectory 5 may close only as one of:
+
+1. An accepted planning/integration map that gives reviewers a security-
+   reviewable sequence.
+2. An accepted assurance and claim matrix that names partial, blocked, and
+   deferred rows honestly.
+
+It may not close as release readiness, tag readiness, package readiness, or
+evidence that future work has landed. Deferred work listed later in this file is
+explicitly non-blocking future work outside current trajectory closure.
+
+The old `docs/release/RELEASE_AUDIT.md` local-go posture is not inherited by
+Trajectory 5. See `RELEASE-AUDIT-NON-INHERITANCE.md`.
 
 ## What source branches report
 
@@ -83,12 +99,13 @@ conformance fixture under `crates/chio-conformance/tests/`:
   disclaimer.
 
 The architectural prerequisite (B0 async-trait migration of
-`ToolServerConnection`, PR #606) landed across 47 impl sites in 31
-files. The sync bridge for the legacy evaluator returns a typed
-`KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime` when it
-detects a current-thread Tokio runtime (cleanup-wave response to
-audit P0-002); full sync-evaluator migration to async is deferred to
-the next trajectory.
+`ToolServerConnection`, PR #606) is containment/integration work, not durable
+async kernel architecture closure. The sync bridge for the legacy evaluator
+returns a typed `KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`
+when it detects a current-thread Tokio runtime (cleanup-wave response to audit
+P0-002). Full sync-evaluator migration, cancellation/finalization coverage, and
+durable async architecture remain later-phase work outside this closure
+contract.
 
 The section 7 bilateral verifier (`bilateral_verifier.rs`, PR #615) was
 honestly downgraded from "partial local verifier subset" to "partial local
@@ -112,10 +129,11 @@ after the audit caught the over-claim of cryptographic verification
 in P0-008) renders the artifacts. The `chio-federation` `bbs-stub`
 cargo feature (renamed from `bbs-stub` per audit P0-009) provides a
 structured selective-disclosure placeholder that is explicitly labeled
-NOT zero-knowledge; real BBS+ is deferred. KB MCP integration (PR #614)
-uses an `mcp-remote` stdio bridge against `:8111/mcp/`; the wrap path
-produces mediation transcripts (not kernel-signed receipts) so C3 is
-honestly labeled PARTIAL in the release map.
+NOT zero-knowledge; real BBS+ is future work outside current trajectory
+closure. C5 selective disclosure is not a closure row. KB MCP integration (PR
+#614) uses an `mcp-remote` stdio bridge against `:8111/mcp/`; the wrap path
+produces mediation transcripts (not kernel-signed receipts) so C3 is honestly
+labeled PARTIAL in the release map.
 
 ## Assurance Reconciliation
 
@@ -204,22 +222,28 @@ The remaining items are integrator-only:
 - **P1-004** (TLA+ negative specs are local-only): documented;
   inverted CI wrapper deferred.
 
-## R4 replacement merge strategy
+## Security-Reviewable Merge Strategy
 
-The old recommended merge sequence is superseded. Do not use it as a release
-train.
+The old recommended merge sequence and any 28-PR autonomous-train framing are
+superseded. Do not use them as release trains or security review units.
 
 Use `R4-MERGE-TOPOLOGY.md` as the current truth. The short form is:
 
 1. #620 is the sole planning owner for `.planning/trajectory-5/**`.
 2. Release-source integration starts with Lane B enforcement on a clean branch.
-3. Lane A assurance evidence merges after branch ownership is clean.
+3. Lane A assurance evidence is regenerated from the merged Lane B code after
+   branch ownership is clean.
 4. #608 and #616 remain active, not superseded, until the threat owner
    collapses or rebases the threat series.
-5. #618 release packaging remains last and must be regenerated from merged
+5. Lane C canary work starts only after Lane B source integration is real.
+6. #618 release packaging remains last and must be regenerated from merged
    `main`.
 
-## Deferred to subsequent trajectory
+## Non-Blocking Future Work Outside Closure
+
+The following items are explicitly outside the current trajectory closure
+contract. They do not have to be erased for Trajectory 5 to close as a planning
+map or assurance matrix, and they must not be used as release readiness:
 
 - Sync evaluator migration to fully-async path (legacy bridge becomes
   obsolete)
@@ -267,12 +291,23 @@ Use `R4-MERGE-TOPOLOGY.md` as the current truth. The short form is:
 | #617 | C | PR branch | feat(release work/C4+C5): receipt-explain bilateral + `chio-federation` `bbs-stub` placeholder |
 | #618 | C | PR branch | feat(release work/C6): v0.1.0-bounded-chiodome release packaging |
 | #619 | A | PR branch | feat(release work/A1): mutation baseline for chio-attest-verify (44.1% measured; target >=80%) |
-| #620 | (planning) | planning branch | Trajectory 5 planning artifacts (lanes A/B/C, ship-bar, kickoff prereqs) |
+| #620 | (planning) | planning branch | Trajectory 5 planning artifacts (lanes A/B/C, assurance matrix, kickoff prereqs) |
 | #621 | A | PR branch | Mutation baseline for chio-guards (78.2% measured; target >=65%) |
 | #622 | A | PR branch | Mutation baseline for chio-anchor (69.4% measured; target >=65%) |
 | #623 | A | PR branch | Mutation baseline for chio-policy (80.2% measured; target >=65%; PARTIAL 314/418) |
 | #624 | A | PR branch | Mutation baseline for chio-weights (68.3% measured; target >=65%) |
 | #625 | A | PR branch | chio-attest-verify: close mutation gap with sigstore negative tests |
 | #626 | A | PR branch | Mutation baseline for chio-kernel-core (73.6% measured; PARTIAL 62/343; target >=65%) |
+
+## RW5 Issue Closure
+
+| Issue | Closure in this document |
+|---|---|
+| RW5-BI-P0-001 | Closure is limited to accepted planning/integration map or assurance matrix. Future work is non-blocking. |
+| RW5-BI-P0-002 | Replaces autonomous-train framing with Lane B, regenerated Lane A, Lane C canary, #618 last. |
+| RW5-BI-P1-003 | C5 is not a closure row; it is future work outside current closure. |
+| RW5-BI-P1-004 | Async migration is containment/integration only; durable async architecture is later work. |
+| RW5-BI-P2-002 | RELEASE_AUDIT local-go posture is explicitly non-inherited. |
+| RW5-BI-P2-003 | Legacy ship-bar names are not active release semantics. |
 
 End of trajectory 5 closeout.

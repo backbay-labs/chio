@@ -576,15 +576,16 @@ IDs current at W3 close.
 
 ---
 
-## C5 - Selective disclosure (deferred boundary)
+## C5 - Selective disclosure (future work outside closure)
 
 **Scope guard (review finding 6):** C5 is deferred to v0.2 in #620. The current
 branch records the release-truth boundary and does not implement or claim
-selective-disclosure, zk, BBS+, BBS, or auditor-view proof support.
+selective-disclosure, zk, BBS+, BBS, or auditor-view proof support. C5 is not a
+current closure row.
 
 ### release work-C5.1 - C5 deferral marker + dep-tree boundary
 
-- **Scope:** Keep C5 out of release claims unless a future implementation branch
+- **Scope:** Keep C5 out of release and closure claims unless a future implementation branch
   adds the crate, feature, dependencies, and fixtures required by the gate.
 - **Files:** `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`;
   `selective-disclosure.md`; `release-bar.md`;
@@ -600,7 +601,8 @@ selective-disclosure, zk, BBS+, BBS, or auditor-view proof support.
    `chio-zk-receipts` / `zk` shape and the current branch state.
 3. **Negative conformance test**: `scripts/tests/check-bounded-ship-bar.test.sh`
    proves a false `evidence_complete` marker fails the gate.
-4. **Audit-doc evidence**: ship-bar diagnostic output reports C5 as PARTIAL.
+4. **Audit-doc evidence**: legacy checker diagnostic output may report C5 as
+   PARTIAL, but that output is compatibility metadata only.
 5. **Banner update**: `release-bar.md` forbids C5 proof claims while deferred.
 
 ---

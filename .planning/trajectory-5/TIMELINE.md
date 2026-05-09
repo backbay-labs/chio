@@ -10,7 +10,7 @@ W1-W3   Lane B integration foundation
         B0 -> B1/B2/B3 -> B4
 
 W3-W5   Lane A assurance addendum
-        mutation, threat, Kani, TLA+, Lean evidence attaches to integrated source
+        mutation, threat, Kani, TLA+, Lean evidence is regenerated from merged Lane B source
 
 W5-W7   Lane C canary demo
         rebase after Lane B, regenerate fixtures from merged main
@@ -28,7 +28,7 @@ branches.
 | Milestone | Owner lane | Exit condition |
 |---|---|---|
 | B-integrated | Lane B | Hot-path primitives integrated with production-call-path conformance evidence; B4 full DSSE PAE conformance is not satisfied by the interim signature-slice fixture alone. |
-| A-assurance-attached | Lane A | Mutation/threat/formal evidence is re-evaluated against the integrated source state. |
+| A-assurance-regenerated | Lane A | Mutation/threat/formal evidence is regenerated against the merged Lane B source state. |
 | C-canary-ran | Lane C | Bounded chiodome canary runs after Lane B and produces pinned fixtures. |
 | package-regenerated | #618 | Release notes and package metadata regenerated from merged `main`. |
 
@@ -39,6 +39,8 @@ branches.
 - If Lane A slips, Lane B can merge, but the assurance matrix remains partial.
 - If Lane C slips, no bounded chiodome canary claim is available.
 - If #618 is not regenerated last, the package status remains blocked.
+- C5 selective disclosure does not slip this timeline because it is future work
+  outside the current closure matrix.
 
 ## Release Status
 

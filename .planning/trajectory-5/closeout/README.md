@@ -1,6 +1,9 @@
 # Trj5 Closeout
 
-This directory holds the per-wave closeout artifacts for trajectory 5 execution. It mirrors the trj4 pattern (`../trajectory-4/closeout/`).
+This directory holds the per-wave closeout artifacts for trajectory 5 execution.
+Closeout means accepted planning/integration map or assurance matrix only. It
+does not mean release readiness, tag authorization, or completion of future
+research rows such as C5 selective disclosure.
 
 **Convention**: each wave produces a `wave-NN-summary.md` recording what landed, what slipped, and which findings transitioned in the close-bar tracker. The summaries are filled during execution; they are not pre-authored.
 
@@ -12,14 +15,17 @@ This directory holds the per-wave closeout artifacts for trajectory 5 execution.
 - `wave-04-summary.md` -- W4 summary. Records B1.6/B2.5/B3.5 negative conformance fixtures, B4.2/B4.3 module landing.
 - `wave-05-summary.md` -- W5 summary. Records Lane C C2 starting against B4 envelopes, C3 KB-MCP wiring start.
 - `wave-06-summary.md` -- W6 summary. Records B4 close (B4.5/B4.6/B4.E), Lane B `.E` Evidence Gate tickets close.
-- `wave-07-summary.md` -- W7 summary. Records Lane C C2.E close, C4/C5 work, A2 / A3 / A5 closing.
-- `wave-08-summary.md` -- W8 summary (integration / ship-bar verification week). Records all three Bars verified; release close ceremony.
+- `wave-07-summary.md` -- W7 summary. Records Lane C C2.E close, C4 canary work, A2 / A3 / A5 closing, and C5 remaining future work outside closure unless a later protocol-owned branch supplies real proof evidence.
+- `wave-08-summary.md` -- W8 summary (integration / assurance-matrix verification week). Records assurance claims verified or partial; no release close ceremony is implied.
 
 The wave numbering above is the canonical execution-week numbering per `TIMELINE.md`. If a wave slips, the corresponding `wave-NN-summary.md` records the slip and the recovery plan.
 
-## Close-bar tracker
+## Assurance tracker
 
-A close-bar tracker analogous to `../trajectory-4/closeout/CLOSE-BAR-TRACKER.md` will be populated as Lane A / B / C tickets close. Until kickoff, the live close-bar truth is the per-lane planning docs files (Lane A / B / C) plus the four `reviews/W3-lane-*-fixes.md` fix logs and `reviews/W4-closeout-matrix.md`.
+The legacy tracker language is replaced by the assurance matrix. Until kickoff,
+the live closeout truth is the per-lane planning docs files (Lane A / B / C),
+`../SHIP-BAR-TRACKER.md` as a legacy-named assurance matrix, and the review
+closure logs. Future work rows do not block current planning/matrix closure.
 
 ## Pointers
 

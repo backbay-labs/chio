@@ -28,9 +28,10 @@ are true on the integrated source branch:
 3. The root bounded package metadata, if present, records a non-pending
    `release_status` and a 40-hex `integrated_merge_sha` under
    `[v0_1_0_bounded_chiodome]`.
-4. C5 selective disclosure is either backed by real evidence or explicitly
-   deferred by
-   `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`.
+4. C5 selective disclosure remains outside the current canary release boundary.
+   The compatibility marker at
+   `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`
+   records the non-claim only.
 
 Until those are true, the only honest wording is that the canary remains
 blocked or partial.
@@ -41,8 +42,7 @@ The only current claim allowed from this branch is:
 
 > The Lane C canary is a planned bounded integration canary. It remains
 > blocked or partial until Lane B source enforcement, canary fixtures, package
-> metadata, and the C5 selective-disclosure boundary are evidenced by the
-> ship-bar gate.
+> metadata, and assurance evidence are regenerated from merged source.
 
 ## Forbidden Current Claims
 
@@ -75,7 +75,7 @@ only the following bounded properties:
 Those future claims still would not imply a 1.0 product, a public network, a
 production federation, or a general release.
 
-## C5 Selective-Disclosure Boundary
+## C5 Selective-Disclosure Non-Claim
 
 C5 is currently **deferred to v0.2** for this branch.
 
@@ -88,9 +88,11 @@ The existing `crates/chio-federation/` crate is a federation crate; its current
 
 The machine-readable source of truth for this boundary is
 `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`.
-`scripts/check-bounded-ship-bar.sh` treats that marker as PARTIAL while C5 is
-deferred and as FAIL if the marker claims evidence completion without real
-implementation and fixture evidence.
+`scripts/check-bounded-ship-bar.sh` may still treat that marker as PARTIAL while
+C5 is deferred because the checker name and row are legacy compatibility
+surfaces. That compatibility output is not a current release or closure row. If
+the marker claims evidence completion without real implementation and fixture
+evidence, the checker must still fail.
 
 ## Non-Claims That Must Survive Release Editing
 
@@ -101,8 +103,8 @@ If release notes are drafted later, these non-claims must remain visible:
 3. Not consensus-grade high availability.
 4. No live web3 activation.
 5. Not a transparency-log artifact.
-6. No selective-disclosure, zk, or BBS proof claim unless the strict gate sees
-   real implementation and proof fixtures.
+6. No selective-disclosure, zk, or BBS proof claim unless a future protocol-owned
+   branch adds real implementation and proof fixtures.
 7. No standards ratification claim.
 8. No mutation, threat, Kani, TLA+, or Lean uplift beyond the measured evidence
    in the relevant audit artifacts.
@@ -118,6 +120,6 @@ bash scripts/check-bounded-ship-bar.sh --diagnostic
 bash scripts/tests/check-bounded-ship-bar.test.sh
 ```
 
-The strict ship-bar command is expected to fail while the branch remains
+The strict compatibility checker is expected to fail while the branch remains
 partial. The diagnostic command is the honest snapshot mode for in-progress
 planning and evidence review.

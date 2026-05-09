@@ -15,17 +15,18 @@ Do not tag `v0.1.0-bounded-chiodome` from the current PR set. Release packaging
 #618 remains last and must be regenerated from merged `main` after upstream
 source and evidence branches land.
 
-R6 correction: Trajectory 5 is not a product release or tag vehicle. It is a
+RW5 correction: Trajectory 5 is not a product release or tag vehicle. It is a
 source-integration and assurance program with this order: Lane B integration
-first, Lane A assurance addendum second, Lane C canary after Lane B, then #618
-packaging only after merged-main regeneration.
+first, Lane A assurance regenerated from the merged Lane B source state second,
+Lane C canary after Lane B, then #618 packaging only after merged-main
+regeneration.
 
 ## Planning Ownership
 
 PR #620 owns all trajectory-5 planning truth:
 
 - `.planning/trajectory-5/**`
-- ship-bar planning ledgers
+- legacy ship-bar planning ledgers, now assurance-matrix compatibility records
 - readiness and closeout coordination docs
 - merge-topology records and simulation logs
 
@@ -49,7 +50,12 @@ Per-crate mutation PRs are narrowed to their own
 `audits/mutation/per-crate-configs/<crate>.toml`. Shared aggregate state,
 the root README mutation banner, and Lane A triage scripts belong to #603.
 
-## R4 Replacement Strategy
+## Security-Reviewable Replacement Strategy
+
+The old 28-PR autonomous train is not a security review unit. A graph that
+merges cleanly is only a conflict result; it is not release readiness. Reviewers
+must be able to inspect one integrated source posture, then regenerated evidence,
+then a canary, then packaging.
 
 1. Merge or keep #620 as the planning truth record. Treat it as planning
    control data, not as a release signal.
@@ -61,7 +67,8 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
    - #611 receipt v2 fail-closed
    - #609 anchor batch async-only
    - #610 DSSE signing foundation
-3. Merge Lane A assurance evidence after Lane B enforcement is real:
+3. Regenerate and merge Lane A assurance evidence after Lane B enforcement is
+   real on the merged source state:
    - #601 and #602 formal evidence
    - #603 mutation aggregate owner
    - #619, #621, #622, #623, #626 per-crate mutation evidence
@@ -70,8 +77,10 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
    sequence #604 -> #608 -> #616 merges cleanly against `origin/main` in local
    simulation. Keep the three branches ordered in that sequence; do not treat
    the older #608 conflict note as current.
-5. Lane C is a canary only until Lane B is merged and evidence is rerun.
-   Rebase #614, #615, and #617 after #610 and #612 land.
+5. Lane C is a canary only after Lane B is merged and evidence is rerun.
+   Rebase #614, #615, and #617 after #610 and #612 land. C5 selective
+   disclosure is not a closure row; it remains future work outside this
+   topology unless a later protocol-owned branch supplies real proof evidence.
 6. #618 release packaging is last. Regenerate release notes, fixtures, and the
    assurance matrix from merged `main`. If package metadata is authored, root
    `releases.toml` `[v0_1_0_bounded_chiodome]` is updated by the release owner
@@ -85,11 +94,11 @@ Worker A's Lane B slice is now explicitly stacked after #620 in this order:
 
 | Step | PR | Head used for simulation | Role | Sequencing note |
 |---:|---|---|---|---|
-| 1 | #620 | `c2c06ec0fc` | planning and ship-bar coordination | Latest observed planning head before this refresh commit. |
+| 1 | #620 | `c2c06ec0fc` | planning and assurance-matrix coordination | Latest observed planning head before this refresh commit. |
 | 2 | #606 | `76865083bb` | async trait foundation | Base for the protocol stack. |
 | 3 | #612 | `63b63dafe5` | single-entry verifier | Merge parent includes #606 and carries the narrowed current-thread runtime diagnostic. |
 | 4 | #611 | `05165c11d4` | receipt v2 fail-closed | Merge parent includes #612 and preserves receipt admission snapshots. |
-| 5 | #609 | `246345f66e` | anchor batch async-only | Merge parent includes #611; CI anchor lint is a separate step so it can coexist with #620 ship-bar wiring. |
+| 5 | #609 | `246345f66e` | anchor batch async-only | Merge parent includes #611; CI anchor lint is a separate step so it can coexist with #620 assurance-checker wiring. |
 
 The required local integration order for this slice is therefore:
 
@@ -179,3 +188,12 @@ the current branch-tip SHAs.
 | R6-P2-003 | Closed. The current checker is `scripts/check-bounded-ship-bar.sh`; stale script names are not part of the load-bearing contract. |
 | R6-P2-007 | Closed. Lane C is a post-Lane-B canary. |
 | R6-P2-009 | Closed. #618 packaging is last and regenerated from merged `main`. |
+
+## RW5 Release-Architecture Closure
+
+| Issue | Status |
+|---|---|
+| RW5-BI-P0-001 | Closed. Closure is planning/integration map or assurance matrix only, not release readiness. |
+| RW5-BI-P0-002 | Closed. The review unit is Lane B integration, regenerated Lane A evidence, Lane C canary, and #618 packaging last. |
+| RW5-BI-P1-003 | Closed. C5 is future work outside the closure topology. |
+| RW5-BI-P2-003 | Closed. `ship-bar` is treated as legacy compatibility naming only. |

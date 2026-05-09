@@ -137,7 +137,7 @@ plays, and whether the demo introduces new code in it.
 | `chio-settle` | `LocalDevnetDeployment` for the on-chain leg | No - consumes existing config |
 | `chio-mcp-adapter` | `chio mcp serve --policy` proxy to KB MCP via `mcp-remote` stdio bridge | No - consumes existing adapter |
 | `chio-cli` | `Mcp::Serve` and `Receipt::Explain` commands | Yes - extended explain path; new snapshot tests |
-| C5 selective disclosure | Deferred auditor-view boundary | No current implementation; `c5-selective-disclosure-status.toml` records v0.2 deferral |
+| C5 selective disclosure | Future work outside current closure | No current implementation; `c5-selective-disclosure-status.toml` records v0.2 deferral for compatibility |
 | `chio-conformance` | Lane B-owned negative conformance fixtures | No - Lane B owns this; Lane C cites it |
 | `examples/chiodome-bilateral` | The demo example crate | Yes - NEW example crate |
 
@@ -238,8 +238,8 @@ without it, the demo could be silently using the sync path and the
 
 ### Selective disclosure envelope (C5 deferred)
 
-C5 is deferred to v0.2 in this branch. The current architecture does not claim
-that `crates/chio-federation` emits a selective-disclosure envelope, does not
+C5 is deferred to v0.2 outside current closure. The current architecture does
+not claim that `crates/chio-federation` emits a selective-disclosure envelope, does not
 claim a `bbs-stub` feature, and does not claim auditor-view proof fixtures.
 
 The normative spec currently points to a `chio-zk-receipts` crate behind a

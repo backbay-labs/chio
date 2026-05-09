@@ -270,8 +270,10 @@ done
 chio receipt explain "fixture" \
     --input-file fixtures/bilateral-cosign-invocation.json > /dev/null
 
-# 6. Optional selective-disclosure auditor view (only if compiled with --features bbs-stub).
-if cargo run -p chiodome-bilateral --features bbs-stub -- --print-selective-disclosure-status \
+# 6. C5 selective disclosure is future work outside current closure.
+# Keep this status check disabled unless a future protocol-owned branch adds
+# the real feature, implementation, and proof fixtures.
+if false && cargo run -p chiodome-bilateral --features bbs-stub -- --print-selective-disclosure-status \
    2>/dev/null | grep -q enabled; then
     cargo run -p chiodome-bilateral --features bbs-stub -- \
         --policy policies/refund-policy.yaml \
@@ -295,7 +297,7 @@ flagship examples (`agent-commerce-network`,
 `examples/EXAMPLE_SURFACE_MATRIX.md` as
 
 > Flagship: `trust serve`, MCP edge, bilateral cosign, anchor
-> inclusion, selective disclosure (gated). Demonstrates the
+> inclusion. Selective disclosure is deferred outside current closure. Demonstrates the
 > Chiodome v0.1 cross-kernel refund slice end-to-end.
 
 ## Bounded-claim discipline (KB MCP integration)

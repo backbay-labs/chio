@@ -1,8 +1,10 @@
-# Machine-readable release-truth boundary for Lane C C5.
+# Machine-readable non-claim boundary for Lane C C5.
 #
-# The ship-bar checker treats deferred_* and blocked_* statuses as PARTIAL.
-# If a future branch changes status to evidence_complete, the checker also
-# requires real implementation and fixture evidence before the row can pass.
+# C5 selective disclosure is future work outside current Trajectory 5 closure.
+# This file remains for legacy checker and review-link compatibility only.
+# If a future branch changes status to evidence_complete, the checker must
+# require real implementation and fixture evidence before any proof claim can
+# pass.
 
 [c5_selective_disclosure]
 status = "deferred_to_v0_2"

@@ -1,12 +1,19 @@
 # Trj5 Scope Lock
 
-R6 correction: scope is ordered Lane B integration first, Lane A assurance
-addendum second, Lane C canary after Lane B, and #618 packaging last. This file
-does not define a product release or authorize a tag.
+RW5 correction: scope is ordered Lane B integration first, Lane A assurance
+regenerated from merged Lane B source second, Lane C canary after Lane B, and
+#618 packaging last. This file does not define a product release, release
+readiness state, or tag authorization.
 
-This file is the IN-SCOPE / OUT-OF-SCOPE catalog for release work. The OUT-OF-SCOPE list is lifted verbatim from `debate/00-SYNTHESIS.md` and elaborated with target trajectory and WHY each item is deferred. The IN-SCOPE catalog maps to per-lane tickets.
+This file is the IN-SCOPE / OUT-OF-SCOPE catalog for integration and assurance
+work. The OUT-OF-SCOPE list is lifted verbatim from `debate/00-SYNTHESIS.md` and
+elaborated with target trajectory and WHY each item is deferred. The IN-SCOPE
+catalog maps to per-lane tickets, but future work listed here is non-blocking
+for current Trajectory 5 closure.
 
-**Tagline**: release work is the **honesty trajectory**. It absorbs trj4 wave plan items and adds Lane C. It does not widen scope.
+**Tagline**: Trajectory 5 is the **honesty trajectory**. It absorbs trj4 wave
+plan items and adds Lane C as an integration canary. It does not widen scope and
+does not declare release readiness.
 
 ## In-scope
 
@@ -43,9 +50,11 @@ Evidence Gate row closes without all three.
 | Two-kernel cross-org bilateral cosigned invocation using existing `crates/chio-federation/src/bilateral.rs`. | federation | release work-C1 |
 | Capability lease + budget bond via `chio-credit` `CREDIT_BOND_ARTIFACT_SCHEMA`. | federation | release work-C2 |
 | Anchored through `crates/chio-anchor::Web3CheckpointStatement` (no new live deployment required). | federation | release work-C3 |
-| Selective-disclosure auditor view behind `bbs-stub` Cargo feature flag. No new spec ratification. | federation | release work-C4 |
-| Wrapped at the user surface by `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Receipts dogfooded through `chio receipt explain`. | cli | release work-C5 |
+| Wrapped at the user surface by `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Receipts dogfooded through `chio receipt explain`. | cli | release work-C4 |
 | `examples/chiodome-bilateral/` end-to-end canary fixture after Lane B integration; optional bounded package metadata under `[v0_1_0_bounded_chiodome]` only when the package owner regenerates from merged `main`. | examples | release work-C6 |
+
+C5 selective disclosure is intentionally absent from the in-scope closure table.
+It remains future work outside current trajectory closure.
 
 ## Out of scope (verbatim from synthesis, with elaboration)
 
@@ -89,7 +98,17 @@ The following items are **explicitly deferred**. Each entry lifts the synthesis 
 
 **Target trajectory**: on-hold (external dependency).
 
-**WHY deferred**: gated on external credentials (Web3 RPC endpoint operator, signing key custody, network fees). Trj5 keeps Lane C's anchor lane bounded -- the demo runs through `crates/chio-anchor::Web3CheckpointStatement` against fixtures, not a live deployment. The honest release tag `v0.1.0-bounded-chiodome` carries the bounded-claim discipline established in v3.18.
+**WHY deferred**: gated on external credentials (Web3 RPC endpoint operator, signing key custody, network fees). Trj5 keeps Lane C's anchor lane bounded -- the demo runs through `crates/chio-anchor::Web3CheckpointStatement` against fixtures, not a live deployment. No Trajectory 5 release tag is authorized by this scope lock.
+
+### C5 selective disclosure auditor view
+
+**Target trajectory**: v0.2 or later protocol-owned work.
+
+**WHY deferred**: the current branch does not carry the normative
+`chio-zk-receipts` crate, default-off `zk` feature, BBS+/AnonCreds dependency
+evidence, proof fixture, or negative fixture. C5 is not a release row and not a
+closure row for Trajectory 5. The status TOML remains only for legacy checker
+compatibility.
 
 ### Mobile attestation production-hardening beyond Wave 6 of trj4 wave plan
 
@@ -105,7 +124,11 @@ The following items are **explicitly deferred**. Each entry lifts the synthesis 
 
 **Target trajectory**: post-trj6.
 
-**WHY deferred**: release work is sized to its three-bar shipping discipline. Adding milestones (M11+ in the trj3-style numbering, or new T-tier slices in the trj4-style) would re-create the seven-lane menu the synthesis explicitly rejects. New milestones wait until release work closes and the substrate's proof-artifact differentiator is real.
+**WHY deferred**: integration work is sized to the assurance matrix. Adding
+milestones (M11+ in the trj3-style numbering, or new T-tier slices in the
+trj4-style) would re-create the seven-lane menu the synthesis explicitly
+rejects. New milestones wait until current planning/integration closure is
+accepted and the substrate's proof-artifact differentiator is real.
 
 ## Synthesis-cited anti-patterns
 
@@ -155,9 +178,9 @@ rewrites, Lean refinement) totaling 50+ tickets after Wave 3 expansion.
 Adding a sixth sub-lane for proptest equivalence-tests at
 10k/PR + 1M/nightly is real engineering work (CI matrix, infrastructure
 spend, run-time budget) and risks plateau on the higher-priority Lane A
-work. The hosted-vs-portable equivalence claim is currently
-informational; no synthesis ship-bar depends on it. Deferral does not
-change any ship-bar.
+work. The hosted-vs-portable equivalence claim is currently informational; no
+active assurance-matrix claim depends on it. Deferral does not change current
+closure.
 
 The trj6 lane plan picks up TRJ4-019 as a first-week ticket.
 
@@ -165,7 +188,7 @@ The trj6 lane plan picks up TRJ4-019 as a first-week ticket.
 
 Per the synthesis closing line: "Chio's differentiator is the proof artifact. Until the proof artifact is real, every trajectory after trj4 is the same trajectory wearing a different name."
 
-Trj5's scope is locked to the claim-by-claim assurance matrix in
+Trj5's scope is locked to the claim-by-claim assurance matrix in the legacy-named
 `SHIP-BAR-TRACKER.md` plus the architectural prerequisite needed to wire Lane B.
-Anything that does not directly serve those claims is deferred. That is the
-discipline that makes this work different from trj4.
+Anything that does not directly serve those claims is deferred outside current
+closure. That is the discipline that makes this work different from trj4.

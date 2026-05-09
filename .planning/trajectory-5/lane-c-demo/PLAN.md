@@ -43,8 +43,7 @@ itself create a release claim.
   memory; written to fixtures), and executes one refund.
 - The fixtures directory is empty after scenario reset and populated
   with the five current artifacts after a successful run. C5 selective
-  disclosure is deferred unless the status marker is changed and the gate
-  verifies real proof evidence.
+  disclosure is not one of those artifacts and stays outside current closure.
 - Reviewer can read the scenario in `examples/chiodome-bilateral/README.md`
   and reproduce it with `./smoke.sh` from a clean checkout.
 
@@ -260,12 +259,12 @@ W3.
 
 ---
 
-## C5. Selective disclosure auditor view (deferred boundary)
+## C5. Selective disclosure auditor view (future work outside closure)
 
 ### Scope
 
 - C5 is deferred to v0.2 in this branch. The current canary plan does not
-  implement, ship, or claim a selective-disclosure auditor view.
+  implement, ship, claim, or close a selective-disclosure auditor view.
 - The normative spec currently names `crates/chio-zk-receipts/` behind a
   default-off `zk` feature. This branch does not provide that crate or feature.
 - `crates/chio-federation/` exists as a federation crate, but its current
@@ -273,12 +272,13 @@ W3.
   dependencies.
 - The machine-readable boundary is
   `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`.
-  Deferred status is PARTIAL under `scripts/check-bounded-ship-bar.sh`.
+  Deferred status may still appear as PARTIAL under the legacy checker, but that
+  compatibility output is not a current closure row.
 
 ### Acceptance
 
-- `scripts/check-bounded-ship-bar.sh` reports C5 as PARTIAL while the marker
-  records `status = "deferred_to_v0_2"`.
+- `scripts/check-bounded-ship-bar.sh` may report C5 as PARTIAL while the marker
+  records `status = "deferred_to_v0_2"` until Worker A updates checker behavior.
 - If a future branch changes C5 to `evidence_complete`, the gate fails unless
   the implementation crate, feature, proof fixture, negative fixture, and
   `release_claim_allowed = "yes"` are all present.
@@ -288,8 +288,8 @@ W3.
 ### Evidence
 
 - `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`
-  records the current deferral.
-- `scripts/check-bounded-ship-bar.sh` enforces the boundary.
+  records the current deferral for compatibility.
+- Future C5 evidence is outside the current closure contract.
 
 ### Lane A/B dependencies
 
@@ -312,19 +312,21 @@ W4.
 - `release-bar.md` is a release-truth boundary for future release editing, not
   a GitHub release body.
 - #618 packaging remains last and must regenerate any release artifacts from
-  merged `main` after Lane B, Lane A evidence, Lane C canary evidence, and C5
-  status are settled.
+  merged `main` after Lane B, regenerated Lane A evidence, and Lane C canary
+  evidence are settled. C5 status is not a packaging precondition for the
+  current five-artifact canary.
 
 ### Acceptance
 
 - No release claim is made by #620.
-- Future packaging remains blocked until the ship-bar gate sees complete
+- Future packaging remains blocked until the assurance checker sees complete
   canary evidence and package metadata from merged source.
 
 ### Evidence
 
 - `release-bar.md` records the current non-claim boundary.
-- `scripts/check-bounded-ship-bar.sh` reports the current evidence state.
+- `scripts/check-bounded-ship-bar.sh` reports the current evidence state under
+  its legacy compatibility name.
 
 ### Lane A/B dependencies
 
@@ -351,7 +353,7 @@ W4.
 | C2 cosign | L+L (6 tickets; consumes Lane B B4 for signing surface) | Medium (depends on B4 close; verifier work + architecture cut) |
 | C3 KB MCP | M+L (4 tickets; uses mcp-remote stdio bridge) | Low-Medium (review finding 2 resolved via bridge; HushSpec YAML simpler than fictional schema) |
 | C4 receipt explain | L+S (2 tickets; bumped per review finding 9) | Low (extends existing explain function; bilateral chain walk is the new work) |
-| C5 selective-disclosure boundary | XS now; future scope deferred | Deferred to v0.2 unless real implementation and fixtures land |
+| C5 selective-disclosure boundary | Future work outside current closure | Deferred to v0.2 unless real implementation and fixtures land |
 | C6 packaging boundary | XS now; future release owner scope | Blocked until integrated evidence exists |
 
 ### Forcing-function gates between Lanes
@@ -361,7 +363,7 @@ in-progress Lane B work (R1 §6.2). Continuous CI workflow
 `chiodome-demo-continuous.yml` (release work-C6.3, review finding 10) runs the
 smoke nightly on `main` and on every push to Lane B paths so
 partial-enforcement bugs surface continuously, not at the worst
-possible time. Lane C will not tag at C6 if Lane B's four negative
+possible time. Lane C will not package at C6 if Lane B's four negative
 conformance fixtures (B1.6, B2.5, B3.5, B4.x) are not green or if
 the continuous workflow has not been green for 7 consecutive
 nights.

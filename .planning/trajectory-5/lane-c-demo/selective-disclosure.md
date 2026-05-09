@@ -1,10 +1,11 @@
 # C5 Selective-Disclosure Boundary
 
-Current status: **DEFERRED TO v0.2**.
+Current status: **FUTURE WORK OUTSIDE CURRENT CLOSURE**.
 
 This branch does not implement, ship, or claim a selective-disclosure auditor
 view. It records the boundary so future release work cannot accidentally turn a
-research/spec direction into a product, zk, BBS+, or proof claim.
+research/spec direction into a product, zk, BBS+, proof claim, or Trajectory 5
+closure requirement.
 
 ## Current Source Truth
 
@@ -25,7 +26,8 @@ The current repo state on this branch does not match that implementation shape:
    `examples/chiodome-bilateral/fixtures/auditor-view/`.
 5. No conformance fixture proves unauthorized selective disclosure rejection.
 
-Therefore C5 is not part of the current bounded canary evidence set.
+Therefore C5 is not part of the current bounded canary evidence set and not part
+of the current closure matrix.
 
 ## Machine-Readable Marker
 
@@ -35,19 +37,21 @@ The status marker is:
 .planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml
 ```
 
-The current marker records `status = "deferred_to_v0_2"`. The strict
-ship-bar gate reports that as PARTIAL, not MET. If a future branch changes the
+The current marker records `status = "deferred_to_v0_2"`. Legacy checker output
+may report that as PARTIAL, not MET, until Worker A updates the gate contract.
+That output is compatibility metadata only. If a future branch changes the
 marker to an evidence-complete status without adding the implementation crate,
-feature, and proof fixtures, the gate reports a release-truth failure.
+feature, and proof fixtures, the checker reports a release-truth failure.
 
 ## Allowed Current Wording
 
 Allowed wording:
 
-> C5 selective disclosure is deferred to v0.2. The current canary may ship only
-> as a five-artifact bundle with no auditor-view proof, no zk claim, and no
+> C5 selective disclosure is deferred to v0.2. The current canary may proceed
+> only as a five-artifact bundle with no auditor-view proof, no zk claim, and no
 > BBS+ proof claim unless a future evidence branch adds the missing
-> implementation and fixtures.
+> implementation and fixtures. This C5 deferral does not block Trajectory 5
+> closure as an accepted planning/integration map or assurance matrix.
 
 ## Forbidden Current Wording
 
@@ -75,4 +79,5 @@ following:
 5. Updated marker values in
    `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`.
 
-Until then, C5 remains deferred and any release-facing artifact must say so.
+Until then, C5 remains deferred outside current closure and any release-facing
+artifact must say so.

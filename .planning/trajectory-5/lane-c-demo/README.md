@@ -19,7 +19,8 @@ ship, or authorize `v0.1.0-bounded-chiodome`.
 Concretely it is the slice the Vision Strategist named "Chiodome v0.1
 Cross-Kernel Refund" (`debate/06-vision-strategist-chiodome.md` section 2):
 two kernels, one cosigned invocation, one bonded settlement, one
-selective-disclosure auditor view.
+selective-disclosure auditor view. That last phrase is historical strategy
+input only; C5 selective disclosure is future work outside current closure.
 
 ## Why Lane C is the forcing function for Lanes A and B
 
@@ -63,8 +64,8 @@ enforcement is actually wired:
 Lane A is independent: it is the floor work (mutation kill, threat
 coverage, Kani harnesses, TLA+ rewrites, Lean refinement). Lane C does
 not consume Lane A directly, but Lane A's evidence quality is what
-makes the `v0.1.0-bounded-chiodome` release credible. If the floor
-banner still reads 31% kill, the bounded-claim language has to
+makes the bounded canary credible. If the floor banner still reads 31%
+kill, the bounded-claim language has to
 acknowledge it (release-bar.md).
 
 The forcing function relationship is therefore:
@@ -93,8 +94,9 @@ walk-through. For the same refund the planned example emits, in order:
 4. The `chio.bilateral-cosign-invocation.v1` DSSE Statement
    (`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6)
 5. The `Web3CheckpointStatement` from `chio-anchor` plus inclusion proof
-6. C5 selective disclosure is deferred to v0.2 unless a future branch adds the
-   implementation and proof fixtures required by the ship-bar gate.
+
+C5 selective disclosure is not part of the current canary artifact set. It is
+future work outside the closure matrix.
 
 The current branch does not claim those fixtures exist. When implemented, each
 non-deferred artifact must be committed to `examples/chiodome-bilateral/fixtures/`
@@ -158,17 +160,16 @@ If Lane B slips beyond W4, Lane C slips with it.
 | W4 | C2 (cosign verifier) | Consume Lane B B4's `bilateral_dsse.rs` envelope; ship the §7 partial local verifier subset with the 16-case negative fixture set; capability lease binding via `chio-credit`; anchor inclusion proof emission; orchestrator wiring | Lane B B4's signing surface is exercised end-to-end; lease-expiration enforcement (B1) gets exercised under both happy and deny path; receipt-v2 fail-closed (B2) drives subject digest validity; anchor-batch async-only (B3) drives §7 step 16 |
 | W4 | C3 (KB MCP) | `chio mcp serve --policy ... -- npx -y mcp-remote http://localhost:8111/mcp/` wraps the HTTP KB MCP via the stdio bridge; HushSpec policy YAML; receipts written to `examples/chiodome-bilateral/fixtures/` per call; cross-org refund + over-cap deny scenario | Validates Lane B's receipt-v2-on-the-hot-path enforcement (B2.5); validates the chiodos-ladder cap (over-cap deny) |
 | W4 | C4 (receipt explain) | `chio receipt explain` walks the bilateral chain (parent -> step -> dual-signed -> envelope -> anchor); doc page; snapshot tests | T1.6 (`audits/T1.6-chio-explain.md`) reopened row in trj4 closes |
-| W5 | C5 selective-disclosure boundary | Deferred to v0.2 in this branch. Future work must follow `c5-selective-disclosure-status.toml` and the normative spec before any auditor-view proof claim. | Prevents product, zk, BBS+, BBS, or proof claims without evidence |
+| W5 | C5 selective-disclosure boundary | Deferred to v0.2 outside current closure. Future work must follow `c5-selective-disclosure-status.toml` and the normative spec before any auditor-view proof claim. | Prevents product, zk, BBS+, BBS, or proof claims without evidence |
 | W5 | C6 packaging boundary | #620 records release-truth boundaries only. Tagging, release notes, tarballs, and required checks belong to a later packaging owner after merged-source evidence exists. | Prevents planning docs from becoming release claims |
 
 ## Acceptance
 
-Lane C closes when all of:
+Lane C canary assurance moves out of partial status when all of:
 
 1. `examples/chiodome-bilateral/smoke.sh` returns 0 in CI on
    `make ci-demo`. The smoke runs the full bilateral path end-to-end,
-   produces the five current artifacts (C5 is deferred unless a future branch
-   adds evidence and updates the marker),
+   produces the five current artifacts. C5 is not one of those artifacts,
    and verifies them.
 2. Each of the produced artifacts is committed under
    `examples/chiodome-bilateral/fixtures/<scenario>/` as canonical
@@ -180,21 +181,18 @@ Lane C closes when all of:
    expected `decision`, `parents`, and (for v2 receipts) the
    `signature_ok` flag, and surfaces `policy.verdict_disagreement`
    on the deny fixture.
-4. C5 remains deferred unless `c5-selective-disclosure-status.toml` records
-   evidence completion and the ship-bar gate verifies the implementation and
-   fixtures.
-5. `release-bar.md` remains a release-truth boundary, not release notes.
-6. Lane B's four negative conformance fixtures (B1.6, B2.5, B3.5,
+4. `release-bar.md` remains a release-truth boundary, not release notes.
+5. Lane B's four negative conformance fixtures (B1.6, B2.5, B3.5,
    B4.x) all reference the demo's `examples/chiodome-bilateral/`
    paths in their per-test fixtures, so removing the Lane B
    enforcement breaks Lane C's smoke as a second-order effect.
-7. The continuous CI workflow `chiodome-demo-continuous.yml`
+6. The continuous CI workflow `chiodome-demo-continuous.yml`
    (release work-C6.3) has been green for 7 consecutive nights before the
    canary can move out of partial status.
 
-When all seven are met on an integrated branch, `SHIP-BAR-TRACKER.md` Claim C
-can move out of PARTIAL. Until then, it stays PARTIAL with the missing condition
-called out in the per-week summary.
+When all six are met on an integrated branch, the legacy-named
+`SHIP-BAR-TRACKER.md` Claim C can move out of PARTIAL. Until then, it stays
+PARTIAL with the missing condition called out in the per-week summary.
 
 If condition 6 is not met, the demo is decoupled from the substrate
 it is supposed to validate, and Lane C's forcing-function purpose
@@ -210,5 +208,6 @@ recreate it.
 - `kb-mcp-integration.md` - `chio mcp serve --policy` wrapping the
   local KB MCP stack
 - `selective-disclosure.md` - C5 deferral and future evidence boundary
-- `c5-selective-disclosure-status.toml` - machine-readable C5 status marker
+- `c5-selective-disclosure-status.toml` - machine-readable C5 status marker for
+  legacy checker compatibility
 - `release-bar.md` - release-truth boundary for future packaging

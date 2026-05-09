@@ -13,7 +13,7 @@ does not authorize `v0.1.0-bounded-chiodome`.
 - [x] #618 release packaging remains last and must be regenerated from merged
   `main`.
 - [x] The old aggregate ship-bar wording is superseded by the claim-by-claim
-  assurance matrix in `SHIP-BAR-TRACKER.md`.
+  assurance matrix in the legacy-named `SHIP-BAR-TRACKER.md`.
 - [x] Release status is normalized to the optional
   `releases.toml` `[v0_1_0_bounded_chiodome].release_status` namespace, but PR
   #620 does not author that root package truth.
@@ -43,7 +43,8 @@ executable release or assurance gate.
   planning consistency and the root release/config boundary. It does not check
   `tickets.md`.
 - [x] `scripts/check-bounded-ship-bar.sh` exists. The filename is kept for
-  compatibility; the script now checks assurance claims.
+  compatibility; the script now checks assurance claims and is not a release
+  readiness gate.
 - [x] `scripts/tests/check-bounded-ship-bar.test.sh` covers strict and diagnostic
   behavior.
 - [x] `.github/workflows/ci.yml` invokes

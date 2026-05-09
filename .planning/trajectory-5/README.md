@@ -1,22 +1,25 @@
 # Trajectory 5 Planning
 
-**Status**: R6 release-architecture correction applied. PR #620 is the
+**Status**: RW5 release-architecture correction applied. PR #620 is the
 planning-truth owner for `.planning/trajectory-5/**`; it is not a product
 release, release package, or tag vehicle.
 
-Trajectory 5 is an assurance and integration program. The corrected execution
+Trajectory 5 may close only as an accepted planning/integration map or assurance
+matrix. It cannot close as release readiness, tag readiness, or proof that
+future work has been completed. The corrected security-reviewable execution
 order is:
 
 1. **Lane B integration first**: make the spec hot path real in source.
-2. **Lane A assurance addendum second**: attach mutation, threat, Kani, TLA+,
-   and Lean evidence to the integrated source state.
+2. **Lane A assurance addendum second**: regenerate mutation, threat, Kani,
+   TLA+, and Lean evidence from the merged Lane B source state.
 3. **Lane C canary demo after Lane B**: prove composition only after the Lane B
    enforcement stack exists on merged source.
 4. **#618 packaging last**: regenerate any bounded chiodome package from
    merged `main`, not from the current open PR set.
 
-The prior "one ship-bar visible from outside" language is superseded. The live
-contract is the claim-by-claim assurance matrix in `SHIP-BAR-TRACKER.md`.
+The prior "one ship-bar visible from outside" language is superseded. The active
+contract is the claim-by-claim assurance matrix in `SHIP-BAR-TRACKER.md`; that
+filename is retained only because existing scripts and review links require it.
 
 ## What PR #620 Owns
 
@@ -41,12 +44,25 @@ PR #620 does not own:
 | Claim | Lane | Purpose | Current posture |
 |---|---|---|---|
 | B | Lane B hot-path enforcement | Single-entry verifier, receipt v2 fail-closed, anchor-batch async-only, DSSE bilateral signing. | Must integrate first from a clean source branch. |
-| A | Lane A assurance addendum | Mutation, threat, Kani, TLA+, and Lean evidence. | Attaches after source ownership is clean; partial rows stay partial. |
+| A | Lane A assurance addendum | Mutation, threat, Kani, TLA+, and Lean evidence. | Regenerated from merged Lane B code; partial rows stay partial. |
 | C | Lane C canary demo | Bounded chiodome end-to-end composition fixture. | Canary only; downstream of Lane B. |
 
-The assurance gate is `scripts/check-bounded-ship-bar.sh`. The filename is kept
-for compatibility, but the script validates the matrix above, not a release
-claim.
+The assurance checker is `scripts/check-bounded-ship-bar.sh`. The filename is
+kept for compatibility, but the script validates assurance evidence, not release
+readiness. Any legacy C5 output from that checker is compatibility metadata only;
+C5 selective disclosure is future work outside the current closure matrix.
+
+## Release-Audit Non-Inheritance
+
+`docs/release/RELEASE_AUDIT.md` records an older repo-local go/no-go decision
+for a bounded release candidate. Trajectory 5 does not inherit that posture.
+For this trajectory, local-go is false: Lane B must integrate first, Lane A
+evidence must be regenerated from merged code, Lane C is only a canary after
+Lane B, and #618 packaging stays pending-upstream-merges until a later package
+owner regenerates from `main`.
+
+The branch-scoped non-inheritance rule is recorded in
+`RELEASE-AUDIT-NON-INHERITANCE.md`.
 
 ## Release-Key Namespace
 
@@ -90,7 +106,7 @@ ticket file exists.
 | File | Purpose |
 |---|---|
 | `R4-MERGE-TOPOLOGY.md` | Current merge topology and replacement strategy. |
-| `SHIP-BAR-TRACKER.md` | Claim-by-claim assurance matrix. |
+| `SHIP-BAR-TRACKER.md` | Legacy filename for the claim-by-claim assurance matrix. |
 | `EXECUTION-BOARD.md` | Planning board; not an executable release gate. |
 | `SCOPE-LOCK.md` | In-scope and deferred work catalog. |
 | `TIMELINE.md` | Corrected sequencing: Lane B first, Lane A addendum, Lane C canary. |
@@ -98,6 +114,7 @@ ticket file exists.
 | `OWNERS.toml` | Owner-class and coordination metadata. |
 | `READINESS.md` | Historical readiness summary plus corrected release-truth note. |
 | `CLOSEOUT.md` | Historical closeout map and integration debt. |
+| `RELEASE-AUDIT-NON-INHERITANCE.md` | Branch-scoped rule preventing old local-go release posture from applying to Trajectory 5. |
 | `lane-a-floor/tickets.md` | Lane A planning tickets. |
 | `lane-b-wiring/tickets.md` | Lane B planning tickets. |
 | `lane-c-demo/tickets.md` | Lane C planning tickets. |
@@ -113,7 +130,8 @@ ticket file exists.
   bilateral verifier coverage, or kernel-signed KB MCP receipts while those
   rows remain partial.
 
-## R6 Closure
+## RW5 Closure
 
-This pass closes R6-P0-001, R6-P0-003, R6-P0-004, R6-P1-005,
-R6-P2-001, R6-P2-002, R6-P2-003, R6-P2-007, and R6-P2-009 for PR #620.
+This pass closes RW5-BI-P0-001, RW5-BI-P0-002, RW5-BI-P1-003,
+RW5-BI-P1-004, RW5-BI-P2-002, and RW5-BI-P2-003 for PR #620 prose. The earlier
+R6 issue closures remain recorded in the historical files.
