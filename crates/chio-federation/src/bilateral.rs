@@ -465,6 +465,15 @@ pub struct BilateralCoSignArtifacts {
 /// takes the origin kernel private key to produce the DSSE Org A signature.
 /// Production tool-host paths must route that DSSE signature through an
 /// origin-kernel cosigner before making this the default hot path.
+///
+/// Verifier boundary: this helper emits the extensionless
+/// `sign_dsse_envelope` profile. That artifact verifies at the low-level
+/// DSSE signature-slice layer, but it is not accepted by
+/// `verify_bilateral_cosign_invocation` because the canonical verifier
+/// requires `policy_evaluation_summary` and `capability_lease_ref`. Use
+/// [`execute_local_bilateral_invocation_fixture`] or
+/// [`crate::bilateral_dsse::sign_dsse_envelope_full`] when the artifact
+/// must be accepted by the canonical verifier.
 #[allow(clippy::too_many_arguments)]
 pub fn co_sign_with_origin_full(
     origin_kernel_id: &str,
