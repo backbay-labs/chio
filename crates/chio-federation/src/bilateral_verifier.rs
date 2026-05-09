@@ -2,10 +2,10 @@
 //! signature-slice profile produced by
 //! [`crate::bilateral_dsse::sign_dsse_envelope_full`].
 //!
-//! ## P0-007 honesty downgrade (audit 2026-05-08)
+//! ## Partial-verifier scope
 //!
 //! This module previously self-described as a "full verifier" and
-//! implied full §7 conformance. Per the 2026-05-08 audit, the
+//! implied full §7 conformance. The
 //! implementation does not yet cover the full predicate schema:
 //!
 //!   - `BilateralPredicate` is intentionally not the strict CHIODOS
@@ -17,16 +17,13 @@
 //!     Statement JSON with `dsse.malformed` rather than the spec's
 //!     `statement.malformed`.
 //!   - The receipt digest binding shape was wrong in an earlier
-//!     revision (P0-004; fixed alongside this label change in
-//!     `bilateral_dsse::build_statement`).
+//!     revision, now fixed in `bilateral_dsse::build_statement`.
 //!
-//! Per the audit's guidance ("partial labels are acceptable when
-//! honest"), this verifier is now labeled as a **partial local
-//! verifier**: it implements the structural / cryptographic core
+//! This verifier is labeled as a **partial local verifier**: it
+//! implements the structural / cryptographic core
 //! plus a meaningful subset of the §7 step list against the local
-//! signature-slice profile. Strict CHIODOS predicate completion is
-//! deferred to TRJ6 (see `dsse-bilateral-signing.md` "TRJ6 schema
-//! completion" and the PR description).
+//! signature-slice profile. Strict CHIODOS predicate completion belongs
+//! in a separate predicate-profile implementation.
 //!
 //! Receipts that surface verifier output should NOT advertise full
 //! §7 conformance based on this implementation alone.
@@ -42,7 +39,7 @@
 //! * [`PinnedEpoch`] - verifier's wall clock + epoch height.
 //! * [`VerifierConfig`] - bundles the trait objects + epoch.
 //! * [`verify_bilateral_cosign_invocation`] - runs the partial
-//!   local verifier (not full §7 conformance pending TRJ6).
+//!   local verifier (not full §7 conformance pending strict predicate-profile completion).
 //! * [`VerifiedBilateralCoSignInvocation`] - successful verifier output
 //!   (mirrors §7 step 17 for the steps this implementation covers).
 //! * [`VerifierError`] - fail-closed error codes mapping 1:1 to spec
@@ -138,7 +135,7 @@ pub enum VerifierError {
     /// predicate's envelope lacks the declared quorum's signatures.
     #[error("consistency.quorum_underpopulated: {0}")]
     ConsistencyQuorumUnderpopulated(String),
-    /// P0-006 fix (audit 2026-05-08): `governance.unknown_action_class`.
+    /// Fail-closed action-class invariant: `governance.unknown_action_class`.
     /// The predicate's `tool_name` is not registered in the verifier's
     /// `action_classes` table. The pre-fix verifier silently fell back
     /// to `Routine` (no governance receipt required) when the table
@@ -417,7 +414,7 @@ pub enum ActionClassKind {
     ReceiptBacked,
 }
 
-/// P0-006 fix (audit 2026-05-08): policy controlling step 15's
+/// Fail-closed action-class invariant: policy controlling step 15's
 /// reaction to an unknown `tool_name`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UnknownActionClassPolicy {
@@ -448,11 +445,10 @@ pub struct VerifierConfig<'a> {
     /// this with the predicate's `tool_name` to decide whether
     /// `governance_receipt_ref` is required.
     pub action_classes: BTreeMap<String, ActionClassKind>,
-    /// P0-006 fix (audit 2026-05-08): controls how step 15 reacts
+    /// Fail-closed action-class invariant: controls how step 15 reacts
     /// to a `tool_name` that is not present in `action_classes`.
     ///
-    /// - [`UnknownActionClassPolicy::Reject`] (default per the
-    ///   audit): the verifier returns
+    /// - [`UnknownActionClassPolicy::Reject`] (default): the verifier returns
     ///   [`VerifierError::UnknownActionClass`] so a misspelled or
     ///   missing registration cannot silently downgrade a
     ///   receipt-backed class to `Routine`.
@@ -489,13 +485,13 @@ pub struct VerifiedBilateralCoSignInvocation {
 /// `VerifierError` variant whose `.code()` matches the spec §7.1
 /// canonical string verbatim.
 ///
-/// **P0-007 honesty downgrade (audit 2026-05-08)**: this is a partial
+/// **Partial-verifier scope**: this is a partial
 /// local verifier. It implements the structural / cryptographic core
 /// plus a meaningful subset of the §7 step list but is not full §7
 /// conformance: predicate schema fields are missing (e.g.
 /// `tool_args_hash`) and the `statement.malformed` vs
 /// `dsse.malformed` mapping is approximate. Full schema completion
-/// is deferred to TRJ6.
+/// belongs in a separate strict predicate-profile implementation.
 pub fn verify_bilateral_cosign_invocation(
     envelope: &DsseEnvelope,
     config: &VerifierConfig<'_>,
@@ -524,7 +520,7 @@ pub fn verify_bilateral_cosign_invocation(
             statement.statement_type, STATEMENT_TYPE_V1
         )));
     }
-    // P0-005 fix (audit 2026-05-08): the bilateral envelope profile
+    // Single-subject invariant: the bilateral envelope profile
     // binds exactly ONE subject (the receipt body). The pre-fix
     // verifier only rejected the empty-list case, so a multi-subject
     // envelope was accepted and `subject[0]` alone was bound. A
@@ -555,10 +551,10 @@ pub fn verify_bilateral_cosign_invocation(
     let pred = &statement.predicate;
 
     // ---- Step 7: subject digest = sha256(canonical_json(resolve_receipt.body()))
-    // P0-004 fix (audit 2026-05-08): the subject digest binds the
+    // Subject-digest invariant: the subject digest binds the
     // receipt BODY (`ChioReceiptBody`), not the full signed wrapper.
     // The producer-side `bilateral_dsse::build_statement` was fixed
-    // in #610 to hash the body; this verifier path must hash the
+    // to hash the body; this verifier path must hash the
     // same input, otherwise the §7 step-7 check rejects every
     // freshly-signed envelope.
     let resolved_receipt = config
@@ -753,7 +749,7 @@ pub fn verify_bilateral_cosign_invocation(
             resolved_lease.expires_at_unix_ms, config.pinned_epoch.now_unix_ms
         )));
     }
-    // Scope-digest binding (codex P2 follow-up on PR #615): for a
+    // Scope-digest binding: for a
     // scoped capability lease the predicate's `scope_digest` and the
     // registry record's `scope_digest_hex` must BOTH be present and
     // agree. Treating one-sided presence as "skip validation" lets an
@@ -798,7 +794,7 @@ pub fn verify_bilateral_cosign_invocation(
 
     // ---- Step 15: governance receipt for receipt-backed classes -------
     //
-    // P0-006 fix (audit 2026-05-08): an unknown `tool_name` previously
+    // Fail-closed action-class invariant: an unknown `tool_name` previously
     // silently fell back to `Routine`, which is fail-OPEN for any
     // receipt-backed class that was misspelled or omitted from the
     // registry. The default policy now rejects unknown tools; legacy
@@ -1114,7 +1110,7 @@ mod tests {
         revocation_oracle: &'a dyn RevocationOracle,
         now_ms: u64,
     ) -> VerifierConfig<'a> {
-        // R3W4 P1-002 fix: the helper now returns the strict default
+        // Strict-default helper: the helper now returns the strict default
         // (`UnknownActionClassPolicy::Reject`) and pre-registers the
         // tool exercised by `fixture` (`file_read`) as `Routine`. The
         // happy-path test must pass under the production-shape policy
@@ -1185,7 +1181,7 @@ mod tests {
         assert_eq!(err.code(), "subject.digest_mismatch");
     }
 
-    /// P0-005 (audit 2026-05-08): the §7 verifier must reject a multi-subject
+    /// Single-subject invariant: the §7 verifier must reject a multi-subject
     /// envelope structurally (mirror of the
     /// `bilateral_dsse::verify_dsse_envelope` check). Splices a second
     /// subject digest into a freshly-signed envelope and asserts the
@@ -1371,7 +1367,7 @@ mod tests {
 
     #[test]
     fn step_15_unknown_action_class_rejected_under_strict_policy() {
-        // P0-006 fix (audit 2026-05-08): the pre-fix verifier silently
+        // Fail-closed action-class invariant: the pre-fix verifier silently
         // fell back to `Routine` for any tool name not present in
         // `action_classes`, fail-OPEN for receipt-backed classes
         // misspelled or omitted from the registry. The strict default
@@ -1394,7 +1390,7 @@ mod tests {
         );
         // Strict policy: any unregistered tool is rejected. The
         // `action_classes` table is intentionally cleared so the
-        // predicate's `tool_name` cannot resolve. (The R3W4 helper
+        // predicate's `tool_name` cannot resolve. (The shared helper
         // pre-registers `file_read` for the happy path; this negative
         // test removes that registration.)
         cfg.unknown_action_class_policy = UnknownActionClassPolicy::Reject;
@@ -1691,8 +1687,8 @@ mod tests {
         // The legacy policy (DefaultRoutine) is retained for explicit
         // opt-in by integrators whose registry is incomplete during
         // bootstrap. It must continue to pass when no governance
-        // receipt is required (Routine class). Renamed in R3W4
-        // P1-002 to make clear this is the legacy fallback path,
+        // receipt is required (Routine class). Named to make clear
+        // this is the legacy fallback path,
         // distinct from the strict happy path
         // (`happy_path_passes_partial_local_verifier`).
         let kp_a = Keypair::generate();

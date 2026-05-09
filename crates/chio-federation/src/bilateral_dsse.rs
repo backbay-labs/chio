@@ -476,7 +476,7 @@ pub fn build_predicate_full(
 
 /// Build the in-toto Statement carrying the bilateral predicate.
 ///
-/// P0-004 fix (audit 2026-05-08): the subject digest binds the
+/// Subject-digest invariant: the subject digest binds the
 /// receipt BODY (`ChioReceiptBody`), not the full signed wrapper.
 /// An earlier revision hashed the full `ChioReceipt` (including the
 /// envelope's `signature` field), which made the verifier's "resolve
@@ -662,7 +662,7 @@ pub fn verify_dsse_envelope(
     }
     validate_signature_slice_predicate(&statement.predicate)?;
 
-    // P0-005 fix (audit 2026-05-08): the bilateral envelope profile
+    // Single-subject invariant: the bilateral envelope profile
     // binds exactly ONE subject (the receipt body). The pre-fix
     // verifier only rejected the empty-list case, so a multi-subject
     // envelope was accepted and only `subject[0]` was bound. A
@@ -951,7 +951,7 @@ mod tests {
 
     #[test]
     fn keyid_is_sha256_of_raw_ed25519_public_key_bytes() {
-        // P0-003 fix (audit 2026-05-08): the spec's keyid contract is
+        // Key-identifier invariant: the spec's keyid contract is
         // SHA-256 of RAW key material (Ed25519 = 32 verifying-key
         // bytes). An earlier revision hashed `to_hex().as_bytes()`
         // which silently broke cross-implementation interop. This
