@@ -1,0 +1,2582 @@
+[
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::is_empty",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 173,
+          "column": 5
+        },
+        "end": {
+          "line": 177,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 176,
+        "column": 9
+      },
+      "end": {
+        "line": 176,
+        "column": 32
+      }
+    },
+    "replacement": "true",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::rekor_metadata",
+      "return_type": "-> Option<(u64, i64)>",
+      "span": {
+        "start": {
+          "line": 578,
+          "column": 5
+        },
+        "end": {
+          "line": 582,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 579,
+        "column": 9
+      },
+      "end": {
+        "line": 581,
+        "column": 62
+      }
+    },
+    "replacement": "Some((0, 1))",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_rekor_metadata",
+      "return_type": "-> (u64, SystemTime)",
+      "span": {
+        "start": {
+          "line": 504,
+          "column": 1
+        },
+        "end": {
+          "line": 513,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 507,
+        "column": 35
+      },
+      "end": {
+        "line": 507,
+        "column": 36
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::rekor_metadata",
+      "return_type": "-> Option<(u64, i64)>",
+      "span": {
+        "start": {
+          "line": 578,
+          "column": 5
+        },
+        "end": {
+          "line": 582,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 579,
+        "column": 9
+      },
+      "end": {
+        "line": 581,
+        "column": 62
+      }
+    },
+    "replacement": "Some((1, 1))",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_leaf_certificate_der",
+      "return_type": "-> Result<Vec<u8>, AttestError>",
+      "span": {
+        "start": {
+          "line": 499,
+          "column": 1
+        },
+        "end": {
+          "line": 502,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 500,
+        "column": 5
+      },
+      "end": {
+        "line": 501,
+        "column": 100
+      }
+    },
+    "replacement": "Ok(vec![])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "parse_certificate_to_der",
+      "return_type": "-> Result<Vec<u8>, AttestError>",
+      "span": {
+        "start": {
+          "line": 317,
+          "column": 1
+        },
+        "end": {
+          "line": 336,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 329,
+        "column": 22
+      },
+      "end": {
+        "line": 329,
+        "column": 24
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl VerificationPolicy for IssuerOnlyPolicy>::verify",
+      "return_type": "-> Result<(), sigstore::bundle::verify::PolicyError>",
+      "span": {
+        "start": {
+          "line": 593,
+          "column": 5
+        },
+        "end": {
+          "line": 630,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 619,
+        "column": 27
+      },
+      "end": {
+        "line": 619,
+        "column": 29
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "certificate_validity",
+      "return_type": "-> Result<(SystemTime, SystemTime), AttestError>",
+      "span": {
+        "start": {
+          "line": 478,
+          "column": 1
+        },
+        "end": {
+          "line": 483,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 481,
+        "column": 32
+      },
+      "end": {
+        "line": 481,
+        "column": 33
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "ExpectedIdentity::doc_hidden_inline",
+      "return_type": "-> Self",
+      "span": {
+        "start": {
+          "line": 74,
+          "column": 5
+        },
+        "end": {
+          "line": 102,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 98,
+        "column": 9
+      },
+      "end": {
+        "line": 101,
+        "column": 10
+      }
+    },
+    "replacement": "Default::default()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_leaf_certificate_der",
+      "return_type": "-> Result<Vec<u8>, AttestError>",
+      "span": {
+        "start": {
+          "line": 499,
+          "column": 1
+        },
+        "end": {
+          "line": 502,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 500,
+        "column": 5
+      },
+      "end": {
+        "line": 501,
+        "column": 100
+      }
+    },
+    "replacement": "Ok(vec![0])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "match_identity",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 385,
+          "column": 1
+        },
+        "end": {
+          "line": 430,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 390,
+        "column": 5
+      },
+      "end": {
+        "line": 429,
+        "column": 39
+      }
+    },
+    "replacement": "Ok(\"xyzzy\".into())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "match_identity",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 385,
+          "column": 1
+        },
+        "end": {
+          "line": 430,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 412,
+        "column": 13
+      },
+      "end": {
+        "line": 412,
+        "column": 71
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::rekor_metadata",
+      "return_type": "-> Option<(u64, i64)>",
+      "span": {
+        "start": {
+          "line": 578,
+          "column": 5
+        },
+        "end": {
+          "line": 582,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 579,
+        "column": 9
+      },
+      "end": {
+        "line": 581,
+        "column": 62
+      }
+    },
+    "replacement": "Some((1, -1))",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "map_webpki_error",
+      "return_type": "-> AttestError",
+      "span": {
+        "start": {
+          "line": 375,
+          "column": 1
+        },
+        "end": {
+          "line": 383,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 377,
+        "column": 9
+      },
+      "end": {
+        "line": 379,
+        "column": 10
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 141,
+          "column": 5
+        },
+        "end": {
+          "line": 184,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 163,
+        "column": 36
+      },
+      "end": {
+        "line": 163,
+        "column": 37
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_rekor_metadata",
+      "return_type": "-> (u64, SystemTime)",
+      "span": {
+        "start": {
+          "line": 504,
+          "column": 1
+        },
+        "end": {
+          "line": 513,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 508,
+        "column": 20
+      },
+      "end": {
+        "line": 508,
+        "column": 21
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::from_verified",
+      "return_type": "-> Result<Self, AttestError>",
+      "span": {
+        "start": {
+          "line": 139,
+          "column": 5
+        },
+        "end": {
+          "line": 165,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 155,
+        "column": 34
+      },
+      "end": {
+        "line": 155,
+        "column": 35
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "match_identity",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 385,
+          "column": 1
+        },
+        "end": {
+          "line": 430,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 390,
+        "column": 5
+      },
+      "end": {
+        "line": 429,
+        "column": 39
+      }
+    },
+    "replacement": "Ok(String::new())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::from_verified",
+      "return_type": "-> Result<Self, AttestError>",
+      "span": {
+        "start": {
+          "line": 139,
+          "column": 5
+        },
+        "end": {
+          "line": 165,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 155,
+        "column": 34
+      },
+      "end": {
+        "line": 155,
+        "column": 35
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "parse_certificate_to_der",
+      "return_type": "-> Result<Vec<u8>, AttestError>",
+      "span": {
+        "start": {
+          "line": 317,
+          "column": 1
+        },
+        "end": {
+          "line": 336,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 322,
+        "column": 5
+      },
+      "end": {
+        "line": 335,
+        "column": 7
+      }
+    },
+    "replacement": "Ok(vec![])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "map_webpki_error",
+      "return_type": "-> AttestError",
+      "span": {
+        "start": {
+          "line": 375,
+          "column": 1
+        },
+        "end": {
+          "line": 383,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 376,
+        "column": 5
+      },
+      "end": {
+        "line": 382,
+        "column": 6
+      }
+    },
+    "replacement": "Default::default()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "run_async_bundle_verify",
+      "return_type": "-> sigstore::bundle::verify::VerificationResult",
+      "span": {
+        "start": {
+          "line": 255,
+          "column": 1
+        },
+        "end": {
+          "line": 315,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 285,
+        "column": 5
+      },
+      "end": {
+        "line": 314,
+        "column": 6
+      }
+    },
+    "replacement": "Default::default()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::leaf_der",
+      "return_type": "-> Option<Vec<u8>>",
+      "span": {
+        "start": {
+          "line": 563,
+          "column": 5
+        },
+        "end": {
+          "line": 576,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 564,
+        "column": 9
+      },
+      "end": {
+        "line": 575,
+        "column": 10
+      }
+    },
+    "replacement": "Some(vec![])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::is_empty",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 173,
+          "column": 5
+        },
+        "end": {
+          "line": 177,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 176,
+        "column": 9
+      },
+      "end": {
+        "line": 176,
+        "column": 32
+      }
+    },
+    "replacement": "false",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "certificate_validity",
+      "return_type": "-> Result<(SystemTime, SystemTime), AttestError>",
+      "span": {
+        "start": {
+          "line": 478,
+          "column": 1
+        },
+        "end": {
+          "line": 483,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 480,
+        "column": 33
+      },
+      "end": {
+        "line": 480,
+        "column": 34
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "verify_signature_bytes",
+      "return_type": "-> Result<(), AttestError>",
+      "span": {
+        "start": {
+          "line": 485,
+          "column": 1
+        },
+        "end": {
+          "line": 497,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 491,
+        "column": 5
+      },
+      "end": {
+        "line": 496,
+        "column": 53
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "match_identity",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 385,
+          "column": 1
+        },
+        "end": {
+          "line": 430,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 413,
+        "column": 13
+      },
+      "end": {
+        "line": 413,
+        "column": 86
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_rekor_metadata",
+      "return_type": "-> (u64, SystemTime)",
+      "span": {
+        "start": {
+          "line": 504,
+          "column": 1
+        },
+        "end": {
+          "line": 513,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 507,
+        "column": 35
+      },
+      "end": {
+        "line": 507,
+        "column": 36
+      }
+    },
+    "replacement": ">=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_rekor_metadata",
+      "return_type": "-> (u64, SystemTime)",
+      "span": {
+        "start": {
+          "line": 504,
+          "column": 1
+        },
+        "end": {
+          "line": 513,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 508,
+        "column": 20
+      },
+      "end": {
+        "line": 508,
+        "column": 21
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 141,
+          "column": 5
+        },
+        "end": {
+          "line": 184,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 163,
+        "column": 16
+      },
+      "end": {
+        "line": 163,
+        "column": 17
+      }
+    },
+    "replacement": ">",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "map_bundle_verification_error",
+      "return_type": "-> AttestError",
+      "span": {
+        "start": {
+          "line": 525,
+          "column": 1
+        },
+        "end": {
+          "line": 553,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 526,
+        "column": 5
+      },
+      "end": {
+        "line": 552,
+        "column": 6
+      }
+    },
+    "replacement": "Default::default()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "parse_certificate_to_der",
+      "return_type": "-> Result<Vec<u8>, AttestError>",
+      "span": {
+        "start": {
+          "line": 317,
+          "column": 1
+        },
+        "end": {
+          "line": 336,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 322,
+        "column": 5
+      },
+      "end": {
+        "line": 335,
+        "column": 7
+      }
+    },
+    "replacement": "Ok(vec![0])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl VerificationPolicy for IssuerOnlyPolicy>::verify",
+      "return_type": "-> Result<(), sigstore::bundle::verify::PolicyError>",
+      "span": {
+        "start": {
+          "line": 593,
+          "column": 5
+        },
+        "end": {
+          "line": 630,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 597,
+        "column": 9
+      },
+      "end": {
+        "line": 629,
+        "column": 44
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::leaf_der",
+      "return_type": "-> Option<Vec<u8>>",
+      "span": {
+        "start": {
+          "line": 563,
+          "column": 5
+        },
+        "end": {
+          "line": 576,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 564,
+        "column": 9
+      },
+      "end": {
+        "line": 575,
+        "column": 10
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "decode_oidc_issuer_value",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 449,
+          "column": 1
+        },
+        "end": {
+          "line": 476,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 468,
+        "column": 12
+      },
+      "end": {
+        "line": 468,
+        "column": 13
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 141,
+          "column": 5
+        },
+        "end": {
+          "line": 184,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 149,
+        "column": 9
+      },
+      "end": {
+        "line": 183,
+        "column": 11
+      }
+    },
+    "replacement": "Ok(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "read_oidc_issuer_extension",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 432,
+          "column": 1
+        },
+        "end": {
+          "line": 447,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 433,
+        "column": 5
+      },
+      "end": {
+        "line": 446,
+        "column": 37
+      }
+    },
+    "replacement": "Ok(String::new())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "decode_oidc_issuer_value",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 449,
+          "column": 1
+        },
+        "end": {
+          "line": 476,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 460,
+        "column": 5
+      },
+      "end": {
+        "line": 475,
+        "column": 7
+      }
+    },
+    "replacement": "Ok(String::new())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::rekor_metadata",
+      "return_type": "-> Option<(u64, i64)>",
+      "span": {
+        "start": {
+          "line": 578,
+          "column": 5
+        },
+        "end": {
+          "line": 582,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 579,
+        "column": 9
+      },
+      "end": {
+        "line": 581,
+        "column": 62
+      }
+    },
+    "replacement": "Some((1, 0))",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "decode_oidc_issuer_value",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 449,
+          "column": 1
+        },
+        "end": {
+          "line": 476,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 468,
+        "column": 31
+      },
+      "end": {
+        "line": 468,
+        "column": 33
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_rekor_metadata",
+      "return_type": "-> (u64, SystemTime)",
+      "span": {
+        "start": {
+          "line": 504,
+          "column": 1
+        },
+        "end": {
+          "line": 513,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 507,
+        "column": 35
+      },
+      "end": {
+        "line": 507,
+        "column": 36
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "SigstoreVerifier::with_embedded_root",
+      "return_type": "-> Result<Self, AttestError>",
+      "span": {
+        "start": {
+          "line": 74,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 81,
+        "column": 9
+      },
+      "end": {
+        "line": 102,
+        "column": 11
+      }
+    },
+    "replacement": "Ok(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "match_identity",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 385,
+          "column": 1
+        },
+        "end": {
+          "line": 430,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 414,
+        "column": 60
+      },
+      "end": {
+        "line": 414,
+        "column": 62
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 141,
+          "column": 5
+        },
+        "end": {
+          "line": 184,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 163,
+        "column": 16
+      },
+      "end": {
+        "line": 163,
+        "column": 17
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_leaf_certificate_der",
+      "return_type": "-> Result<Vec<u8>, AttestError>",
+      "span": {
+        "start": {
+          "line": 499,
+          "column": 1
+        },
+        "end": {
+          "line": 502,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 500,
+        "column": 5
+      },
+      "end": {
+        "line": 501,
+        "column": 100
+      }
+    },
+    "replacement": "Ok(vec![1])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::len",
+      "return_type": "-> usize",
+      "span": {
+        "start": {
+          "line": 167,
+          "column": 5
+        },
+        "end": {
+          "line": 171,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 170,
+        "column": 9
+      },
+      "end": {
+        "line": 170,
+        "column": 27
+      }
+    },
+    "replacement": "1",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::leaf_der",
+      "return_type": "-> Option<Vec<u8>>",
+      "span": {
+        "start": {
+          "line": 563,
+          "column": 5
+        },
+        "end": {
+          "line": 576,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 570,
+        "column": 13
+      },
+      "end": {
+        "line": 570,
+        "column": 95
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::from_verified",
+      "return_type": "-> Result<Self, AttestError>",
+      "span": {
+        "start": {
+          "line": 139,
+          "column": 5
+        },
+        "end": {
+          "line": 165,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 156,
+        "column": 32
+      },
+      "end": {
+        "line": 156,
+        "column": 34
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::rekor_metadata",
+      "return_type": "-> Option<(u64, i64)>",
+      "span": {
+        "start": {
+          "line": 578,
+          "column": 5
+        },
+        "end": {
+          "line": 582,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 579,
+        "column": 9
+      },
+      "end": {
+        "line": 581,
+        "column": 62
+      }
+    },
+    "replacement": "Some((0, 0))",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_rekor_metadata",
+      "return_type": "-> (u64, SystemTime)",
+      "span": {
+        "start": {
+          "line": 504,
+          "column": 1
+        },
+        "end": {
+          "line": 513,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 505,
+        "column": 5
+      },
+      "end": {
+        "line": 512,
+        "column": 23
+      }
+    },
+    "replacement": "(0, Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "SigstoreVerifier::build_bundle_verifier",
+      "return_type": "-> Result<AsyncBundleVerifier, AttestError>",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 114,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 112,
+        "column": 9
+      },
+      "end": {
+        "line": 113,
+        "column": 101
+      }
+    },
+    "replacement": "Ok(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 141,
+          "column": 5
+        },
+        "end": {
+          "line": 184,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 163,
+        "column": 29
+      },
+      "end": {
+        "line": 163,
+        "column": 31
+      }
+    },
+    "replacement": "&&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "decode_oidc_issuer_value",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 449,
+          "column": 1
+        },
+        "end": {
+          "line": 476,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 460,
+        "column": 5
+      },
+      "end": {
+        "line": 475,
+        "column": 7
+      }
+    },
+    "replacement": "Ok(\"xyzzy\".into())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "<impl TenantPolicyResolver for StaticTenantPolicyMap>::expected_for_tenant",
+      "return_type": "-> Result<ExpectedIdentity, AttestError>",
+      "span": {
+        "start": {
+          "line": 181,
+          "column": 5
+        },
+        "end": {
+          "line": 207,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 192,
+        "column": 54
+      },
+      "end": {
+        "line": 192,
+        "column": 56
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::leaf_der",
+      "return_type": "-> Option<Vec<u8>>",
+      "span": {
+        "start": {
+          "line": 563,
+          "column": 5
+        },
+        "end": {
+          "line": 576,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 564,
+        "column": 9
+      },
+      "end": {
+        "line": 575,
+        "column": 10
+      }
+    },
+    "replacement": "Some(vec![0])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "certificate_validity",
+      "return_type": "-> Result<(SystemTime, SystemTime), AttestError>",
+      "span": {
+        "start": {
+          "line": 478,
+          "column": 1
+        },
+        "end": {
+          "line": 483,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 479,
+        "column": 5
+      },
+      "end": {
+        "line": 482,
+        "column": 32
+      }
+    },
+    "replacement": "Ok((Default::default(), Default::default()))",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "parse_certificate_to_der",
+      "return_type": "-> Result<Vec<u8>, AttestError>",
+      "span": {
+        "start": {
+          "line": 317,
+          "column": 1
+        },
+        "end": {
+          "line": 336,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 322,
+        "column": 5
+      },
+      "end": {
+        "line": 335,
+        "column": 7
+      }
+    },
+    "replacement": "Ok(vec![1])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "map_webpki_error",
+      "return_type": "-> AttestError",
+      "span": {
+        "start": {
+          "line": 375,
+          "column": 1
+        },
+        "end": {
+          "line": 383,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 380,
+        "column": 9
+      },
+      "end": {
+        "line": 380,
+        "column": 64
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bundle",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 186,
+          "column": 5
+        },
+        "end": {
+          "line": 248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 195,
+        "column": 9
+      },
+      "end": {
+        "line": 247,
+        "column": 11
+      }
+    },
+    "replacement": "Ok(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl VerificationPolicy for IssuerOnlyPolicy>::verify",
+      "return_type": "-> Result<(), sigstore::bundle::verify::PolicyError>",
+      "span": {
+        "start": {
+          "line": 593,
+          "column": 5
+        },
+        "end": {
+          "line": 630,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 606,
+        "column": 28
+      },
+      "end": {
+        "line": 606,
+        "column": 30
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "decode_oidc_issuer_value",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 449,
+          "column": 1
+        },
+        "end": {
+          "line": 476,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 468,
+        "column": 57
+      },
+      "end": {
+        "line": 468,
+        "column": 58
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "<impl TenantPolicyResolver for StaticTenantPolicyMap>::expected_for_tenant",
+      "return_type": "-> Result<ExpectedIdentity, AttestError>",
+      "span": {
+        "start": {
+          "line": 181,
+          "column": 5
+        },
+        "end": {
+          "line": 207,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 185,
+        "column": 35
+      },
+      "end": {
+        "line": 185,
+        "column": 37
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "match_identity",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 385,
+          "column": 1
+        },
+        "end": {
+          "line": 430,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 414,
+        "column": 46
+      },
+      "end": {
+        "line": 414,
+        "column": 76
+      }
+    },
+    "replacement": "true",
+    "genre": "MatchArmGuard"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::len",
+      "return_type": "-> usize",
+      "span": {
+        "start": {
+          "line": 167,
+          "column": 5
+        },
+        "end": {
+          "line": 171,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 170,
+        "column": 9
+      },
+      "end": {
+        "line": 170,
+        "column": 27
+      }
+    },
+    "replacement": "0",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_blob",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 123,
+          "column": 5
+        },
+        "end": {
+          "line": 139,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 130,
+        "column": 9
+      },
+      "end": {
+        "line": 138,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::rekor_metadata",
+      "return_type": "-> Option<(u64, i64)>",
+      "span": {
+        "start": {
+          "line": 578,
+          "column": 5
+        },
+        "end": {
+          "line": 582,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 579,
+        "column": 9
+      },
+      "end": {
+        "line": 581,
+        "column": 62
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "read_oidc_issuer_extension",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 432,
+          "column": 1
+        },
+        "end": {
+          "line": 447,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 433,
+        "column": 5
+      },
+      "end": {
+        "line": 446,
+        "column": 37
+      }
+    },
+    "replacement": "Ok(\"xyzzy\".into())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 141,
+          "column": 5
+        },
+        "end": {
+          "line": 184,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 163,
+        "column": 16
+      },
+      "end": {
+        "line": 163,
+        "column": 17
+      }
+    },
+    "replacement": "<=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_rekor_inclusion_verified",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 515,
+          "column": 1
+        },
+        "end": {
+          "line": 523,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 522,
+        "column": 5
+      },
+      "end": {
+        "line": 522,
+        "column": 10
+      }
+    },
+    "replacement": "true",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "validate_against_fulcio",
+      "return_type": "-> Result<(), AttestError>",
+      "span": {
+        "start": {
+          "line": 338,
+          "column": 1
+        },
+        "end": {
+          "line": 373,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 342,
+        "column": 5
+      },
+      "end": {
+        "line": 372,
+        "column": 11
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "<impl TenantPolicyResolver for StaticTenantPolicyMap>::expected_for_tenant",
+      "return_type": "-> Result<ExpectedIdentity, AttestError>",
+      "span": {
+        "start": {
+          "line": 181,
+          "column": 5
+        },
+        "end": {
+          "line": 207,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 182,
+        "column": 9
+      },
+      "end": {
+        "line": 206,
+        "column": 71
+      }
+    },
+    "replacement": "Ok(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "bundle_rekor_metadata",
+      "return_type": "-> (u64, SystemTime)",
+      "span": {
+        "start": {
+          "line": 504,
+          "column": 1
+        },
+        "end": {
+          "line": 513,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 505,
+        "column": 5
+      },
+      "end": {
+        "line": 512,
+        "column": 23
+      }
+    },
+    "replacement": "(1, Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 141,
+          "column": 5
+        },
+        "end": {
+          "line": 184,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 163,
+        "column": 36
+      },
+      "end": {
+        "line": 163,
+        "column": 37
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::from_verified",
+      "return_type": "-> Result<Self, AttestError>",
+      "span": {
+        "start": {
+          "line": 139,
+          "column": 5
+        },
+        "end": {
+          "line": 165,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 149,
+        "column": 37
+      },
+      "end": {
+        "line": 149,
+        "column": 39
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "match_identity",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 385,
+          "column": 1
+        },
+        "end": {
+          "line": 430,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 414,
+        "column": 46
+      },
+      "end": {
+        "line": 414,
+        "column": 76
+      }
+    },
+    "replacement": "false",
+    "genre": "MatchArmGuard"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "match_identity",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 385,
+          "column": 1
+        },
+        "end": {
+          "line": 430,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 391,
+        "column": 15
+      },
+      "end": {
+        "line": 391,
+        "column": 17
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "certificate_validity",
+      "return_type": "-> Result<(SystemTime, SystemTime), AttestError>",
+      "span": {
+        "start": {
+          "line": 478,
+          "column": 1
+        },
+        "end": {
+          "line": 483,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 480,
+        "column": 33
+      },
+      "end": {
+        "line": 480,
+        "column": 34
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/lib.rs",
+    "function": {
+      "function_name": "StaticTenantPolicyMap::from_verified",
+      "return_type": "-> Result<Self, AttestError>",
+      "span": {
+        "start": {
+          "line": 139,
+          "column": 5
+        },
+        "end": {
+          "line": 165,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 148,
+        "column": 9
+      },
+      "end": {
+        "line": 164,
+        "column": 39
+      }
+    },
+    "replacement": "Ok(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "<impl AttestVerifier for SigstoreVerifier>::verify_bytes",
+      "return_type": "-> Result<VerifiedAttestation, AttestError>",
+      "span": {
+        "start": {
+          "line": 141,
+          "column": 5
+        },
+        "end": {
+          "line": 184,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 163,
+        "column": 36
+      },
+      "end": {
+        "line": 163,
+        "column": 37
+      }
+    },
+    "replacement": ">=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::leaf_der",
+      "return_type": "-> Option<Vec<u8>>",
+      "span": {
+        "start": {
+          "line": 563,
+          "column": 5
+        },
+        "end": {
+          "line": 576,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 564,
+        "column": 9
+      },
+      "end": {
+        "line": 575,
+        "column": 10
+      }
+    },
+    "replacement": "Some(vec![1])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "parse_certificate_to_der",
+      "return_type": "-> Result<Vec<u8>, AttestError>",
+      "span": {
+        "start": {
+          "line": 317,
+          "column": 1
+        },
+        "end": {
+          "line": 336,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 323,
+        "column": 25
+      },
+      "end": {
+        "line": 323,
+        "column": 27
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "build_trust_root",
+      "return_type": "-> Result<SigstoreTrustRoot, AttestError>",
+      "span": {
+        "start": {
+          "line": 117,
+          "column": 1
+        },
+        "end": {
+          "line": 120,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 118,
+        "column": 5
+      },
+      "end": {
+        "line": 119,
+        "column": 45
+      }
+    },
+    "replacement": "Ok(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "certificate_validity",
+      "return_type": "-> Result<(SystemTime, SystemTime), AttestError>",
+      "span": {
+        "start": {
+          "line": 478,
+          "column": 1
+        },
+        "end": {
+          "line": 483,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 481,
+        "column": 32
+      },
+      "end": {
+        "line": 481,
+        "column": 33
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "read_oidc_issuer_extension",
+      "return_type": "-> Result<String, AttestError>",
+      "span": {
+        "start": {
+          "line": 432,
+          "column": 1
+        },
+        "end": {
+          "line": 447,
+          "column": 2
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 440,
+        "column": 24
+      },
+      "end": {
+        "line": 440,
+        "column": 26
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::rekor_metadata",
+      "return_type": "-> Option<(u64, i64)>",
+      "span": {
+        "start": {
+          "line": 578,
+          "column": 5
+        },
+        "end": {
+          "line": 582,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 579,
+        "column": 9
+      },
+      "end": {
+        "line": 581,
+        "column": 62
+      }
+    },
+    "replacement": "Some((0, -1))",
+    "genre": "FnValue"
+  },
+  {
+    "package": "chio-attest-verify",
+    "file": "crates/chio-attest-verify/src/sigstore.rs",
+    "function": {
+      "function_name": "sigstore_protobuf_specs_compat::leaf_der",
+      "return_type": "-> Option<Vec<u8>>",
+      "span": {
+        "start": {
+          "line": 563,
+          "column": 5
+        },
+        "end": {
+          "line": 576,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 566,
+        "column": 13
+      },
+      "end": {
+        "line": 569,
+        "column": 53
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  }
+]

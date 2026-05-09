@@ -1,0 +1,21 @@
+--- crates/chio-attest-verify/src/lib.rs
++++ replace == with != in StaticTenantPolicyMap::from_verified
+@@ -148,17 +148,17 @@
+         for (i, a) in policies.iter().enumerate() {
+             if a.oidc_issuers.len() != 1 {
+                 return Err(AttestError::Malformed(format!(
+                     "tenant_id {:?} must declare exactly one oidc_issuer for StaticTenantPolicyMap",
+                     a.tenant_id
+                 )));
+             }
+             for b in &policies[i + 1..] {
+-                if a.tenant_id == b.tenant_id {
++                if a.tenant_id != /* ~ changed by cargo-mutants ~ */ b.tenant_id {
+                     return Err(AttestError::Malformed(format!(
+                         "duplicate tenant_id {:?}",
+                         a.tenant_id
+                     )));
+                 }
+             }
+         }
+         Ok(Self { entries: policies })
