@@ -37,6 +37,7 @@ use chio_federation::bilateral_dsse::{
     pae, receipt_subject_name, sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope, Keyid,
     PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
 };
+use std::path::Path;
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -102,7 +103,7 @@ fn legacy_preimage_and_dsse_pae_preimage_share_zero_bytes() {
     .unwrap();
     let dsse_preimage = envelope.pae_bytes().unwrap();
 
-    // R4 finding: the two preimages are NOT the same bytes.
+    // The two preimages are not the same bytes.
     assert_ne!(
         legacy_preimage, dsse_preimage,
         "legacy CoSigningBody bytes and DSSE PAE bytes MUST differ; \
@@ -215,6 +216,56 @@ fn emitted_predicate_is_explicit_signature_slice_not_chiodos_invocation_schema()
     assert!(
         predicate_json.get("tool_args_hash").is_none(),
         "missing strict-schema tool_args_hash is why this profile is not CHIODOS invocation conformance"
+    );
+}
+
+#[test]
+fn signature_slice_profile_is_registered_as_signed_artifact_schema() {
+    assert_eq!(
+        PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
+        "the signed artifact must have one verifier-facing profile identifier"
+    );
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("crate lives under <repo>/crates/chio-conformance");
+    let registry_path = repo_root.join("spec/schemas/registry.json");
+    let registry_text = std::fs::read_to_string(&registry_path).expect("read schema registry");
+    let registry: serde_json::Value =
+        serde_json::from_str(&registry_text).expect("parse schema registry");
+    let artifacts = registry["artifacts"]
+        .as_array()
+        .expect("registry.artifacts is an array");
+
+    let entry = artifacts
+        .iter()
+        .find(|artifact| artifact["schema"] == PREDICATE_TYPE_BILATERAL)
+        .expect("signature-slice profile is registered");
+    assert_eq!(
+        entry["artifactKind"], "bilateral_dsse_signature_slice",
+        "registry entry must be verifier-facing, not a generic receipt artifact"
+    );
+    let schema_file = entry["schemaFile"]
+        .as_str()
+        .expect("schemaFile is a string");
+    let schema_path = repo_root.join(schema_file);
+    assert!(
+        schema_path.is_file(),
+        "registered schema file must exist: {}",
+        schema_file
+    );
+
+    let schema_text = std::fs::read_to_string(&schema_path).expect("read profile schema");
+    let schema: serde_json::Value =
+        serde_json::from_str(&schema_text).expect("parse profile schema");
+    assert_eq!(
+        schema["properties"]["predicateType"]["const"],
+        PREDICATE_TYPE_BILATERAL
+    );
+    assert_eq!(
+        schema["properties"]["predicate"]["properties"]["schema"]["const"],
+        PREDICATE_BODY_SCHEMA
     );
 }
 
