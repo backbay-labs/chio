@@ -20,8 +20,8 @@ pq = ["chio-core-types/pq"]
 # it is a SHA-256-commitment stub of the §5/§6 projection - it captures
 # the deterministic projection and disclose/withhold semantics but
 # provides no privacy-preserving cryptographic property. Real BLS12-381 BBS+ signing is
-# deferred; a separate `zk` (or `bbs-real`) feature can be introduced
-# then. See selective_disclosure.rs module docs.
+# deferred; a separately named real-BBS feature can be introduced then.
+# See selective_disclosure.rs module docs.
 bbs-stub = []
 
 [dependencies]

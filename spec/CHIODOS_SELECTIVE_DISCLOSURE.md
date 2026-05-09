@@ -1,12 +1,21 @@
 # Chiodos Selective Disclosure Over Chio Receipts
 
-**Status:** Draft v0.1
+**Status:** Draft v0.1 design target. Current repository implementation is partial.
 **Date:** 2026-05-04
 **Supersedes:** none
 
-This specification freezes the v0.1 wire format and verification contract
-for **selective-disclosure proofs over chio receipts and workflow
-receipts**. It closes Hard Problem #4 from
+This specification describes the target v0.1 wire format and
+verification contract for **selective-disclosure proofs over chio
+receipts and workflow receipts**. The current branch does not implement
+that full contract: it ships only the `chio-federation` `bbs-stub`
+projection and audit-view placeholder. The stub has deterministic
+projection, disclose/withhold bookkeeping, and SHA-256 binding tests; it
+does not provide BBS+ signatures, BLS12-381 commitments, range proofs,
+zkVM proofs, or privacy-preserving zero-knowledge guarantees. Normative
+MUST/SHOULD language below applies to a future complete implementation,
+not to the current `bbs-stub` module.
+
+The target contract closes Hard Problem #4 from
 [CHIODOS_CONCEPT.md](../docs/research/CHIODOS_CONCEPT.md) v1.1 section 7
 ("Privacy and selective disclosure"), turning the BBS+ direction set in
 that document into a normative wire format, and it stands as the
@@ -46,7 +55,7 @@ workflow projection in section 6.
 
 ## 2. Scope
 
-### 2.1 In scope (v0.1)
+### 2.1 Target scope (future complete v0.1)
 
 - BBS+ secondary commitments over a single
   [`ChioReceipt`](../crates/chio-core-types/src/receipt.rs) body.
@@ -57,9 +66,10 @@ workflow projection in section 6.
   `member`), `AND`-only composition, hard ceiling of eight clauses.
 - A canonical envelope schema (`chio.selective-disclosure-proof.v1`)
   and verification algorithm.
-- New workspace member `chio-zk-receipts` behind a default-off `zk`
-  Cargo feature, sibling to
-  [chio-attest-verify](../crates/chio-attest-verify/src/lib.rs).
+- A dedicated implementation crate may be added later beside
+  [chio-attest-verify](../crates/chio-attest-verify/src/lib.rs). This
+  branch does not add that crate and does not expose a `zk` Cargo
+  feature for selective disclosure.
 
 ### 2.2 Out of scope (deferred to v0.2)
 
@@ -494,11 +504,16 @@ v0.1 does not specify a proof-carrying-receipt mode.
 
 ---
 
-## 10. Crate Placement
+## 10. Target Crate Placement
 
-New workspace member `chio-zk-receipts` beside
-[chio-attest-verify](../crates/chio-attest-verify/src/lib.rs), gated
-behind default-off Cargo feature `zk` so the baseline chio build
+No workspace member implements this full target contract in the current
+branch. The only shipped code is the `chio-federation` `bbs-stub`
+feature, which is a SHA-256 commitment placeholder for projection and
+audit-view workflow tests.
+
+A future complete implementation should live in a dedicated workspace
+member beside [chio-attest-verify](../crates/chio-attest-verify/src/lib.rs)
+and should remain outside the default build so the baseline chio build
 stays BBS+/BLS12-381-free.
 
 Dependencies: `chio-core-types` (receipt body, canonical JSON,
@@ -543,10 +558,10 @@ one of section 12's canonical strings.
 
 ---
 
-## 11. Test Corpus Expectations
+## 11. Future Test Corpus Expectations
 
-`chio-zk-receipts` ships, at minimum, fixtures under
-`crates/chio-zk-receipts/tests/fixtures/`:
+A future complete implementation must ship, at minimum, fixtures under
+its own `tests/fixtures/` directory:
 
 1. `chio-receipt-roundtrip.json`: ChioReceipt signed Ed25519+JCS and
    BBS+ over v1; proof reveals `tool_server`, `tool_name`, `decision`;
