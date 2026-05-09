@@ -48,27 +48,27 @@ use chio_tee_frame::schema::{
 const VALIDATOR_EVIDENCE_FILES: &[(&str, Option<&str>)] = &[
     (
         "crates/chio-attest-verify/tests/cross_backend_conformance.rs",
-        Some("tdx_backend_rejects_sev_snp_and_nitro_fixtures"),
+        Some("nitro_backend_rejects_tdx_and_sev_snp_fixtures"),
     ),
     (
         "crates/chio-attest-verify/tests/expect_report_data.rs",
-        Some("report_data_changes_when_kernel_key_changes"),
+        Some("tdx_verifier_rejects_when_only_upper_half_of_report_data_is_tampered"),
     ),
     (
         "crates/chio-attest-verify/tests/tdx_integration.rs",
-        Some("manifest_pins_match_on_disk_sha256"),
+        Some("negative_fixtures_reject_with_expected_reason"),
     ),
     (
         "crates/chio-attest-verify/tests/sev_snp_integration.rs",
-        Some("manifest_pins_match_on_disk_sha256"),
+        Some("negative_fixtures_reject_with_expected_reason"),
     ),
     (
         "crates/chio-attest-verify/tests/nitro_unit.rs",
-        Some("build_document"),
+        Some("nitro_verifier_rejects_signature_mismatch"),
     ),
     (
         "crates/chio-attest-verify/tests/nitro_root_rotation.rs",
-        Some("rotated_verifier_at"),
+        Some("root_rotation_rejects_fixtures_anchored_at_old_root"),
     ),
     (
         "crates/chio-kernel/tests/pq_key_load_after_self_quote.rs",

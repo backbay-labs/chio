@@ -153,7 +153,7 @@ wat = "1.246"
 # tee_quote_forgery threat-evidence test imports chio-tee-frame to
 # drive validate_signed and verify_tenant_sig deny branches with forged
 # tenant signatures.
-chio-tee-frame = { path = "../chio-tee-frame" }
+chio-tee-frame = { version = "0.1.0", path = "../chio-tee-frame" }
 base64 = { workspace = true }
 
 [lints.clippy]
