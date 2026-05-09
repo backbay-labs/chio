@@ -100,7 +100,7 @@ Format: each row is `<glob>` -> classification, with rationale.
 
 ## Findings summary
 
-- **16 of 20** exclusion entries are unambiguously `OK`
+- **18 of 22** exclusion entries are unambiguously `OK`
   (test/build/fuzz scaffolding, platform adapters, formal-methods
   harnesses, pure data, or advisory-by-design surfaces).
 - **4 entries are `FOR-REMOVAL-CANDIDATE`**, all involving

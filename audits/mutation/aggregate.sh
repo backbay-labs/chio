@@ -56,7 +56,7 @@ for crate in "$@"; do
     fi
   done
   if [ -z "${out_dir}" ]; then
-    printf "| \`%s\` | BASELINE-GAP | - | - | - | - | **n/a** |\n" "${crate}"
+    printf "| \`%s\` | BASELINE-GAP | - | - | - | - | - | **n/a** |\n" "${crate}"
     continue
   fi
   c=$(wc -l < "${out_dir}/caught.txt"   2>/dev/null | tr -d ' ' || echo 0)
@@ -117,7 +117,7 @@ for crate in "$@"; do
     rl=$(jq -r '.result_label // empty' "${summary_json}" 2>/dev/null || echo "")
     es=$(jq -r '.examine_scope // empty' "${summary_json}" 2>/dev/null || echo "")
     ts=$(jq -r '.test_scope // empty' "${summary_json}" 2>/dev/null || echo "")
-    tm=$(jq -r '.target_met // empty' "${summary_json}" 2>/dev/null || echo "")
+    tm=$(jq -r 'if has("target_met") and .target_met != null then (.target_met | tostring) else empty end' "${summary_json}" 2>/dev/null || echo "")
     ev=$(jq -r '.evaluated // empty' "${summary_json}" 2>/dev/null || echo "")
     td=$(jq -r '.total_discovered // empty' "${summary_json}" 2>/dev/null || echo "")
     case "${rl}" in

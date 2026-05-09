@@ -6,7 +6,7 @@
 # Each summary JSON has the shape:
 #   {
 #     "crate": "<name>",
-#     "ran_at": "<RFC3339-ish from mutants.out/lock.json start_time>",
+#     "ran_at": "<RFC3339-ish from lock.json, or previous committed summary>",
 #     "tool": "cargo-mutants",
 #     "tool_version": "<from lock.json>",
 #     "test_scope": "workspace (additional_cargo_test_args)",
@@ -62,8 +62,28 @@ for crate in "$@"; do
   u=$(wc -l < "${out_dir}/unviable.txt" 2>/dev/null | tr -d ' ' || echo 0)
   c=${c:-0}; m=${m:-0}; t=${t:-0}; u=${u:-0}
 
-  ran_at=$(jq -r '.start_time' "${out_dir}/lock.json" 2>/dev/null || echo "unknown")
-  tool_ver=$(jq -r '.cargo_mutants_version' "${out_dir}/lock.json" 2>/dev/null || echo "unknown")
+  out_file="${EVIDENCE_DIR}/${crate}/${DATE}.json"
+  previous_summary=""
+  shopt -s nullglob
+  for candidate in $(printf '%s\n' "${EVIDENCE_DIR}/${crate}"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.json | sort -r); do
+    if [ -f "${candidate}" ]; then
+      previous_summary="${candidate}"
+      break
+    fi
+  done
+  shopt -u nullglob
+
+  ran_at=$(jq -r '.start_time // empty' "${out_dir}/lock.json" 2>/dev/null || true)
+  if [ -z "${ran_at}" ] && [ -n "${previous_summary}" ]; then
+    ran_at=$(jq -r '.ran_at // empty' "${previous_summary}" 2>/dev/null || true)
+  fi
+  ran_at=${ran_at:-unknown}
+
+  tool_ver=$(jq -r '.cargo_mutants_version // empty' "${out_dir}/lock.json" 2>/dev/null || true)
+  if [ -z "${tool_ver}" ] && [ -n "${previous_summary}" ]; then
+    tool_ver=$(jq -r '.tool_version // empty' "${previous_summary}" 2>/dev/null || true)
+  fi
+  tool_ver=${tool_ver:-unknown}
 
   # Inspect the actual `cargo test` invocation cargo-mutants used.
   # cargo-mutants records the invocation in two places (in order of
@@ -88,8 +108,6 @@ for crate in "$@"; do
   else
     rate="null"
   fi
-
-  out_file="${EVIDENCE_DIR}/${crate}/${DATE}.json"
 
   # Defensive: missed.txt / timeout.txt may not be present on a run that
   # produced only `outcomes.json` (cargo-mutants 25.x has two layouts).
@@ -116,7 +134,7 @@ for crate in "$@"; do
   #   * `run_started_at`   - operator-recorded wall-clock start.
   #   * `evidence_dir`     - relative path the operator pinned for the run.
   #   * `notes`            - free-form operator commentary.
-  #   * `target_kill_rate` - the configured threshold (e.g. 0.65).
+  #   * `target_kill_rate` - the configured threshold (e.g. 0.65 or 80).
   #
   # Recomputed/cleared every run (NOT preserved):
   #   * caught / missed / timeout / unviable / kill_rate_percent
@@ -133,11 +151,17 @@ for crate in "$@"; do
   # stale release-truth from prior runs.
   durable_keys='["command", "run_started_at", "evidence_dir", "notes", "target_kill_rate"]'
   prev_extra="${empty}"
+  extra_source=""
   if [ -f "${out_file}" ]; then
+    extra_source="${out_file}"
+  elif [ -n "${previous_summary}" ]; then
+    extra_source="${previous_summary}"
+  fi
+  if [ -n "${extra_source}" ]; then
     prev_extra=$(mktemp)
     if ! jq --argjson keys "${durable_keys}" \
           'with_entries(select(.key as $k | $keys | index($k)))' \
-          "${out_file}" > "${prev_extra}" 2>/dev/null; then
+          "${extra_source}" > "${prev_extra}" 2>/dev/null; then
       echo "{}" > "${prev_extra}"
     fi
   fi
@@ -156,7 +180,10 @@ for crate in "$@"; do
     --rawfile missed_text "${missed_path}" \
     --rawfile timeout_text "${timeout_path}" \
     --slurpfile prev_extra "${prev_extra}" \
-    '($prev_extra[0] // {}) + {
+    '($prev_extra[0] // {}) as $extra
+    | ($kill_rate | tonumber? // null) as $rate
+    | ($extra.target_kill_rate // null) as $target
+    | ($extra + {
       crate: $crate,
       ran_at: $ran_at,
       tool: $tool,
@@ -166,10 +193,19 @@ for crate in "$@"; do
       missed: $missed,
       timeout: $timeout,
       unviable: $unviable,
-      kill_rate_percent: ($kill_rate | tonumber? // null),
+      kill_rate_percent: $rate,
       missed_mutants: ($missed_text | split("\n") | map(select(length > 0))),
       timeout_mutants: ($timeout_text | split("\n") | map(select(length > 0)))
-    }' > "${out_file}"
+    })
+    | if (($target | type) == "number") and ($rate != null) then
+        ($target | if . > 1 then . else . * 100 end) as $target_percent
+        | . + {
+            target_met: ($rate >= $target_percent),
+            result_label: (if $rate >= $target_percent then "FULL" else "FULL-BELOW-TARGET" end)
+          }
+      else
+        .
+      end' > "${out_file}"
 
   rm -f "${empty}"
   [ "${prev_extra}" != "${empty}" ] && rm -f "${prev_extra}" || true
