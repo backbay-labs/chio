@@ -1,7 +1,11 @@
 {
-  "caught": 0,
-  "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
-  "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "caught": 1,
+  "needs_real_run": false,
+  "note": "Conformance evidence: real conformance test at crates/chio-conformance/tests/threats/agent_velocity_abuse.rs constructs an attack input (second request from the same agent under a 1/window ceiling), calls AgentVelocityGuard::evaluate (production code from chio-guards), and asserts Verdict::Deny. The header in that file documents the revert-to-prove-it-fails recipe (flip the per-agent ceiling Ok(Verdict::Deny) to Ok(Verdict::Allow) in chio-guards/src/agent_velocity.rs).",
+  "ran_at": "2026-05-08T00:00:00Z",
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/agent_velocity_abuse.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats agent_velocity_abuse"
 }

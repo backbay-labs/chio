@@ -1,63 +1,194 @@
-// M05.P5.T3 test body for threat ID `tool_server_escape`.
+// Threat test for threat ID `tool_server_escape`.
 //
 // Threat: tool_server_escape (Tool server escape).
 // Surfaces: kernel_to_tool.
 //
-// Coverage strategy: tool-server escape is exercised by two
-// disjoint M05 surfaces.
+// Coverage strategy: import the production
+// `chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend`
+// directly. The threat row's stable production defense is the
+// runtime sandbox enforced by chio-wasm-guards: a malicious tool
+// module signed by an attacker-controlled key still trips a typed
+// `WasmGuardError` because the runtime layer rejects undeclared host
+// imports, oversize declared memory, and fuel-budget overrun
+// independently of the signing layer (the signing layer only
+// certifies provenance, never content).
 //
-// 1. The chio-adversarial-suite corpus carries a
-//    `sigstore_bundle_payload_mismatch` case that cites this threat
-//    ID; it represents a tool / guard module whose bundle subject
-//    digest does not match the loaded payload digest, which is the
-//    signed-but-malicious lane for escapes that bypass the kernel
-//    by impersonating an approved tool module.
+// With Lane B0 (`ToolServerConnection` async-trait migration) merged
+// the kernel dispatch path is unified, but the actual sandbox-escape
+// containment still lives in chio-wasm-guards. This conformance test
+// pins the production runtime deny path that catches a malicious
+// tool module at module-load and at evaluate-time. Three sub-vectors:
 //
-// 2. The M05.P3 wasm-guard escape harness ships eight named escape
-//    classes that all yield typed `WasmGuardError` outcomes; that
-//    harness is the runtime side of the same threat ID and is wired
-//    through `cargo test -p chio-wasm-guards --test escape`.
+//   1. Undeclared host import. The module imports a host function
+//      that is NOT in the chio.* allowed surface (`wasi_snapshot_preview1.fd_write`).
+//      Production `load_module` MUST reject with
+//      `WasmGuardError::ImportViolation` before any guest code runs.
+//   2. Fuel-budget escape attempt. The module spins in a tight loop
+//      to exhaust the host process's CPU budget. Production
+//      `evaluate` MUST trap and return `WasmGuardError::FuelExhausted`
+//      (or `Trap`) before the loop completes.
+//   3. Round-trip sanity. A trivially benign module that exports
+//      `evaluate` and returns `Allow` MUST verify successfully,
+//      guarding against an over-rejecting deny path that would
+//      silently classify all tool modules as escapes.
 //
-// This test asserts the corpus side, plus that the
-// chio-wasm-guards escape harness directory is present in-tree as
-// the runtime evidence pointer. Failing this test means either the
-// corpus was emptied or the escape harness was removed; either is
-// a coordinated change that must update this assertion.
+// Production call sites:
+//   `crates/chio-wasm-guards/src/runtime.rs:1167`
+//     (`WasmtimeBackend::load_module`).
+//   `crates/chio-wasm-guards/src/runtime.rs:1202`
+//     (`WasmtimeBackend::evaluate`).
+//
+// Cross-link: the chio-wasm-guards crate ships its own escape harness
+// at `crates/chio-wasm-guards/tests/escape/` (8 named escape classes,
+// all yielding typed `WasmGuardError`). This conformance test replays
+// two of those escape classes through the same production backend so
+// the threat row carries both file-existence and runtime evidence.
+//
+// Revert-to-prove-it-fails recipe:
+// In `crates/chio-wasm-guards/src/runtime.rs`, locate the
+// `validate_imports` (or equivalently named) helper used by
+// `WasmtimeBackend::load_module` to reject non-`chio.*` imports.
+// Replace its body with `Ok(())`. Re-run
+// `cargo test -p chio-conformance --test threats -- tool_server_escape`
+// and the
+// `assert!(matches!(err, WasmGuardError::ImportViolation { .. }))`
+// arm in `undeclared_host_import_rejected_at_load` MUST then fail
+// because production now admits modules with arbitrary host imports.
 
-use std::path::PathBuf;
+use chio_wasm_guards::abi::{GuardRequest, WasmGuardAbi};
+use chio_wasm_guards::error::WasmGuardError;
+use chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend;
 
-use super::common::{assert_threat_covered_by_corpus, corpus_cases_for};
-use chio_adversarial_suite::AttackClass;
+const ESCAPE_FUEL_LIMIT: u64 = 5_000_000;
 
-#[test]
-fn threat_tool_server_escape_is_covered() {
-    // covers: tool_server_escape
-    assert_threat_covered_by_corpus("tool_server_escape");
+fn minimal_request() -> GuardRequest {
+    GuardRequest {
+        tool_name: String::new(),
+        server_id: String::new(),
+        agent_id: "tool-server-escape-test".to_string(),
+        arguments: serde_json::Value::Null,
+        scopes: Vec::new(),
+        action_type: None,
+        extracted_path: None,
+        extracted_target: None,
+        filesystem_roots: Vec::new(),
+        matched_grant_index: None,
+    }
 }
 
 #[test]
-fn threat_tool_server_escape_includes_signed_but_malicious() {
+fn threat_tool_server_escape_undeclared_host_import_rejected_at_load() {
     // covers: tool_server_escape
-    let cases = corpus_cases_for("tool_server_escape");
-    let has_bundle_mismatch = cases
-        .iter()
-        .any(|case| case.class == AttackClass::SigstoreBundlePayloadMismatch);
-    assert!(
-        has_bundle_mismatch,
-        "tool_server_escape must be backed by at least one \
-         sigstore_bundle_payload_mismatch corpus case"
-    );
+    //
+    // Attacker scenario: an attacker controlling a "tool module"
+    // imports the wasi `fd_write` host function in an attempt to
+    // escape into raw stdout/stderr file descriptors via the
+    // wasi-libc shim. Production MUST reject this at module-load
+    // before any guest code runs.
+    let wat = r#"
+        (module
+          (import "wasi_snapshot_preview1" "fd_write"
+            (func $fd_write (param i32 i32 i32 i32) (result i32)))
+          (memory (export "memory") 1)
+          (func (export "evaluate") (param i32 i32) (result i32) (i32.const 0)))
+    "#;
+    let bytes = match wat::parse_str(wat) {
+        Ok(bytes) => bytes,
+        Err(err) => panic!("wat compile failed: {err}"),
+    };
+
+    let mut backend = match WasmtimeBackend::new() {
+        Ok(backend) => backend,
+        Err(err) => panic!("WasmtimeBackend::new failed: {err:?}"),
+    };
+    let err = match backend.load_module(&bytes, ESCAPE_FUEL_LIMIT) {
+        Ok(()) => panic!(
+            "WasmtimeBackend::load_module MUST reject undeclared host \
+             imports (escape via wasi_snapshot_preview1.fd_write); got Ok"
+        ),
+        Err(err) => err,
+    };
+    match err {
+        WasmGuardError::ImportViolation { module, name } => {
+            assert_eq!(module, "wasi_snapshot_preview1");
+            assert_eq!(name, "fd_write");
+        }
+        other => panic!("expected WasmGuardError::ImportViolation on wasi import, got {other:?}"),
+    }
 }
 
 #[test]
-fn threat_tool_server_escape_runtime_harness_is_present() {
+fn threat_tool_server_escape_fuel_exhaustion_attack_traps() {
     // covers: tool_server_escape
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let escape_dir = manifest_dir
-        .join("../chio-wasm-guards/tests/escape")
-        .canonicalize();
-    assert!(
-        escape_dir.is_ok(),
-        "expected wasm-guard escape harness directory to be present in-tree"
-    );
+    //
+    // Attacker scenario: the tool module loads cleanly but its
+    // `evaluate` body spins in an infinite loop to denial-of-service
+    // the host. Production fuel metering MUST trap with
+    // `WasmGuardError::FuelExhausted` (or a fuel-related `Trap`)
+    // before the host loses liveness.
+    let wat = r#"
+        (module
+          (memory (export "memory") 1)
+          (func (export "evaluate") (param i32 i32) (result i32)
+            (loop $forever (br $forever))
+            (i32.const 0)))
+    "#;
+    let bytes = match wat::parse_str(wat) {
+        Ok(bytes) => bytes,
+        Err(err) => panic!("wat compile failed: {err}"),
+    };
+
+    let mut backend = match WasmtimeBackend::new() {
+        Ok(backend) => backend,
+        Err(err) => panic!("WasmtimeBackend::new failed: {err:?}"),
+    };
+    if let Err(err) = backend.load_module(&bytes, ESCAPE_FUEL_LIMIT) {
+        panic!(
+            "infinite-loop module MUST load (the trap fires at evaluate), \
+             got load-time error {err:?}"
+        );
+    }
+    let err = match backend.evaluate(&minimal_request()) {
+        Ok(verdict) => panic!(
+            "WasmtimeBackend::evaluate MUST trap on a fuel-escape module; \
+             got verdict {verdict:?}"
+        ),
+        Err(err) => err,
+    };
+    match err {
+        WasmGuardError::FuelExhausted { .. } | WasmGuardError::Trap(_) => {}
+        other => panic!("expected FuelExhausted or fuel-related Trap, got {other:?}"),
+    }
+}
+
+#[test]
+fn threat_tool_server_escape_benign_module_round_trips() {
+    // covers: tool_server_escape (sanity)
+    //
+    // Sanity arm: a benign module that exports `evaluate` and
+    // returns `0` (Allow) MUST load and run without error. This
+    // guards against an over-rejecting deny path that would silently
+    // classify all tool modules as escapes.
+    let wat = r#"
+        (module
+          (memory (export "memory") 1)
+          (func (export "evaluate") (param i32 i32) (result i32) (i32.const 0)))
+    "#;
+    let bytes = match wat::parse_str(wat) {
+        Ok(bytes) => bytes,
+        Err(err) => panic!("wat compile failed: {err}"),
+    };
+    let mut backend = match WasmtimeBackend::new() {
+        Ok(backend) => backend,
+        Err(err) => panic!("WasmtimeBackend::new failed: {err:?}"),
+    };
+    if let Err(err) = backend.load_module(&bytes, ESCAPE_FUEL_LIMIT) {
+        panic!("benign module MUST load (over-rejecting); got {err:?}");
+    }
+    if let Err(err) = backend.evaluate(&minimal_request()) {
+        panic!(
+            "benign module MUST evaluate without error (over-rejecting); \
+             got {err:?}"
+        );
+    }
 }

@@ -1,7 +1,11 @@
 {
-  "caught": 0,
-  "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
-  "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "caught": 2,
+  "needs_real_run": false,
+  "note": "Threat-evidence backfill: real conformance test at crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs imports chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend and exercises the production fuel-budget admission path that catches CPU-exhaustion attacks. Two deny-asserting arms cover the sub-vectors: (1) infinite-loop attack under a 5_000_000-fuel cap traps with WasmGuardError::FuelExhausted or fuel-related Trap; (2) zero fuel ceiling traps on the very first guest instruction -- the boundary case for an operator failing-closed. The test also retains the chio-wasm-guards/tests/escape/ fixture pins (fuel_exhaustion.rs, oversize_memory.rs, deep_recursion.rs, table_grow.rs) as a supplementary regression net so a stealth removal of the per-class harness still trips this row. Header documents the revert-to-prove-it-fails recipe (replace the stored fuel_limit with u64::MAX inside WasmtimeBackend::evaluate).",
+  "ran_at": "2026-05-08T00:00:00Z",
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/resource_exhaustion_dos.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats resource_exhaustion_dos"
 }

@@ -2,11 +2,22 @@
 //!
 //! Surfaces: hosted_mcp, kernel_to_tool.
 //!
-//! Coverage strategy: the TRJ4 HTTP egress contract requires every substrate
-//! caller to declare tenant namespace, scheme and authority allowlists,
-//! redirect ceiling, response-size ceiling, and address-class denials. This
-//! test pins the SSRF negative cases to the shared `chio-http-core` contract
-//! so adapters exercise the same fail-closed substrate API.
+//! Production call site: this test imports
+//! `chio_http_core::HttpEgressContract` directly and drives the production
+//! `enforce_url` and `enforce_attempt` functions with attack inputs that
+//! exercise four distinct deny variants of `HttpEgressError`:
+//!   - LoopbackDenied (127.0.0.1 SSRF target),
+//!   - LinkLocalDenied (169.254.169.254 instance metadata target),
+//!   - Ipv6UlaDenied (fd00::/8 internal target),
+//!   - RedirectLimitExceeded (chained redirect SSRF),
+//!   - ResponseTooLarge (oversized response body amplification).
+//!
+//! Revert-to-prove-it-fails recipe: flip an early-return guard inside
+//! `enforce_url` in `crates/chio-http-core/src/lib.rs` to return
+//! `Ok(())` for one of the loopback / link-local / ULA / redirect /
+//! body-size checks. The deny-arm assertion that pinned the affected
+//! variant fails because the production contract no longer blocks
+//! the corresponding SSRF target.
 
 use std::collections::BTreeSet;
 

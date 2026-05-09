@@ -3,6 +3,12 @@
 //! Coverage strategy: record a dangerous predecessor in the session journal
 //! and assert `BehavioralSequenceGuard` denies the configured forbidden
 //! transition.
+//!
+//! Revert-to-prove-it-fails recipe: flip the forbidden-transition deny
+//! branch in `crates/chio-guards/src/behavioral_sequence.rs` to return
+//! `Verdict::Allow` (or remove the predecessor lookup). The deny-arm
+//! assertion below fails when the production guard stops denying the
+//! configured forbidden transition.
 
 use std::sync::Arc;
 

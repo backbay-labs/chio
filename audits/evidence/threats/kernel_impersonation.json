@@ -1,7 +1,14 @@
 {
   "caught": 0,
   "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
+  "note": "Bootstrap placeholder. The conformance test at crates/chio-conformance/tests/threats/kernel_impersonation.rs exercises this threat row against production code, but no cargo-mutants command transcript or run timestamp is committed on this branch. This file is consumed by scripts/check-threat-coverage-mutants.sh, so it must remain needs_real_run=true with caught=0 until a real cargo-mutants run catches at least one mutant and records timestamp_kind=cargo-mutants-run.",
   "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/kernel_impersonation.rs",
+  "timestamp_kind": "bootstrap-placeholder",
+  "timestamp_note": "The epoch sentinel is required while needs_real_run is true; replace it with the real cargo-mutants run timestamp only when mutation evidence lands.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats kernel_impersonation",
+  "evidence_status": "conformance-only",
+  "mutation_evidence_status": "not-run",
+  "promotion_status": "not-promoted"
 }

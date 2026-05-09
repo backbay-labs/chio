@@ -1,3 +1,21 @@
+// Threat test for threat ID `device_key_extraction`.
+//
+// Coverage strategy: present an App Attest fixture whose key id is bound
+// to a different credential and a Play Integrity token whose verdict is
+// downgraded; the production verifiers must reject both.
+//
+// Revert-to-prove-it-fails recipes:
+//   (a) inside `verify_app_attest` in
+//       `crates/chio-custody-hw/src/attestation/app_attest.rs`,
+//       remove the `key_id` comparison branch (or replace its
+//       `Err(AttestationError::KeyIdMismatch)` with `Ok(())`). The
+//       App Attest deny-arm assertion below fails.
+//   (b) inside `verify_play_integrity` in
+//       `crates/chio-custody-hw/src/attestation/play_integrity.rs`,
+//       drop the hardware-backed verdict check that returns
+//       `Err(AttestationError::PlayIntegrityDeviceRejected)`. The
+//       Play Integrity deny-arm assertion below fails.
+
 use std::error::Error;
 
 use chio_custody_hw::attestation::google_root::play_integrity_jwks_json;

@@ -3,6 +3,13 @@
 //! Coverage strategy: exercise the in-tree response sanitization guard against
 //! definite PHI/PII markers and assert both block and redact modes fail closed
 //! before raw identifiers reach downstream consumers.
+//!
+//! Revert-to-prove-it-fails recipe: swap the `Block` action branch in
+//! `crates/chio-guards/src/response_sanitization.rs` to fall through
+//! to a permissive `Allow` outcome (or short-circuit the scanner so
+//! it returns `ScanResult::Clean`). The deny-arm assertions below
+//! fail because the production guard stops blocking the PHI/PII
+//! markers.
 
 use chio_guards::{ResponseSanitizationGuard, SanitizationAction, ScanResult, SensitivityLevel};
 

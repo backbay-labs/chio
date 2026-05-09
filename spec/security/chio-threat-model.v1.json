@@ -113,7 +113,8 @@
         }
       ],
       "residualRisk": "Chio mediation does not by itself sandbox arbitrary tool-server code; a compromised tool process can still abuse whatever host privileges the operator granted it.",
-      "coverage_state": "covered",
+      "coverage_state": "partial",
+      "deferred_to": "future milestone (kernel-side tool-server dispatch sandbox-escape coverage; current tests close the wasm-guard host-import + fuel paths only, see audits/evidence/threats/tool_server_escape.json::deferred_follow_up)",
       "coveredBy": [
         "crates/chio-conformance/tests/threats/tool_server_escape.rs",
         "crates/chio-adversarial-suite/cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-004.json",
@@ -413,7 +414,8 @@
         }
       ],
       "residualRisk": "Until hybrid signature verification and cryptographic-floor enforcement ship, operators must treat post-quantum protection as planned rather than available.",
-      "coverage_state": "covered",
+      "coverage_state": "partial",
+      "deferred_to": "future milestone (hybrid-PQ artifact downgrade vector; current test closes the classical-only verifier-side rejection path only, see audits/evidence/threats/pq_signature_downgrade.json::deferred_follow_up)",
       "covered_by_tests": [
         "crates/chio-attest-verify/tests/migration.rs::end_to_end_migration_walks_three_stages",
         "crates/chio-attest-verify/tests/migration.rs::stage3_pq_required_accepts_rolled_hybrid_and_rejects_v318_bundle",
