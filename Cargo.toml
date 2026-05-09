@@ -126,6 +126,7 @@ members = [
     # Examples
     "examples/bilateral-invocation",
     "examples/cross-provider-policy",
+    "examples/chiodome-bilateral",
     "examples/guards/enriched-inspector",
     "examples/guards/tool-gate",
     "examples/hello-a2a",
