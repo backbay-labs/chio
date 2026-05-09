@@ -1,0 +1,40 @@
+--- crates/chio-guards/src/egress_allowlist.rs
++++ replace EgressAllowlistGuard::with_lists -> Result<Self, EgressAllowlistConfigError> with Ok(Default::default())
+@@ -61,36 +61,17 @@
+             Err(error) => panic!("default egress patterns must be valid: {error}"),
+         }
+     }
+ 
+     pub fn with_lists(
+         allow: Vec<String>,
+         block: Vec<String>,
+     ) -> Result<Self, EgressAllowlistConfigError> {
+-        let allow_patterns = allow
+-            .into_iter()
+-            .map(|pattern| {
+-                Pattern::new(&pattern).map_err(|source| {
+-                    EgressAllowlistConfigError::InvalidAllowPattern { pattern, source }
+-                })
+-            })
+-            .collect::<Result<Vec<_>, _>>()?;
+-        let block_patterns = block
+-            .into_iter()
+-            .map(|pattern| {
+-                Pattern::new(&pattern).map_err(|source| {
+-                    EgressAllowlistConfigError::InvalidBlockPattern { pattern, source }
+-                })
+-            })
+-            .collect::<Result<Vec<_>, _>>()?;
+-        Ok(Self {
+-            allow_patterns,
+-            block_patterns,
+-        })
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     pub fn is_allowed(&self, domain: &str) -> bool {
+         let domain = domain.to_lowercase();
+ 
+         // Block list takes precedence.
+         for pattern in &self.block_patterns {
+             if pattern.matches(&domain) {

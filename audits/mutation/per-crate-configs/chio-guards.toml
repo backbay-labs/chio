@@ -1,0 +1,146 @@
+# Per-run override config for chio-guards mutation baseline.
+#
+# Same as workspace .cargo/mutants.toml EXCEPT the additional_cargo_test_args
+# is scoped to the chio-guards package only, to avoid a pre-existing
+# unrelated test failure in chio-acp-proxy
+# (assertion failed: verdict.reason.contains("signature") || ...
+#  verdict.reason.contains("untrusted")) which would otherwise cause every
+# mutant to register as caught regardless of its own effect on chio-guards
+# behavior.
+#
+# This is a methodology fix, not a test fix. The chio-acp-proxy failure is
+# pre-existing on main (commit 708c7bb33) and is out of scope for the
+# A1 mutation baseline. The CI hosted-nightly remains the authoritative
+# workspace-scope measurement.
+#
+# Mirrors audits/mutation/per-crate-configs/chio-attest-verify.toml shape;
+# see that file for the methodology rationale and the README in this
+# directory for the per-crate override convention.
+#
+# ============================================================
+# Config correction (2026-05-08)
+# ============================================================
+#
+# This config was revised to address two measurement issues:
+#
+# - The prior subset (8 of 27 files; 119 of 1291 mutants; 9.2%
+#   surface) cannot retire a crate-level `>= 65%` target. The 78.2%
+#   kill rate measured against this subset is honestly labeled
+#   PARTIAL-SUBSET in all aggregate docs and in the JSON evidence;
+#   target satisfaction at the crate level requires either a full
+#   run OR a pre-registered statistically defensible sampling scheme.
+#
+# - The prior version excluded `text_utils.rs` and `spider_sense.rs`
+#   as "advisory/helper". The exclude-audit at
+#   `audits/evidence/mutation exclusion audit/exclude-audit.md` flagged both as
+#   decision-capable FOR-REMOVAL-CANDIDATE files:
+#
+#     - `text_utils.rs::canonicalize` is the canonical-form input
+#       to prompt-injection and jailbreak guards before they make
+#       deny decisions. Mutations that stop stripping zero-width
+#       characters or folding homoglyphs can let obfuscated
+#       payloads evade the trust-boundary guards.
+#
+#     - `spider_sense.rs::SpiderSenseGuard` returns
+#       `Verdict::Deny` for dimension mismatch (line 290),
+#       non-finite embeddings (line 293), high similarity scores,
+#       and ambiguous-deny policy (line 299). The file's
+#       module-level doc-comment lists three explicit
+#       `Verdict::Deny` paths (lines 10-28). It is NOT advisory.
+#
+#   Both files are now re-included in `examine_globs` below.
+#   The 119-mutant baseline measured against the prior config is
+#   INVALID for these two files. The next mutation run must
+#   re-measure with the corrected surface; the JSON evidence and
+#   aggregate docs reflect this re-baseline requirement honestly.
+#
+# SCOPE NOTE: chio-guards has the largest examine_globs of any
+# trust-boundary crate (27 files, 1291 total mutants per
+# `cargo mutants --list`). The full sweep is estimated at ~25 hours
+# wall-clock on the local workstation (per-mutant rebuild + test
+# averages 60-90s). This corrected local config defines the
+# trust-boundary core surface including text_utils and spider_sense.
+# The hosted nightly uses .cargo/mutants.toml, not this per-crate file;
+# that workspace config now also includes text_utils and spider_sense.
+# The nightly matrix is per crate, not sharded within chio-guards, so a
+# timeout or budget exhaustion remains a partial result until a full
+# completed sweep is recorded.
+#
+# Trust-boundary core surface (rationale per file):
+#   - pipeline.rs           : guard pipeline orchestration
+#   - forbidden_path.rs     : filesystem read-side boundary
+#   - path_allowlist.rs     : filesystem write-side boundary
+#   - path_normalization.rs : filesystem canonicalization (precondition)
+#   - egress_allowlist.rs   : network-egress boundary
+#   - secret_leak.rs        : data-flow boundary (secret detection)
+#   - data_flow.rs          : cumulative-exfiltration boundary
+#   - behavioral_sequence.rs: sequence-attack detection boundary
+#   - text_utils.rs         : canonicalize() feeds prompt-injection /
+#                             jailbreak guards before deny decisions
+#   - spider_sense.rs       : SpiderSenseGuard returns Verdict::Deny
+#                             on multiple paths
+#
+# Files NOT in this surface (deferred to CI nightly):
+#   shell_command, response_sanitization, jailbreak_detector,
+#   browser_automation, content_review, behavioral_profile,
+#   computer_use, memory_governance, code_execution, prompt_injection,
+#   input_injection, remote_desktop, mcp_tool, jailbreak, velocity,
+#   post_invocation, agent_velocity, internal_network, patch_integrity.
+# These are excluded from this local rerun config for session-scope
+# reasons (mutant volume), not scope-of-concern reasons. The full
+# workspace .cargo/mutants.toml surface is the hosted-nightly input.
+#
+# ITEMIZED EXCLUSION RATIONALE (per file):
+#
+#   crates/chio-guards/src/action.rs
+#     OK -- pure type definitions for the Action enum; no decision
+#     logic.
+#
+#   crates/chio-guards/src/advisory.rs
+#     OK -- advisory-by-design guard surface. By construction
+#     advisory guards do not deny; their decisions are not on the
+#     trust boundary.
+#
+#   crates/chio-guards/src/external/**
+#     PARTIAL-DEFER -- remote-process bridges,
+#     integration-tested rather than mutation-tested. The
+#     exclude-audit (`audits/evidence/mutation exclusion audit/exclude-audit.md`)
+#     flagged this blanket exclusion as FOR-REMOVAL-CANDIDATE
+#     pending per-file justification. Itemizing every file in
+#     external/ is deferred to a follow-up; this config carries
+#     the blanket exclusion for now with the caveat that
+#     external/ kill-rate evidence comes from the integration-test
+#     suite, not cargo-mutants.
+
+additional_cargo_test_args = ["--package", "chio-guards"]
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/chio-guards/src/pipeline.rs",
+    "crates/chio-guards/src/forbidden_path.rs",
+    "crates/chio-guards/src/path_allowlist.rs",
+    "crates/chio-guards/src/path_normalization.rs",
+    "crates/chio-guards/src/egress_allowlist.rs",
+    "crates/chio-guards/src/secret_leak.rs",
+    "crates/chio-guards/src/data_flow.rs",
+    "crates/chio-guards/src/behavioral_sequence.rs",
+    # Re-included in the 2026-05-08 config correction; both are
+    # decision-capable per audits/evidence/mutation exclusion audit/exclude-audit.md.
+    "crates/chio-guards/src/text_utils.rs",
+    "crates/chio-guards/src/spider_sense.rs",
+]
+
+# Itemized exclusions (rationale per file in the header above).
+exclude_globs = [
+    "**/tests.rs",
+    "**/test_*.rs",
+    "**/*_test.rs",
+    "**/tests/**",
+    "**/benches/**",
+    "**/build.rs",
+    "**/fuzz.rs",
+    "crates/chio-guards/src/action.rs",
+    "crates/chio-guards/src/advisory.rs",
+    "crates/chio-guards/src/external/**",
+]

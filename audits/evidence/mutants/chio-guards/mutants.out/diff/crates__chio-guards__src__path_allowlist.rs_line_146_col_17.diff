@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_allowlist.rs
++++ replace || with && in PathAllowlistGuard::matches_session_roots
+@@ -138,17 +138,17 @@
+             return session_roots
+                 .iter()
+                 .any(|root| Self::path_within_root(&resolved_path, root));
+         }
+ 
+         session_roots.iter().any(|root| {
+             Self::path_within_root(&lexical_path, root)
+                 || Self::path_within_root(&resolved_path, root)
+-                || lexical_abs_path
++                && /* ~ changed by cargo-mutants ~ */ lexical_abs_path
+                     .as_deref()
+                     .map(|abs| Self::path_within_root(abs, root))
+                     .unwrap_or(false)
+         })
+     }
+ 
+     pub fn is_file_access_allowed(&self, path: &str) -> bool {
+         if !self.enabled {

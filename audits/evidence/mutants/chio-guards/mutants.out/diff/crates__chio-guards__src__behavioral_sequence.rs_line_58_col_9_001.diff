@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/behavioral_sequence.rs
++++ replace <impl Guard for BehavioralSequenceGuard>::name -> &str with ""
+@@ -50,17 +50,17 @@
+     /// Create a new guard with the given journal and policy.
+     pub fn new(journal: Arc<SessionJournal>, policy: SequencePolicy) -> Self {
+         Self { journal, policy }
+     }
+ }
+ 
+ impl Guard for BehavioralSequenceGuard {
+     fn name(&self) -> &str {
+-        "behavioral-sequence"
++        "" /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
+         let tool_name = &ctx.request.tool_name;
+ 
+         let sequence = self.journal.tool_sequence().map_err(|e| {
+             KernelError::Internal(format!(
+                 "behavioral-sequence guard journal error (fail-closed): {e}"
