@@ -7,6 +7,7 @@
 #   timeout.txt / unviable.txt and the per-crate <date>.json summary,
 #   which IS committed.
 **/mutants.out/log/
+**/log/
 **/logs/
 
 # debug.log carries the same per-mutant detail and the cargo-mutants
