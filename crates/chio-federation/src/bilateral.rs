@@ -388,9 +388,9 @@ pub struct BilateralCoSignArtifacts {
 }
 
 /// `tool_name` and `timestamp_unix_ms` are surfaced to callers because
-/// the DSSE signature-slice predicate binds them. `tool_name` is typically
-/// `receipt.tool_name`; `timestamp_unix_ms` is the wall-clock at
-/// canonicalisation (Org B-side).
+/// they are statement fields the DSSE signature-slice envelope binds.
+/// `tool_name` is typically `receipt.tool_name`; `timestamp_unix_ms` is
+/// the wall-clock at canonicalisation (Org B-side).
 ///
 /// Scope boundary: this helper is an in-process API/demo slice because it
 /// takes the origin kernel private key to produce the DSSE Org A signature.
