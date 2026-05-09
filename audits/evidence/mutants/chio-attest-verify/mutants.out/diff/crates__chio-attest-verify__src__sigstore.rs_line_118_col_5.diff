@@ -1,0 +1,22 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace build_trust_root -> Result<SigstoreTrustRoot, AttestError> with Ok(Default::default())
+@@ -110,18 +110,17 @@
+     /// crypto work that follows in the typical `verify_bundle` flow.
+     fn build_bundle_verifier(&self) -> Result<AsyncBundleVerifier, AttestError> {
+         let trust_root = build_trust_root()?;
+         AsyncBundleVerifier::new(Default::default(), trust_root).map_err(|_| AttestError::TrustRoot)
+     }
+ }
+ 
+ fn build_trust_root() -> Result<SigstoreTrustRoot, AttestError> {
+-    SigstoreTrustRoot::from_trusted_root_json_unchecked(EMBEDDED_TRUSTED_ROOT_JSON)
+-        .map_err(|_| AttestError::TrustRoot)
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ impl AttestVerifier for SigstoreVerifier {
+     fn verify_blob(
+         &self,
+         artifact: &Path,
+         signature: &Path,
+         certificate: &Path,
