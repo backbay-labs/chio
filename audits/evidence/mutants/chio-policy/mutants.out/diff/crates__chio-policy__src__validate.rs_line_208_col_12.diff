@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ delete ! in validate_posture
+@@ -200,17 +200,17 @@
+ ) {
+     if let Some(posture) = &ext.posture {
+         if posture.states.is_empty() {
+             errors.push(ValidationError::Custom(
+                 "posture.states must define at least one state".to_string(),
+             ));
+         }
+ 
+-        if !posture.states.contains_key(&posture.initial) {
++        if  /* ~ changed by cargo-mutants ~ */posture.states.contains_key(&posture.initial) {
+             errors.push(ValidationError::Custom(format!(
+                 "posture.initial '{}' does not reference a defined state",
+                 posture.initial
+             )));
+         }
+ 
+         for (state_name, state) in &posture.states {
+             for capability in &state.capabilities {

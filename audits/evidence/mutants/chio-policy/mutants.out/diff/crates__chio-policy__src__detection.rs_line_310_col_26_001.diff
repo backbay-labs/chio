@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/detection.rs
++++ replace += with *= in run_patterns
+@@ -302,17 +302,17 @@
+     input: &str,
+     label: &str,
+ ) -> DetectionResult {
+     let mut matched_patterns = Vec::new();
+     let mut total_weight = 0.0;
+ 
+     for pattern in patterns {
+         if let Some(m) = pattern.regex.find(input) {
+-            total_weight += pattern.weight;
++            total_weight *= /* ~ changed by cargo-mutants ~ */ pattern.weight;
+             matched_patterns.push(MatchedPattern {
+                 name: pattern.name.clone(),
+                 weight: pattern.weight,
+                 matched_text: Some(m.as_str().to_string()),
+             });
+         }
+     }
+ 

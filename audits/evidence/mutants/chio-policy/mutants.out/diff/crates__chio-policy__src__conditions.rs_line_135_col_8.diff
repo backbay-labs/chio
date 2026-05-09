@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ delete ! in check_time_window
+@@ -127,17 +127,17 @@
+         return false;
+     };
+ 
+     let current_minutes = hour as u32 * 60 + minute as u32;
+     let start_minutes = start_h as u32 * 60 + start_m as u32;
+     let end_minutes = end_h as u32 * 60 + end_m as u32;
+     let wraps_midnight = start_minutes > end_minutes;
+ 
+-    if !tw.days.is_empty() {
++    if  /* ~ changed by cargo-mutants ~ */tw.days.is_empty() {
+         let effective_day = if wraps_midnight && current_minutes < end_minutes {
+             (day_of_week + 6) % 7
+         } else {
+             day_of_week
+         };
+         let day_abbrev = day_abbreviation(effective_day);
+         if !tw.days.iter().any(|d| d.eq_ignore_ascii_case(day_abbrev)) {
+             return false;

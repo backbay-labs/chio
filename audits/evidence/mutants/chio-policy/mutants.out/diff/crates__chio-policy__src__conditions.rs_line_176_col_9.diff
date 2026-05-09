@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ delete match arm 3 in day_abbreviation
+@@ -168,17 +168,17 @@
+     Some((hour, minute))
+ }
+ 
+ fn day_abbreviation(day: u32) -> &'static str {
+     match day {
+         0 => "mon",
+         1 => "tue",
+         2 => "wed",
+-        3 => "thu",
++         /* ~ changed by cargo-mutants ~ */
+         4 => "fri",
+         5 => "sat",
+         6 => "sun",
+         _ => "mon",
+     }
+ }
+ 
+ fn resolve_current_time(context: &RuntimeContext, timezone: Option<&str>) -> Option<(u8, u8, u32)> {

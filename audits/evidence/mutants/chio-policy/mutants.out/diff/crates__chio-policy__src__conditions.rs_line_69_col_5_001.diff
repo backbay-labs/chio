@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ replace evaluate_condition -> bool with true
+@@ -61,17 +61,17 @@
+     #[serde(default)]
+     pub custom: HashMap<String, serde_json::Value>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub current_time: Option<String>,
+ }
+ 
+ /// Missing context fields cause the condition to evaluate to false (fail-closed).
+ pub fn evaluate_condition(condition: &Condition, context: &RuntimeContext) -> bool {
+-    evaluate_condition_depth(condition, context, 0)
++    true /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn evaluate_condition_depth(condition: &Condition, context: &RuntimeContext, depth: usize) -> bool {
+     if depth > MAX_NESTING_DEPTH {
+         return false;
+     }
+ 
+     if let Some(tw) = &condition.time_window {

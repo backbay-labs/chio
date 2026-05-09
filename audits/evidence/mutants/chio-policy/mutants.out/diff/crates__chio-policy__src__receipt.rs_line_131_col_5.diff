@@ -1,0 +1,24 @@
+--- crates/chio-policy/src/receipt.rs
++++ replace compute_policy_hash -> String with "xyzzy".into()
+@@ -123,20 +123,17 @@
+         name: spec.name.clone(),
+         version: spec.hushspec.clone(),
+         content_hash,
+     }
+ }
+ 
+ /// SHA-256 hex digest of the canonical JSON serialization.
+ pub fn compute_policy_hash(spec: &HushSpec) -> String {
+-    let json = serde_json::to_string(spec).unwrap_or_default();
+-    let mut hasher = Sha256::new();
+-    hasher.update(json.as_bytes());
+-    format!("{:x}", hasher.finalize())
++    "xyzzy".into() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use crate::models::{DefaultAction, HushSpec, Rules, ToolAccessRule};
+ 
+     fn allow_spec() -> HushSpec {

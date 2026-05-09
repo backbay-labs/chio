@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ replace + with * in evaluate_condition_depth
+@@ -94,17 +94,17 @@
+             return false;
+         }
+     }
+ 
+     if let Some(any) = &condition.any_of {
+         if !any.is_empty()
+             && !any
+                 .iter()
+-                .any(|c| evaluate_condition_depth(c, context, depth + 1))
++                .any(|c| evaluate_condition_depth(c, context, depth * /* ~ changed by cargo-mutants ~ */ 1))
+         {
+             return false;
+         }
+     }
+ 
+     if let Some(not_cond) = &condition.not {
+         if evaluate_condition_depth(not_cond, context, depth + 1) {
+             return false;

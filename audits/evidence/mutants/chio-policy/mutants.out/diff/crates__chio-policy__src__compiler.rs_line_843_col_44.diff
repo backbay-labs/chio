@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace != with == in literal_prefix
+@@ -835,17 +835,17 @@
+ 
+ fn contains_wildcards(pattern: &str) -> bool {
+     pattern.contains('*') || pattern.contains('?')
+ }
+ 
+ fn literal_prefix(pattern: &str) -> String {
+     pattern
+         .chars()
+-        .take_while(|ch| *ch != '*' && *ch != '?')
++        .take_while(|ch| *ch != '*' && *ch == /* ~ changed by cargo-mutants ~ */ '?')
+         .collect()
+ }
+ 
+ fn glob_matches(pattern: &str, target: &str) -> Result<bool, CompileError> {
+     let mut regex = String::from("^");
+     let mut chars = pattern.chars().peekable();
+     while let Some(ch) = chars.next() {
+         match ch {

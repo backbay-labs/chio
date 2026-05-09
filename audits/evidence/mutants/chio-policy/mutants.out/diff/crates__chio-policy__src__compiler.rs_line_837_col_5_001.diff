@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace contains_wildcards -> bool with true
+@@ -829,17 +829,17 @@
+         return Ok(true);
+     }
+     let left_prefix = literal_prefix(left);
+     let right_prefix = literal_prefix(right);
+     Ok(left_prefix.starts_with(&right_prefix) || right_prefix.starts_with(&left_prefix))
+ }
+ 
+ fn contains_wildcards(pattern: &str) -> bool {
+-    pattern.contains('*') || pattern.contains('?')
++    true /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn literal_prefix(pattern: &str) -> String {
+     pattern
+         .chars()
+         .take_while(|ch| *ch != '*' && *ch != '?')
+         .collect()
+ }

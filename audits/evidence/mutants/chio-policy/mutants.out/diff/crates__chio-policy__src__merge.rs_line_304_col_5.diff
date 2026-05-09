@@ -1,0 +1,50 @@
+--- crates/chio-policy/src/merge.rs
++++ replace merge_reputation_weights -> Option<ReputationWeights> with None
+@@ -296,46 +296,17 @@
+         (None, None) => None,
+     }
+ }
+ 
+ fn merge_reputation_weights(
+     base: &Option<ReputationWeights>,
+     child: &Option<ReputationWeights>,
+ ) -> Option<ReputationWeights> {
+-    match (base, child) {
+-        (_, Some(child_weights)) => {
+-            if let Some(base_weights) = base {
+-                Some(ReputationWeights {
+-                    boundary_pressure: child_weights
+-                        .boundary_pressure
+-                        .or(base_weights.boundary_pressure),
+-                    resource_stewardship: child_weights
+-                        .resource_stewardship
+-                        .or(base_weights.resource_stewardship),
+-                    least_privilege: child_weights
+-                        .least_privilege
+-                        .or(base_weights.least_privilege),
+-                    history_depth: child_weights.history_depth.or(base_weights.history_depth),
+-                    tool_diversity: child_weights.tool_diversity.or(base_weights.tool_diversity),
+-                    delegation_hygiene: child_weights
+-                        .delegation_hygiene
+-                        .or(base_weights.delegation_hygiene),
+-                    reliability: child_weights.reliability.or(base_weights.reliability),
+-                    incident_correlation: child_weights
+-                        .incident_correlation
+-                        .or(base_weights.incident_correlation),
+-                })
+-            } else {
+-                Some(child_weights.clone())
+-            }
+-        }
+-        (Some(base_weights), None) => Some(base_weights.clone()),
+-        (None, None) => None,
+-    }
++    None /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn merge_prompt_injection(
+     base: &Option<PromptInjectionDetection>,
+     child: &Option<PromptInjectionDetection>,
+ ) -> Option<PromptInjectionDetection> {
+     match (base, child) {
+         (_, Some(child_prompt)) => {

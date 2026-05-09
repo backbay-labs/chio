@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ replace - with + in values_equal
+@@ -303,17 +303,17 @@
+         serde_json::Value::String(expected_str) => actual.as_str() == Some(expected_str.as_str()),
+         serde_json::Value::Bool(expected_bool) => actual.as_bool() == Some(*expected_bool),
+         serde_json::Value::Number(expected_num) => {
+             if let Some(expected_i64) = expected_num.as_i64() {
+                 actual.as_i64() == Some(expected_i64)
+             } else if let Some(expected_f64) = expected_num.as_f64() {
+                 actual
+                     .as_f64()
+-                    .is_some_and(|n| (n - expected_f64).abs() < f64::EPSILON)
++                    .is_some_and(|n| (n + /* ~ changed by cargo-mutants ~ */ expected_f64).abs() < f64::EPSILON)
+             } else {
+                 false
+             }
+         }
+         _ => false,
+     }
+ }
+ 

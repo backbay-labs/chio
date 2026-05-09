@@ -1,0 +1,28 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace compile_remote_desktop_rule -> RemoteDesktopSideChannelConfig with Default::default()
+@@ -359,24 +359,17 @@
+     }
+ }
+ 
+ fn compile_remote_desktop_rule(rule: &RemoteDesktopChannelsRule) -> RemoteDesktopSideChannelConfig {
+     // HushSpec `remote_desktop_channels` carries per-channel toggles for
+     // clipboard / file_transfer / audio / drive_mapping. It does not
+     // currently model session_share, printing, or transfer size, so we
+     // leave those at the guard's defaults (enabled / no limit).
+-    RemoteDesktopSideChannelConfig {
+-        enabled: true,
+-        clipboard_enabled: rule.clipboard,
+-        file_transfer_enabled: rule.file_transfer,
+-        audio_enabled: rule.audio,
+-        drive_mapping_enabled: rule.drive_mapping,
+-        ..RemoteDesktopSideChannelConfig::default()
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn compile_input_injection_rule(rule: &InputInjectionRule) -> InputInjectionCapabilityConfig {
+     InputInjectionCapabilityConfig {
+         enabled: true,
+         allowed_input_types: rule.allowed_types.clone(),
+         require_postcondition_probe: rule.require_postcondition_probe,
+         ..InputInjectionCapabilityConfig::default()

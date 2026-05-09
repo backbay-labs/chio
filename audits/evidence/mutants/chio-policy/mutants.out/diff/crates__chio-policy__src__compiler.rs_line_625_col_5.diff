@@ -1,0 +1,68 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace compile_scope -> Result<ChioScope, CompileError> with Ok(Default::default())
+@@ -617,64 +617,17 @@
+ 
+ /// Build a default ChioScope from the policy's tool_access rules.
+ ///
+ /// If tool_access has an allow list and can be faithfully represented as an
+ /// `ChioScope`, each entry becomes a wildcard ToolGrant with `Invoke`
+ /// permission. Policies that rely on negative matches or other semantics the
+ /// scope model cannot encode fail closed and emit no default grants.
+ fn compile_scope(policy: &HushSpec) -> Result<ChioScope, CompileError> {
+-    let Some(rules) = &policy.rules else {
+-        return Ok(permissive_scope());
+-    };
+-
+-    let Some(ta) = &rules.tool_access else {
+-        return Ok(permissive_scope());
+-    };
+-
+-    if !ta.enabled {
+-        return Ok(permissive_scope());
+-    }
+-
+-    if ta.default == DefaultAction::Allow {
+-        if tool_access_can_safely_widen_to_wildcard(ta) {
+-            return Ok(permissive_scope());
+-        }
+-        return Ok(ChioScope::default());
+-    }
+-
+-    if ta.allow.is_empty() && ta.default == DefaultAction::Block {
+-        // Block-by-default with no allowlist: empty scope
+-        return Ok(ChioScope::default());
+-    }
+-
+-    if ta.require_workload_identity.is_some() || ta.prefer_workload_identity.is_some() {
+-        return Ok(ChioScope::default());
+-    }
+-
+-    // Each allowed tool pattern becomes a grant on a wildcard server
+-    let human_in_loop = rules.human_in_loop.as_ref();
+-    let mut grants = Vec::with_capacity(ta.allow.len());
+-    for tool_pattern in &ta.allow {
+-        grants.push(ToolGrant {
+-            server_id: "*".to_string(),
+-            tool_name: tool_pattern.clone(),
+-            operations: vec![Operation::Invoke],
+-            constraints: compile_tool_constraints(ta, tool_pattern, human_in_loop)?,
+-            max_invocations: None,
+-            max_cost_per_invocation: None,
+-            max_total_cost: None,
+-            dpop_required: None,
+-        });
+-    }
+-
+-    Ok(ChioScope {
+-        grants,
+-        ..ChioScope::default()
+-    })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn permissive_scope() -> ChioScope {
+     ChioScope {
+         grants: vec![ToolGrant {
+             server_id: "*".to_string(),
+             tool_name: "*".to_string(),
+             operations: vec![Operation::Invoke],

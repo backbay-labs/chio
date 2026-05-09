@@ -1,0 +1,95 @@
+--- crates/chio-policy/src/validate.rs
++++ replace validate_rules with ()
+@@ -79,91 +79,17 @@
+         validate_reputation(ext, &mut errors, &mut warnings);
+         validate_runtime_assurance(ext, &mut errors);
+     }
+ 
+     ValidationResult { errors, warnings }
+ }
+ 
+ fn validate_rules(rules: &Rules, errors: &mut Vec<ValidationError>) {
+-    if let Some(secret_patterns) = &rules.secret_patterns {
+-        validate_regex_count(
+-            secret_patterns.patterns.len(),
+-            "rules.secret_patterns.patterns",
+-            errors,
+-        );
+-        let mut seen = HashSet::new();
+-        for pattern in &secret_patterns.patterns {
+-            if !seen.insert(&pattern.name) {
+-                errors.push(ValidationError::DuplicatePatternName(pattern.name.clone()));
+-            }
+-            validate_regex(
+-                &pattern.pattern,
+-                &format!("rules.secret_patterns.patterns.{}", pattern.name),
+-                errors,
+-            );
+-        }
+-    }
+-
+-    if let Some(patch_integrity) = &rules.patch_integrity {
+-        if patch_integrity.max_imbalance_ratio <= 0.0 {
+-            errors.push(ValidationError::Custom(
+-                "rules.patch_integrity.max_imbalance_ratio must be > 0".to_string(),
+-            ));
+-        }
+-        validate_regex_count(
+-            patch_integrity.forbidden_patterns.len(),
+-            "rules.patch_integrity.forbidden_patterns",
+-            errors,
+-        );
+-        for (index, pattern) in patch_integrity.forbidden_patterns.iter().enumerate() {
+-            validate_regex(
+-                pattern,
+-                &format!("rules.patch_integrity.forbidden_patterns[{index}]"),
+-                errors,
+-            );
+-        }
+-    }
+-
+-    if let Some(shell_commands) = &rules.shell_commands {
+-        validate_regex_count(
+-            shell_commands.forbidden_patterns.len(),
+-            "rules.shell_commands.forbidden_patterns",
+-            errors,
+-        );
+-        for (index, pattern) in shell_commands.forbidden_patterns.iter().enumerate() {
+-            validate_regex(
+-                pattern,
+-                &format!("rules.shell_commands.forbidden_patterns[{index}]"),
+-                errors,
+-            );
+-        }
+-    }
+-
+-    if let Some(tool_access) = &rules.tool_access {
+-        if matches!(tool_access.max_args_size, Some(0)) {
+-            errors.push(ValidationError::Custom(
+-                "rules.tool_access.max_args_size must be >= 1".to_string(),
+-            ));
+-        }
+-        if let Some(require_workload_identity) = tool_access.require_workload_identity.as_ref() {
+-            validate_workload_identity_match(
+-                require_workload_identity,
+-                "rules.tool_access.require_workload_identity",
+-                errors,
+-            );
+-        }
+-        if let Some(prefer_workload_identity) = tool_access.prefer_workload_identity.as_ref() {
+-            validate_workload_identity_match(
+-                prefer_workload_identity,
+-                "rules.tool_access.prefer_workload_identity",
+-                errors,
+-            );
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn validate_workload_identity_match(
+     rule: &crate::models::WorkloadIdentityMatch,
+     field: &str,
+     errors: &mut Vec<ValidationError>,
+ ) {
+     if rule

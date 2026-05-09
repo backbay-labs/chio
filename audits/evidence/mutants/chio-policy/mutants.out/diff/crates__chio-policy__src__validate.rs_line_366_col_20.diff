@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ delete ! in validate_detection
+@@ -358,17 +358,17 @@
+                 None if threat_intel.enabled.unwrap_or(true) => {
+                     errors.push(ValidationError::Custom(
+                         "detection.threat_intel.pattern_db is required when enabled".to_string(),
+                     ));
+                 }
+                 _ => {}
+             }
+             if let Some(similarity_threshold) = threat_intel.similarity_threshold {
+-                if !(0.0..=1.0).contains(&similarity_threshold) {
++                if  /* ~ changed by cargo-mutants ~ */(0.0..=1.0).contains(&similarity_threshold) {
+                     errors.push(ValidationError::Custom(
+                         "detection.threat_intel.similarity_threshold must be between 0.0 and 1.0"
+                             .to_string(),
+                     ));
+                 }
+             }
+             if matches!(threat_intel.top_k, Some(0)) {
+                 errors.push(ValidationError::Custom(

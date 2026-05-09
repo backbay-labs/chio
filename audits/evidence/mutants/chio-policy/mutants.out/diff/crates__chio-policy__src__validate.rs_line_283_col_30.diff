@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ replace == with != in validate_posture
+@@ -275,17 +275,17 @@
+                     if !is_valid_duration(after) {
+                         errors.push(ValidationError::Custom(format!(
+                             "posture.transitions[{index}].after must match ^\\d+[smhd]$"
+                         )));
+                     }
+                 }
+             }
+ 
+-            if transition.on == TransitionTrigger::Timeout {
++            if transition.on != /* ~ changed by cargo-mutants ~ */ TransitionTrigger::Timeout {
+                 match transition.after.as_deref() {
+                     Some(after) if is_valid_duration(after) => {}
+                     Some(_) => errors.push(ValidationError::Custom(format!(
+                         "posture.transitions[{index}].after must match ^\\d+[smhd]$"
+                     ))),
+                     None => errors.push(ValidationError::Custom(format!(
+                         "posture.transitions[{index}]: timeout trigger requires 'after' field"
+                     ))),
