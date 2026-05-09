@@ -118,6 +118,7 @@ base64 = { workspace = true }
 hex = { workspace = true }
 coset = { workspace = true }
 jsonwebtoken = { workspace = true }
+jsonschema = { workspace = true }
 sha2 = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 # M05.P5.T3: threat-model coverage tests load curated adversarial
