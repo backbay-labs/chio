@@ -45,6 +45,9 @@ pub mod tdx;
 #[cfg(feature = "tee-quotes")]
 mod tee_signature;
 
+#[cfg(kani)]
+mod kani_public_harnesses;
+
 pub use crate::policy::{TenantPolicy, BOOTSTRAP_TENANT_ID, TENANT_POLICY_SCHEMA_VERSION};
 pub use crate::policy_loader::{TenantPolicyLoader, DEFAULT_STALENESS_HORIZON};
 pub use crate::quote::{
@@ -73,16 +76,6 @@ pub struct ExpectedIdentity {
 impl ExpectedIdentity {
     /// Doc-hidden constructor retained for tests and legacy operator
     /// configuration.
-    ///
-    /// Production call sites MUST construct identities through
-    /// [`TenantPolicyResolver::expected_for_tenant`] so that every accepted
-    /// identity flows from a Sigstore-signed per-tenant policy file rather
-    /// than an inline regex spliced into calling code. This constructor is
-    /// kept available because the `chio-attest-verify` integration tests
-    /// and the bedrock-adapter principal tests still need to construct
-    /// fixed-shape identities for unit-style coverage; the migration audit
-    /// at `docs/security/expected-identity-migration.md` lists every
-    /// remaining caller.
     ///
     /// The function is `#[doc(hidden)]` so it does not appear in public
     /// rustdoc, and the workspace-wide grep gate
