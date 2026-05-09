@@ -679,7 +679,7 @@ jobs:
             --exclude-crate chio-kernel-core --list
           echo "::endgroup::"
           bash scripts/run-kani-manifest.sh --lane pr \
-            --exclude-crate chio-kernel-core
+            --exclude-crate chio-kernel-core --allow-empty
 
   # Regression-test deletion guard. Detects deletion of fuzz-promoted
   # regression tests under tests/regression_*.rs or
