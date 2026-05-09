@@ -1,11 +1,11 @@
 {
-  "caught": 3,
-  "needs_real_run": false,
-  "note": "Conformance evidence: real conformance test at crates/chio-conformance/tests/threats/play_integrity_token_replay.rs exercises three distinct Play Integrity rejection branches against verify_play_integrity (production code in chio-custody-hw): (1) replayed nonce -> AttestationError::PlayIntegrityNonceMismatch, (2) expired token (exp=1) -> AttestationError::PlayIntegrityInvalidToken, (3) audience mismatch -> AttestationError::PlayIntegrityInvalidToken. Header documents the revert-to-prove-it-fails recipe per branch.",
-  "ran_at": "2026-05-08T00:00:00Z",
+  "caught": 0,
+  "needs_real_run": true,
+  "note": "Bootstrap placeholder. A real conformance test at crates/chio-conformance/tests/threats/play_integrity_token_replay.rs exercises three Play Integrity rejection branches, but this file is consumed by the per-row cargo-mutants evidence gate. Keep the row in bootstrap until a cargo-mutants run catches at least one play_integrity_token_replay mutant and commits the real run timestamp.",
+  "ran_at": "1970-01-01T00:00:00Z",
   "survivors": [],
   "test_path": "crates/chio-conformance/tests/threats/play_integrity_token_replay.rs",
-  "timestamp_kind": "generated-metadata",
-  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "timestamp_kind": "bootstrap-placeholder",
+  "timestamp_note": "The epoch sentinel is required while needs_real_run is true; it must be replaced with the real cargo-mutants run timestamp when mutation evidence lands.",
   "reproduction_command": "cargo test -p chio-conformance --test threats play_integrity_token_replay"
 }

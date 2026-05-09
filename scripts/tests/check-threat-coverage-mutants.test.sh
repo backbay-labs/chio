@@ -21,6 +21,8 @@
 #     and FAILS.
 #   - A covered row with no `coveredBy`/`covered_by_tests` produces
 #     `no_coveredby` and FAILS.
+#   - Generated or conformance-only metadata cannot pass as real
+#     cargo-mutants evidence by setting `needs_real_run=false`.
 
 set -euo pipefail
 
@@ -67,12 +69,18 @@ PY
 
 write_evidence() {
     # write_evidence <id> <caught> [<needs_real_run>=false] [<ran_at_override>]
+    #                [<timestamp_kind>] [<evidence_status>]
+    #                [<mutation_evidence_status>] [<promotion_status>]
     # Bootstrap placeholders (needs_real_run=true) require ran_at to be the
     # 1970 epoch sentinel; real-run rows record the actual timestamp.
     local id="$1"
     local caught="$2"
     local needs_real_run="${3:-false}"
     local ran_at_override="${4:-}"
+    local timestamp_kind="${5:-}"
+    local evidence_status="${6:-}"
+    local mutation_evidence_status="${7:-}"
+    local promotion_status="${8:-}"
     local ran_at
     if [[ -n "$ran_at_override" ]]; then
         ran_at="$ran_at_override"
@@ -81,12 +89,44 @@ write_evidence() {
     else
         ran_at="2026-05-05T00:00:00Z"
     fi
+    if [[ -z "$timestamp_kind" ]]; then
+        if [[ "$needs_real_run" == "true" ]]; then
+            timestamp_kind="bootstrap-placeholder"
+        else
+            timestamp_kind="cargo-mutants-run"
+        fi
+    fi
+    if [[ -z "$evidence_status" ]]; then
+        if [[ "$needs_real_run" == "true" ]]; then
+            evidence_status="conformance-only"
+        else
+            evidence_status="cargo-mutants-run"
+        fi
+    fi
+    if [[ -z "$mutation_evidence_status" ]]; then
+        if [[ "$needs_real_run" == "true" ]]; then
+            mutation_evidence_status="not-run"
+        else
+            mutation_evidence_status="complete"
+        fi
+    fi
+    if [[ -z "$promotion_status" ]]; then
+        if [[ "$needs_real_run" == "true" ]]; then
+            promotion_status="not-promoted"
+        else
+            promotion_status="promoted"
+        fi
+    fi
     cat > "$EVIDENCE_DIR/$id.json" <<JSON
 {
   "caught": $caught,
   "survivors": [],
   "ran_at": "$ran_at",
-  "needs_real_run": $needs_real_run
+  "needs_real_run": $needs_real_run,
+  "timestamp_kind": "$timestamp_kind",
+  "evidence_status": "$evidence_status",
+  "mutation_evidence_status": "$mutation_evidence_status",
+  "promotion_status": "$promotion_status"
 }
 JSON
 }
@@ -98,10 +138,9 @@ write_stub() {
 }
 
 run_mutants_gate() {
-    local extra_args=("$@")
     CHIO_THREAT_MODEL_PATH="$MODEL" \
     CHIO_THREAT_EVIDENCE_DIR="$EVIDENCE_DIR" \
-        bash "$REPO_ROOT/scripts/check-threat-coverage-mutants.sh" "${extra_args[@]}" \
+        bash "$REPO_ROOT/scripts/check-threat-coverage-mutants.sh" "$@" \
         >"$OUT" 2>"$ERR"
 }
 
@@ -213,7 +252,24 @@ assert_fails "inconsistent bootstrap (real ran_at + needs_real_run) fails" run_m
 grep -q "WEAK: inconsistent_bootstrap_threat should be marked weak_coverage; reason=inconsistent_bootstrap" "$ERR" \
     || { echo "FAIL: missing inconsistent_bootstrap diagnostic"; cat "$ERR"; exit 1; }
 
-# Case 9 (wave-0.5 hardening): CI=true + --dry-run is rejected (exit 2).
+# Case 9: generated conformance metadata cannot be promoted as cargo-mutants
+# evidence just by flipping needs_real_run=false and caught>=1.
+reset_fixture
+write_model_single "generated_metadata_threat" "covered"
+write_evidence \
+    "generated_metadata_threat" \
+    1 \
+    false \
+    "2026-05-08T00:00:00Z" \
+    "generated-metadata" \
+    "conformance-only" \
+    "not-run" \
+    "not-promoted"
+assert_fails "generated metadata cannot pass as mutants evidence" run_mutants_gate
+grep -q "WEAK: generated_metadata_threat should be marked weak_coverage; reason=non_mutants_metadata" "$ERR" \
+    || { echo "FAIL: missing non_mutants_metadata diagnostic"; cat "$ERR"; exit 1; }
+
+# Case 10 (wave-0.5 hardening): CI=true + --dry-run is rejected (exit 2).
 reset_fixture
 write_model_single "ci_dryrun_threat" "covered"
 write_evidence "ci_dryrun_threat" 1 false
