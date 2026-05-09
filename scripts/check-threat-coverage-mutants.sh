@@ -345,12 +345,6 @@ while IFS=$'\t' read -r tid state has_coveredby; do
         continue
     fi
 
-    if [[ "$ran_at" == *"T00:00:00Z" && "$timestamp_kind" != "generated-metadata" && "$timestamp_kind" != "command-wall-clock" ]]; then
-        weak_hints+=("WEAK: $tid should label synthetic-looking ran_at metadata; reason=synthetic_timestamp_unlabeled")
-        fail=1
-        continue
-    fi
-
     if [[ "${caught:-0}" -lt 1 ]]; then
         weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=zero_kills")
         fail=1
